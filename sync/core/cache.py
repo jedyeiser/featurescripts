@@ -14,17 +14,16 @@ class CacheManager:
 
     def __init__(
         self,
-        cache_dir: Path,
+        std_dir: Path,
         client: OnshapeClient | None = None,
     ) -> None:
         """Initialize cache manager.
 
         Args:
-            cache_dir: Path to cache directory (e.g., integrationPrompts/cache)
+            std_dir: Path to std library directory (e.g., ./std)
             client: Optional OnshapeClient for fetching (created lazily if needed)
         """
-        self.cache_dir = Path(cache_dir)
-        self.std_dir = self.cache_dir / "std"
+        self.std_dir = Path(std_dir)
         self.manifest_path = self.std_dir / "manifest.json"
         self._client = client
         self._manifest: CacheManifest | None = None
@@ -268,7 +267,7 @@ class CacheManager:
             })
 
         return {
-            "cache_dir": str(self.cache_dir),
+            "std_dir": str(self.std_dir),
             "manifest_version": self.manifest.version,
             "last_updated": self.manifest.last_updated,
             "onshape_std_version": self.manifest.onshape_std_version,

@@ -29,9 +29,6 @@ jobs:
     name: Execute Sync
     runs-on: ubuntu-latest
     environment: ${{ contains(fromJSON('["pull", "push", "cache-update"]'), github.event.inputs.operation) && 'onshape-sync' || '' }}
-    defaults:
-      run:
-        working-directory: integrationPrompts
 
     steps:
       - uses: actions/checkout@v4
@@ -41,11 +38,10 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: integrationPrompts/requirements.txt
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Create .env file
         env:
@@ -54,7 +50,7 @@ jobs:
         run: |
           echo "ONSHAPE_ACCESS_KEY=$ONSHAPE_ACCESS_KEY" > .env
           echo "ONSHAPE_SECRET_KEY=$ONSHAPE_SECRET_KEY" >> .env
-          echo "ONSHAPE_BASE_URL=https://cad.onshape.com" >> .env
+          echo "ONSHAPE_BASE_URL=https://k2-sports.onshape.com" >> .env
 
       - name: Execute sync operation
         id: sync
@@ -92,7 +88,6 @@ jobs:
       - name: Commit changes (if pull or cache-update)
         if: contains(fromJSON('["pull", "cache-update"]'), github.event.inputs.operation)
         run: |
-          cd ..
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -103,7 +98,7 @@ jobs:
           fi
 
           # Stage changes
-          git add integrationPrompts/
+          git add std/ sync/
 
           # Create commit
           OPERATION="${{ github.event.inputs.operation }}"

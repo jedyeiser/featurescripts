@@ -95,12 +95,12 @@ def _add_tree_nodes(parent: Tree, data: dict) -> None:
 def cmd_cache_status(args: argparse.Namespace) -> int:
     """Show cache status."""
     base_dir = get_base_dir()
-    cache_dir = base_dir / "cache"
-    cache = CacheManager(cache_dir)
+    std_dir = base_dir / "std"
+    cache = CacheManager(std_dir)
 
     status = cache.status()
 
-    console.print(f"\n[bold]Cache Directory:[/bold] {status['cache_dir']}")
+    console.print(f"\n[bold]Std Directory:[/bold] {status['std_dir']}")
     console.print(f"[bold]Manifest Version:[/bold] {status['manifest_version']}")
     console.print(f"[bold]Last Updated:[/bold] {status['last_updated'] or 'Never'}")
     console.print(f"[bold]Onshape Std Version:[/bold] {status['onshape_std_version']}")
@@ -132,8 +132,8 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
 def cmd_cache_update(args: argparse.Namespace) -> int:
     """Update cached files."""
     base_dir = get_base_dir()
-    cache_dir = base_dir / "cache"
-    cache = CacheManager(cache_dir)
+    std_dir = base_dir / "std"
+    cache = CacheManager(std_dir)
 
     filename = args.file if hasattr(args, "file") and args.file else None
     force = args.force if hasattr(args, "force") else False
@@ -160,8 +160,8 @@ def cmd_cache_update(args: argparse.Namespace) -> int:
 def cmd_cache_add(args: argparse.Namespace) -> int:
     """Add a file to the cache manifest."""
     base_dir = get_base_dir()
-    cache_dir = base_dir / "cache"
-    cache = CacheManager(cache_dir)
+    std_dir = base_dir / "std"
+    cache = CacheManager(std_dir)
 
     cache.add_to_manifest(
         filename=args.filename,
