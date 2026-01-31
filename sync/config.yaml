@@ -12,15 +12,13 @@ base_url: "https://k2-sports.onshape.com"
 # Folder-based sync
 # Each Onshape document becomes a local folder with .document.json metadata
 folders:
-  # Your EOC Featurescripts folder - currently commented out
-  # Uncomment and adjust local_path when ready to sync
-  # - name: "EOC Featurescripts"
-  #   folder_id: "fe3ff54b1d12a3a8491215c6"
-  #   local_path: "./onshape"  # Where to put pulled content
-  #   recursive: true
-  #   exclude:
-  #     - "_archive/*"
-  #     - "_test*"
+  - name: "EOC Featurescripts"
+    folder_id: "fe3ff54b1d12a3a8491215c6"
+    local_path: "./onshape"
+    recursive: true
+    exclude:
+      - "_archive/*"
+      - "_test*"
 
 # Legacy: Single document sync
 documents: []
