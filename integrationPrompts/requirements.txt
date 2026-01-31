@@ -1,0 +1,13 @@
+# Onshape API sync dependencies
+
+# HTTP requests with authentication
+requests>=2.31.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Configuration file parsing
+pyyaml>=6.0
+
+# Optional: Better CLI output
+rich>=13.0.0

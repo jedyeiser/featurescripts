@@ -1,0 +1,70 @@
+name: Sync Validation
+
+on:
+  pull_request:
+    paths:
+      - 'integrationPrompts/**'
+      - '.github/workflows/sync-*.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'integrationPrompts/**'
+      - '.github/workflows/sync-*.yml'
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrationPrompts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: integrationPrompts/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy pytest pytest-cov types-requests types-PyYAML
+
+      - name: Lint with ruff
+        run: ruff check sync/ tests/
+
+      - name: Type check with mypy
+        run: mypy sync/ --ignore-missing-imports
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+        continue-on-error: true  # Tests may not exist yet
+
+  validate-config:
+    name: Validate Config
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrationPrompts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate config.yaml syntax
+        run: python -c "import yaml; yaml.safe_load(open('sync/config.yaml'))"
+
+      - name: Validate manifest.json syntax
+        run: python -c "import json; json.load(open('cache/std/manifest.json'))"

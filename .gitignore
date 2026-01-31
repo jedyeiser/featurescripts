@@ -35,3 +35,22 @@ Desktop.ini
 !.claude/agents/
 !.claude/settings.json
 !.claude/featurescript-corrections.md
+
+# FeatureScript Sync System
+integrationPrompts/.env
+integrationPrompts/.sync-state.json
+integrationPrompts/.sync-backups/
+integrationPrompts/venv/
+integrationPrompts/__pycache__/
+integrationPrompts/**/__pycache__/
+integrationPrompts/**/*.pyc
+
+# Python
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
