@@ -1,18 +1,11 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-// Import constants and predicates
-
-import(path : "a54a829744c4e15e8da55e0e", version : "5a283e0298e3adfbca7a9655");
-
-import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
-
-// Import math utilities
-import(path : "b4b27eddd41251b5f56f042b", version : "5ddb5d06cb8b643cd2c5a5a3");
-// Import geometry utilities (fpt_analyze)
-export import(path : "d1b04ca2346787da6083d7cc", version : "57cafe87c4ce8aed9693754b");
-// Import geometry utilities (fpt_geometry)
-
+// IMPORT: fpt_constants.fs
+// IMPORT: predicates.fs
+// IMPORT: fpt_math.fs
+// IMPORT: fpt_analyze.fs (export import)
+// IMPORT: fpt_geometry.fs (export import)
 
 IconNamespace::import(path : "b550d23fd28bf02e0bca618d", version : "7a66bc39e006a0d82e0d0e4b");
 
@@ -174,7 +167,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         println("Input: " ~ size(allBsplines) ~ " BSplines from edges");
 
         // Filter to positive Y only (split at Y=0 if needed)
-        var bsplines = filterAndTrimBSplines(allBsplines, 0 * meter, tolerance);
+        var bsplines = filterAndTrimBSplines(context, allBsplines, tolerance);
 
         println("After Y>0 filter: " ~ size(bsplines) ~ " BSplines");
 

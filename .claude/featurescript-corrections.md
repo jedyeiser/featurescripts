@@ -202,6 +202,32 @@ var mode = FootprintScaleMode.ACCORDION;
 
 ## FeatureScript Syntax
 
+### Export Functions by Default
+**Date**: 2026-01-30
+**Issue**: Functions not marked with `export` cannot be used by other files that import them
+**Incorrect Pattern**:
+```featurescript
+// In fpt_analyze.fs
+function buildCurveDataArray(bsplines is array) returns array
+{
+    // ...
+}
+```
+**Correct Pattern**:
+```featurescript
+// In fpt_analyze.fs
+export function buildCurveDataArray(bsplines is array) returns array
+{
+    // ...
+}
+```
+**Lesson Learned**:
+- **Nearly always export functions** in utility/library files (anything ending in `_utils`, `_math`, `_analyze`, etc.)
+- Only make functions non-exported if they are truly internal helpers
+- The same applies to constants and enums - export them if other files might use them
+- When refactoring, always check that shared functions have `export` keyword
+- Default to exporting - it's easier to remove an export later than to track down missing ones
+
 ### Template Entry
 **Date**: YYYY-MM-DD
 **Issue**: [Syntax error or language feature misuse]
@@ -229,9 +255,9 @@ var mode = FootprintScaleMode.ACCORDION;
 
 ## Statistics
 
-- **Total Corrections**: 1
+- **Total Corrections**: 2
 - **Last Updated**: 2026-01-30
-- **Most Common Category**: Import Issues
+- **Most Common Category**: Import Issues, FeatureScript Syntax
 
 ---
 

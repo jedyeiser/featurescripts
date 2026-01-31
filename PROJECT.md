@@ -52,6 +52,10 @@ Each project directory typically contains:
 - Test with actual CAD geometry and operations
 
 ### 3. Import Handling
+- **Import comments**: In code, use comment placeholders like `// IMPORT: fpt_constants.fs`
+- **Actual imports**: Document IDs and version hashes are managed separately (not in AI-generated code)
+- **FeatureScript limitation**: No namespace aliasing - imports make all exported symbols globally available
+- **Export policy**: Use `export` keyword by default for all functions in utility files
 - **Local imports**: Reference `std/` modules relatively
   ```featurescript
   import(path : "onshape/std/math.fs");
@@ -118,7 +122,9 @@ Project-specific Claude Code settings are in `.claude/settings.json`:
 
 ### Code Organization
 - Follow patterns from `std/` library modules
-- Export only public API functions
+- **Export functions by default** - Nearly always use `export` keyword for functions, constants, and enums in utility/library files
+- Only make functions non-exported if they are truly internal helpers
+- Import management: Use comment placeholders (`// IMPORT: filename.fs`) - actual import statements with document IDs are managed separately
 - Group related functions together
 - Document complex algorithms
 

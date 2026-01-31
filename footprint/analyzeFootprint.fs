@@ -1,9 +1,9 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-import(path : "a54a829744c4e15e8da55e0e", version : "5a283e0298e3adfbca7a9655");
-import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
-import(path : "8fbfc083d9b7c765ae06ab5b", version : "534f99b4ed4ee7b09f4e3ac7");
+// IMPORT: predicates.fs
+// IMPORT: fpt_constants.fs
+// IMPORT: fpt_geometry.fs
 
 IconNamespace::import(path : "279bd6d83f4e7bcd77624952", version : "a9ec7800d2f223cb59b31642");
 

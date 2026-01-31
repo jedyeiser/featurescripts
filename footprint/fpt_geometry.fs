@@ -2,9 +2,8 @@ FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 import(path : "onshape/std/transform.fs", version : "2856.0");
 
-import(path : "b4b27eddd41251b5f56f042b", version : "5ddb5d06cb8b643cd2c5a5a3");
-export 
-import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
+// IMPORT: fpt_math.fs
+// IMPORT: fpt_constants.fs (export import)
 
 
 
