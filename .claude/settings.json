@@ -1,0 +1,21 @@
+{
+  "description": "Claude Code settings for Onshape FeatureScript development",
+  "agents": {
+    "featurescript-expert": {
+      "autoInvoke": {
+        "patterns": ["**/*.fs"],
+        "description": "Automatically invoke FeatureScript expert agent when working with .fs files"
+      }
+    }
+  },
+  "project": {
+    "name": "FeatureScript Development",
+    "type": "onshape-featurescript",
+    "standardVersion": "FeatureScript 2878"
+  },
+  "notes": [
+    "The featurescript-expert agent is automatically invoked when working with .fs files",
+    "Reference .claude/featurescript-corrections.md for known issues and corrections",
+    "See PROJECT.md for workflow and project structure overview"
+  ]
+}
