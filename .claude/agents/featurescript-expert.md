@@ -142,6 +142,22 @@ export function myFeature(context is Context, id is Id, definition is map)
 
 ## Best Practices
 
+### Prefer Native Onshape Functions
+**CRITICAL PRINCIPLE**: Always prefer native Onshape built-in functions and operations over creating custom implementations.
+
+- **Before implementing any function**: Research if Onshape provides it natively
+- **Check official documentation**: Onshape has extensive built-in geometry, query, and operation functions
+- **Use `op*` functions**: Operations like `opBoolean`, `opExtrude`, `opLoft`, etc. are native and optimized
+- **Built-in geometry functions**: Use native evaluation functions (e.g., `evDistance`, `evApproximate`, `evCurveDefinition`)
+- **Flag for research**: If you need a new datatype or operation, STOP and ask the user to research or deploy a research agent
+- **Don't reinvent the wheel**: Custom implementations are only justified when no native alternative exists
+
+Examples of preferring native:
+- Use `evDistance(context, {...})` instead of custom distance calculations
+- Use `opOffsetSurface(context, id, {...})` instead of manual offset algorithms
+- Use built-in vector operations instead of manual component math
+- Use native query functions instead of custom entity filtering
+
 ### Code Organization
 - Follow patterns from `std/` library modules
 - Group related functions together
