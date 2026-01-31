@@ -23,6 +23,9 @@ dev = [
 [project.scripts]
 featurescript-sync = "sync.main:main"
 
+[tool.setuptools]
+packages = ["sync", "sync.core", "sync.models", "tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
