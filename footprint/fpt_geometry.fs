@@ -2,40 +2,10 @@ FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 import(path : "onshape/std/transform.fs", version : "2856.0");
 
-import(path : "b4b27eddd41251b5f56f042b", version : "a477172449057a1235bdb0f8");
+import(path : "b4b27eddd41251b5f56f042b", version : "5ddb5d06cb8b643cd2c5a5a3");
+export 
+import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
 
-export enum FootprintCurveBuildMode
-{
-    annotation { "Name" : "PER_REGION" }
-    ONE_PER_REGION,
-
-    annotation { "Name" : "PER_EDGE" }
-    ONE_PER_EDGE
-}
-
-export enum AngleDriver
-{
-    annotation { "Name" : "Waist location" }
-    WAIST,
-
-    annotation { "Name" : "Overall taper angle" }
-    TAPER_ANGLE
-}
-
-export enum FootprintSplineExportType
-{
-    annotation { "Name" : "FIT" }
-    FIT,
-
-    annotation { "Name" : "APPROX" }
-    APPROX
-}
-
-export enum RadiusSign
-{
-    POS,
-    NEG
-}
 
 
 export function generateFootprintFromRadiusEdges(context is Context, id is Id, radiusEdgesQuery is Query, mode is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef
@@ -662,7 +632,7 @@ function refineExtremum(x is array, y is array, idx is number) returns map
     // Vertex at x where derivative = 0: 2*A*(x-x1) + B = 0
     // So: xPeak = x1 - B/(2*A)
 
-    // Guard against flat region (A ˜ 0)
+    // Guard against flat region (A ï¿½ 0)
     if (abs(A.value) < 1e-30)
     {
         return { "x" : x1, "y" : y1 };

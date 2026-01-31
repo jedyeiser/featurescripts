@@ -1,8 +1,10 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-import(path : "b4b27eddd41251b5f56f042b", version : "a477172449057a1235bdb0f8");
-import(path : "d1b04ca2346787da6083d7cc", version : "60f2cd484eff0523847a3bba");
+import(path : "b4b27eddd41251b5f56f042b", version : "5ddb5d06cb8b643cd2c5a5a3");
+import(path : "d1b04ca2346787da6083d7cc", version : "57cafe87c4ce8aed9693754b");
+import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
+
 
 
 
@@ -288,7 +290,7 @@ export function buildCurveDataArray(bsplines is array) returns array
 
 /**
  * Detect tip and tail points from curve data.
- * Tip/tail are where Y ˜ 0 and X extends beyond FCP/ACP.
+ * Tip/tail are where Y ï¿½ 0 and X extends beyond FCP/ACP.
  */
 export function detectTipTail(curveData is array, fcpX is ValueWithUnits, acpX is ValueWithUnits, tolerance is ValueWithUnits) returns map
 {
@@ -297,13 +299,13 @@ export function detectTipTail(curveData is array, fcpX is ValueWithUnits, acpX i
     var minX = inf * meter;
     var maxX = -inf * meter;
 
-    // Find X extent where Y ˜ 0
+    // Find X extent where Y ï¿½ 0
     for (var cd in curveData)
     {
         var bspline = cd.bspline;
         var range = getBSplineParamRange(bspline);
 
-        // Sample more densely to find Y ˜ 0 points
+        // Sample more densely to find Y ï¿½ 0 points
         var params = [];
         for (var i = 0; i < 20; i += 1)
         {
@@ -443,7 +445,7 @@ export function sampleBSplineUniform(bspline is BSplineCurve, numSamples is numb
 
 /**
  * Compute signed curvature at a BSpline parameter.
- * Uses ? = (x'*y'' - y'*x'') / (x'² + y'²)^(3/2)
+ * Uses ? = (x'*y'' - y'*x'') / (x'ï¿½ + y'ï¿½)^(3/2)
  * Sign: positive = concave (curving toward centerline/+Y), negative = convex
  */
 export function getBSplineCurvatureAtParam(bspline is BSplineCurve, u is number) returns map
@@ -1224,8 +1226,7 @@ export function gatherRadiusInformation(context is Context, curveData is array, 
                  }
                  else
                  {
-                     //println('trying to find ' ~ toString(min(fcp[0], acp[0])) ~ ' in a bspline with range from ' ~ toString(min(edgeEnds[0][0][0], edgeEnds[0][1][0])) ~ ' to ' ~
-                     toString(max(edgeEnds[0][0][0], edgeEnds[0][1][0])));
+                     //println('trying to find ' ~ toString(min(fcp[0], acp[0])) ~ ' in a bspline with range from ' ~ toString(min(edgeEnds[0][0][0], edgeEnds[0][1][0])) ~ ' to ' ~ toString(max(edgeEnds[0][0][0], edgeEnds[0][1][0])));
                      maxParam = findParameterAtX(bSpline, min(fcp[0], acp[0]), 1e-5 * millimeter);
                  }
              }
@@ -1273,7 +1274,7 @@ export function gatherRadiusInformation(context is Context, curveData is array, 
  * @param bspline is BSplineCurve - The curve to search
  * @param xTarget is ValueWithUnits - The X coordinate to find
  * @param tolerance is ValueWithUnits - How close the found X must be to xTarget
- * @returns number - The parameter u where curve X ˜ xTarget, or undefined if not found
+ * @returns number - The parameter u where curve X ï¿½ xTarget, or undefined if not found
  */
 export function findParameterAtX(bspline is BSplineCurve, xTarget is ValueWithUnits, tolerance is ValueWithUnits) returns number
 {
@@ -1360,22 +1361,3 @@ export function filterCurveData(curveData is array, fcp is Vector, acp is Vector
     }
     return retArray;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

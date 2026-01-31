@@ -1,29 +1,12 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-import(path : "8fbfc083d9b7c765ae06ab5b", version : "510dc942d89901addb25da83");
-import(path : "a54a829744c4e15e8da55e0e", version : "a429aca66ec4510e66ac2796");
+import(path : "a54a829744c4e15e8da55e0e", version : "5a283e0298e3adfbca7a9655");
+import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
+import(path : "8fbfc083d9b7c765ae06ab5b", version : "534f99b4ed4ee7b09f4e3ac7");
+
 IconNamespace::import(path : "279bd6d83f4e7bcd77624952", version : "a9ec7800d2f223cb59b31642");
 
-
-// Default values for resettable footprint data fields
-const FOOTPRINT_DATA_DEFAULTS = {
-    "dimensionStr" : "- - -",
-    "foundWaistWidth" : 0 * millimeter,
-    "foundWaistLocation" : 0 * millimeter,
-    "foundTaperAngle" : 0 * degree,
-    "avgRadiusStr" : "-",
-    "natRadiusWidestStr" : "-",
-    "natRadiusInflectionStr" : "-",
-    "fbWidest" : 0 * millimeter,
-    "fbInflection" : 0 * millimeter,
-    "fbInflectionToWidest" : 0 * millimeter,
-    "abWidest" : 0 * millimeter,
-    "abInflection" : 0 * millimeter,
-    "abInflectionToWidest" : 0 * millimeter,
-    "tipLength" : 0 * millimeter,
-    "tailLength" : 0 * millimeter
-};
 
 export function analyzeEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
@@ -82,8 +65,7 @@ export function analyzeEditingLogic(context is Context, id is Id, oldDefinition 
     return definition;
 }
 
-annotation { "Feature Type Name" : "Analyze footprint", "Icon": IconNamespace::BLOB_DATA, "Editing Logic Function": "analyzeEditingLogic","Feature Type Description" : "Takes footprint edges and
-basic coordinate information and returns analyzed footprint data" }
+annotation { "Feature Type Name" : "Analyze footprint", "Icon": IconNamespace::BLOB_DATA, "Editing Logic Function": "analyzeEditingLogic","Feature Type Description" : "Takes footprint edges and basic coordinate information and returns analyzed footprint data" }
 export const analyzeFootprint = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -342,7 +324,7 @@ function deleteNegativeYBodies(context is Context, id is Id, extractId is Id, to
 }
 
 /**
- * Detect tip and tail points (where Y ˜ 0 and X extends beyond FCP/ACP)
+ * Detect tip and tail points (where Y ï¿½ 0 and X extends beyond FCP/ACP)
  */
 function detectTipTail(context is Context, edges is Query, fcpX is ValueWithUnits, acpX is ValueWithUnits, tolerance is ValueWithUnits) returns map
 {
@@ -356,7 +338,7 @@ function detectTipTail(context is Context, edges is Query, fcpX is ValueWithUnit
 
     for (var edge in edgeArray)
     {
-        // Sample edge to find Y ˜ 0 points
+        // Sample edge to find Y ï¿½ 0 points
         var params = [0, 0.25, 0.5, 0.75, 1]; // Quick sample
         var tangentLines = evEdgeTangentLines(context, {
             "edge" : edge,
@@ -366,7 +348,7 @@ function detectTipTail(context is Context, edges is Query, fcpX is ValueWithUnit
         for (var tl in tangentLines)
         {
             var pt = tl.origin;
-            // Check if Y ˜ 0
+            // Check if Y ï¿½ 0
             if (abs(pt[1]) < tolerance)
             {
                 minX = min([minX, pt[0]]);

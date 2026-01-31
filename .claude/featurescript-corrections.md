@@ -8,6 +8,35 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ## Import Issues
 
+### Namespace Imports Not Supported
+**Date**: 2026-01-30
+**Issue**: FeatureScript does NOT support namespace aliasing with `import(path) as namespace`
+**Incorrect Pattern**:
+```featurescript
+import(path : "fpt_analyze.fs", version : "") as analyze;
+import(path : "fpt_geometry.fs", version : "") as geometry;
+import(path : "fpt_constants.fs", version : "") as constants;
+
+// Later using namespace prefix
+var result = analyze::findWaistPoint(...);
+var mode = constants::FootprintScaleMode.ACCORDION;
+```
+**Correct Pattern**:
+```featurescript
+import(path : "fpt_analyze.fs", version : "");
+import(path : "fpt_geometry.fs", version : "");
+import(path : "fpt_constants.fs", version : "");
+
+// Functions and constants are directly available
+var result = findWaistPoint(...);
+var mode = FootprintScaleMode.ACCORDION;
+```
+**Lesson Learned**: FeatureScript imports make all exported symbols directly available in the global namespace. There is no support for namespace qualification or aliasing. This means:
+1. All exported names must be unique across all imported files
+2. Cannot use `::` to qualify function/constant names
+3. Name collisions must be avoided through careful naming conventions
+4. Consider using `export import` to re-export symbols from dependencies
+
 ### Template Entry
 **Date**: YYYY-MM-DD
 **Issue**: [Description of import/export problem]
@@ -200,9 +229,9 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ## Statistics
 
-- **Total Corrections**: 0
+- **Total Corrections**: 1
 - **Last Updated**: 2026-01-30
-- **Most Common Category**: [To be determined]
+- **Most Common Category**: Import Issues
 
 ---
 

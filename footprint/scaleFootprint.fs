@@ -1,14 +1,17 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
+// Import constants and predicates
+
+import(path : "a54a829744c4e15e8da55e0e", version : "5a283e0298e3adfbca7a9655");
+
+import(path : "ba0d9a5428fa1db483099bce", version : "44f7eccf75fa18fba43bd3eb");
 
 // Import math utilities
-import(path : "b4b27eddd41251b5f56f042b", version : "a477172449057a1235bdb0f8");
+import(path : "b4b27eddd41251b5f56f042b", version : "5ddb5d06cb8b643cd2c5a5a3");
 // Import geometry utilities (fpt_analyze)
-export import(path : "d1b04ca2346787da6083d7cc", version : "60f2cd484eff0523847a3bba");
+export import(path : "d1b04ca2346787da6083d7cc", version : "57cafe87c4ce8aed9693754b");
 // Import geometry utilities (fpt_geometry)
-export import(path : "8fbfc083d9b7c765ae06ab5b", version : "510dc942d89901addb25da83");
-
 
 
 IconNamespace::import(path : "b550d23fd28bf02e0bca618d", version : "7a66bc39e006a0d82e0d0e4b");
@@ -38,39 +41,6 @@ IconNamespace::import(path : "b550d23fd28bf02e0bca618d", version : "7a66bc39e006
 // ENUMS
 // =============================================================================
 
-export enum FootprintScaleMode
-{
-    annotation { "Name" : "Accordion (X only)" }
-    ACCORDION,
-
-    annotation { "Name" : "Keep taper angle" }
-    KEEP_TAPER,
-
-    annotation { "Name" : "Scale radius" }
-    SCALE_RADIUS
-}
-
-export enum ContinuityMassageMode
-{
-    annotation { "Name" : "Adjust tip/tail only" }
-    TIP_TAIL_ONLY,
-
-    annotation { "Name" : "Adjust sidecut only" }
-    RSL_ONLY,
-
-    annotation { "Name" : "Minimize change (both)" }
-    MINIMUM
-}
-
-export enum FootprintSymmetryType
-{
-    SYMMETRIC,
-    ASYYMMETRIC
-}
-
-export const ScaleRadiusBounds = {(meter) : [5, 18, 60]} as LengthBoundSpec;
-export const ScaleWaistBounds = {(millimeter) : [25, 88, 500]} as LengthBoundSpec;
-
 // =============================================================================
 // FEATURE DEFINITION
 // =============================================================================
@@ -93,8 +63,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         definition.scaleMode is FootprintScaleMode;
 
         // Pin point selection for KEEP_TAPER and SCALE_RADIUS
-        if (definition.scaleMode == FootprintScaleMode.KEEP_TAPER ||
-            definition.scaleMode == FootprintScaleMode.SCALE_RADIUS)
+        if (definition.scaleMode == FootprintScaleMode.KEEP_TAPER || definition.scaleMode == FootprintScaleMode.SCALE_RADIUS)
         {
             annotation { "Name" : "Pin point", "Filter" : EntityType.VERTEX || EntityType.FACE && GeometryType.PLANE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.pinPoint is Query;
@@ -138,8 +107,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         annotation { "Group Name" : "Details", "Collapsed By Default" : true }
         {
 
-            annotation { "Name" : "Build Mode", "Default": FootprintCurveBuildMode.ONE_PER_REGION, "Description": "Specifies if we should build one curve per region (taper*, sidecut, taper*) or
-            if we should build one spline per edge in our input query. gaps in X will be interpolated", "UIHint": UIHint.SHOW_LABEL }
+            annotation { "Name" : "Build Mode", "Default": FootprintCurveBuildMode.ONE_PER_REGION, "Description": "Specifies if we should build one curve per region (taper*, sidecut, taper*) or if we should build one spline per edge in our input query. gaps in X will be interpolated", "UIHint": UIHint.SHOW_LABEL }
             definition.footprintCurveBuildMode is FootprintCurveBuildMode;
 
             annotation { "Name" : "Unify curves", "Default": false, "Description" : "When true, outputs a single curve rather than multiple curves, no matter what is selected for build mode" }
@@ -200,13 +168,13 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =====================================================================
         // STEP 3: Convert reference edges to BSplines, filter to positive Y
         // =====================================================================
-        var tolerance = 0.001 * millimeter;
+        var tolerance = DEFAULT_ANALYSIS_TOLERANCE;
         var allBsplines = edgesToBSplines(context, definition.refEdges, tolerance);
 
         println("Input: " ~ size(allBsplines) ~ " BSplines from edges");
 
         // Filter to positive Y only (split at Y=0 if needed)
-        var bsplines = filterToPositiveY(context, allBsplines, tolerance);
+        var bsplines = filterAndTrimBSplines(allBsplines, 0 * meter, tolerance);
 
         println("After Y>0 filter: " ~ size(bsplines) ~ " BSplines");
 
@@ -443,135 +411,6 @@ function extractPinX(context is Context, pinQuery is Query) returns ValueWithUni
 // =============================================================================
 
 /**
- * Filter BSplines to keep only portions with Y > 0.
- * Curves entirely below Y=0 are discarded.
- * Curves crossing Y=0 are split and only the positive portion is kept.
- */
-function filterToPositiveY(context is Context, bsplines is array, tolerance is ValueWithUnits) returns array
-{
-    var result = [];
-
-    for (var bspline in bsplines)
-    {
-        var bounds = getBSplineBounds(bspline);
-
-        // Entirely below Y=0 - discard
-        if (bounds.yMax < tolerance)
-        {
-            println("    Discarding curve with yMax=" ~ toString(bounds.yMax) ~ " (entirely Y<0)");
-            continue;
-        }
-
-        // Entirely above Y=0 - keep as-is
-        if (bounds.yMin >= -tolerance)
-        {
-            result = append(result, bspline);
-            continue;
-        }
-
-        // Crosses Y=0 - need to split
-        println("    Splitting curve at Y=0 (yMin=" ~ toString(bounds.yMin) ~ ", yMax=" ~ toString(bounds.yMax) ~ ")");
-
-        var positivePortion = extractPositiveYPortion(context, bspline, tolerance);
-        if (positivePortion != undefined)
-        {
-            result = append(result, positivePortion);
-        }
-    }
-
-    return result;
-}
-
-/**
- * Extract the portion of a BSpline where Y > 0.
- * Uses parameter search to find Y=0 crossing, then extracts subcurve.
- */
-function extractPositiveYPortion(context is Context, bspline is BSplineCurve, tolerance is ValueWithUnits) returns BSplineCurve
-{
-    var range = getBSplineParamRange(bspline);
-
-    // Sample to find where Y crosses 0
-    var numSamples = 50;
-    var params = [];
-    var yValues = [];
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var u = range.uMin + (range.uMax - range.uMin) * i / (numSamples - 1);
-        params = append(params, u);
-        var pt = evaluateSpline({ "spline" : bspline, "parameters" : [u] })[0][0];
-        yValues = append(yValues, pt[1]);
-    }
-
-    // Find the crossing point (where Y changes sign)
-    var crossingParam = undefined;
-    for (var i = 0; i < numSamples - 1; i += 1)
-    {
-        if (yValues[i] * yValues[i + 1] < 0 * meter * meter)
-        {
-            // Refine with bisection
-            var uLo = params[i];
-            var uHi = params[i + 1];
-
-            for (var iter = 0; iter < 20; iter += 1)
-            {
-                var uMid = (uLo + uHi) / 2;
-                var ptMid = evaluateSpline({ "spline" : bspline, "parameters" : [uMid] })[0][0];
-
-                if (abs(ptMid[1]) < tolerance)
-                {
-                    crossingParam = uMid;
-                    break;
-                }
-
-                if (yValues[i] * (ptMid[1] / meter) < 0)
-                    uHi = uMid;
-                else
-                    uLo = uMid;
-            }
-
-            if (crossingParam == undefined)
-                crossingParam = (uLo + uHi) / 2;
-
-            break;
-        }
-    }
-
-    if (crossingParam == undefined)
-    {
-        // No crossing found - return entire curve if mostly positive
-        var avgY = 0 * meter;
-        for (var y in yValues)
-            avgY = avgY + y;
-        avgY = avgY / numSamples;
-
-        return (avgY > 0 * meter) ? bspline : undefined;
-    }
-
-    // Determine which side of the crossing is positive Y
-    var ptAtCrossing = evaluateSpline({ "spline" : bspline, "parameters" : [crossingParam] })[0][0];
-    var ptBeforeCrossing = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-
-    var uStart;
-    var uEnd;
-    if (ptBeforeCrossing[1] > 0 * meter)
-    {
-        // Positive Y is before crossing
-        uStart = range.uMin;
-        uEnd = crossingParam;
-    }
-    else
-    {
-        // Positive Y is after crossing
-        uStart = crossingParam;
-        uEnd = range.uMax;
-    }
-
-    // Extract the positive portion
-    return extractBSplineSubcurve(context, bspline, uStart, uEnd, 30);
-}
-
-/**
  * Mirror an array of BSpline curves across the Y=0 axis (negate Y coordinates).
  */
 function mirrorCurvesAcrossY(curves is array) returns array
@@ -622,7 +461,8 @@ function analyzeReferenceSidecut(sidecutCurves is array, fcpX is ValueWithUnits,
     var acpWidth = getWidthAtX(curveData, acpX, tolerance);
 
     // Find waist (minimum width) between FCP and ACP
-    var waistResult = findWaistInRange(curveData, fcpX, acpX, tolerance);
+    var config = buildConfig({ "xTolerance" : tolerance });
+    var waistResult = findWaistPoint(curveData, fcpX, acpX, config);
 
     // Compute taper angle from widths at FCP and ACP
     var taperAngle = atan2(fcpWidth - acpWidth, acpX - fcpX);
@@ -645,6 +485,7 @@ function analyzeReferenceSidecut(sidecutCurves is array, fcpX is ValueWithUnits,
 
 /**
  * Get Y value (width) at a specific X coordinate.
+ * Uses shared analysis functions from fpt_analyze.fs.
  */
 function getWidthAtX(curveData is array, targetX is ValueWithUnits, tolerance is ValueWithUnits) returns ValueWithUnits
 {
@@ -676,7 +517,7 @@ function getSidecutEndpointWidths(sidecutCurves is array, fcpX is ValueWithUnits
     var acpFound = false;
 
     // Use a generous tolerance for finding endpoints (10mm)
-    var endpointTolerance = 10 * millimeter;
+    var endpointTolerance = ENDPOINT_MATCH_TOLERANCE;
 
     for (var bspline in sidecutCurves)
     {
@@ -726,105 +567,39 @@ function getSidecutEndpointWidths(sidecutCurves is array, fcpX is ValueWithUnits
 }
 
 /**
- * Find waist (minimum Y) location between FCP and ACP.
- */
-function findWaistInRange(curveData is array, fcpX is ValueWithUnits, acpX is ValueWithUnits,
-    tolerance is ValueWithUnits) returns map
-{
-    var minY = inf * meter;
-    var minX = (fcpX + acpX) / 2;
-
-    var numSamples = 100;
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var x = fcpX + (acpX - fcpX) * i / (numSamples - 1);
-        var y = getWidthAtX(curveData, x, tolerance);
-
-        if (y < minY)
-        {
-            minY = y;
-            minX = x;
-        }
-    }
-
-    return { "width" : minY, "x" : minX };
-}
-
-/**
  * Compute average radius between inflection points.
- * Falls back to full FCP-ACP range if no inflections found.
+ * Uses shared analysis functions from fpt_analyze.fs.
  */
 function computeAvgRadiusInRange(curveData is array, fcpX is ValueWithUnits, acpX is ValueWithUnits,
     tolerance is ValueWithUnits) returns map
 {
-    var numSamples = 100;
-    var xSamples = [];
-    var kSamples = [];
+    var config = buildConfig({ "xTolerance" : tolerance });
 
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var x = fcpX + (acpX - fcpX) * i / (numSamples - 1);
-        var k = getCurvatureAtX(curveData, x, tolerance);
-        xSamples = append(xSamples, x);
-        kSamples = append(kSamples, k);
-    }
+    // Find inflection points on FCP side
+    var inflectionFcp = findInflectionPoint(curveData, fcpX,
+        (fcpX + acpX) / 2, config);
 
-    // Find inflection points (where curvature changes sign)
-    var inflectionFcpX = fcpX;
-    var inflectionAcpX = acpX;
-    var foundFcpInflection = false;
-    var foundAcpInflection = false;
+    // Find inflection points on ACP side
+    var inflectionAcp = findInflectionPoint(curveData,
+        (fcpX + acpX) / 2, acpX, config);
 
-    var midIdx = floor(numSamples / 2);
+    var xStart = inflectionFcp.found ? inflectionFcp.x : fcpX;
+    var xEnd = inflectionAcp.found ? inflectionAcp.x : acpX;
 
-    // Search from FCP toward waist for first inflection
-    for (var i = 0; i < midIdx - 1; i += 1)
-    {
-        if (kSamples[i] * kSamples[i + 1] < 0 / (meter * meter))
-        {
-            inflectionFcpX = xSamples[i];
-            foundFcpInflection = true;
-            break;
-        }
-    }
-
-    // Search from ACP toward waist for first inflection
-    for (var i = numSamples - 1; i > midIdx; i -= 1)
-    {
-        if (kSamples[i] * kSamples[i - 1] < 0 / (meter * meter))
-        {
-            inflectionAcpX = xSamples[i];
-            foundAcpInflection = true;
-            break;
-        }
-    }
-
-    // Compute average radius in the range between inflections
-    var sumK = 0 / meter;
-    var count = 0;
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        if (xSamples[i] >= inflectionFcpX && xSamples[i] <= inflectionAcpX)
-        {
-            sumK = sumK + abs(kSamples[i]);
-            count = count + 1;
-        }
-    }
-
-    var avgK = (count > 0) ? (sumK / count) : (0.001 / meter);
-    var avgRadius = (abs(avgK * meter) > 1e-9) ? (1 / avgK) : (1000 * meter);
+    // Compute average radius in concave region
+    var avgRadiusResult = computeAverageRadius(curveData, xStart, xEnd, config);
 
     return {
-        "avgRadius" : avgRadius,
-        "inflectionFcpX" : inflectionFcpX,
-        "inflectionAcpX" : inflectionAcpX,
-        "foundInflections" : foundFcpInflection && foundAcpInflection
+        "avgRadius" : avgRadiusResult.avgRadius,
+        "inflectionFcpX" : xStart,
+        "inflectionAcpX" : xEnd,
+        "foundInflections" : inflectionFcp.found && inflectionAcp.found
     };
 }
 
 /**
  * Get curvature at a specific X coordinate.
+ * Uses shared analysis functions from fpt_analyze.fs.
  */
 function getCurvatureAtX(curveData is array, targetX is ValueWithUnits, tolerance is ValueWithUnits)
 {
@@ -839,7 +614,6 @@ function getCurvatureAtX(curveData is array, targetX is ValueWithUnits, toleranc
     }
     return 0 / meter;
 }
-
 // =============================================================================
 // CURVE CATEGORIZATION
 // =============================================================================
@@ -1065,7 +839,8 @@ function scaleAccordion(context is Context, sidecutCurves is array, refAnalysis 
     // Compute resulting widths from actual curve endpoints
     var endWidths = getSidecutEndpointWidths(scaledCurves, newFcpX, newAcpX, tolerance);
     var scaledCurveData = buildCurveDataArray(scaledCurves);
-    var waistResult = findWaistInRange(scaledCurveData, newFcpX, newAcpX, tolerance);
+    var config = buildConfig({ "xTolerance" : tolerance });
+    var waistResult = findWaistPoint(scaledCurveData, newFcpX, newAcpX, config);
 
     return {
         "curves" : scaledCurves,
@@ -1180,7 +955,8 @@ function scaleKeepTaper(context is Context, sidecutCurves is array, refAnalysis 
     if (specifyWidth)
     {
         var rotatedData = buildCurveDataArray(rotatedCurves);
-        var currentWaist = findWaistInRange(rotatedData, newFcpX, newAcpX, tolerance);
+        var config = buildConfig({ "xTolerance" : tolerance });
+        var currentWaist = findWaistPoint(rotatedData, newFcpX, newAcpX, config);
         var yShift = targetWaistWidth - currentWaist.width;
 
         println("  Y shift for target width: " ~ toString(yShift));
@@ -1210,7 +986,8 @@ function scaleKeepTaper(context is Context, sidecutCurves is array, refAnalysis 
     // Compute final widths from actual curve endpoints
     var endWidths = getSidecutEndpointWidths(finalCurves, newFcpX, newAcpX, tolerance);
     var finalData = buildCurveDataArray(finalCurves);
-    var finalWaist = findWaistInRange(finalData, newFcpX, newAcpX, tolerance);
+    var config = buildConfig({ "xTolerance" : tolerance });
+    var finalWaist = findWaistPoint(finalData, newFcpX, newAcpX, config);
 
     return {
         "curves" : finalCurves,
@@ -1248,7 +1025,7 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
     var newLength = abs(newAcpX - newFcpX);
 
     // Sample curvature from reference
-    var numSamples = 100;
+    var numSamples = ANALYSIS_SAMPLES;
     var refXSamples = [];
     var kSamples = [];
 
@@ -1288,7 +1065,7 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
     var thetaBase = cumTrapz(newXSamples, scaledK, 0).cumulative;
 
     // Build base map for solver
-    // Integrate ?_base to get y_base (small angle approximation: tan(?) ˜ ?)
+    // Integrate ?_base to get y_base (small angle approximation: tan(?) ï¿½ ?)
     var yBase = cumTrapz(newXSamples, thetaBase, 0 * millimeter).cumulative;
 
     var base = {
