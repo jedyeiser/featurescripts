@@ -37,13 +37,10 @@ Desktop.ini
 !.claude/featurescript-corrections.md
 
 # FeatureScript Sync System
-integrationPrompts/.env
-integrationPrompts/.sync-state.json
-integrationPrompts/.sync-backups/
-integrationPrompts/venv/
-integrationPrompts/__pycache__/
-integrationPrompts/**/__pycache__/
-integrationPrompts/**/*.pyc
+.env
+.sync-state.json
+.sync-backups/
+venv/
 
 # Python
 *.pyc
