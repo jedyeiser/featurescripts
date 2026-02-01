@@ -1,11 +1,19 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-export import(path : "050a4670bd42b2ca8da04540", version : "310acbe540c302e20097f554");
-import(path : "2dfee1d44e9bde0daba9d73e", version : "9923f9f7501f4858f23eec99");
+//import tools/bspline_knots.fs
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/dadb70c0a762573622fa609c", version : "acff88f740b64f7b03d722aa");
+// import tools/frenet
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
+//import tools/transition_functions (export/import)
+export import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/a656fa0d17723f0dafaf8638", version : "56689ead56dff6bcc596641b");
+//import constEnums (export - needed for enums in preconditions)
+export import(path : "050a4670bd42b2ca8da04540", version : "62f653b9c0d24817418e88e5");
+//import scaledCurve
+import(path : "2dfee1d44e9bde0daba9d73e", version : "19db4dd577e5e91d45d21305");
+
 
 IconNamespace::import(path : "e96867c52539556a75762725", version : "58044f708ff560e305b72aec");
-
 
 export function editingLogic(context is Context, id is Id, oldDefinition is map, definition is map,
                                 isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
@@ -46,10 +54,10 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Transition type", "Default": TransitionType.LOGISTIC, "Description": "Defines how the offset is applied across the curve, as a function of the parameter s." }
             definition.transitionType is TransitionType;
             
-            annotation { "Name" : "Fixed end continuity", "Default": ContinuityType.G0, "Description": "Specifies if output curve is G0: Coincident, G1: Tangent, G2: Equal curvature with the input curve" }
-            definition.fixedEndContinuity is ContinuityType;
+            annotation { "Name" : "Fixed end continuity", "Default": GeometricContinuity.G0, "Description": "Specifies if output curve is G0: Coincident, G1: Tangent, G2: Equal curvature with the input curve" }
+            definition.fixedEndContinuity is GeometricContinuity;
             
-            if (definition.fixedEndContinuity == ContinuityType.G2)
+            if (definition.fixedEndContinuity == GeometricContinuity.G2)
             {
                 annotation { "Name" : "G2 Mode", "Default": G2Mode.BEST_EFFORT, "Description": "Approximate or exact G2 continuity?" }
                 definition.g2Mode is G2Mode;
@@ -72,8 +80,8 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
                     definition.showContinuity is boolean;
                     
                     
-                    annotation { "Name" : "Endpoint continuity", "Default": ContinuityType.G0, "Description": "Specifies the modified curves' continuity type with the supplied reference" }
-                    definition.modEndContinuity is ContinuityType;
+                    annotation { "Name" : "Endpoint continuity", "Default": GeometricContinuity.G0, "Description": "Specifies the modified curves' continuity type with the supplied reference" }
+                    definition.modEndContinuity is GeometricContinuity;
                 }
                    
             }
@@ -133,9 +141,9 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         var useOffset = definition.offsetFrame == OffsetFrame.WORLD ? worldOffset : worldVectorToFrenet(worldOffset, computeFrenetFrame(unifiedCurve, modParam));
         
         var useRef = size(evaluateQuery(context, definition.modContinuityRef)) > 0 ? definition.modContinuityRef : qNothing();
-        var useContinuity = size(evaluateQuery(context, definition.modContinuityRef)) > 0 ? definition.modEndContinuity : ContinuityType.G0;
-        
-        var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, definition.modEndContinuity, numSamples, definition.splineDegree, definition.splineTol);
+        var useContinuity = size(evaluateQuery(context, definition.modContinuityRef)) > 0 ? definition.modEndContinuity : GeometricContinuity.G0;
+
+        var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, useContinuity, numSamples, definition.splineDegree, definition.splineTol);
         
         if (definition.printInput || definition.printOutput)
         {
@@ -184,10 +192,10 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
  * @param offsetVector {Vector} : Displacement at modified endpoint (with length units)
  * @param offsetFrame {OffsetFrame} : WORLD or FRENET [tangent, normal, binormal]
  * @param transitionType {TransitionType} : LINEAR, SINUSOIDAL, or LOGISTIC
- * @param fixedEndContinuity {ContinuityType} : G0, G1, or G2 constraint at fixed end
+ * @param fixedEndContinuity {GeometricContinuity} : G0, G1, or G2 constraint at fixed end
  * @param g2Mode {G2Mode} : EXACT or BEST_EFFORT (only used for G2)
  * @param modPointRef {Query} : Reference edge or face for continuity at modified end (can be empty)
- * @param modPointContinuity {ContinuityType} : G0, G1, or G2 constraint at modified end
+ * @param modPointContinuity {GeometricContinuity} : G0, G1, or G2 constraint at modified end
  * @param numSamples {number} : Sample count for fitting
  * @param degree {number} : Output curve degree
  * @param tolerance {ValueWithUnits} : Fitting tolerance
@@ -200,10 +208,10 @@ export function modifyCurveEnd(
     offsetVector is Vector,
     offsetFrame is OffsetFrame,
     transitionType is TransitionType,
-    fixedEndContinuity is ContinuityType,
+    fixedEndContinuity is GeometricContinuity,
     g2Mode is G2Mode,
     modPointRef is Query,
-    modPointContinuity is ContinuityType,
+    modPointContinuity is GeometricContinuity,
     numSamples is number,
     degree is number,
     tolerance is ValueWithUnits
@@ -274,27 +282,27 @@ export function modifyCurveEnd(
     })[0];
     
     // Apply continuity constraints at fixed end
-    if (fixedEndContinuity == ContinuityType.G1 || fixedEndContinuity == ContinuityType.G2)
+    if (fixedEndContinuity == GeometricContinuity.G1 || fixedEndContinuity == GeometricContinuity.G2)
     {
         fittedCurve = enforceG1AtEnd(fittedCurve, fixedPointParam, fixedEndTangent);
     }
     
-    if (fixedEndContinuity == ContinuityType.G2)
+    if (fixedEndContinuity == GeometricContinuity.G2)
     {
         fittedCurve = enforceG2AtEnd(fittedCurve, fixedPointParam, fixedEndCurvature, g2Mode);
     }
     
     // Apply constraints at modified end (if reference supplied)
-    if (!isQueryEmpty(context, modPointRef) && modPointContinuity != ContinuityType.G0)
+    if (!isQueryEmpty(context, modPointRef) && modPointContinuity != GeometricContinuity.G0)
     {
         var constraints = computeRefContinuityConstraints(context, modPointRef, fittedCurve, modPointParam);
         
-        if (modPointContinuity == ContinuityType.G1 || modPointContinuity == ContinuityType.G2)
+        if (modPointContinuity == GeometricContinuity.G1 || modPointContinuity == GeometricContinuity.G2)
         {
             fittedCurve = enforceG1AtEnd(fittedCurve, modPointParam, constraints.tangent);
         }
         
-        if (modPointContinuity == ContinuityType.G2)
+        if (modPointContinuity == GeometricContinuity.G2)
         {
             fittedCurve = enforceG2AtEnd(fittedCurve, modPointParam, constraints.curvature, g2Mode);
         }
@@ -623,202 +631,11 @@ export function enforceG2AtEnd(curve is BSplineCurve, endParam is number, target
     });
 }
 
-export const FRENET_EPSILON = 1e-5;
-
-/**
- * Compute Frenet frame and curvature at parameter s on a BSplineCurve.
- * Returns a structure compatible with EdgeCurvatureResult:
- *   - frame.zAxis = tangent
- *   - frame.xAxis = normal (toward center of curvature)
- *   - yAxis(frame) = binormal
- *   - curvature = 1/radius (inverse length units)
- * 
- * @param curve {BSplineCurve}
- * @param s {number} : Parameter value
- * @returns {map} : { "frame": CoordSystem, "curvature": ValueWithUnits }
- */
-export function computeFrenetFrame(curve is BSplineCurve, s is number) returns EdgeCurvatureResult
-{
-    // Offset slightly from exact endpoints to avoid degeneracy
-    var evalParam = s;
-    if (s < FRENET_EPSILON)
-    {
-        evalParam = FRENET_EPSILON;
-    }
-    else if (s > 1 - FRENET_EPSILON)
-    {
-        evalParam = 1 - FRENET_EPSILON;
-    }
-    
-    // Get position, first derivative, second derivative
-    var result = evaluateSpline({
-        "spline" : curve,
-        "parameters" : [evalParam],
-        "nDerivatives" : 2
-    });
-    
-    var position = result[0][0];      // r(t)
-    var velocity = result[1][0];      // r'(t)
-    var acceleration = result[2][0];  // r''(t)
-    
-    var speed = norm(velocity);  // |r'(t)|
-    
-    // Tangent: T = r'(t) / |r'(t)|  --> This becomes zAxis
-    var tangent = normalize(velocity);
-    
-    // Cross product for binormal direction: r'(t) × r''(t)
-    var crossProd = cross(velocity, acceleration);
-    var crossNorm = norm(crossProd);
-    
-    // Curvature: κ = |r'(t) × r''(t)| / |r'(t)|³
-    var curvature = crossNorm / (speed * speed * speed);
-    
-    // Handle degenerate case (straight line or near-zero curvature)
-    var binormal;
-    var normal;
-    
-    // Check for near-zero curvature (need to handle units in comparison)
-    var isDegenerate = false;
-    try silent
-    {
-        // crossNorm has units of length²/time² if velocity has length/time
-        // For a unitless check, compare curvature to a small threshold
-        isDegenerate = curvature < (1e-10 / meter);
-    }
-    catch
-    {
-        // If units don't work out, try direct comparison
-        isDegenerate = crossNorm / meter / meter < 1e-12;
-    }
-    
-    if (isDegenerate)
-    {
-        // Pick an arbitrary perpendicular direction for normal
-        // Use the axis most perpendicular to tangent
-        var absT = vector(abs(tangent[0]), abs(tangent[1]), abs(tangent[2]));
-        var arbitrary;
-        if (absT[0] <= absT[1] && absT[0] <= absT[2])
-        {
-            arbitrary = vector(1, 0, 0);
-        }
-        else if (absT[1] <= absT[2])
-        {
-            arbitrary = vector(0, 1, 0);
-        }
-        else
-        {
-            arbitrary = vector(0, 0, 1);
-        }
-        
-        binormal = normalize(cross(tangent, arbitrary));
-        normal = cross(binormal, tangent);
-        curvature = 0 / meter;  // Explicitly zero curvature
-    }
-    else
-    {
-        // Standard Frenet frame
-        binormal = normalize(crossProd);
-        normal = cross(binormal, tangent);
-    }
-    
-    // Build CoordSystem: zAxis = tangent, xAxis = normal, (yAxis = binormal via cross)
-    var frame = coordSystem(position, normal, tangent);
-    
-    return {
-        "frame" : frame,
-        "curvature" : curvature
-    } as EdgeCurvatureResult;
-}
-
-
-/**
- * Transform a point from Frenet frame to world coordinates.
- * 
- * Local coordinates: [tangent, normal, binormal] = [z, x, y] in CoordSystem convention
- * 
- * @param localPoint {Vector} : Point in Frenet coordinates [tangent, normal, binormal] with length units
- * @param frenetResult {map} : Result from computeFrenetFrame (EdgeCurvatureResult-style)
- * @returns {Vector} : Point in world coordinates
- */
-export function frenetPointToWorld(localPoint is Vector, frenetResult is map) returns Vector
-{
-    var frame = frenetResult.frame;
-    
-    // Rearrange [tangent, normal, binormal] to [x, y, z] for CoordSystem convention
-    // CoordSystem: xAxis=normal, yAxis=binormal, zAxis=tangent
-    var localXYZ = vector(localPoint[1], localPoint[2], localPoint[0]);
-    
-    return toWorld(frame) * localXYZ;
-}
-
-/**
- * Transform a direction vector from Frenet frame to world coordinates.
- * (No translation applied — pure rotation)
- * 
- * Local coordinates: [tangent, normal, binormal] = [z, x, y] in CoordSystem convention
- * 
- * @param localVector {Vector} : Direction in Frenet coordinates [tangent, normal, binormal]
- * @param frenetResult {map} : Result from computeFrenetFrame (EdgeCurvatureResult-style)
- * @returns {Vector} : Direction in world coordinates
- */
-export function frenetVectorToWorld(localVector is Vector, frenetResult is map) returns Vector
-{
-    var frame = frenetResult.frame;
-    
-    // Frame axes in world coordinates
-    var tangent = frame.zAxis;
-    var normal = frame.xAxis;
-    var binormal = yAxis(frame);
-    
-    // localVector = [tangentComponent, normalComponent, binormalComponent]
-    return localVector[0] * tangent + localVector[1] * normal + localVector[2] * binormal;
-}
-
-/**
- * Transform a direction vector from world coordinates to Frenet frame.
- * 
- * @param worldVector {Vector} : Direction in world coordinates
- * @param frenetResult {map} : Result from computeFrenetFrame
- * @returns {Vector} : Direction in Frenet coordinates [tangent, normal, binormal]
- */
-export function worldVectorToFrenet(worldVector is Vector, frenetResult is map) returns Vector
-{
-    var frame = frenetResult.frame;
-    
-    var tangent = frame.zAxis;
-    var normal = frame.xAxis;
-    var binormal = yAxis(frame);
-    
-    return vector(
-        dot(worldVector, tangent),
-        dot(worldVector, normal),
-        dot(worldVector, binormal)
-    );
-}
-
-/**
- * Transform a point from world coordinates to Frenet frame.
- * 
- * @param worldPoint {Vector} : Point in world coordinates
- * @param frenetResult {map} : Result from computeFrenetFrame
- * @returns {Vector} : Point in Frenet coordinates [tangent, normal, binormal]
- */
-export function worldPointToFrenet(worldPoint is Vector, frenetResult is map) returns Vector
-{
-    var frame = frenetResult.frame;
-    
-    // Get vector from frame origin to the point
-    var relativePos = worldPoint - frame.origin;
-    
-    // Project onto frame axes
-    var tangent = frame.zAxis;
-    var normal = frame.xAxis;
-    var binormal = yAxis(frame);
-    
-    return vector(
-        dot(relativePos, tangent),
-        dot(relativePos, normal),
-        dot(relativePos, binormal)
-    );
-}
-
+// Frenet frame operations now handled by tools/frenet.fs
+// Available functions:
+// - FRENET_EPSILON
+// - computeFrenetFrame(curve, s)
+// - frenetVectorToWorld(localVector, frenetResult)
+// - worldVectorToFrenet(worldVector, frenetResult)
+// - frenetPointToWorld(localPoint, frenetResult)
+// - worldPointToFrenet(worldPoint, frenetResult)

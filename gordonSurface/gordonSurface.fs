@@ -1,18 +1,61 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-import(path : "b9e1608a507a242d87720d9b", version : "22c8651e5de4b01c4c98b37e");
-import(path : "07dbc6069778f180fe33c140", version : "659c032b4a4a9949527be840");
-import(path : "8d3469cb403ed076f2e3fbea", version : "c948bae217af15aa2557cdf4");
-export import(path : "050a4670bd42b2ca8da04540", version : "310acbe540c302e20097f554");
-import(path : "2dfee1d44e9bde0daba9d73e", version : "9923f9f7501f4858f23eec99");
-import(path : "c6dca62049572faaa07ddd10", version : "5c2e8aec9a6fdd4f6604f668");
-import(path : "3f40c735a406f3df927e0b13", version : "47415011a74c4d5ebd9d85db");
+//import tools/bspline_knots
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/dadb70c0a762573622fa609c", version : "acff88f740b64f7b03d722aa");
+//import constEnums (export - needed for enums in preconditions)
+export import(path : "050a4670bd42b2ca8da04540", version : "62f653b9c0d24817418e88e5");
+//import gordonCurveCompat
+import(path : "b9e1608a507a242d87720d9b", version : "dba5bb1c924e9263b31c9b77");
+//import scaledCurve
+import(path : "2dfee1d44e9bde0daba9d73e", version : "19db4dd577e5e91d45d21305");
+//import modifyCurveEnd
+import(path : "c6dca62049572faaa07ddd10", version : "8ec5fa2cc24fd66922b57005");
+//import debugTools
+import(path : "3f40c735a406f3df927e0b13", version : "3f1f34098f6dd8eb13416f4f");
+
 
 IconNamespace::import(path : "909b727cd95720b1666cbb41/4b9520a15e1873da9d46f579/583e87bcdf8f05533d82507e", version : "0e19bbdbe54691e6038ca94e");
 ImageNamespace::import(path : "7c8c021bcbe65b0c83ce64f7", version : "9775783495730507203b8c88");
 
+/**
+ * Normalize a BSplineCurve to ensure proper types for Onshape functions.
+ * Converts KnotArray to plain array if needed.
+ */
+function normalizeBSplineCurve(context is Context, id is Id, curve is map) returns BSplineCurve
+{
+    // Convert to map, add dimension if missing, convert knots to plain array
+    var curveMap = curve as map;
 
+    // Ensure dimension exists
+    if (curveMap.dimension == undefined)
+    {
+        curveMap.dimension = 3;
+    }
+
+    // Convert KnotArray to plain array
+    var plainKnots = [];
+    var numKnots = size(curveMap.knots);
+    for (var i = 0; i < numKnots; i += 1)
+    {
+        plainKnots = append(plainKnots, curveMap.knots[i]);
+    }
+    curveMap.knots = plainKnots;
+
+    // Convert weights if rational
+    if (curveMap.isRational && curveMap.weights != undefined)
+    {
+        var plainWeights = [];
+        var numWeights = size(curveMap.weights);
+        for (var i = 0; i < numWeights; i += 1)
+        {
+            plainWeights = append(plainWeights, curveMap.weights[i]);
+        }
+        curveMap.weights = plainWeights;
+    }
+
+    return curveMap as BSplineCurve;
+}
 
 annotation { "Feature Type Name" : "Gordon Surface", "Icon" : IconNamespace::BLOB_DATA, "Description Image" : ImageNamespace::BLOB_DATA, "Feature Type Description" : "Create a Gordon Surface (supplied interior U and V Curves)" }
 export const gordonSurface = defineFeature(function(context is Context, id is Id, definition is map)
@@ -132,6 +175,16 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
         // Make curves compatible (within each family)
         uBSplines = makeCurvesCompatible(context, id + "makeUcurvesCompatible", uBSplines);
         vBSplines = makeCurvesCompatible(context, id + "makeVcurvesCompatible", vBSplines);
+
+        // Normalize curves to ensure proper format for evaluateSpline
+        for (var i = 0; i < size(uBSplines); i += 1)
+        {
+            uBSplines[i] = normalizeBSplineCurve(context, id + ("normalizeU" ~ i), uBSplines[i]);
+        }
+        for (var i = 0; i < size(vBSplines); i += 1)
+        {
+            vBSplines[i] = normalizeBSplineCurve(context, id + ("normalizeV" ~ i), vBSplines[i]);
+        }
         
         for (var i = 0; i < size(uBSplines); i += 1)
        {
@@ -408,6 +461,20 @@ export function computeIntersectionGrid(context is Context, uCurves is array, vC
  */
 function findCurveIntersection(context is Context, curveA is BSplineCurve, curveB is BSplineCurve) returns map
 {
+    // Ensure dimension field exists (safety check)
+    if (curveA.dimension == undefined)
+    {
+        curveA = curveA as map;
+        curveA.dimension = 3;
+        curveA = curveA as BSplineCurve;
+    }
+    if (curveB.dimension == undefined)
+    {
+        curveB = curveB as map;
+        curveB.dimension = 3;
+        curveB = curveB as BSplineCurve;
+    }
+
     // Sample both curves to find approximate closest point pair
     const numSamples = 20;
     var bestDist = inf * meter;
@@ -1145,7 +1212,7 @@ export function elevateSurfaceUDegree(context is Context, id is Id, surface is B
     for (var v = 0; v < numV; v += 1)
     {
         var rowCurve = surfaceRowToCurve(surface, v);
-        var elevated = elevate(context, id + ("elevRow" ~ v), rowCurve, targetDegree);
+        var elevated = elevateDegree(context, rowCurve, targetDegree - rowCurve.degree);
         elevatedRows = append(elevatedRows, elevated);
     }
     
@@ -1209,7 +1276,7 @@ export function elevateSurfaceVDegree(context is Context, id is Id, surface is B
     for (var u = 0; u < numU; u += 1)
     {
         var colCurve = surfaceColumnToCurve(surface, u);
-        var elevated = elevate(context, id + ("elevCol" ~ u), colCurve, targetDegree);
+        var elevated = elevateDegree(context, colCurve, targetDegree - colCurve.degree);
         elevatedCols = append(elevatedCols, elevated);
     }
     
@@ -1636,7 +1703,7 @@ function interpolateThroughPoints(context, points, params, degree)
  * @param surfaceDef {map} : Raw surface definition
  * @returns {map} : Normalized surface definition ready for bSplineSurface()
  */
-function normalizeSurfaceDef(surfaceDef is map) returns map
+export function normalizeSurfaceDef(surfaceDef is map) returns map
 {
     // ========================================================================
     // STEP 1: Extract dimensions from control points
@@ -1916,4 +1983,3 @@ function surfaceColumnToCurve(surface is BSplineSurface, uIndex is number) retur
     
     return bSplineCurve(curveDef);
 }
-

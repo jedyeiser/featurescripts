@@ -1,11 +1,14 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-
-import(path : "b9e1608a507a242d87720d9b", version : "22c8651e5de4b01c4c98b37e");
-import(path : "07dbc6069778f180fe33c140", version : "659c032b4a4a9949527be840");
-export import(path : "050a4670bd42b2ca8da04540", version : "310acbe540c302e20097f554");
-import(path : "2dfee1d44e9bde0daba9d73e", version : "9923f9f7501f4858f23eec99");
+//import tools/bspline_knots
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/dadb70c0a762573622fa609c", version : "acff88f740b64f7b03d722aa");
+// import gordonCurveCompat
+import(path : "b9e1608a507a242d87720d9b", version : "dba5bb1c924e9263b31c9b77");
+// constEnums
+export import(path : "050a4670bd42b2ca8da04540", version : "62f653b9c0d24817418e88e5");
+//scaledCurve
+import(path : "2dfee1d44e9bde0daba9d73e", version : "19db4dd577e5e91d45d21305");
 
 
 
@@ -592,7 +595,7 @@ function normalizeBoundaryOrientation(context is Context, u0 is BSplineCurve, u1
     // Apply reversals by creating new curve definitions with flipped parameterization
     if (needReverseU0)
     {
-        result.u0 = reverseBSplineCurve(uBottom);
+        result.u0 = reverseCurve(uBottom);
         result.reversedU0 = true;
     }
     else
@@ -602,7 +605,7 @@ function normalizeBoundaryOrientation(context is Context, u0 is BSplineCurve, u1
     
     if (needReverseU1)
     {
-        result.u1 = reverseBSplineCurve(uTop);
+        result.u1 = reverseCurve(uTop);
         result.reversedU1 = true;
     }
     else
@@ -612,51 +615,12 @@ function normalizeBoundaryOrientation(context is Context, u0 is BSplineCurve, u1
     
     if (needReverseV1)
     {
-        result.v1 = reverseBSplineCurve(v1);
+        result.v1 = reverseCurve(v1);
         result.reversedV1 = true;
     }
     
     return result;
 }
 
-/**
- * Reverse a B-spline curve's parameterization.
- * The curve shape is unchanged, but parameter 0 becomes 1 and vice versa.
- */
-function reverseBSplineCurve(curve is BSplineCurve) returns BSplineCurve
-{
-    var n = size(curve.controlPoints);
-    var reversedCPs = makeArray(n);
-    for (var i = 0; i < n; i += 1)
-    {
-        reversedCPs[i] = curve.controlPoints[n - 1 - i];
-    }
-    
-    // Reverse and "flip" knot vector: newKnot[i] = 1 - oldKnot[m - i]
-    var m = size(curve.knots);
-    var reversedKnots = makeArray(m);
-    for (var i = 0; i < m; i += 1)
-    {
-        reversedKnots[i] = 1 - curve.knots[m - 1 - i];
-    }
-    
-    // Reverse weights if present
-    var reversedWeights = undefined;
-    if (curve.weights != undefined)
-    {
-        reversedWeights = makeArray(n);
-        for (var i = 0; i < n; i += 1)
-        {
-            reversedWeights[i] = curve.weights[n - 1 - i];
-        }
-    }
-    
-    return bSplineCurve({
-        "degree" : curve.degree,
-        "isPeriodic" : curve.isPeriodic,
-        "isRational" : curve.isRational,
-        "controlPoints" : reversedCPs,
-        "knots" : reversedKnots,
-        "weights" : reversedWeights
-    });
-}
+// Curve reversal now handled by tools/bspline_knots.fs
+// Available function: reverseCurve(curve)

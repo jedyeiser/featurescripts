@@ -1,14 +1,17 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-export import(path : "050a4670bd42b2ca8da04540", version : "310acbe540c302e20097f554");
-import(path : "c6dca62049572faaa07ddd10", version : "5c2e8aec9a6fdd4f6604f668");
+//import tools/bspline_knots
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/dadb70c0a762573622fa609c", version : "acff88f740b64f7b03d722aa");
+//import constEnums (export/import)
 
-import(path : "b9e1608a507a242d87720d9b", version : "22c8651e5de4b01c4c98b37e");
-
-import(path : "8d3469cb403ed076f2e3fbea", version : "c948bae217af15aa2557cdf4");
-
-import(path : "c6dca62049572faaa07ddd10", version : "5c2e8aec9a6fdd4f6604f668");
+export import(path : "050a4670bd42b2ca8da04540", version : "62f653b9c0d24817418e88e5");
+//import modifyCurveEnd
+import(path : "c6dca62049572faaa07ddd10", version : "8ec5fa2cc24fd66922b57005");
+//import gordonCurveCompat
+import(path : "b9e1608a507a242d87720d9b", version : "dba5bb1c924e9263b31c9b77");
+//import gordonSurface
+import(path : "b3c74a9035256a2ff6bd0004", version : "5285ae6a25233c643afff38e");
 
 
 
@@ -181,7 +184,7 @@ export function getCrossCurvature(context is Context, faceQuery is Query,
  * @param endTangent {Vector} : Desired tangent direction at v=1 (cross-boundary)
  * @param startCurvature {ValueWithUnits} : Desired curvature at v=0
  * @param endCurvature {ValueWithUnits} : Desired curvature at v=1
- * @param continuityType {ContinuityType} : G0, G1, or G2
+ * @param continuityType {GeometricContinuity} : G0, G1, or G2
  * @param g2Mode {G2Mode} : EXACT or BEST_EFFORT
  */
 export function simplifyCurveWithConstraints(context is Context, 
@@ -191,7 +194,7 @@ export function simplifyCurveWithConstraints(context is Context,
                                               endTangent is Vector,
                                               startCurvature is ValueWithUnits,
                                               endCurvature is ValueWithUnits,
-                                              continuityType is ContinuityType,
+                                              continuityType is GeometricContinuity,
                                               g2Mode is G2Mode) returns BSplineCurve
 {
     var numPoints = size(points);
@@ -205,7 +208,7 @@ export function simplifyCurveWithConstraints(context is Context,
     
     var curve = approxResult[0];
     
-    if (continuityType == ContinuityType.G0)
+    if (continuityType == GeometricContinuity.G0)
     {
         return curve;
     }
@@ -214,7 +217,7 @@ export function simplifyCurveWithConstraints(context is Context,
     curve = enforceG1AtEnd(curve, 0, startTangent);
     curve = enforceG1AtEnd(curve, 1, endTangent);
     
-    if (continuityType == ContinuityType.G1)
+    if (continuityType == GeometricContinuity.G1)
     {
         return curve;
     }
@@ -357,7 +360,7 @@ export function buildClampedKnotVector(params is array, degree is number) return
 export function cleanupSurface(context is Context, id is Id, 
                                 faceQuery is Query,
                                 tolerance is ValueWithUnits,
-                                continuityType is ContinuityType,
+                                continuityType is GeometricContinuity,
                                 g2Mode is G2Mode,
                                 mode is CleanupMode,
                                 uCurveCount is number,

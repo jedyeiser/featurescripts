@@ -1,10 +1,14 @@
 FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
-
-
-export import(path : "050a4670bd42b2ca8da04540", version : "310acbe540c302e20097f554");
-
+//import constEnums (export - needed for enums in preconditions)
+export import(path : "050a4670bd42b2ca8da04540", version : "62f653b9c0d24817418e88e5");
+//import tools/bspline_knots
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/dadb70c0a762573622fa609c", version : "acff88f740b64f7b03d722aa");
+//import tools/transition_functions (export.import)
+export import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/a656fa0d17723f0dafaf8638", version : "56689ead56dff6bcc596641b");
+//import tools/arc_length
+import(path : "b1e8bfe71f67389ca210ed8b/fa0241a434caffbc394f0e00/f88f68e9ff3cb3c30d4afffe", version : "92debd2651716634986adbc8");
 
 
 annotation { "Feature Type Name" : "Scaled Curve", "Feature Type Description" : "Creates a new BSplineCurve as a scaled combination of the two input curves" }
@@ -172,66 +176,14 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
 
 
 
-/**
- * Compute the applied scale factor at parameter S.
- * Transitions from sf_0 to sf_1 across the parameter range [0, 1].
- * default steepness of k=10. A second version of this function is available that accepts k as an argument
- */
-export function computeAppliedSF(s is number, sf_0 is number, sf_1 is number, transition is TransitionType) returns number
-{
-    var t;  // normalized transition value [0, 1]
-    
-    if (transition == TransitionType.LINEAR)
-    {
-        t = s;
-    }
-    else if (transition == TransitionType.SINUSOIDAL)
-    {
-        t = (1 - cos(s * PI * radian)) / 2;
-    }
-    else if (transition == TransitionType.LOGISTIC)
-    {
-        var k = 10;
-        var raw = 1 / (1 + exp(-k * (s - 0.5)));
-        var raw_0 = 1 / (1 + exp(-k * (0 - 0.5)));  // Value at s=0
-        var raw_1 = 1 / (1 + exp(-k * (1 - 0.5)));  // Value at s=1
-        
-        // Normalize so t=0 at s=0 and t=1 at s=1
-        t = (raw - raw_0) / (raw_1 - raw_0);
-    }
-    
-    return sf_0 + (sf_1 - sf_0) * t;
-}
-
-/**
- * Compute the applied scale factor at parameter S.
- * Transitions from sf_0 to sf_1 across the parameter range [0, 1].
- * Logistic component uses a user specified steepness, k.
- */
-export function computeAppliedSF(s is number, sf_0 is number, sf_1 is number, k is number, transition is TransitionType) returns number
-{
-    var t;  // normalized transition value [0, 1]
-    
-    if (transition == TransitionType.LINEAR)
-    {
-        t = s;
-    }
-    else if (transition == TransitionType.SINUSOIDAL)
-    {
-        t = (1 - cos(s * PI * radian)) / 2;
-    }
-    else if (transition == TransitionType.LOGISTIC)
-    {
-        var raw = 1 / (1 + exp(-k * (s - 0.5)));
-        var raw_0 = 1 / (1 + exp(-k * (0 - 0.5)));  // Value at s=0
-        var raw_1 = 1 / (1 + exp(-k * (1 - 0.5)));  // Value at s=1
-        
-        // Normalize so t=0 at s=0 and t=1 at s=1
-        t = (raw - raw_0) / (raw_1 - raw_0);
-    }
-    
-    return sf_0 + (sf_1 - sf_0) * t;
-}
+// Transition functions now handled by tools/transition_functions.fs
+// Available functions:
+// - computeAppliedSF(s, sfStart, sfEnd, transitionType)
+// - linearTransition(t)
+// - sinusoidalTransition(t)
+// - logisticTransition(t)
+// Note: The version with custom k parameter is not in tools - if needed,
+// use evaluateTransition() directly with custom logistic implementation
 
 /**
  * Create a blended curve between two curves with variable scale factor.
@@ -333,7 +285,7 @@ export function joinCurveSegments(
     
     for (var seg in orderedSegs)
     {
-        var len = approximateArcLength(seg, arcLengthSamples);
+        var len = computeArcLength(seg, {numIntervals: arcLengthSamples});
         lengths = append(lengths, len);
         totalLength += len;
     }
@@ -413,24 +365,10 @@ export function joinCurveSegments(
     return result[0];
 }
 
-/**
- * Approximate arc length of a BSplineCurve by summing chord lengths.
- */
-export function approximateArcLength(curve is BSplineCurve, numSamples is number) returns ValueWithUnits
-{
-    var length = 0 * meter;
-    var prevPt = evaluateSpline({ "spline" : curve, "parameters" : [0] })[0][0];
-    
-    for (var i = 1; i <= numSamples; i += 1)
-    {
-        var S = i / numSamples;
-        var pt = evaluateSpline({ "spline" : curve, "parameters" : [S] })[0][0];
-        length += norm(pt - prevPt);
-        prevPt = pt;
-    }
-    
-    return length;
-}
+// Arc length computation now handled by tools/arc_length.fs
+// Using adaptive Gaussian quadrature for improved accuracy over chord-length approximation
+// Available functions:
+// - computeArcLength(curve, {numIntervals: n})
 
 
 /**
@@ -696,4 +634,3 @@ export function roundDecimal(value is number, places is number) returns number
     }
     return round(value * factor) / factor;
 }
-

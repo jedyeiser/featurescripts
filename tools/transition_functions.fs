@@ -1,5 +1,5 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2878;
+import(path : "onshape/std/common.fs", version : "2878.0");
 
 /**
  * Transition and blending functions for smooth parameter transitions.
@@ -71,7 +71,7 @@ export function linearTransition(t is number) returns number
  */
 export function sinusoidalTransition(t is number) returns number
 {
-    return (1 - cos(t * PI)) / 2;
+    return (1 - cos(t * PI * radian)) / 2;
 }
 
 /**
@@ -114,18 +114,18 @@ export function logisticTransition(t is number) returns number
  * based on the enum type. Useful when transition type is a parameter.
  *
  * @param t {number} : Parameter in [0, 1]
- * @param type {TransitionType} : Which transition function to use
+ * @param transitionType {TransitionType} : Which transition function to use
  * @returns {number} : Transition value in [0, 1]
  *
  * @example `evaluateTransition(0.5, TransitionType.SINUSOIDAL)` returns `0.5`
  */
-export function evaluateTransition(t is number, type is TransitionType) returns number
+export function evaluateTransition(t is number, transitionType is TransitionType) returns number
 {
-    if (type == TransitionType.LINEAR)
+    if (transitionType == TransitionType.LINEAR)
         return linearTransition(t);
-    else if (type == TransitionType.SINUSOIDAL)
+    else if (transitionType == TransitionType.SINUSOIDAL)
         return sinusoidalTransition(t);
-    else if (type == TransitionType.LOGISTIC)
+    else if (transitionType == TransitionType.LOGISTIC)
         return logisticTransition(t);
 
     // Default to linear if unknown type

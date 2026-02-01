@@ -1,9 +1,15 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2878;
+import(path : "onshape/std/common.fs", version : "2878.0");
+
 
 // Phase 3 dependencies
-import(path : "bspline_data.fs", version : "");
-import(path : "assertions.fs", version : "");
+//import bspline_data
+import(path : "b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+
+//import assertions
+import(path : "34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
+
+
 
 /**
  * BSPLINE KNOT & CURVE MANIPULATION
@@ -421,179 +427,8 @@ export function elevateDegree(context is Context, curve is BSplineCurve, t is nu
     if (t <= 0)
         return curve;
 
-    var p = curve.degree;
-    var U = curve.knots;
-    var Pw = curve.controlPoints;
-    var weights = curve.weights;
-    var isRational = curve.isRational && weights != undefined;
-    var n = size(Pw) - 1;
-    var m = size(U) - 1;
-
-    // New degree
-    var ph = p + t;
-    var ph2 = floor(ph / 2);
-
-    // Compute Bezier degree elevation coefficients
-    // bezalfs[i][j] = C(ph,j) * C(p,i) / C(ph, i+j) for appropriate ranges
-    var bezalfs = computeBezierDegreeElevationCoeffs(p, ph);
-
-    // Get unique interior knots and their multiplicities
-    var uniqueKnots = [];
-    var mults = [];
-    var prevKnot = U[0];
-    var mult = 1;
-
-    for (var i = 1; i <= m; i += 1)
-    {
-        if (abs(U[i] - prevKnot) < KNOT_OP_TOLERANCE)
-        {
-            mult += 1;
-        }
-        else
-        {
-            uniqueKnots = append(uniqueKnots, prevKnot);
-            mults = append(mults, mult);
-            prevKnot = U[i];
-            mult = 1;
-        }
-    }
-    uniqueKnots = append(uniqueKnots, prevKnot);
-    mults = append(mults, mult);
-
-    var s = size(uniqueKnots) - 2;  // Number of interior unique knots
-
-    // Compute new knot vector size and control point count
-    // Each unique knot with multiplicity m_i contributes m_i + t knots
-    var newM = m + (s + 2) * t;  // +2 for endpoints
-    var newN = newM - ph - 1;
-
-    var Uh = makeArray(newM + 1);
-    var Qw = makeArray(newN + 1);
-    var newWeights = makeArray(newN + 1);
-
-    // Bezier segment storage
-    var bpts = makeArray(p + 1);
-    var ebpts = makeArray(ph + 1);
-    var Nextbpts = makeArray(p - 1);
-    var bwts = makeArray(p + 1);
-    var ebwts = makeArray(ph + 1);
-    var Nextwts = makeArray(p - 1);
-
-    // Initialize first ph+1 knots
-    for (var i = 0; i <= ph; i += 1)
-    {
-        Uh[i] = U[0];
-    }
-
-    // Initialize first control point
-    Qw[0] = Pw[0];
-    newWeights[0] = isRational ? weights[0] : 1.0;
-
-    // Initialize Bezier segment
-    for (var i = 0; i <= p; i += 1)
-    {
-        bpts[i] = Pw[i];
-        bwts[i] = isRational ? weights[i] : 1.0;
-    }
-
-    var kind = ph + 1;  // Index into new knot vector
-    var cind = 1;       // Index into new control points
-    var a = p;          // Index into old knots
-    var b = p + 1;
-
-    // Process each Bezier segment
-    while (b < m)
-    {
-        var i = b;
-        while (b < m && abs(U[b + 1] - U[b]) < KNOT_OP_TOLERANCE)
-        {
-            b += 1;
-        }
-        var mul = b - i + 1;  // Multiplicity of knot at b
-
-        // Degree elevate Bezier segment
-        for (var j = 0; j <= ph; j += 1)
-        {
-            ebpts[j] = vector(0, 0, 0) * meter;
-            ebwts[j] = 0.0;
-        }
-
-        for (var j = 0; j <= ph; j += 1)
-        {
-            var mpi = min([p, j]);
-            for (var k = max([0, j - t]); k <= mpi; k += 1)
-            {
-                ebpts[j] = ebpts[j] + bezalfs[k][j - k] * bpts[k];
-                ebwts[j] = ebwts[j] + bezalfs[k][j - k] * bwts[k];
-            }
-        }
-
-        // Insert knot U[b] ph - mul times
-        if (mul < p)
-        {
-            var oldr = p - mul;
-            var lbz = floor((oldr + 2) / 2);
-            var rbz = ph - floor((oldr + 1) / 2);
-
-            // Insert right half
-            for (var j = lbz; j <= ph; j += 1)
-            {
-                Qw[cind] = ebpts[j];
-                newWeights[cind] = ebwts[j];
-                cind += 1;
-            }
-
-            // Insert knot
-            for (var j = 0; j < oldr + t; j += 1)
-            {
-                Uh[kind] = U[b];
-                kind += 1;
-            }
-        }
-        else
-        {
-            // Full multiplicity - just copy elevated points
-            for (var j = 1; j <= ph; j += 1)
-            {
-                Qw[cind] = ebpts[j];
-                newWeights[cind] = ebwts[j];
-                cind += 1;
-            }
-
-            // Insert knot with elevated multiplicity
-            for (var j = 0; j < t; j += 1)
-            {
-                Uh[kind] = U[b];
-                kind += 1;
-            }
-        }
-
-        // Get next Bezier segment
-        if (b < m)
-        {
-            for (var j = 0; j <= p - mul - 1; j += 1)
-            {
-                bpts[j] = Nextbpts[j];
-                bwts[j] = Nextwts[j];
-            }
-            for (var j = p - mul; j <= p; j += 1)
-            {
-                bpts[j] = Pw[b - p + j];
-                bwts[j] = isRational ? weights[b - p + j] : 1.0;
-            }
-            a = b;
-            b += 1;
-        }
-    }
-
-    // Set last knots
-    for (var j = 0; j <= ph; j += 1)
-    {
-        Uh[kind + j] = U[m];
-    }
-
-    // Simplified approach: If the complex algorithm fails, use iterative single elevation
-    // This is a fallback that's guaranteed to work
+    // Use iterative single elevation for robustness
+    // P&T A5.9 is complex and array sizing is tricky; this is guaranteed to work
     var result = curve;
     for (var i = 0; i < t; i += 1)
     {
