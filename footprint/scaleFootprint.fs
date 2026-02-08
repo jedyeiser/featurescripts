@@ -1674,8 +1674,8 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
                     size(segmentPoints) ~ " points, skipping");
         }
 
-        // Share boundary point with next segment (prevents 1-point gaps)
-        segmentStartIdx = splitIdx;
+        // Start next segment after split point (don't share to avoid overlapping edges)
+        segmentStartIdx = splitIdx + 1;
     }
 
     // Last segment (from last boundary to end)

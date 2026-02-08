@@ -518,6 +518,9 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
             var distGrid = computeDistanceGrid(face.cpGrid, planeU.origin, planeU.normal);
             var approxCPs = walkIsoCurves(face.cpGrid, distGrid, face.useU);
 
+            // DIAGNOSTIC: Log what walkIsoCurves produces
+            println(">>> Face " ~ f ~ " / Plane " ~ planeIndex ~ ": walkIsoCurves returned " ~ size(approxCPs) ~ " points");
+
             // Need at least 2 points for a meaningful intersection
             if (size(approxCPs) < 2)
                 continue;
@@ -525,6 +528,8 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
             // Build approximate intersection spline (unitless)
             var approxDegree = min(APPROX_SPLINE_DEGREE, size(approxCPs) - 1);
             var approxKnots = arcLengthKnotVector(approxCPs, approxDegree);
+
+            println("    approxDegree=" ~ approxDegree ~ ", knots size=" ~ size(approxKnots));
 
             // =============================================================
             // STEP 2: Look up pre-computed edge-plane intersections
@@ -733,16 +738,38 @@ function buildFinalSpline(
     // approxCPs are already ordered intersection points from walkIsoCurves.
     // We use Greville abscissae to estimate each CP's parameter.
     var numCPs = size(approxCPs);
+
+    // DIAGNOSTIC: Log what we're working with
+    println("=== buildFinalSpline DIAGNOSTICS ===");
+    println("  Input: numCPs=" ~ numCPs ~ ", approxDegree=" ~ approxDegree);
+    println("  Param range: [" ~ startParam ~ ", " ~ endParam ~ "]");
+    println("  Knot array size: " ~ size(approxKnots));
+
     var cpParams = grevilleAbscissae(approxKnots, approxDegree, numCPs);
+
+    println("  Greville params computed: " ~ size(cpParams));
+    if (size(cpParams) > 0)
+    {
+        println("  Greville range: [" ~ cpParams[0] ~ ", " ~ cpParams[size(cpParams)-1] ~ "]");
+    }
 
     var interiorPoints = [];
     for (var i = 0; i < numCPs; i += 1)
     {
-        if (cpParams[i] > startParam + GEOM_TOL && cpParams[i] < endParam - GEOM_TOL)
+        var inRange = cpParams[i] > startParam + GEOM_TOL && cpParams[i] < endParam - GEOM_TOL;
+        if (i < 5 || inRange)  // Log first 5 and any that match
+        {
+            println("    CP[" ~ i ~ "]: param=" ~ cpParams[i] ~ ", inRange=" ~ inRange);
+        }
+
+        if (inRange)
         {
             interiorPoints = append(interiorPoints, approxCPs[i]);
         }
     }
+
+    println("  Result: " ~ size(interiorPoints) ~ " interior points extracted");
+    println("=====================================");
 
     // Assemble: [exact start] + [interior approx CPs] + [exact end]
     var allPointsU = concatenateArrays([[startPoint], interiorPoints, [endPoint]]);
