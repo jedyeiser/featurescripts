@@ -3,21 +3,21 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 
 
 // xSectPredicates (UI definitions)
-export import(path : "17142132b20343b5f125e7e7", version : "09de0d064f78bea2f96229e2");
+export import(path : "17142132b20343b5f125e7e7", version : "23ef703933b4a531d472b45b");
 // xSectUtils
-import(path : "c2c3edd39b85fde5e6062533", version : "eb21258f6fd7abb6c94d71e8");
+import(path : "c2c3edd39b85fde5e6062533", version : "c0a7b17f95b4792e9f273db0");
 // xsectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "e0645029416d1814a0794df3");
+import(path : "3cb3cff6974529bf6bed096b", version : "8843335a7d1d78bf52719c93");
 // tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 // tools/debug - provides debugControlPolygon
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/8944e3e431de4929b0a28fbc", version : "889ff7e9c358da182dc0bf8a");
 // import xSect_Triangulation
-import(path : "08d3a8d4e34a60d45d46e261", version : "af1665a8a66963219eacd299");
+import(path : "08d3a8d4e34a60d45d46e261", version : "6cea45e8041c3cb6cbd9bc2f");
 //import xSectCLT
-import(path : "74231d1d53f5a117d47d17a9", version : "ea69733493fc950e2f1573f4");
+import(path : "74231d1d53f5a117d47d17a9", version : "232e12a59361fa3cb1cce3e7");
 //import xSectBeamAnalysis
-import(path : "ebac109589e3bf405d3f3ae7", version : "e77a468079862e0fd3b26224");
+import(path : "ebac109589e3bf405d3f3ae7", version : "c363f7a2fdabba7f2e783d56");
 
 
 

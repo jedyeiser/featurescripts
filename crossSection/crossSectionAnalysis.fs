@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // CrossSectionMath -- pure unitless math (de Boor, intersections, etc.)
-import(path : "4538be7c5b7f28ba40050fad", version : "5a796af13252dbc820c04e70");
+import(path : "4538be7c5b7f28ba40050fad", version : "b75407f5e871ae17169fa4d6");
 
 
 /**
@@ -518,9 +518,6 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
             var distGrid = computeDistanceGrid(face.cpGrid, planeU.origin, planeU.normal);
             var approxCPs = walkIsoCurves(face.cpGrid, distGrid, face.useU);
 
-            // DIAGNOSTIC: Log what walkIsoCurves produces
-            println(">>> Face " ~ f ~ " / Plane " ~ planeIndex ~ ": walkIsoCurves returned " ~ size(approxCPs) ~ " points");
-
             // Need at least 2 points for a meaningful intersection
             if (size(approxCPs) < 2)
                 continue;
@@ -528,8 +525,6 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
             // Build approximate intersection spline (unitless)
             var approxDegree = min(APPROX_SPLINE_DEGREE, size(approxCPs) - 1);
             var approxKnots = arcLengthKnotVector(approxCPs, approxDegree);
-
-            println("    approxDegree=" ~ approxDegree ~ ", knots size=" ~ size(approxKnots));
 
             // =============================================================
             // STEP 2: Look up pre-computed edge-plane intersections
@@ -609,91 +604,24 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
                     // Fall back to CP polygon approximation if evDistance fails
                 }
 
-                var result = buildFinalSpline(startPoint, endPoint,
+                var finalCurve = buildFinalSpline(startPoint, endPoint,
                     startParam, endParam, approxCPs, approxKnots, approxDegree,
                     face.intersectionDimension);
 
-                if (result.success)
+                if (finalCurve != undefined)
                 {
                     crossSections[planeIndex].intersectionCurves = append(
                         crossSections[planeIndex].intersectionCurves, {
-                            "BSplineCurve" : result.curve,
+                            "BSplineCurve" : finalCurve,
                             "bodies" : [bodyIndex],
-                            "faceIdx" : f,
-                            "degree" : result.degree,
-                            "numPoints" : result.numPoints,
-                            "wasFallback" : result.fallback
+                            "faceIdx" : f
                         });
-                }
-                else
-                {
-                    // Detailed error logging with diagnostic context
-                    println("WARNING: Failed to create curve for face " ~ f ~
-                            " at section " ~ planeIndex ~
-                            " (" ~ result.numPoints ~ " points, " ~
-                            result.numInterior ~ " interior) - " ~
-                            result.diagnostic);
                 }
             }
         }
     }
 
     return crossSections;
-}
-
-/**
- * Edge-crossing fallback: Create a simple degree-1 line segment from exact entry/exit points.
- *
- * This is the ultimate fallback when surface-walking approaches fail (typically due to
- * colinearity in thin cross-sections). Uses the proven xSectRef approach: a simple line
- * between the two edge crossing points.
- *
- * @param startPoint : unitless array[3] - exact entry point where surface crosses plane
- * @param endPoint : unitless array[3] - exact exit point where surface crosses plane
- * @returns : Map with keys:
- *   - curve (BSplineCurve | undefined): The created degree-1 curve, or undefined if endpoints coincident
- *   - success (boolean): true if curve was successfully created
- *   - diagnostic (string): Result description
- */
-function buildEdgeCrossingFallback(startPoint is array, endPoint is array) returns map
-{
-    // Minimal validation: ensure endpoints are distinct
-    var span = subtractU(endPoint, startPoint);
-    if (normU(span) < GEOM_TOL)
-    {
-        return {
-            "curve" : undefined,
-            "success" : false,
-            "diagnostic" : "Edge-crossing fallback failed: coincident endpoints"
-        };
-    }
-
-    // Convert to Vectors with units for bSplineCurve()
-    var cpsWithUnits = [arrToVec(startPoint), arrToVec(endPoint)];
-
-    try
-    {
-        var curve = bSplineCurve({
-            "degree" : 1,
-            "isPeriodic" : false,
-            "controlPoints" : cpsWithUnits,
-            "knots" : [0, 0, 1, 1] as KnotArray  // Standard degree-1 knot vector
-        });
-
-        return {
-            "curve" : curve,
-            "success" : true,
-            "diagnostic" : "Edge-crossing fallback succeeded (degree-1)"
-        };
-    }
-    catch (error)
-    {
-        return {
-            "curve" : undefined,
-            "success" : false,
-            "diagnostic" : "Edge-crossing fallback: bSplineCurve() rejected curve"
-        };
-    }
 }
 
 /**
@@ -706,170 +634,60 @@ function buildEdgeCrossingFallback(startPoint is array, endPoint is array) retur
  *
  * This eliminates thousands of deBoor calls that were hitting FS's step limit.
  *
- * HYBRID FALLBACK STRATEGY:
- * - Primary: Try degrees 3 → 2 → 1 with full surface-walking control points
- * - Fallback: If all degrees fail validation (typically colinearity), create a
- *   degree-1 line segment directly from the exact entry/exit edge crossing points
- * - This guarantees a curve is always produced if boundary crossings exist
- *
- * NEW: Implements validation and fallback strategy to handle degenerate cases:
- * - Validates control points before attempting curve creation
- * - Falls back from degree 3 → 2 → 1 until a valid curve is created
- * - Returns detailed diagnostic information for failures
- *
  * This is one of the OUTPUT BOUNDARIES where we convert back to units.
- *
- * @returns : Map with keys:
- *   - curve (BSplineCurve | undefined): The created curve, or undefined if all attempts failed
- *   - success (boolean): true if curve was successfully created
- *   - degree (number): Actual degree of created curve
- *   - numPoints (number): Total number of control points used
- *   - numInterior (number): Number of interior control points (between endpoints)
- *   - fallback (boolean): true if degree < APPROX_SPLINE_DEGREE
- *   - diagnostic (string): Detailed failure reasons if success=false
  */
 function buildFinalSpline(
     startPoint is array, endPoint is array,
     startParam is number, endParam is number,
     approxCPs is array, approxKnots is array, approxDegree is number,
-    intersectionDimension is number) returns map
+    intersectionDimension is number)
 {
     // Find approxCPs whose arc-length parameter falls between start and end.
     // approxCPs are already ordered intersection points from walkIsoCurves.
     // We use Greville abscissae to estimate each CP's parameter.
     var numCPs = size(approxCPs);
-
-    // DIAGNOSTIC: Log what we're working with
-    println("=== buildFinalSpline DIAGNOSTICS ===");
-    println("  Input: numCPs=" ~ numCPs ~ ", approxDegree=" ~ approxDegree);
-    println("  Param range: [" ~ startParam ~ ", " ~ endParam ~ "]");
-    println("  Knot array size: " ~ size(approxKnots));
-
     var cpParams = grevilleAbscissae(approxKnots, approxDegree, numCPs);
-
-    println("  Greville params computed: " ~ size(cpParams));
-    if (size(cpParams) > 0)
-    {
-        println("  Greville range: [" ~ cpParams[0] ~ ", " ~ cpParams[size(cpParams)-1] ~ "]");
-    }
 
     var interiorPoints = [];
     for (var i = 0; i < numCPs; i += 1)
     {
-        var inRange = cpParams[i] > startParam + GEOM_TOL && cpParams[i] < endParam - GEOM_TOL;
-        if (i < 5 || inRange)  // Log first 5 and any that match
-        {
-            println("    CP[" ~ i ~ "]: param=" ~ cpParams[i] ~ ", inRange=" ~ inRange);
-        }
-
-        if (inRange)
+        if (cpParams[i] > startParam + GEOM_TOL && cpParams[i] < endParam - GEOM_TOL)
         {
             interiorPoints = append(interiorPoints, approxCPs[i]);
         }
     }
 
-    println("  Result: " ~ size(interiorPoints) ~ " interior points extracted");
-    println("=====================================");
-
     // Assemble: [exact start] + [interior approx CPs] + [exact end]
     var allPointsU = concatenateArrays([[startPoint], interiorPoints, [endPoint]]);
-    var numPoints = size(allPointsU);
-    var numInterior = size(interiorPoints);
 
-    // Fallback strategy: try degree 3 → 2 → 1
-    var targetDegree = min(APPROX_SPLINE_DEGREE, numPoints - 1);
-    var diagnosticMessages = [];
+    // Need at least degree+1 points
+    var degree = min(APPROX_SPLINE_DEGREE, size(allPointsU) - 1);
+    if (degree < 1)
+        return undefined;
 
-    for (var degree = targetDegree; degree >= 1; degree -= 1)
+    // Build knot vector from arc-length parameterization (unitless)
+    var knots = arcLengthKnotVector(allPointsU, degree);
+
+    // --- OUTPUT BOUNDARY: convert control points to Vectors with units ---
+    var cpsWithUnits = makeArray(size(allPointsU));
+    for (var i = 0; i < size(allPointsU); i += 1)
     {
-        // Validate control points for this degree
-        var validation = validateBSplineControlPoints(allPointsU, degree);
+        cpsWithUnits[i] = arrToVec(allPointsU[i]);
+    }
 
-        if (!validation.success)
-        {
-            diagnosticMessages = append(diagnosticMessages,
-                "Degree " ~ degree ~ ": " ~ validation.reason ~
-                " [" ~ validation.degenerateCase ~ "]");
-            continue;  // Try lower degree
-        }
-
-        // Validation passed - attempt curve creation
-        var knots = arcLengthKnotVector(allPointsU, degree);
-
-        // --- OUTPUT BOUNDARY: convert control points to Vectors with units ---
-        var cpsWithUnits = makeArray(numPoints);
-        for (var i = 0; i < numPoints; i += 1)
-        {
-            cpsWithUnits[i] = arrToVec(allPointsU[i]);
-        }
-
-        try
-        {
-            var curve = bSplineCurve({
-                    "degree" : degree,
-                    "isPeriodic" : false,
-                    "controlPoints" : cpsWithUnits,
-                    "knots" : knots as KnotArray
-            });
-
-            // Success!
-            return {
-                "curve" : curve,
-                "success" : true,
+    try
+    {
+        return bSplineCurve({
                 "degree" : degree,
-                "numPoints" : numPoints,
-                "numInterior" : numInterior,
-                "fallback" : degree < APPROX_SPLINE_DEGREE,
-                "diagnostic" : "Success at degree " ~ degree
-            };
-        }
-        catch (error)
-        {
-            // Kernel rejected the curve (rare after validation)
-            diagnosticMessages = append(diagnosticMessages,
-                "Degree " ~ degree ~ ": bSplineCurve() failed (kernel rejection)");
-            continue;  // Try lower degree
-        }
+                "isPeriodic" : false,
+                "controlPoints" : cpsWithUnits,
+                "knots" : knots as KnotArray
+        });
     }
-
-    // All degrees failed - try edge-crossing fallback
-    var fullDiagnostic = "";
-    for (var i = 0; i < size(diagnosticMessages); i += 1)
+    catch
     {
-        if (i > 0)
-            fullDiagnostic = fullDiagnostic ~ "; ";
-        fullDiagnostic = fullDiagnostic ~ diagnosticMessages[i];
+        return undefined;
     }
-
-    // EDGE-CROSSING FALLBACK: Create degree-1 line from exact entry/exit points
-    var fallbackResult = buildEdgeCrossingFallback(startPoint, endPoint);
-
-    if (fallbackResult.success)
-    {
-        // Log that we fell back to edge-crossing approach (minimal diagnostic)
-        println("INFO: Face crossing used edge-crossing fallback (degree-1) after validation failures");
-
-        return {
-            "curve" : fallbackResult.curve,
-            "success" : true,
-            "degree" : 1,
-            "numPoints" : 2,
-            "numInterior" : 0,
-            "fallback" : true,
-            "diagnostic" : "Edge-crossing fallback (degree-1) after: " ~ fullDiagnostic
-        };
-    }
-
-    // Fallback also failed (extremely rare - coincident endpoints)
-    return {
-        "curve" : undefined,
-        "success" : false,
-        "degree" : 0,
-        "numPoints" : numPoints,
-        "numInterior" : numInterior,
-        "fallback" : false,
-        "diagnostic" : fullDiagnostic ~ "; Edge-crossing fallback also failed: " ~ fallbackResult.diagnostic
-    };
 }
 
 // =============================================================================

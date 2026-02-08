@@ -3,13 +3,13 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 
 // CrossSectionPredicates (UI definitions -- export import so users get enums/constants)
 export 
-import(path : "9204d2e5f7cc55bd15130cf6", version : "e44b9c4d50e5f973b012807c");
+import(path : "9204d2e5f7cc55bd15130cf6", version : "33760b07b5fc3fb80e0b9c61");
 // CrossSectionAnalysis (geometry extraction engine)
-import(path : "e66f9aab93a8cd3c255e23c9", version : "a4e0cfddb4099cacc43fd82a");
+import(path : "e66f9aab93a8cd3c255e23c9", version : "eb652f4c45a68fba993b80fa");
 
 
 // CrossSectionMath (re-imported here for unit conversion at output boundaries)
-import(path : "4538be7c5b7f28ba40050fad", version : "5a796af13252dbc820c04e70");
+import(path : "4538be7c5b7f28ba40050fad", version : "b75407f5e871ae17169fa4d6");
 
 
 
@@ -526,21 +526,10 @@ function createCompositeWires(context is Context, id is Id, analysisResult is ma
                         "bSplineCurve" : curve
                 });
                 createdBodies = append(createdBodies, qCreatedBy(id + ("curve" ~ cs ~ "_" ~ c), EntityType.BODY));
-
-                // Log successful fallback curves (informational)
-                if (section.intersectionCurves[c].wasFallback != undefined &&
-                    section.intersectionCurves[c].wasFallback)
-                {
-                    println("INFO: Curve " ~ c ~ " at section " ~ cs ~
-                            " created with fallback degree " ~ section.intersectionCurves[c].degree ~
-                            " (" ~ section.intersectionCurves[c].numPoints ~ " points)");
-                }
             }
-            catch (error)
+            catch
             {
-                // Kernel-level failure (rare after validation)
-                println("WARNING: Failed to create curve " ~ c ~ " at section " ~ cs ~
-                        " - opCreateBSplineCurve() failed (possible kernel rejection)");
+                println("WARNING: Failed to create curve " ~ c ~ " at section " ~ cs);
             }
         }
 
