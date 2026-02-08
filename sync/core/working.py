@@ -153,11 +153,11 @@ class WorkingDirectoryManager:
                 )
 
                 if backup_result["committed"]:
-                    console.print("[green]✓[/green] Created Git backup commit")
+                    console.print("[green]OK[/green] Created Git backup commit")
                     if backup_result["pushed"]:
-                        console.print("[green]✓[/green] Pushed backup to remote")
+                        console.print("[green]OK[/green] Pushed backup to remote")
                 elif backup_result["had_changes"]:
-                    console.print("[yellow]⚠[/yellow] Had uncommitted changes but backup failed")
+                    console.print("[yellow]WARNING[/yellow] Had uncommitted changes but backup failed")
             except GitBackupError as e:
                 console.print(f"[yellow]⚠[/yellow] Git backup failed: {e}")
                 console.print("[yellow]Continuing with pull, but changes are not backed up in Git[/yellow]")
@@ -285,11 +285,11 @@ class WorkingDirectoryManager:
                 )
 
                 if backup_result["committed"]:
-                    console.print("[green]✓[/green] Created Git backup commit")
+                    console.print("[green]OK[/green] Created Git backup commit")
                     if backup_result["pushed"]:
-                        console.print("[green]✓[/green] Pushed backup to remote")
+                        console.print("[green]OK[/green] Pushed backup to remote")
                 elif backup_result["had_changes"]:
-                    console.print("[yellow]⚠[/yellow] Had uncommitted changes but backup failed")
+                    console.print("[yellow]WARNING[/yellow] Had uncommitted changes but backup failed")
             except GitBackupError as e:
                 console.print(f"[yellow]⚠[/yellow] Git backup failed: {e}")
                 console.print("[yellow]Continuing with push, but changes are not backed up in Git[/yellow]")
