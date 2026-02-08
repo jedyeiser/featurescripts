@@ -514,6 +514,8 @@ def cmd_get(args: argparse.Namespace) -> int:
             project_name=args.project_name,
             force=args.force,
             dry_run=args.dry_run,
+            auto_backup=not args.no_backup,
+            auto_push_backup=args.auto_push,
         )
         return 0 if result["success"] else 1
     except Exception as e:
@@ -543,6 +545,8 @@ def cmd_push_new(args: argparse.Namespace) -> int:
             files=args.files if hasattr(args, "files") else None,
             force=args.force,
             dry_run=args.dry_run,
+            auto_backup=not args.no_backup,
+            auto_push_backup=args.auto_push,
         )
         return 0 if result["success"] else 1
     except Exception as e:
@@ -748,6 +752,8 @@ def main() -> int:
     get_parser.add_argument("project_name", help="Project name")
     get_parser.add_argument("--force", action="store_true", help="Overwrite local changes")
     get_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
+    get_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before pull")
+    get_parser.add_argument("--auto-push", action="store_true", help="Push backup commit to Git remote")
 
     # push command (new style for working projects)
     push_new_parser = subparsers.add_parser("pushproject", help="Push a working project to Onshape")
@@ -755,6 +761,8 @@ def main() -> int:
     push_new_parser.add_argument("--files", nargs="+", help="Specific files to push")
     push_new_parser.add_argument("--force", action="store_true", help="Overwrite remote changes")
     push_new_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
+    push_new_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before push")
+    push_new_parser.add_argument("--auto-push", action="store_true", help="Push backup commit to Git remote")
 
     # reference commands
     reference_parser = subparsers.add_parser("reference", help="Manage reference libraries (read-only)")

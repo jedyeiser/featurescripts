@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .client import OnshapeClient, OnshapeAPIError
+from .git_backup import GitBackup, GitBackupError
 from .operations import SyncOperations, SyncResult
 from .state import SyncState
 from .url_parser import parse_url, OnshapeUrlParseError
@@ -112,6 +113,8 @@ class WorkingDirectoryManager:
         project_name: str,
         force: bool = False,
         dry_run: bool = False,
+        auto_backup: bool = True,
+        auto_push_backup: bool = False,
     ) -> dict[str, Any]:
         """Pull a working project from Onshape.
 
@@ -137,6 +140,27 @@ class WorkingDirectoryManager:
             raise ValueError(f"Project not found: {project_name}")
 
         console.print(f"\n[bold blue]Pulling project:[/bold blue] {proj.name}")
+
+        # Create Git backup before pulling (unless dry-run or disabled)
+        if not dry_run and auto_backup:
+            try:
+                git_backup = GitBackup(self.base_dir)
+                backup_result = git_backup.backup_before_sync(
+                    operation="pull from Onshape",
+                    auto_commit=True,
+                    auto_push=auto_push_backup,
+                    message=f"Before pulling {proj.name} from Onshape",
+                )
+
+                if backup_result["committed"]:
+                    console.print("[green]✓[/green] Created Git backup commit")
+                    if backup_result["pushed"]:
+                        console.print("[green]✓[/green] Pushed backup to remote")
+                elif backup_result["had_changes"]:
+                    console.print("[yellow]⚠[/yellow] Had uncommitted changes but backup failed")
+            except GitBackupError as e:
+                console.print(f"[yellow]⚠[/yellow] Git backup failed: {e}")
+                console.print("[yellow]Continuing with pull, but changes are not backed up in Git[/yellow]")
 
         # Create SyncConfig from ProjectConfig
         sync_config = self._project_to_sync_config(proj)
@@ -212,6 +236,8 @@ class WorkingDirectoryManager:
         files: list[str] | None = None,
         force: bool = False,
         dry_run: bool = False,
+        auto_backup: bool = True,
+        auto_push_backup: bool = False,
     ) -> dict[str, Any]:
         """Push a working project to Onshape.
 
@@ -246,6 +272,27 @@ class WorkingDirectoryManager:
             raise ValueError(str(e)) from e
 
         console.print(f"\n[bold blue]Pushing project:[/bold blue] {proj.name}")
+
+        # Create Git backup before pushing (unless dry-run or disabled)
+        if not dry_run and auto_backup:
+            try:
+                git_backup = GitBackup(self.base_dir)
+                backup_result = git_backup.backup_before_sync(
+                    operation="push to Onshape",
+                    auto_commit=True,
+                    auto_push=auto_push_backup,
+                    message=f"Before pushing {proj.name} to Onshape",
+                )
+
+                if backup_result["committed"]:
+                    console.print("[green]✓[/green] Created Git backup commit")
+                    if backup_result["pushed"]:
+                        console.print("[green]✓[/green] Pushed backup to remote")
+                elif backup_result["had_changes"]:
+                    console.print("[yellow]⚠[/yellow] Had uncommitted changes but backup failed")
+            except GitBackupError as e:
+                console.print(f"[yellow]⚠[/yellow] Git backup failed: {e}")
+                console.print("[yellow]Continuing with push, but changes are not backed up in Git[/yellow]")
 
         if not dry_run:
             console.print("[bold yellow]WARNING: This will overwrite Feature Studios in Onshape![/bold yellow]")
@@ -368,8 +415,8 @@ class WorkingDirectoryManager:
 
                 if file_state:
                     # File is tracked
-                    current_hash = ops._compute_file_hash(fs_file)
-                    if current_hash != file_state.hash:
+                    current_hash = ops.state.hash_file(fs_file)
+                    if current_hash != file_state.local_hash:
                         modified_locally.append(rel_path)
                     else:
                         # Check if remote has changed (would need microversion check)
@@ -530,8 +577,8 @@ class WorkingDirectoryManager:
             file_state = ops.state.get_file_state(rel_path)
 
             if file_state:
-                current_hash = ops._compute_file_hash(fs_file)
-                if current_hash != file_state.hash:
+                current_hash = ops.state.hash_file(fs_file)
+                if current_hash != file_state.local_hash:
                     conflicts.append(f"{rel_path} - modified locally since last sync")
 
         return conflicts

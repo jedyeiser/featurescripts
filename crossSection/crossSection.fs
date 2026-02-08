@@ -269,9 +269,9 @@ function readStiffnessFromOrigin(context is Context, attrName is string) returns
             if (stiffness != undefined)
             {
                 defaults.prismaticStiffness_lbin = stiffness.prismaticStiffness_lbin;
-                defaults.prismaticDeflection_mm = stiffness.prismaticStiffness_mm;
+                defaults.prismaticDeflection_mm = stiffness.prismaticDeflection_mm;
                 defaults.estimatedStiffness_lbin = stiffness.estimatedStiffness_lbin;
-                defaults.estimatedDeflection_mm = stiffness.estimatedStiffness_mm;
+                defaults.estimatedDeflection_mm = stiffness.estimatedDeflection_mm;
             }
         }
     }
@@ -282,40 +282,84 @@ function readStiffnessFromOrigin(context is Context, attrName is string) returns
 
 /**
  * Normalize a material name for CSV matching.
- * Lowercase, strip leading/trailing whitespace.
+ *
+ * Note: FeatureScript doesn't support string manipulation (no trim/toLower),
+ * so we use exact string matching. CSV material names must match Onshape
+ * material assignments exactly.
  */
 function normalizeMaterialName(name is string) returns string
 {
-    // FeatureScript doesn't have trim/toLower built-in,
-    // so this matches the pattern from the old code.
-    // TODO: port the actual normalization logic from old materialLookup code
-    return name;
+    return name;  // Exact match required (FS limitation)
 }
 
 /**
  * Build material lookup map from CSV data.
- * Keys are normalized material names, values are row data.
+ * Keys are normalized material names, values are material property data.
  *
- * TODO: port from old xSect code -- this is the CSV parsing
- * that maps Name column to material property rows.
+ * CSV Columns (from xSectCLT_Old.fs):
+ *   0: Category
+ *   1: Name
+ *   2: Density [kg/m³]
+ *   3: Poisson's Ratio
+ *   4: Young's Modulus [Pa]
+ *   5: Q11 [Pa]
+ *   6: Q22 [Pa]
+ *   7: Q12 [Pa]
+ *   8: Q66 [Pa]
+ *   9: Q16 [Pa]
+ *  10: Q26 [Pa]
  */
 function buildMaterialLookup(csvData is array) returns map
 {
-    // Placeholder -- port the actual CSV parsing logic
+    if (!(csvData is array))
+        return {};
+
     var lookup = {};
+
     for (var row in csvData)
     {
-        try
-        {
-            var name = row["Name"];
-            if (name != undefined)
-            {
-                var key = normalizeMaterialName(name);
-                lookup[key] = row;
-            }
-        }
-        catch {}
+        // Skip rows that don't have enough columns or have empty name
+        if (size(row) < 11)
+            continue;
+
+        var name = row[1];
+        if (name == undefined || name == "")
+            continue;
+
+        // Skip header row or any row where density isn't numeric
+        if (!(row[2] is number))
+            continue;
+
+        var key = normalizeMaterialName(name);
+
+        // Parse numeric values with units
+        var density = row[2] * kilogram / meter^3;
+        var poissonsRatio = row[3];
+        var youngsModulus = row[4] * pascal;
+
+        var Q11 = row[5] * pascal;
+        var Q22 = row[6] * pascal;
+        var Q12 = row[7] * pascal;
+        var Q66 = row[8] * pascal;
+        var Q16 = row[9] * pascal;
+        var Q26 = row[10] * pascal;
+
+        var qMatrix = [
+            [Q11, Q12, Q16],
+            [Q12, Q22, Q26],
+            [Q16, Q26, Q66]
+        ];
+
+        lookup[key] = {
+            "originalName" : name,
+            "category" : row[0],
+            "density" : density,
+            "poissonsRatio" : poissonsRatio,
+            "youngsModulus" : youngsModulus,
+            "qMatrix" : qMatrix
+        };
     }
+
     return lookup;
 }
 

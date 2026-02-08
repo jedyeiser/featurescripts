@@ -14,7 +14,7 @@ from ..models.config import (
     SyncConfig,
     sanitize_filename,
 )
-from .client import OnshapeClient
+from .client import OnshapeClient, OnshapeAPIError
 from .state import ConflictType, SyncState
 
 
@@ -554,14 +554,20 @@ class SyncOperations:
             )
 
         try:
-            # Get current remote microversion for conflict check
-            remote_microversion = self.client.get_document_microversion(
-                document_id=document_id,
-                workspace_id=workspace_id,
-            )
+            # Get current remote microversion for conflict check (optional)
+            remote_microversion = ""
+            try:
+                remote_microversion = self.client.get_document_microversion(
+                    document_id=document_id,
+                    workspace_id=workspace_id,
+                )
+            except OnshapeAPIError:
+                # Document microversion endpoint may not be available on all instances
+                # Skip conflict detection if this fails
+                pass
 
-            # Check for conflicts
-            if not force:
+            # Check for conflicts (only if we got a microversion and not forcing)
+            if not force and remote_microversion:
                 conflict = self.state.detect_push_conflict(relative_path, remote_microversion)
                 if conflict.conflict_type == ConflictType.BOTH_CHANGED:
                     return SyncResult(

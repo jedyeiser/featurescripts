@@ -902,10 +902,7 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
 
         for (var s in samples)
         {
-            if (s.x < xMin - xTol || s.x > xMax + xTol)
-                continue;
-
-            if (s.curvatureSigned > 0 / meter && s.curvatureMag > 1e-9 / meter)
+            if (s.curvatureMag > 1e-9 / meter)
             {
                 radiusSum += 1 / s.curvatureMag;
                 count += 1;
