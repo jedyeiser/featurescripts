@@ -604,18 +604,30 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
                     // Fall back to CP polygon approximation if evDistance fails
                 }
 
-                var finalCurve = buildFinalSpline(startPoint, endPoint,
+                var result = buildFinalSpline(startPoint, endPoint,
                     startParam, endParam, approxCPs, approxKnots, approxDegree,
                     face.intersectionDimension);
 
-                if (finalCurve != undefined)
+                if (result.success)
                 {
                     crossSections[planeIndex].intersectionCurves = append(
                         crossSections[planeIndex].intersectionCurves, {
-                            "BSplineCurve" : finalCurve,
+                            "BSplineCurve" : result.curve,
                             "bodies" : [bodyIndex],
-                            "faceIdx" : f
+                            "faceIdx" : f,
+                            "degree" : result.degree,
+                            "numPoints" : result.numPoints,
+                            "wasFallback" : result.fallback
                         });
+                }
+                else
+                {
+                    // Detailed error logging with diagnostic context
+                    println("WARNING: Failed to create curve for face " ~ f ~
+                            " at section " ~ planeIndex ~
+                            " (" ~ result.numPoints ~ " points, " ~
+                            result.numInterior ~ " interior) - " ~
+                            result.diagnostic);
                 }
             }
         }
@@ -634,13 +646,27 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
  *
  * This eliminates thousands of deBoor calls that were hitting FS's step limit.
  *
+ * NEW: Implements validation and fallback strategy to handle degenerate cases:
+ * - Validates control points before attempting curve creation
+ * - Falls back from degree 3 → 2 → 1 until a valid curve is created
+ * - Returns detailed diagnostic information for failures
+ *
  * This is one of the OUTPUT BOUNDARIES where we convert back to units.
+ *
+ * @returns : Map with keys:
+ *   - curve (BSplineCurve | undefined): The created curve, or undefined if all attempts failed
+ *   - success (boolean): true if curve was successfully created
+ *   - degree (number): Actual degree of created curve
+ *   - numPoints (number): Total number of control points used
+ *   - numInterior (number): Number of interior control points (between endpoints)
+ *   - fallback (boolean): true if degree < APPROX_SPLINE_DEGREE
+ *   - diagnostic (string): Detailed failure reasons if success=false
  */
 function buildFinalSpline(
     startPoint is array, endPoint is array,
     startParam is number, endParam is number,
     approxCPs is array, approxKnots is array, approxDegree is number,
-    intersectionDimension is number)
+    intersectionDimension is number) returns map
 {
     // Find approxCPs whose arc-length parameter falls between start and end.
     // approxCPs are already ordered intersection points from walkIsoCurves.
@@ -659,35 +685,83 @@ function buildFinalSpline(
 
     // Assemble: [exact start] + [interior approx CPs] + [exact end]
     var allPointsU = concatenateArrays([[startPoint], interiorPoints, [endPoint]]);
+    var numPoints = size(allPointsU);
+    var numInterior = size(interiorPoints);
 
-    // Need at least degree+1 points
-    var degree = min(APPROX_SPLINE_DEGREE, size(allPointsU) - 1);
-    if (degree < 1)
-        return undefined;
+    // Fallback strategy: try degree 3 → 2 → 1
+    var targetDegree = min(APPROX_SPLINE_DEGREE, numPoints - 1);
+    var diagnosticMessages = [];
 
-    // Build knot vector from arc-length parameterization (unitless)
-    var knots = arcLengthKnotVector(allPointsU, degree);
-
-    // --- OUTPUT BOUNDARY: convert control points to Vectors with units ---
-    var cpsWithUnits = makeArray(size(allPointsU));
-    for (var i = 0; i < size(allPointsU); i += 1)
+    for (var degree = targetDegree; degree >= 1; degree -= 1)
     {
-        cpsWithUnits[i] = arrToVec(allPointsU[i]);
-    }
+        // Validate control points for this degree
+        var validation = validateBSplineControlPoints(allPointsU, degree);
 
-    try
-    {
-        return bSplineCurve({
+        if (!validation.success)
+        {
+            diagnosticMessages = append(diagnosticMessages,
+                "Degree " ~ degree ~ ": " ~ validation.reason ~
+                " [" ~ validation.degenerateCase ~ "]");
+            continue;  // Try lower degree
+        }
+
+        // Validation passed - attempt curve creation
+        var knots = arcLengthKnotVector(allPointsU, degree);
+
+        // --- OUTPUT BOUNDARY: convert control points to Vectors with units ---
+        var cpsWithUnits = makeArray(numPoints);
+        for (var i = 0; i < numPoints; i += 1)
+        {
+            cpsWithUnits[i] = arrToVec(allPointsU[i]);
+        }
+
+        try
+        {
+            var curve = bSplineCurve({
+                    "degree" : degree,
+                    "isPeriodic" : false,
+                    "controlPoints" : cpsWithUnits,
+                    "knots" : knots as KnotArray
+            });
+
+            // Success!
+            return {
+                "curve" : curve,
+                "success" : true,
                 "degree" : degree,
-                "isPeriodic" : false,
-                "controlPoints" : cpsWithUnits,
-                "knots" : knots as KnotArray
-        });
+                "numPoints" : numPoints,
+                "numInterior" : numInterior,
+                "fallback" : degree < APPROX_SPLINE_DEGREE,
+                "diagnostic" : "Success at degree " ~ degree
+            };
+        }
+        catch (error)
+        {
+            // Kernel rejected the curve (rare after validation)
+            diagnosticMessages = append(diagnosticMessages,
+                "Degree " ~ degree ~ ": bSplineCurve() failed (kernel rejection)");
+            continue;  // Try lower degree
+        }
     }
-    catch
+
+    // All degrees failed
+    var fullDiagnostic = "";
+    for (var i = 0; i < size(diagnosticMessages); i += 1)
     {
-        return undefined;
+        if (i > 0)
+            fullDiagnostic = fullDiagnostic ~ "; ";
+        fullDiagnostic = fullDiagnostic ~ diagnosticMessages[i];
     }
+
+    return {
+        "curve" : undefined,
+        "success" : false,
+        "degree" : 0,
+        "numPoints" : numPoints,
+        "numInterior" : numInterior,
+        "fallback" : false,
+        "diagnostic" : fullDiagnostic
+    };
 }
 
 // =============================================================================

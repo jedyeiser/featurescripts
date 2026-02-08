@@ -526,10 +526,21 @@ function createCompositeWires(context is Context, id is Id, analysisResult is ma
                         "bSplineCurve" : curve
                 });
                 createdBodies = append(createdBodies, qCreatedBy(id + ("curve" ~ cs ~ "_" ~ c), EntityType.BODY));
+
+                // Log successful fallback curves (informational)
+                if (section.intersectionCurves[c].wasFallback != undefined &&
+                    section.intersectionCurves[c].wasFallback)
+                {
+                    println("INFO: Curve " ~ c ~ " at section " ~ cs ~
+                            " created with fallback degree " ~ section.intersectionCurves[c].degree ~
+                            " (" ~ section.intersectionCurves[c].numPoints ~ " points)");
+                }
             }
-            catch
+            catch (error)
             {
-                println("WARNING: Failed to create curve " ~ c ~ " at section " ~ cs);
+                // Kernel-level failure (rare after validation)
+                println("WARNING: Failed to create curve " ~ c ~ " at section " ~ cs ~
+                        " - opCreateBSplineCurve() failed (possible kernel rejection)");
             }
         }
 

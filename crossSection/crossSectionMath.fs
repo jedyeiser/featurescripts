@@ -94,6 +94,155 @@ export function averageU(points is array) returns array
 }
 
 // =============================================================================
+// GEOMETRY VALIDATION UTILITIES
+// =============================================================================
+// Used to validate B-spline control points before attempting curve creation,
+// catching degenerate cases that would cause opCreateBSplineCurve to fail.
+
+/**
+ * Cross product of two 3D vectors (unitless).
+ * Returns the vector perpendicular to both inputs.
+ */
+export function crossU(a is array, b is array) returns array
+{
+    return [a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0]];
+}
+
+/**
+ * Check if three points are colinear within a tolerance.
+ *
+ * Uses the parallelogram area test: points are colinear if the area of the
+ * triangle they form is near-zero. This is equivalent to checking if the
+ * cross product of (p1-p0) and (p2-p0) is near-zero.
+ *
+ * @param p0, p1, p2 : Three points as [x,y,z] arrays
+ * @param tol : Area tolerance (squared length units, e.g., GEOM_TOL^2)
+ * @returns : true if points are colinear
+ */
+export function arePointsColinear(p0 is array, p1 is array, p2 is array, tol is number) returns boolean
+{
+    var v1 = subtractU(p1, p0);
+    var v2 = subtractU(p2, p0);
+    var cross = crossU(v1, v2);
+    var areaSq = normSqU(cross);
+    return areaSq < tol;
+}
+
+/**
+ * Check if all points in an array are colinear.
+ *
+ * Tests every triplet of points. If any triplet forms a non-zero triangle,
+ * the points are NOT colinear.
+ *
+ * @param points : Array of [x,y,z] points
+ * @param tol : Area tolerance (squared length units)
+ * @returns : true if all points lie on a single line
+ */
+export function areAllPointsColinear(points is array, tol is number) returns boolean
+{
+    var n = size(points);
+    if (n < 3)
+        return true;  // 0-2 points are trivially colinear
+
+    // Check every triplet against the first two points
+    var p0 = points[0];
+    var p1 = points[1];
+
+    for (var i = 2; i < n; i += 1)
+    {
+        if (!arePointsColinear(p0, p1, points[i], tol))
+            return false;
+    }
+
+    return true;
+}
+
+/**
+ * Validate control points before attempting B-spline curve creation.
+ *
+ * Checks for common degenerate cases that cause opCreateBSplineCurve to fail:
+ * - Insufficient points for the degree
+ * - Zero-length curve (coincident endpoints)
+ * - Colinear points when degree >= 2
+ *
+ * @param points : Array of [x,y,z] control points (unitless)
+ * @param degree : Desired B-spline degree
+ * @returns : Map with keys:
+ *   - success (boolean): true if points are valid for this degree
+ *   - reason (string): Human-readable explanation if invalid
+ *   - degenerateCase (string): Classification ("UNDERCONSTRAINED", "ZERO_LENGTH", "COLINEAR", "OK")
+ */
+export function validateBSplineControlPoints(points is array, degree is number) returns map
+{
+    var n = size(points);
+
+    // Check 1: Minimum point count
+    if (n < 2)
+    {
+        return {
+            "success" : false,
+            "reason" : "Need at least 2 points, got " ~ n,
+            "degenerateCase" : "UNDERCONSTRAINED"
+        };
+    }
+
+    // Check 2: Valid degree
+    if (degree < 1)
+    {
+        return {
+            "success" : false,
+            "reason" : "Degree must be >= 1, got " ~ degree,
+            "degenerateCase" : "UNDERCONSTRAINED"
+        };
+    }
+
+    // Check 3: Sufficient points for degree (need n > degree)
+    if (n <= degree)
+    {
+        return {
+            "success" : false,
+            "reason" : "Insufficient points for degree: " ~ n ~ " points, degree " ~ degree,
+            "degenerateCase" : "UNDERCONSTRAINED"
+        };
+    }
+
+    // Check 4: Non-zero length (distinct endpoints)
+    var startToEnd = subtractU(points[n - 1], points[0]);
+    if (normU(startToEnd) < GEOM_TOL)
+    {
+        return {
+            "success" : false,
+            "reason" : "Zero-length curve (coincident endpoints)",
+            "degenerateCase" : "ZERO_LENGTH"
+        };
+    }
+
+    // Check 5: For degree >= 2, points must not all be colinear
+    // (Linear curves are fine with colinear points)
+    if (degree >= 2)
+    {
+        var colTol = GEOM_TOL * GEOM_TOL;  // Area tolerance: ~1e-12 m²
+        if (areAllPointsColinear(points, colTol))
+        {
+            return {
+                "success" : false,
+                "reason" : "All points colinear (cannot create degree " ~ degree ~ " curve)",
+                "degenerateCase" : "COLINEAR"
+            };
+        }
+    }
+
+    // All checks passed
+    return {
+        "success" : true,
+        "reason" : "Valid",
+        "degenerateCase" : "OK"
+    };
+}
+
+// =============================================================================
 // UNIT CONVERSION AT BOUNDARIES
 // =============================================================================
 // These are the ONLY places units appear in this module.
