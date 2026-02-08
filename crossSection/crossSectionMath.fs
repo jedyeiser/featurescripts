@@ -209,14 +209,12 @@ export function validateBSplineControlPoints(points is array, degree is number) 
     }
 
     // Check 4: Non-zero length (distinct endpoints)
-    // Use stricter tolerance (10 microns) to prevent kernel rejections
     var startToEnd = subtractU(points[n - 1], points[0]);
-    var minCurveLength = GEOM_TOL * 10;  // 1e-5m = 10 microns
-    if (normU(startToEnd) < minCurveLength)
+    if (normU(startToEnd) < GEOM_TOL)
     {
         return {
             "success" : false,
-            "reason" : "Curve too short: " ~ normU(startToEnd) ~ "m < " ~ minCurveLength ~ "m",
+            "reason" : "Zero-length curve (coincident endpoints)",
             "degenerateCase" : "ZERO_LENGTH"
         };
     }
