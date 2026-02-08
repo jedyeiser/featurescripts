@@ -1349,21 +1349,115 @@ function scaleKeepTaper(context is Context, sidecutCurves is array, refAnalysis 
 }
 
 // =============================================================================
-// SCALE RADIUS  (Phase 0c: fixed base map structure + approximateSpline output)
+// SCALE RADIUS HELPERS
+// =============================================================================
+
+/**
+ * Evaluate the average radius of a BSpline curve within X bounds.
+ * Samples curvature at multiple points and returns R = 1/κ average.
+ *
+ * @param curve : BSplineCurve - The curve to evaluate
+ * @param xMin, xMax : ValueWithUnits - X bounds for evaluation
+ * @returns ValueWithUnits - Average radius
+ */
+function evaluateCurveRadius(curve is BSplineCurve, xMin is ValueWithUnits,
+    xMax is ValueWithUnits) returns ValueWithUnits
+{
+    var numSamples = 50;
+    var radiusSum = 0 * meter;
+    var count = 0;
+
+    var range = getBSplineParamRange(curve);
+    var uMin = range.uMin;
+    var uMax = range.uMax;
+
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var u = uMin + (uMax - uMin) * i / (numSamples - 1);
+        var curv = getBSplineCurvatureAtParam(curve, u);
+
+        // Check if point is within X bounds
+        if (curv.point[0] < xMin || curv.point[0] > xMax)
+            continue;
+
+        // Only accumulate positive curvature (concave sections)
+        if (curv.curvatureMag > 1e-9 / meter)
+        {
+            radiusSum += 1 / curv.curvatureMag;
+            count += 1;
+        }
+    }
+
+    if (count == 0)
+        return inf * meter;  // No curvature found
+
+    return radiusSum / count;
+}
+
+/**
+ * Build a single approximated BSpline from X, Y arrays.
+ */
+function buildSingleCurveFromPoints(context is Context, xSamples is array,
+    ySamples is array) returns BSplineCurve
+{
+    var points = [];
+    for (var i = 0; i < size(xSamples); i += 1)
+    {
+        points = append(points, vector(xSamples[i], ySamples[i], 0 * millimeter));
+    }
+
+    return approximateSpline(context, {
+        "degree" : 3,
+        "tolerance" : 0.001 * millimeter,
+        "maxControlPoints" : 30,
+        "targets" : [approximationTarget({ "positions" : points })],
+        "interpolateIndices" : [0, size(points) - 1]
+    })[0];
+}
+
+/**
+ * Find the index in xSamples closest to targetX.
+ */
+function findClosestIndex(xSamples is array, targetX is ValueWithUnits) returns number
+{
+    var bestIdx = 0;
+    var bestDist = abs(xSamples[0] - targetX);
+
+    for (var i = 1; i < size(xSamples); i += 1)
+    {
+        var dist = abs(xSamples[i] - targetX);
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            bestIdx = i;
+        }
+    }
+
+    return bestIdx;
+}
+
+// =============================================================================
+// SCALE RADIUS  (Iterative radius targeting with curve boundary preservation)
 // =============================================================================
 
 /**
  * Scale sidecut curves to achieve target average radius while preserving taper angle.
- * 
- * Process:
- * 1. Sample curvature progression from reference curves
- * 2. Scale curvature to achieve target average radius (k_new = k_ref * R_ref/R_target)
- * 3. Map X to new RSL length
- * 4. Integrate scaled curvature to get theta_base (slope integral)
- * 5. Integrate theta_base to get y_base (position integral)
- * 6. Solve for theta0 to preserve taper angle
- * 7. Solve for y0 to hit target waist width
- * 8. Build output curve via approximateSpline (not raw sampled points)
+ *
+ * Uses iterative radius targeting:
+ * 1. Extract curve boundaries for later splitting
+ * 2. Initialize radius scale factor (guess: R_ref / R_target)
+ * 3. ITERATE until radius converges:
+ *    a. Sample curvature UNIFORMLY across sidecut (maintains continuity)
+ *    b. Scale by current factor: k_scaled = k_ref * radiusScaleFactor
+ *    c. Map X to new RSL length
+ *    d. Integrate: build theta_base and y_base (cumTrapz)
+ *    e. Solve theta0 to preserve taper angle
+ *    f. Solve y0 to hit target waist width
+ *    g. Build temporary curve and EVALUATE actual radius
+ *    h. Check convergence: |R_actual - R_target| < tolerance
+ *    i. Adjust scale factor: radiusScaleFactor *= (R_actual / R_target)
+ * 4. SPLIT converged geometry at original curve boundaries
+ * 5. Return array of curves with correct radius and preserved structure
  */
 function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is map,
     refFcpX is ValueWithUnits, refAcpX is ValueWithUnits,
@@ -1376,158 +1470,208 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
     var newLength = abs(newAcpX - newFcpX);
     var xScale = newLength / refLength;
 
-    // Build curve data for X bounds
     var refCurveData = refAnalysis.curveData;
 
-    // Sample curvature per input curve (preserving boundaries)
-    var allRefXSamples = [];
-    var allKSamples = [];
-    var curveSegmentInfo = [];  // Track segment boundaries for output
-
-    for (var curveIdx = 0; curveIdx < size(refCurveData); curveIdx += 1)
+    // Extract curve boundaries for later splitting
+    var curveBoundaries = [];
+    for (var curveIdx = 1; curveIdx < size(refCurveData); curveIdx += 1)
     {
         var cd = refCurveData[curveIdx];
-        var refXMin = cd.xMin;
-        var refXMax = cd.xMax;
+        var boundaryX = cd.xMin;
 
-        // Skip curves outside sidecut region
-        if (refXMax < min([refFcpX, refAcpX]) || refXMin > max([refFcpX, refAcpX]))
-            continue;
-
-        // Clamp to sidecut bounds
-        refXMin = max([refXMin, min([refFcpX, refAcpX])]);
-        refXMax = min([refXMax, max([refFcpX, refAcpX])]);
-
-        // Determine sample count proportional to curve's X extent
-        var curveExtent = abs(refXMax - refXMin);
-        var numSamplesForCurve = max([10, round(curveExtent / refLength * 100)]);
-
-        var segmentStartIdx = size(allRefXSamples);
-
-        // Sample this curve
-        for (var i = 0; i < numSamplesForCurve; i += 1)
+        // Only include boundaries within sidecut region
+        if (boundaryX >= min([refFcpX, refAcpX]) && boundaryX <= max([refFcpX, refAcpX]))
         {
-            var t = i / (numSamplesForCurve - 1);
-            var x = refXMin + t * (refXMax - refXMin);
-            allRefXSamples = append(allRefXSamples, x);
-
-            var k = getCurvatureAtX(refCurveData, x, tolerance);
-            allKSamples = append(allKSamples, k);
+            curveBoundaries = append(curveBoundaries, boundaryX);
         }
-
-        var segmentEndIdx = size(allRefXSamples) - 1;
-
-        // Store segment info for later curve building
-        curveSegmentInfo = append(curveSegmentInfo, {
-            "startIdx" : segmentStartIdx,
-            "endIdx" : segmentEndIdx,
-            "refXMin" : refXMin,
-            "refXMax" : refXMax
-        });
     }
 
-    // Scale curvature: k_new = k_ref * (R_ref / R_target)
-    var radiusScale = refAnalysis.avgRadius / targetRadius;
+    // Initial guess for radius scale factor
+    var radiusScaleFactor = refAnalysis.avgRadius / targetRadius;
+    var maxIterations = 5;
+    var radiusTolerance = 0.05 * meter;  // 5cm tolerance
+
+    var finalY = [];
+    var newXSamples = [];
+    var converged = false;
+
+    // Declare outside loop so they're accessible after loop ends
+    var minY = inf * meter;
+    var y0 = 0 * meter;
 
     println("  Scale radius: refAvgRadius=" ~ toString(refAnalysis.avgRadius) ~
-            ", targetRadius=" ~ toString(targetRadius) ~ ", scale=" ~ toString(radiusScale));
+            ", targetRadius=" ~ toString(targetRadius) ~ ", initial scale=" ~ toString(radiusScaleFactor));
 
-    var scaledK = [];
-    for (var k in allKSamples)
+    // ITERATION LOOP: Adjust scale factor until radius matches target
+    for (var iteration = 0; iteration < maxIterations; iteration += 1)
     {
-        scaledK = append(scaledK, k * radiusScale);
-    }
+        println("=== Radius Iteration " ~ iteration ~ " ===");
+        println("  Scale factor: " ~ toString(radiusScaleFactor));
 
-    // Map X to new RSL length
-    var newXSamples = [];
-    for (var refX in allRefXSamples)
-    {
-        var relativeX = refX - refFcpX;
-        var newX = newFcpX + relativeX * xScale;
-        newXSamples = append(newXSamples, newX);
-    }
-    
-    // =================================================================
-    // Build base integrals.
-    //
-    // Type contract (matching buildBaseIntegrals):
-    //   base.x  = VWU (length)    — used in evalY: theta0 * base.x[i]
-    //   base.k  = plain number    — used for solver seed: -average(base.k)
-    //   base.yP = plain number    — used in evalTheta: base.yP[i] + theta0
-    //   base.y  = VWU (length)    — used in evalY: base.y[i] + ... + y0
-    //
-    // In buildBaseIntegrals, k values are plain numbers (radiusPoints use
-    // .value to strip units) and the r/meter mapping converts them to
-    // VWU(1/m) for cumTrapz.  Our scaledK values are ALREADY VWU(1/m)
-    // from getCurvatureAtX, so we pass them directly to cumTrapz.
-    // The trapezoidal step dx[VWU(m)] * k[VWU(1/m)] cancels to number.
-    // =================================================================
-    
-    // yP: dx[VWU(m)] * k[VWU(1/m)] → dimensions cancel → plain numbers
-    var thetaBase = cumTrapz(newXSamples, scaledK, 0).cumulative;
-    
-    // y: dx[VWU(m)] * yP[number] → VWU(m), initial 0*mm matches
-    var yBase = cumTrapz(newXSamples, thetaBase, 0 * millimeter).cumulative;
-    
-    // k as plain numbers for solver seed: average(base.k) must return number
-    // VWU(1/m) * VWU(m) → dimensions cancel → plain number
-    var kPlain = mapArray(scaledK, function(r) { return r * meter; });
-    
-    var base = {
-        "x" : newXSamples,        // VWU (length)
-        "k" : kPlain,             // plain number (for solver seed)
-        "yP" : thetaBase,         // plain number (dimensionless slope)
-        "y" : yBase               // VWU (length)
-    };
-    
-    // Solve for theta0 to preserve taper angle
-    var integrationDef = {
-        "angleDriver" : AngleDriver.TAPER_ANGLE,
-        "taperAngle" : refAnalysis.taperAngle
-    };
-    
-    var theta0 = solveTheta0ForDriver(base, integrationDef, 0.0001 * degree, 50);
-    
-    println("  Solved theta0=" ~ toString(theta0));
-    
-    // Evaluate final Y values (ValueWithUnits length array)
-    var yFinal = evalY(base, theta0, 0 * meter);
-    
-    // Find current waist and solve for y0
-    var minY = inf * meter;
-    for (var i = 0; i < size(yFinal); i += 1)
-    {
-        if (yFinal[i] < minY)
+        // Sample curvature UNIFORMLY across sidecut (maintains continuity)
+        var numSamples = 100;
+        var refXSamples = [];
+        var kSamples = [];
+
+        for (var i = 0; i < numSamples; i += 1)
         {
-            minY = yFinal[i];
+            var t = i / (numSamples - 1);
+            var x = refFcpX + t * (refAcpX - refFcpX);
+            refXSamples = append(refXSamples, x);
+
+            var k = getCurvatureAtX(refCurveData, x, tolerance);
+            kSamples = append(kSamples, k);
         }
-    }
-    
-    var y0 = targetWaistWidth - minY;
-    
-    println("  Waist before shift: " ~ toString(minY) ~ ", y0=" ~ toString(y0));
-    
-    // Apply y0 shift to all points
-    var finalY = [];
-    for (var i = 0; i < size(yFinal); i += 1)
-    {
-        finalY = append(finalY, yFinal[i] + y0);
+
+        // Scale curvature by current factor
+        var scaledK = [];
+        for (var k in kSamples)
+        {
+            scaledK = append(scaledK, k * radiusScaleFactor);
+        }
+
+        // Map X to new RSL length
+        newXSamples = [];
+        for (var refX in refXSamples)
+        {
+            var relativeX = refX - refFcpX;
+            var newX = newFcpX + relativeX * xScale;
+            newXSamples = append(newXSamples, newX);
+        }
+
+        // Integrate to build base geometry
+        // Type contract (matching buildBaseIntegrals):
+        //   base.x  = VWU (length)
+        //   base.k  = plain number (for solver seed)
+        //   base.yP = plain number (dimensionless slope)
+        //   base.y  = VWU (length)
+        var thetaBase = cumTrapz(newXSamples, scaledK, 0).cumulative;
+        var yBase = cumTrapz(newXSamples, thetaBase, 0 * millimeter).cumulative;
+        var kPlain = mapArray(scaledK, function(r) { return r * meter; });
+
+        var base = {
+            "x" : newXSamples,
+            "k" : kPlain,
+            "yP" : thetaBase,
+            "y" : yBase
+        };
+
+        // Solve for theta0 to preserve taper angle
+        var integrationDef = {
+            "angleDriver" : AngleDriver.TAPER_ANGLE,
+            "taperAngle" : refAnalysis.taperAngle
+        };
+
+        var theta0 = solveTheta0ForDriver(base, integrationDef, 0.0001 * degree, 50);
+
+        // Evaluate Y and find waist
+        var yFinal = evalY(base, theta0, 0 * meter);
+
+        // Update minY for this iteration
+        minY = inf * meter;
+        for (var i = 0; i < size(yFinal); i += 1)
+        {
+            if (yFinal[i] < minY)
+            {
+                minY = yFinal[i];
+            }
+        }
+
+        // Update y0 for this iteration
+        y0 = targetWaistWidth - minY;
+
+        // Apply y0 shift
+        finalY = [];
+        for (var i = 0; i < size(yFinal); i += 1)
+        {
+            finalY = append(finalY, yFinal[i] + y0);
+        }
+
+        // Build temporary curve for radius evaluation
+        var tempCurve = buildSingleCurveFromPoints(context, newXSamples, finalY);
+
+        // EVALUATE ACTUAL RADIUS
+        var actualRadius = evaluateCurveRadius(tempCurve,
+            min([newFcpX, newAcpX]), max([newFcpX, newAcpX]));
+
+        println("  Actual radius: " ~ toString(actualRadius));
+        println("  Target radius: " ~ toString(targetRadius));
+
+        // Check for invalid radius (straight line or evaluation failure)
+        if (actualRadius == inf * meter || actualRadius <= 0 * meter)
+        {
+            println("  ERROR: Could not evaluate curve radius (infinite or invalid)");
+            break;
+        }
+
+        var error = actualRadius - targetRadius;
+        println("  Error: " ~ toString(error));
+
+        // Check convergence
+        if (abs(error) < radiusTolerance)
+        {
+            println("  CONVERGED after " ~ iteration ~ " iterations!");
+            converged = true;
+            break;
+        }
+
+        // Adjust scale factor for next iteration
+        // If actual > target, we need MORE curvature (higher k), so HIGHER scale
+        radiusScaleFactor = radiusScaleFactor * (actualRadius / targetRadius);
+        println("  Next scale factor: " ~ toString(radiusScaleFactor));
     }
 
-    // Build one curve per segment (preserving input curve boundaries)
-    var outputCurves = [];
-    for (var segmentInfo in curveSegmentInfo)
+    if (!converged)
     {
+        println("  WARNING: Did not converge after " ~ maxIterations ~ " iterations");
+    }
+
+    // SPLIT converged geometry at original curve boundaries
+    var outputCurves = [];
+    var segmentStartIdx = 0;
+
+    for (var boundaryX in curveBoundaries)
+    {
+        // Map boundary to new coordinate system
+        var newBoundaryX = newFcpX + (boundaryX - refFcpX) * xScale;
+        var splitIdx = findClosestIndex(newXSamples, newBoundaryX);
+
+        // Build segment from start to split point
         var segmentPoints = [];
-        for (var i = segmentInfo.startIdx; i <= segmentInfo.endIdx; i += 1)
+        for (var i = segmentStartIdx; i <= splitIdx; i += 1)
         {
             segmentPoints = append(segmentPoints,
                 vector(newXSamples[i], finalY[i], 0 * millimeter));
         }
 
-        // Phase 0c: Use approximateSpline for a proper BSpline fit,
-        // not raw sampled points as control points (which creates an
-        // interpolating spline, not a least-squares approximation).
+        // Only create curve if segment has at least 2 points
+        if (size(segmentPoints) >= 2)
+        {
+            var segmentCurve = approximateSpline(context, {
+                "degree" : 3,
+                "tolerance" : 0.001 * millimeter,
+                "maxControlPoints" : 30,
+                "targets" : [approximationTarget({ "positions" : segmentPoints })],
+                "interpolateIndices" : [0, size(segmentPoints) - 1]
+            })[0];
+
+            outputCurves = append(outputCurves, segmentCurve);
+        }
+
+        segmentStartIdx = splitIdx + 1;
+    }
+
+    // Last segment (from last boundary to end)
+    var segmentPoints = [];
+    for (var i = segmentStartIdx; i < size(newXSamples); i += 1)
+    {
+        segmentPoints = append(segmentPoints,
+            vector(newXSamples[i], finalY[i], 0 * millimeter));
+    }
+
+    // Only create curve if segment has at least 2 points
+    if (size(segmentPoints) >= 2)
+    {
         var segmentCurve = approximateSpline(context, {
             "degree" : 3,
             "tolerance" : 0.001 * millimeter,
@@ -1539,7 +1683,13 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         outputCurves = append(outputCurves, segmentCurve);
     }
 
-    // Get final widths (ValueWithUnits from evalY + y0 shift)
+    // Safety check: ensure we have at least one output curve
+    if (size(outputCurves) == 0)
+    {
+        throw "SCALE_RADIUS: Failed to create any output curves (curve splitting error)";
+    }
+
+    // Get final widths
     var finalFcpWidth = finalY[0];
     var finalAcpWidth = finalY[size(finalY) - 1];
     var finalWaistWidth = minY + y0;

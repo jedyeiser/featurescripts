@@ -668,20 +668,10 @@ function buildFinalSpline(
     approxCPs is array, approxKnots is array, approxDegree is number,
     intersectionDimension is number) returns map
 {
-    // Find approxCPs whose arc-length parameter falls between start and end.
-    // approxCPs are already ordered intersection points from walkIsoCurves.
-    // We use Greville abscissae to estimate each CP's parameter.
-    var numCPs = size(approxCPs);
-    var cpParams = grevilleAbscissae(approxKnots, approxDegree, numCPs);
-
-    var interiorPoints = [];
-    for (var i = 0; i < numCPs; i += 1)
-    {
-        if (cpParams[i] > startParam + GEOM_TOL && cpParams[i] < endParam - GEOM_TOL)
-        {
-            interiorPoints = append(interiorPoints, approxCPs[i]);
-        }
-    }
+    // Use all approxCPs as interior points - they are already ordered intersection points
+    // from walkIsoCurves and fall between the start and end edge intersections.
+    // Previous filtering by Greville parameters was overly strict and excluded valid points.
+    var interiorPoints = approxCPs;
 
     // Assemble: [exact start] + [interior approx CPs] + [exact end]
     var allPointsU = concatenateArrays([[startPoint], interiorPoints, [endPoint]]);
@@ -752,6 +742,12 @@ function buildFinalSpline(
             fullDiagnostic = fullDiagnostic ~ "; ";
         fullDiagnostic = fullDiagnostic ~ diagnosticMessages[i];
     }
+
+    // Log diagnostic information for kernel rejection analysis
+    var curveLength = normU(subtractU(allPointsU[numPoints - 1], allPointsU[0]));
+    println("DEBUG: All curve creation attempts failed - length: " ~ curveLength ~
+            "m, points: " ~ numPoints ~ ", interior: " ~ numInterior ~
+            ", diagnostics: " ~ fullDiagnostic);
 
     return {
         "curve" : undefined,

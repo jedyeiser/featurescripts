@@ -6,6 +6,12 @@
         "patterns": ["**/*.fs"],
         "description": "Automatically invoke FeatureScript expert agent when working with .fs files"
       }
+    },
+    "featurescript-reviewer": {
+      "autoInvoke": {
+        "patterns": [],
+        "description": "Manual invocation only - use when reviewing code for quality and correctness"
+      }
     }
   },
   "project": {
@@ -15,6 +21,7 @@
   },
   "notes": [
     "The featurescript-expert agent is automatically invoked when working with .fs files",
+    "The featurescript-reviewer agent is manual-only - invoke with explicit review requests",
     "Reference .claude/featurescript-corrections.md for known issues and corrections",
     "See PROJECT.md for workflow and project structure overview"
   ]
