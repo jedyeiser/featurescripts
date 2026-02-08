@@ -12,6 +12,18 @@
         "patterns": [],
         "description": "Manual invocation only - use when reviewing code for quality and correctness"
       }
+    },
+    "onshape-api-researcher": {
+      "autoInvoke": {
+        "patterns": [],
+        "description": "Invoke when researching native Onshape API functions before implementing custom code"
+      }
+    },
+    "nurbs-geometry-expert": {
+      "autoInvoke": {
+        "patterns": [],
+        "description": "Invoke for NURBS algorithms and analytic geometry based on Piegl & Tiller"
+      }
     }
   },
   "project": {
@@ -22,6 +34,8 @@
   "notes": [
     "The featurescript-expert agent is automatically invoked when working with .fs files",
     "The featurescript-reviewer agent is manual-only - invoke with explicit review requests",
+    "The onshape-api-researcher helps find native Onshape functions before custom implementation",
+    "The nurbs-geometry-expert provides deep NURBS and analytic geometry expertise (Piegl & Tiller)",
     "Reference .claude/featurescript-corrections.md for known issues and corrections",
     "See PROJECT.md for workflow and project structure overview"
   ]
