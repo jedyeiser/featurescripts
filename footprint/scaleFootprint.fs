@@ -1509,7 +1509,8 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         println("  Scale factor: " ~ toString(radiusScaleFactor));
 
         // Sample curvature UNIFORMLY across sidecut (maintains continuity)
-        var numSamples = 100;
+        // Scale sample count with number of curves to ensure small curves get adequate resolution
+        var numSamples = max([100, size(curveBoundaries) * 30]);
         var refXSamples = [];
         var kSamples = [];
 
@@ -1626,12 +1627,18 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         println("  WARNING: Did not converge after " ~ maxIterations ~ " iterations");
     }
 
+    // Diagnostics: log expected curve count
+    println("  Splitting at " ~ size(curveBoundaries) ~ " boundaries");
+    println("  Expected " ~ (size(curveBoundaries) + 1) ~ " output curves");
+
     // SPLIT converged geometry at original curve boundaries
     var outputCurves = [];
     var segmentStartIdx = 0;
 
-    for (var boundaryX in curveBoundaries)
+    for (var boundaryIdx = 0; boundaryIdx < size(curveBoundaries); boundaryIdx += 1)
     {
+        var boundaryX = curveBoundaries[boundaryIdx];
+
         // Map boundary to new coordinate system
         var newBoundaryX = newFcpX + (boundaryX - refFcpX) * xScale;
         var splitIdx = findClosestIndex(newXSamples, newBoundaryX);
@@ -1643,6 +1650,10 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
             segmentPoints = append(segmentPoints,
                 vector(newXSamples[i], finalY[i], 0 * millimeter));
         }
+
+        // Diagnostics: log segment info
+        println("  Boundary " ~ boundaryIdx ~ ": X=" ~ toString(boundaryX) ~
+                ", splitIdx=" ~ splitIdx ~ ", points=" ~ size(segmentPoints));
 
         // Only create curve if segment has at least 2 points
         if (size(segmentPoints) >= 2)
@@ -1657,8 +1668,14 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
 
             outputCurves = append(outputCurves, segmentCurve);
         }
+        else
+        {
+            println("  WARNING: Segment " ~ boundaryIdx ~ " only has " ~
+                    size(segmentPoints) ~ " points, skipping");
+        }
 
-        segmentStartIdx = splitIdx + 1;
+        // Share boundary point with next segment (prevents 1-point gaps)
+        segmentStartIdx = splitIdx;
     }
 
     // Last segment (from last boundary to end)
@@ -1681,6 +1698,14 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         })[0];
 
         outputCurves = append(outputCurves, segmentCurve);
+    }
+
+    // Diagnostics: verify curve count matches expectation
+    println("  Created " ~ size(outputCurves) ~ " output curves");
+    if (size(outputCurves) != size(curveBoundaries) + 1)
+    {
+        println("  ERROR: Expected " ~ (size(curveBoundaries) + 1) ~
+                " curves but created " ~ size(outputCurves));
     }
 
     // Safety check: ensure we have at least one output curve

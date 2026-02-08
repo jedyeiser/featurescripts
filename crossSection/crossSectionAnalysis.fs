@@ -637,6 +637,61 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
 }
 
 /**
+ * Edge-crossing fallback: Create a simple degree-1 line segment from exact entry/exit points.
+ *
+ * This is the ultimate fallback when surface-walking approaches fail (typically due to
+ * colinearity in thin cross-sections). Uses the proven xSectRef approach: a simple line
+ * between the two edge crossing points.
+ *
+ * @param startPoint : unitless array[3] - exact entry point where surface crosses plane
+ * @param endPoint : unitless array[3] - exact exit point where surface crosses plane
+ * @returns : Map with keys:
+ *   - curve (BSplineCurve | undefined): The created degree-1 curve, or undefined if endpoints coincident
+ *   - success (boolean): true if curve was successfully created
+ *   - diagnostic (string): Result description
+ */
+function buildEdgeCrossingFallback(startPoint is array, endPoint is array) returns map
+{
+    // Minimal validation: ensure endpoints are distinct
+    var span = subtractU(endPoint, startPoint);
+    if (normU(span) < GEOM_TOL)
+    {
+        return {
+            "curve" : undefined,
+            "success" : false,
+            "diagnostic" : "Edge-crossing fallback failed: coincident endpoints"
+        };
+    }
+
+    // Convert to Vectors with units for bSplineCurve()
+    var cpsWithUnits = [arrToVec(startPoint), arrToVec(endPoint)];
+
+    try
+    {
+        var curve = bSplineCurve({
+            "degree" : 1,
+            "isPeriodic" : false,
+            "controlPoints" : cpsWithUnits,
+            "knots" : [0, 0, 1, 1] as KnotArray  // Standard degree-1 knot vector
+        });
+
+        return {
+            "curve" : curve,
+            "success" : true,
+            "diagnostic" : "Edge-crossing fallback succeeded (degree-1)"
+        };
+    }
+    catch (error)
+    {
+        return {
+            "curve" : undefined,
+            "success" : false,
+            "diagnostic" : "Edge-crossing fallback: bSplineCurve() rejected curve"
+        };
+    }
+}
+
+/**
  * Build the final intersection spline for one span (entry/exit pair).
  *
  * Uses exact edge intersection points as endpoints. Instead of re-sampling
@@ -645,6 +700,12 @@ function runPerPlaneIntersections(context is Context, bodyIndex is number,
  * them with the exact endpoints.
  *
  * This eliminates thousands of deBoor calls that were hitting FS's step limit.
+ *
+ * HYBRID FALLBACK STRATEGY:
+ * - Primary: Try degrees 3 → 2 → 1 with full surface-walking control points
+ * - Fallback: If all degrees fail validation (typically colinearity), create a
+ *   degree-1 line segment directly from the exact entry/exit edge crossing points
+ * - This guarantees a curve is always produced if boundary crossings exist
  *
  * NEW: Implements validation and fallback strategy to handle degenerate cases:
  * - Validates control points before attempting curve creation
@@ -744,7 +805,7 @@ function buildFinalSpline(
         }
     }
 
-    // All degrees failed
+    // All degrees failed - try edge-crossing fallback
     var fullDiagnostic = "";
     for (var i = 0; i < size(diagnosticMessages); i += 1)
     {
@@ -753,6 +814,26 @@ function buildFinalSpline(
         fullDiagnostic = fullDiagnostic ~ diagnosticMessages[i];
     }
 
+    // EDGE-CROSSING FALLBACK: Create degree-1 line from exact entry/exit points
+    var fallbackResult = buildEdgeCrossingFallback(startPoint, endPoint);
+
+    if (fallbackResult.success)
+    {
+        // Log that we fell back to edge-crossing approach (minimal diagnostic)
+        println("INFO: Face crossing used edge-crossing fallback (degree-1) after validation failures");
+
+        return {
+            "curve" : fallbackResult.curve,
+            "success" : true,
+            "degree" : 1,
+            "numPoints" : 2,
+            "numInterior" : 0,
+            "fallback" : true,
+            "diagnostic" : "Edge-crossing fallback (degree-1) after: " ~ fullDiagnostic
+        };
+    }
+
+    // Fallback also failed (extremely rare - coincident endpoints)
     return {
         "curve" : undefined,
         "success" : false,
@@ -760,7 +841,7 @@ function buildFinalSpline(
         "numPoints" : numPoints,
         "numInterior" : numInterior,
         "fallback" : false,
-        "diagnostic" : fullDiagnostic
+        "diagnostic" : fullDiagnostic ~ "; Edge-crossing fallback also failed: " ~ fallbackResult.diagnostic
     };
 }
 
