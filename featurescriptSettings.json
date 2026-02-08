@@ -6,6 +6,45 @@
   },
   "references": [
     {
+      "name": "Cross Section Working Ref",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/2bac53cbf0cd1504ada12137/e/489f267862a807871c8aa5f5",
+      "local_path": "./xSectRef",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-08T19:32:32.202723+00:00",
+      "document_id": "f8deedeb1fbd819a8fa20113",
+      "workspace_id": "2bac53cbf0cd1504ada12137",
+      "folder_id": null
+    },
+    {
+      "name": "Sidewall QC Table",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/3b9dc959eeb9c39384c804b2/w/b242da6ef55f2959e9ba6bbf/e/57049bc44be6244a3ed83a29",
+      "local_path": "./swQCTable",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-08T19:33:20.230581+00:00",
+      "document_id": "3b9dc959eeb9c39384c804b2",
+      "workspace_id": "b242da6ef55f2959e9ba6bbf",
+      "folder_id": null
+    },
+    {
+      "name": "Core QC Table",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/8f79891da5ff201e08298c62/w/6b29203d684449c6a7191bb2/e/a346fe18723c6ff274cd73e5",
+      "local_path": "./coreQCTable",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-08T19:33:34.724105+00:00",
+      "document_id": "8f79891da5ff201e08298c62",
+      "workspace_id": "6b29203d684449c6a7191bb2",
+      "folder_id": null
+    },
+    {
       "name": "Onshape Standard Library",
       "type": "document",
       "url": "https://k2-sports.onshape.com/documents/03649da4cf2afc2773f3605e/w/dee24c5ad9eb366e42fca299",
@@ -54,12 +93,29 @@
       "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/7c04417f4d97c8038ba7a43f/e/3cb3cff6974529bf6bed096b",
       "references": [
         "Onshape Standard Library",
-        "internal tools document"
+        "internal tools document",
+        "Cross Section Working Ref"
       ],
       "last_pull": "2026-02-08T17:17:12.333535+00:00",
       "last_push": "2026-02-08T18:35:44.096051+00:00",
       "document_id": "f8deedeb1fbd819a8fa20113",
       "workspace_id": "7c04417f4d97c8038ba7a43f"
+    },
+    {
+      "name": "QC Table",
+      "description": "Core and sidewall QC",
+      "working_directory": "./qcTable",
+      "onshape_url": "https://k2-sports.onshape.com/documents/51ccc604f1a8c938b48c2f37/w/b0471d23cacc26179be6e5ab/e/fbb5a1c415d7e095b8a4cb96",
+      "references": [
+        "Onshape Standard Library",
+        "internal tools document",
+        "Core QC Table",
+        "Sidewall QC Table"
+      ],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "51ccc604f1a8c938b48c2f37",
+      "workspace_id": "b0471d23cacc26179be6e5ab"
     }
   ],
   "sync_metadata": {}
