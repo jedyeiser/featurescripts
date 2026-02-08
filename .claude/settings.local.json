@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m venv:*)",
+      "Bash(venv\\\\Scripts\\\\python.exe -m pip:*)",
+      "Bash(\"venv/Scripts/python.exe\" -m pip install --upgrade pip)",
+      "Bash(\"venv/Scripts/python.exe\" -m pip install -e \".[dev]\")",
+      "Bash(\"venv/Scripts/python.exe\" -m sync.verify_auth)",
+      "Bash(\"venv/Scripts/python.exe\" -m sync.main verify-auth)",
+      "Bash(\"venv/Scripts/python.exe\" -m pytest tests/ -v)",
+      "Bash(\"venv/Scripts/python.exe\" -m sync.main tree)",
+      "Bash(\"venv/Scripts/python.exe\" -m sync.main status)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(\"venv/Scripts/python.exe\" -m sync.main pull --dry-run)",
+      "Bash(\"venv/Scripts/python.exe\":*)",
+      "Bash(\"venv/Scripts/python.exe\" -c:*)"
+    ]
+  }
+}

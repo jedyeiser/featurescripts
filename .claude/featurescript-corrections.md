@@ -55,6 +55,53 @@ var mode = FootprintScaleMode.ACCORDION;
 
 ## Type System
 
+### Predicates Cannot Have Standalone Var Declarations
+**Date**: 2026-01-31
+**Issue**: Predicates can only contain boolean expressions and for-loops (with var in loop declaration). Standalone `var` statements outside loops are not allowed in predicates.
+**Incorrect Pattern**:
+```featurescript
+export predicate isClamped(curve is BSplineCurve, tolerance is number)
+{
+    tolerance > 0;
+
+    var knots = curve.knots;      // ❌ ILLEGAL - standalone var
+    var p = curve.degree;          // ❌ ILLEGAL - standalone var
+    var n = size(knots);           // ❌ ILLEGAL - standalone var
+
+    for (var i = 1; i <= p; i += 1)  // ✓ OK - var in loop declaration
+    {
+        abs(knots[i] - knots[0]) < tolerance;
+    }
+}
+```
+**Correct Pattern**:
+```featurescript
+// Convert to function returning boolean
+export function isClamped(curve is BSplineCurve, tolerance is number) returns boolean
+{
+    if (tolerance <= 0)
+        return false;
+
+    var knots = curve.knots;      // ✓ OK in function
+    var p = curve.degree;          // ✓ OK in function
+    var n = size(knots);           // ✓ OK in function
+
+    for (var i = 1; i <= p; i += 1)
+    {
+        if (abs(knots[i] - knots[0]) >= tolerance)
+            return false;
+    }
+    return true;
+}
+// Reference: tools/bspline_data.fs:68-98 (fixed 2026-01-31)
+```
+**Lesson Learned**:
+- **Predicates are for type checking**, not complex validation logic
+- Predicates can only contain: boolean expressions, for-loops (with var in declaration), calls to other predicates
+- For validation with intermediate variables, **use functions returning boolean**
+- Compare to native predicates in `std/math.fs` (lines 57-76) and `std/vector.fs` (lines 62-131) - no standalone vars
+- When converted from predicate to function, change boolean expressions to explicit return statements
+
 ### Template Entry
 **Date**: YYYY-MM-DD
 **Issue**: [Predicate or type error description]
@@ -202,6 +249,55 @@ var mode = FootprintScaleMode.ACCORDION;
 
 ## FeatureScript Syntax
 
+### Always Use Braces for Control Flow Statements
+**Date**: 2026-01-31
+**Issue**: **CRITICAL BUG** - Control flow statements (if, else, for, while) without braces execute only the FIRST statement conditionally. Additional indented statements that appear to be part of the block execute unconditionally, causing severe logic errors.
+**Incorrect Pattern**:
+```featurescript
+// CRITICAL BUG: return executes ALWAYS, not just when converged!
+if (abs(f1) <= tol)
+    println("  CONVERGED at iteration " ~ it);
+    return t1;  // ❌ ALWAYS executes! Not part of if!
+
+// Another example
+for (var i = 0; i < n; i += 1)
+    sum += values[i];
+    count += 1;  // ❌ ALWAYS executes! Loop only includes first line!
+```
+**Correct Pattern**:
+```featurescript
+// Always use braces, even for single statements
+if (abs(f1) <= tol)
+{
+    println("  CONVERGED at iteration " ~ it);
+    return t1;  // ✓ Both statements execute conditionally
+}
+
+// With braces, both statements are in the loop
+for (var i = 0; i < n; i += 1)
+{
+    sum += values[i];
+    count += 1;  // ✓ Both statements in loop
+}
+
+// Even for single statements (recommended style)
+if (x < 0)
+{
+    return false;
+}
+```
+**Lesson Learned**:
+- **ALWAYS use braces `{ }` for all control flow statements**, even single-line statements
+- Without braces, only the FIRST statement is controlled by if/else/for/while
+- Additional indented statements execute unconditionally, causing silent bugs
+- This bug is especially dangerous because:
+  - Code LOOKS correct due to indentation
+  - Compiler doesn't warn
+  - Bug only appears at runtime with subtle logic errors
+- **Mandatory coding standard**: All if/else/for/while must have braces
+- When reviewing code, check every control flow statement for missing braces
+- Real bug example: `fpt_geometry.fs:512-519` - solver always returned on first iteration due to missing braces around `println(); return;` blocks
+
 ### Export Functions by Default
 **Date**: 2026-01-30
 **Issue**: Functions not marked with `export` cannot be used by other files that import them
@@ -255,9 +351,10 @@ export function buildCurveDataArray(bsplines is array) returns array
 
 ## Statistics
 
-- **Total Corrections**: 2
-- **Last Updated**: 2026-01-30
-- **Most Common Category**: Import Issues, FeatureScript Syntax
+- **Total Corrections**: 4
+- **Last Updated**: 2026-01-31
+- **Most Common Category**: FeatureScript Syntax (2), Import Issues (1), Type System (1)
+- **Critical Bugs Found**: 1 (Missing braces in control flow)
 
 ---
 

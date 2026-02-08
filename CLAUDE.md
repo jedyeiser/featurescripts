@@ -14,10 +14,10 @@ Local development environment for Onshape FeatureScript CAD geometry code. Code 
 ## Project Structure
 
 ```
-std/           - Core geometry, math, and utility modules (22 files)
-tools/         - Extracted BSpline utilities (10 files, 67% complete)
-footprint/     - Footprint geometry analysis feature (9 files)
-gordonSurface/ - Gordon surface interpolation feature (8 files)
+std/           - Core geometry, math, and utility modules (33 files)
+tools/         - BSpline & geometry utilities (14 files, production-ready)
+footprint/     - Footprint geometry analysis feature (archived)
+gordonSurface/ - Gordon surface interpolation feature (archived)
 ```
 
 ## Import Pattern
@@ -54,12 +54,25 @@ var result = getBSplineParamRange(myCurve);
 
 ## Quick Reference
 
+### Core Tools (Production Ready)
 | Module | Purpose |
 |--------|---------|
-| `std/math.fs` | Math utilities, predicates, matrices |
-| `std/surfaceGeometry.fs` | Surface creation and manipulation |
-| `std/curveGeometry.fs` | Curve operations |
-| `std/nurbsUtils.fs` | NURBS utilities |
-| `tools/bspline_data.fs` | BSpline analysis (bounds, ranges, knots) |
-| `tools/bspline_knots.fs` | Knot insertion (P&T algorithms) |
-| `tools/frenet.fs` | Frenet frame computation |
+| `tools/bspline_data.fs` | BSpline data extraction, validation, continuity |
+| `tools/bspline_knots.fs` | Knot insertion/removal, degree elevation (P&T) |
+| `tools/curve_operations.fs` | Split, join, extract curves with continuity |
+| `tools/arc_length.fs` | Arc length computation, uniform sampling |
+| `tools/frenet.fs` | Frenet frames, coordinate transformations |
+| `tools/point_projection.fs` | Point-to-curve projection |
+| `tools/solvers.fs` | Root finding (hybrid, Brent, Newton) |
+| `tools/optimization.fs` | Gradient descent, LM, conjugate gradient |
+| `tools/numerical_integration.fs` | Gaussian quadrature, trapz, Simpson |
+
+### Standard Library
+| Module | Purpose |
+|--------|---------|
+| `std/common.fs` | Master import (re-exports ~50 Onshape modules) |
+| `std/evaluate.fs` | ev* functions (evDistance, evCurveTangent, etc.) |
+| `std/query.fs` | q* functions (qEverything, qCreatedBy, etc.) |
+| `std/splineUtils.fs` | approximateSpline, evaluateSpline |
+| `std/transform.fs` | Transform operations |
+| `std/vector.fs`, `std/matrix.fs` | Linear algebra |
