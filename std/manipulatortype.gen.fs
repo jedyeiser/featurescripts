@@ -6,14 +6,29 @@ FeatureScript 2878; /* Automatically generated version */
 /* Automatically generated file -- DO NOT EDIT */
 
 /**
- * Specifies the style of a manipulator intended to look unique.
- * @seealso [addManipulators]
- * @value DEFAULT : the standard display of the manipulator. * @value SECONDARY : the angular or linear manipulator has two arrow heads. * @value SIMPLE : the display of the angular or linear manipulator is simpler. * @value TANGENTIAL : the linear manipulator has two smaller arrows around a circular base. */
-export enum ManipulatorStyleEnum
+ * Specifies a specific type of interactive manipulator.
+ *
+ * @value LINEAR_1D    : A single arrow which can move along a single axis. See
+ *         `extrude` for an example.
+ * @value LINEAR_3D    : A triad of perpendicular arrows which specify a 3D
+ *         position. See `transformCopy` for an example.
+ * @value ANGULAR      : A curved arrow, with two radii, which can move along a
+ *         circumference to specify an angle. See `revolve` for an example.
+ * @value FLIP         : A static arrow which can be clicked to toggle a flip
+ *         direction. See `extrude` (with BoundingType.THROUGH_ALL) for an
+ *         example.
+ * @value POINTS       : A series of points which can be selected one at a time.
+ * @value TOGGLE_POINTS : A series of points which can each be selected individually.
+ * @value TRIAD_FULL: A triad of perpendicular arrows, planar and angular manipulators.
+ */
+export enum ManipulatorType
 {
-    DEFAULT,
-    SECONDARY,
-    SIMPLE,
-    TANGENTIAL
+    LINEAR_1D,
+    LINEAR_3D,
+    ANGULAR,
+    FLIP,
+    POINTS,
+    TOGGLE_POINTS,
+    TRIAD_FULL
 }
 

@@ -612,7 +612,11 @@ def cmd_reference(args: argparse.Namespace) -> int:
         if args.name:
             # Update single reference
             try:
-                success = ref_manager.update_single_reference(args.name, force=args.force)
+                success = ref_manager.update_single_reference(
+                    args.name,
+                    force=args.force,
+                    check_only=args.check
+                )
                 return 0 if success else 1
             except Exception as e:
                 console.print(f"[red]Error: {e}")

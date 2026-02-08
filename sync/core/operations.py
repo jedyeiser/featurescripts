@@ -543,6 +543,16 @@ class SyncOperations:
         """
         relative_path = str(filepath.relative_to(self.base_dir))
 
+        # Handle dry-run early - no API calls needed
+        if dry_run:
+            return SyncResult(
+                success=True,
+                filepath=relative_path,
+                operation="push",
+                message=f"[DRY RUN] Would push {filepath.name}",
+                skipped=True,
+            )
+
         try:
             # Get current remote microversion for conflict check
             remote_microversion = self.client.get_document_microversion(
@@ -564,15 +574,6 @@ class SyncOperations:
 
             # Read file with UTF-8 encoding (FeatureScript may contain unicode)
             local_content = filepath.read_text(encoding="utf-8")
-
-            if dry_run:
-                return SyncResult(
-                    success=True,
-                    filepath=relative_path,
-                    operation="push",
-                    message=f"[DRY RUN] Would push {filepath.name}",
-                    skipped=True,
-                )
 
             # Push to Onshape
             response = self.client.update_featurestudio_contents(
@@ -631,6 +632,23 @@ class SyncOperations:
                 workspace_id=doc_config.workspace_id,
                 element_type="FEATURESTUDIO",
             )
+
+            if dry_run:
+                # Dry run mode - show what would be pulled without making changes
+                for element in elements:
+                    element_name = element.get("name", "unnamed")
+                    filename = element_name if element_name.endswith(".fs") else f"{element_name}.fs"
+                    results.append(SyncResult(
+                        success=True,
+                        filepath=f"{doc_config.local_path}/{filename}",
+                        operation="pull",
+                        message=f"[DRY RUN] Would pull {filename}",
+                        skipped=True,
+                    ))
+                return results
+
+            # Create local directory if it doesn't exist (only when not dry-run)
+            local_dir.mkdir(parents=True, exist_ok=True)
 
             for element in elements:
                 element_id = element.get("id", "")

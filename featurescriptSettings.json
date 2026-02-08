@@ -6,19 +6,6 @@
   },
   "references": [
     {
-      "name": "EOC Featurescripts",
-      "type": "folder",
-      "url": "https://k2-sports.onshape.com/documents/folder/fe3ff54b1d12a3a8491215c6",
-      "local_path": "./onshape",
-      "read_only": true,
-      "auto_update": false,
-      "recursive": true,
-      "last_sync": null,
-      "document_id": null,
-      "workspace_id": null,
-      "folder_id": "fe3ff54b1d12a3a8491215c6"
-    },
-    {
       "name": "Onshape Standard Library",
       "type": "document",
       "url": "https://k2-sports.onshape.com/documents/03649da4cf2afc2773f3605e/w/dee24c5ad9eb366e42fca299",
@@ -30,8 +17,50 @@
       "document_id": "03649da4cf2afc2773f3605e",
       "workspace_id": "dee24c5ad9eb366e42fca299",
       "folder_id": null
+    },
+    {
+      "name": "internal tools document",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/b1e8bfe71f67389ca210ed8b/w/ebfba030030958df8387c848/e/ef834eed6e0d2df2b34c10eb",
+      "local_path": "./tools",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-08T06:24:49.435140+00:00",
+      "document_id": "b1e8bfe71f67389ca210ed8b",
+      "workspace_id": "ebfba030030958df8387c848",
+      "folder_id": null
     }
   ],
-  "projects": [],
+  "projects": [
+    {
+      "name": "footprint",
+      "description": "Automatic ski/snoboard footprint creation, scaling and analysis",
+      "working_directory": "./footprint",
+      "onshape_url": "https://k2-sports.onshape.com/documents/52724f3a857fa52d3ecceb77/w/a013b85fd726af3c2bdaca71/e/71d853c0fd2f10ca3bb20a4b",
+      "references": [
+        "Onshape Standard Library",
+        "internal tools document"
+      ],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "52724f3a857fa52d3ecceb77",
+      "workspace_id": "a013b85fd726af3c2bdaca71"
+    },
+    {
+      "name": "crossSection",
+      "description": "Ski cross section and stiffness analysis",
+      "working_directory": "./crossSection",
+      "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/7c04417f4d97c8038ba7a43f/e/3cb3cff6974529bf6bed096b",
+      "references": [
+        "Onshape Standard Library",
+        "internal tools document"
+      ],
+      "last_pull": "2026-02-08T06:37:13.708388+00:00",
+      "last_push": null,
+      "document_id": "f8deedeb1fbd819a8fa20113",
+      "workspace_id": "7c04417f4d97c8038ba7a43f"
+    }
+  ],
   "sync_metadata": {}
 }

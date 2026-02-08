@@ -150,12 +150,14 @@ class ReferenceManager:
         self,
         name: str,
         force: bool = False,
+        check_only: bool = False,
     ) -> bool:
         """Update a specific reference by name.
 
         Args:
             name: Reference name
             force: Force update regardless of change detection
+            check_only: Only check for updates, don't download
 
         Returns:
             True if successful
@@ -167,7 +169,7 @@ class ReferenceManager:
         if not ref:
             raise ValueError(f"Reference not found: {name}")
 
-        return self._update_reference(ref, force=force)
+        return self._update_reference(ref, force=force, check_only=check_only)
 
     def _update_reference(
         self,

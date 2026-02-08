@@ -20,7 +20,8 @@
       "Bash(pip install:*)",
       "Bash(python:*)",
       "Bash(del:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
