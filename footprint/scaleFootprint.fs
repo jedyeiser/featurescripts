@@ -1374,40 +1374,76 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
 {
     var refLength = abs(refAcpX - refFcpX);
     var newLength = abs(newAcpX - newFcpX);
-    
-    // Sample curvature from reference
-    var numSamples = 100;
-    var refXSamples = [];
-    var kSamples = [];
-    
-    for (var i = 0; i < numSamples; i += 1)
+    var xScale = newLength / refLength;
+
+    // Build curve data for X bounds
+    var refCurveData = refAnalysis.curveData;
+
+    // Sample curvature per input curve (preserving boundaries)
+    var allRefXSamples = [];
+    var allKSamples = [];
+    var curveSegmentInfo = [];  // Track segment boundaries for output
+
+    for (var curveIdx = 0; curveIdx < size(refCurveData); curveIdx += 1)
     {
-        var t = i / (numSamples - 1);
-        var x = refFcpX + t * (refAcpX - refFcpX);
-        refXSamples = append(refXSamples, x);
-        
-        var k = getCurvatureAtX(refAnalysis.curveData, x, tolerance);
-        kSamples = append(kSamples, k);
+        var cd = refCurveData[curveIdx];
+        var refXMin = cd.xMin;
+        var refXMax = cd.xMax;
+
+        // Skip curves outside sidecut region
+        if (refXMax < min([refFcpX, refAcpX]) || refXMin > max([refFcpX, refAcpX]))
+            continue;
+
+        // Clamp to sidecut bounds
+        refXMin = max([refXMin, min([refFcpX, refAcpX])]);
+        refXMax = min([refXMax, max([refFcpX, refAcpX])]);
+
+        // Determine sample count proportional to curve's X extent
+        var curveExtent = abs(refXMax - refXMin);
+        var numSamplesForCurve = max([10, round(curveExtent / refLength * 100)]);
+
+        var segmentStartIdx = size(allRefXSamples);
+
+        // Sample this curve
+        for (var i = 0; i < numSamplesForCurve; i += 1)
+        {
+            var t = i / (numSamplesForCurve - 1);
+            var x = refXMin + t * (refXMax - refXMin);
+            allRefXSamples = append(allRefXSamples, x);
+
+            var k = getCurvatureAtX(refCurveData, x, tolerance);
+            allKSamples = append(allKSamples, k);
+        }
+
+        var segmentEndIdx = size(allRefXSamples) - 1;
+
+        // Store segment info for later curve building
+        curveSegmentInfo = append(curveSegmentInfo, {
+            "startIdx" : segmentStartIdx,
+            "endIdx" : segmentEndIdx,
+            "refXMin" : refXMin,
+            "refXMax" : refXMax
+        });
     }
-    
+
     // Scale curvature: k_new = k_ref * (R_ref / R_target)
     var radiusScale = refAnalysis.avgRadius / targetRadius;
-    
-    println("  Scale radius: refAvgRadius=" ~ toString(refAnalysis.avgRadius) ~ 
+
+    println("  Scale radius: refAvgRadius=" ~ toString(refAnalysis.avgRadius) ~
             ", targetRadius=" ~ toString(targetRadius) ~ ", scale=" ~ toString(radiusScale));
-    
+
     var scaledK = [];
-    for (var k in kSamples)
+    for (var k in allKSamples)
     {
         scaledK = append(scaledK, k * radiusScale);
     }
-    
+
     // Map X to new RSL length
     var newXSamples = [];
-    for (var i = 0; i < numSamples; i += 1)
+    for (var refX in allRefXSamples)
     {
-        var t = i / (numSamples - 1);
-        var newX = newFcpX + t * (newAcpX - newFcpX);
+        var relativeX = refX - refFcpX;
+        var newX = newFcpX + relativeX * xScale;
         newXSamples = append(newXSamples, newX);
     }
     
@@ -1471,34 +1507,45 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
     
     println("  Waist before shift: " ~ toString(minY) ~ ", y0=" ~ toString(y0));
     
-    // Apply y0 shift and build 3D points
-    var newPoints = [];
+    // Apply y0 shift to all points
     var finalY = [];
-    for (var i = 0; i < size(newXSamples); i += 1)
+    for (var i = 0; i < size(yFinal); i += 1)
     {
-        var yVal = yFinal[i] + y0;
-        finalY = append(finalY, yVal);
-        newPoints = append(newPoints, vector(newXSamples[i], yVal, 0 * millimeter));
+        finalY = append(finalY, yFinal[i] + y0);
     }
-    
-    // Phase 0c: Use approximateSpline for a proper BSpline fit,
-    // not raw sampled points as control points (which creates an
-    // interpolating spline, not a least-squares approximation).
-    var newCurve = approximateSpline(context, {
-        "degree" : 3,
-        "tolerance" : 0.001 * millimeter,
-        "maxControlPoints" : 30,
-        "targets" : [approximationTarget({ "positions" : newPoints })],
-        "interpolateIndices" : [0, size(newPoints) - 1]
-    })[0];
-    
+
+    // Build one curve per segment (preserving input curve boundaries)
+    var outputCurves = [];
+    for (var segmentInfo in curveSegmentInfo)
+    {
+        var segmentPoints = [];
+        for (var i = segmentInfo.startIdx; i <= segmentInfo.endIdx; i += 1)
+        {
+            segmentPoints = append(segmentPoints,
+                vector(newXSamples[i], finalY[i], 0 * millimeter));
+        }
+
+        // Phase 0c: Use approximateSpline for a proper BSpline fit,
+        // not raw sampled points as control points (which creates an
+        // interpolating spline, not a least-squares approximation).
+        var segmentCurve = approximateSpline(context, {
+            "degree" : 3,
+            "tolerance" : 0.001 * millimeter,
+            "maxControlPoints" : 30,
+            "targets" : [approximationTarget({ "positions" : segmentPoints })],
+            "interpolateIndices" : [0, size(segmentPoints) - 1]
+        })[0];
+
+        outputCurves = append(outputCurves, segmentCurve);
+    }
+
     // Get final widths (ValueWithUnits from evalY + y0 shift)
     var finalFcpWidth = finalY[0];
     var finalAcpWidth = finalY[size(finalY) - 1];
     var finalWaistWidth = minY + y0;
-    
+
     return {
-        "curves" : [newCurve],
+        "curves" : outputCurves,
         "fcpWidth" : finalFcpWidth,
         "acpWidth" : finalAcpWidth,
         "waistWidth" : finalWaistWidth
