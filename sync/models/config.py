@@ -303,3 +303,55 @@ class CacheManifest:
     def update_timestamp(self) -> None:
         """Update the last_updated timestamp to now."""
         self.last_updated = datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility utilities
+# ---------------------------------------------------------------------------
+
+def migrate_config_to_project_settings(config: SyncConfig, output_path: Path) -> None:
+    """Migrate old config.yaml to new featurescriptSettings.json format.
+
+    Args:
+        config: Loaded SyncConfig from config.yaml
+        output_path: Path to save featurescriptSettings.json
+    """
+    from .project_config import FeatureScriptSettings, ReferenceConfig, ProjectConfig, OnshapeConfig
+
+    settings = FeatureScriptSettings(
+        version="1.0",
+        onshape=OnshapeConfig(
+            base_url=config.base_url,
+            api_version="v10",
+        ),
+        references=[],
+        projects=[],
+    )
+
+    # Migrate folders to references (treat as read-only by default)
+    for folder in config.folders:
+        ref = ReferenceConfig(
+            name=folder.name,
+            type="folder",
+            url=f"{config.base_url}/documents/folder/{folder.folder_id}",
+            local_path=folder.local_path,
+            folder_id=folder.folder_id,
+            recursive=folder.recursive,
+            read_only=True,
+            auto_update=False,
+        )
+        settings.add_reference(ref)
+
+    # Migrate documents to projects (treat as working directories)
+    for doc in config.documents:
+        proj = ProjectConfig(
+            name=doc.name,
+            description=f"Migrated from config.yaml",
+            working_directory=doc.local_path,
+            onshape_url=f"{config.base_url}/documents/d/{doc.document_id}/w/{doc.workspace_id}",
+            document_id=doc.document_id,
+            workspace_id=doc.workspace_id,
+        )
+        settings.add_project(proj)
+
+    settings.save(output_path)

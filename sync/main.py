@@ -12,7 +12,11 @@ from rich.tree import Tree
 from .core.cache import CacheManager
 from .core.client import OnshapeClient, OnshapeAPIError
 from .core.operations import SyncOperations
-from .models.config import SyncConfig, FolderConfig
+from .core.inspector import see_response, compare_responses, inspect_document, inspect_folder, inspect_element
+from .core.references import ReferenceManager
+from .core.working import WorkingDirectoryManager
+from .models.config import SyncConfig, FolderConfig, migrate_config_to_project_settings
+from .models.project_config import FeatureScriptSettings
 
 console = Console()
 
@@ -316,6 +320,323 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Inspect API responses (debug tool)."""
+    import json
+
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    # Parse parameters if provided
+    params = None
+    if hasattr(args, "params") and args.params:
+        try:
+            params = json.loads(args.params)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON in --params: {e}")
+            return 1
+
+    # Handle different inspect subcommands
+    if args.inspect_command == "endpoint":
+        try:
+            see_response(
+                endpoint=args.endpoint,
+                method=args.method,
+                params=params,
+                save_to=args.save,
+                client=client,
+            )
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.inspect_command == "compare":
+        try:
+            compare_responses(args.file1, args.file2)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.inspect_command == "document":
+        try:
+            inspect_document(args.doc_id, args.ws_id, client)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.inspect_command == "folder":
+        try:
+            inspect_folder(args.folder_id, client)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.inspect_command == "element":
+        try:
+            inspect_element(args.doc_id, args.ws_id, args.elem_id, client)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    return 1
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    """Migrate config.yaml to featurescriptSettings.json."""
+    base_dir = get_base_dir()
+    config_path = base_dir / "sync" / "config.yaml"
+    settings_path = base_dir / "featurescriptSettings.json"
+
+    if not config_path.exists():
+        console.print(f"[red]Config not found: {config_path}")
+        return 1
+
+    if settings_path.exists() and not args.force:
+        console.print(f"[yellow]featurescriptSettings.json already exists!")
+        console.print("Use --force to overwrite")
+        return 1
+
+    try:
+        config = SyncConfig.load(config_path)
+        migrate_config_to_project_settings(config, settings_path)
+        console.print(f"[green]Migration successful!")
+        console.print(f"Settings saved to: {settings_path}")
+        return 0
+    except Exception as e:
+        console.print(f"[red]Migration failed: {e}")
+        return 1
+
+
+def cmd_project(args: argparse.Namespace) -> int:
+    """Manage working projects (bidirectional sync)."""
+    base_dir = get_base_dir()
+    settings_path = base_dir / "featurescriptSettings.json"
+
+    # Load or create settings
+    settings = FeatureScriptSettings.load(settings_path)
+
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    work_manager = WorkingDirectoryManager(settings, settings_path, base_dir, client)
+
+    # Handle different project subcommands
+    if args.project_command == "add":
+        try:
+            refs = args.references.split(",") if args.references else []
+            work_manager.add_project(
+                url=args.url,
+                name=args.name,
+                description=args.description or "",
+                local_path=args.path,
+                references=refs,
+            )
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.project_command == "list":
+        projects = work_manager.list_projects()
+        if not projects:
+            console.print("[yellow]No projects configured")
+            return 0
+
+        table = Table(title="Projects")
+        table.add_column("Name", style="cyan")
+        table.add_column("Description", style="blue")
+        table.add_column("Working Directory", style="green")
+        table.add_column("Last Pull")
+        table.add_column("Last Push")
+
+        for proj in projects:
+            last_pull = proj["last_pull"][:19] if proj["last_pull"] else "[dim]Never"
+            last_push = proj["last_push"][:19] if proj["last_push"] else "[dim]Never"
+            table.add_row(
+                proj["name"],
+                proj["description"][:50] + "..." if len(proj["description"]) > 50 else proj["description"],
+                proj["working_directory"],
+                last_pull,
+                last_push,
+            )
+
+        console.print(table)
+        return 0
+
+    elif args.project_command == "status":
+        try:
+            work_manager.get_status(args.name)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.project_command == "remove":
+        try:
+            work_manager.remove_project(args.name, delete_files=args.delete_files)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    return 1
+
+
+def cmd_get(args: argparse.Namespace) -> int:
+    """Pull a working project from Onshape."""
+    base_dir = get_base_dir()
+    settings_path = base_dir / "featurescriptSettings.json"
+
+    # Load settings
+    settings = FeatureScriptSettings.load(settings_path)
+
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    work_manager = WorkingDirectoryManager(settings, settings_path, base_dir, client)
+
+    try:
+        result = work_manager.get_working_directory(
+            project_name=args.project_name,
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+        return 0 if result["success"] else 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}")
+        return 1
+
+
+def cmd_push_new(args: argparse.Namespace) -> int:
+    """Push a working project to Onshape."""
+    base_dir = get_base_dir()
+    settings_path = base_dir / "featurescriptSettings.json"
+
+    # Load settings
+    settings = FeatureScriptSettings.load(settings_path)
+
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    work_manager = WorkingDirectoryManager(settings, settings_path, base_dir, client)
+
+    try:
+        result = work_manager.push_working_directory(
+            project_name=args.project_name,
+            files=args.files if hasattr(args, "files") else None,
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+        return 0 if result["success"] else 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}")
+        return 1
+
+
+def cmd_reference(args: argparse.Namespace) -> int:
+    """Manage references (read-only libraries from Onshape)."""
+    base_dir = get_base_dir()
+    settings_path = base_dir / "featurescriptSettings.json"
+
+    # Load or create settings
+    settings = FeatureScriptSettings.load(settings_path)
+
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    ref_manager = ReferenceManager(settings, settings_path, base_dir, client)
+
+    # Handle different reference subcommands
+    if args.reference_command == "add":
+        try:
+            ref_manager.add_reference(
+                url=args.url,
+                name=args.name,
+                local_path=args.path,
+                auto_update=args.auto_update,
+                recursive=not args.no_recursive,
+            )
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    elif args.reference_command == "list":
+        references = ref_manager.list_references()
+        if not references:
+            console.print("[yellow]No references configured")
+            return 0
+
+        table = Table(title="References")
+        table.add_column("Name", style="cyan")
+        table.add_column("Type", style="blue")
+        table.add_column("Local Path", style="green")
+        table.add_column("Auto Update", style="yellow")
+        table.add_column("Last Sync")
+
+        for ref in references:
+            auto_update = "[green]Yes" if ref["auto_update"] else "[dim]No"
+            last_sync = ref["last_sync"][:19] if ref["last_sync"] else "[dim]Never"
+            table.add_row(
+                ref["name"],
+                ref["type"],
+                ref["local_path"],
+                auto_update,
+                last_sync,
+            )
+
+        console.print(table)
+        return 0
+
+    elif args.reference_command == "update":
+        if args.name:
+            # Update single reference
+            try:
+                success = ref_manager.update_single_reference(args.name, force=args.force)
+                return 0 if success else 1
+            except Exception as e:
+                console.print(f"[red]Error: {e}")
+                return 1
+        else:
+            # Update all references
+            results = ref_manager.update_references(force=args.force, check_only=args.check)
+            success_count = sum(1 for s in results.values() if s)
+            failed_count = len(results) - success_count
+
+            console.print(f"\n[bold]Summary:[/bold] {success_count} successful, {failed_count} failed")
+            return 0 if failed_count == 0 else 1
+
+    elif args.reference_command == "remove":
+        try:
+            ref_manager.remove_reference(args.name, delete_files=args.delete_files)
+            return 0
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            return 1
+
+    return 1
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -359,6 +680,104 @@ def main() -> int:
     # status command
     subparsers.add_parser("status", help="Show sync status")
 
+    # inspect command
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect API responses (debug tool)")
+    inspect_subparsers = inspect_parser.add_subparsers(dest="inspect_command")
+
+    # inspect endpoint
+    inspect_endpoint = inspect_subparsers.add_parser("endpoint", help="Inspect arbitrary endpoint")
+    inspect_endpoint.add_argument("endpoint", help="API endpoint (e.g., /api/v10/users/sessioninfo)")
+    inspect_endpoint.add_argument("--method", default="GET", help="HTTP method (default: GET)")
+    inspect_endpoint.add_argument("--params", help="JSON parameters")
+    inspect_endpoint.add_argument("--save", help="Save response to file")
+
+    # inspect compare
+    inspect_compare = inspect_subparsers.add_parser("compare", help="Compare two saved responses")
+    inspect_compare.add_argument("file1", help="First response file")
+    inspect_compare.add_argument("file2", help="Second response file")
+
+    # inspect document
+    inspect_doc = inspect_subparsers.add_parser("document", help="Inspect document metadata")
+    inspect_doc.add_argument("doc_id", help="Document ID")
+    inspect_doc.add_argument("--ws-id", help="Workspace ID")
+
+    # inspect folder
+    inspect_folder_cmd = inspect_subparsers.add_parser("folder", help="Inspect folder contents")
+    inspect_folder_cmd.add_argument("folder_id", help="Folder ID")
+
+    # inspect element
+    inspect_elem = inspect_subparsers.add_parser("element", help="Inspect Feature Studio element")
+    inspect_elem.add_argument("doc_id", help="Document ID")
+    inspect_elem.add_argument("ws_id", help="Workspace ID")
+    inspect_elem.add_argument("elem_id", help="Element ID")
+
+    # migrate command
+    migrate_parser = subparsers.add_parser("migrate", help="Migrate config.yaml to featurescriptSettings.json")
+    migrate_parser.add_argument("--force", action="store_true", help="Overwrite existing settings file")
+
+    # project commands
+    project_parser = subparsers.add_parser("project", help="Manage working projects (bidirectional)")
+    project_subparsers = project_parser.add_subparsers(dest="project_command")
+
+    # project add
+    project_add = project_subparsers.add_parser("add", help="Add a new working project")
+    project_add.add_argument("url", help="Onshape URL (document or folder)")
+    project_add.add_argument("name", help="Human-readable name for the project")
+    project_add.add_argument("--description", help="Project description")
+    project_add.add_argument("--path", help="Local path (default: ./projects/{name})")
+    project_add.add_argument("--references", help="Comma-separated list of reference names")
+
+    # project list
+    project_subparsers.add_parser("list", help="List all configured projects")
+
+    # project status
+    project_status = project_subparsers.add_parser("status", help="Show project sync status")
+    project_status.add_argument("name", help="Project name")
+
+    # project remove
+    project_remove = project_subparsers.add_parser("remove", help="Remove a project")
+    project_remove.add_argument("name", help="Project name")
+    project_remove.add_argument("--delete-files", action="store_true", help="Also delete local files")
+
+    # get command (pull working project)
+    get_parser = subparsers.add_parser("get", help="Pull a working project from Onshape")
+    get_parser.add_argument("project_name", help="Project name")
+    get_parser.add_argument("--force", action="store_true", help="Overwrite local changes")
+    get_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
+
+    # push command (new style for working projects)
+    push_new_parser = subparsers.add_parser("pushproject", help="Push a working project to Onshape")
+    push_new_parser.add_argument("project_name", help="Project name")
+    push_new_parser.add_argument("--files", nargs="+", help="Specific files to push")
+    push_new_parser.add_argument("--force", action="store_true", help="Overwrite remote changes")
+    push_new_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
+
+    # reference commands
+    reference_parser = subparsers.add_parser("reference", help="Manage reference libraries (read-only)")
+    reference_subparsers = reference_parser.add_subparsers(dest="reference_command")
+
+    # reference add
+    reference_add = reference_subparsers.add_parser("add", help="Add a new reference library")
+    reference_add.add_argument("url", help="Onshape URL (document or folder)")
+    reference_add.add_argument("name", help="Human-readable name for the reference")
+    reference_add.add_argument("--path", help="Local path (default: ./references/{name})")
+    reference_add.add_argument("--auto-update", action="store_true", help="Enable automatic updates")
+    reference_add.add_argument("--no-recursive", action="store_true", help="Don't sync subfolders")
+
+    # reference list
+    reference_subparsers.add_parser("list", help="List all configured references")
+
+    # reference update
+    reference_update = reference_subparsers.add_parser("update", help="Update references from Onshape")
+    reference_update.add_argument("name", nargs="?", help="Specific reference to update")
+    reference_update.add_argument("--force", action="store_true", help="Force update even if auto_update=false")
+    reference_update.add_argument("--check", action="store_true", help="Only check for updates, don't download")
+
+    # reference remove
+    reference_remove = reference_subparsers.add_parser("remove", help="Remove a reference")
+    reference_remove.add_argument("name", help="Reference name")
+    reference_remove.add_argument("--delete-files", action="store_true", help="Also delete local files")
+
     args = parser.parse_args()
 
     if args.command == "verify-auth":
@@ -381,6 +800,30 @@ def main() -> int:
         return cmd_push(args)
     elif args.command == "status":
         return cmd_status(args)
+    elif args.command == "inspect":
+        if args.inspect_command:
+            return cmd_inspect(args)
+        else:
+            inspect_parser.print_help()
+            return 1
+    elif args.command == "migrate":
+        return cmd_migrate(args)
+    elif args.command == "project":
+        if args.project_command:
+            return cmd_project(args)
+        else:
+            project_parser.print_help()
+            return 1
+    elif args.command == "get":
+        return cmd_get(args)
+    elif args.command == "pushproject":
+        return cmd_push_new(args)
+    elif args.command == "reference":
+        if args.reference_command:
+            return cmd_reference(args)
+        else:
+            reference_parser.print_help()
+            return 1
     else:
         parser.print_help()
         return 1
