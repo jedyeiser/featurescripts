@@ -108,7 +108,12 @@ export function extractCrossSectionGeometry(context is Context, id is Id,
     }
 
     // -----------------------------------------------------------------
-    // Step 3: Adjacent bodies (stub -- populated during Phase 2 dedup)
+    // Step 3: Close intersection loops with gap filling
+    // -----------------------------------------------------------------
+    crossSections = closeIntersectionLoops(context, crossSections, frames, 0.05 * millimeter);
+
+    // -----------------------------------------------------------------
+    // Step 4: Adjacent bodies (stub -- populated during Phase 2 dedup)
     //
     // The adjacentBodies field exists in bodyData so the data structure
     // is ready for dedup. The actual computation is deferred because:
