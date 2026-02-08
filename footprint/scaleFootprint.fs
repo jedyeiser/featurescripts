@@ -6,6 +6,9 @@ import(path : "onshape/std/common.fs", version : "2856.0");
 export import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/280a24d76f52bdbf44cd941d", version : "8adbd2a2364f067a7e4b775f");
 import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
 
+// Import solvers (for solveRootHybrid)
+import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
+
 // Import geometry utilities
 export import(path : "67c190b80e8b74dcee72e7ff", version : "796d200b9768c45070a7cfef");
 export import(path : "71d853c0fd2f10ca3bb20a4b", version : "3e7099b547a620132566f0fe");
@@ -1416,6 +1419,143 @@ function buildSingleCurveFromPoints(context is Context, xSamples is array,
 }
 
 /**
+ * Find inflection point (curvature sign change) in a temporary BSpline curve.
+ * Searches from xStart toward the waist (center).
+ *
+ * @param curve : BSplineCurve - The curve to search
+ * @param xStart : ValueWithUnits - Starting X position (FCP or ACP)
+ * @param searchInward : boolean - True to search toward waist (smaller |X|)
+ * @returns map - {found, x, y, param} or {found: false}
+ */
+function findInflectionInTempCurve(curve is BSplineCurve, xStart is ValueWithUnits,
+    searchInward is boolean) returns map
+{
+    var numSamples = 50;
+    var range = getBSplineParamRange(curve);
+    var uMin = range.uMin;
+    var uMax = range.uMax;
+
+    // Sample the curve with curvature
+    var samples = [];
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var u = uMin + (uMax - uMin) * i / (numSamples - 1);
+        var curv = getBSplineCurvatureAtParam(curve, u);
+
+        samples = append(samples, {
+            "u" : u,
+            "x" : curv.point[0],
+            "y" : curv.point[1],
+            "curvatureSigned" : curv.curvatureSigned,
+            "sign" : safeSign(curv.curvatureSigned * meter, 1e-12)
+        });
+    }
+
+    // Determine search direction
+    var searchDir = searchInward ? ((xStart > 0 * meter) ? -1 : 1) : ((xStart > 0 * meter) ? 1 : -1);
+
+    // Sort samples in search direction
+    samples = sort(samples, function(a, b)
+    {
+        if (searchDir > 0)
+            return a.x - b.x;  // Increasing X
+        else
+            return b.x - a.x;  // Decreasing X
+    });
+
+    // Find first sample at or past xStart
+    var startIdx = 0;
+    for (var i = 0; i < size(samples); i += 1)
+    {
+        if (searchDir > 0 && samples[i].x >= xStart)
+        {
+            startIdx = i;
+            break;
+        }
+        else if (searchDir < 0 && samples[i].x <= xStart)
+        {
+            startIdx = i;
+            break;
+        }
+    }
+
+    // Search for sign change
+    for (var i = startIdx; i < size(samples) - 1; i += 1)
+    {
+        var s1 = samples[i];
+        var s2 = samples[i + 1];
+
+        if (s1.sign != 0 && s2.sign != 0 && s1.sign != s2.sign)
+        {
+            // Found inflection! Refine with solver
+            var uLo = min([s1.u, s2.u]);
+            var uHi = max([s1.u, s2.u]);
+
+            var f = function(u)
+            {
+                var curv = getBSplineCurvatureAtParam(curve, u);
+                return curv.curvatureSigned * meter;
+            };
+
+            var result = solveRootHybrid(f, uLo, uHi, 1e-9, 20);
+            var finalU = result.u;
+            var finalCurv = getBSplineCurvatureAtParam(curve, finalU);
+
+            return {
+                "found" : true,
+                "x" : finalCurv.point[0],
+                "y" : finalCurv.point[1],
+                "param" : finalU
+            };
+        }
+    }
+
+    return { "found" : false };
+}
+
+/**
+ * Evaluate average radius between two X positions on a BSpline curve.
+ * Uses the same method as analyzeFootprint's computeAverageRadius().
+ *
+ * @param curve : BSplineCurve - The curve to evaluate
+ * @param xMin, xMax : ValueWithUnits - X bounds for evaluation
+ * @returns ValueWithUnits - Average radius (inf if no curvature found)
+ */
+function evaluateRadiusBetweenInflections(curve is BSplineCurve,
+    xMin is ValueWithUnits, xMax is ValueWithUnits) returns ValueWithUnits
+{
+    var numSamples = 50;
+    var range = getBSplineParamRange(curve);
+    var uMin = range.uMin;
+    var uMax = range.uMax;
+
+    var radiusSum = 0 * meter;
+    var count = 0;
+
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var u = uMin + (uMax - uMin) * i / (numSamples - 1);
+        var curv = getBSplineCurvatureAtParam(curve, u);
+
+        // Check if point is within X bounds
+        if (curv.point[0] < xMin || curv.point[0] > xMax)
+            continue;
+
+        // Only accumulate non-zero curvature
+        if (curv.curvatureMag > 1e-9 / meter)
+        {
+            radiusSum += 1 / curv.curvatureMag;
+            count += 1;
+        }
+    }
+
+    if (count == 0)
+        return inf * meter;  // No curvature found
+
+    return radiusSum / count;
+}
+
+/**
  * Find the index in xSamples closest to targetX.
  */
 function findClosestIndex(xSamples is array, targetX is ValueWithUnits) returns number
@@ -1594,11 +1734,20 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         // Build temporary curve for radius evaluation
         var tempCurve = buildSingleCurveFromPoints(context, newXSamples, finalY);
 
-        // EVALUATE ACTUAL RADIUS
-        var actualRadius = evaluateCurveRadius(tempCurve,
-            min([newFcpX, newAcpX]), max([newFcpX, newAcpX]));
+        // Find inflection points (search inward from FCP and ACP toward waist)
+        var fbInflection = findInflectionInTempCurve(tempCurve, newFcpX, true);
+        var abInflection = findInflectionInTempCurve(tempCurve, newAcpX, true);
 
-        println("  Actual radius: " ~ toString(actualRadius));
+        // Determine evaluation bounds (between inflections if found, else full sidecut)
+        var evalXMin = fbInflection.found ? fbInflection.x : newFcpX;
+        var evalXMax = abInflection.found ? abInflection.x : newAcpX;
+
+        // EVALUATE ACTUAL RADIUS between inflection points (like analyzeFootprint)
+        var actualRadius = evaluateRadiusBetweenInflections(tempCurve, evalXMin, evalXMax);
+
+        println("  FB inflection: " ~ (fbInflection.found ? ("X=" ~ toString(fbInflection.x)) : "not found"));
+        println("  AB inflection: " ~ (abInflection.found ? ("X=" ~ toString(abInflection.x)) : "not found"));
+        println("  Actual radius: " ~ toString(actualRadius) ~ " (between X=" ~ toString(evalXMin) ~ " to " ~ toString(evalXMax) ~ ")");
         println("  Target radius: " ~ toString(targetRadius));
 
         // Check for invalid radius (straight line or evaluation failure)
@@ -1630,92 +1779,25 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         println("  WARNING: Did not converge after " ~ maxIterations ~ " iterations");
     }
 
-    // Diagnostics: log expected curve count
-    println("  Splitting at " ~ size(curveBoundaries) ~ " boundaries");
-    println("  Expected " ~ (size(curveBoundaries) + 1) ~ " output curves");
-
-    // SPLIT converged geometry at original curve boundaries
-    var outputCurves = [];
-    var segmentStartIdx = 0;
-
-    for (var boundaryIdx = 0; boundaryIdx < size(curveBoundaries); boundaryIdx += 1)
+    // BUILD SINGLE COHERENT SIDECUT CURVE from converged samples
+    var outputPoints = [];
+    for (var i = 0; i < size(newXSamples); i += 1)
     {
-        var boundaryX = curveBoundaries[boundaryIdx];
-
-        // Map boundary to new coordinate system
-        var newBoundaryX = newFcpX + (boundaryX - refFcpX) * xScale;
-        var splitIdx = findClosestIndex(newXSamples, newBoundaryX);
-
-        // Build segment from start to split point
-        var segmentPoints = [];
-        for (var i = segmentStartIdx; i <= splitIdx; i += 1)
-        {
-            segmentPoints = append(segmentPoints,
-                vector(newXSamples[i], finalY[i], 0 * millimeter));
-        }
-
-        // Diagnostics: log segment info
-        println("  Boundary " ~ boundaryIdx ~ ": X=" ~ toString(boundaryX) ~
-                ", splitIdx=" ~ splitIdx ~ ", points=" ~ size(segmentPoints));
-
-        // Only create curve if segment has at least 2 points
-        if (size(segmentPoints) >= 2)
-        {
-            var segmentCurve = approximateSpline(context, {
-                "degree" : 3,
-                "tolerance" : 0.001 * millimeter,
-                "maxControlPoints" : 30,
-                "targets" : [approximationTarget({ "positions" : segmentPoints })],
-                "interpolateIndices" : [0, size(segmentPoints) - 1]
-            })[0];
-
-            outputCurves = append(outputCurves, segmentCurve);
-        }
-        else
-        {
-            println("  WARNING: Segment " ~ boundaryIdx ~ " only has " ~
-                    size(segmentPoints) ~ " points, skipping");
-        }
-
-        // Start next segment after split point (don't share to avoid overlapping edges)
-        segmentStartIdx = splitIdx + 1;
-    }
-
-    // Last segment (from last boundary to end)
-    var segmentPoints = [];
-    for (var i = segmentStartIdx; i < size(newXSamples); i += 1)
-    {
-        segmentPoints = append(segmentPoints,
+        outputPoints = append(outputPoints,
             vector(newXSamples[i], finalY[i], 0 * millimeter));
     }
 
-    // Only create curve if segment has at least 2 points
-    if (size(segmentPoints) >= 2)
-    {
-        var segmentCurve = approximateSpline(context, {
-            "degree" : 3,
-            "tolerance" : 0.001 * millimeter,
-            "maxControlPoints" : 30,
-            "targets" : [approximationTarget({ "positions" : segmentPoints })],
-            "interpolateIndices" : [0, size(segmentPoints) - 1]
-        })[0];
+    var sidecutCurve = approximateSpline(context, {
+        "degree" : 3,
+        "tolerance" : 0.001 * millimeter,
+        "maxControlPoints" : 100,  // Allow more CPs for full sidecut
+        "targets" : [approximationTarget({ "positions" : outputPoints })],
+        "interpolateIndices" : [0, size(outputPoints) - 1]
+    })[0];
 
-        outputCurves = append(outputCurves, segmentCurve);
-    }
+    var outputCurves = [sidecutCurve];
 
-    // Diagnostics: verify curve count matches expectation
-    println("  Created " ~ size(outputCurves) ~ " output curves");
-    if (size(outputCurves) != size(curveBoundaries) + 1)
-    {
-        println("  ERROR: Expected " ~ (size(curveBoundaries) + 1) ~
-                " curves but created " ~ size(outputCurves));
-    }
-
-    // Safety check: ensure we have at least one output curve
-    if (size(outputCurves) == 0)
-    {
-        throw "SCALE_RADIUS: Failed to create any output curves (curve splitting error)";
-    }
+    println("  Created single coherent sidecut curve with " ~ size(outputPoints) ~ " sample points");
 
     // Get final widths
     var finalFcpWidth = finalY[0];
