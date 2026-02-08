@@ -14,7 +14,13 @@
       "Bash(git commit:*)",
       "Bash(\"venv/Scripts/python.exe\" -m sync.main pull --dry-run)",
       "Bash(\"venv/Scripts/python.exe\":*)",
-      "Bash(\"venv/Scripts/python.exe\" -c:*)"
+      "Bash(\"venv/Scripts/python.exe\" -c:*)",
+      "Bash(git push)",
+      "Bash(python -m sync.main inspect:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(del:*)",
+      "Bash(ls:*)"
     ]
   }
 }

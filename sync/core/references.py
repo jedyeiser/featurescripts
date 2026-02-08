@@ -208,13 +208,9 @@ class ReferenceManager:
 
         ops = SyncOperations(sync_config, base_dir=self.base_dir)
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(description=f"Pulling {ref.name}...", total=None)
-            results = ops.pull_all(dry_run=False, force=False)
+        # Don't use spinner on Windows to avoid unicode issues
+        console.print(f"[blue]Downloading files from {ref.name}...[/blue]")
+        results = ops.pull_all(dry_run=False, force=False)
 
         # Check results
         success_count = sum(1 for r in results if r.success and not r.skipped)
@@ -222,6 +218,10 @@ class ReferenceManager:
 
         if failed_count > 0:
             console.print(f"[red]Failed to sync {failed_count} files from {ref.name}")
+            # Print individual error messages
+            for r in results:
+                if not r.success:
+                    console.print(f"  [red]ERROR:[/red] {r.filepath}: {r.message}")
             return False
 
         # Update last_sync timestamp

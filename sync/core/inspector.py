@@ -54,10 +54,21 @@ def see_response(
 
     try:
         # Make the API call using the client's request method
+        # The client._request takes: method, path, query_params, json_data
         if method.upper() == "GET":
-            response = client._request(method, endpoint, query_params=params)
+            response = client._request(
+                method=method,
+                path=endpoint,
+                query_params=params,
+                json_data=None
+            )
         else:
-            response = client._request(method, endpoint, json_data=params)
+            response = client._request(
+                method=method,
+                path=endpoint,
+                query_params=None,
+                json_data=params
+            )
 
         console.print("\n[bold green]Response received successfully![/bold green]")
 

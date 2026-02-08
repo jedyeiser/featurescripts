@@ -61,18 +61,20 @@ def parse_url(url: str) -> dict[str, str | None]:
         result["folder_id"] = folder_match.group(1)
         return result
 
-    # Check for document URL (match alphanumeric IDs, not just hex)
-    doc_match = re.search(r'/documents/d/([a-zA-Z0-9_-]+)', path)
+    # Check for document URL - supports both formats:
+    # - New: /documents/d/{docId}/w/{wsId}/e/{elemId}
+    # - Old: /documents/{docId}/w/{wsId}/e/{elemId}
+    doc_match = re.search(r'/documents/(?:d/)?([a-f0-9]{24,})', path)
     if doc_match:
         result["document_id"] = doc_match.group(1)
 
         # Check for workspace (match alphanumeric IDs)
-        ws_match = re.search(r'/w/([a-zA-Z0-9_-]+)', path)
+        ws_match = re.search(r'/w/([a-f0-9]{24,})', path)
         if ws_match:
             result["workspace_id"] = ws_match.group(1)
 
         # Check for element (match alphanumeric IDs)
-        elem_match = re.search(r'/e/([a-zA-Z0-9_-]+)', path)
+        elem_match = re.search(r'/e/([a-f0-9]{24,})', path)
         if elem_match:
             result["element_id"] = elem_match.group(1)
             result["type"] = "element"

@@ -167,13 +167,10 @@ class WorkingDirectoryManager:
         if dry_run:
             console.print("[yellow](DRY RUN - no changes will be made)[/yellow]")
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(description=f"Pulling {proj.name}...", total=None)
-            results = ops.pull_all(dry_run=dry_run, force=force)
+        # Don't use spinner on Windows to avoid unicode issues
+        if not dry_run:
+            console.print(f"[blue]Downloading files from {proj.name}...[/blue]")
+        results = ops.pull_all(dry_run=dry_run, force=force)
 
         # Process results
         files_updated = sum(1 for r in results if r.success and not r.skipped)
@@ -285,13 +282,10 @@ class WorkingDirectoryManager:
         # TODO: Implement selective file push if files list is provided
         # For now, push all files
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(description=f"Pushing {proj.name}...", total=None)
-            results = ops.push_all(dry_run=dry_run, force=force)
+        # Don't use spinner on Windows to avoid unicode issues
+        if not dry_run:
+            console.print(f"[blue]Uploading files to {proj.name}...[/blue]")
+        results = ops.push_all(dry_run=dry_run, force=force)
 
         # Process results
         files_pushed = sum(1 for r in results if r.success and not r.skipped)

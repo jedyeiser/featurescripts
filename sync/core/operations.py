@@ -341,7 +341,10 @@ class SyncOperations:
         Returns:
             SyncResult
         """
-        filename = sanitize_filename(element_name) + self.config.settings.file_extension
+        # Sanitize element name and ensure it has the correct extension
+        filename = sanitize_filename(element_name)
+        if not filename.endswith(self.config.settings.file_extension):
+            filename += self.config.settings.file_extension
         filepath = local_dir / filename
         relative_path = str(filepath.relative_to(self.base_dir))
 
@@ -374,8 +377,8 @@ class SyncOperations:
             # Backup if needed
             self._backup_file(filepath)
 
-            # Write file
-            filepath.write_text(remote_content)
+            # Write file with UTF-8 encoding (FeatureScript may contain unicode)
+            filepath.write_text(remote_content, encoding="utf-8")
 
             # Update state
             local_hash = SyncState.compute_hash(remote_content)
@@ -559,7 +562,8 @@ class SyncOperations:
                         conflict=True,
                     )
 
-            local_content = filepath.read_text()
+            # Read file with UTF-8 encoding (FeatureScript may contain unicode)
+            local_content = filepath.read_text(encoding="utf-8")
 
             if dry_run:
                 return SyncResult(

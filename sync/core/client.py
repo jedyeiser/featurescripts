@@ -122,12 +122,21 @@ class OnshapeClient:
         Returns:
             List of element metadata dictionaries
         """
-        path = f"/api/{self.API_VERSION}/documents/d/{document_id}/w/{workspace_id}/elements"
+        # Try without /d/ prefix first (works on enterprise instances)
+        path = f"/api/{self.API_VERSION}/documents/{document_id}/w/{workspace_id}/elements"
         query_params = {}
         if element_type:
             query_params["elementType"] = element_type
 
-        response = self.get(path, query_params if query_params else None)
+        try:
+            response = self.get(path, query_params if query_params else None)
+        except OnshapeAPIError as e:
+            # If that fails, try with /d/ prefix (public Onshape)
+            if e.status_code == 404:
+                path = f"/api/{self.API_VERSION}/documents/d/{document_id}/w/{workspace_id}/elements"
+                response = self.get(path, query_params if query_params else None)
+            else:
+                raise
 
         # Response is a list at the top level
         if isinstance(response, list):
@@ -150,9 +159,11 @@ class OnshapeClient:
         Returns:
             Dictionary with 'contents' (source code) and metadata
         """
+        # For Feature Studios, use /d/ prefix (works on both enterprise and public)
+        # Note: Different from documents endpoint which doesn't use /d/ on enterprise
         path = (
             f"/api/{self.API_VERSION}/featurestudios/d/{document_id}"
-            f"/w/{workspace_id}/e/{element_id}/featurestudiocontents"
+            f"/w/{workspace_id}/e/{element_id}"
         )
         return self.get(path)
 
@@ -174,9 +185,10 @@ class OnshapeClient:
         Returns:
             Updated metadata
         """
+        # For Feature Studios, use /d/ prefix (works on both enterprise and public)
         path = (
             f"/api/{self.API_VERSION}/featurestudios/d/{document_id}"
-            f"/w/{workspace_id}/e/{element_id}/featurestudiocontents"
+            f"/w/{workspace_id}/e/{element_id}"
         )
         return self.post(path, json_data={"contents": contents})
 
@@ -194,9 +206,18 @@ class OnshapeClient:
         Returns:
             Microversion string
         """
-        path = f"/api/{self.API_VERSION}/documents/d/{document_id}/w/{workspace_id}"
-        response = self.get(path)
-        return response.get("microversion", "")
+        # Try without /d/ prefix first (works on enterprise instances)
+        path = f"/api/{self.API_VERSION}/documents/{document_id}/w/{workspace_id}"
+        try:
+            response = self.get(path)
+            return response.get("microversion", "")
+        except OnshapeAPIError as e:
+            # If that fails, try with /d/ prefix (public Onshape)
+            if e.status_code == 404:
+                path = f"/api/{self.API_VERSION}/documents/d/{document_id}/w/{workspace_id}"
+                response = self.get(path)
+                return response.get("microversion", "")
+            raise
 
     def get_document_info(
         self,
@@ -210,8 +231,16 @@ class OnshapeClient:
         Returns:
             Document metadata including name, defaultWorkspace, etc.
         """
-        path = f"/api/{self.API_VERSION}/documents/d/{document_id}"
-        return self.get(path)
+        # Try without /d/ prefix first (works on enterprise instances)
+        path = f"/api/{self.API_VERSION}/documents/{document_id}"
+        try:
+            return self.get(path)
+        except OnshapeAPIError as e:
+            # If that fails, try with /d/ prefix (public Onshape)
+            if e.status_code == 404:
+                path = f"/api/{self.API_VERSION}/documents/d/{document_id}"
+                return self.get(path)
+            raise
 
     def get_default_workspace(self, document_id: str) -> str:
         """Get the default workspace ID for a document.

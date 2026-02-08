@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "onshape": {
+    "base_url": "https://k2-sports.onshape.com",
+    "api_version": "v10"
+  },
+  "references": [
+    {
+      "name": "EOC Featurescripts",
+      "type": "folder",
+      "url": "https://k2-sports.onshape.com/documents/folder/fe3ff54b1d12a3a8491215c6",
+      "local_path": "./onshape",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": null,
+      "document_id": null,
+      "workspace_id": null,
+      "folder_id": "fe3ff54b1d12a3a8491215c6"
+    },
+    {
+      "name": "Onshape Standard Library",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/03649da4cf2afc2773f3605e/w/dee24c5ad9eb366e42fca299",
+      "local_path": "./std",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-08T05:17:28.315264+00:00",
+      "document_id": "03649da4cf2afc2773f3605e",
+      "workspace_id": "dee24c5ad9eb366e42fca299",
+      "folder_id": null
+    }
+  ],
+  "projects": [],
+  "sync_metadata": {}
+}
