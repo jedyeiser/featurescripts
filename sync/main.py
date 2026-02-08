@@ -294,7 +294,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     console.print("\n[bold]Configured Folders:[/bold]")
     if config.folders:
         for f in config.folders:
-            console.print(f"  [blue]{f.name}[/blue] → {f.local_path}")
+            console.print(f"  [blue]{f.name}[/blue] -> {f.local_path}")
     else:
         console.print("  [dim]None[/dim]")
 
