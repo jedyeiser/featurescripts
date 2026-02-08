@@ -722,3 +722,414 @@ function sortArray(arr is array, compareFn) returns array
     }
     return sorted;
 }
+
+// =============================================================================
+// LOOP CLOSURE AND GAP FILLING
+// =============================================================================
+
+/**
+ * Close intersection loops by chaining curves and filling gaps.
+ *
+ * For each plane, chains curves into loops (handling multiple disconnected
+ * components and nested holes), then fixes small gaps by adjusting endpoints
+ * and large gaps by inserting linear filler curves.
+ *
+ * @param context : Onshape context (needed for evDistance)
+ * @param crossSections : Array of cross-section data
+ * @param frames : Array of coordinate frames (for nesting detection)
+ * @param gapTolerance : Maximum gap size to fix (typically 0.05mm)
+ * @returns : Modified crossSections with closed loops
+ */
+function closeIntersectionLoops(context is Context, crossSections is array,
+    frames is array, gapTolerance is ValueWithUnits) returns array
+{
+    var gapTolU = gapTolerance / meter;  // Convert to unitless
+
+    for (var planeIdx = 0; planeIdx < size(crossSections); planeIdx += 1)
+    {
+        var cs = crossSections[planeIdx];
+
+        if (size(cs.intersectionCurves) == 0)
+            continue;
+
+        // Group curves by body
+        var bodyGroups = {};
+        for (var c = 0; c < size(cs.intersectionCurves); c += 1)
+        {
+            var curve = cs.intersectionCurves[c];
+            var bodyIdx = curve.bodies[0];  // Each curve belongs to one body
+            var key = "" ~ bodyIdx;
+
+            if (bodyGroups[key] == undefined)
+                bodyGroups[key] = [];
+
+            bodyGroups[key] = append(bodyGroups[key], {
+                "curveIdx" : c,
+                "curve" : curve.BSplineCurve,
+                "faceIdx" : curve.faceIdx,
+                "bodies" : curve.bodies
+            });
+        }
+
+        // Process each body's curves
+        var newCurves = [];
+        for (var key, curveSet in bodyGroups)
+        {
+            // Step 1: Chain curves into boundaries
+            var boundaries = chainCurvesIntoBoundaries(curveSet, gapTolU);
+
+            // Step 2: Fix gaps in each boundary
+            for (var b = 0; b < size(boundaries); b += 1)
+            {
+                var boundary = boundaries[b];
+                var gaps = detectGaps(boundary.chain, curveSet, gapTolU);
+
+                // Apply fixes
+                adjustEndpointsToMeet(boundary.chain, curveSet, gaps, gapTolU);
+                var updatedChain = insertLinearFillers(boundary.chain, curveSet, gaps, gapTolU);
+                boundaries[b].chain = updatedChain.chain;
+                curveSet = updatedChain.curves;
+            }
+
+            // Step 3: Collect fixed curves into output
+            for (var b = 0; b < size(boundaries); b += 1)
+            {
+                for (var chainEntry in boundaries[b].chain)
+                {
+                    var curveData = curveSet[chainEntry.curveIdx];
+                    var finalCurve = chainEntry.isReversed
+                        ? reverseBSplineCurve(curveData.curve)
+                        : curveData.curve;
+
+                    newCurves = append(newCurves, {
+                        "BSplineCurve" : finalCurve,
+                        "bodies" : curveData.bodies,
+                        "faceIdx" : chainEntry.isFiller ? -1 : curveData.faceIdx
+                    });
+                }
+            }
+        }
+
+        crossSections[planeIdx].intersectionCurves = newCurves;
+    }
+
+    return crossSections;
+}
+
+/**
+ * Chain unordered curves into closed (or near-closed) loops using
+ * four-way endpoint matching (adapted from xSectRef algorithm).
+ *
+ * @param curves : Array of curve data with .curve field
+ * @param tolerance : Gap tolerance for endpoint matching (unitless)
+ * @returns : Array of boundaries, each with { chain, chainStart, chainEnd, closureGap, isClosed }
+ */
+function chainCurvesIntoBoundaries(curves is array, tolerance is number) returns array
+{
+    var numCurves = size(curves);
+    var used = makeArray(numCurves);
+    for (var i = 0; i < numCurves; i += 1)
+        used[i] = false;
+
+    var boundaries = [];
+
+    while (true)
+    {
+        // Find first unused curve
+        var startIdx = -1;
+        for (var i = 0; i < numCurves; i += 1)
+        {
+            if (!used[i])
+            {
+                startIdx = i;
+                break;
+            }
+        }
+
+        if (startIdx == -1)
+            break;  // All curves processed
+
+        // Start new boundary chain
+        used[startIdx] = true;
+        var chain = [{ "curveIdx" : startIdx, "isReversed" : false, "isFiller" : false }];
+
+        var chainStart = getCurveEndpoint(curves[startIdx].curve, true, false);
+        var chainEnd = getCurveEndpoint(curves[startIdx].curve, false, false);
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+
+            for (var i = 0; i < numCurves; i += 1)
+            {
+                if (used[i])
+                    continue;
+
+                var curveStart = getCurveEndpoint(curves[i].curve, true, false);
+                var curveEnd = getCurveEndpoint(curves[i].curve, false, false);
+
+                // Four-way matching: try all orientations and positions
+                var matched = false;
+
+                // Case 1: Append forward (curve.start connects to chainEnd)
+                if (normU(subtractU(curveStart, chainEnd)) < tolerance)
+                {
+                    chain = append(chain, { "curveIdx" : i, "isReversed" : false, "isFiller" : false });
+                    chainEnd = curveEnd;
+                    matched = true;
+                }
+                // Case 2: Append reversed (curve.end connects to chainEnd)
+                else if (normU(subtractU(curveEnd, chainEnd)) < tolerance)
+                {
+                    chain = append(chain, { "curveIdx" : i, "isReversed" : true, "isFiller" : false });
+                    chainEnd = curveStart;
+                    matched = true;
+                }
+                // Case 3: Prepend forward (curve.end connects to chainStart)
+                else if (normU(subtractU(curveEnd, chainStart)) < tolerance)
+                {
+                    chain = concatenateArrays([[{ "curveIdx" : i, "isReversed" : false, "isFiller" : false }], chain]);
+                    chainStart = curveStart;
+                    matched = true;
+                }
+                // Case 4: Prepend reversed (curve.start connects to chainStart)
+                else if (normU(subtractU(curveStart, chainStart)) < tolerance)
+                {
+                    chain = concatenateArrays([[{ "curveIdx" : i, "isReversed" : true, "isFiller" : false }], chain]);
+                    chainStart = curveEnd;
+                    matched = true;
+                }
+
+                if (matched)
+                {
+                    used[i] = true;
+                    changed = true;
+                    break;  // Restart search with extended chain
+                }
+            }
+        }
+
+        // Check if loop closed
+        var closureGap = normU(subtractU(chainStart, chainEnd));
+        var isClosed = closureGap < tolerance;
+
+        boundaries = append(boundaries, {
+            "chain" : chain,
+            "chainStart" : chainStart,
+            "chainEnd" : chainEnd,
+            "closureGap" : closureGap,
+            "isClosed" : isClosed
+        });
+    }
+
+    return boundaries;
+}
+
+/**
+ * Get endpoint of a BSpline curve (start or end).
+ * For non-periodic curves, endpoints are the first/last control points.
+ *
+ * @param curve : BSplineCurve
+ * @param isStart : true for start point, false for end point
+ * @param isReversed : if true, swap start/end
+ * @returns : [x, y, z] in unitless meters
+ */
+function getCurveEndpoint(curve is BSplineCurve, isStart is boolean, isReversed is boolean) returns array
+{
+    var wantStart = isReversed ? !isStart : isStart;
+    var idx = wantStart ? 0 : (size(curve.controlPoints) - 1);
+    return vecToArr(curve.controlPoints[idx]);
+}
+
+/**
+ * Detect gaps between adjacent curves in a chain.
+ *
+ * @param chain : Ordered array of { curveIdx, isReversed }
+ * @param curves : Array of curve data
+ * @param tolerance : Minimum gap size to report (unitless)
+ * @returns : Array of gaps with { afterIdx, beforeIdx, distance, point1, point2 }
+ */
+function detectGaps(chain is array, curves is array, tolerance is number) returns array
+{
+    var gaps = [];
+
+    for (var i = 0; i < size(chain); i += 1)
+    {
+        var currentEntry = chain[i];
+        var nextEntry = chain[(i + 1) % size(chain)];
+
+        var currentCurve = curves[currentEntry.curveIdx].curve;
+        var nextCurve = curves[nextEntry.curveIdx].curve;
+
+        var currentEnd = getCurveEndpoint(currentCurve, false, currentEntry.isReversed);
+        var nextStart = getCurveEndpoint(nextCurve, true, nextEntry.isReversed);
+
+        var gapDistance = normU(subtractU(currentEnd, nextStart));
+
+        if (gapDistance > GEOM_TOL)  // Larger than floating-point noise
+        {
+            gaps = append(gaps, {
+                "afterIdx" : i,
+                "beforeIdx" : (i + 1) % size(chain),
+                "distance" : gapDistance,
+                "point1" : currentEnd,
+                "point2" : nextStart
+            });
+        }
+    }
+
+    return gaps;
+}
+
+/**
+ * Adjust curve endpoints to close small gaps by rebuilding curves
+ * with modified control points meeting at the midpoint.
+ *
+ * @param chain : Chain of curves
+ * @param curves : Array of curve data (modified in place)
+ * @param gaps : Array of gap data
+ * @param tolerance : Maximum gap size to fix (unitless)
+ */
+function adjustEndpointsToMeet(chain is array, curves is array, gaps is array, tolerance is number)
+{
+    for (var gap in gaps)
+    {
+        if (gap.distance >= tolerance)
+            continue;  // Only fix small gaps
+
+        var midpoint = scaleU(addU(gap.point1, gap.point2), 0.5);
+
+        var afterEntry = chain[gap.afterIdx];
+        var beforeEntry = chain[gap.beforeIdx];
+
+        // Rebuild curve1 with modified endpoint
+        var curve1 = curves[afterEntry.curveIdx].curve;
+        var endpointIdx1 = afterEntry.isReversed ? 0 : (size(curve1.controlPoints) - 1);
+        curves[afterEntry.curveIdx].curve = rebuildCurveWithNewEndpoint(curve1, endpointIdx1, midpoint);
+
+        // Rebuild curve2 with modified startpoint
+        var curve2 = curves[beforeEntry.curveIdx].curve;
+        var endpointIdx2 = beforeEntry.isReversed ? (size(curve2.controlPoints) - 1) : 0;
+        curves[beforeEntry.curveIdx].curve = rebuildCurveWithNewEndpoint(curve2, endpointIdx2, midpoint);
+    }
+}
+
+/**
+ * Rebuild a BSpline curve with one control point modified.
+ *
+ * @param curve : Original BSplineCurve
+ * @param endpointIndex : Index of control point to modify
+ * @param newPoint : New position [x, y, z] (unitless)
+ * @returns : New BSplineCurve with modified control point
+ */
+function rebuildCurveWithNewEndpoint(curve is BSplineCurve, endpointIndex is number,
+    newPoint is array) returns BSplineCurve
+{
+    var modifiedCPs = makeArray(size(curve.controlPoints));
+    for (var i = 0; i < size(curve.controlPoints); i += 1)
+    {
+        if (i == endpointIndex)
+            modifiedCPs[i] = arrToVec(newPoint);
+        else
+            modifiedCPs[i] = curve.controlPoints[i];
+    }
+
+    return bSplineCurve({
+        "degree" : curve.degree,
+        "isPeriodic" : false,
+        "controlPoints" : modifiedCPs,
+        "knots" : curve.knots
+    });
+}
+
+/**
+ * Insert linear B-spline fillers for large gaps.
+ *
+ * Creates new curve entries for gaps that exceed the tolerance and inserts
+ * them into the chain at the appropriate positions.
+ *
+ * @param chain : Chain of curves
+ * @param curves : Array of curve data
+ * @param gaps : Array of gap data
+ * @param tolerance : Minimum gap size to fill (unitless)
+ * @returns : Map with updated { chain, curves }
+ */
+function insertLinearFillers(chain is array, curves is array, gaps is array, tolerance is number) returns map
+{
+    var updatedChain = chain;
+    var updatedCurves = curves;
+
+    // Process gaps in reverse order so indices remain valid
+    var sortedGaps = sortArray(gaps, function(a, b) { return b.afterIdx - a.afterIdx; });
+
+    for (var gap in sortedGaps)
+    {
+        if (gap.distance < tolerance)
+            continue;  // Only fill large gaps
+
+        // Create linear B-spline from point1 to point2
+        var fillerCurve = bSplineCurve({
+            "degree" : 1,
+            "isPeriodic" : false,
+            "controlPoints" : [arrToVec(gap.point1), arrToVec(gap.point2)],
+            "knots" : [0, 0, 1, 1] as KnotArray
+        });
+
+        // Get bodies from the curve after this gap
+        var afterCurve = updatedCurves[updatedChain[gap.afterIdx].curveIdx];
+
+        // Add filler to curves array
+        var fillerIdx = size(updatedCurves);
+        updatedCurves = append(updatedCurves, {
+            "curve" : fillerCurve,
+            "faceIdx" : -1,
+            "bodies" : afterCurve.bodies
+        });
+
+        // Insert into chain after the gap
+        var newEntry = { "curveIdx" : fillerIdx, "isReversed" : false, "isFiller" : true };
+        var insertPos = gap.afterIdx + 1;
+
+        var newChain = makeArray(size(updatedChain) + 1);
+        for (var i = 0; i < insertPos; i += 1)
+            newChain[i] = updatedChain[i];
+        newChain[insertPos] = newEntry;
+        for (var i = insertPos; i < size(updatedChain); i += 1)
+            newChain[i + 1] = updatedChain[i];
+
+        updatedChain = newChain;
+    }
+
+    return {
+        "chain" : updatedChain,
+        "curves" : updatedCurves
+    };
+}
+
+/**
+ * Reverse a BSpline curve (reverse control points and reflect knots).
+ *
+ * @param curve : Original BSplineCurve
+ * @returns : Reversed BSplineCurve
+ */
+function reverseBSplineCurve(curve is BSplineCurve) returns BSplineCurve
+{
+    var n = size(curve.controlPoints);
+    var reversedCPs = makeArray(n);
+    for (var i = 0; i < n; i += 1)
+        reversedCPs[i] = curve.controlPoints[n - 1 - i];
+
+    // Reflect knots: knots'[i] = knotMax - knots[n-i]
+    var knotMax = curve.knots[size(curve.knots) - 1];
+    var reversedKnots = makeArray(size(curve.knots));
+    for (var i = 0; i < size(curve.knots); i += 1)
+        reversedKnots[i] = knotMax - curve.knots[size(curve.knots) - 1 - i];
+
+    return bSplineCurve({
+        "degree" : curve.degree,
+        "isPeriodic" : false,
+        "controlPoints" : reversedCPs,
+        "knots" : reversedKnots as KnotArray
+    });
+}

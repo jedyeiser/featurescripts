@@ -1487,7 +1487,7 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
     }
 
     // CRITICAL: Sort boundaries in ascending X order for splitting algorithm
-    curveBoundaries = sort(curveBoundaries, function(a, b) { return a < b; });
+    curveBoundaries = sort(curveBoundaries, function(a, b) { return a - b; });
 
     // Initial guess for radius scale factor
     var radiusScaleFactor = refAnalysis.avgRadius / targetRadius;
