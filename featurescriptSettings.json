@@ -6,19 +6,6 @@
   },
   "references": [
     {
-      "name": "Cross Section Working Ref",
-      "type": "document",
-      "url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/2bac53cbf0cd1504ada12137/e/489f267862a807871c8aa5f5",
-      "local_path": "./xSectRef",
-      "read_only": true,
-      "auto_update": false,
-      "recursive": true,
-      "last_sync": "2026-02-08T19:32:32.202723+00:00",
-      "document_id": "f8deedeb1fbd819a8fa20113",
-      "workspace_id": "2bac53cbf0cd1504ada12137",
-      "folder_id": null
-    },
-    {
       "name": "Sidewall QC Table",
       "type": "document",
       "url": "https://k2-sports.onshape.com/documents/3b9dc959eeb9c39384c804b2/w/b242da6ef55f2959e9ba6bbf/e/57049bc44be6244a3ed83a29",
@@ -82,24 +69,37 @@
         "internal tools document"
       ],
       "last_pull": "2026-02-08T08:15:49.498414+00:00",
-      "last_push": "2026-02-08T20:52:33.227161+00:00",
+      "last_push": "2026-02-08T21:39:05.374937+00:00",
       "document_id": "52724f3a857fa52d3ecceb77",
       "workspace_id": "a013b85fd726af3c2bdaca71"
     },
     {
-      "name": "crossSection",
-      "description": "Ski cross section and stiffness analysis",
-      "working_directory": "./crossSection",
-      "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/7c04417f4d97c8038ba7a43f/e/3cb3cff6974529bf6bed096b",
+      "name": "CrossSection",
+      "description": "Ski cross section and stiffness analysis - Effort to not use opIntersectFaces so that we're able to cache results",
+      "working_directory": "./CrossSection",
+      "onshape_url": "https://k2-sports.onshape.com/documents/9ef56796e3ad8cc83e1c5495/w/9cdc2fc24057965ca0b450a4/e/932f7eda9f135637da8e1be4",
       "references": [
         "Onshape Standard Library",
-        "internal tools document",
-        "Cross Section Working Ref"
+        "internal tools document"
       ],
-      "last_pull": "2026-02-08T20:30:12.898047+00:00",
-      "last_push": "2026-02-08T21:06:22.061811+00:00",
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "9ef56796e3ad8cc83e1c5495",
+      "workspace_id": "9cdc2fc24057965ca0b450a4"
+    },
+    {
+      "name": "xSection",
+      "description": "Ski cross section and stiffness analysis - Original",
+      "working_directory": "./xSection",
+      "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/2bac53cbf0cd1504ada12137/e/489f267862a807871c8aa5f5",
+      "references": [
+        "Onshape Standard Library",
+        "internal tools document"
+      ],
+      "last_pull": null,
+      "last_push": null,
       "document_id": "f8deedeb1fbd819a8fa20113",
-      "workspace_id": "7c04417f4d97c8038ba7a43f"
+      "workspace_id": "2bac53cbf0cd1504ada12137"
     },
     {
       "name": "QC Table",
