@@ -1936,6 +1936,35 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
 
     println("  Created " ~ size(outputCurves) ~ " output curves");
 
+    // CLEANUP: Simplify curves to reduce control points
+    var simplifiedCurves = [];
+    for (var curve in outputCurves)
+    {
+        // Sample points from the curve (fewer than original ~25-30 target points)
+        var samplePoints = [];
+        var numSamples = 15;  // Reduced sample count for simplification
+
+        for (var i = 0; i < numSamples; i += 1)
+        {
+            var param = i / (numSamples - 1);
+            var point = evaluateSpline(curve, param);
+            samplePoints = append(samplePoints, point);
+        }
+
+        // Re-approximate with looser tolerance and fewer max control points
+        var simplified = approximateSpline(context, {
+            "degree" : outputDegree,
+            "tolerance" : 0.01 * millimeter,  // 10x looser than original (fewer CPs)
+            "maxControlPoints" : 15,  // Reduced from 30
+            "targets" : [approximationTarget({ "positions" : samplePoints })],
+            "interpolateIndices" : [0, size(samplePoints) - 1]
+        })[0];
+
+        simplifiedCurves = append(simplifiedCurves, simplified);
+    }
+    outputCurves = simplifiedCurves;
+    println("  Simplified curves to reduce control points");
+
     // OPTIONAL: Convert to strict arcs if requested
     if (strictArcs)
     {
