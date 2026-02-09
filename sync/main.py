@@ -512,6 +512,7 @@ def cmd_get(args: argparse.Namespace) -> int:
     try:
         result = work_manager.get_working_directory(
             project_name=args.project_name,
+            files=args.files if hasattr(args, "files") else None,
             force=args.force,
             dry_run=args.dry_run,
             auto_backup=not args.no_backup,
@@ -750,6 +751,7 @@ def main() -> int:
     # get command (pull working project)
     get_parser = subparsers.add_parser("get", help="Pull a working project from Onshape")
     get_parser.add_argument("project_name", help="Project name")
+    get_parser.add_argument("--files", nargs="+", help="Specific files to pull")
     get_parser.add_argument("--force", action="store_true", help="Overwrite local changes")
     get_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     get_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before pull")

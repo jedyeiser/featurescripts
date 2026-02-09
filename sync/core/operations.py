@@ -135,6 +135,7 @@ class SyncOperations:
         folder_config: FolderConfig,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
         """Pull all documents from an Onshape folder.
 
@@ -412,6 +413,7 @@ class SyncOperations:
         folder_config: FolderConfig,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
         """Push local files to an Onshape folder.
 
@@ -627,8 +629,16 @@ class SyncOperations:
         doc_config: DocumentConfig,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
-        """Pull all Feature Studios from a document (legacy method)."""
+        """Pull all Feature Studios from a document (legacy method).
+
+        Args:
+            doc_config: Document configuration
+            dry_run: Show what would happen without making changes
+            force: Force pull even if there are local changes
+            files: Optional list of specific files to pull (basenames like "file.fs")
+        """
         results: list[SyncResult] = []
         local_dir = self.base_dir / doc_config.local_path
 
@@ -638,6 +648,12 @@ class SyncOperations:
                 workspace_id=doc_config.workspace_id,
                 element_type="FEATURESTUDIO",
             )
+
+            # Filter elements if specific files requested
+            if files:
+                # Normalize file list (ensure .fs extension)
+                files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
+                elements = [e for e in elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
 
             if dry_run:
                 # Dry run mode - show what would be pulled without making changes
@@ -688,8 +704,16 @@ class SyncOperations:
         doc_config: DocumentConfig,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
-        """Push all local Feature Studios to a document (legacy method)."""
+        """Push all local Feature Studios to a document (legacy method).
+
+        Args:
+            doc_config: Document configuration
+            dry_run: Show what would happen without making changes
+            force: Force push even if there are remote changes
+            files: Optional list of specific files to push (basenames like "file.fs")
+        """
         results: list[SyncResult] = []
         local_dir = self.base_dir / doc_config.local_path
 
@@ -712,7 +736,17 @@ class SyncOperations:
             name_to_id = {e.get("name", ""): e.get("id", "") for e in elements}
 
             extension = self.config.settings.file_extension
-            for local_file in local_dir.glob(f"*{extension}"):
+            local_files = list(local_dir.glob(f"*{extension}"))
+
+            # Filter files if specific files requested
+            if files:
+                # Normalize file list (ensure .fs extension, handle relative paths)
+                files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
+                # Also check basenames only (in case full paths were provided)
+                files_basenames = {Path(f).name for f in files_set}
+                local_files = [f for f in local_files if f.name in files_basenames]
+
+            for local_file in local_files:
                 element_name = local_file.stem
                 element_id = name_to_id.get(element_name)
 
@@ -753,18 +787,25 @@ class SyncOperations:
         self,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
-        """Pull all configured folders and documents."""
+        """Pull all configured folders and documents.
+
+        Args:
+            dry_run: Show what would happen without making changes
+            force: Force pull even if there are local changes
+            files: Optional list of specific files to pull (basenames like "file.fs")
+        """
         results: list[SyncResult] = []
 
         # Pull folders (new style)
         for folder_config in self.config.folders:
-            folder_results = self.pull_folder(folder_config, dry_run, force)
+            folder_results = self.pull_folder(folder_config, dry_run, force, files)
             results.extend(folder_results)
 
         # Pull documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.pull_document(doc_config, dry_run, force)
+            doc_results = self.pull_document(doc_config, dry_run, force, files)
             results.extend(doc_results)
 
         return results
@@ -773,18 +814,25 @@ class SyncOperations:
         self,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
-        """Push all configured folders and documents."""
+        """Push all configured folders and documents.
+
+        Args:
+            dry_run: Show what would happen without making changes
+            force: Force push even if there are remote changes
+            files: Optional list of specific files to push (basenames like "file.fs")
+        """
         results: list[SyncResult] = []
 
         # Push folders (new style)
         for folder_config in self.config.folders:
-            folder_results = self.push_folder(folder_config, dry_run, force)
+            folder_results = self.push_folder(folder_config, dry_run, force, files)
             results.extend(folder_results)
 
         # Push documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.push_document(doc_config, dry_run, force)
+            doc_results = self.push_document(doc_config, dry_run, force, files)
             results.extend(doc_results)
 
         return results
