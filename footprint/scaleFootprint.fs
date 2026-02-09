@@ -48,13 +48,19 @@ export enum FootprintScaleMode
 {
     annotation { "Name" : "Accordion (X only)" }
     ACCORDION,
-    
+
     annotation { "Name" : "Keep taper angle" }
     KEEP_TAPER,
-    
+
     annotation { "Name" : "Scale radius" }
     SCALE_RADIUS
 }
+
+// Bounds for sidecut radius input (in meters for better UX)
+export const SIDECUT_RADIUS_BOUNDS = {
+    (meter): [1, 100, 21],  // min=1m, max=100m, default=21m
+    (unitless): [0.001, 100]
+} as LengthBoundSpec;
 
 export enum ScalePinLocation
 {
@@ -110,7 +116,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         if (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS)
         {
             annotation { "Name" : "Target average radius" }
-            isLength(definition.targetRadius, LENGTH_BOUNDS);
+            isLength(definition.targetRadius, SIDECUT_RADIUS_BOUNDS);
 
             annotation { "Name" : "Output curve degree", "Default" : 3 }
             isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
@@ -143,7 +149,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             if (definition.negScaleMode == FootprintScaleMode.SCALE_RADIUS)
             {
                 annotation { "Name" : "-Y Target average radius" }
-                isLength(definition.negTargetRadius, LENGTH_BOUNDS);
+                isLength(definition.negTargetRadius, SIDECUT_RADIUS_BOUNDS);
 
                 annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
                 isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
@@ -1679,8 +1685,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
 
     // Initial guess for radius scale factor (start at 1.0 to bootstrap)
     var radiusScaleFactor = 1.0;
-    var maxIterations = 5;
-    var radiusTolerance = 0.05 * meter;  // 5cm tolerance
+    var maxIterations = 10;
+    var radiusTolerance = 0.01 * meter;  // 1cm tolerance (tightened to compensate for splitting error)
 
     var finalY = [];
     var newXSamples = [];
@@ -1894,8 +1900,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         {
             var segmentCurve = approximateSpline(context, {
                 "degree" : outputDegree,
-                "tolerance" : 0.001 * millimeter,
-                "maxControlPoints" : 30,
+                "tolerance" : 0.0001 * millimeter,  // 0.1μm (10x tighter to preserve curvature)
+                "maxControlPoints" : 50,  // Increased from 30 for better curvature fidelity
                 "targets" : [approximationTarget({ "positions" : segmentPoints })],
                 "interpolateIndices" : [0, size(segmentPoints) - 1]
             })[0];
@@ -1919,9 +1925,9 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     if (size(segmentPoints) >= 2)
     {
         var segmentCurve = approximateSpline(context, {
-            "degree" : 3,
-            "tolerance" : 0.001 * millimeter,
-            "maxControlPoints" : 30,
+            "degree" : outputDegree,
+            "tolerance" : 0.0001 * millimeter,  // 0.1μm (10x tighter to preserve curvature)
+            "maxControlPoints" : 50,  // Increased from 30 for better curvature fidelity
             "targets" : [approximationTarget({ "positions" : segmentPoints })],
             "interpolateIndices" : [0, size(segmentPoints) - 1]
         })[0];
@@ -1937,6 +1943,63 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         var arcCurves = forceQuadraticNurbs(context, id + "strictArcs", outputCurves);
         outputCurves = arcCurves;
         println("  Converted to strict arcs (rational quadratic NURBS)");
+    }
+
+    // VALIDATION: Measure radius of final output curves to verify accuracy
+    println("  --- POST-SPLITTING VALIDATION ---");
+    var finalRadiusSum = 0;
+    var finalRadiusCount = 0;
+
+    for (var curveIdx = 0; curveIdx < size(outputCurves); curveIdx += 1)
+    {
+        var curve = outputCurves[curveIdx];
+
+        // Sample 10 points along this curve segment
+        for (var i = 0; i < 10; i += 1)
+        {
+            try
+            {
+                var param = i / 9.0;  // 0 to 1
+                var result = evCurvature(context, {
+                    "edge" : curve,
+                    "parameter" : param
+                });
+
+                if (result.curvature != undefined && result.curvature > 1e-9)
+                {
+                    var radius = 1 / result.curvature;
+                    // Only count points within inflection region
+                    if (result.point[0] >= inflectionXMin && result.point[0] <= inflectionXMax)
+                    {
+                        finalRadiusSum += radius;
+                        finalRadiusCount += 1;
+                    }
+                }
+            }
+            catch
+            {
+                // Skip points where curvature evaluation fails
+            }
+        }
+    }
+
+    if (finalRadiusCount > 0)
+    {
+        var finalAvgRadius = finalRadiusSum / finalRadiusCount;
+        var finalError = finalAvgRadius - targetRadius;
+        println("  Final output radius: " ~ toString(finalAvgRadius) ~
+                " (sampled " ~ finalRadiusCount ~ " points)");
+        println("  Final error: " ~ toString(finalError));
+
+        if (abs(finalError) > 0.1 * meter)
+        {
+            println("  WARNING: Final radius differs from target by > 10cm");
+            println("  Consider further tightening approximation tolerances or increasing maxControlPoints");
+        }
+    }
+    else
+    {
+        println("  WARNING: Could not measure final output radius (no valid curvature samples)");
     }
 
     // Get final widths

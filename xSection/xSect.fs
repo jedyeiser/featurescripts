@@ -19,8 +19,24 @@ import(path : "74231d1d53f5a117d47d17a9", version : "ea69733493fc950e2f1573f4");
 //import xSectBeamAnalysis
 import(path : "ebac109589e3bf405d3f3ae7", version : "e77a468079862e0fd3b26224");
 
+// =============================================================================
+// CURVE OVERLAP DETECTION TYPES
+// =============================================================================
 
+/**
+ * Overlap detection result types for curve deduplication.
+ * Used by getUniqueCurvesOptimized() for composite wire generation.
+ */
+enum OverlapType
+{
+    NONE,               // No overlap detected
+    FULL_CONTAINMENT,   // One curve fully contains the other
+    PARTIAL_OVERLAP     // Curves partially overlap at endpoints
+}
 
+// =============================================================================
+// FEATURE DEFINITION
+// =============================================================================
 
 /**
  * EI AND CROSS SECTION FEATURE
