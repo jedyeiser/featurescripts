@@ -3,18 +3,18 @@ import(path : "onshape/std/common.fs", version : "2856.0");
 
 
 // Import  math utilities
-export import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/280a24d76f52bdbf44cd941d", version : "8adbd2a2364f067a7e4b775f");
-import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
+export import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
 
 // Import solvers (for solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
+import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
 
 // Import geometry utilities
-export import(path : "67c190b80e8b74dcee72e7ff", version : "796d200b9768c45070a7cfef");
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "3e7099b547a620132566f0fe");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "80af530f524e50f6e20b5ea6");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d55e73dcbcde20bc962c0807");
 
 // Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "6cd0924ac87db40ee0f2a41f");
+import(path : "66f4f03cf728e94b8f823585", version : "c068872b6b000969a2ffc7cb");
 
 
 
@@ -1899,8 +1899,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         {
             var segmentCurve = approximateSpline(context, {
                 "degree" : outputDegree,
-                "tolerance" : 0.0001 * millimeter,  // 0.1μm (10x tighter to preserve curvature)
-                "maxControlPoints" : 50,  // Increased from 30 for better curvature fidelity
+                "tolerance" : 0.001 * millimeter,  // Original value - tighter caused worse results
+                "maxControlPoints" : 30,  // Original value
                 "targets" : [approximationTarget({ "positions" : segmentPoints })],
                 "interpolateIndices" : [0, size(segmentPoints) - 1]
             })[0];
@@ -1925,8 +1925,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     {
         var segmentCurve = approximateSpline(context, {
             "degree" : outputDegree,
-            "tolerance" : 0.0001 * millimeter,  // 0.1μm (10x tighter to preserve curvature)
-            "maxControlPoints" : 50,  // Increased from 30 for better curvature fidelity
+            "tolerance" : 0.001 * millimeter,  // Original value - tighter caused worse results
+            "maxControlPoints" : 30,  // Original value
             "targets" : [approximationTarget({ "positions" : segmentPoints })],
             "interpolateIndices" : [0, size(segmentPoints) - 1]
         })[0];

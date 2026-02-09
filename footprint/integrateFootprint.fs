@@ -2,7 +2,7 @@ FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
 //import fpt_geometrty (export/import)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "796d200b9768c45070a7cfef");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "80af530f524e50f6e20b5ea6");
 
 
 // NOTE: fpt_math.fs has been deleted - all functions moved to tools/
@@ -20,10 +20,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/99e84dbe2a4e235
 
 // evPathCurvatures() moved to fpt_geometry.fs
 //import predicates
-import(path : "a54a829744c4e15e8da55e0e", version : "a429aca66ec4510e66ac2796");
+import(path : "a54a829744c4e15e8da55e0e", version : "6c4c04a70f394e40004d6597");
 
 //import arcFit
-import(path : "66f4f03cf728e94b8f823585", version : "6cd0924ac87db40ee0f2a41f");
+import(path : "66f4f03cf728e94b8f823585", version : "c068872b6b000969a2ffc7cb");
 
 
 

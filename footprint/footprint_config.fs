@@ -23,6 +23,16 @@ export const FOOTPRINT_CONFIG_DEFAULTS = {
     "yTolerance" : 0.001 * millimeter    // Y-coordinate tolerance for feature detection
 };
 
+
+
+/**
+ * Shared configuration constants for footprint analysis and processing.
+ *
+ * This module centralizes default values, tolerances, and bounds used
+ * across the footprint feature suite.
+ */
+
+
 /**
  * Length bounds for footprint geometry processing.
  *
