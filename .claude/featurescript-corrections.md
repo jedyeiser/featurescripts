@@ -249,6 +249,67 @@ export function isClamped(curve is BSplineCurve, tolerance is number) returns bo
 
 ## FeatureScript Syntax
 
+### Map Key Disambiguation Required
+**Date**: 2026-02-09
+**Issue**: "Cannot use X as map key because there is a variable or constant with that name" - FeatureScript requires disambiguation when a map key name matches a local variable or parameter name in scope.
+**Incorrect Pattern**:
+```featurescript
+var plane = measurePlane;
+var coreWidth = 10 * millimeter;
+var x = 5 * millimeter;
+
+// ❌ ERROR - Ambiguous unquoted keys
+return {
+    plane: plane,           // ERROR: ambiguous
+    coreWidth: coreWidth    // ERROR: ambiguous
+};
+
+// In station generation
+stations = append(stations, {
+    x: x,                   // ERROR: ambiguous
+    callout: '',
+    preferred: false
+});
+
+// ❌ WRONG - Parentheses are for units in bounds, not disambiguation
+return {
+    (plane): plane          // Syntax error - wrong use of parentheses
+};
+```
+**Correct Pattern**:
+```featurescript
+var plane = measurePlane;
+var coreWidth = 10 * millimeter;
+var x = 5 * millimeter;
+
+// ✅ CORRECT - Use quoted strings for conflicting keys
+return {
+    "plane" : plane,        // Quoted string disambiguates
+    "coreWidth" : coreWidth // Quoted string disambiguates
+};
+
+// In station generation
+stations = append(stations, {
+    "x" : x,                // Quoted string disambiguates
+    callout: '',            // Non-conflicting keys can remain unquoted
+    preferred: false
+});
+```
+**Reference**: Standard library uses this pattern (std/query.fs:1920, std/coordSystem.fs:80)
+
+**Lesson Learned**:
+- When constructing a map where a key name matches a local variable/parameter, use **quoted strings** `"key"` to disambiguate
+- Use **double quotes** `"key"` for consistency with standard library convention
+- Only quote keys that conflict; non-conflicting keys can remain unquoted (minimal quoting approach)
+- Parentheses `(unitType)` are for unit specifications in parameter bounds, NOT for map key disambiguation
+- Map access works the same regardless: `result.myValue` or `result["myValue"]`
+- Common conflicts in measurement code:
+  - Return statements with measurement data: `"coreWidth"`, `"coreThickness"`, `"swHeight"`
+  - Geometry references: `"plane"`, `"query"`, `"zVal"`, `"yVal"`
+  - Station data: `"x"`, `"station"`, `"rsl"`
+
+**Files Fixed**: qcTable_geometry.fs (lines 96, 294-300, 338-339, 423-439, 529-545), qcTable_merge.fs (line 47), qcTable_stations.fs (lines 37, 252, 270, 292)
+
 ### Always Use Braces for Control Flow Statements
 **Date**: 2026-01-31
 **Issue**: **CRITICAL BUG** - Control flow statements (if, else, for, while) without braces execute only the FIRST statement conditionally. Additional indented statements that appear to be part of the block execute unconditionally, causing severe logic errors.
@@ -351,9 +412,9 @@ export function buildCurveDataArray(bsplines is array) returns array
 
 ## Statistics
 
-- **Total Corrections**: 4
-- **Last Updated**: 2026-01-31
-- **Most Common Category**: FeatureScript Syntax (2), Import Issues (1), Type System (1)
+- **Total Corrections**: 5
+- **Last Updated**: 2026-02-09
+- **Most Common Category**: FeatureScript Syntax (3), Import Issues (1), Type System (1)
 - **Critical Bugs Found**: 1 (Missing braces in control flow)
 
 ---

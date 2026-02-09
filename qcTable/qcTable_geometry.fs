@@ -93,9 +93,8 @@ export function measureCoreAtStation(
 
     // Create the plane body for intersection
     opPlane(context, id + "measurePlane", {
-        plane: measurePlane
+        "plane" : measurePlane
     });
-    var planeFace = qCreatedBy(id + "measurePlane", EntityType.FACE);
     var planeBody = qCreatedBy(id + "measurePlane", EntityType.BODY);
 
     // Get all core edges
@@ -291,13 +290,13 @@ export function measureCoreAtStation(
     }
 
     return {
-        coreWidth: coreWidth,
-        coreThickness: coreThickness,
-        groovedThickness: groovedThickness,
-        coreTopWidth: coreTopWidth,
-        coreTopAngle: coreTopAngle,
-        baseRoutDepth: baseRoutDepth,
-        baseRoutWidth: baseRoutWidth,
+        "coreWidth" : coreWidth,
+        "coreThickness" : coreThickness,
+        "groovedThickness" : groovedThickness,
+        "coreTopWidth" : coreTopWidth,
+        "coreTopAngle" : coreTopAngle,
+        "baseRoutDepth" : baseRoutDepth,
+        "baseRoutWidth" : baseRoutWidth,
         coreBottomZ: minZ,
         coreTopZ: maxZ
     };
@@ -335,8 +334,8 @@ export function setupSidewallMeasurement(
     var centerSplineTop = getCenterSpline(context, id + "centerTop", insideTopPath, outsideTopPath);
 
     return {
-        centerSplineBottom: centerSplineBottom,
-        centerSplineTop: centerSplineTop
+        "centerSplineBottom" : centerSplineBottom,
+        "centerSplineTop" : centerSplineTop
     };
 }
 
@@ -371,7 +370,7 @@ export function measureSidewallAtStation(
     }
 
     return {
-        swHeight: swHeight,
+        "swHeight" : swHeight,
         swBottomZ: bottomPoint[2],
         swTopZ: topPoint[2]
     };
@@ -420,8 +419,8 @@ function getBottomEdges(context is Context, id is Id, swBody is Query, swExtents
         var intersectEdges = qIntersectsPlane(allEdges, evSearchPlane);
         var evIntersectEdges = evaluateQuery(context, intersectEdges);
 
-        var lowest = {query: qNothing(), zVal: 200 * millimeter, yVal: 0 * millimeter};
-        var secondLowest = {query: qNothing(), zVal: 200 * millimeter, yVal: 0 * millimeter};
+        var lowest = {"query" : qNothing(), "zVal" : 200 * millimeter, "yVal" : 0 * millimeter};
+        var secondLowest = {"query" : qNothing(), "zVal" : 200 * millimeter, "yVal" : 0 * millimeter};
 
         for (var edge in evIntersectEdges)
         {
@@ -436,11 +435,11 @@ function getBottomEdges(context is Context, id is Id, swBody is Query, swExtents
             if (zVal <= lowest.zVal)
             {
                 secondLowest = lowest;
-                lowest = {query: edge, zVal: zVal, yVal: yVal};
+                lowest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
             }
             else if (zVal <= secondLowest.zVal)
             {
-                secondLowest = {query: edge, zVal: zVal, yVal: yVal};
+                secondLowest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
             }
         }
 
@@ -526,8 +525,8 @@ function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is
         var intersectEdges = qIntersectsPlane(allEdges, evSearchPlane);
         var evIntersectEdges = evaluateQuery(context, intersectEdges);
 
-        var highest = {query: qNothing(), zVal: -200 * millimeter, yVal: 0 * millimeter};
-        var secondHighest = {query: qNothing(), zVal: -200 * millimeter, yVal: 0 * millimeter};
+        var highest = {"query" : qNothing(), "zVal" : -200 * millimeter, "yVal" : 0 * millimeter};
+        var secondHighest = {"query" : qNothing(), "zVal" : -200 * millimeter, "yVal" : 0 * millimeter};
 
         for (var edge in evIntersectEdges)
         {
@@ -542,11 +541,11 @@ function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is
             if (zVal >= highest.zVal)
             {
                 secondHighest = highest;
-                highest = {query: edge, zVal: zVal, yVal: yVal};
+                highest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
             }
             else if (zVal >= secondHighest.zVal)
             {
-                secondHighest = {query: edge, zVal: zVal, yVal: yVal};
+                secondHighest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
             }
         }
 

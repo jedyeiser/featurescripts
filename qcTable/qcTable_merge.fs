@@ -44,7 +44,7 @@ export function mergeStationData(
 
         // Build base row
         var row = {
-            station: stationNum,
+            "station" : stationNum,
             callout: station.callout,
             x_mrs: x,
             x_acp: x - boundaries.acp

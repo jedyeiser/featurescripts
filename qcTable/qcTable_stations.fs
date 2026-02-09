@@ -34,7 +34,7 @@ export function extractFCPACP(context is Context, fcpQuery is Query, acpQuery is
     return {
         fcp: fcpX,
         acp: acpX,
-        rsl: rsl
+        "rsl" : rsl
     };
 }
 
@@ -239,9 +239,6 @@ function addIntermediateStations(
             // Start from MRS, work outward in both directions
             var numTailPoints = floor(endX / spacing);
             var numTipPoints = floor(abs(startX) / spacing);
-            var startTail = numTailPoints * spacing;
-
-            var totalPoints = numTailPoints + numTipPoints;
 
             for (var i = -1 * numTipPoints; i <= numTailPoints; i += 1)
             {
@@ -249,7 +246,7 @@ function addIntermediateStations(
                 if (x >= startX && x <= endX)
                 {
                     stations = append(stations, {
-                        x: x,
+                        "x" : x,
                         callout: '',
                         preferred: false
                     });
@@ -267,7 +264,7 @@ function addIntermediateStations(
                 if (x >= startX && x <= endX)
                 {
                     stations = append(stations, {
-                        x: x,
+                        "x" : x,
                         callout: '',
                         preferred: false
                     });
@@ -289,7 +286,7 @@ function addIntermediateStations(
             if (x >= startX && x <= endX)
             {
                 stations = append(stations, {
-                    x: x,
+                    "x" : x,
                     callout: '',
                     preferred: false
                 });
@@ -305,7 +302,7 @@ function addIntermediateStations(
         {
             var x = startX + i * spacing;
             stations = append(stations, {
-                x: x,
+                "x" : x,
                 callout: '',
                 preferred: false
             });
