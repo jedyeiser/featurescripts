@@ -246,7 +246,12 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =====================================================================
         // STEP 5: Scale +Y sidecut
         // =====================================================================
-        var scaledPos = scaleSidecut(context, categorized.sidecutPos, refAnalysisPos,
+        var outputDegree = (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS && definition.outputDegree != undefined) ?
+            definition.outputDegree : 3;
+        var strictArcs = (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS) ?
+            definition.strictArcs : false;
+
+        var scaledPos = scaleSidecut(context, id + "scaledPos", categorized.sidecutPos, refAnalysisPos,
             refFcp[0], refAcp[0], refMrs[0],
             newFcp[0], newAcp[0], newMrs[0],
             definition.scaleMode,
@@ -254,7 +259,8 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             definition.scaleMode == FootprintScaleMode.SCALE_RADIUS ? definition.targetRadius : refAnalysisPos.avgRadius,
             definition.specifyWidth,
             definition.specifyWidth ? definition.targetWaistWidth : refAnalysisPos.waistWidth,
-            tolerance);
+            tolerance,
+            outputDegree, strictArcs);
         
         println("Scaled +Y: fcpWidth=" ~ toString(scaledPos.fcpWidth) ~
                 ", acpWidth=" ~ toString(scaledPos.acpWidth) ~
@@ -307,12 +313,18 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             var negSpecifyWidth = definition.negSpecifyWidth;
             var negTargetWaistWidth = negSpecifyWidth ?
                 definition.negTargetWaistWidth : refAnalysisNeg.waistWidth;
-            
-            var scaledNegFlipped = scaleSidecut(context, negFlipped, refAnalysisNeg,
+
+            var negOutputDegree = (negScaleMode == FootprintScaleMode.SCALE_RADIUS && definition.negOutputDegree != undefined) ?
+                definition.negOutputDegree : 3;
+            var negStrictArcs = (negScaleMode == FootprintScaleMode.SCALE_RADIUS) ?
+                definition.negStrictArcs : false;
+
+            var scaledNegFlipped = scaleSidecut(context, id + "scaledNeg", negFlipped, refAnalysisNeg,
                 refFcp[0], refAcp[0], refMrs[0],
                 newFcp[0], newAcp[0], newMrs[0],
                 negScaleMode, negPinLocation, negTargetRadius,
-                negSpecifyWidth, negTargetWaistWidth, tolerance);
+                negSpecifyWidth, negTargetWaistWidth, tolerance,
+                negOutputDegree, negStrictArcs);
             
             // Flip back to -Y space
             scaledNegCurves = mirrorCurvesY(scaledNegFlipped.curves);
@@ -447,13 +459,14 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
  * Routes to the correct scaling function based on mode.
  * This avoids repeating the mode-switch logic for +Y and -Y sides.
  */
-function scaleSidecut(context is Context, sidecutCurves is array, refAnalysis is map,
+function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refAnalysis is map,
     refFcpX is ValueWithUnits, refAcpX is ValueWithUnits, refMrsX is ValueWithUnits,
     newFcpX is ValueWithUnits, newAcpX is ValueWithUnits, newMrsX is ValueWithUnits,
     scaleMode is FootprintScaleMode, pinLocation is ScalePinLocation,
     targetRadius is ValueWithUnits,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
-    tolerance is ValueWithUnits) returns map
+    tolerance is ValueWithUnits,
+    outputDegree is number, strictArcs is boolean) returns map
 {
     if (scaleMode == FootprintScaleMode.ACCORDION)
     {
@@ -470,9 +483,10 @@ function scaleSidecut(context is Context, sidecutCurves is array, refAnalysis is
     }
     else // SCALE_RADIUS
     {
-        return scaleRadius(context, sidecutCurves, refAnalysis,
+        return scaleRadius(context, id, sidecutCurves, refAnalysis,
             refFcpX, refAcpX, newFcpX, newAcpX,
-            targetRadius, specifyWidth, targetWaistWidth, tolerance);
+            targetRadius, specifyWidth, targetWaistWidth, tolerance,
+            outputDegree, strictArcs);
     }
 }
 
@@ -1589,6 +1603,24 @@ function findClosestIndex(xSamples is array, targetX is ValueWithUnits) returns 
     }
 
     return bestIdx;
+}
+
+// =============================================================================
+// HELPER: CONVERT BSPLINES TO STRICT ARCS
+// =============================================================================
+
+/**
+ * Convert BSpline curves to rational quadratic NURBS (arcs/lines).
+ * Used for strict arcs mode in SCALE_RADIUS.
+ */
+function forceQuadraticNurbs(context is Context, id is Id, bSplines is array) returns array
+{
+    var dotTol = cos(0.1 * degree);
+    var polyArcs = approximateSplinesWithPolyArcs(bSplines, 1e-3 * millimeter, 1e-3 * millimeter, dotTol, 1 * millimeter);
+
+    var NURBS = primitivesToBSplines(polyArcs.segments);
+
+    return NURBS;
 }
 
 // =============================================================================
