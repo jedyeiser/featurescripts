@@ -111,6 +111,7 @@ class WorkingDirectoryManager:
     def get_working_directory(
         self,
         project_name: str,
+        files: list[str] | None = None,
         force: bool = False,
         dry_run: bool = False,
         auto_backup: bool = True,
@@ -120,6 +121,7 @@ class WorkingDirectoryManager:
 
         Args:
             project_name: Name of the project
+            files: Optional list of specific files to pull (relative to working_directory)
             force: Force pull even if there are local changes
             dry_run: Show what would happen without making changes
 
