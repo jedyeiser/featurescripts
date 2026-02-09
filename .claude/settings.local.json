@@ -25,7 +25,8 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(git push:*)",
-      "Bash(fs-sync:*)"
+      "Bash(fs-sync:*)",
+      "Bash(where:*)"
     ]
   }
 }
