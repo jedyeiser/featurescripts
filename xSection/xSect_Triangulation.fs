@@ -35,11 +35,15 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 
 export import(path : "onshape/std/coordSystem.fs", version : "2878.0");
 
+// xSectUtils (provides POINT_DEDUP_TOL constant)
+import(path : "c2c3edd39b85fde5e6062533", version : "eb21258f6fd7abb6c94d71e8");
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const POINT_TOLERANCE = 1e-6 * meter;
+// Note: Using POINT_DEDUP_TOL from xsectUtils for consistency
+const POINT_TOLERANCE = POINT_DEDUP_TOL;
 
 // =============================================================================
 // MAIN ENTRY POINT

@@ -4,10 +4,10 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectPredicates (UI definitions)
 export import(path : "17142132b20343b5f125e7e7", version : "20da8dfc09e465299e6d578e");
-// xSectUtils
+// xSectUtils (constants, utilities, polyline projection)
 import(path : "c2c3edd39b85fde5e6062533", version : "eb21258f6fd7abb6c94d71e8");
-// xsectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "e0645029416d1814a0794df3");
+// xsectProcessing - UNUSED (experimental overlap detection, kept for reference)
+// import(path : "3cb3cff6974529bf6bed096b", version : "e0645029416d1814a0794df3");
 // tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 // tools/debug - provides debugControlPolygon
@@ -517,7 +517,7 @@ function processCrossSections(context is Context, id is Id, definition is map) r
         var finalCurves = allBSplines;
         if (definition.createComposites)
         {
-            finalCurves = getUniqueCurvesOptimized(allBSplines, 1e-6 * meter);
+            finalCurves = getUniqueCurvesOptimized(allBSplines, OVERLAP_TOL);
         }
         
         // PHASE C: Build bodyData using triangulation module
@@ -913,9 +913,9 @@ function getUniqueCurvesOptimized(inputCurves is array, tolerance is ValueWithUn
     {
         var current = inputCurves[i];
         
-        // PROTECTION: Don't dedupe tiny curves (< 0.5mm)
+        // PROTECTION: Don't dedupe tiny curves
         var curveLength = approximateControlPolygonLength(current.bSplineCurve);
-        if (curveLength < 0.5 * millimeter)
+        if (curveLength < MIN_CURVE_LENGTH)
         {
             unique = append(unique, current);
             continue;
@@ -1100,75 +1100,9 @@ function mergeCurveBodies(keeper is map, donor is map) returns map
 }
 
 // =============================================================================
-// GEOMETRY HELPERS
-// =============================================================================
-
-/**
- * Find closest point on a polyline to a given point.
- */
-function closestPointOnPolyline(pt, polyline is array) returns map
-{
-    var bestDist = undefined;
-    var bestSeg = 0;
-    var bestT = 0;
-    
-    for (var k = 0; k < size(polyline) - 1; k += 1)
-    {
-        var segStart = polyline[k];
-        var segEnd = polyline[k + 1];
-        var result = closestPointOnSegment(pt, segStart, segEnd);
-        
-        if (bestDist == undefined || result.distance < bestDist)
-        {
-            bestDist = result.distance;
-            bestSeg = k;
-            bestT = result.t;
-        }
-    }
-    
-    if (bestDist == undefined)
-    {
-        bestDist = norm(pt - polyline[0]);
-    }
-    
-    return {
-        "distance" : bestDist,
-        "segmentIdx" : bestSeg,
-        "t" : bestT
-    };
-}
-
-/**
- * Find closest point on a line segment to a given point.
- */
-function closestPointOnSegment(pt, segStart, segEnd) returns map
-{
-    var segVec = segEnd - segStart;
-    var segLenSq = dot(segVec, segVec);
-    
-    if (segLenSq < 1e-20 * meter * meter)
-    {
-        return {
-            "distance" : norm(pt - segStart),
-            "t" : 0
-        };
-    }
-    
-    var t = dot(pt - segStart, segVec) / segLenSq;
-    t = max(0, min(1, t));
-    
-    var closestPt = segStart + t * segVec;
-    var distance = norm(pt - closestPt);
-    
-    return {
-        "distance" : distance,
-        "t" : t
-    };
-}
-
-// =============================================================================
 // GEOMETRY CREATION
 // =============================================================================
+// NOTE: closestPointOnPolyline() and closestPointOnSegment() now imported from xsectUtils
 
 /**
  * Create composite wire bodies from cross-section data.

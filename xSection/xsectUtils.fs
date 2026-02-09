@@ -4,13 +4,25 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 /**
  * XSECT UTILS - Cross Section Utility Functions
  * ==============================================
- * 
+ *
  * Reusable helper functions for cross-section analysis:
  * - Body signature extraction (for caching)
  * - Cross-section frame generation
  * - B-spline sampling utilities
  * - Query helpers
+ * - Geometry utilities (polyline projection)
  */
+
+// =============================================================================
+// GEOMETRIC TOLERANCE CONSTANTS
+// =============================================================================
+
+export const GEOM_TOL = 1e-6 * meter;                    // General geometric tolerance
+export const POINT_DEDUP_TOL = 1e-6 * meter;             // Point deduplication threshold
+export const PLANE_TOL = 1e-8 * meter;                   // Plane classification tolerance
+export const CONTROL_POLY_AREA_TOL = 1e-12 * meter * meter;  // Colinearity check
+export const MIN_CURVE_LENGTH = 0.5 * millimeter;        // Minimum curve length for deduplication
+export const OVERLAP_TOL = 1e-6 * meter;                 // Curve overlap detection
 
 // =============================================================================
 // BODY SIGNATURE FUNCTIONS
@@ -348,4 +360,89 @@ export function debugControlPolygon(context is Context, curve is BSplineCurve, c
     {
         addDebugLine(context, cps[i-1], cps[i], color);
     }
+}
+
+// =============================================================================
+// POLYLINE PROJECTION UTILITIES
+// =============================================================================
+
+/**
+ * Find closest point on a polyline (control polygon) to a given point.
+ *
+ * @param pt {Vector} : Query point
+ * @param polyline {array} : Array of Vectors defining polyline vertices
+ * @returns {map} : { distance, segmentIdx, t, closestPt }
+ *     - distance: closest distance to polyline
+ *     - segmentIdx: index of closest segment (0 to n-2)
+ *     - t: parameter along that segment [0,1]
+ *     - closestPt: closest point on polyline
+ */
+export function closestPointOnPolyline(pt is Vector, polyline is array) returns map
+{
+    var bestDist = undefined;
+    var bestSeg = 0;
+    var bestT = 0;
+    var bestPt = polyline[0];
+
+    for (var i = 0; i < size(polyline) - 1; i += 1)
+    {
+        var segStart = polyline[i];
+        var segEnd = polyline[i + 1];
+        var result = closestPointOnSegment(pt, segStart, segEnd);
+
+        if (bestDist == undefined || result.distance < bestDist)
+        {
+            bestDist = result.distance;
+            bestSeg = i;
+            bestT = result.t;
+            bestPt = result.closestPt;
+        }
+    }
+
+    return {
+        "distance" : bestDist,
+        "segmentIdx" : bestSeg,
+        "t" : bestT,
+        "closestPt" : bestPt
+    };
+}
+
+/**
+ * Find closest point on a line segment to a given point.
+ *
+ * @param pt {Vector} : Query point
+ * @param segStart {Vector} : Segment start
+ * @param segEnd {Vector} : Segment end
+ * @returns {map} : { distance, t, closestPt }
+ *     - distance: distance from pt to closest point
+ *     - t: parameter along segment [0,1]
+ *     - closestPt: closest point on segment
+ */
+export function closestPointOnSegment(pt is Vector, segStart is Vector, segEnd is Vector) returns map
+{
+    var segVec = segEnd - segStart;
+    var segLenSq = dot(segVec, segVec);
+
+    if (segLenSq < 1e-20 * meter * meter)
+    {
+        // Degenerate segment
+        return {
+            "distance" : norm(pt - segStart),
+            "t" : 0,
+            "closestPt" : segStart
+        };
+    }
+
+    // Project pt onto line, clamp to segment
+    var t = dot(pt - segStart, segVec) / segLenSq;
+    t = max(0, min(1, t));  // clamp to [0,1]
+
+    var closestPt = segStart + t * segVec;
+    var distance = norm(pt - closestPt);
+
+    return {
+        "distance" : distance,
+        "t" : t,
+        "closestPt" : closestPt
+    };
 }

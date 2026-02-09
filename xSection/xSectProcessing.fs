@@ -14,7 +14,18 @@ import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/280a24d76f52bdb
 /**
  * UNIQUE CURVES - B-Spline Consolidation
  * ======================================
- * 
+ *
+ * ⚠️  STATUS: EXPERIMENTAL - CURRENTLY UNUSED ⚠️
+ *
+ * This module provides sophisticated overlap detection with curve splitting,
+ * but is NOT currently used by the xSection feature. The main feature uses
+ * a simpler, optimized approach (getUniqueCurvesOptimized in xSect.fs).
+ *
+ * This file is kept for reference and potential future use. It demonstrates
+ * a more complete approach to handling partial overlaps and curve splitting.
+ *
+ * ---
+ *
  * Takes an array of potentially overlapping B-spline curves and returns
  * a minimal set of non-overlapping segments covering the same geometry.
  *
