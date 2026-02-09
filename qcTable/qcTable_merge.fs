@@ -1,6 +1,8 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
-import(path : "qcTable_types.fs", version : "");
+//import qcTable_types
+import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+
 
 /**
  * QC Table Data Merging

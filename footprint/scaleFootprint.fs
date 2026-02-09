@@ -108,6 +108,12 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         {
             annotation { "Name" : "Target average radius" }
             isLength(definition.targetRadius, LENGTH_BOUNDS);
+
+            annotation { "Name" : "Output curve degree", "Default" : 3 }
+            isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
+
+            annotation { "Name" : "Strict arcs", "Default" : false }
+            definition.strictArcs is boolean;
         }
         
         annotation { "Name" : "Specify target width", "Default" : false }
@@ -135,6 +141,12 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             {
                 annotation { "Name" : "-Y Target average radius" }
                 isLength(definition.negTargetRadius, LENGTH_BOUNDS);
+
+                annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
+                isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
+
+                annotation { "Name" : "-Y Strict arcs", "Default" : false }
+                definition.negStrictArcs is boolean;
             }
             
             annotation { "Name" : "-Y Specify target width", "Default" : false }
@@ -1599,12 +1611,13 @@ function findClosestIndex(xSamples is array, targetX is ValueWithUnits) returns 
  * 4. SPLIT converged geometry at original curve boundaries
  * 5. Return array of curves with correct radius and preserved structure
  */
-function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is map,
+function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAnalysis is map,
     refFcpX is ValueWithUnits, refAcpX is ValueWithUnits,
     newFcpX is ValueWithUnits, newAcpX is ValueWithUnits,
     targetRadius is ValueWithUnits,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
-    tolerance is ValueWithUnits) returns map
+    tolerance is ValueWithUnits,
+    outputDegree is number, strictArcs is boolean) returns map
 {
     var refLength = abs(refAcpX - refFcpX);
     var newLength = abs(newAcpX - newFcpX);
@@ -1629,8 +1642,8 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
     // CRITICAL: Sort boundaries in ascending X order for splitting algorithm
     curveBoundaries = sort(curveBoundaries, function(a, b) { return a - b; });
 
-    // Initial guess for radius scale factor
-    var radiusScaleFactor = refAnalysis.avgRadius / targetRadius;
+    // Initial guess for radius scale factor (start at 1.0 to bootstrap)
+    var radiusScaleFactor = 1.0;
     var maxIterations = 5;
     var radiusTolerance = 0.05 * meter;  // 5cm tolerance
 
@@ -1644,6 +1657,13 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
 
     println("  Scale radius: refAvgRadius=" ~ toString(refAnalysis.avgRadius) ~
             ", targetRadius=" ~ toString(targetRadius) ~ ", initial scale=" ~ toString(radiusScaleFactor));
+
+    // Store reference curvature (unscaled) for selective scaling
+    var kReference = [];
+
+    // Inflection bounds (will be updated each iteration)
+    var inflectionXMin = newFcpX;  // Default to full sidecut
+    var inflectionXMax = newAcpX;
 
     // ITERATION LOOP: Adjust scale factor until radius matches target
     for (var iteration = 0; iteration < maxIterations; iteration += 1)
@@ -1667,11 +1687,32 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
             kSamples = append(kSamples, k);
         }
 
-        // Scale curvature by current factor
-        var scaledK = [];
-        for (var k in kSamples)
+        // Store reference curvature on first iteration
+        if (iteration == 0)
         {
-            scaledK = append(scaledK, k * radiusScaleFactor);
+            kReference = kSamples;
+        }
+
+        // Scale curvature SELECTIVELY
+        // - Between inflections: apply radiusScaleFactor
+        // - Outside inflections (taper): keep original
+        var scaledK = [];
+        for (var i = 0; i < size(kReference); i += 1)
+        {
+            var x = newFcpX + (i / (size(kReference) - 1)) * (newAcpX - newFcpX);
+            var k = kReference[i];
+
+            // Check if this sample is between inflections (sidecut region)
+            if (x >= inflectionXMin && x <= inflectionXMax)
+            {
+                // Scale sidecut curvature
+                scaledK = append(scaledK, k * radiusScaleFactor);
+            }
+            else
+            {
+                // Keep taper curvature unchanged
+                scaledK = append(scaledK, k);
+            }
         }
 
         // Map X to new RSL length
@@ -1742,9 +1783,15 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         var evalXMin = fbInflection.found ? fbInflection.x : newFcpX;
         var evalXMax = abInflection.found ? abInflection.x : newAcpX;
 
+        // UPDATE inflection bounds for next iteration
+        inflectionXMin = evalXMin;
+        inflectionXMax = evalXMax;
+
         // EVALUATE ACTUAL RADIUS between inflection points (like analyzeFootprint)
         var actualRadius = evaluateRadiusBetweenInflections(tempCurve, evalXMin, evalXMax);
 
+        println("  Inflection bounds: [" ~ toString(inflectionXMin) ~ ", " ~ toString(inflectionXMax) ~ "]");
+        println("  Scaling curvature only between inflections");
         println("  FB inflection: " ~ (fbInflection.found ? ("X=" ~ toString(fbInflection.x)) : "not found"));
         println("  AB inflection: " ~ (abInflection.found ? ("X=" ~ toString(abInflection.x)) : "not found"));
         println("  Actual radius: " ~ toString(actualRadius) ~ " (between X=" ~ toString(evalXMin) ~ " to " ~ toString(evalXMax) ~ ")");
@@ -1779,25 +1826,75 @@ function scaleRadius(context is Context, sidecutCurves is array, refAnalysis is 
         println("  WARNING: Did not converge after " ~ maxIterations ~ " iterations");
     }
 
-    // BUILD SINGLE COHERENT SIDECUT CURVE from converged samples
-    var outputPoints = [];
-    for (var i = 0; i < size(newXSamples); i += 1)
+    // SPLIT converged geometry at original curve boundaries
+    var outputCurves = [];
+    var segmentStartIdx = 0;
+
+    // Map reference boundaries to new coordinate space
+    var mappedBoundaries = [];
+    for (var boundaryX in curveBoundaries)
     {
-        outputPoints = append(outputPoints,
+        var newBoundaryX = newFcpX + (boundaryX - refFcpX) * xScale;
+        mappedBoundaries = append(mappedBoundaries, newBoundaryX);
+    }
+
+    println("  Splitting at " ~ size(mappedBoundaries) ~ " boundaries");
+    println("  Expected " ~ (size(mappedBoundaries) + 1) ~ " output curves");
+
+    for (var boundaryIdx = 0; boundaryIdx < size(mappedBoundaries); boundaryIdx += 1)
+    {
+        var boundaryX = mappedBoundaries[boundaryIdx];
+        var splitIdx = findClosestIndex(newXSamples, boundaryX);
+
+        // Build segment from start to split point (INCLUSIVE)
+        var segmentPoints = [];
+        for (var i = segmentStartIdx; i <= splitIdx; i += 1)
+        {
+            segmentPoints = append(segmentPoints,
+                vector(newXSamples[i], finalY[i], 0 * millimeter));
+        }
+
+        // Create curve if segment has enough points
+        if (size(segmentPoints) >= 2)
+        {
+            var segmentCurve = approximateSpline(context, {
+                "degree" : outputDegree,
+                "tolerance" : 0.001 * millimeter,
+                "maxControlPoints" : 30,
+                "targets" : [approximationTarget({ "positions" : segmentPoints })],
+                "interpolateIndices" : [0, size(segmentPoints) - 1]
+            })[0];
+
+            outputCurves = append(outputCurves, segmentCurve);
+        }
+
+        // CRITICAL: Share boundary point for G0 continuity
+        // Next segment starts at splitIdx (NOT splitIdx + 1)
+        segmentStartIdx = splitIdx;
+    }
+
+    // Last segment (from last boundary to end)
+    var segmentPoints = [];
+    for (var i = segmentStartIdx; i < size(newXSamples); i += 1)
+    {
+        segmentPoints = append(segmentPoints,
             vector(newXSamples[i], finalY[i], 0 * millimeter));
     }
 
-    var sidecutCurve = approximateSpline(context, {
-        "degree" : 3,
-        "tolerance" : 0.001 * millimeter,
-        "maxControlPoints" : 100,  // Allow more CPs for full sidecut
-        "targets" : [approximationTarget({ "positions" : outputPoints })],
-        "interpolateIndices" : [0, size(outputPoints) - 1]
-    })[0];
+    if (size(segmentPoints) >= 2)
+    {
+        var segmentCurve = approximateSpline(context, {
+            "degree" : 3,
+            "tolerance" : 0.001 * millimeter,
+            "maxControlPoints" : 30,
+            "targets" : [approximationTarget({ "positions" : segmentPoints })],
+            "interpolateIndices" : [0, size(segmentPoints) - 1]
+        })[0];
 
-    var outputCurves = [sidecutCurve];
+        outputCurves = append(outputCurves, segmentCurve);
+    }
 
-    println("  Created single coherent sidecut curve with " ~ size(outputPoints) ~ " sample points");
+    println("  Created " ~ size(outputCurves) ~ " output curves");
 
     // Get final widths
     var finalFcpWidth = finalY[0];
