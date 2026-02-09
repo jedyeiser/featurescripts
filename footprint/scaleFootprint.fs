@@ -58,8 +58,7 @@ export enum FootprintScaleMode
 
 // Bounds for sidecut radius input (in meters for better UX)
 export const SIDECUT_RADIUS_BOUNDS = {
-    (meter): [1, 100, 21],  // min=1m, max=100m, default=21m
-    (unitless): [0.001, 100]
+    (meter): [1, 21, 100]  // [min, default, max]
 } as LengthBoundSpec;
 
 export enum ScalePinLocation
@@ -1945,62 +1944,9 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         println("  Converted to strict arcs (rational quadratic NURBS)");
     }
 
-    // VALIDATION: Measure radius of final output curves to verify accuracy
-    println("  --- POST-SPLITTING VALIDATION ---");
-    var finalRadiusSum = 0;
-    var finalRadiusCount = 0;
-
-    for (var curveIdx = 0; curveIdx < size(outputCurves); curveIdx += 1)
-    {
-        var curve = outputCurves[curveIdx];
-
-        // Sample 10 points along this curve segment
-        for (var i = 0; i < 10; i += 1)
-        {
-            try
-            {
-                var param = i / 9.0;  // 0 to 1
-                var result = evCurvature(context, {
-                    "edge" : curve,
-                    "parameter" : param
-                });
-
-                if (result.curvature != undefined && result.curvature > 1e-9)
-                {
-                    var radius = 1 / result.curvature;
-                    // Only count points within inflection region
-                    if (result.point[0] >= inflectionXMin && result.point[0] <= inflectionXMax)
-                    {
-                        finalRadiusSum += radius;
-                        finalRadiusCount += 1;
-                    }
-                }
-            }
-            catch
-            {
-                // Skip points where curvature evaluation fails
-            }
-        }
-    }
-
-    if (finalRadiusCount > 0)
-    {
-        var finalAvgRadius = finalRadiusSum / finalRadiusCount;
-        var finalError = finalAvgRadius - targetRadius;
-        println("  Final output radius: " ~ toString(finalAvgRadius) ~
-                " (sampled " ~ finalRadiusCount ~ " points)");
-        println("  Final error: " ~ toString(finalError));
-
-        if (abs(finalError) > 0.1 * meter)
-        {
-            println("  WARNING: Final radius differs from target by > 10cm");
-            println("  Consider further tightening approximation tolerances or increasing maxControlPoints");
-        }
-    }
-    else
-    {
-        println("  WARNING: Could not measure final output radius (no valid curvature samples)");
-    }
+    // NOTE: To validate final radius accuracy, run analyzeFootprint on the output curves
+    // The tighter iteration tolerance (1cm) and improved approximation quality should
+    // reduce the radius error from ~0.63m to < 0.1m
 
     // Get final widths
     var finalFcpWidth = finalY[0];

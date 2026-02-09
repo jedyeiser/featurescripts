@@ -88,6 +88,12 @@ export function measureCoreAtStation(
     coreExtents is Box3d,
     verbose is boolean) returns map
 {
+    // Validate input
+    if (!isLength(stationX))
+    {
+        throw "stationX must be a length value";
+    }
+
     // Create measurement plane at station
     var measurePlane = plane(vector(stationX, 0 * millimeter, 0 * millimeter), vector(1, 0, 0));
 
@@ -164,14 +170,21 @@ export function measureCoreAtStation(
     var baseRoutDepth = '';
     var baseRoutWidth = '';
 
-    var widestIsLowest = any(widestPoints, function(p)
+    // Edge case: if no widest points found, skip base rout detection
+    if (size(widestPoints) == 0)
     {
-        return abs(p[2] - minZ) < EDGE_MARGIN;
-    });
+        // No distinct widest points - skip base rout detection
+    }
+    else
+    {
+        var widestIsLowest = any(widestPoints, function(p)
+        {
+            return abs(p[2] - minZ) < EDGE_MARGIN;
+        });
 
-    if (!widestIsLowest)
-    {
-        // Base rout exists
+        if (!widestIsLowest)
+        {
+            // Base rout exists
         var lowestZ = min(mapArray(widestPoints, function(p) { return p[2]; }));
         baseRoutDepth = lowestZ - minZ;
 
@@ -200,17 +213,25 @@ export function measureCoreAtStation(
             }
         }
     }
+    }
 
     // Check for top edge (widest point not at maximum Z)
     var coreTopWidth = coreWidth;
     var coreTopAngle = '';
 
-    var widestIsHighest = any(widestPoints, function(p)
+    // Edge case: if no widest points found, skip top edge detection
+    if (size(widestPoints) == 0 || size(highestPoints) == 0)
     {
-        return abs(p[2] - maxZ) < EDGE_MARGIN;
-    });
+        // No distinct widest/highest points - skip top edge detection
+    }
+    else
+    {
+        var widestIsHighest = any(widestPoints, function(p)
+        {
+            return abs(p[2] - maxZ) < EDGE_MARGIN;
+        });
 
-    if (!widestIsHighest)
+        if (!widestIsHighest)
     {
         // Top edge exists
         var zVals = mapArray(widestPoints, function(p) { return p[2]; });
@@ -231,8 +252,19 @@ export function measureCoreAtStation(
 
         coreTopWidth = 2 * widestHighest[1];
 
-        var angle = atan((highestWidest[1] - widestHighest[1]) / (widestHighest[2] - highestWidest[2]));
-        coreTopAngle = round(angle, 0.1 * degree);
+        // Calculate top edge angle - check for vertical edge (division by zero)
+        var deltaZ = widestHighest[2] - highestWidest[2];
+        if (abs(deltaZ) < TOLERANCE.zeroLength)
+        {
+            // Vertical or nearly vertical top edge
+            coreTopAngle = 90 * degree;
+        }
+        else
+        {
+            var angle = atan((highestWidest[1] - widestHighest[1]) / deltaZ);
+            coreTopAngle = round(angle, 0.1 * degree);
+        }
+        }
     }
 
     // Get grooved thickness from front plane split

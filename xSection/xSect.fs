@@ -480,8 +480,20 @@ function processCrossSections(context is Context, id is Id, definition is map) r
     
     var bodyQueries = mapArray(bodies, function(b) { return b.bodyQuery; });
 
+    // Build body index map for O(1) lookups (Phase 2 optimization)
+    var bodyIndexMap = {};
+    for (var i = 0; i < size(bodyQueries); i += 1)
+    {
+        var entities = evaluateQuery(context, bodyQueries[i]);
+        if (size(entities) > 0)
+        {
+            // Use first entity as key (solid bodies typically have single entity)
+            bodyIndexMap[toString(entities[0])] = i;
+        }
+    }
+
     var crossSections = [];
-    
+
     for (var i = 0; i < size(frames); i += 1)
     {
         var frame = frames[i];
@@ -500,8 +512,15 @@ function processCrossSections(context is Context, id is Id, definition is map) r
         for (var b = 0; b < size(intersectingBodies); b += 1)
         {
             var body = intersectingBodies[b];
-            var bodyIdx = findBodyIndex(context, body, bodyQueries);
-            
+
+            // Use O(1) map lookup instead of O(n) search
+            var bodyIdx = bodyIndexMap[toString(body)];
+            if (bodyIdx == undefined)
+            {
+                println("WARNING: Body not found in index map at section " ~ i);
+                continue;
+            }
+
             opIntersectFaces(context, id + ("intersect" ~ i ~ "_" ~ b), {
                     "tools" : planeQ,
                     "targets" : body
@@ -539,11 +558,17 @@ function processCrossSections(context is Context, id is Id, definition is map) r
         // PHASE C: Build bodyData using triangulation module
         var sectionPoints = [];
         var bodyData = [];
-        
+
         for (var body in intersectingBodies)
         {
-            var bodyIdx = findBodyIndex(context, body, bodyQueries);
-            
+            // Use O(1) map lookup instead of O(n) search
+            var bodyIdx = bodyIndexMap[toString(body)];
+            if (bodyIdx == undefined)
+            {
+                println("WARNING: Body not found in index map at section " ~ i);
+                continue;
+            }
+
             var bodyCurves = bodyToCurves[bodyIdx];
             if (bodyCurves == undefined)
                 bodyCurves = [];
