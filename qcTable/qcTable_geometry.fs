@@ -185,34 +185,34 @@ export function measureCoreAtStation(
         if (!widestIsLowest)
         {
             // Base rout exists
-        var lowestZ = min(mapArray(widestPoints, function(p) { return p[2]; }));
-        baseRoutDepth = lowestZ - minZ;
+            var lowestZ = min(mapArray(widestPoints, function(p) { return p[2]; }));
+            baseRoutDepth = lowestZ - minZ;
 
-        // Find inner edge at this Z level
-        var atLowestZ = filter(allPoints, function(p)
-        {
-            return abs(p[2] - lowestZ) < EDGE_MARGIN;
-        });
-
-        var innerY = mapArray(atLowestZ, function(p) { return p[1]; });
-        innerY = filter(innerY, function(y) { return abs(y - maxY) >= EDGE_MARGIN; });
-
-        if (size(innerY) > 0)
-        {
-            var nextY = max(innerY);
-            var insideEdgeQuery = qContainsPoint(coreEdges, vector(stationX, nextY, lowestZ));
-
-            if (!isQueryEmpty(context, insideEdgeQuery))
+            // Find inner edge at this Z level
+            var atLowestZ = filter(allPoints, function(p)
             {
-                var brDist = evDistance(context, {
-                    side0: vector(stationX, maxY, lowestZ),
-                    side1: insideEdgeQuery
-                });
+                return abs(p[2] - lowestZ) < EDGE_MARGIN;
+            });
 
-                baseRoutWidth = brDist.distance;
+            var innerY = mapArray(atLowestZ, function(p) { return p[1]; });
+            innerY = filter(innerY, function(y) { return abs(y - maxY) >= EDGE_MARGIN; });
+
+            if (size(innerY) > 0)
+            {
+                var nextY = max(innerY);
+                var insideEdgeQuery = qContainsPoint(coreEdges, vector(stationX, nextY, lowestZ));
+
+                if (!isQueryEmpty(context, insideEdgeQuery))
+                {
+                    var brDist = evDistance(context, {
+                        side0: vector(stationX, maxY, lowestZ),
+                        side1: insideEdgeQuery
+                    });
+
+                    baseRoutWidth = brDist.distance;
+                }
             }
         }
-    }
     }
 
     // Check for top edge (widest point not at maximum Z)
@@ -232,38 +232,38 @@ export function measureCoreAtStation(
         });
 
         if (!widestIsHighest)
-    {
-        // Top edge exists
-        var zVals = mapArray(widestPoints, function(p) { return p[2]; });
-        var highestWidestZ = max(zVals);
-
-        var highestWidest = filter(widestPoints, function(p)
         {
-            return abs(p[2] - highestWidestZ) < EDGE_MARGIN;
-        })[0];
+            // Top edge exists
+            var zVals = mapArray(widestPoints, function(p) { return p[2]; });
+            var highestWidestZ = max(zVals);
 
-        var highZYvals = mapArray(highestPoints, function(p) { return p[1]; });
-        var widestHighestY = max(highZYvals);
+            var highestWidest = filter(widestPoints, function(p)
+            {
+                return abs(p[2] - highestWidestZ) < EDGE_MARGIN;
+            })[0];
 
-        var widestHighest = filter(highestPoints, function(p)
-        {
-            return abs(p[1] - widestHighestY) < EDGE_MARGIN;
-        })[0];
+            var highZYvals = mapArray(highestPoints, function(p) { return p[1]; });
+            var widestHighestY = max(highZYvals);
 
-        coreTopWidth = 2 * widestHighest[1];
+            var widestHighest = filter(highestPoints, function(p)
+            {
+                return abs(p[1] - widestHighestY) < EDGE_MARGIN;
+            })[0];
 
-        // Calculate top edge angle - check for vertical edge (division by zero)
-        var deltaZ = widestHighest[2] - highestWidest[2];
-        if (abs(deltaZ) < TOLERANCE.zeroLength)
-        {
-            // Vertical or nearly vertical top edge
-            coreTopAngle = 90 * degree;
-        }
-        else
-        {
-            var angle = atan((highestWidest[1] - widestHighest[1]) / deltaZ);
-            coreTopAngle = round(angle, 0.1 * degree);
-        }
+            coreTopWidth = 2 * widestHighest[1];
+
+            // Calculate top edge angle - check for vertical edge (division by zero)
+            var deltaZ = widestHighest[2] - highestWidest[2];
+            if (abs(deltaZ) < TOLERANCE.zeroLength)
+            {
+                // Vertical or nearly vertical top edge
+                coreTopAngle = 90 * degree;
+            }
+            else
+            {
+                var angle = atan((highestWidest[1] - widestHighest[1]) / deltaZ);
+                coreTopAngle = round(angle, 0.1 * degree);
+            }
         }
     }
 
