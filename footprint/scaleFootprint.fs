@@ -13,6 +13,9 @@ import(path : "b1e8bfe71f67389ca210ed8b/96aed2c3625444f0bea650a0/99e84dbe2a4e235
 export import(path : "67c190b80e8b74dcee72e7ff", version : "796d200b9768c45070a7cfef");
 export import(path : "71d853c0fd2f10ca3bb20a4b", version : "3e7099b547a620132566f0fe");
 
+// Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
+import(path : "66f4f03cf728e94b8f823585", version : "6cd0924ac87db40ee0f2a41f");
+
 
 
 
@@ -1895,6 +1898,14 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     }
 
     println("  Created " ~ size(outputCurves) ~ " output curves");
+
+    // OPTIONAL: Convert to strict arcs if requested
+    if (strictArcs)
+    {
+        var arcCurves = forceQuadraticNurbs(context, id + "strictArcs", outputCurves);
+        outputCurves = arcCurves;
+        println("  Converted to strict arcs (rational quadratic NURBS)");
+    }
 
     // Get final widths
     var finalFcpWidth = finalY[0];

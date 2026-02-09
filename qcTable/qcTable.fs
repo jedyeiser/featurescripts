@@ -3,10 +3,14 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/table.fs", version : "2878.0");
 import(path : "onshape/std/geomOperations.fs", version : "2878.0");
 
-import(path : "qcTable_types.fs", version : "");
-import(path : "qcTable_stations.fs", version : "");
-import(path : "qcTable_geometry.fs", version : "");
-import(path : "qcTable_merge.fs", version : "");
+//import qcTable_types
+import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+//import qcTable_stations
+import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+//import qcTable_geometry
+import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+//import qcTable_merge
+import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
 
 /**
  * QC Table Feature - Main Feature Definition
