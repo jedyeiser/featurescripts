@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectPredicates (for DEBUG_COLOR_SEQUENCE and XSectionDebugType enum)
-import(path : "17142132b20343b5f125e7e7", version : "1329e125d41057bc64299e00");
+import(path : "17142132b20343b5f125e7e7", version : "ebc711c41b22e6018e89599c");
 // tools/debug - provides debugControlPolygon
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/8944e3e431de4929b0a28fbc", version : "889ff7e9c358da182dc0bf8a");
 
@@ -210,5 +210,13 @@ function printGroupData(groups is array, sectionPoints is array, depth is number
         {
             printGroupData(group.subgroups, sectionPoints, depth + 1, printTriangles);
         }
+    }
+}
+
+export function debugControlPolygon(context is Context, bSplineCurve is BSplineCurve, color is DebugColor)
+{
+    for (var i = 1; i < size(bSplineCurve.controlPoints); i += 1)
+    {
+        addDebugLine(context, bSplineCurve.controlPoints[i-1], bSplineCurve.controlPoints[i], color);
     }
 }

@@ -16,14 +16,17 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  * Extracted from xSect.fs to separate processing logic from orchestration.
  */
 
+// IMPORTS - xSectPredicates (for MaterialBehavior and MaterialType enums)
+import(path : "17142132b20343b5f125e7e7", version : "ebc711c41b22e6018e89599c");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "7e537861c2928d241275f66f");
+import(path : "c2c3edd39b85fde5e6062533", version : "c7d444cfe9f333eaffb6d356");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "d9f90d26de8883a3e007a6fc");
+import(path : "08d3a8d4e34a60d45d46e261", version : "7a2a13ad4b19fd54028a480e");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
-import(path : "55c3f77a0ff77e36e93e8aad", version : "");
+import(path : "f8e590162884d45f56e0a05f", version : "a10b83decf148c418d18a345");
+
 // IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
-import(path : "74231d1d53f5a117d47d17a9", version : "513d07995ff70ccd50c927a2");
+import(path : "74231d1d53f5a117d47d17a9", version : "4440e5b641b869a485547113");
 
 // =============================================================================
 // CURVE OVERLAP DETECTION TYPES
@@ -212,6 +215,14 @@ export function processCrossSections(context is Context, id is Id, definition is
             finalCurves = getUniqueCurvesOptimized(allBSplines, OVERLAP_TOL);
         }
 
+        // Strip bbox2D from final output curves (do this early for use in all code paths)
+        var outputCurves = mapArray(finalCurves, function(c) {
+            return {
+                "bSplineCurve" : c.bSplineCurve,
+                "bodyIndices" : c.bodyIndices
+            };
+        });
+
         // PHASE C: Build bodyData using triangulation module
         var sectionPoints = [];
         var spatialGrid = {};  // Phase 4: Spatial grid for O(1) point deduplication
@@ -291,14 +302,6 @@ export function processCrossSections(context is Context, id is Id, definition is
             "width" : (overallMaxX - overallMinX),
             "height" : (overallMaxY - overallMinY)
         };
-
-        // Strip bbox2D from final output curves
-        var outputCurves = mapArray(finalCurves, function(c) {
-            return {
-                "bSplineCurve" : c.bSplineCurve,
-                "bodyIndices" : c.bodyIndices
-            };
-        });
 
         // Cleanup
         try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }

@@ -2,7 +2,8 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (buildMaterialLookup, normalizeMaterialName)
-import(path : "55c3f77a0ff77e36e93e8aad", version : "");
+import(path : "f8e590162884d45f56e0a05f", version : "a10b83decf148c418d18a345");
+
 
 /**
  * CROSS-SECTION CLT MODULE
