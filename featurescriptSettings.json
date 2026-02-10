@@ -6,32 +6,6 @@
   },
   "references": [
     {
-      "name": "Sidewall QC Table",
-      "type": "document",
-      "url": "https://k2-sports.onshape.com/documents/3b9dc959eeb9c39384c804b2/w/b242da6ef55f2959e9ba6bbf/e/57049bc44be6244a3ed83a29",
-      "local_path": "./swQCTable",
-      "read_only": true,
-      "auto_update": false,
-      "recursive": true,
-      "last_sync": "2026-02-08T19:33:20.230581+00:00",
-      "document_id": "3b9dc959eeb9c39384c804b2",
-      "workspace_id": "b242da6ef55f2959e9ba6bbf",
-      "folder_id": null
-    },
-    {
-      "name": "Core QC Table",
-      "type": "document",
-      "url": "https://k2-sports.onshape.com/documents/8f79891da5ff201e08298c62/w/6b29203d684449c6a7191bb2/e/a346fe18723c6ff274cd73e5",
-      "local_path": "./coreQCTable",
-      "read_only": true,
-      "auto_update": false,
-      "recursive": true,
-      "last_sync": "2026-02-08T19:33:34.724105+00:00",
-      "document_id": "8f79891da5ff201e08298c62",
-      "workspace_id": "6b29203d684449c6a7191bb2",
-      "folder_id": null
-    },
-    {
       "name": "Onshape Standard Library",
       "type": "document",
       "url": "https://k2-sports.onshape.com/documents/03649da4cf2afc2773f3605e/w/dee24c5ad9eb366e42fca299",
@@ -55,6 +29,32 @@
       "last_sync": "2026-02-08T06:24:49.435140+00:00",
       "document_id": "b1e8bfe71f67389ca210ed8b",
       "workspace_id": "ebfba030030958df8387c848",
+      "folder_id": null
+    },
+    {
+      "name": "wrapAndLoft",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/1e2b92dac499768c0aae4137/w/a0296edd017b85ecbc1dad8c/e/a3137a9558b543ea0f2fde9a",
+      "local_path": "./wrapAndLoft",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-10T08:02:40.397204+00:00",
+      "document_id": "1e2b92dac499768c0aae4137",
+      "workspace_id": "a0296edd017b85ecbc1dad8c",
+      "folder_id": null
+    },
+    {
+      "name": "geometryManipulators",
+      "type": "document",
+      "url": "https://k2-sports.onshape.com/documents/d76dd064f4e9440b2827c549/w/a8dfaa88148ed1aee5b1331d/e/5fcfc85d687c00028d716ecf",
+      "local_path": "./geometryManipulators",
+      "read_only": true,
+      "auto_update": false,
+      "recursive": true,
+      "last_sync": "2026-02-10T08:05:59.841220+00:00",
+      "document_id": "d76dd064f4e9440b2827c549",
+      "workspace_id": "a8dfaa88148ed1aee5b1331d",
       "folder_id": null
     }
   ],
@@ -97,25 +97,25 @@
         "internal tools document"
       ],
       "last_pull": "2026-02-09T21:14:50.764237+00:00",
-      "last_push": "2026-02-10T01:46:38.432578+00:00",
+      "last_push": "2026-02-10T07:38:45.537411+00:00",
       "document_id": "f8deedeb1fbd819a8fa20113",
       "workspace_id": "2bac53cbf0cd1504ada12137"
     },
     {
-      "name": "QC Table",
-      "description": "Core and sidewall QC",
-      "working_directory": "./qcTable",
-      "onshape_url": "https://k2-sports.onshape.com/documents/51ccc604f1a8c938b48c2f37/w/b0471d23cacc26179be6e5ab/e/54c855061de038e9e9787a94",
+      "name": "curveWrapping",
+      "description": "Tools to wrap curves from one to another, extending into deforming a body based on the input of two curves",
+      "working_directory": "./curveMapping",
+      "onshape_url": "https://k2-sports.onshape.com/documents/08e8748f2ef24eea16072b75/w/e24fbbae7712ef62dd256c89/e/75f77ff5a77da7d50bfefe0c",
       "references": [
         "Onshape Standard Library",
         "internal tools document",
-        "Core QC Table",
-        "Sidewall QC Table"
+        "GeometryManipulators",
+        "wrapAndLoft"
       ],
-      "last_pull": "2026-02-10T00:27:12.518046+00:00",
-      "last_push": "2026-02-10T07:04:06.232020+00:00",
-      "document_id": "51ccc604f1a8c938b48c2f37",
-      "workspace_id": "b0471d23cacc26179be6e5ab"
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "08e8748f2ef24eea16072b75",
+      "workspace_id": "e24fbbae7712ef62dd256c89"
     }
   ],
   "sync_metadata": {}
