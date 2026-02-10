@@ -4,13 +4,16 @@ import(path : "onshape/std/table.fs", version : "2878.0");
 import(path : "onshape/std/geomOperations.fs", version : "2878.0");
 
 //import qcTable_types
-import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+export import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba723b9");
+
 //import qcTable_stations
-import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+import(path : "f78f146e807209053299e5a5", version : "6aecfce23a24f4e092d8d713");
+
 //import qcTable_geometry
-import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba723b9");
+
 //import qcTable_merge
-import(path : "ff9221b7148cfda8a449abff", version : "925c5f3a57e66d7c4a2d6eb9");
+import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba723b9");
 
 /**
  * QC Table Feature - Main Feature Definition
@@ -49,7 +52,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
     precondition
     {
         // ===== FCP/ACP References =====
-        annotation { "Group Name" : "References", "Driving Parameter" : "fcpReference", "Collapsed By Default" : false }
+        annotation { "Group Name" : "References", "Collapsed By Default" : false }
         {
             annotation { "Name" : "FCP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE, "MaxNumberOfPicks" : 1 }
             definition.fcpReference is Query;
@@ -59,7 +62,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         }
 
         // ===== Body Selection =====
-        annotation { "Group Name" : "Bodies", "Driving Parameter" : "coreBody", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Bodies", "Collapsed By Default" : false }
         {
             annotation {
                 "Name" : "Core body or composite part (optional)",
@@ -78,7 +81,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         }
 
         // ===== Station Control =====
-        annotation { "Group Name" : "Station Control", "Driving Parameter" : "boundaryBehavior", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Station Control", "Collapsed By Default" : false }
         {
             annotation { "Name" : "Outside FCP/ACP", "UIHint" : UIHint.SHOW_LABEL, "Default" : BOUNDARY_BEHAVIOR.NORMAL }
             definition.boundaryBehavior is BOUNDARY_BEHAVIOR;
@@ -113,7 +116,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         }
 
         // ===== Table Formatting =====
-        annotation { "Group Name" : "Table Formatting", "Driving Parameter" : "tableUnits", "Collapsed By Default" : true }
+        annotation { "Group Name" : "Table Formatting", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Table Order", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORDER.DESCENDING }
             definition.tableOrder is TABLE_ORDER;
