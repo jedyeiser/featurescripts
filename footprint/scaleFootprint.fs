@@ -111,18 +111,18 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Pin location" }
             definition.pinLocation is ScalePinLocation;
         }
-        
+
         if (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS)
         {
             annotation { "Name" : "Target average radius" }
             isLength(definition.targetRadius, SIDECUT_RADIUS_BOUNDS);
-
-            annotation { "Name" : "Output curve degree", "Default" : 3 }
-            isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
-
-            annotation { "Name" : "Strict arcs", "Default" : false }
-            definition.strictArcs is boolean;
         }
+
+        annotation { "Name" : "Output curve degree", "Default" : 3 }
+        isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
+
+        annotation { "Name" : "Strict arcs", "Default" : false }
+        definition.strictArcs is boolean;
         
         annotation { "Name" : "Specify target width", "Default" : false }
         definition.specifyWidth is boolean;
@@ -144,18 +144,18 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "-Y Pin location" }
                 definition.negPinLocation is ScalePinLocation;
             }
-            
+
             if (definition.negScaleMode == FootprintScaleMode.SCALE_RADIUS)
             {
                 annotation { "Name" : "-Y Target average radius" }
                 isLength(definition.negTargetRadius, SIDECUT_RADIUS_BOUNDS);
-
-                annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
-                isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
-
-                annotation { "Name" : "-Y Strict arcs", "Default" : false }
-                definition.negStrictArcs is boolean;
             }
+
+            annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
+            isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
+
+            annotation { "Name" : "-Y Strict arcs", "Default" : false }
+            definition.negStrictArcs is boolean;
             
             annotation { "Name" : "-Y Specify target width", "Default" : false }
             definition.negSpecifyWidth is boolean;
@@ -251,10 +251,9 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =====================================================================
         // STEP 5: Scale +Y sidecut
         // =====================================================================
-        var outputDegree = (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS && definition.outputDegree != undefined) ?
-            definition.outputDegree : 3;
-        var strictArcs = (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS) ?
-            definition.strictArcs : false;
+        // Output degree and strict arcs are now always available (not mode-dependent)
+        var outputDegree = definition.outputDegree;
+        var strictArcs = definition.strictArcs;
 
         var scaledPos = scaleSidecut(context, id + "scaledPos", categorized.sidecutPos, refAnalysisPos,
             refFcp[0], refAcp[0], refMrs[0],
@@ -319,10 +318,9 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             var negTargetWaistWidth = negSpecifyWidth ?
                 definition.negTargetWaistWidth : refAnalysisNeg.waistWidth;
 
-            var negOutputDegree = (negScaleMode == FootprintScaleMode.SCALE_RADIUS && definition.negOutputDegree != undefined) ?
-                definition.negOutputDegree : 3;
-            var negStrictArcs = (negScaleMode == FootprintScaleMode.SCALE_RADIUS) ?
-                definition.negStrictArcs : false;
+            // Output degree and strict arcs are now always available (not mode-dependent)
+            var negOutputDegree = definition.negOutputDegree;
+            var negStrictArcs = definition.negStrictArcs;
 
             var scaledNegFlipped = scaleSidecut(context, id + "scaledNeg", negFlipped, refAnalysisNeg,
                 refFcp[0], refAcp[0], refMrs[0],
