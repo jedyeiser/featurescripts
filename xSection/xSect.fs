@@ -429,7 +429,7 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // --- Store data on origin for future reuse ---
         try
         {
-            storeAnalysisData(context, id, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData);
+            storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData);
 
             println("");
             println("═══════════════════════════════════════");
@@ -786,12 +786,13 @@ function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) returns m
  *
  * @param context {Context}
  * @param id {Id} : Feature ID
+ * @param definition {map} : Feature definition (for feature name)
  * @param bodies {array} : Body configuration data
  * @param crossSectionData {map} : Full cross-section analysis results
  * @param beamAnalysis {map} : Beam stiffness results (or undefined)
  * @param tableData {map} : Formatted table data
  */
-function storeAnalysisData(context is Context, id is Id, bodies is array,
+function storeAnalysisData(context is Context, id is Id, definition is map, bodies is array,
                            crossSectionData is map, beamAnalysis, tableData is map)
 {
     // Build feature-specific data structure
@@ -844,8 +845,16 @@ function storeAnalysisData(context is Context, id is Id, bodies is array,
         sectionDetails = append(sectionDetails, sectionDetail);
     }
 
+    // Get feature name (if provided)
+    var featureName = "";
+    if (definition.featureName != undefined && definition.featureName != "")
+    {
+        featureName = definition.featureName;
+    }
+
     // Build complete data structure
     var analysisData = {
+        "featureName" : featureName,
         "details" : {
             "bodies" : bodyDetails,
             "crossSections" : sectionDetails,

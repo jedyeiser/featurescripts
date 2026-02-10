@@ -15,15 +15,6 @@ import(path : "onshape/std/table.fs", version : "2878.0");
 
 annotation { "Table Type Name" : "Cross-Section Analysis" }
 export const xSectionAnalysisTable = defineTable(function(context is Context, definition is map) returns TableArray
-    precondition
-    {
-        annotation {
-            "Name" : "Select Analysis",
-            "Description" : "Choose which xSection analysis to display",
-            "UIHint" : UIHint.STRING
-        }
-        isAnything(definition.featureId);
-    }
     {
         // Find origin with CrossSectionAnalysis attribute
         var bodiesWithData = evaluateQuery(context, qHasAttribute("CrossSectionAnalysis"));
@@ -46,37 +37,41 @@ export const xSectionAnalysisTable = defineTable(function(context is Context, de
             return tableArray([emptyTable]);
         }
 
-        // Get feature keys (all available analyses)
+        // Build tables for ALL analyses in the document
+        var allTables = [];
         var featureKeys = keys(allData);
 
-        // Use first available analysis if no specific selection
-        var selectedKey = featureKeys[0];
-        if (definition.featureId != undefined && definition.featureId != "")
+        for (var key in featureKeys)
         {
-            var requestedKey = toString(definition.featureId);
-            if (allData[requestedKey] != undefined)
+            var analysisData = allData[key];
+            var tableData = analysisData.tableData;
+            var featureName = analysisData.featureName;
+
+            // Use feature name in title if provided
+            var titleSuffix = "";
+            if (featureName != undefined && featureName != "")
             {
-                selectedKey = requestedKey;
+                titleSuffix = " - " ~ featureName;
             }
+
+            // Build summary table
+            var summaryTable = buildSummaryTable(tableData.summary, titleSuffix);
+
+            // Build cross-section details table
+            var detailsTable = buildCrossSectionTable(tableData.crossSections, titleSuffix);
+
+            allTables = append(allTables, summaryTable);
+            allTables = append(allTables, detailsTable);
         }
 
-        var analysisData = allData[selectedKey];
-        var tableData = analysisData.tableData;
-
-        // Build summary table
-        var summaryTable = buildSummaryTable(tableData.summary);
-
-        // Build cross-section details table
-        var detailsTable = buildCrossSectionTable(tableData.crossSections);
-
-        // Return both tables
-        return tableArray([summaryTable, detailsTable]);
+        // Return all tables
+        return tableArray(allTables);
     });
 
 /**
  * Build summary table with overall beam stiffness metrics.
  */
-function buildSummaryTable(summaryData is array) returns Table
+function buildSummaryTable(summaryData is array, titleSuffix is string) returns Table
 {
     // Define columns
     var columns = [
@@ -95,13 +90,13 @@ function buildSummaryTable(summaryData is array) returns Table
         rows = append(rows, tableRow(cellData));
     }
 
-    return table("Beam Analysis Summary", columns, rows);
+    return table("Beam Analysis Summary" ~ titleSuffix, columns, rows);
 }
 
 /**
  * Build cross-section details table with per-section properties.
  */
-function buildCrossSectionTable(csData is array) returns Table
+function buildCrossSectionTable(csData is array, titleSuffix is string) returns Table
 {
     // First row is header
     var header = csData[0];
@@ -134,5 +129,5 @@ function buildCrossSectionTable(csData is array) returns Table
         rows = append(rows, tableRow(cellData));
     }
 
-    return table("Cross-Section Details (" ~ (size(csData) - 1) ~ " sections)", columns, rows);
+    return table("Cross-Section Details (" ~ (size(csData) - 1) ~ " sections)" ~ titleSuffix, columns, rows);
 }

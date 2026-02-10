@@ -1,0 +1,92 @@
+This module is going to build several 'core level' functions that will be used extensively in the future to help us manipulate and build geometry in onshape. Performance is a real concern.
+While we will be building many features for users to interact, we acknowledge that many of these are going to be used for testing as much as anything else. We want to set up our code so any
+feature that the user will see relies almost exclusively on imports and has pretty lean code.
+
+we have some robust tools in our tools library. Use internal Onshape code whenever possible. Use our internal tools when internal Onshape tools either fail or don't make sense. Build new
+tools when those fail. I expect we're going to need many new files/modules for this project.
+
+With the way our project is setup, I need to create any new file in Onshape first, then use a CLI tool to 'link it' to a file the CLI tool will create in our local database. Never create a
+file without asking me to.
+
+In our references, wrapAndLoft works, and is closest to where we're going - but we're going in the directino of geometryManipulators.
+
+Let's start simple and small.
+
+The user provides a set of edge queries as 'Source Curves' (definition.sourceCurves). If we need to enforce G0 continuity for our edges, we can.
+
+The user provides standard spline approximation data (see approximateSpline.fs in std)
+
+The user provides a query for a 'From curve' (definition.fromEdge) and a query for a 'To curve' (definition.toEdge). These can consist of multiple G1 continuous edges, or multiple curves from
+the same wire body. Each curve/edgeset must have G1 continuity. Warn/throw an error otherwise.  We should be able to flip direction/evaluation order of either one of our input edges. We
+should add a debug arrow at the endpoint of each set of edges pointing in the path's tangent direction (see below. I say edges here, but we're going to convert them to paths). Add a similar
+arrorow to our source chain (end of the chain is the endpoint).
+
+The user specifies how we should handle length scaling with an enum WrapVariables {PARAM, LENGTH}. This will dictate how we map data from our From curve to our To curve. We will either
+preserve the length of the sourceEdges, or we will scale length based on parameter changes between our to and from curves. see below.
+
+The user provides a query (point, plane/planar face, mate connector) as the 'source point'. This should either be a point on the curve, or the point where the plane/planar face or mate
+connector plane intersects the source edge.
+
+the user specifies a source mapping mode. Default is AUTO. when MANUAL is selected, user can select points/planes/planarFaces/mateConnectors to specify where the source point on the source
+curve should map to on each of the from and two curves. If a query for one of those source points is not provided, we default to AUTO behavehior, where we find the CLOSEST POINT ON EACH of
+the from and to curves to the source point on the source curve,
+
+We can generally assume that our to and from edges will be coplanar. We want our feature to work even if they're not, but we should throw up a quick 'heads up' to the user with a notification
+(research how to do that) saying that logic was optimized for coplanar edges. The feature will still work, but performance may degrade.
+
+The user will specify either a number of points to sample on each edge of our sourceEdges, or a minimum point spacing to sample the curve/edge over.
+
+we should turn our fromEdges and toEdges into paths.
+
+Based on our sampling definition above, we sample our sourceEdges at N points. For each of these N points, we measure it in the FrenetFrame of the From Curve. Based on the distance along the
+input curve(s) (we're going to need to define a special 'chain' type that is similar to a path, but operates for G0 & G1 continuity). For each of these sampling points on each edge, we need
+to know the distance along the sourceChain from the sourcePoint. We need to know the closest point to this point on our FromEdge. We need to know the 'vector from the closest point on the
+fromEdge to the point on the sourceEdge in coordinates of the fromEdge's frenetFrame at the closest point.
+
+We then create frenetFrames on the to edges and create new control points for 'wrapped' curves.
+
+For each measurement of a control point on the fromCurve, we need to map it to a new control point on the ToCurve. I see several good ways of doing this.
+
+1. When we say 'preserve length', we really mean one of two things. 1. The arc length of the mapped source curves should equal the length of the source curves or 2. When we transfer
+coordinates from the fromCurve to the ToCurve, we do so in a way such that the distance along the toCurve is equal to the distance along the From Curve. This should be the default behavehior.
+
+We then approximate the splines, create BSplineCurves, create them using opCreateBSplineCurve for each curve, then extracting wires from those edges, deleting the opCreateBSplineCurve curves
+(is there a better way to create a composite curve?).
+
+What checks should we make to ensure the best agreement between frenet frames? We'd like to modify them as little as possible, but I could see twisting or orientation around lines being
+difficult. Given the way our feature is going to work, we can and should assume that the normals along our to and From curves will usually run in (primarially) the X direction. If our to and
+from curves are coplanar and have normals that point broadly in the same direction, their binormals should point in broadly the same direction, not opposite directions. We may need to protect
+against binormals flipping.
+
+
+*********** WRAP AND LOFT FEATURE ***********
+
+We combine the logic above - which is a slightly more general version of the original wrap and loft feature. We'll have a similar 'loft up' distance and 'loft down' distance. Up should point
+in the direction of the toCurve's frenet frame normal.
+
+We're going to make a couple of modifications/improvements. For one, if the input edges (to wrap) are planar, we can assume that the fromCurve is a projection of the toCurve onto the
+sourceCurve(s) plane. We should scale control points of that projection in any manner necessary such that the length of our inferred 'fromCurve' is equal to the toCurve length.
+
+Secondly, we will allow users to specify a referenceFace. This face SHOULD contain the toCurves, or be very near to it. When a reference face is provided, we decide on the 'offset from the
+wrapped edge loft direction' from the face, not the toCurve. This should be a bit more stable.
+
+***** DEFORM FEATURE **********
+
+The big one.
+Basically our WrapCurve feature, but for bodies.
+User specifies an input body (surface or solid)
+Same inputs for to/from curves as our wrapCurve feature.
+Same to/from curve checking as wrapCurve.
+
+Map and index each face on the body, taking note of adjacent faces, adjacent edges, adjacent points.
+For each edge in each face, check to see if it's been evaluated already. If it has, move on. Otherwise:
+Map each endpoint of the edge. Map these new endpoints using our WrapCurve logic. If this edge's endpoints have already been mapped during a different edge's evaluation, make sure to insert
+them in the correct position after we sample N points along the edge. Transform mappedPoints to toEdges. approximate transformed points, ensuring that endpoints are hit.
+We now have a mapped wireframe.
+
+When we're mapping faces, we should evaluate the source face as a BSplineSurface. Map control points onto the toCurve (remember, we're measuring the source points location from a coordinate
+frame along the from curves, and transforming to a 'corresponding coordinate frame on the ToCurve(which will almost certainly be translated, if not rotated). I'd imagine we need to re-
+calculate knot vectors for our new surfaces. We should also evaluate tangency with each of the tangent faces.
+
+If the user has specified 'enforce continuity', adjust control points on mapped surfaces so that they share G1 continuity with the mapped face corresponding to the correct face on the soure
+body.
