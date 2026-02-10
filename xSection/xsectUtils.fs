@@ -134,8 +134,350 @@ export function getCrossSectionFrames(context is Context, edge is Query, numSect
 }
 
 /**
+ * Project a world X coordinate onto an edge parameter using binary search.
+ *
+ * Handles curved edges gracefully by finding the parameter where the edge's
+ * world X coordinate matches the target X value.
+ *
+ * @param context {Context}
+ * @param edge {Query} : Edge to project onto
+ * @param targetX {ValueWithUnits} : Target world X coordinate
+ * @returns {number} : Parameter [0,1] where edge world X ≈ targetX, or undefined if not found
+ */
+export function projectXToEdgeParameter(context is Context, edge is Query, targetX is ValueWithUnits) returns number
+{
+    const MAX_ITERATIONS = 20;
+    const TOLERANCE = 1e-6 * meter;
+
+    var paramMin = 0.0;
+    var paramMax = 1.0;
+
+    // Get X coordinates at bounds
+    var curvStart = evEdgeCurvatures(context, {
+        "edge" : edge,
+        "parameters" : [paramMin]
+    });
+    var curvEnd = evEdgeCurvatures(context, {
+        "edge" : edge,
+        "parameters" : [paramMax]
+    });
+
+    var xMin = curvStart[0].frame.origin[0];
+    var xMax = curvEnd[0].frame.origin[0];
+
+    // Check if targetX is outside bounds
+    if (targetX < min(xMin, xMax) - TOLERANCE || targetX > max(xMin, xMax) + TOLERANCE)
+    {
+        return undefined;
+    }
+
+    // Binary search for parameter
+    for (var iter = 0; iter < MAX_ITERATIONS; iter += 1)
+    {
+        var paramMid = (paramMin + paramMax) / 2.0;
+
+        var curvMid = evEdgeCurvatures(context, {
+            "edge" : edge,
+            "parameters" : [paramMid]
+        });
+        var xMid = curvMid[0].frame.origin[0];
+
+        // Check convergence
+        if (abs(xMid - targetX) < TOLERANCE)
+        {
+            return paramMid;
+        }
+
+        // Update search bounds
+        if ((xMid < targetX && xMax > xMin) || (xMid > targetX && xMax < xMin))
+        {
+            paramMin = paramMid;
+        }
+        else
+        {
+            paramMax = paramMid;
+        }
+    }
+
+    // Return best estimate after max iterations
+    return (paramMin + paramMax) / 2.0;
+}
+
+/**
+ * Generate cross-section frames with FCP/ACP-aware spacing.
+ *
+ * If both FCP and ACP are defined, cross-section planes are intelligently distributed:
+ * - Reference region (FCP to ACP): Evenly spaced with planes at FCP and ACP
+ * - Tip region (start to FCP): ≥2 sections, spacing close to reference spacing
+ * - Tail region (ACP to end): ≥2 sections, spacing close to reference spacing
+ *
+ * Fallback: If FCP or ACP undefined → uniform spacing (current behavior)
+ *
+ * @param context {Context}
+ * @param edge {Query} : Edge to generate frames along
+ * @param numSections {number} : Total number of frames requested
+ * @param fcpX : FCP world X coordinate (or undefined)
+ * @param acpX : ACP world X coordinate (or undefined)
+ * @returns {array} : Array of maps [{ "frame": CoordSystem, "stationNumber": number }, ...]
+ */
+export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
+                                               numSections is number,
+                                               fcpX, acpX) returns array
+{
+    // Fallback to uniform spacing if either FCP or ACP undefined
+    if (fcpX == undefined || acpX == undefined)
+    {
+        var uniformFrames = getCrossSectionFrames(context, edge, numSections);
+        var result = [];
+        for (var i = 0; i < size(uniformFrames); i += 1)
+        {
+            result = append(result, {
+                "frame" : uniformFrames[i],
+                "stationNumber" : i
+            });
+        }
+        return result;
+    }
+
+    // Get edge world X bounds
+    var curvStart = evEdgeCurvatures(context, {
+        "edge" : edge,
+        "parameters" : [0.0]
+    });
+    var curvEnd = evEdgeCurvatures(context, {
+        "edge" : edge,
+        "parameters" : [1.0]
+    });
+
+    var xStart = curvStart[0].frame.origin[0];
+    var xEnd = curvEnd[0].frame.origin[0];
+
+    var xMin = min(xStart, xEnd);
+    var xMax = max(xStart, xEnd);
+
+    // Validate FCP/ACP within bounds
+    const BOUND_TOL = 1e-5 * meter;
+    if (fcpX < xMin - BOUND_TOL || fcpX > xMax + BOUND_TOL ||
+        acpX < xMin - BOUND_TOL || acpX > xMax + BOUND_TOL)
+    {
+        println("WARNING: FCP/ACP outside edge bounds - using uniform spacing");
+        var uniformFrames = getCrossSectionFrames(context, edge, numSections);
+        var result = [];
+        for (var i = 0; i < size(uniformFrames); i += 1)
+        {
+            result = append(result, {
+                "frame" : uniformFrames[i],
+                "stationNumber" : i
+            });
+        }
+        return result;
+    }
+
+    // Ensure FCP < ACP for consistent logic
+    var fcpXOrdered = min(fcpX, acpX);
+    var acpXOrdered = max(fcpX, acpX);
+
+    // Check for degenerate span
+    if (abs(acpXOrdered - fcpXOrdered) < 1e-6 * meter)
+    {
+        println("WARNING: FCP = ACP - using uniform spacing");
+        var uniformFrames = getCrossSectionFrames(context, edge, numSections);
+        var result = [];
+        for (var i = 0; i < size(uniformFrames); i += 1)
+        {
+            result = append(result, {
+                "frame" : uniformFrames[i],
+                "stationNumber" : i
+            });
+        }
+        return result;
+    }
+
+    // Compute region lengths
+    var tipLength = abs(fcpXOrdered - xStart);
+    var refLength = abs(acpXOrdered - fcpXOrdered);
+    var tailLength = abs(xEnd - acpXOrdered);
+
+    // Allocate sections to reference region (must include FCP and ACP)
+    var numRefSections = max(2, floor(numSections * 0.5));  // At least 2, target ~50%
+
+    // Compute reference spacing
+    var refSpacing = refLength / (numRefSections - 1);
+
+    // Allocate sections to tip and tail regions
+    var numTipSections = 0;
+    if (tipLength > refSpacing * 0.5)
+    {
+        numTipSections = max(2, ceil(tipLength / refSpacing));
+    }
+    else if (tipLength > 1e-6 * meter)
+    {
+        numTipSections = 1;
+    }
+
+    var numTailSections = 0;
+    if (tailLength > refSpacing * 0.5)
+    {
+        numTailSections = max(2, ceil(tailLength / refSpacing));
+    }
+    else if (tailLength > 1e-6 * meter)
+    {
+        numTailSections = 1;
+    }
+
+    // Adjust allocations if total exceeds requested numSections
+    var totalAllocated = numTipSections + numRefSections + numTailSections;
+    if (totalAllocated > numSections)
+    {
+        // Scale down tip and tail proportionally
+        var excess = totalAllocated - numSections;
+        var tipCut = floor(excess * numTipSections / (numTipSections + numTailSections + 0.001));
+        var tailCut = excess - tipCut;
+
+        numTipSections = max(0, numTipSections - tipCut);
+        numTailSections = max(0, numTailSections - tailCut);
+    }
+
+    // Determine spatial ordering (does edge go left-to-right or right-to-left?)
+    var tipIsLeft = (xStart < xEnd);  // True if edge goes left-to-right
+
+    // Assign station numbers
+    var stationNumbers = [];
+
+    // Tip stations
+    if (numTipSections > 0)
+    {
+        if (tipIsLeft)
+        {
+            // Tip is LEFT of reference → negative stations
+            for (var i = 0; i < numTipSections; i += 1)
+            {
+                stationNumbers = append(stationNumbers, -numTipSections + i);
+            }
+        }
+        else
+        {
+            // Tip is RIGHT of reference → positive stations >= N
+            for (var i = 0; i < numTipSections; i += 1)
+            {
+                stationNumbers = append(stationNumbers, numRefSections + i);
+            }
+        }
+    }
+
+    // Reference stations (always 0 to N-1)
+    for (var i = 0; i < numRefSections; i += 1)
+    {
+        stationNumbers = append(stationNumbers, i);
+    }
+
+    // Tail stations
+    if (numTailSections > 0)
+    {
+        if (tipIsLeft)
+        {
+            // Tail is RIGHT of reference → positive stations >= N
+            for (var i = 0; i < numTailSections; i += 1)
+            {
+                stationNumbers = append(stationNumbers, numRefSections + i);
+            }
+        }
+        else
+        {
+            // Tail is LEFT of reference → negative stations
+            for (var i = 0; i < numTailSections; i += 1)
+            {
+                stationNumbers = append(stationNumbers, -numTailSections + i);
+            }
+        }
+    }
+
+    // Generate X positions for all three regions
+    var xPositions = [];
+
+    // Tip region
+    if (numTipSections > 0)
+    {
+        for (var i = 0; i < numTipSections; i += 1)
+        {
+            var t = (numTipSections == 1) ? 0.5 : (i / (numTipSections - 1));
+            var x = xStart + t * (fcpXOrdered - xStart);  // Use signed offset, not absolute length
+            xPositions = append(xPositions, x);
+        }
+    }
+
+    // Reference region (includes FCP and ACP)
+    for (var i = 0; i < numRefSections; i += 1)
+    {
+        var t = i / (numRefSections - 1);
+        var x = fcpXOrdered + t * (acpXOrdered - fcpXOrdered);  // Use signed offset for consistency
+        xPositions = append(xPositions, x);
+    }
+
+    // Tail region
+    if (numTailSections > 0)
+    {
+        for (var i = 0; i < numTailSections; i += 1)
+        {
+            var t = (numTailSections == 1) ? 0.5 : (i / (numTailSections - 1));
+            var x = acpXOrdered + t * (xEnd - acpXOrdered);  // Use signed offset, not absolute length
+            xPositions = append(xPositions, x);
+        }
+    }
+
+    // Convert X positions to parameters
+    var parameters = [];
+    for (var x in xPositions)
+    {
+        var param = projectXToEdgeParameter(context, edge, x);
+        if (param != undefined)
+        {
+            parameters = append(parameters, param);
+        }
+    }
+
+    // Generate frames at computed parameters
+    var curvatures = evEdgeCurvatures(context, {
+        "edge" : edge,
+        "parameters" : parameters
+    });
+
+    var frames = mapArray(curvatures, function(c) { return c.frame; });
+
+    // Force consistent frame orientation (same as getCrossSectionFrames)
+    var worldThickness = vector(0, 0, 1);
+
+    for (var i = 0; i < size(frames); i += 1)
+    {
+        // Force tangent toward positive X
+        var z = frames[i].zAxis;
+        if (z[0] < 0)
+        {
+            z *= -1;
+        }
+
+        // Project world +Z onto plane perpendicular to tangent
+        var rawX = worldThickness - dot(worldThickness, z) * z;
+        var xDir = normalize(rawX);
+
+        frames[i] = coordSystem(frames[i].origin, xDir, z);
+    }
+
+    // Pair frames with station numbers
+    var result = [];
+    for (var i = 0; i < size(frames); i += 1)
+    {
+        result = append(result, {
+            "frame" : frames[i],
+            "stationNumber" : stationNumbers[i]
+        });
+    }
+    return result;
+}
+
+/**
  * Create a plane from a cross-section frame.
- * 
+ *
  * @param frame {CoordSystem} : Frame from getCrossSectionFrames
  * @returns {Plane} : Plane with origin at frame origin, normal along frame Z-axis
  */

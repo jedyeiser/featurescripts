@@ -29,23 +29,28 @@ import(path : "f8e590162884d45f56e0a05f", version : "a10b83decf148c418d18a345");
  * @param crossSectionData {map} : Full cross-section analysis results
  * @param beamAnalysis {map} : Beam stiffness results (or undefined)
  * @param tableData {map} : Formatted table data
+ * @param massData {map} : Volume-based mass calculations
  */
 export function storeAnalysisData(context is Context, id is Id, definition is map, bodies is array,
-                                  crossSectionData is map, beamAnalysis, tableData is map)
+                                  crossSectionData is map, beamAnalysis, tableData is map, massData is map)
 {
     // Build feature-specific data structure
     var featureKey = toAttributeId(id);
 
-    // Extract body details
+    // Extract body details (including mass from massData)
     var bodyDetails = [];
-    for (var bodyEntry in bodies)
+    for (var i = 0; i < size(bodies); i += 1)
     {
+        var bodyEntry = bodies[i];
+        var bodyMass = massData.bodyMasses[i];
+
         var bodyDetail = {
             "bodyIndex" : bodyEntry.bodyIdx,
             "bodyName" : bodyEntry.bodyName,
             "materialName" : bodyEntry.materialName,
             "materialData" : bodyEntry.materialData,
-            "volume" : bodyEntry.volume
+            "volume" : bodyEntry.volume,
+            "mass" : bodyMass.mass
         };
         bodyDetails = append(bodyDetails, bodyDetail);
     }
@@ -68,6 +73,7 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
 
         var sectionDetail = {
             "index" : i,
+            "stationNumber" : section.stationNumber,
             "xCoord" : section.frame.origin[0],
             "frame" : section.frame,
             "EI_eff" : section.mechanicalProperties.EI_eff,
@@ -174,13 +180,14 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
 
     // Cross-section table header
     var csTable = [
-        ["Section #", "X", "EI", "NA Height", "Beam Width", "Beam Height", "Lineal Density"]
+        ["Station", "X", "EI", "NA Height", "Beam Width", "Beam Height", "Lineal Density"]
     ];
 
     // Add data rows
     for (var i = 0; i < size(crossSections); i += 1)
     {
         var section = crossSections[i];
+        var stationNum = section.stationNumber;  // Extract station number from section data
         var xCoord = section.frame.origin[0] / millimeter;  // World X in mm
         var EI = section.mechanicalProperties.EI_eff / (newton * meter * meter);
         var naHeight = section.mechanicalProperties.neutralAxisY / millimeter;
@@ -211,7 +218,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         beamWidth = roundValue(beamWidth, 0.05);     // 0.05mm precision
         linealDensityVal = roundValue(linealDensityVal, 0.01);  // 0.01 kg/m precision
 
-        csTable = append(csTable, [i, xCoord, EI, naHeight, beamWidth, beamHeight, linealDensityVal]);
+        csTable = append(csTable, [stationNum, xCoord, EI, naHeight, beamWidth, beamHeight, linealDensityVal]);
     }
 
     return {

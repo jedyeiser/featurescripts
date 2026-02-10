@@ -53,10 +53,13 @@ export enum OverlapType
  * Builds the bodies array from definition.bodyArray, resolving material data
  * from the CSV and user overrides here (not in editing logic) because
  * ValueWithUnits maps don't survive definition serialization.
+ *
+ * @param fcpX : FCP world X coordinate (or undefined for uniform spacing)
+ * @param acpX : ACP world X coordinate (or undefined for uniform spacing)
  */
-export function processCrossSections(context is Context, id is Id, definition is map) returns map
+export function processCrossSections(context is Context, id is Id, definition is map, fcpX, acpX) returns map
 {
-    var frames = getCrossSectionFrames(context, definition.xSectAlong, definition.numSections);
+    var frameData = getCrossSectionFramesAdaptive(context, definition.xSectAlong, definition.numSections, fcpX, acpX);
 
     // -----------------------------------------------------------------
     // Parse CSV for material resolution (re-parsed here because complex
@@ -146,17 +149,18 @@ export function processCrossSections(context is Context, id is Id, definition is
 
     var crossSections = [];
 
-    println("Processing " ~ size(frames) ~ " cross-sections...");
+    println("Processing " ~ size(frameData) ~ " cross-sections...");
 
-    for (var i = 0; i < size(frames); i += 1)
+    for (var i = 0; i < size(frameData); i += 1)
     {
         // Progress indicator every 10 sections
         if (i % 10 == 0 && i > 0)
         {
-            println("  Section " ~ i ~ " / " ~ size(frames) ~ " (" ~ floor(100.0 * i / size(frames)) ~ "%)");
+            println("  Section " ~ i ~ " / " ~ size(frameData) ~ " (" ~ floor(100.0 * i / size(frameData)) ~ "%)");
         }
 
-        var frame = frames[i];
+        var frame = frameData[i].frame;
+        var stationNumber = frameData[i].stationNumber;
         var xSectPlane = plane(frame.origin, frame.zAxis);
 
         opPlane(context, id + ("plane" ~ i), { "plane" : xSectPlane });
@@ -286,6 +290,7 @@ export function processCrossSections(context is Context, id is Id, definition is
             // Still append section with empty data for consistency
             crossSections = append(crossSections, {
                 "frame" : frame,
+                "stationNumber" : stationNumber,
                 "sectionPoints" : sectionPoints,
                 "bSplineCurves" : outputCurves,
                 "bodyData" : bodyData,
@@ -320,6 +325,7 @@ export function processCrossSections(context is Context, id is Id, definition is
 
         crossSections = append(crossSections, {
             "frame" : frame,
+            "stationNumber" : stationNumber,
             "sectionPoints" : sectionPoints,
             "bSplineCurves" : outputCurves,
             "bodyData" : bodyData,
@@ -401,6 +407,47 @@ export function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) re
         println("WARNING: Failed to resolve override material data - " ~ e);
     }
     return updated;
+}
+
+// =============================================================================
+// MASS CALCULATION (Volume-Based)
+// =============================================================================
+
+/**
+ * Compute actual body masses from volumes and material densities.
+ *
+ * Uses evVolume() results (already stored in bodies array) to compute
+ * accurate mass rather than approximating from cross-section samples.
+ *
+ * @param bodies {array} : Bodies array with volume and materialData
+ * @returns {map} : { totalMass, bodyMasses: [{ bodyIdx, bodyName, volume, density, mass, hasMaterial }] }
+ */
+export function computeActualBodyMasses(bodies is array) returns map
+{
+    var totalMass = 0 * kilogram;
+    var bodyMasses = [];
+
+    for (var body in bodies)
+    {
+        var mass = 0 * kilogram;
+        if (body.hasMaterialData)
+        {
+            mass = body.volume * body.materialData.density;
+        }
+
+        bodyMasses = append(bodyMasses, {
+            "bodyIdx" : body.bodyIdx,
+            "bodyName" : body.bodyName,
+            "volume" : body.volume,
+            "density" : body.hasMaterialData ? body.materialData.density : 0 * kilogram / meter^3,
+            "mass" : mass,
+            "hasMaterial" : body.hasMaterialData
+        });
+
+        totalMass = totalMass + mass;
+    }
+
+    return { "totalMass" : totalMass, "bodyMasses" : bodyMasses };
 }
 
 

@@ -275,28 +275,45 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
     }
     {
         // -----------------------------------------------------------------
-        // Step 1: Process all cross-sections (intersect, triangulate)
-        // -----------------------------------------------------------------
-        var crossSectionData = processCrossSections(context, id + "process", definition);
-
-        // -----------------------------------------------------------------
-        // Step 2: Compute CLT mechanical properties (ABD, EI, neutral axis)
-        // -----------------------------------------------------------------
-        crossSectionData = computeCLTProperties(crossSectionData);
-
-        // Debug: print EI at each section
-        for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
-        {
-            var mp = crossSectionData.crossSections[i].mechanicalProperties;
-            println("Section " ~ (i + 1) ~ " | EI=" ~ mp.EI_eff ~ " | NA=" ~ mp.neutralAxisY);
-        }
-
-        // -----------------------------------------------------------------
-        // Step 3: Resolve reference points (FCP/ACP) for beam analysis
+        // Step 1: Resolve reference points (FCP/ACP) early for adaptive spacing
         // -----------------------------------------------------------------
         var fcpX = resolveReferencePointX(context, definition.fcpQuery, definition.xSectAlong);
         var acpX = resolveReferencePointX(context, definition.acpQuery, definition.xSectAlong);
 
+        if (fcpX != undefined && acpX != undefined)
+        {
+            println("FCP/ACP detected - using adaptive spacing:");
+            println("  FCP X: " ~ (fcpX / millimeter) ~ " mm");
+            println("  ACP X: " ~ (acpX / millimeter) ~ " mm");
+            println("  Span: " ~ (abs(acpX - fcpX) / millimeter) ~ " mm");
+        }
+
+        // -----------------------------------------------------------------
+        // Step 2: Process all cross-sections (intersect, triangulate)
+        // -----------------------------------------------------------------
+        var crossSectionData = processCrossSections(context, id + "process", definition, fcpX, acpX);
+
+        // -----------------------------------------------------------------
+        // Step 3: Compute CLT mechanical properties (ABD, EI, neutral axis)
+        // -----------------------------------------------------------------
+        crossSectionData = computeCLTProperties(crossSectionData);
+
+        // -----------------------------------------------------------------
+        // Step 4: Compute actual body masses (volume-based)
+        // -----------------------------------------------------------------
+        var massData = computeActualBodyMasses(crossSectionData.bodies);
+
+        // Debug: print EI at each section
+        for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
+        {
+            var section = crossSectionData.crossSections[i];
+            var mp = section.mechanicalProperties;
+            println("Station " ~ section.stationNumber ~ " | EI=" ~ mp.EI_eff ~ " | NA=" ~ mp.neutralAxisY);
+        }
+
+        // -----------------------------------------------------------------
+        // Step 5: Compute beam stiffness (if FCP/ACP defined)
+        // -----------------------------------------------------------------
         var beamAnalysisResults = undefined;
         if (fcpX != undefined && acpX != undefined)
         {
@@ -314,7 +331,7 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
 
         // -----------------------------------------------------------------
-        // Step 4: Create visualization curves (EI, neutral axis)
+        // Step 6: Create visualization curves (EI, neutral axis)
         // -----------------------------------------------------------------
         var namePrefix = "";
         try
@@ -332,47 +349,36 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         createVisualizationCurves(context, id, crossSectionData, namePrefix);
 
         // -----------------------------------------------------------------
-        // Step 5: Compute total weight and build table data
+        // Step 7: Compute total weight and build table data
         // -----------------------------------------------------------------
-        var totalWeight = 0 * kilogram;
-        var beamLength = undefined;
-        if (beamAnalysisResults != undefined)
-        {
-            beamLength = beamAnalysisResults.L;
-        }
-        else if (size(crossSectionData.crossSections) > 1)
-        {
-            // Approximate beam length from first to last section
-            var firstX = crossSectionData.crossSections[0].frame.origin[0];
-            var lastX = crossSectionData.crossSections[size(crossSectionData.crossSections) - 1].frame.origin[0];
-            beamLength = abs(lastX - firstX);
-        }
+        var totalWeight = massData.totalMass;
 
-        if (beamLength != undefined && beamLength > 0 * meter)
+        // Debug: Print mass analysis
+        println("═══════════════════════════════════════");
+        println("  MASS ANALYSIS");
+        println("═══════════════════════════════════════");
+        println("Total mass (volume-based): " ~ (totalWeight / kilogram) ~ " kg");
+        println("");
+        for (var bodyMass in massData.bodyMasses)
         {
-            for (var section in crossSectionData.crossSections)
+            if (bodyMass.hasMaterial)
             {
-                var linealDensity = 0 * kilogram / meter;
-                for (var contrib in section.mechanicalProperties.bodyContributions)
-                {
-                    if (contrib.linearDensity != undefined)
-                    {
-                        linealDensity = linealDensity + contrib.linearDensity;
-                    }
-                }
-                // Approximate: weight = lineal density × section spacing
-                totalWeight = totalWeight + linealDensity * (beamLength / size(crossSectionData.crossSections));
+                println("  " ~ bodyMass.bodyName ~ ":");
+                println("    Volume:  " ~ (bodyMass.volume / (meter^3)) ~ " m³");
+                println("    Density: " ~ (bodyMass.density / (kilogram / meter^3)) ~ " kg/m³");
+                println("    Mass:    " ~ (bodyMass.mass / kilogram) ~ " kg");
             }
         }
+        println("═══════════════════════════════════════");
 
         var tableData = buildTableData(crossSectionData.crossSections, beamAnalysisResults, totalWeight);
 
         // -----------------------------------------------------------------
-        // Step 6: Store analysis data as attribute on origin
+        // Step 8: Store analysis data as attribute on origin
         // -----------------------------------------------------------------
         try
         {
-            storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData);
+            storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData, massData);
 
             println("");
             println("═══════════════════════════════════════");
@@ -388,7 +394,7 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
 
         // -----------------------------------------------------------------
-        // Step 7: Optionally create composite wires
+        // Step 9: Optionally create composite wires
         // -----------------------------------------------------------------
         if (definition.createComposites)
         {
@@ -396,7 +402,7 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
 
         // -----------------------------------------------------------------
-        // Step 8: Optionally create debug visualization
+        // Step 10: Optionally create debug visualization
         // -----------------------------------------------------------------
         if (definition.debug)
         {
