@@ -395,9 +395,9 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     {
         for (var i = 0; i < numTipSections; i += 1)
         {
-            // Use (i+1)/(numTipSections+1) to create points strictly BETWEEN xStart and fcpXOrdered
-            // This excludes both endpoints
-            var t = (i + 1) / (numTipSections + 1);
+            // Use i/numTipSections to include xStart (t=0) but exclude FCP (t<1)
+            // This ensures the edge endpoint is included while avoiding duplication with reference region
+            var t = i / numTipSections;
             var x = xStart + t * (fcpXOrdered - xStart);
             xPositions = append(xPositions, x);
         }
@@ -416,8 +416,9 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     {
         for (var i = 0; i < numTailSections; i += 1)
         {
-            // Use (i+1)/(numTailSections+1) to create points strictly BETWEEN acpXOrdered and xEnd
-            var t = (i + 1) / (numTailSections + 1);
+            // Use (i+1)/numTailSections to exclude ACP (t>0) but include xEnd (t=1)
+            // This ensures the edge endpoint is included while avoiding duplication with reference region
+            var t = (i + 1) / numTailSections;
             var x = acpXOrdered + t * (xEnd - acpXOrdered);
             xPositions = append(xPositions, x);
         }
