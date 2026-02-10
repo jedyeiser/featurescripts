@@ -473,16 +473,18 @@ function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refA
 {
     if (scaleMode == FootprintScaleMode.ACCORDION)
     {
-        return scaleAccordion(context, sidecutCurves, refAnalysis,
+        return scaleAccordion(context, id, sidecutCurves, refAnalysis,
             refFcpX, refAcpX, newFcpX, newAcpX,
-            specifyWidth, targetWaistWidth, tolerance);
+            specifyWidth, targetWaistWidth, tolerance,
+            outputDegree, strictArcs);
     }
     else if (scaleMode == FootprintScaleMode.KEEP_TAPER)
     {
-        return scaleKeepTaper(context, sidecutCurves, refAnalysis,
+        return scaleKeepTaper(context, id, sidecutCurves, refAnalysis,
             refFcpX, refAcpX, refMrsX,
             newFcpX, newAcpX, newMrsX,
-            pinLocation, specifyWidth, targetWaistWidth, tolerance);
+            pinLocation, specifyWidth, targetWaistWidth, tolerance,
+            outputDegree, strictArcs);
     }
     else // SCALE_RADIUS
     {
@@ -1116,11 +1118,12 @@ function findParamAtX(bspline is BSplineCurve, targetX is ValueWithUnits, tolera
  * X is stretched/compressed to new RSL length.
  * If target width specified, Y is uniformly scaled to achieve it.
  */
-function scaleAccordion(context is Context, sidecutCurves is array, refAnalysis is map,
+function scaleAccordion(context is Context, id is Id, sidecutCurves is array, refAnalysis is map,
     refFcpX is ValueWithUnits, refAcpX is ValueWithUnits,
     newFcpX is ValueWithUnits, newAcpX is ValueWithUnits,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
-    tolerance is ValueWithUnits) returns map
+    tolerance is ValueWithUnits,
+    outputDegree is number, strictArcs is boolean) returns map
 {
     var refLength = abs(refAcpX - refFcpX);
     var newLength = abs(newAcpX - newFcpX);
@@ -1172,7 +1175,15 @@ function scaleAccordion(context is Context, sidecutCurves is array, refAnalysis 
     var xHi = max([newFcpX, newAcpX]);
     var waist = findWaistPoint(scaledCurveData, xLo, xHi, config);
     var waistWidth = waist.found ? waist.width : (newFcpWidth + newAcpWidth) / 2;
-    
+
+    // Apply strict arcs conversion if requested
+    if (strictArcs)
+    {
+        println("  ACCORDION: Converting to strict arcs...");
+        scaledCurves = forceQuadraticNurbs(context, id + "accordionArcs", scaledCurves);
+        println("  ACCORDION: Strict arcs applied (" ~ size(scaledCurves) ~ " arcs)");
+    }
+
     return {
         "curves" : scaledCurves,
         "fcpWidth" : newFcpWidth,
@@ -1202,12 +1213,13 @@ function scaleAccordion(context is Context, sidecutCurves is array, refAnalysis 
  *   PIN_ACP → pivot at ACP X (preserve width at ACP)
  *   PIN_MRS → pivot at MRS X (preserve width at MRS)
  */
-function scaleKeepTaper(context is Context, sidecutCurves is array, refAnalysis is map,
+function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, refAnalysis is map,
     refFcpX is ValueWithUnits, refAcpX is ValueWithUnits, refMrsX is ValueWithUnits,
     newFcpX is ValueWithUnits, newAcpX is ValueWithUnits, newMrsX is ValueWithUnits,
     pinLocation is ScalePinLocation,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
-    tolerance is ValueWithUnits) returns map
+    tolerance is ValueWithUnits,
+    outputDegree is number, strictArcs is boolean) returns map
 {
     var refLength = abs(refAcpX - refFcpX);
     var newLength = abs(newAcpX - newFcpX);
@@ -1374,7 +1386,15 @@ function scaleKeepTaper(context is Context, sidecutCurves is array, refAnalysis 
     var finalWaist = findWaistPoint(finalData, xLo, xHi, config);
     var finalWaistWidth = finalWaist.found ? finalWaist.width :
         getWidthAtX(finalData, (xLo + xHi) / 2, tolerance);
-    
+
+    // Apply strict arcs conversion if requested
+    if (strictArcs)
+    {
+        println("  KEEP_TAPER: Converting to strict arcs...");
+        finalCurves = forceQuadraticNurbs(context, id + "taperArcs", finalCurves);
+        println("  KEEP_TAPER: Strict arcs applied (" ~ size(finalCurves) ~ " arcs)");
+    }
+
     return {
         "curves" : finalCurves,
         "fcpWidth" : finalFcpWidth,
@@ -1957,26 +1977,31 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     // OPTIONAL: Convert to strict arcs if requested
     if (strictArcs)
     {
-        // Extract BSpline data from queries
-        var bSplineData = mapArray(outputCurves, function(curveQuery) {
-            return evApproximateBSplineCurve(context, { "edge" : curveQuery });
-        });
+        println("  STRICT ARCS ENABLED - Converting " ~ size(outputCurves) ~ " curves to arcs...");
 
-        // Convert to rational quadratic NURBS (arcs)
-        var arcBSplines = forceQuadraticNurbs(context, id + "strictArcs", bSplineData);
-
-        // Create curve entities from arc definitions
-        var arcCurves = [];
-        for (var i = 0; i < size(arcBSplines); i += 1)
+        // Debug: Check input curve types
+        for (var i = 0; i < size(outputCurves); i += 1)
         {
-            opCreateBSplineCurve(context, id + ("strictArc" ~ i), {
-                "bSplineCurve" : arcBSplines[i]
-            });
-            arcCurves = append(arcCurves, qCreatedBy(id + ("strictArc" ~ i), EntityType.EDGE));
+            var curve = outputCurves[i];
+            println("    Input curve " ~ i ~ ": degree=" ~ curve.degree ~
+                    ", rational=" ~ curve.isRational ~
+                    ", CPs=" ~ size(curve.controlPoints));
+        }
+
+        var arcCurves = forceQuadraticNurbs(context, id + "strictArcs", outputCurves);
+
+        // Debug: Check output arc types
+        println("  Arc conversion complete: " ~ size(arcCurves) ~ " arc segments");
+        for (var i = 0; i < min([size(arcCurves), 5]); i += 1)
+        {
+            var arc = arcCurves[i];
+            println("    Output arc " ~ i ~ ": degree=" ~ arc.degree ~
+                    ", rational=" ~ arc.isRational ~
+                    ", CPs=" ~ size(arc.controlPoints));
         }
 
         outputCurves = arcCurves;
-        println("  Converted to strict arcs (rational quadratic NURBS): " ~ size(arcCurves) ~ " arcs");
+        println("  Strict arcs conversion applied successfully");
     }
 
     // NOTE: To validate final radius accuracy, run analyzeFootprint on the output curves
