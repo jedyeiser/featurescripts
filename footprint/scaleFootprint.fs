@@ -1154,15 +1154,22 @@ function scaleAccordion(context is Context, id is Id, sidecutCurves is array, re
             newControlPoints = append(newControlPoints, newPt);
         }
         
-        var newBSpline = bSplineCurve({
+        // Build BSpline without knots (let them be computed automatically)
+        var params = {
             "degree" : bspline.degree,
-            "isPeriodic" : bspline.isPeriodic,
-            "controlPoints" : newControlPoints,
-            "knots" : bspline.knots,
-            "weights" : bspline.weights
-        });
-        
-        scaledCurves = append(scaledCurves, newBSpline);
+            "controlPoints" : newControlPoints
+        };
+
+        if (bspline.weights != undefined)
+            params.weights = bspline.weights;
+
+        if (bspline.isRational != undefined)
+            params.isRational = bspline.isRational;
+
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        scaledCurves = append(scaledCurves, bSplineCurve(params));
     }
     
     // Compute resulting widths
@@ -1243,13 +1250,21 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
             newControlPoints = append(newControlPoints, newPt);
         }
         
-        accordionedCurves = append(accordionedCurves, bSplineCurve({
+        var params = {
             "degree" : bspline.degree,
-            "isPeriodic" : bspline.isPeriodic,
-            "controlPoints" : newControlPoints,
-            "knots" : bspline.knots,
-            "weights" : bspline.weights
-        }));
+            "controlPoints" : newControlPoints
+        };
+
+        if (bspline.weights != undefined)
+            params.weights = bspline.weights;
+
+        if (bspline.isRational != undefined)
+            params.isRational = bspline.isRational;
+
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        accordionedCurves = append(accordionedCurves, bSplineCurve(params));
     }
     
     // Step 2: Analyze accordioned curves — find widest points for taper
@@ -1336,13 +1351,21 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
             newControlPoints = append(newControlPoints, newPt);
         }
         
-        rotatedCurves = append(rotatedCurves, bSplineCurve({
+        var params = {
             "degree" : bspline.degree,
-            "isPeriodic" : bspline.isPeriodic,
-            "controlPoints" : newControlPoints,
-            "knots" : bspline.knots,
-            "weights" : bspline.weights
-        }));
+            "controlPoints" : newControlPoints
+        };
+
+        if (bspline.weights != undefined)
+            params.weights = bspline.weights;
+
+        if (bspline.isRational != undefined)
+            params.isRational = bspline.isRational;
+
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        rotatedCurves = append(rotatedCurves, bSplineCurve(params));
     }
     
     // Step 5: Optionally shift Y to hit target waist width
@@ -1369,13 +1392,21 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
                 newControlPoints = append(newControlPoints, newPt);
             }
             
-            finalCurves = append(finalCurves, bSplineCurve({
+            var params = {
                 "degree" : bspline.degree,
-                "isPeriodic" : bspline.isPeriodic,
-                "controlPoints" : newControlPoints,
-                "knots" : bspline.knots,
-                "weights" : bspline.weights
-            }));
+                "controlPoints" : newControlPoints
+            };
+
+            if (bspline.weights != undefined)
+                params.weights = bspline.weights;
+
+            if (bspline.isRational != undefined)
+                params.isRational = bspline.isRational;
+
+            if (bspline.isPeriodic != undefined)
+                params.isPeriodic = bspline.isPeriodic;
+
+            finalCurves = append(finalCurves, bSplineCurve(params));
         }
     }
     
@@ -2048,23 +2079,22 @@ function transformTipTail(curves is array, refContactX is ValueWithUnits, newCon
             newControlPoints = append(newControlPoints, newPt);
         }
 
-        // Build parameter map with only defined fields (safe for arc curves)
+        // Build parameter map - let bSplineCurve compute knots automatically
         var params = {
             "degree" : bspline.degree,
             "controlPoints" : newControlPoints
         };
-
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        if (bspline.knots != undefined)
-            params.knots = bspline.knots;
 
         if (bspline.weights != undefined)
             params.weights = bspline.weights;
 
         if (bspline.isRational != undefined)
             params.isRational = bspline.isRational;
+
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        // NOTE: Not passing knots - let bSplineCurve compute them
 
         transformedCurves = append(transformedCurves, bSplineCurve(params));
     }
@@ -2095,24 +2125,25 @@ function mirrorCurvesY(curves is array) returns array
             newControlPoints = append(newControlPoints, vector(pt[0], -pt[1], pt[2]));
         }
 
-        // Build parameter map with only defined fields
+        // Build parameter map - let bSplineCurve compute knots automatically
+        // (Passing knots directly can fail if they're not in KnotArray format)
         var params = {
             "degree" : bspline.degree,
             "controlPoints" : newControlPoints
         };
 
-        // Only add optional fields if they exist and are defined
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        if (bspline.knots != undefined)
-            params.knots = bspline.knots;
-
+        // Only add weights and isRational for rational curves (like arcs)
         if (bspline.weights != undefined)
             params.weights = bspline.weights;
 
         if (bspline.isRational != undefined)
             params.isRational = bspline.isRational;
+
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        // NOTE: Deliberately NOT passing knots - let bSplineCurve compute them
+        // This avoids KnotArray format issues with arc-converted curves
 
         mirrored = append(mirrored, bSplineCurve(params));
     }
@@ -2281,13 +2312,21 @@ function repairJunction(sidecutCurves is array, endCurves is array,
                 newControlPoints[n - 2] = cpLast - bisector * dist;
             }
             
-            bspline = bSplineCurve({
+            var params = {
                 "degree" : bspline.degree,
-                "isPeriodic" : bspline.isPeriodic,
-                "controlPoints" : newControlPoints,
-                "knots" : bspline.knots,
-                "weights" : bspline.weights
-            });
+                "controlPoints" : newControlPoints
+            };
+
+            if (bspline.weights != undefined)
+                params.weights = bspline.weights;
+
+            if (bspline.isRational != undefined)
+                params.isRational = bspline.isRational;
+
+            if (bspline.isPeriodic != undefined)
+                params.isPeriodic = bspline.isPeriodic;
+
+            bspline = bSplineCurve(params);
         }
         
         repairedCurves = append(repairedCurves, bspline);
