@@ -427,6 +427,14 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         try
         {
             storeAnalysisData(context, id, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData);
+
+            println("");
+            println("═══════════════════════════════════════");
+            println("  Analysis complete!");
+            println("  Insert 'Cross-Section Analysis' table to view results.");
+            println("  Feature ID: " ~ toAttributeId(id));
+            println("═══════════════════════════════════════");
+            println("");
         }
         catch (e)
         {

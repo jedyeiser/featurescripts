@@ -203,9 +203,47 @@ A single complex curve may require multiple arcs because:
 
 ---
 
+## Bug Fix: BSpline Construction Error
+
+**Error:** `Precondition of bSplineCurve failed (definition.knots is undefined || definition.knots is KnotArray)`
+
+**Root Cause:** Arc-converted curves from `forceQuadraticNurbs` have plain array knots `[0, 0, 0, 1, 1, 1]`, but when passed through `mirrorCurvesY` or `transformTipTail`, the BSpline construction failed.
+
+**Fix Applied (lines 2074-2110, 2031-2068):**
+
+Updated `mirrorCurvesY` and `transformTipTail` to conditionally include only defined fields when constructing BSpline curves:
+
+```featurescript
+// Build parameter map with only defined fields
+var params = {
+    "degree" : bspline.degree,
+    "controlPoints" : newControlPoints
+};
+
+// Only add optional fields if they exist and are defined
+if (bspline.isPeriodic != undefined)
+    params.isPeriodic = bspline.isPeriodic;
+
+if (bspline.knots != undefined)
+    params.knots = bspline.knots;
+
+if (bspline.weights != undefined)
+    params.weights = bspline.weights;
+
+if (bspline.isRational != undefined)
+    params.isRational = bspline.isRational;
+
+mirrored = append(mirrored, bSplineCurve(params));
+```
+
+This ensures compatibility with both regular BSpline curves and arc-converted rational NURBS curves.
+
+---
+
 ## Status
 
 ✅ **IMPLEMENTED** - Strict arcs supported in all modes
 ✅ **DIAGNOSTICS** - Console output added
+✅ **BUG FIXED** - BSpline construction error resolved
 ⏳ **PENDING** - Testing on Onshape
 📝 **DOCUMENTED** - Implementation and usage captured

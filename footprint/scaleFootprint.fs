@@ -2043,20 +2043,30 @@ function transformTipTail(curves is array, refContactX is ValueWithUnits, newCon
         {
             var newX = pt[0] + xTranslation;
             var newY = pt[1] * yScale;
-            
+
             var newPt = vector(newX, newY, pt[2]);
             newControlPoints = append(newControlPoints, newPt);
         }
-        
-        var newBSpline = bSplineCurve({
+
+        // Build parameter map with only defined fields (safe for arc curves)
+        var params = {
             "degree" : bspline.degree,
-            "isPeriodic" : bspline.isPeriodic,
-            "controlPoints" : newControlPoints,
-            "knots" : bspline.knots,
-            "weights" : bspline.weights
-        });
-        
-        transformedCurves = append(transformedCurves, newBSpline);
+            "controlPoints" : newControlPoints
+        };
+
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        if (bspline.knots != undefined)
+            params.knots = bspline.knots;
+
+        if (bspline.weights != undefined)
+            params.weights = bspline.weights;
+
+        if (bspline.isRational != undefined)
+            params.isRational = bspline.isRational;
+
+        transformedCurves = append(transformedCurves, bSplineCurve(params));
     }
     
     return transformedCurves;
@@ -2074,26 +2084,39 @@ function transformTipTail(curves is array, refContactX is ValueWithUnits, newCon
 function mirrorCurvesY(curves is array) returns array
 {
     var mirrored = [];
-    
+
     for (var bspline in curves)
     {
         var controlPoints = bspline.controlPoints;
         var newControlPoints = [];
-        
+
         for (var pt in controlPoints)
         {
             newControlPoints = append(newControlPoints, vector(pt[0], -pt[1], pt[2]));
         }
-        
-        mirrored = append(mirrored, bSplineCurve({
+
+        // Build parameter map with only defined fields
+        var params = {
             "degree" : bspline.degree,
-            "isPeriodic" : bspline.isPeriodic,
-            "controlPoints" : newControlPoints,
-            "knots" : bspline.knots,
-            "weights" : bspline.weights
-        }));
+            "controlPoints" : newControlPoints
+        };
+
+        // Only add optional fields if they exist and are defined
+        if (bspline.isPeriodic != undefined)
+            params.isPeriodic = bspline.isPeriodic;
+
+        if (bspline.knots != undefined)
+            params.knots = bspline.knots;
+
+        if (bspline.weights != undefined)
+            params.weights = bspline.weights;
+
+        if (bspline.isRational != undefined)
+            params.isRational = bspline.isRational;
+
+        mirrored = append(mirrored, bSplineCurve(params));
     }
-    
+
     return mirrored;
 }
 
