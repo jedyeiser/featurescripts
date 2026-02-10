@@ -414,7 +414,10 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
                 var linealDensity = 0 * kilogram / meter;
                 for (var contrib in section.mechanicalProperties.bodyContributions)
                 {
-                    linealDensity = linealDensity + contrib.linealDensity;
+                    if (contrib.linealDensity != undefined)
+                    {
+                        linealDensity = linealDensity + contrib.linealDensity;
+                    }
                 }
                 // Approximate: weight = lineal density × section spacing
                 totalWeight = totalWeight + linealDensity * (beamLength / size(crossSectionData.crossSections));
@@ -818,7 +821,10 @@ function storeAnalysisData(context is Context, id is Id, bodies is array,
         var linealDensity = 0 * kilogram / meter;
         for (var contrib in section.mechanicalProperties.bodyContributions)
         {
-            linealDensity = linealDensity + contrib.linealDensity;
+            if (contrib.linealDensity != undefined)
+            {
+                linealDensity = linealDensity + contrib.linealDensity;
+            }
         }
 
         var sectionDetail = {
@@ -913,7 +919,10 @@ function buildTableData(crossSections is array, beamAnalysis, totalWeight is Val
         var linealDensity = 0 * kilogram / meter;
         for (var contrib in section.mechanicalProperties.bodyContributions)
         {
-            linealDensity = linealDensity + contrib.linealDensity;
+            if (contrib.linealDensity != undefined)
+            {
+                linealDensity = linealDensity + contrib.linealDensity;
+            }
         }
         var linealDensityVal = linealDensity / (kilogram / meter);
 
