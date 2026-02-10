@@ -414,9 +414,9 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
                 var linealDensity = 0 * kilogram / meter;
                 for (var contrib in section.mechanicalProperties.bodyContributions)
                 {
-                    if (contrib.linealDensity != undefined)
+                    if (contrib.linearDensity != undefined)
                     {
-                        linealDensity = linealDensity + contrib.linealDensity;
+                        linealDensity = linealDensity + contrib.linearDensity;
                     }
                 }
                 // Approximate: weight = lineal density × section spacing
@@ -822,9 +822,9 @@ function storeAnalysisData(context is Context, id is Id, definition is map, bodi
         var linealDensity = 0 * kilogram / meter;
         for (var contrib in section.mechanicalProperties.bodyContributions)
         {
-            if (contrib.linealDensity != undefined)
+            if (contrib.linearDensity != undefined)
             {
-                linealDensity = linealDensity + contrib.linealDensity;
+                linealDensity = linealDensity + contrib.linearDensity;
             }
         }
 
@@ -887,6 +887,18 @@ function storeAnalysisData(context is Context, id is Id, definition is map, bodi
 }
 
 /**
+ * Round a number to specified precision for table display.
+ * E.g., roundValue(1.234, 0.05) = 1.25
+ * Eliminates floating point artifacts by rounding to 8 decimal places.
+ */
+function roundValue(value is number, precision is number) returns number
+{
+    var rounded = round(value / precision) * precision;
+    // Eliminate floating point artifacts
+    return round(rounded * 1e8) / 1e8;
+}
+
+/**
  * Build formatted table data for export.
  *
  * @param crossSections {array} : Cross-section data with mechanical properties
@@ -901,17 +913,23 @@ function buildTableData(crossSections is array, beamAnalysis, totalWeight is Val
 
     if (beamAnalysis != undefined)
     {
-        summaryTable = append(summaryTable, ["Prismatic stiffness (lb/in)", beamAnalysis.prismaticStiffness_lbin]);
-        summaryTable = append(summaryTable, ["Prismatic stiffness (mm/30kg)", beamAnalysis.prismaticStiffness_mm]);
-        summaryTable = append(summaryTable, ["Estimated stiffness (lb/in)", beamAnalysis.estimatedStiffness_lbin]);
-        summaryTable = append(summaryTable, ["Estimated stiffness (mm/30kg)", beamAnalysis.estimatedStiffness_mm]);
+        var prisLbIn = roundValue(beamAnalysis.prismaticStiffness_lbin, 0.05);   // 0.05 lb/in
+        var prisMm = roundValue(beamAnalysis.prismaticStiffness_mm, 0.1);        // 0.1 mm
+        var estLbIn = roundValue(beamAnalysis.estimatedStiffness_lbin, 0.05);    // 0.05 lb/in
+        var estMm = roundValue(beamAnalysis.estimatedStiffness_mm, 0.1);         // 0.1 mm
+
+        summaryTable = append(summaryTable, ["Prismatic stiffness (lb/in)", prisLbIn]);
+        summaryTable = append(summaryTable, ["Prismatic stiffness (mm/30kg)", prisMm]);
+        summaryTable = append(summaryTable, ["Estimated stiffness (lb/in)", estLbIn]);
+        summaryTable = append(summaryTable, ["Estimated stiffness (mm/30kg)", estMm]);
     }
 
-    summaryTable = append(summaryTable, ["Weight (kg)", totalWeight / kilogram]);
+    var weightKg = roundValue(totalWeight / kilogram, 0.01);  // 0.01 kg precision
+    summaryTable = append(summaryTable, ["Weight (kg)", weightKg]);
 
     // Cross-section table header
     var csTable = [
-        ["Section #", "X Coord (mm)", "EI (N·m²)", "NA Height (mm)", "Beam Height (mm)", "Beam Width (mm)", "Lineal Density (kg/m)"]
+        ["Section #", "X", "EI", "NA Height", "Beam Width", "Beam Height", "Lineal Density"]
     ];
 
     // Add data rows
@@ -921,21 +939,34 @@ function buildTableData(crossSections is array, beamAnalysis, totalWeight is Val
         var xCoord = section.frame.origin[0] / millimeter;  // World X in mm
         var EI = section.mechanicalProperties.EI_eff / (newton * meter * meter);
         var naHeight = section.mechanicalProperties.neutralAxisY / millimeter;
-        var beamHeight = section.boundingBox.height / millimeter;
-        var beamWidth = section.boundingBox.width / millimeter;
+
+        // NOTE: boundingBox dimensions are in plane-local coordinates (2D cross-section).
+        //       boundingBox.width = horizontal extent in plane = BEAM HEIGHT (vertical in world)
+        //       boundingBox.height = vertical extent in plane = BEAM WIDTH (horizontal in world)
+        //       We swap them here so the table displays physical beam dimensions correctly.
+        var beamHeight = section.boundingBox.width / millimeter;   // Vertical dimension (thickness)
+        var beamWidth = section.boundingBox.height / millimeter;   // Horizontal dimension (width)
 
         // Sum lineal density across all bodies
         var linealDensity = 0 * kilogram / meter;
         for (var contrib in section.mechanicalProperties.bodyContributions)
         {
-            if (contrib.linealDensity != undefined)
+            if (contrib.linearDensity != undefined)
             {
-                linealDensity = linealDensity + contrib.linealDensity;
+                linealDensity = linealDensity + contrib.linearDensity;
             }
         }
         var linealDensityVal = linealDensity / (kilogram / meter);
 
-        csTable = append(csTable, [i, xCoord, EI, naHeight, beamHeight, beamWidth, linealDensityVal]);
+        // Apply rounding
+        xCoord = roundValue(xCoord, 0.05);           // 0.05mm precision
+        EI = roundValue(EI, 0.1);                    // 0.1 N·m² precision
+        naHeight = roundValue(naHeight, 0.05);       // 0.05mm precision
+        beamHeight = roundValue(beamHeight, 0.05);   // 0.05mm precision
+        beamWidth = roundValue(beamWidth, 0.05);     // 0.05mm precision
+        linealDensityVal = roundValue(linealDensityVal, 0.01);  // 0.01 kg/m precision
+
+        csTable = append(csTable, [i, xCoord, EI, naHeight, beamWidth, beamHeight, linealDensityVal]);
     }
 
     return {
