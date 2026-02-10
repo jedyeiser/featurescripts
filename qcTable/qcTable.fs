@@ -3,18 +3,23 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/table.fs", version : "2878.0");
 import(path : "onshape/std/geomOperations.fs", version : "2878.0");
 
+IconNamespace::import(path : "0000309041e9c3b92133b446", version : "a9dc4faab1eebbe16277a197");
+ImageNamespace::import(path : "d2436a000fa53adb2c26a3e5", version : "82746b7d7ae306a6e3685e54");
+
+
+
 //import qcTable_types
-export import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba723b9");
+export import(path : "ff9221b7148cfda8a449abff", version : "48d95bb58edeb975356ccd2a");
 
 //import qcTable_stations
-import(path : "f78f146e807209053299e5a5", version : "6aecfce23a24f4e092d8d713");
+import(path : "f78f146e807209053299e5a5", version : "514935cc274ce802ff93c595");
 
 //import qcTable_geometry
-import(path : "0f9cf9b21a3c654880d3167c", version : "c762fdf4fac88a3085971a15");
+import(path : "0f9cf9b21a3c654880d3167c", version : "6bbf7462e5c8c9d4404bc50e");
 
 
 //import qcTable_merge
-import(path : "7fe95d3b9947e33ce37bdeab", version : "bca40b789b97d69b30d61900");
+import(path : "7fe95d3b9947e33ce37bdeab", version : "88e3d117c5ce6b82781ebcf6");
 
 
 /**
@@ -49,7 +54,7 @@ export function elFunction(context is Context, id is Id, oldDefinition is map, d
 // FEATURE DEFINITION
 // ============================================================================
 
-annotation { "Feature Type Name" : "Generate QC Table Data", "Editing Logic Function" : "elFunction" }
+annotation { "Feature Type Name" : "Generate QC Table Data", "Editing Logic Function" : "elFunction", "Icon" : IconNamespace::BLOB_DATA , "Description Image" : ImageNamespace::BLOB_DATA, "Description" : "Generates core and sidewall QC tables. Many different options for export dimensions, units, order, and columns are available"}
 export const generateQCData = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

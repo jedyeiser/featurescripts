@@ -1,6 +1,76 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
+/** Language export and contstants
+ * Defines language for table headers only. Enum for language selection, const (map) for name lookups
+ */
+ 
+ export enum LANGUAGE
+ {
+     annotation { "Name" : "English"}
+     ENG,
+     annotation { "Name" : "Deutsch"}
+     GER,
+     annotation { "Name" : "中文"}
+     CHN,
+ }
+ 
+ export const langColLookup = 
+ {
+     LANGUAGE.ENG : {
+         "Callout" : "Callout", 
+         "Station": "Station", 
+         "X" : "X", 
+         "Core height" : "Core height", 
+         "Sidewall height" : "Sidewall height",
+         "Core/SW Δ" : "Core/SW Δ", 
+         "Dist from ACP" : "Dist from ACP", 
+         "Dist from core tail" : "Dist from core tail", 
+         "Dist from SW tail" : "Dist from SW tail",
+         "Core width" : "Core width", 
+         "Grooved thickness" : "Grooved thickness",
+         "Top width" : "Top width",
+         "Top angle" : "Top angle",
+         "BR Depth" : "BR Depth",
+         "BR Width" : "BR Width"
+     },
+     LANGUAGE.GER : {
+         "Callout" : "Name", 
+         "Station": "Punkt T", 
+         "X" : "Wert X", 
+         "Core height" : "HK", 
+         "Sidewall height" : "SW",
+         "Core/SW Δ" : "HK/SW Δ", 
+         "Dist from ACP" : "Abstand von EDA", 
+         "Dist from core tail" : "Abstand vom Kernende", 
+         "Dist from SW tail" : "Abstand von SW ende",
+         "Core width" : "Kernbreite", 
+         "Grooved thickness" : "Grooved dicke",
+         "Top width" : "Oberer breite",
+         "Top angle" : "Oberer winkel",
+         "BR Depth" : "BR hohe",
+         "BR Width" : "BR breite"
+     },
+     LANGUAGE.CHN : {
+         "Callout" : "点名称", 
+         "Station": "车站编号", 
+         "X" : "X", 
+         "Core height" : "木芯高度", 
+         "Sidewall height" : "侧壁高度",
+         "Core/SW Δ" : "芯部/侧壁 Δ", 
+         "Dist from ACP" : "距离ACP", 
+         "Dist from core tail" : "距核心尾部距离", 
+         "Dist from SW tail" : "距侧壁尾部距离",
+         "Core width" : "芯宽", 
+         "Grooved thickness" : "沟槽厚度",
+         "Top width" : "顶部宽度",
+         "Top angle" : "顶角",
+         "BR Depth" : "基路深度",
+         "BR Width" : "基线宽度"
+     }
+ };
+
+
 /**
  * QC Table Types and Constants
  *
