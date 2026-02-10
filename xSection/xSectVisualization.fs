@@ -30,6 +30,64 @@ export function createVisualizationCurves(context is Context, id is Id,
     createLinealDensityCurve(context, id + "ldCurve", crossSectionData, namePrefix);
 }
 
+// =============================================================================
+// GENERIC CURVE CREATION HELPER
+// =============================================================================
+
+/**
+ * Generic helper for creating a spline curve from points and naming it.
+ *
+ * Handles the common pattern for all visualization curves:
+ * 1. Call opFitSpline() with points
+ * 2. Build curve name (with optional prefix)
+ * 3. Set name property on created body
+ * 4. Catch errors and log warnings
+ *
+ * @param context {Context}
+ * @param id {Id}
+ * @param points {array} : Array of Vector points for spline
+ * @param baseName {string} : Base curve name (e.g., "EI_curve")
+ * @param prefixedName {string} : Name to use with prefix (e.g., "EI")
+ * @param namePrefix {string} : Optional prefix from analysisName
+ */
+function createGenericCurve(context is Context, id is Id, points is array,
+                            baseName is string, prefixedName is string, namePrefix is string)
+{
+    if (size(points) < 2)
+        return;
+
+    try
+    {
+        opFitSpline(context, id, {
+                "points" : points
+        });
+
+        var curveName = baseName;
+        if (namePrefix != "")
+        {
+            curveName = namePrefix ~ "_" ~ prefixedName;
+        }
+
+        var createdBodies = evaluateQuery(context, qCreatedBy(id, EntityType.BODY));
+        if (size(createdBodies) > 0)
+        {
+            setProperty(context, {
+                    "entities" : createdBodies[0],
+                    "propertyType" : PropertyType.NAME,
+                    "value" : curveName
+            });
+        }
+    }
+    catch (e)
+    {
+        println("WARNING: Failed to create " ~ baseName ~ " - " ~ e);
+    }
+}
+
+// =============================================================================
+// SPECIALIZED CURVE CREATION FUNCTIONS
+// =============================================================================
+
 /**
  * Create an EI visualization curve in the XZ plane.
  *
@@ -46,10 +104,8 @@ export function createVisualizationCurves(context is Context, id is Id,
 export function createEICurve(context is Context, id is Id, crossSectionData is map, namePrefix is string)
 {
     var sections = crossSectionData.crossSections;
-    if (size(sections) < 2)
-        return;
-
     var points = [];
+
     for (var section in sections)
     {
         var worldX = section.frame.origin[0];
@@ -61,32 +117,7 @@ export function createEICurve(context is Context, id is Id, crossSectionData is 
         points = append(points, vector(worldX, 0 * meter, zHeight));
     }
 
-    try
-    {
-        opFitSpline(context, id, {
-                "points" : points
-        });
-
-        var curveName = "EI_curve";
-        if (namePrefix != "")
-        {
-            curveName = namePrefix ~ "_EI";
-        }
-
-        var createdBodies = evaluateQuery(context, qCreatedBy(id, EntityType.BODY));
-        if (size(createdBodies) > 0)
-        {
-            setProperty(context, {
-                    "entities" : createdBodies[0],
-                    "propertyType" : PropertyType.NAME,
-                    "value" : curveName
-            });
-        }
-    }
-    catch (e)
-    {
-        println("WARNING: Failed to create EI curve - " ~ e);
-    }
+    createGenericCurve(context, id, points, "EI_curve", "EI", namePrefix);
 }
 
 /**
@@ -108,10 +139,8 @@ export function createEICurve(context is Context, id is Id, crossSectionData is 
 export function createNeutralAxisCurve(context is Context, id is Id, crossSectionData is map, namePrefix is string)
 {
     var sections = crossSectionData.crossSections;
-    if (size(sections) < 2)
-        return;
-
     var points = [];
+
     for (var section in sections)
     {
         var origin = section.frame.origin;
@@ -124,32 +153,7 @@ export function createNeutralAxisCurve(context is Context, id is Id, crossSectio
         points = append(points, naPoint);
     }
 
-    try
-    {
-        opFitSpline(context, id, {
-                "points" : points
-        });
-
-        var curveName = "neutral_axis";
-        if (namePrefix != "")
-        {
-            curveName = namePrefix ~ "_neutralAxis";
-        }
-
-        var createdBodies = evaluateQuery(context, qCreatedBy(id, EntityType.BODY));
-        if (size(createdBodies) > 0)
-        {
-            setProperty(context, {
-                    "entities" : createdBodies[0],
-                    "propertyType" : PropertyType.NAME,
-                    "value" : curveName
-            });
-        }
-    }
-    catch (e)
-    {
-        println("WARNING: Failed to create neutral axis curve - " ~ e);
-    }
+    createGenericCurve(context, id, points, "neutral_axis", "neutralAxis", namePrefix);
 }
 
 /**
@@ -169,10 +173,8 @@ export function createLinealDensityCurve(context is Context, id is Id,
                                           crossSectionData is map, namePrefix is string)
 {
     var sections = crossSectionData.crossSections;
-    if (size(sections) < 2)
-        return;
-
     var points = [];
+
     for (var section in sections)
     {
         var worldX = section.frame.origin[0];
@@ -193,30 +195,5 @@ export function createLinealDensityCurve(context is Context, id is Id,
         points = append(points, vector(worldX, 0 * meter, zHeight));
     }
 
-    try
-    {
-        opFitSpline(context, id, {
-                "points" : points
-        });
-
-        var curveName = "linealDensity_curve";
-        if (namePrefix != "")
-        {
-            curveName = namePrefix ~ "_linealDensity";
-        }
-
-        var createdBodies = evaluateQuery(context, qCreatedBy(id, EntityType.BODY));
-        if (size(createdBodies) > 0)
-        {
-            setProperty(context, {
-                    "entities" : createdBodies[0],
-                    "propertyType" : PropertyType.NAME,
-                    "value" : curveName
-            });
-        }
-    }
-    catch (e)
-    {
-        println("WARNING: Failed to create lineal density curve - " ~ e);
-    }
+    createGenericCurve(context, id, points, "linealDensity_curve", "linealDensity", namePrefix);
 }
