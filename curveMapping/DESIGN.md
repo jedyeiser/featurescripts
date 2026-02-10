@@ -341,6 +341,105 @@ export function mapPointsToCurve(context is Context, mapping is map,
                                  sourcePoints is array) returns array
 ```
 
+#### **mapCurveSegmented**
+```featurescript
+/**
+ * Map a source curve with automatic segmentation at from/to chain boundaries.
+ *
+ * CRITICAL BEHAVIOR: If a source curve spans across from/to chain edge boundaries,
+ * it will be segmented at those boundaries and each piece mapped independently.
+ * This preserves the geometric structure of the reference curves.
+ *
+ * @param context {Context} : Onshape context
+ * @param mapping {map} : Result from buildCurveMapping()
+ * @param sourceCurve {BSplineCurve} : Curve to map
+ * @param options {map} : {
+ *                          numSamplesPerSegment: number (default 25)
+ *                          minimalSegmentation: boolean (default false)
+ *                              - If true: only segment at C0 breaks
+ *                              - If false: segment at ALL edge boundaries (default)
+ *                        }
+ * @returns {array} : Array of mapped curve segments, each: {
+ *                      curve: BSplineCurve,        // Mapped segment
+ *                      fromEdgeIndex: number,      // Which fromChain edge
+ *                      toEdgeIndex: number,        // Which toChain edge
+ *                      sourceParamRange: [start, end],
+ *                      continuityBefore: ChainContinuity (if not first segment)
+ *                    }
+ *
+ * Algorithm:
+ * 1. Project sourceCurve endpoints onto fromChain → get span [startParam, endParam]
+ * 2. Find all fromChain edge boundaries within span
+ * 3. If minimalSegmentation == true:
+ *    - Only keep boundaries where fromChain OR toChain has C0 break
+ *    - Skip G1-continuous boundaries
+ * 4. For each segment:
+ *    a. Sample points within segment uniformly by arc length
+ *    b. Map all points using mapPointsToCurve()
+ *    c. Detect if mapped points are nearly linear → use degree 1
+ *    d. Otherwise approximate with degree 3 spline
+ *    e. Use approximateWithEndpoints() for endpoint accuracy
+ * 5. Return array of independent mapped segments
+ *
+ * Example:
+ *   fromChain: [====edge1====][====edge2====]
+ *              0.0          0.5              1.0
+ *   sourceCurve spans: 0.2 → 0.8
+ *   Result: 2 segments [0.2→0.5] and [0.5→0.8]
+ */
+export function mapCurveSegmented(context is Context,
+                                  mapping is map,
+                                  sourceCurve is BSplineCurve,
+                                  options is map) returns array
+```
+
+#### **joinMappedSegments**
+```featurescript
+/**
+ * Join mapped curve segments with appropriate continuity.
+ *
+ * Uses continuity information from fromChain boundaries to determine
+ * how to rejoin segments:
+ * - G1-continuous boundary → join with C1 (smooth)
+ * - G0-only boundary → join with C0 (position-only) or keep separate
+ *
+ * @param context {Context} : Onshape context
+ * @param segments {array} : From mapCurveSegmented()
+ * @param options {map} : {
+ *                          keepSeparateAtG0: boolean (default true)
+ *                              - If true: don't join across C0 breaks
+ *                              - If false: join with C0 continuity
+ *                        }
+ * @returns {array} : Array of joined curves (may be fewer than input segments)
+ *
+ * Uses joinCurves() from tools/curve_operations.fs
+ */
+export function joinMappedSegments(context is Context,
+                                   segments is array,
+                                   options is map) returns array
+```
+
+#### **detectLinearSegment**
+```featurescript
+/**
+ * Check if mapped points are nearly linear.
+ *
+ * Used to decide whether to approximate as line (degree 1) or spline (degree 3).
+ * Prevents "ringing" artifacts when mapping linear segments.
+ *
+ * @param points {array} : Mapped point array
+ * @param tolerance {ValueWithUnits} : Linearity tolerance (default 1e-5 m)
+ * @returns {boolean} : True if points lie on a line within tolerance
+ *
+ * Algorithm:
+ * 1. Fit line through points (least squares)
+ * 2. Measure max perpendicular distance from line
+ * 3. Return true if max distance < tolerance
+ */
+function detectLinearSegment(points is array, tolerance is ValueWithUnits)
+    returns boolean
+```
+
 #### **checkFrameConsistency**
 ```featurescript
 /**
@@ -540,6 +639,48 @@ For coplanar curves with normals pointing "broadly in same direction":
 - **Coplanarity check**: Only if enabled (default on, can disable for speed)
 - **Frame consistency**: Check at reference points only, not every point
 
+### 6. Curve Segmentation Strategy ⭐ CRITICAL
+**Problem**: When a source curve spans multiple edges in fromChain/toChain, mapping across edge boundaries can cause artifacts.
+
+**Default behavior** (minimalSegmentation = false):
+- **Always segment** at fromChain and toChain edge boundaries
+- Each segment maps relative to its corresponding fromEdge/toEdge pair
+- Preserves geometric structure of reference curves
+
+**Example**:
+```
+fromChain: [====edge1====][====edge2====]
+           0.0          0.5              1.0
+
+sourceCurve: [=======continuous=======]
+             0.2                    0.8
+
+Result: TWO segments
+  - Segment 1: [0.2→0.5] mapped using edge1
+  - Segment 2: [0.5→0.8] mapped using edge2
+```
+
+**Why segment?**
+1. Each fromEdge has different geometric character (line vs spline, different curvatures)
+2. Frenet frames change at boundaries
+3. Mapping across boundaries mixes different geometric contexts
+4. Better approximation quality per segment
+
+**After segmentation**:
+- Detect if mapped points are nearly linear → use degree 1 (prevents ringing)
+- Otherwise → use degree 3 spline approximation
+- Each segment gets endpoint-exact fitting
+
+**Rejoining** (optional):
+- If fromChain **G1** at boundary → rejoin with **C1** continuity (smooth)
+- If fromChain **G0** at boundary → rejoin with **C0** or keep separate (preserve kink)
+
+**Minimal segmentation mode** (minimalSegmentation = true):
+- Only segment at **C0 breaks** (tangent discontinuous)
+- Skip G1-continuous boundaries (smooth transitions)
+- Use when you want minimal curve count
+- May lose some geometric structure preservation
+
 ---
 
 ## Testing Strategy
@@ -562,6 +703,12 @@ For coplanar curves with normals pointing "broadly in same direction":
 4. **Endpoint exactness**:
    - Map curve endpoints → verify hit exactly
    - Map intermediate points → verify accuracy
+
+5. **Segmentation behavior**:
+   - Source curve spanning 2 fromEdges → verify 2 segments created
+   - Source curve spanning G1 boundary → verify segments rejoin smoothly
+   - Source curve spanning G0 boundary → verify segments kept separate
+   - Minimal segmentation mode → verify only C0 breaks create segments
 
 ### Integration Tests (in Onshape)
 1. **Simple cases**:
@@ -627,19 +774,30 @@ var mapping = buildCurveMapping(context, id, fromChain, toChain,
                                 AlignmentMode.AUTO,
                                 { "mappingMode" : MappingMode.LENGTH });
 
-// Sample source curve
-var sourceChain = buildCurveChain(context, definition.sourceCurves,
-                                  ChainContinuity.G0, {});
-var samples = sampleChainUniform(sourceChain, 50);
-
-// Map all points
-var mappedResults = mapPointsToCurve(context, mapping, samples.points);
-var mappedPoints = mapArray(mappedResults, function(r) { return r.mappedPoint; });
-
-// Create mapped curve
-var mappedCurve = approximateWithEndpoints(context, mappedPoints, 3, {
-    "tolerance" : definition.tolerance
+// Get source curve (as BSplineCurve)
+var sourceEdgeQuery = qNthElement(definition.sourceCurves, 0);
+var sourceBSpline = evApproximateBSplineCurve(context, {
+    "edge" : sourceEdgeQuery
 });
+
+// Map curve with automatic segmentation
+var mappedSegments = mapCurveSegmented(context, mapping, sourceBSpline, {
+    "numSamplesPerSegment" : 25,
+    "minimalSegmentation" : false  // Segment at all boundaries
+});
+
+// Join segments with appropriate continuity
+var joinedCurves = joinMappedSegments(context, mappedSegments, {
+    "keepSeparateAtG0" : true  // Don't join across C0 breaks
+});
+
+// Create geometry from mapped curves
+for (var i = 0; i < size(joinedCurves); i += 1)
+{
+    opCreateBSplineCurve(context, id + ("mappedCurve" ~ i), {
+        "bSplineCurve" : joinedCurves[i]
+    });
+}
 ```
 
 ### Example 2: Manual Alignment

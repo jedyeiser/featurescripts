@@ -26,7 +26,11 @@
       "Bash(grep:*)",
       "Bash(git push:*)",
       "Bash(fs-sync:*)",
-      "Bash(where:*)"
+      "Bash(where:*)",
+      "Bash(dir:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(git diff:*)"
     ]
   }
 }

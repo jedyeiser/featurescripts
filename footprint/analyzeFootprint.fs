@@ -143,16 +143,13 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
                     footprintData.tipLength = prepared.tipLength;
                     footprintData.tailLength = prepared.tailLength;
                 }
-                    
-                //println('keys(footprintData) -> ' ~ keys(footprintData));
-                
+
         if (definition.outputSketch)
         {
             var footprintSketch = newSketchOnPlane(context, id + "footprintSketch", {
                     "sketchPlane" : plane(vector(0, 0, 0) * millimeter, vector(0, 0, 1))
             });
-            
-            //println('footprintData.waist - > ' ~ footprintData.waist);
+
             skLineSegment(footprintSketch, "waistLine", {
                     "start" : vector(footprintData.waist.x, 0 * millimeter),
                     "end" : vector(footprintData.waist.x, footprintData.waist.point[1]),
@@ -176,8 +173,7 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
                     "end" : vector(footprintData.abWidestData.x, footprintData.abWidestData.point[1]),
                     "construction" : true
             });
-            
-            println('fbInflectionData - > ' ~ footprintData.fbInflectionData);
+
             if (footprintData.fbInflectionData.found)
             {
                 skLineSegment(footprintSketch, "fbInflection", {

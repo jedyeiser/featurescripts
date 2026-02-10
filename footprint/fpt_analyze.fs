@@ -13,6 +13,9 @@ import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6
 //import fpt_geometry
 import(path : "67c190b80e8b74dcee72e7ff", version : "0c6a9d6a0814f11fc3b25ce4");
 
+// IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
+import(path : "c5e3a4a2de84bcc6f4e2da21", version : "");
+
 
 
 
@@ -141,7 +144,7 @@ function findBSplineYCrossings(bspline is BSplineCurve, yTarget is ValueWithUnit
  * Extract a sub-curve from a BSpline between two parameters.
  * Creates a new BSpline by sampling and using interpolating spline.
  */
-function extractBSplineSubcurve(context is Context, bspline is BSplineCurve, uStart is number, uEnd is number, numPoints is number) returns BSplineCurve
+export function extractBSplineSubcurve(context is Context, bspline is BSplineCurve, uStart is number, uEnd is number, numPoints is number) returns BSplineCurve
 {
     var params = [];
     for (var i = 0; i < numPoints; i += 1)
@@ -404,56 +407,8 @@ function sampleBSplineUniform(bspline is BSplineCurve, numSamples is number) ret
 }
 
 /**
- * Compute signed curvature at a BSpline parameter.
- * Uses κ = (x'*y'' - y'*x'') / (x'² + y'²)^(3/2)
- * Sign: positive = concave (curving toward centerline/+Y), negative = convex
- */
-function getBSplineCurvatureAtParam(bspline is BSplineCurve, u is number) returns map
-{
-    var result = evaluateSpline({ "spline" : bspline, "parameters" : [u], "nDerivatives" : 2 });
-    var point = result[0][0];
-    var d1 = result[1][0];  // first derivative
-    var d2 = result[2][0];  // second derivative
-    
-    var xP = d1[0] / meter;   // unitless
-    var yP = d1[1] / meter;
-    var xPP = d2[0] / meter;
-    var yPP = d2[1] / meter;
-    
-    var speedSquared = xP * xP + yP * yP;
-    var denom = speedSquared * sqrt(speedSquared);
-    
-    var kSigned;
-    var kMag;
-    var sgn;
-    
-    if (abs(denom) < 1e-15)
-    {
-        kSigned = 0 / meter;
-        kMag = 0 / meter;
-        sgn = 0;
-    }
-    else
-    {
-        var kValue = (xP * yPP - yP * xPP) / denom;  // unitless (1/meter in real terms)
-        kSigned = kValue / meter;
-        kMag = abs(kValue) / meter;
-        sgn = safeSign(kValue, 1e-12);
-    }
-    
-    var tangent = (sqrt(xP * xP + yP * yP) > 1e-12) ? normalize(d1) : vector(1, 0, 0);
-    
-    return {
-        "point" : point,
-        "tangent" : tangent,
-        "curvatureMag" : kMag,
-        "curvatureSigned" : kSigned,
-        "sign" : sgn
-    };
-}
-
-/**
  * Sample a BSpline with curvature data for inflection point detection.
+ * NOTE: Uses getBSplineCurvatureAtParam() from footprint_math.fs
  */
 function sampleBSplineWithCurvature(bspline is BSplineCurve, numSamples is number) returns array
 {
@@ -1310,7 +1265,6 @@ export function filterCurveData(curveData is array, fcp is Vector, acp is Vector
     for (var i = 0; i < size(curveData); i += 1)
     {
 
-        //println('fcp -> ' ~ toString(fcp) ~ '. acp -> ' ~ toString(acp));
         if ((curveData[i].xMax < min(fcp[0], acp[0])) || (curveData[i].xMin >max(fcp[0], acp[0])))
         {
             continue;   // outside points. Do nothing

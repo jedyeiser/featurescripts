@@ -1,6 +1,9 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
+// xSectMaterials (buildMaterialLookup, normalizeMaterialName)
+import(path : "55c3f77a0ff77e36e93e8aad", version : "");
+
 /**
  * CROSS-SECTION CLT MODULE
  * ========================
@@ -470,147 +473,5 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
 }
 
 
-// =============================================================================
-// MATERIAL LIBRARY CSV PARSING
-// =============================================================================
-
-/**
- * Build a material lookup map from CSV data loaded via TableData.
- *
- * Parses the material library CSV and returns a map keyed by material Name
- * (string) → materialData map. This is the same materialData format that
- * the CLT assembly expects on each body.
- *
- * CSV Column Layout (from KaiTai_ski_snowboard_material_library.csv):
- *   0: Category
- *   1: Name
- *   2: Density [kg/m³]
- *   3: Poisson's Ratio
- *   4: Young's Modulus [Pa]
- *   5: Q11 [Pa]
- *   6: Q22 [Pa]
- *   7: Q12 [Pa]
- *   8: Q66 [Pa]
- *   9: Q16 [Pa]
- *  10: Q26 [Pa]
- *  11: Available dimensions
- *
- * Q matrix is stored as:
- *   [[Q11, Q12, Q16],
- *    [Q12, Q22, Q26],
- *    [Q16, Q26, Q66]]
- *
- * The lookup map is keyed by normalized names (trimmed + lowercased) to
- * handle minor discrepancies between Onshape material library names and
- * CSV names (extra spaces, casing differences, etc.). Use the companion
- * function normalizeMaterialName() when looking up values.
- *
- * Usage in editing logic:
- *   var lookup = buildMaterialLookup(definition.materialCSV.csvData);
- *   var key = normalizeMaterialName(onshapeMaterialName);
- *   var match = lookup[key];  // returns materialData or undefined
- *
- * @param csvData {array} : Array of row arrays from TableData.csvData.
- *                           Each row is an array of parsed values (numbers/strings).
- * @returns {map} : Normalized material name (string) → {
- *     originalName: string (preserves original casing for display),
- *     category: string,
- *     density: ValueWithUnits (kg/m³),
- *     poissonsRatio: number,
- *     youngsModulus: ValueWithUnits (Pa),
- *     qMatrix: array (3×3, entries in Pa)
- * }
- */
-export function buildMaterialLookup(csvData) returns map
-{
-    if (!(csvData is array))
-    {
-        println("WARNING: Material CSV is not an array");
-        return {};
-    }
-
-    var lookup = {};
-    var validRows = 0;
-    var skippedRows = 0;
-
-    for (var row in csvData)
-    {
-        // Skip rows that don't have enough columns or have empty name
-        if (size(row) < 11)
-        {
-            skippedRows += 1;
-            continue;
-        }
-
-        var name = row[1];
-        if (name == undefined || name == "")
-        {
-            skippedRows += 1;
-            continue;
-        }
-
-        // Skip header row or any row where density isn't numeric
-        if (!(row[2] is number))
-        {
-            skippedRows += 1;
-            continue;
-        }
-
-        // Validate Young's modulus is numeric
-        if (!(row[4] is number))
-        {
-            println("WARNING: Skipping material row with invalid Young's modulus: " ~ toString(name));
-            skippedRows += 1;
-            continue;
-        }
-
-        var key = normalizeMaterialName(name);
-
-        // Parse numeric values with units
-        // csvData from TableData provides numbers directly; we attach units
-        var density = row[2] * kilogram / meter^3;
-        var poissonsRatio = row[3];
-        var youngsModulus = row[4] * pascal;
-
-        var Q11 = row[5] * pascal;
-        var Q22 = row[6] * pascal;
-        var Q12 = row[7] * pascal;
-        var Q66 = row[8] * pascal;
-        var Q16 = row[9] * pascal;
-        var Q26 = row[10] * pascal;
-
-        var qMatrix = [
-            [Q11, Q12, Q16],
-            [Q12, Q22, Q26],
-            [Q16, Q26, Q66]
-        ];
-
-        lookup[key] = {
-            "originalName" : name,
-            "category" : row[0],
-            "density" : density,
-            "poissonsRatio" : poissonsRatio,
-            "youngsModulus" : youngsModulus,
-            "qMatrix" : qMatrix
-        };
-        validRows += 1;
-    }
-
-    println("Material library: " ~ validRows ~ " materials loaded" ~
-            (skippedRows > 0 ? (", " ~ skippedRows ~ " rows skipped") : ""));
-
-    return lookup;
-}
-
-/**
- * Normalize a material name for lookup matching.
- * Currently uses exact match (identity function).
- * TODO: Add trim/lowercase when FeatureScript string indexing is resolved.
- *
- * @param name {string} : Raw material name
- * @returns {string} : Key for lookup
- */
-export function normalizeMaterialName(name is string) returns string
-{
-    return name;
-}
+// NOTE: buildMaterialLookup() and normalizeMaterialName() have been moved to xSectMaterials.fs
+// and are imported above. This keeps CLT module focused on mechanical calculations.

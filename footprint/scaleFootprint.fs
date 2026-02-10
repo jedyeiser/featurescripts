@@ -16,6 +16,13 @@ export import(path : "71d853c0fd2f10ca3bb20a4b", version : "66b1789ffae3e397fd0e
 // Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
 import(path : "66f4f03cf728e94b8f823585", version : "929f34ea6ac87b301cbf9ff9");
 
+// IMPORT: integrateFootprint.fs (for forceQuadraticNurbs)
+// TODO: Add document ID when syncing to Onshape
+// import(path : "DOCUMENT_ID", version : "");
+
+// IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
+import(path : "c5e3a4a2de84bcc6f4e2da21", version : "");
+
 
 
 
@@ -193,10 +200,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var newAcp = newRslData.acp;
         var newMrs = newRslData.mrs;
         var newLength = abs(newAcp[0] - newFcp[0]);
-        
-        println("Reference RSL: FCP=" ~ toString(refFcp) ~ ", ACP=" ~ toString(refAcp) ~ ", MRS=" ~ toString(refMrs));
-        println("New RSL: FCP=" ~ toString(newFcp) ~ ", ACP=" ~ toString(newAcp) ~ ", MRS=" ~ toString(newMrs));
-        
+
         // =====================================================================
         // STEP 2: Convert reference edges to BSplines
         // =====================================================================
@@ -207,28 +211,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // STEP 3: Categorize curves (+Y / -Y aware) (Phase 1)
         // =====================================================================
         var categorized = categorizeCurvesWithSides(context, bsplines, refFcp[0], refAcp[0], tolerance);
-        
-        println("Categorized +Y: " ~ size(categorized.tipPos) ~ " tip, " ~
-                size(categorized.sidecutPos) ~ " sidecut, " ~
-                size(categorized.tailPos) ~ " tail");
-        println("Categorized -Y: " ~ size(categorized.tipNeg) ~ " tip, " ~
-                size(categorized.sidecutNeg) ~ " sidecut, " ~
-                size(categorized.tailNeg) ~ " tail");
-        
-        // Log tip/tail X extents so we can verify categorization
-        for (var i = 0; i < size(categorized.tipPos); i += 1)
-        {
-            var tb = getBSplineBounds(categorized.tipPos[i]);
-            println("  tipPos[" ~ i ~ "] X: " ~ toString(tb.xMin) ~ " to " ~ toString(tb.xMax) ~
-                    ", Y: " ~ toString(tb.yMin) ~ " to " ~ toString(tb.yMax));
-        }
-        for (var i = 0; i < size(categorized.tailPos); i += 1)
-        {
-            var tb = getBSplineBounds(categorized.tailPos[i]);
-            println("  tailPos[" ~ i ~ "] X: " ~ toString(tb.xMin) ~ " to " ~ toString(tb.xMax) ~
-                    ", Y: " ~ toString(tb.yMin) ~ " to " ~ toString(tb.yMax));
-        }
-        
+
         var hasNegData = size(categorized.sidecutNeg) > 0;
         
         // Validate: if ASYMMETRIC chosen but no -Y data, error
@@ -242,12 +225,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =====================================================================
         var refAnalysisPos = analyzeReferenceSidecut(categorized.sidecutPos,
             refFcp[0], refAcp[0], refMrs[0], tolerance);
-        
-        println("Reference +Y analysis: waist=" ~ toString(refAnalysisPos.waistWidth) ~
-                " at x=" ~ toString(refAnalysisPos.waistX) ~
-                ", taper(widest)=" ~ toString(refAnalysisPos.taperAngle) ~
-                ", avgR=" ~ toString(refAnalysisPos.avgRadius));
-        
+
         // =====================================================================
         // STEP 5: Scale +Y sidecut
         // =====================================================================
@@ -265,11 +243,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             definition.specifyWidth ? definition.targetWaistWidth : refAnalysisPos.waistWidth,
             tolerance,
             outputDegree, strictArcs);
-        
-        println("Scaled +Y: fcpWidth=" ~ toString(scaledPos.fcpWidth) ~
-                ", acpWidth=" ~ toString(scaledPos.acpWidth) ~
-                ", waistWidth=" ~ toString(scaledPos.waistWidth));
-        
+
         // =====================================================================
         // STEP 6: Transform +Y tip/tail
         // =====================================================================
@@ -282,11 +256,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             refFcp[0], newFcp[0], tipYScale, true);
         var transformedTailPos = transformTipTail(categorized.tailPos,
             refAcp[0], newAcp[0], tailYScale, false);
-        
-        println("Tip Y scale: " ~ tipYScale ~ ", Tail Y scale: " ~ tailYScale);
-        println("Transformed +Y tip curves: " ~ size(transformedTipPos) ~
-                ", tail curves: " ~ size(transformedTailPos));
-        
+
         // =====================================================================
         // STEP 7: Build -Y side (Phase 1)
         // =====================================================================
@@ -389,12 +359,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var negCurves = concatenateArrays([
             transformedTipNeg, scaledNegCurves, transformedTailNeg
         ]);
-        
-        println("Output assembly: " ~ size(transformedTipPos) ~ " tipPos + " ~
-                size(scaledPos.curves) ~ " scPos + " ~ size(transformedTailPos) ~ " tailPos + " ~
-                size(transformedTipNeg) ~ " tipNeg + " ~ size(scaledNegCurves) ~ " scNeg + " ~
-                size(transformedTailNeg) ~ " tailNeg = " ~ (size(posCurves) + size(negCurves)) ~ " total curves");
-        
+
         // --- Create +Y curves and stitch into wire(s) ---
         var posEdgeQueries = [];
         for (var i = 0; i < size(posCurves); i += 1)
@@ -759,14 +724,9 @@ function analyzeReferenceSidecut(sidecutCurves is array, fcpX is ValueWithUnits,
         min([radiusXMin, radiusXMax]),
         max([radiusXMin, radiusXMax]),
         config);
-    
+
     var avgRadius = avgRadiusResult.valid ? avgRadiusResult.avgRadius : (1000 * meter);
-    
-    println("  analyzeRef: waist=" ~ toString(waist.width) ~ " at x=" ~ toString(waist.x));
-    println("  analyzeRef: fbWidest=" ~ toString(fbWidest.width) ~ " at x=" ~ toString(fbWidest.x) ~
-            ", abWidest=" ~ toString(abWidest.width) ~ " at x=" ~ toString(abWidest.x));
-    println("  analyzeRef: signedTaper=" ~ toString(taperAngle) ~ ", avgRadius=" ~ toString(avgRadius));
-    
+
     return {
         // Endpoint widths (for tip/tail junction scaling)
         "fcpWidth" : fcpWidth,
@@ -1134,9 +1094,7 @@ function scaleAccordion(context is Context, id is Id, sidecutCurves is array, re
     {
         yScale = targetWaistWidth / refAnalysis.waistWidth;
     }
-    
-    println("  Accordion: xScale=" ~ toString(xScale) ~ ", yScale=" ~ toString(yScale));
-    
+
     var scaledCurves = [];
     
     for (var bspline in sidecutCurves)
@@ -1186,9 +1144,7 @@ function scaleAccordion(context is Context, id is Id, sidecutCurves is array, re
     // Apply strict arcs conversion if requested
     if (strictArcs)
     {
-        println("  ACCORDION: Converting to strict arcs...");
         scaledCurves = forceQuadraticNurbs(context, id + "accordionArcs", scaledCurves);
-        println("  ACCORDION: Strict arcs applied (" ~ size(scaledCurves) ~ " arcs)");
     }
 
     return {
@@ -1308,11 +1264,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
     var currentTaper = computeSignedTaper(accFbPoint, accAbPoint);
     var refTaper = refAnalysis.taperAngle;  // already signed, between widest points
     var rotationAngle = refTaper - currentTaper;
-    
-    println("  Keep taper: refTaper=" ~ toString(refTaper) ~
-            ", currentTaper=" ~ toString(currentTaper) ~
-            ", rotation=" ~ toString(rotationAngle));
-    
+
     // Step 3: Determine pivot point
     var pivotX;
     var pivotY;
@@ -1326,9 +1278,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
         pivotX = newMrsX;
         pivotY = getWidthAtX(accordionedData, newMrsX, tolerance);
     }
-    
-    println("  Pivot at x=" ~ toString(pivotX) ~ ", y=" ~ toString(pivotY));
-    
+
     // Step 4: Apply rotation about pivot
     var rotatedCurves = [];
     for (var bspline in accordionedCurves)
@@ -1377,9 +1327,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
         var currentWaistWidth = currentWaist.found ? currentWaist.width :
             getWidthAtX(rotatedData, (xLo + xHi) / 2, tolerance);
         var yShift = targetWaistWidth - currentWaistWidth;
-        
-        println("  Y shift for target width: " ~ toString(yShift));
-        
+
         finalCurves = [];
         for (var bspline in rotatedCurves)
         {
@@ -1421,9 +1369,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
     // Apply strict arcs conversion if requested
     if (strictArcs)
     {
-        println("  KEEP_TAPER: Converting to strict arcs...");
         finalCurves = forceQuadraticNurbs(context, id + "taperArcs", finalCurves);
-        println("  KEEP_TAPER: Strict arcs applied (" ~ size(finalCurves) ~ " arcs)");
     }
 
     return {
@@ -1660,26 +1606,9 @@ function findClosestIndex(xSamples is array, targetX is ValueWithUnits) returns 
 }
 
 // =============================================================================
-// HELPER: CONVERT BSPLINES TO STRICT ARCS
-// =============================================================================
-
-/**
- * Convert BSpline curves to rational quadratic NURBS (arcs/lines).
- * Used for strict arcs mode in SCALE_RADIUS.
- */
-function forceQuadraticNurbs(context is Context, id is Id, bSplines is array) returns array
-{
-    var dotTol = cos(0.1 * degree);
-    var polyArcs = approximateSplinesWithPolyArcs(bSplines, 1e-3 * millimeter, 1e-3 * millimeter, dotTol, 1 * millimeter);
-
-    var NURBS = primitivesToBSplines(polyArcs.segments);
-
-    return NURBS;
-}
-
-// =============================================================================
 // SCALE RADIUS  (Iterative radius targeting with curve boundary preservation)
 // =============================================================================
+// NOTE: forceQuadraticNurbs() is imported from integrateFootprint.fs
 
 /**
  * Scale sidecut curves to achieve target average radius while preserving taper angle.
@@ -1744,9 +1673,6 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     var minY = inf * meter;
     var y0 = 0 * meter;
 
-    println("  Scale radius: refAvgRadius=" ~ toString(refAnalysis.avgRadius) ~
-            ", targetRadius=" ~ toString(targetRadius) ~ ", initial scale=" ~ toString(radiusScaleFactor));
-
     // Store reference curvature (unscaled) for selective scaling
     var kReference = [];
 
@@ -1759,9 +1685,6 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     // ITERATION LOOP: Adjust scale factor until radius matches target
     for (var iteration = 0; iteration < maxIterations; iteration += 1)
     {
-        println("=== Radius Iteration " ~ iteration ~ " ===");
-        println("  Scale factor: " ~ toString(radiusScaleFactor));
-
         // Sample curvature UNIFORMLY across sidecut (maintains continuity)
         // Scale sample count with number of curves to ensure small curves get adequate resolution
         var numSamples = max([100, size(curveBoundaries) * 30]);
@@ -1894,28 +1817,17 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         // EVALUATE ACTUAL RADIUS between inflection points (like analyzeFootprint)
         var actualRadius = evaluateRadiusBetweenInflections(tempCurve, evalXMin, evalXMax);
 
-        println("  Inflection bounds (NEW space): [" ~ toString(inflectionXMin) ~ ", " ~ toString(inflectionXMax) ~ "]");
-        println("  Inflection bounds (REF space): [" ~ toString(refInflectionXMin) ~ ", " ~ toString(refInflectionXMax) ~ "]");
-        println("  Scaling curvature only between inflections (coordinate space fix applied)");
-        println("  FB inflection: " ~ (fbInflection.found ? ("X=" ~ toString(fbInflection.x)) : "not found"));
-        println("  AB inflection: " ~ (abInflection.found ? ("X=" ~ toString(abInflection.x)) : "not found"));
-        println("  Actual radius: " ~ toString(actualRadius) ~ " (between X=" ~ toString(evalXMin) ~ " to " ~ toString(evalXMax) ~ ")");
-        println("  Target radius: " ~ toString(targetRadius));
-
         // Check for invalid radius (straight line or evaluation failure)
         if (actualRadius == inf * meter || actualRadius <= 0 * meter)
         {
-            println("  ERROR: Could not evaluate curve radius (infinite or invalid)");
             break;
         }
 
         var error = actualRadius - targetRadius;
-        println("  Error: " ~ toString(error));
 
         // Check convergence
         if (abs(error) < radiusTolerance)
         {
-            println("  CONVERGED after " ~ iteration ~ " iterations!");
             converged = true;
             break;
         }
@@ -1923,12 +1835,6 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         // Adjust scale factor for next iteration
         // If actual > target, we need MORE curvature (higher k), so HIGHER scale
         radiusScaleFactor = radiusScaleFactor * (actualRadius / targetRadius);
-        println("  Next scale factor: " ~ toString(radiusScaleFactor));
-    }
-
-    if (!converged)
-    {
-        println("  WARNING: Did not converge after " ~ maxIterations ~ " iterations");
     }
 
     // SPLIT converged geometry at original curve boundaries
@@ -1942,9 +1848,6 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         var newBoundaryX = newFcpX + (boundaryX - refFcpX) * xScale;
         mappedBoundaries = append(mappedBoundaries, newBoundaryX);
     }
-
-    println("  Splitting at " ~ size(mappedBoundaries) ~ " boundaries");
-    println("  Expected " ~ (size(mappedBoundaries) + 1) ~ " output curves");
 
     for (var boundaryIdx = 0; boundaryIdx < size(mappedBoundaries); boundaryIdx += 1)
     {
@@ -1999,8 +1902,6 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         outputCurves = append(outputCurves, segmentCurve);
     }
 
-    println("  Created " ~ size(outputCurves) ~ " output curves");
-
     // NOTE: Post-process simplification was tested but caused catastrophic radius error
     // (16.06m vs 21m target). Control point count is less important than accuracy.
     // To reduce CPs, adjust the original approximation parameters instead.
@@ -2008,31 +1909,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     // OPTIONAL: Convert to strict arcs if requested
     if (strictArcs)
     {
-        println("  STRICT ARCS ENABLED - Converting " ~ size(outputCurves) ~ " curves to arcs...");
-
-        // Debug: Check input curve types
-        for (var i = 0; i < size(outputCurves); i += 1)
-        {
-            var curve = outputCurves[i];
-            println("    Input curve " ~ i ~ ": degree=" ~ curve.degree ~
-                    ", rational=" ~ curve.isRational ~
-                    ", CPs=" ~ size(curve.controlPoints));
-        }
-
         var arcCurves = forceQuadraticNurbs(context, id + "strictArcs", outputCurves);
-
-        // Debug: Check output arc types
-        println("  Arc conversion complete: " ~ size(arcCurves) ~ " arc segments");
-        for (var i = 0; i < min([size(arcCurves), 5]); i += 1)
-        {
-            var arc = arcCurves[i];
-            println("    Output arc " ~ i ~ ": degree=" ~ arc.degree ~
-                    ", rational=" ~ arc.isRational ~
-                    ", CPs=" ~ size(arc.controlPoints));
-        }
-
         outputCurves = arcCurves;
-        println("  Strict arcs conversion applied successfully");
     }
 
     // NOTE: To validate final radius accuracy, run analyzeFootprint on the output curves
@@ -2389,80 +2267,5 @@ function getBSplineBounds(bspline is BSplineCurve) returns map
     };
 }
 
-/**
- * Extract subcurve between two parameters.
- * Phase 0b: Now uses approximateSpline for a proper BSpline approximation
- * instead of passing sampled positions as control points (which created
- * an interpolating spline with shape error).
- *
- * Requires context for the approximateSpline call.
- */
-function extractBSplineSubcurve(context is Context, bspline is BSplineCurve, uStart is number,
-    uEnd is number, numPoints is number) returns BSplineCurve
-{
-    var params = [];
-    for (var i = 0; i < numPoints; i += 1)
-    {
-        params = append(params, uStart + (uEnd - uStart) * i / (numPoints - 1));
-    }
-    
-    var result = evaluateSpline({ "spline" : bspline, "parameters" : params });
-    var positions = result[0];
-    
-    // Use approximateSpline for a faithful subcurve representation.
-    // Interpolate endpoints exactly, approximate interior within tolerance.
-    return approximateSpline(context, {
-        "degree" : min([3, size(positions) - 1]),
-        "tolerance" : 0.001 * millimeter,
-        "maxControlPoints" : max([size(positions), 15]),
-        "targets" : [approximationTarget({ "positions" : positions })],
-        "interpolateIndices" : [0, size(positions) - 1]
-    })[0];
-}
-
-/**
- * Get curvature at a parameter.
- */
-function getBSplineCurvatureAtParam(bspline is BSplineCurve, u is number) returns map
-{
-    var result = evaluateSpline({ "spline" : bspline, "parameters" : [u], "nDerivatives" : 2 });
-    var point = result[0][0];
-    var d1 = result[1][0];
-    var d2 = result[2][0];
-    
-    var xP = d1[0] / meter;
-    var yP = d1[1] / meter;
-    var xPP = d2[0] / meter;
-    var yPP = d2[1] / meter;
-    
-    var speedSquared = xP * xP + yP * yP;
-    var denom = speedSquared * sqrt(speedSquared);
-    
-    var kSigned;
-    var kMag;
-    var sgn;
-    
-    if (abs(denom) < 1e-15)
-    {
-        kSigned = 0 / meter;
-        kMag = 0 / meter;
-        sgn = 0;
-    }
-    else
-    {
-        var kValue = (xP * yPP - yP * xPP) / denom;
-        kSigned = kValue / meter;
-        kMag = abs(kValue) / meter;
-        sgn = (kValue > 1e-12) ? 1 : ((kValue < -1e-12) ? -1 : 0);
-    }
-    
-    var tangent = (sqrt(speedSquared) > 1e-12) ? normalize(d1) : vector(1, 0, 0);
-    
-    return {
-        "point" : point,
-        "tangent" : tangent,
-        "curvatureMag" : kMag,
-        "curvatureSigned" : kSigned,
-        "sign" : sgn
-    };
-}
+// NOTE: extractBSplineSubcurve() is imported from fpt_analyze.fs
+// NOTE: getBSplineCurvatureAtParam() is imported from footprint_math.fs

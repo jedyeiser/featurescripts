@@ -1,605 +1,697 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
-// import bspline_data (for getControlPoints, getBSplineParamRange, etc.)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
-// import bspline_knots (for reverseCurve, findSpan)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
-// import curve_operations (for splitCurve, extractSubcurve)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
-// import math_utils (for lerp, clamp)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
-
-
 /**
- * UNIQUE CURVES - B-Spline Consolidation
- * ======================================
+ * XSECTION PROCESSING MODULE
+ * ==========================
  *
- * ⚠️  STATUS: EXPERIMENTAL - CURRENTLY UNUSED ⚠️
+ * Cross-section processing core logic for the xSection feature.
  *
- * This module provides sophisticated overlap detection with curve splitting,
- * but is NOT currently used by the xSection feature. The main feature uses
- * a simpler, optimized approach (getUniqueCurvesOptimized in xSect.fs).
+ * This module handles:
+ * - processCrossSections() - Main processing pipeline for all cross-sections
+ * - resolveOverrideMaterialData() - User-provided material override resolution
+ * - Curve deduplication (getUniqueCurvesOptimized and helpers)
+ * - 2D bounding box computation and overlap detection
  *
- * This file is kept for reference and potential future use. It demonstrates
- * a more complete approach to handling partial overlaps and curve splitting.
- *
- * ---
- *
- * Takes an array of potentially overlapping B-spline curves and returns
- * a minimal set of non-overlapping segments covering the same geometry.
- *
- * OVERLAP CASES:
- * | Case              | Input   | Output                              |
- * |-------------------|---------|-------------------------------------|
- * | Non-overlapping   | A, B    | A, B (unchanged)                    |
- * | Full containment  | A ⊂ B   | B_left, A, B_right (A wins)         |
- * | Partial overlap   | A ∩ B   | A_trim, Overlap, B_trim             |
- *
- * ASSUMPTIONS:
- * - Curves from same source (cross-sections) have similar control polygon density
- * - Overlapping regions have nearly identical control polygons
- * - Clamped (non-periodic) knot vectors
+ * Extracted from xSect.fs to separate processing logic from orchestration.
  */
 
-// =============================================================================
-// CONSTANTS
-// =============================================================================
+// IMPORTS - xSectUtils (constants, utilities, polyline projection)
+import(path : "c2c3edd39b85fde5e6062533", version : "7e537861c2928d241275f66f");
+// IMPORTS - xSect_Triangulation (processBodyCurves)
+import(path : "08d3a8d4e34a60d45d46e261", version : "d9f90d26de8883a3e007a6fc");
+// IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
+import(path : "55c3f77a0ff77e36e93e8aad", version : "");
+// IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
+import(path : "74231d1d53f5a117d47d17a9", version : "513d07995ff70ccd50c927a2");
 
-export const OVERLAP_TOLERANCE = 1e-6 * meter;  // Distance tolerance for control point matching
-export const PARAM_TOLERANCE = 1e-10;            // Parameter space tolerance
+// =============================================================================
+// CURVE OVERLAP DETECTION TYPES
+// =============================================================================
 
 /**
- * Overlap detection result types
+ * Overlap detection result types for curve deduplication.
+ * Used by getUniqueCurvesOptimized() for composite wire generation.
  */
 export enum OverlapType
 {
-    NONE,
-    FULL_CONTAINMENT,  // One curve fully inside the other
-    PARTIAL_OVERLAP    // Endpoints overlap but neither contains the other
+    NONE,               // No overlap detected
+    FULL_CONTAINMENT,   // One curve fully contains the other
+    PARTIAL_OVERLAP     // Curves partially overlap at endpoints
 }
 
 // =============================================================================
-// MAIN ENTRY POINT
+// CROSS-SECTION PROCESSING
 // =============================================================================
 
 /**
- * Get unique, non-overlapping curves from input array.
+ * Process all cross-sections and extract B-spline curves, points, and properties.
  *
- * @param context {Context} : Onshape context
- * @param inputCurves {array} : Array of {'BSplineCurve': BSplineCurve, 'bodies': array of {Query}}
- * @param tolerance {ValueWithUnits} : Distance tolerance for overlap detection
- * @returns {array} : Array of non-overlapping {'BSplineCurve': BSplineCurve, 'bodies': array of {Query} covering same geometry
+ * Builds the bodies array from definition.bodyArray, resolving material data
+ * from the CSV and user overrides here (not in editing logic) because
+ * ValueWithUnits maps don't survive definition serialization.
  */
-export function getUniqueCurves(context is Context, inputCurves is array, tolerance) returns array
+export function processCrossSections(context is Context, id is Id, definition is map) returns map
 {
-    if (tolerance == undefined)
-        tolerance = OVERLAP_TOLERANCE;
-    
-    if (size(inputCurves) == 0)
-        return [];
-    
-    if (size(inputCurves) == 1)
-        return inputCurves;
-    
-    var toProcess = inputCurves;  // Working queue
-    var unique = [];               // Verified non-overlapping curves
-    
-    while (size(toProcess) > 0)
+    var frames = getCrossSectionFrames(context, definition.xSectAlong, definition.numSections);
+
+    // -----------------------------------------------------------------
+    // Parse CSV for material resolution (re-parsed here because complex
+    // maps with ValueWithUnits don't survive from editing logic)
+    // -----------------------------------------------------------------
+    var materialLookup = {};
+    try
     {
-        // Pop the last curve from toProcess
-        var current = toProcess[size(toProcess) - 1];
-        toProcess = subArray(toProcess, 0, size(toProcess) - 1);
-        
-        // Search for overlap (iteration only - no mutation)
-        var overlapIndex = -1;
-        var overlapResult = undefined;
-        
-        for (var i = 0; i < size(unique); i += 1)
+        var csvData = definition.materialCSV.csvData;
+        if (csvData is array)
         {
-            var candidate = unique[i];
-            var result = detectOverlap(current, candidate, tolerance); // result will be {"type": overlapType from classifyOverlap, "runs" : matchingRuns result.runs, 'reveresed, 'matchcount'. 
-            
-            if (result['type'] != OverlapType.NONE) // no overlaps found. Add to the unique bucket and move on. 
+            materialLookup = buildMaterialLookup(csvData);
+        }
+    }
+    catch (e)
+    {
+        println("WARNING: Failed to parse material CSV - " ~ e);
+    }
+
+    // -----------------------------------------------------------------
+    // Build top-level bodies array from editing logic's bodyArray,
+    // resolving material data and computing volume
+    // -----------------------------------------------------------------
+    var bodies = [];
+    for (var i = 0; i < size(definition.bodyArray); i += 1)
+    {
+        var bodyDef = definition.bodyArray[i];
+        var bodyEntry = {
+            "bodyQuery" : bodyDef.bodyQuery,
+            "bodyIdx" : i,
+            "bodyName" : tryGetKey(bodyDef, "bodyName"),
+            "materialName" : tryGetKey(bodyDef, "materialName"),
+            "hasMaterialData" : false
+        };
+
+        // --- Resolve material data from CSV ---
+        var matName = tryGetKey(bodyDef, "materialName");
+        if (matName != undefined && matName != "Not assigned")
+        {
+            var key = normalizeMaterialName(matName);
+            var csvMatch = materialLookup[key];
+            if (csvMatch != undefined)
             {
-                overlapIndex = i;
-                overlapResult = result;
+                bodyEntry.hasMaterialData = true;
+                bodyEntry.materialData = csvMatch;
+            }
+        }
+
+        // --- If no CSV match, resolve from user overrides ---
+        if (!bodyEntry.hasMaterialData)
+        {
+            var behavior = tryGetKey(bodyDef, "materialBehavior");
+            if (behavior == MaterialBehavior.PROVIDE_DATA)
+            {
+                bodyEntry = resolveOverrideMaterialData(bodyDef, bodyEntry);
+            }
+        }
+
+        // --- Compute volume ---
+        var bodyVolume = 0 * meter^3;
+        try
+        {
+            bodyVolume = evVolume(context, { "entities" : bodyDef.bodyQuery });
+        }
+        catch (e)
+        {
+            println("WARNING: Could not compute body volume - " ~ e);
+        }
+        bodyEntry.volume = bodyVolume;
+
+        bodies = append(bodies, bodyEntry);
+    }
+
+    var bodyQueries = mapArray(bodies, function(b) { return b.bodyQuery; });
+
+    // Build body index map for O(1) lookups (Phase 2 optimization)
+    var bodyIndexMap = {};
+    for (var i = 0; i < size(bodyQueries); i += 1)
+    {
+        var entities = evaluateQuery(context, bodyQueries[i]);
+        if (size(entities) > 0)
+        {
+            // Use first entity as key (solid bodies typically have single entity)
+            bodyIndexMap[toString(entities[0])] = i;
+        }
+    }
+
+    var crossSections = [];
+
+    println("Processing " ~ size(frames) ~ " cross-sections...");
+
+    for (var i = 0; i < size(frames); i += 1)
+    {
+        // Progress indicator every 10 sections
+        if (i % 10 == 0 && i > 0)
+        {
+            println("  Section " ~ i ~ " / " ~ size(frames) ~ " (" ~ floor(100.0 * i / size(frames)) ~ "%)");
+        }
+
+        var frame = frames[i];
+        var xSectPlane = plane(frame.origin, frame.zAxis);
+
+        opPlane(context, id + ("plane" ~ i), { "plane" : xSectPlane });
+        var planeQ = qCreatedBy(id + ("plane" ~ i), EntityType.FACE);
+
+        var intersectingBodies = evaluateQuery(context, qIntersectsPlane(qUnion(bodyQueries), xSectPlane));
+
+        var wireQueries = [];
+        var allBSplines = [];
+        var bodyToCurves = {};
+
+        // PHASE A: Intersect all bodies and extract B-splines
+        for (var b = 0; b < size(intersectingBodies); b += 1)
+        {
+            var body = intersectingBodies[b];
+
+            // Use O(1) map lookup instead of O(n) search
+            var bodyIdx = bodyIndexMap[toString(body)];
+            if (bodyIdx == undefined)
+            {
+                println("WARNING: Body not found in index map at section " ~ i);
+                continue;
+            }
+
+            opIntersectFaces(context, id + ("intersect" ~ i ~ "_" ~ b), {
+                    "tools" : planeQ,
+                    "targets" : body
+            });
+
+            wireQueries = append(wireQueries, qCreatedBy(id + ("intersect" ~ i ~ "_" ~ b), EntityType.BODY));
+
+            var edges = evaluateQuery(context, qCreatedBy(id + ("intersect" ~ i ~ "_" ~ b), EntityType.EDGE));
+            var bodyCurves = [];
+
+            for (var e = 0; e < size(edges); e += 1)
+            {
+                var bspline = evApproximateBSplineCurve(context, { "edge" : edges[e] });
+
+                var curveData = {
+                    "bSplineCurve" : bspline,
+                    "bodyIndices" : [bodyIdx],
+                    "bbox2D" : computeCurveBoundingBox2D(bspline, xSectPlane)
+                };
+
+                allBSplines = append(allBSplines, curveData);
+                bodyCurves = append(bodyCurves, curveData);
+            }
+
+            bodyToCurves[bodyIdx] = bodyCurves;
+        }
+
+        // PHASE B: Deduplicate if creating composites
+        var finalCurves = allBSplines;
+        if (definition.createComposites)
+        {
+            finalCurves = getUniqueCurvesOptimized(allBSplines, OVERLAP_TOL);
+        }
+
+        // PHASE C: Build bodyData using triangulation module
+        var sectionPoints = [];
+        var spatialGrid = {};  // Phase 4: Spatial grid for O(1) point deduplication
+        var bodyData = [];
+
+        for (var body in intersectingBodies)
+        {
+            // Use O(1) map lookup instead of O(n) search
+            var bodyIdx = bodyIndexMap[toString(body)];
+            if (bodyIdx == undefined)
+            {
+                println("WARNING: Body not found in index map at section " ~ i);
+                continue;
+            }
+
+            var bodyCurves = bodyToCurves[bodyIdx];
+            if (bodyCurves == undefined)
+                bodyCurves = [];
+
+            var result = processBodyCurves(bodyCurves, frame, sectionPoints, spatialGrid);
+            sectionPoints = result.sectionPoints;
+            spatialGrid = result.spatialGrid;
+
+            bodyData = append(bodyData, {
+                "bodyIdx" : bodyIdx,
+                "groups" : result.bodyData.groups,
+                "totalSectionProperties" : result.bodyData.totalSectionProperties,
+                "boundingBox" : result.bodyData.boundingBox
+            });
+        }
+
+        // Aggregate bounding boxes from all bodies at this section
+        var overallMinX = undefined;
+        var overallMaxX = undefined;
+        var overallMinY = undefined;
+        var overallMaxY = undefined;
+
+        for (var bodyEntry in bodyData)
+        {
+            var bbox = bodyEntry.boundingBox;
+            if (overallMinX == undefined || bbox.minX < overallMinX) overallMinX = bbox.minX;
+            if (overallMaxX == undefined || bbox.maxX > overallMaxX) overallMaxX = bbox.maxX;
+            if (overallMinY == undefined || bbox.minY < overallMinY) overallMinY = bbox.minY;
+            if (overallMaxY == undefined || bbox.maxY > overallMaxY) overallMaxY = bbox.maxY;
+        }
+
+        // Validate that we have valid bounding box data
+        if (overallMinX == undefined || overallMaxX == undefined || overallMinY == undefined || overallMaxY == undefined)
+        {
+            println("WARNING: Section " ~ i ~ " has no valid body data (no intersecting bodies)");
+            // Create empty bounding box with zero dimensions
+            var sectionBoundingBox = {
+                "minX" : 0 * meter,
+                "maxX" : 0 * meter,
+                "minY" : 0 * meter,
+                "maxY" : 0 * meter,
+                "width" : 0 * meter,
+                "height" : 0 * meter
+            };
+
+            // Still append section with empty data for consistency
+            crossSections = append(crossSections, {
+                "frame" : frame,
+                "sectionPoints" : sectionPoints,
+                "bSplineCurves" : outputCurves,
+                "bodyData" : bodyData,
+                "boundingBox" : sectionBoundingBox
+            });
+            continue;  // Skip to next section
+        }
+
+        var sectionBoundingBox = {
+            "minX" : overallMinX,
+            "maxX" : overallMaxX,
+            "minY" : overallMinY,
+            "maxY" : overallMaxY,
+            "width" : (overallMaxX - overallMinX),
+            "height" : (overallMaxY - overallMinY)
+        };
+
+        // Strip bbox2D from final output curves
+        var outputCurves = mapArray(finalCurves, function(c) {
+            return {
+                "bSplineCurve" : c.bSplineCurve,
+                "bodyIndices" : c.bodyIndices
+            };
+        });
+
+        // Cleanup
+        try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
+        catch (e)
+        {
+            println("WARNING: Could not delete plane at section " ~ i ~ " - " ~ e);
+        }
+        if (size(wireQueries) > 0)
+        {
+            try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
+            catch (e)
+            {
+                println("WARNING: Could not delete wires at section " ~ i ~ " - " ~ e);
+            }
+        }
+
+        crossSections = append(crossSections, {
+            "frame" : frame,
+            "sectionPoints" : sectionPoints,
+            "bSplineCurves" : outputCurves,
+            "bodyData" : bodyData,
+            "boundingBox" : sectionBoundingBox
+        });
+    }
+
+    println("Cross-section processing complete: " ~ size(crossSections) ~ " sections analyzed");
+
+    return {
+        "bodies" : bodies,
+        "crossSections" : crossSections
+    };
+}
+
+
+// =============================================================================
+// MATERIAL RESOLUTION (FEATURE BODY)
+// =============================================================================
+
+/**
+ * Build materialData from user-provided override values stored in definition.
+ *
+ * Called during feature execution (not editing logic) because ValueWithUnits
+ * maps don't survive definition serialization.
+ *
+ * @param bodyDef {map} : The definition bodyArray entry (with override fields)
+ * @param bodyEntry {map} : The bodies array entry being built
+ * @returns {map} : Updated bodyEntry with materialData attached
+ */
+export function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) returns map
+{
+    var updated = bodyEntry;
+    try
+    {
+        var density = bodyDef.overrideDensity * kilogram / meter^3;
+        var name = tryGetKey(bodyDef, "overrideName");
+        if (name == undefined)
+            name = "User-defined";
+
+        var qMatrix = undefined;
+        var youngsModulus = undefined;
+        var poissonsRatio = undefined;
+
+        var matType = tryGetKey(bodyDef, "materialType");
+        if (matType == MaterialType.ISOTROPIC)
+        {
+            var E = bodyDef.youngsModulus * megapascal;
+            qMatrix = isotropicQMatrix(E, 0.33);
+            youngsModulus = E;
+            poissonsRatio = 0.33;
+        }
+        else if (matType == MaterialType.ORTHOTROPIC)
+        {
+            var E1 = bodyDef.E1 * megapascal;
+            var E2 = bodyDef.E2 * megapascal;
+            var G12 = bodyDef.G12 * megapascal;
+            var nu12 = bodyDef.nu12;
+            qMatrix = orthotropicQMatrix(E1, E2, G12, nu12);
+            youngsModulus = E1;
+            poissonsRatio = nu12;
+        }
+
+        if (qMatrix != undefined)
+        {
+            updated.hasMaterialData = true;
+            updated.materialData = {
+                "originalName" : name,
+                "category" : "User-defined",
+                "density" : density,
+                "poissonsRatio" : poissonsRatio,
+                "youngsModulus" : youngsModulus,
+                "qMatrix" : qMatrix
+            };
+        }
+    }
+    catch (e)
+    {
+        println("WARNING: Failed to resolve override material data - " ~ e);
+    }
+    return updated;
+}
+
+
+// =============================================================================
+// 2D BOUNDING BOX (Plane-Local Coordinates)
+// =============================================================================
+
+/**
+ * Compute 2D bounding box for a B-spline in plane-local coordinates.
+ */
+export function computeCurveBoundingBox2D(curve is BSplineCurve, sectionPlane is Plane) returns map
+{
+    var cps = curve.controlPoints;
+
+    if (size(cps) == 0)
+        return { "minX" : 0 * meter, "maxX" : 0 * meter, "minY" : 0 * meter, "maxY" : 0 * meter };
+
+    var pt0_2D = worldToPlane(sectionPlane, cps[0]);
+    var minX = pt0_2D[0];
+    var maxX = pt0_2D[0];
+    var minY = pt0_2D[1];
+    var maxY = pt0_2D[1];
+
+    for (var j = 1; j < size(cps); j += 1)
+    {
+        var pt2D = worldToPlane(sectionPlane, cps[j]);
+        minX = min(minX, pt2D[0]);
+        maxX = max(maxX, pt2D[0]);
+        minY = min(minY, pt2D[1]);
+        maxY = max(maxY, pt2D[1]);
+    }
+
+    return {
+        "minX" : minX,
+        "maxX" : maxX,
+        "minY" : minY,
+        "maxY" : maxY
+    };
+}
+
+/**
+ * Check if two 2D bounding boxes overlap (with tolerance).
+ */
+export function boundingBoxes2DOverlap(boxA is map, boxB is map, tol is ValueWithUnits) returns boolean
+{
+    if (boxA.maxX + tol < boxB.minX || boxB.maxX + tol < boxA.minX)
+        return false;
+    if (boxA.maxY + tol < boxB.minY || boxB.maxY + tol < boxA.minY)
+        return false;
+
+    return true;
+}
+
+// =============================================================================
+// OPTIMIZED UNIQUE CURVE DETECTION
+// =============================================================================
+
+/**
+ * Get unique curves with optimizations:
+ * 1. 2D bounding box pre-filter
+ * 2. Integer body index comparison
+ * 3. Minimum curve length protection
+ */
+export function getUniqueCurvesOptimized(inputCurves is array, tolerance is ValueWithUnits) returns array
+{
+    if (size(inputCurves) <= 1)
+        return inputCurves;
+
+    var tol = tolerance;
+    var unique = [];
+
+    for (var i = 0; i < size(inputCurves); i += 1)
+    {
+        var current = inputCurves[i];
+
+        // PROTECTION: Don't dedupe tiny curves
+        var curveLength = approximateControlPolygonLength(current.bSplineCurve);
+        if (curveLength < MIN_CURVE_LENGTH)
+        {
+            unique = append(unique, current);
+            continue;
+        }
+
+        var dominated = false;
+
+        for (var j = 0; j < size(unique); j += 1)
+        {
+            var candidate = unique[j];
+
+            // 2D bounding box pre-filter
+            if (!boundingBoxes2DOverlap(current.bbox2D, candidate.bbox2D, tol))
+                continue;
+
+            // Skip same-body comparisons
+            if (curvesShareBodyIndex(current, candidate))
+                continue;
+
+            // Check if endpoints touch
+            if (!curveEndpointsTouch(current.bSplineCurve, candidate.bSplineCurve, tol))
+                continue;
+
+            // Full overlap detection
+            var overlapResult = detectCurveOverlap(current.bSplineCurve, candidate.bSplineCurve, tol);
+
+            if (overlapResult.overlapType == OverlapType.NONE)
+                continue;
+
+            if (overlapResult.overlapType == OverlapType.FULL_CONTAINMENT)
+            {
+                if (overlapResult.aContainsB)
+                {
+                    unique[j] = mergeCurveBodies(current, candidate);
+                    dominated = true;
+                }
+                else
+                {
+                    unique[j] = mergeCurveBodies(candidate, current);
+                    dominated = true;
+                }
+                break;
+            }
+            else if (overlapResult.overlapType == OverlapType.PARTIAL_OVERLAP)
+            {
+                unique[j] = mergeCurveBodies(candidate, current);
+                dominated = true;
                 break;
             }
         }
-        
-        // Handle overlap (mutation separated from iteration)
-        if (overlapIndex >= 0)
+
+        if (!dominated)
         {
-            var candidate = unique[overlapIndex];
-            var pieces = splitAtOverlap(context, current, candidate, overlapResult, tolerance);
-            
-            // Remove candidate from unique (it's been split)
-            unique = removeArrayIndex(unique, overlapIndex);
-            
-            // Add all pieces to unique (single-pass: no re-checking)
-            for (var piece in pieces)
-            {
-                unique = append(unique, piece); // in general, we'd want to add each peice to toProcess. However, we're adding curves from new bodies. unique after this operation should be the unique curves of the processed bodies, which it will be. 
-            }
-        }
-        else
-        {
-            // No overlap found - add to unique set
             unique = append(unique, current);
         }
     }
-    
+
     return unique;
 }
 
-// =============================================================================
-// OVERLAP DETECTION
-// =============================================================================
+
 
 /**
- * Detect overlap between two curves using control polygon proximity.
- *
- * Strategy:
- * 1. For each control point in A, find distance to B's control polygon
- * 2. Track which points are "on" B (within tolerance)
- * 3. Identify contiguous runs of matching points
- * 4. Classify overlap type based on run pattern
- *
- * @param curveA {BSplineCurve} : First curve
- * @param curveB {BSplineCurve} : Second curve  
- * @param tolerance {ValueWithUnits} : Distance tolerance
- * @returns {map} : {
- *     type: OverlapType,
- *     runsA: array of {startIdx, endIdx, startParamB, endParamB},
- *     reversed: boolean (true if B was conceptually reversed for matching)
- * }
+ * Check if two curves share a body using integer indices.
  */
-export function detectOverlap(curveA is map, curveB is map, tolerance) returns map
+export function curvesShareBodyIndex(curveA is map, curveB is map) returns boolean
 {
-    var cpA = curveA.BSplineCurve.controlPoints;
-    var cpB = curveB.BSplineCurve.controlPoints;
-    
-    // Try forward direction
-    var forwardResult = findMatchingRuns(cpA, cpB, tolerance);
-    
-    // Try reversed direction
-    var cpBReversed = reverse(cpB);
-    var reverseResult = findMatchingRuns(cpA, cpBReversed, tolerance);
-    
-    // Use whichever direction gives better match
-    var bestResult = forwardResult;
-    var reversed = false;
-    
-    if (reverseResult.matchedCount > forwardResult.matchedCount)
+    for (var idxA in curveA.bodyIndices)
     {
-        bestResult = reverseResult;
-        reversed = true;
+        for (var idxB in curveB.bodyIndices)
+        {
+            if (idxA == idxB)
+                return true;
+        }
     }
-    
-    // Classify overlap type
-    var overlapType = classifyOverlap(bestResult, size(cpA), size(cpB));
-    
-    return {
-        "type" : overlapType,
-        "runs" : bestResult.runs,
-        "reversed" : reversed,
-        "matchedCount" : bestResult.matchedCount
-    };
+    return false;
 }
 
 /**
- * Find contiguous runs of A's control points that lie on B's control polygon.
- *
- * @param cpA {array} : Control points of curve A
- * @param cpB {array} : Control points of curve B (possibly reversed)
- * @param tolerance {ValueWithUnits} : Distance tolerance
- * @returns {map} : {runs: array, matchedCount: number}
+ * Quick check: do curve endpoints touch?
  */
-function findMatchingRuns(cpA is array, cpB is array, tolerance) returns map
+export function curveEndpointsTouch(curveA is BSplineCurve, curveB is BSplineCurve, tol is ValueWithUnits) returns boolean
 {
+    var cpA = curveA.controlPoints;
+    var cpB = curveB.controlPoints;
+
+    if (size(cpA) == 0 || size(cpB) == 0)
+        return false;
+
+    var endpointsA = [cpA[0], cpA[size(cpA) - 1]];
+    var endpointsB = [cpB[0], cpB[size(cpB) - 1]];
+
+    for (var ptA in endpointsA)
+    {
+        for (var ptB in endpointsB)
+        {
+            if (norm(ptA - ptB) < tol)
+                return true;
+        }
+    }
+
+    for (var ptA in endpointsA)
+    {
+        var closest = closestPointOnPolyline(ptA, cpB);
+        if (closest.distance < tol)
+            return true;
+    }
+
+    return false;
+}
+
+/**
+ * Detect overlap between two curves with early-abort optimization.
+ *
+ * Checks control point proximity to classify overlap:
+ * - FULL_CONTAINMENT: >=80% of points from one curve lie on the other
+ * - PARTIAL_OVERLAP: >=2 points match but not full containment
+ * - NONE: <2 points match or early-abort triggered
+ *
+ * Early-abort logic:
+ * - Success: Stop once 80% threshold reached (no need to check remaining points)
+ * - Failure: Abort if first 3 points show no match (curves likely don't overlap)
+ */
+export function detectCurveOverlap(curveA is BSplineCurve, curveB is BSplineCurve, tol is ValueWithUnits) returns map
+{
+    var cpA = curveA.controlPoints;
+    var cpB = curveB.controlPoints;
     var nA = size(cpA);
     var nB = size(cpB);
-    
-    // For each point in A, find closest point on B's polygon and record distance
-    var matches = [];  // Array of {distance, segmentIdx, t} or undefined
-    
+
+    // Count how many points from A are on B
+    var aOnB = 0;
+    var minNeededForA = ceil(nA * 0.8);  // 80% threshold
+
     for (var i = 0; i < nA; i += 1)
     {
-        var ptA = cpA[i];
-        var closest = closestPointOnPolyline(ptA, cpB);
-        matches = append(matches, closest);
-    }
-    
-    // Find contiguous runs where distance < tolerance
-    var runs = [];
-    var currentRun = undefined;
-    var matchedCount = 0;
-    
-    for (var i = 0; i < nA; i += 1)
-    {
-        var isMatch = matches[i].distance < tolerance;
-        
-        if (isMatch)
+        var pt = cpA[i];
+        var closest = closestPointOnPolyline(pt, cpB);
+        if (closest.distance < tol)
+            aOnB += 1;
+
+        // Early success - if we've reached 80%, stop checking
+        if (aOnB >= minNeededForA)
+            break;
+
+        // Early failure - if we've checked 3 points and none match, abort
+        if (i >= 2 && aOnB == 0)
         {
-            matchedCount += 1;
-            
-            if (currentRun == undefined)
-            {
-                // Start new run
-                currentRun = {
-                    "startIdxA" : i,
-                    "endIdxA" : i,
-                    "startSegB" : matches[i].segmentIdx,
-                    "startT" : matches[i].t,
-                    "endSegB" : matches[i].segmentIdx,
-                    "endT" : matches[i].t
-                };
-            }
-            else
-            {
-                // Extend current run
-                currentRun.endIdxA = i;
-                currentRun.endSegB = matches[i].segmentIdx;
-                currentRun.endT = matches[i].t;
-            }
-        }
-        else
-        {
-            if (currentRun != undefined)
-            {
-                // Close current run
-                runs = append(runs, currentRun);
-                currentRun = undefined;
-            }
+            return { "overlapType" : OverlapType.NONE, "aContainsB" : false };
         }
     }
-    
-    // Don't forget last run
-    if (currentRun != undefined)
+
+    // Count how many points from B are on A (similar optimization)
+    var bOnA = 0;
+    var minNeededForB = ceil(nB * 0.8);
+
+    for (var i = 0; i < nB; i += 1)
     {
-        runs = append(runs, currentRun);
+        var pt = cpB[i];
+        var closest = closestPointOnPolyline(pt, cpA);
+        if (closest.distance < tol)
+            bOnA += 1;
+
+        // Early success
+        if (bOnA >= minNeededForB)
+            break;
+
+        // Early failure
+        if (i >= 2 && bOnA == 0)
+        {
+            return { "overlapType" : OverlapType.NONE, "aContainsB" : false };
+        }
     }
-    
+
+    // Classification logic (unchanged)
+    var aFullyOnB = (aOnB >= nA * 0.8);
+    var bFullyOnA = (bOnA >= nB * 0.8);
+
+    if (aFullyOnB && bFullyOnA)
+    {
+        return { "overlapType" : OverlapType.FULL_CONTAINMENT, "aContainsB" : (nA >= nB) };
+    }
+    else if (aFullyOnB)
+    {
+        return { "overlapType" : OverlapType.FULL_CONTAINMENT, "aContainsB" : false };
+    }
+    else if (bFullyOnA)
+    {
+        return { "overlapType" : OverlapType.FULL_CONTAINMENT, "aContainsB" : true };
+    }
+    else if (aOnB >= 2 || bOnA >= 2)
+    {
+        return { "overlapType" : OverlapType.PARTIAL_OVERLAP, "aContainsB" : false };
+    }
+
+    return { "overlapType" : OverlapType.NONE, "aContainsB" : false };
+}
+
+/**
+ * Merge body ownership from two curves.
+ */
+export function mergeCurveBodies(keeper is map, donor is map) returns map
+{
+    var mergedIndices = keeper.bodyIndices;
+
+    for (var idx in donor.bodyIndices)
+    {
+        if (!isIn(idx, mergedIndices))
+        {
+            mergedIndices = append(mergedIndices, idx);
+        }
+    }
+
     return {
-        "runs" : runs,
-        "matchedCount" : matchedCount
+        "bSplineCurve" : keeper.bSplineCurve,
+        "bodyIndices" : mergedIndices,
+        "bbox2D" : keeper.bbox2D
     };
 }
-
-/**
- * Classify overlap type based on matching runs.
- *
- * @param matchResult {map} : Result from findMatchingRuns
- * @param nA {number} : Number of control points in A
- * @param nB {number} : Number of control points in B
- * @returns {OverlapType}
- */
-function classifyOverlap(matchResult is map, nA is number, nB is number) returns OverlapType
-{
-    var runs = matchResult.runs;
-    
-    if (size(runs) == 0)
-    {
-        return OverlapType.NONE;
-    }
-    
-    // Check if A is fully contained in B (all points match in one contiguous run)
-    if (size(runs) == 1)
-    {
-        var run = runs[0];
-        
-        var runLength = run.endIdxA - run.startIdxA + 1;
-        if (runLength < 2)
-        {
-            return OverlapType.NONE;
-        }
-        
-        var allAMatched = (run.startIdxA == 0 && run.endIdxA == nA - 1);
-        
-        if (allAMatched)
-        {
-            // A is fully inside B
-            return OverlapType.FULL_CONTAINMENT;
-        }
-        
-        // Partial overlap: only some of A matches B
-        // Check if it's at an endpoint of A
-        var atStartOfA = (run.startIdxA == 0);
-        var atEndOfA = (run.endIdxA == nA - 1);
-        
-        if (atStartOfA || atEndOfA)
-        {
-            return OverlapType.PARTIAL_OVERLAP;
-        }
-    }
-    
-    // Multiple runs or middle-only match: treat as no meaningful overlap
-    // (This shouldn't happen with well-behaved cross-section curves)
-    return OverlapType.NONE;
-}
-
-// =============================================================================
-// CURVE SPLITTING AT OVERLAP
-// =============================================================================
-
-/**
- * Split curves based on detected overlap.
- *
- * @param context {Context} : Onshape context
- * @param curveA {map} : First curve (the "current" one being processed) {'BSplineCurve' : BSplineCurve, 'bodies' : array of {Query} }
- * @param curveB {BSplineCurve} : Second curve (from unique set) {'BSplineCurve' : BSplineCurve, 'body' : array of {Query}}
- * @param overlapResult {map} : Result from detectOverlap
- * @param tolerance {ValueWithUnits} : Tolerance
- * @returns {array} : Array of 1-3 non-overlapping curves
- */
-function splitAtOverlap(context is Context, curveA is map, curveB is map,
-                        overlapResult is map, tolerance) returns array
-{
-    // Handle reversed case: if B needed to be reversed for matching, reverse it now
-    var workingB = curveB.BSplineCurve;
-    if (overlapResult.reversed)
-    {
-        workingB = reverseCurve(curveB);
-    }
-    
-    var runs = overlapResult.runs;
-    
-    if (size(runs) == 0)
-    {
-        // No overlap - return both unchanged
-        return [curveA, curveB];
-    }
-    
-    var run = runs[0];  // We only handle single-run overlaps
-    
-    if (overlapResult['type'] == OverlapType.FULL_CONTAINMENT)
-    {
-        return splitFullContainment(context, curveA, workingB, run, tolerance);
-    }
-    else if (overlapResult['type'] == OverlapType.PARTIAL_OVERLAP)
-    {
-        return splitPartialOverlap(context, curveA, workingB, run, tolerance);
-    }
-    
-    // Fallback: return both unchanged
-    return [curveA, curveB];
-}
-
-/**
- * Handle full containment case: A is inside B.
- * Returns: [B_left, A, B_right] (or fewer if A touches B's endpoints)
- */
-function splitFullContainment(context is Context, curveA is map, curveB is map,
-                               run is map, tolerance) returns array
-{
-    var pieces = [];
-    var rangeB = getBSplineParamRange(curveB.BSplineCurve);
-    var nB = size(curveB.BsplineCurve.controlPoints);
-    
-    // Convert control point indices to approximate parameters
-    // (This is a simplification - for production, you might want proper projection)
-    var paramStartB = controlPointIndexToParam(curveB.BSplineCurve, run.startSegB + run.startT);
-    var paramEndB = controlPointIndexToParam(curveB.BSplineCurve, run.endSegB + run.endT);
-    
-    // Ensure proper ordering
-    if (paramStartB > paramEndB)
-    {
-        var temp = paramStartB;
-        paramStartB = paramEndB;
-        paramEndB = temp;
-    }
-    
-    // B_left: portion of B before overlap
-    if (paramStartB > rangeB.uMin + PARAM_TOLERANCE)
-    {
-        var bLeft = {"BSplineCurve": extractSubcurve(context, curveB.BSplineCurve, rangeB.uMin, paramStartB), 'bodies' : curveB.bodies};
-        pieces = append(pieces, bLeft);
-    }
-    
-    // A: the contained curve (wins over B in overlap region)
-    pieces = append(pieces, {"BSplineCurve" : curveA.BSplineCurve, 'bodies': concatenateArrays(curveA.bodies, curveB.bodies)});
-    
-    // B_right: portion of B after overlap
-    if (paramEndB < rangeB.uMax - PARAM_TOLERANCE)
-    {
-        var bRight = {"BSplineCurve" : extractSubcurve(context, curveB, paramEndB, rangeB.uMax), 'bodies' : curveB.bodies};
-        pieces = append(pieces, bRight);
-    }
-    
-    return pieces;
-}
-
-/**
- * Handle partial overlap case: ends of A and B overlap.
- * Returns: [A_trimmed, Overlap, B_trimmed]
- */
-function splitPartialOverlap(context is Context, curveA is map, curveB is map,
-                              run is map, tolerance) returns array
-{
-    var pieces = [];
-    var rangeA = getBSplineParamRange(curveA.BSplineCurve);
-    var rangeB = getBSplineParamRange(curveB.BSplineCurve);
-    var nA = size(curveA.BSplineCurve.controlPoints);
-    
-    // Determine which end of A overlaps
-    var overlapAtStartA = (run.startIdxA == 0);
-    var overlapAtEndA = (run.endIdxA == nA - 1);
-    
-    // Convert indices to parameters
-    var paramOverlapStartA = controlPointIndexToParam(curveA.BSplineCurve, run.startIdxA);
-    var paramOverlapEndA = controlPointIndexToParam(curveA.BSplineCurve, run.endIdxA);
-    var paramOverlapStartB = controlPointIndexToParam(curveB.BSplineCurve, run.startSegB + run.startT);
-    var paramOverlapEndB = controlPointIndexToParam(curveB.BSplineCurve, run.endSegB + run.endT);
-    
-    if (overlapAtStartA)
-    {
-        // Overlap at start of A: B_portion + Overlap (from A) + A_remainder
-        // B trimmed (portion before overlap)
-        if (paramOverlapStartB > rangeB.uMin + PARAM_TOLERANCE)
-        {
-            var bTrimmed = {"BSplineCurve" : extractSubcurve(context, curveB.BSplineCurve, rangeB.uMin, paramOverlapStartB), 'bodies' : curveB.bodies};
-            pieces = append(pieces, bTrimmed);
-        }
-        
-        // Overlap region (extracted from A)
-        var overlap = {"BSplineCurve" : extractSubcurve(context, curveA.BSplineCurve, rangeA.uMin, paramOverlapEndA), 'bodies' : concatenateArrays(curveA.bodies, curveB.bodies)};
-        pieces = append(pieces, overlap);
-        
-        // A trimmed (portion after overlap)
-        if (paramOverlapEndA < rangeA.uMax - PARAM_TOLERANCE)
-        {
-            var aTrimmed = {"BSplineCurve" : extractSubcurve(context, curveA.BSplineCurve, paramOverlapEndA, rangeA.uMax), 'bodies' : curveA.bodies};
-            pieces = append(pieces, aTrimmed);
-        }
-    }
-    else if (overlapAtEndA)
-    {
-        // Overlap at end of A: A_remainder + Overlap (from A) + B_portion
-        
-        // A trimmed (portion before overlap)
-        if (paramOverlapStartA > rangeA.uMin + PARAM_TOLERANCE)
-        {
-            var aTrimmed = {"BSplineCurve" : extractSubcurve(context, curveA.BSplineCurve, rangeA.uMin, paramOverlapStartA), 'bodies' : curveA.bodies};
-            pieces = append(pieces, aTrimmed);
-        }
-        
-        // Overlap region (extracted from A)
-        var overlap = {"BSplineCurve" : extractSubcurve(context, curveA.BSplineCurve, paramOverlapStartA, rangeA.uMax), 'bodies' : concatenateArrays(curveA.bodies, curveB.bodies)};
-        pieces = append(pieces, overlap);
-        
-        // B trimmed (portion after overlap)
-        if (paramOverlapEndB < rangeB.uMax - PARAM_TOLERANCE)
-        {
-            var bTrimmed = {"BSplineCurve" : extractSubcurve(context, curveB.BSplineCurve, paramOverlapEndB, rangeB.uMax), 'bodies' : curveB.bodies};
-            pieces = append(pieces, bTrimmed);
-        }
-    }
-    
-    return pieces;
-}
-
-// =============================================================================
-// GEOMETRY HELPERS
-// =============================================================================
-
-/**
- * Find closest point on a polyline (control polygon) to a given point.
- *
- * @param pt {Vector} : Query point
- * @param polyline {array} : Array of Vectors defining polyline vertices
- * @returns {map} : {distance, segmentIdx, t}
- *     - distance: closest distance to polyline
- *     - segmentIdx: index of closest segment (0 to n-2)
- *     - t: parameter along that segment [0,1]
- */
-function closestPointOnPolyline(pt, polyline is array) returns map
-{
-    var bestDist = undefined;
-    var bestSeg = 0;
-    var bestT = 0;
-    
-    for (var i = 0; i < size(polyline) - 1; i += 1)
-    {
-        var segStart = polyline[i];
-        var segEnd = polyline[i + 1];
-        var result = closestPointOnSegment(pt, segStart, segEnd);
-        
-        if (bestDist == undefined || result.distance < bestDist)
-        {
-            bestDist = result.distance;
-            bestSeg = i;
-            bestT = result.t;
-        }
-    }
-    
-    return {
-        "distance" : bestDist,
-        "segmentIdx" : bestSeg,
-        "t" : bestT
-    };
-}
-
-/**
- * Find closest point on a line segment to a given point.
- *
- * @param pt {Vector} : Query point
- * @param segStart {Vector} : Segment start
- * @param segEnd {Vector} : Segment end
- * @returns {map} : {distance, t, closestPt}
- */
-function closestPointOnSegment(pt, segStart, segEnd) returns map
-{
-    var segVec = segEnd - segStart;
-    var segLenSq = squaredNorm(segVec);
-    
-    if (segLenSq < 1e-20 * meter * meter)
-    {
-        // Degenerate segment
-        return {
-            "distance" : norm(pt - segStart),
-            "t" : 0,
-            "closestPt" : segStart
-        };
-    }
-    
-    // Project pt onto line, clamp to segment
-    var t = dot(pt - segStart, segVec) / segLenSq;
-    t = clamp(t, 0, 1);
-    
-    var closestPt = segStart + t * segVec;
-    var distance = norm(pt - closestPt);
-    
-    return {
-        "distance" : distance,
-        "t" : t,
-        "closestPt" : closestPt
-    };
-}
-
-/**
- * Squared norm (avoids sqrt for comparison purposes).
- */
-function squaredNorm(v) returns number
-{
-    return dot(v, v);
-}
-
-/**
- * Convert control point index (fractional) to approximate curve parameter.
- *
- * This is a simplification that works well when control points are roughly
- * evenly distributed along the curve. For production use with uneven 
- * parameterization, you'd want proper curve projection.
- *
- * @param curve {BSplineCurve} : Curve
- * @param cpIndex {number} : Fractional control point index
- * @returns {number} : Approximate parameter value
- */
-function controlPointIndexToParam(curve is BSplineCurve, cpIndex is number) returns number
-{
-    var range = getBSplineParamRange(curve);
-    var nCP = size(curve.controlPoints);
-    
-    // Linear interpolation: index 0 -> uMin, index (nCP-1) -> uMax
-    var t = cpIndex / (nCP - 1);
-    return range.uMin + t * (range.uMax - range.uMin);
-}
-
-/**
- * Remove element at index from array.
- */
-function removeArrayIndex(arr is array, index is number) returns array
-{
-    var result = [];
-    for (var i = 0; i < size(arr); i += 1)
-    {
-        if (i != index)
-        {
-            result = append(result, arr[i]);
-        }
-    }
-    return result;
-}
-
-

@@ -47,17 +47,9 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         });});
         
         var dotTol = cos(definition.tanTol);
-        var polyArcs = approximateSplinesWithPolyArcs(bSplines, definition.posTol, definition.planeTol, dotTol, definition.minLength);
-        
-        //const nLines = size(filter(polyArcs.segments, function(s){ return any(keys(s), function(x) {return x == "line";}); }));
-        //const nArcs  = size(filter(polyArcs.segments, function(s){ return any(keys(s), function(x) {return x == "circle";}); }));
-        //println("lines=" ~ nLines ~ " arcs=" ~ nArcs);
-        
-        //println(keys(polyArcs.orderedSplines[0]));
+        var polyArcs = approximateSplinesWithPolyArcs(bSpLines, definition.posTol, definition.planeTol, dotTol, definition.minLength);
+
         var NURBS = primitivesToBSplines(polyArcs.segments);
-        //println("nEdges=" ~ size(evEdges));
-        //println("nSegments=" ~ size(polyArcs.segments));
-        //println("nNURBS=" ~ size(NURBS));
         
         for (var i = 0; i < size(NURBS); i += 1)
         {
@@ -65,19 +57,7 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         
             if (!canBeBSplineCurve(c))
             {
-                println("Skipping invalid BSplineCurve i=" ~ i ~ " keys=" ~ keys(c));
                 continue;
-            }
-            
-            //println("  isRational=" ~ c.isRational ~ " degree=" ~ c.degree
-            //    ~ " nCtrl=" ~ size(c.controlPoints) ~ " nKnots=" ~ size(c.knots));
-            
-            if (c.isRational == true)
-            {
-                println("  weights=" ~ c.weights);
-                println("  P0=" ~ c.controlPoints[0]);
-                println("  P1=" ~ c.controlPoints[1]);
-                println("  P2=" ~ c.controlPoints[2]);
             }
         
         }
@@ -88,7 +68,6 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
             var bodyQueries = [];
             for (var i = 0; i < size(NURBS); i += 1)
             {
-                println('NURBS[i] -> ' ~ NURBS[i]);
                 opCreateBSplineCurve(context, id + ("arcNURBSFit" ~ i), {
                         "bSplineCurve" : NURBS[i]
                 });
@@ -138,9 +117,6 @@ export function primitivesToBSplines(segments is array) returns array
         }
         else if (isArcSegment(seg))
         {
-            //println("ARC seg: p0=" ~ seg.p0 ~ " p1=" ~ seg.p1 ~ " th0=" ~ seg.theta0 ~ " th1=" ~ seg.theta1);
-            //println("  circle r=" ~ seg.circle.radius ~ " cs.origin=" ~ seg.circle.coordSystem.origin);
-            //println("  cs.xAxis=" ~ seg.circle.coordSystem.xAxis ~ " cs.zAxis=" ~ seg.circle.coordSystem.zAxis);
             const arcs = arcSegmentToQuadraticNurbsPieces(seg);
             for (var j = 0; j < size(arcs); j += 1)
                 out = append(out, arcs[j]);

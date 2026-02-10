@@ -96,13 +96,13 @@
         "Onshape Standard Library",
         "internal tools document"
       ],
-      "last_pull": "2026-02-09T21:14:50.764237+00:00",
-      "last_push": "2026-02-10T09:36:05.022025+00:00",
+      "last_pull": "2026-02-10T10:41:37.832699+00:00",
+      "last_push": "2026-02-10T17:04:11.351994+00:00",
       "document_id": "f8deedeb1fbd819a8fa20113",
       "workspace_id": "2bac53cbf0cd1504ada12137"
     },
     {
-      "name": "curveWrapping",
+      "name": "curveMapping",
       "description": "Tools to wrap curves from one to another, extending into deforming a body based on the input of two curves",
       "working_directory": "./curveMapping",
       "onshape_url": "https://k2-sports.onshape.com/documents/08e8748f2ef24eea16072b75/w/e24fbbae7712ef62dd256c89/e/75f77ff5a77da7d50bfefe0c",
@@ -112,7 +112,7 @@
         "GeometryManipulators",
         "wrapAndLoft"
       ],
-      "last_pull": null,
+      "last_pull": "2026-02-10T10:21:37.767818+00:00",
       "last_push": null,
       "document_id": "08e8748f2ef24eea16072b75",
       "workspace_id": "e24fbbae7712ef62dd256c89"

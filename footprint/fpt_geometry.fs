@@ -68,9 +68,6 @@ is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef
     {
         var section = solved.splineSections[i];
         var pts = [];
-        //println('keys(section) -> ' ~ keys(section));
-        //println('size(section.x) -> ' ~ size(section.x));
-       // println('size(section.y) -> ' ~ size(section.y));
         for (var p = 0; p < size(section.x); p += 1)
         {
             pts = append(pts, vector(section.x[p], section.y[p], 0 * millimeter));
@@ -242,12 +239,6 @@ export function sampleRadiusEdges(context is Context, q is Query, samplingDef is
         millimeter) && abs(x.end - thisEdge.end) < 0.0001*millimeter;});
         if (size(overlapEdges) > 1) // if any edge crosses this edge
         {
-            println(' thisEdge: [' ~ toString(thisEdge.start) ~ ' ---> ' ~ toString(thisEdge.end) ~ ']');
-            for (var e = 0; e < size(overlapEdges); e += 1)
-            {
-                println('   overlapEdge: [' ~ toString(overlapEdges[e].start) ~ ' ---> ' ~
-                toString(overlapEdges[e].end) ~ ']');
-            }
             throw regenError("Radius profiles cannot overlap in X");
         }
 
@@ -423,25 +414,6 @@ export function solveFootprintConstraints(samples is array, integrationDef is ma
 
     var stats = footprintStatsFromDiscrete(base.integral.x, yFinal, evalTheta(base.integral, theta0));
 
-    // DEBUG: Print solver results
-    println("=== SOLVER DEBUG ===");
-    println("  angleDriver: " ~ integrationDef.angleDriver);
-    println("  theta0: " ~ theta0);
-    println("  y0: " ~ toString(y0));
-    println("  stats.waistLocation: " ~ toString(stats.waistLocation));
-    println("  stats.taperAngle: " ~ toString(stats.taperAngle));
-    if (integrationDef.angleDriver == AngleDriver.WAIST)
-    {
-      println("  target waistLocation: " ~ toString(integrationDef.waistLocation));
-      println("  error: " ~ toString(stats.waistLocation - integrationDef.waistLocation));
-    }
-    else
-    {
-      println("  target taperAngle: " ~ toString(integrationDef.taperAngle));
-      println("  error: " ~ toString(stats.taperAngle - integrationDef.taperAngle));
-    }
-    println("==================");
-
     return {
         "theta0" : theta0,
         "y0" : y0,
@@ -458,19 +430,14 @@ export function buildBaseIntegrals(samples is array, cScale is number) returns m
     var sections = samples;
     var runningTotal = { "x" : [], "k" : [], "yP" : [], "y" : [] };
     var retArray = [];
-    //println('we have ' ~ size(samples) ~ " sections");
     for (var s = 0; s < size(samples); s += 1)
     {
         var x = samples[s].xPoints;
-        //println('Section # ' ~ s ~ " has " ~ size(samples[s].xPoints) ~ " points");
 
         var k = [];
         for (var i = 0; i < size(samples[s].xPoints); i += 1)
         {
-            //println('point ' ~ i);
-            //println(samples[s].radiusPoints[i]);
             var R = samples[s].radiusPoints[i] * cScale;
-            //println("R -> " ~ R);
             if (abs(R) < 1e-12)
                 throw regenError("Radius too close to zero at x=" ~ toString(samples[i].x));
             k = append(k, 1 / R);
@@ -530,9 +497,6 @@ number) returns number
     }
     else
     {
-        println("=== TAPER ANGLE SOLVER START ===");
-        println("  target: " ~ toString(integrationDef.taperAngle));
-        println("  tolerance: " ~ toString(tol));
         return solveTheta0ForTaperAngle(base, integrationDef.taperAngle, tol, maxIter);
     }
 }
@@ -604,7 +568,6 @@ maxIter is number) returns number
         f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle);
     }
 
-    println("  TAPER SOLVER MAX ITER: t1=" ~ t1 ~ ", f1=" ~ toString(f1));
     return t1;
 }
 
@@ -642,10 +605,6 @@ maxOuterIter is number) returns number
     var innerTol = 1e-3 * degree;
     var innerMaxIter = 20;
 
-    println("=== OUTER WAIST SOLVER ===");
-    println("  targetWaist: " ~ toString(targetWaist));
-    println("  waistTol: " ~ toString(waistTol));
-
     // --- Seed 1: taper angle = 0 degrees (symmetric footprint) ---
     var taper0 = 0 * degree;
     var theta0_a = solveTheta0ForTaperAngle(base, taper0, innerTol, innerMaxIter);
@@ -664,21 +623,16 @@ maxOuterIter is number) returns number
     var w1 = stats_b.waistLocation;
     var f1 = w1 - targetWaist;
 
-    println("  Seed 1: taper=" ~ toString(taper0) ~ ", waist=" ~ toString(w0) ~ ", residual=" ~ toString(f0));
-    println("  Seed 2: taper=" ~ toString(taper1) ~ ", waist=" ~ toString(w1) ~ ", residual=" ~ toString(f1));
-
     // Track current best theta0
     var currentTheta0 = theta0_b;
 
     // Check if either seed already hit the target
     if (abs(f0) <= waistTol)
     {
-        println("  Seed 1 within tolerance");
         return theta0_a;
     }
     if (abs(f1) <= waistTol)
     {
-        println("  Seed 2 within tolerance");
         return theta0_b;
     }
 
@@ -692,7 +646,6 @@ maxOuterIter is number) returns number
         // angle has a real effect on waist position.
         if (abs(denom) < 1e-12 * millimeter)
         {
-            println("  Outer STALL at iteration " ~ it ~ ": denom too small");
             return currentTheta0;
         }
 
@@ -708,14 +661,10 @@ maxOuterIter is number) returns number
         var w2 = stats_c.waistLocation;
         var f2 = w2 - targetWaist;
 
-        println("  Outer iter " ~ it ~ ": taper=" ~ toString(taper2) ~ ", waist=" ~ toString(w2) ~
-            ", residual=" ~ toString(f2));
-
         currentTheta0 = theta0_c;
 
         if (abs(f2) <= waistTol)
         {
-            println("  OUTER CONVERGED at iteration " ~ it);
             return theta0_c;
         }
 
@@ -726,7 +675,6 @@ maxOuterIter is number) returns number
         f1 = f2;
     }
 
-    println("  OUTER MAX ITER REACHED: final residual=" ~ toString(f1));
     return currentTheta0;
 }
 
@@ -777,8 +725,6 @@ export function refineFootprintBSplines(bSplineResults is array, integrationDef 
     // Extract BSplineCurve objects — we'll modify control points iteratively
     var workingSplines = mapArray(bSplineResults, function(r) { return r.bSpline; });
 
-    println("=== BSPLINE REFINEMENT ===");
-
     for (var iter = 0; iter < maxRefineIter; iter += 1)
     {
         // 1. Densely sample all BSplines and measure actual geometry
@@ -794,13 +740,9 @@ export function refineFootprintBSplines(bSplineResults is array, integrationDef 
 
         var widthError = stats.waist.y - waistHalf;
 
-        println("  Refine iter " ~ iter ~ ": primaryError=" ~ toString(primaryError) ~
-                ", widthError=" ~ toString(widthError));
-
         // 3. Check convergence on both constraints
         if (abs(primaryError) <= primaryTol && abs(widthError) <= widthTol)
         {
-            println("  Refinement CONVERGED at iteration " ~ iter);
             break;
         }
 
@@ -979,12 +921,8 @@ returns array
 export function evalTheta(base is map, theta0 is number) returns array
 {
     var th = [];
-    //println('keys(base) -> ' ~keys(base));
-    //println('size(base.x) -> ' ~ size(base.x));
-    //println('size(base.k) -> ' ~ size(base.k));
     for (var i = 0; i < size(base.x); i += 1)
         {
-            //println('base.k['~i~'] -> ' ~ base.k[i]);
             th = append(th, base.yP[i] + theta0);
         }
     return th;
@@ -1056,8 +994,6 @@ export function footprintStatsFromDiscrete(x is array, y is array, slope is arra
 
     // Use parabolic interpolation to refine the minimum location
     var waist = refineExtremum(x, y, wIdx);
-    println("  Waist (minimum Y): x=" ~ toString(waist.x) ~ ", y=" ~ toString(waist.y) ~ " (index=" ~ wIdx ~
-    ")");
 
     // Taper angle from refined points
     var taperAngle = 0 * degree;

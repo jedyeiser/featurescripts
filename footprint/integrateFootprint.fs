@@ -184,15 +184,12 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
         
         if (definition.printInputMetadata)
         {
-            println('--- --- --- Integrate Footprint Debug Metadata --- --- ---');
             var inputBox = evBox3d(context, {
                     "topology" : qUnion([definition.radiusProfiles]),
                     "tight" : true
             });
-            
-            println('input data xMin -> ' ~ toString(inputBox.minCorner[0]) ~ '. xMax -> ' ~ toString(inputBox.maxCorner[0]));
+
             var numEdges = size(evaluateQuery(context, qUnion([definition.radiusProfiles])));
-            println('There are a total of ' ~ numEdges ~ ' in our input dataset.');
         }
         
         var results = generateFootprintFromRadiusEdges(context, id + ("getFootprintFromDef"), definition.radiusProfiles, definition.footprintCurveBuildMode, samplingDef, integrationDef, splineDef);
@@ -208,10 +205,8 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
             
             if (definition.printOutputMetadata)
             {
-                println('* * *  * * *  * * *  Integrate Footprint output debug (fitspline)  * * *  * * *  * * *');
                 var printPoints = concatenateArrays(pointArrays);
                 var xVals = mapArray(printPoints, function(x) {return x[0];});
-                println('there are a total of ' ~ size(xVals) ~ ' points in the fitting data');
             }
             
             var fitCurves = [];
@@ -278,13 +273,10 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
             
             if (definition.printOutputMetadata)
             {
-                println('* * *  * * *  * * *  Integrate Footprint output debug (approx)  * * *  * * *  * * *');
                 var outputSplines = mapArray(results, function(x) {return x.bSpline;});
                 outputSplines = sort(outputSplines, function(a, b) {return min(mapArray(a.controlPoints, function(p) {return p[0];})) -  min(mapArray(b.controlPoints, function(q) {return q[0];}))  ;});
                 var controlPoints = concatenateArrays(mapArray(outputSplines, function(x) {return x.controlPoints;}));
                 var controlX = mapArray(controlPoints, function(x) {return x[0];});
-                println('Retunred a total of ' ~ size(outputSplines) ~ ' BSplineCurves');
-                println('xMin -> ' ~ toString(min(controlX)) ~ '. xMiax -> ' ~ toString(max(controlX)));
             }
             
             if (definition.unifyCurves)
