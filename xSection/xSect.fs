@@ -375,26 +375,69 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // --- Beam stiffness analysis ---
         var fcpX = resolveReferencePointX(context, definition.fcpQuery, definition.xSectAlong);
         var acpX = resolveReferencePointX(context, definition.acpQuery, definition.xSectAlong);
-        
+
+        var beamAnalysisResults = undefined;
         if (fcpX != undefined && acpX != undefined)
         {
             var xFCP = min(fcpX, acpX);
             var xACP = max(fcpX, acpX);
-            
+
             var eiData = extractEIData(crossSectionData);
             var stiffness = computeBeamStiffness(eiData, xFCP, xACP);
-            
+            beamAnalysisResults = stiffness;
+
             println("EI_bar = " ~ stiffness.EI_bar);
             println("Span L = " ~ stiffness.L);
             println("Prismatic: " ~ stiffness.prismaticStiffness_lbin ~ " lb/in, " ~ stiffness.prismaticStiffness_mm ~ " mm");
             println("Estimated: " ~ stiffness.estimatedStiffness_lbin ~ " lb/in, " ~ stiffness.estimatedStiffness_mm ~ " mm");
         }
-        
+
+        // --- Compute total weight and build table data ---
+        var totalWeight = 0 * kilogram;
+        var beamLength = undefined;
+        if (beamAnalysisResults != undefined)
+        {
+            beamLength = beamAnalysisResults.L;
+        }
+        else if (size(crossSectionData.crossSections) > 1)
+        {
+            // Approximate beam length from first to last section
+            var firstX = crossSectionData.crossSections[0].frame.origin[0];
+            var lastX = crossSectionData.crossSections[size(crossSectionData.crossSections) - 1].frame.origin[0];
+            beamLength = abs(lastX - firstX);
+        }
+
+        if (beamLength != undefined && beamLength > 0 * meter)
+        {
+            for (var section in crossSectionData.crossSections)
+            {
+                var linealDensity = 0 * kilogram / meter;
+                for (var contrib in section.mechanicalProperties.bodyContributions)
+                {
+                    linealDensity = linealDensity + contrib.linealDensity;
+                }
+                // Approximate: weight = lineal density × section spacing
+                totalWeight = totalWeight + linealDensity * (beamLength / size(crossSectionData.crossSections));
+            }
+        }
+
+        var tableData = buildTableData(crossSectionData.crossSections, beamAnalysisResults, totalWeight);
+
+        // --- Store data on origin for future reuse ---
+        try
+        {
+            storeAnalysisData(context, id, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData);
+        }
+        catch (e)
+        {
+            println("WARNING: Failed to store analysis data on origin: " ~ e);
+        }
+
         if (definition.createComposites)
         {
             createCompositeWires(context, id, crossSectionData);
         }
-        
+
         if (definition.debug)
         {
             debugVisualization(context, id, crossSectionData, definition);
@@ -726,6 +769,154 @@ function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) returns m
 // =============================================================================
 // REFERENCE POINT RESOLUTION
 // =============================================================================
+
+/**
+ * Store analysis data as attribute on origin point.
+ *
+ * @param context {Context}
+ * @param id {Id} : Feature ID
+ * @param bodies {array} : Body configuration data
+ * @param crossSectionData {map} : Full cross-section analysis results
+ * @param beamAnalysis {map} : Beam stiffness results (or undefined)
+ * @param tableData {map} : Formatted table data
+ */
+function storeAnalysisData(context is Context, id is Id, bodies is array,
+                           crossSectionData is map, beamAnalysis, tableData is map)
+{
+    // Build feature-specific data structure
+    var featureKey = toAttributeId(id);
+
+    // Extract body details
+    var bodyDetails = [];
+    for (var bodyEntry in bodies)
+    {
+        var bodyDetail = {
+            "bodyIndex" : bodyEntry.bodyIndex,
+            "bodyName" : bodyEntry.bodyName,
+            "materialName" : bodyEntry.materialName,
+            "materialData" : bodyEntry.materialData,
+            "volume" : bodyEntry.volume
+        };
+        bodyDetails = append(bodyDetails, bodyDetail);
+    }
+
+    // Extract cross-section details
+    var sectionDetails = [];
+    for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
+    {
+        var section = crossSectionData.crossSections[i];
+
+        // Sum lineal density
+        var linealDensity = 0 * kilogram / meter;
+        for (var contrib in section.mechanicalProperties.bodyContributions)
+        {
+            linealDensity = linealDensity + contrib.linealDensity;
+        }
+
+        var sectionDetail = {
+            "index" : i,
+            "xCoord" : section.frame.origin[0],
+            "frame" : section.frame,
+            "EI_eff" : section.mechanicalProperties.EI_eff,
+            "neutralAxisY" : section.mechanicalProperties.neutralAxisY,
+            "boundingBox" : section.boundingBox,
+            "linealDensity" : linealDensity,
+            "mechanicalProperties" : {
+                "A" : section.mechanicalProperties.A,
+                "B" : section.mechanicalProperties.B,
+                "D" : section.mechanicalProperties.D
+            }
+        };
+        sectionDetails = append(sectionDetails, sectionDetail);
+    }
+
+    // Build complete data structure
+    var analysisData = {
+        "details" : {
+            "bodies" : bodyDetails,
+            "crossSections" : sectionDetails,
+            "beamAnalysis" : beamAnalysis
+        },
+        "tableData" : tableData
+    };
+
+    // Retrieve existing attribute (if any)
+    var existingData = getAttribute(context, {
+        "entity" : qOrigin(EntityType.BODY),
+        "name" : "CrossSectionAnalysis"
+    });
+
+    // Merge with existing data
+    if (existingData == undefined)
+    {
+        existingData = {};
+    }
+    existingData[featureKey] = analysisData;
+
+    // Store updated attribute
+    setAttribute(context, {
+        "entities" : qOrigin(EntityType.BODY),
+        "name" : "CrossSectionAnalysis",
+        "attribute" : existingData
+    });
+
+    println("Stored analysis data with key: " ~ featureKey);
+}
+
+/**
+ * Build formatted table data for export.
+ *
+ * @param crossSections {array} : Cross-section data with mechanical properties
+ * @param beamAnalysis {map} : Beam stiffness results (or undefined if not computed)
+ * @param totalWeight {ValueWithUnits} : Total beam weight
+ * @returns {map} : { summary: array, crossSections: array }
+ */
+function buildTableData(crossSections is array, beamAnalysis, totalWeight is ValueWithUnits) returns map
+{
+    // Summary table
+    var summaryTable = [];
+
+    if (beamAnalysis != undefined)
+    {
+        summaryTable = append(summaryTable, ["Prismatic stiffness (lb/in)", beamAnalysis.prismaticStiffness_lbin]);
+        summaryTable = append(summaryTable, ["Prismatic stiffness (mm/30kg)", beamAnalysis.prismaticStiffness_mm]);
+        summaryTable = append(summaryTable, ["Estimated stiffness (lb/in)", beamAnalysis.estimatedStiffness_lbin]);
+        summaryTable = append(summaryTable, ["Estimated stiffness (mm/30kg)", beamAnalysis.estimatedStiffness_mm]);
+    }
+
+    summaryTable = append(summaryTable, ["Weight (kg)", totalWeight / kilogram]);
+
+    // Cross-section table header
+    var csTable = [
+        ["Section #", "X Coord (mm)", "EI (N·m²)", "NA Height (mm)", "Beam Height (mm)", "Beam Width (mm)", "Lineal Density (kg/m)"]
+    ];
+
+    // Add data rows
+    for (var i = 0; i < size(crossSections); i += 1)
+    {
+        var section = crossSections[i];
+        var xCoord = section.frame.origin[0] / millimeter;  // World X in mm
+        var EI = section.mechanicalProperties.EI_eff / (newton * meter * meter);
+        var naHeight = section.mechanicalProperties.neutralAxisY / millimeter;
+        var beamHeight = section.boundingBox.height / millimeter;
+        var beamWidth = section.boundingBox.width / millimeter;
+
+        // Sum lineal density across all bodies
+        var linealDensity = 0 * kilogram / meter;
+        for (var contrib in section.mechanicalProperties.bodyContributions)
+        {
+            linealDensity = linealDensity + contrib.linealDensity;
+        }
+        var linealDensityVal = linealDensity / (kilogram / meter);
+
+        csTable = append(csTable, [i, xCoord, EI, naHeight, beamHeight, beamWidth, linealDensityVal]);
+    }
+
+    return {
+        "summary" : summaryTable,
+        "crossSections" : csTable
+    };
+}
 
 /**
  * Resolve a reference point query (FCP or ACP) to a world X coordinate.
