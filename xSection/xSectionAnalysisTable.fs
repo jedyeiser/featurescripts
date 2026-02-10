@@ -15,6 +15,10 @@ import(path : "onshape/std/table.fs", version : "2878.0");
 
 annotation { "Table Type Name" : "Cross-Section Analysis" }
 export const xSectionAnalysisTable = defineTable(function(context is Context, definition is map) returns TableArray
+precondition
+{
+    
+}
     {
         // Find origin with CrossSectionAnalysis attribute
         var bodiesWithData = evaluateQuery(context, qHasAttribute("CrossSectionAnalysis"));
