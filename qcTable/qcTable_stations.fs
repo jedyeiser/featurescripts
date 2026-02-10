@@ -336,29 +336,42 @@ function applyBoundaryBehavior(
             return s.x >= boundaries.fcp && s.x <= boundaries.acp;
         });
 
-        // Add body endpoints outside FCP/ACP (max one per body)
-        // These are identified by their callouts
-        var bodyEndpoints = filter(stations, function(s)
+        // Add body endpoints that are outside FCP/ACP boundaries
+        // These have specific callouts (individual or merged)
+        for (var station in stations)
         {
-            return s.callout == CALLOUT_CORE_TIP ||
-                   s.callout == CALLOUT_CORE_TAIL ||
-                   s.callout == CALLOUT_SW_TIP ||
-                   s.callout == CALLOUT_SW_TAIL ||
-                   // Also handle merged endpoints like "CORE_TAIL/SW_TAIL"
-                   (s.callout != '' && (
-                       s.callout.indexOf(CALLOUT_CORE_TIP) != -1 ||
-                       s.callout.indexOf(CALLOUT_CORE_TAIL) != -1 ||
-                       s.callout.indexOf(CALLOUT_SW_TIP) != -1 ||
-                       s.callout.indexOf(CALLOUT_SW_TAIL) != -1
-                   ));
-        });
-
-        // Add endpoints that are outside FCP/ACP boundaries
-        for (var endpoint in bodyEndpoints)
-        {
-            if (endpoint.x < boundaries.fcp || endpoint.x > boundaries.acp)
+            // Check if station is outside boundaries
+            if (station.x < boundaries.fcp || station.x > boundaries.acp)
             {
-                insideBoundary = append(insideBoundary, endpoint);
+                // Check if this station is a body endpoint
+                var isEndpoint = (
+                    station.callout == CALLOUT_CORE_TIP ||
+                    station.callout == CALLOUT_CORE_TAIL ||
+                    station.callout == CALLOUT_SW_TIP ||
+                    station.callout == CALLOUT_SW_TAIL
+                );
+
+                // Also check for merged callouts like "CORE_TAIL/SW_TAIL"
+                if (!isEndpoint && station.callout != '')
+                {
+                    // Check if callout contains any endpoint markers with '/' delimiter
+                    var callout = station.callout;
+                    isEndpoint = (
+                        (callout == CALLOUT_CORE_TIP ~ "/" ~ CALLOUT_SW_TIP) ||
+                        (callout == CALLOUT_SW_TIP ~ "/" ~ CALLOUT_CORE_TIP) ||
+                        (callout == CALLOUT_CORE_TAIL ~ "/" ~ CALLOUT_SW_TAIL) ||
+                        (callout == CALLOUT_SW_TAIL ~ "/" ~ CALLOUT_CORE_TAIL) ||
+                        (callout == CALLOUT_CORE_TIP ~ "/" ~ CALLOUT_CORE_TAIL) ||
+                        (callout == CALLOUT_CORE_TAIL ~ "/" ~ CALLOUT_CORE_TIP) ||
+                        (callout == CALLOUT_SW_TIP ~ "/" ~ CALLOUT_SW_TAIL) ||
+                        (callout == CALLOUT_SW_TAIL ~ "/" ~ CALLOUT_SW_TIP)
+                    );
+                }
+
+                if (isEndpoint)
+                {
+                    insideBoundary = append(insideBoundary, station);
+                }
             }
         }
 
