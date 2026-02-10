@@ -54,7 +54,7 @@ export enum BOUNDARY_BEHAVIOR
 {
     annotation { "Name" : "Ignore data outside FCP/ACP" }
     IGNORE,
-    annotation { "Name" : "Minimal (one point per body at tip/tail)" }
+    annotation { "Name" : "Minimal (one point each at tip/tail)" }
     MINIMAL,
     annotation { "Name" : "Normal (all points)" }
     NORMAL

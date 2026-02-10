@@ -330,32 +330,58 @@ function applyBoundaryBehavior(
     }
     else if (behavior == BOUNDARY_BEHAVIOR.MINIMAL)
     {
-        // Keep preferred stations + one tip/tail per body type
-        var filtered = filter(stations, function(s) { return s.preferred; });
-
-        // Add core tips if present
-        var coreTips = filter(stations, function(s)
+        // Keep all stations between FCP and ACP
+        var insideBoundary = filter(stations, function(s)
         {
-            return s.callout == CALLOUT_CORE_TIP || s.callout == CALLOUT_CORE_TAIL;
+            return s.x >= boundaries.fcp && s.x <= boundaries.acp;
         });
 
-        for (var tip in coreTips)
+        // Find stations outside boundaries
+        var beforeFCP = filter(stations, function(s)
         {
-            filtered = append(filtered, tip);
-        }
-
-        // Add SW tips if present
-        var swTips = filter(stations, function(s)
-        {
-            return s.callout == CALLOUT_SW_TIP || s.callout == CALLOUT_SW_TAIL;
+            return s.x < boundaries.fcp;
         });
 
-        for (var tip in swTips)
+        var afterACP = filter(stations, function(s)
         {
-            filtered = append(filtered, tip);
+            return s.x > boundaries.acp;
+        });
+
+        // Add ONE point on tip side (closest to FCP) if any exist
+        if (size(beforeFCP) > 0)
+        {
+            // Get the station closest to FCP (largest X value before FCP)
+            var maxX = -1e10 * meter;
+            var closestToFCP = beforeFCP[0];
+            for (var s in beforeFCP)
+            {
+                if (s.x > maxX)
+                {
+                    maxX = s.x;
+                    closestToFCP = s;
+                }
+            }
+            insideBoundary = append(insideBoundary, closestToFCP);
         }
 
-        return filtered;
+        // Add ONE point on tail side (closest to ACP) if any exist
+        if (size(afterACP) > 0)
+        {
+            // Get the station closest to ACP (smallest X value after ACP)
+            var minX = 1e10 * meter;
+            var closestToACP = afterACP[0];
+            for (var s in afterACP)
+            {
+                if (s.x < minX)
+                {
+                    minX = s.x;
+                    closestToACP = s;
+                }
+            }
+            insideBoundary = append(insideBoundary, closestToACP);
+        }
+
+        return insideBoundary;
     }
     else  // BOUNDARY_BEHAVIOR.NORMAL
     {
