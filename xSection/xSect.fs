@@ -594,10 +594,35 @@ function processCrossSections(context is Context, id is Id, definition is map) r
             bodyData = append(bodyData, {
                 "bodyIdx" : bodyIdx,
                 "groups" : result.bodyData.groups,
-                "totalSectionProperties" : result.bodyData.totalSectionProperties
+                "totalSectionProperties" : result.bodyData.totalSectionProperties,
+                "boundingBox" : result.bodyData.boundingBox
             });
         }
-        
+
+        // Aggregate bounding boxes from all bodies at this section
+        var overallMinX = undefined;
+        var overallMaxX = undefined;
+        var overallMinY = undefined;
+        var overallMaxY = undefined;
+
+        for (var bodyEntry in bodyData)
+        {
+            var bbox = bodyEntry.boundingBox;
+            if (overallMinX == undefined || bbox.minX < overallMinX) overallMinX = bbox.minX;
+            if (overallMaxX == undefined || bbox.maxX > overallMaxX) overallMaxX = bbox.maxX;
+            if (overallMinY == undefined || bbox.minY < overallMinY) overallMinY = bbox.minY;
+            if (overallMaxY == undefined || bbox.maxY > overallMaxY) overallMaxY = bbox.maxY;
+        }
+
+        var sectionBoundingBox = {
+            "minX" : overallMinX,
+            "maxX" : overallMaxX,
+            "minY" : overallMinY,
+            "maxY" : overallMaxY,
+            "width" : (overallMaxX - overallMinX),
+            "height" : (overallMaxY - overallMinY)
+        };
+
         // Strip bbox2D from final output curves
         var outputCurves = mapArray(finalCurves, function(c) {
             return {
@@ -605,7 +630,7 @@ function processCrossSections(context is Context, id is Id, definition is map) r
                 "bodyIndices" : c.bodyIndices
             };
         });
-        
+
         // Cleanup
         try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
         catch {}
@@ -614,12 +639,13 @@ function processCrossSections(context is Context, id is Id, definition is map) r
             try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
             catch {}
         }
-        
+
         crossSections = append(crossSections, {
             "frame" : frame,
             "sectionPoints" : sectionPoints,
             "bSplineCurves" : outputCurves,
-            "bodyData" : bodyData
+            "bodyData" : bodyData,
+            "boundingBox" : sectionBoundingBox
         });
     }
 

@@ -69,7 +69,7 @@
         "internal tools document"
       ],
       "last_pull": "2026-02-10T00:59:40.093626+00:00",
-      "last_push": "2026-02-10T06:43:49.823585+00:00",
+      "last_push": "2026-02-10T01:14:35.757803+00:00",
       "document_id": "52724f3a857fa52d3ecceb77",
       "workspace_id": "a013b85fd726af3c2bdaca71"
     },
@@ -97,7 +97,7 @@
         "internal tools document"
       ],
       "last_pull": "2026-02-09T21:14:50.764237+00:00",
-      "last_push": "2026-02-10T06:12:39.734418+00:00",
+      "last_push": "2026-02-10T01:46:38.432578+00:00",
       "document_id": "f8deedeb1fbd819a8fa20113",
       "workspace_id": "2bac53cbf0cd1504ada12137"
     },
@@ -105,15 +105,15 @@
       "name": "QC Table",
       "description": "Core and sidewall QC",
       "working_directory": "./qcTable",
-      "onshape_url": "https://k2-sports.onshape.com/documents/51ccc604f1a8c938b48c2f37/w/b0471d23cacc26179be6e5ab/e/fbb5a1c415d7e095b8a4cb96",
+      "onshape_url": "https://k2-sports.onshape.com/documents/51ccc604f1a8c938b48c2f37/w/b0471d23cacc26179be6e5ab/e/54c855061de038e9e9787a94",
       "references": [
         "Onshape Standard Library",
         "internal tools document",
         "Core QC Table",
         "Sidewall QC Table"
       ],
-      "last_pull": "2026-02-10T06:36:23.745495+00:00",
-      "last_push": "2026-02-10T06:49:59.450719+00:00",
+      "last_pull": "2026-02-10T00:27:12.518046+00:00",
+      "last_push": "2026-02-10T05:14:09.182429+00:00",
       "document_id": "51ccc604f1a8c938b48c2f37",
       "workspace_id": "b0471d23cacc26179be6e5ab"
     }

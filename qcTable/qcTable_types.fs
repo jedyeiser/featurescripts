@@ -11,7 +11,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
      ENG,
      annotation { "Name" : "Deutsch"}
      GER,
-     annotation { "Name" : "中文"}
+     annotation { "Name" : "Chinese"}
      CHN,
  }
  
@@ -70,6 +70,20 @@ import(path : "onshape/std/common.fs", version : "2878.0");
      }
  };
 
+/**
+ * Translate a column name from English to the specified language
+ * Returns English name if translation not found (safe fallback)
+ */
+export function translateColumnName(englishName is string, language is LANGUAGE) returns string
+{
+    var langMap = langColLookup[language];
+    if (langMap == undefined) return englishName;
+
+    var translated = langMap[englishName];
+    if (translated == undefined) return englishName;
+
+    return translated;
+}
 
 /**
  * QC Table Types and Constants

@@ -233,29 +233,6 @@ export predicate eiXSectPrecondition(definition is map)
     }
 
     // -------------------------------------------------------------------------
-    // Stiffness Estimates (read-only, to be populated via caching in future)
-    // -------------------------------------------------------------------------
-    
-    annotation { "Group Name" : "Stiffness Estimates", "Collapsed By Default" : false }
-    {
-        annotation { "Name" : "Prismatic stiffness (lb/in)",
-                     "UIHint" : UIHint.READ_ONLY }
-        isReal(definition.prismaticStiffness_lbin, POSITIVE_REAL_BOUNDS);
-        
-        annotation { "Name" : "Prismatic deflection (mm @ 30kg)",
-                     "UIHint" : UIHint.READ_ONLY }
-        isReal(definition.prismaticStiffness_mm, POSITIVE_REAL_BOUNDS);
-        
-        annotation { "Name" : "Estimated stiffness (lb/in)",
-                     "UIHint" : UIHint.READ_ONLY }
-        isReal(definition.estimatedStiffness_lbin, POSITIVE_REAL_BOUNDS);
-        
-        annotation { "Name" : "Estimated deflection (mm @ 30kg)",
-                     "UIHint" : UIHint.READ_ONLY }
-        isReal(definition.estimatedStiffness_mm, POSITIVE_REAL_BOUNDS);
-    }
-
-    // -------------------------------------------------------------------------
     // Output Options
     // -------------------------------------------------------------------------
     

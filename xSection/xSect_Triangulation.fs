@@ -133,11 +133,15 @@ export function processBodyCurves(bodyCurves is array, frame is CoordSystem, sec
         var groupProps = computeNestedProperties(group, 0, sectionPoints, frame);
         totalProps = addSectionProperties(totalProps, groupProps);
     }
-    
+
+    // Step 6: Compute bounding box
+    var boundingBox = computeSectionBoundingBox(sectionPoints);
+
     return {
         "bodyData" : {
             "groups" : groups,
-            "totalSectionProperties" : totalProps
+            "totalSectionProperties" : totalProps,
+            "boundingBox" : boundingBox
         },
         "sectionPoints" : sectionPoints,
         "spatialGrid" : spatialGrid
@@ -987,6 +991,52 @@ export function emptySectionProperties(frame is CoordSystem) returns map
         "Ixx" : 0 * meter^4,
         "Iyy" : 0 * meter^4,
         "Ixy" : 0 * meter^4
+    };
+}
+
+/**
+ * Compute 2D bounding box from section points.
+ *
+ * @param points {array} : Array of {point2D, point3D} maps
+ * @returns {map} : { minX, maxX, minY, maxY, width, height }
+ */
+export function computeSectionBoundingBox(points is array) returns map
+{
+    if (size(points) == 0)
+    {
+        return {
+            "minX" : 0,
+            "maxX" : 0,
+            "minY" : 0,
+            "maxY" : 0,
+            "width" : 0 * meter,
+            "height" : 0 * meter
+        };
+    }
+
+    var minX = points[0].point2D[0];
+    var maxX = points[0].point2D[0];
+    var minY = points[0].point2D[1];
+    var maxY = points[0].point2D[1];
+
+    for (var pt in points)
+    {
+        var x = pt.point2D[0];
+        var y = pt.point2D[1];
+
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    }
+
+    return {
+        "minX" : minX,
+        "maxX" : maxX,
+        "minY" : minY,
+        "maxY" : maxY,
+        "width" : (maxX - minX) * meter,
+        "height" : (maxY - minY) * meter
     };
 }
 
