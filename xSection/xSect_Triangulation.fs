@@ -44,6 +44,27 @@ import(path : "c2c3edd39b85fde5e6062533", version : "eb21258f6fd7abb6c94d71e8");
 
 // Note: Using POINT_DEDUP_TOL from xsectUtils for consistency
 const POINT_TOLERANCE = POINT_DEDUP_TOL;
+const GRID_CELL_SIZE = 1 * millimeter;  // Spatial grid cell size for O(1) point lookup
+
+// =============================================================================
+// SPATIAL GRID HELPERS (Phase 4 Optimization)
+// =============================================================================
+
+/**
+ * Compute spatial grid key for a 3D point.
+ * Quantizes coordinates to grid cells for fast spatial lookup.
+ *
+ * @param point3D {Vector} : 3D point to hash
+ * @param cellSize {ValueWithUnits} : Grid cell size
+ * @returns {string} : Grid key "ix,iy,iz"
+ */
+function computeGridKey(point3D is Vector, cellSize is ValueWithUnits) returns string
+{
+    var ix = floor(point3D[0] / cellSize);
+    var iy = floor(point3D[1] / cellSize);
+    var iz = floor(point3D[2] / cellSize);
+    return toString(ix) ~ "," ~ toString(iy) ~ "," ~ toString(iz);
+}
 
 // =============================================================================
 // MAIN ENTRY POINT
@@ -52,13 +73,14 @@ const POINT_TOLERANCE = POINT_DEDUP_TOL;
 /**
  * Process curves for a single body at a single cross-section.
  * Groups curves into boundaries, detects nesting, triangulates, computes properties.
- * 
+ *
  * @param bodyCurves {array} : Array of { bSplineCurve, bodyIndices }
  * @param frame {CoordSystem} : Local coordinate frame
  * @param sectionPoints {array} : Shared point storage (modified in place via return)
- * @returns {map} : { bodyData, sectionPoints }
+ * @param spatialGrid {map} : Spatial grid for O(1) point lookup
+ * @returns {map} : { bodyData, sectionPoints, spatialGrid }
  */
-export function processBodyCurves(bodyCurves is array, frame is CoordSystem, sectionPoints is array) returns map
+export function processBodyCurves(bodyCurves is array, frame is CoordSystem, sectionPoints is array, spatialGrid is map) returns map
 {
     if (size(bodyCurves) == 0)
     {
@@ -67,20 +89,22 @@ export function processBodyCurves(bodyCurves is array, frame is CoordSystem, sec
                 "groups" : [],
                 "totalSectionProperties" : emptySectionProperties(frame)
             },
-            "sectionPoints" : sectionPoints
+            "sectionPoints" : sectionPoints,
+            "spatialGrid" : spatialGrid
         };
     }
-    
+
     // Step 1: Group curves into closed boundaries
     var curveGroups = groupCurvesIntoBoundaries(bodyCurves, POINT_TOLERANCE);
-    
+
     // Step 2: Build perimeters and add points to shared storage
     var perimeterData = [];  // array of { pointIndices, points2D }
-    
+
     for (var curveGroup in curveGroups)
     {
-        var result = buildPerimeterFromCurveGroup(curveGroup, frame, sectionPoints);
+        var result = buildPerimeterFromCurveGroup(curveGroup, frame, sectionPoints, spatialGrid);
         sectionPoints = result.sectionPoints;
+        spatialGrid = result.spatialGrid;
         
         if (size(result.pointIndices) >= 3)
         {
@@ -115,7 +139,8 @@ export function processBodyCurves(bodyCurves is array, frame is CoordSystem, sec
             "groups" : groups,
             "totalSectionProperties" : totalProps
         },
-        "sectionPoints" : sectionPoints
+        "sectionPoints" : sectionPoints,
+        "spatialGrid" : spatialGrid
     };
 }
 
@@ -233,13 +258,14 @@ function getCurveEndpoint(curve is BSplineCurve, atEnd is boolean) returns Vecto
 /**
  * Build ordered perimeter points from a curve group.
  * Adds points to shared storage with deduplication.
- * 
+ *
  * @param curveGroup {array} : Array of { bSplineCurve, reversed }
  * @param frame {CoordSystem} : Local coordinate frame
  * @param sectionPoints {array} : Shared point storage
- * @returns {map} : { pointIndices, points2D, sectionPoints }
+ * @param spatialGrid {map} : Spatial grid for O(1) point lookup
+ * @returns {map} : { pointIndices, points2D, sectionPoints, spatialGrid }
  */
-function buildPerimeterFromCurveGroup(curveGroup is array, frame is CoordSystem, sectionPoints is array) returns map
+function buildPerimeterFromCurveGroup(curveGroup is array, frame is CoordSystem, sectionPoints is array, spatialGrid is map) returns map
 {
     var pointIndices = [];
     var points2D = [];
@@ -273,10 +299,11 @@ function buildPerimeterFromCurveGroup(curveGroup is array, frame is CoordSystem,
         {
             var pt3D = curvePoints3D[j];
             var pt2D = worldToFrame2D(pt3D, frame);
-            
-            var result = addOrGetPointIndex(sectionPoints, pt2D, pt3D, POINT_TOLERANCE);
+
+            var result = addOrGetPointIndex(sectionPoints, pt2D, pt3D, POINT_TOLERANCE, spatialGrid);
             sectionPoints = result.sectionPoints;
-            
+            spatialGrid = result.spatialGrid;
+
             pointIndices = append(pointIndices, result.index);
             points2D = append(points2D, pt2D);
         }
@@ -290,11 +317,12 @@ function buildPerimeterFromCurveGroup(curveGroup is array, frame is CoordSystem,
     }
     
     //println("Perimeter: " ~ size(pointIndices) ~ " points from " ~ size(curveGroup) ~ " curves");
-    
+
     return {
         "pointIndices" : pointIndices,
         "points2D" : points2D,
-        "sectionPoints" : sectionPoints
+        "sectionPoints" : sectionPoints,
+        "spatialGrid" : spatialGrid
     };
     
 }
@@ -339,34 +367,48 @@ function sampleCurvePoints(curve is BSplineCurve) returns array
 
 /**
  * Add point to shared storage or get existing index if duplicate.
- * 
+ * Uses spatial grid for O(1) average-case lookup instead of O(n).
+ *
  * @param sectionPoints {array} : Shared point storage
  * @param point2D {array} : [x, y] local coordinates
  * @param point3D {Vector} : World coordinates
  * @param tolerance {ValueWithUnits} : Deduplication tolerance
- * @returns {map} : { sectionPoints, index }
+ * @param spatialGrid {map} : Spatial grid map (gridKey -> array of point indices)
+ * @returns {map} : { sectionPoints, spatialGrid, index }
  */
-export function addOrGetPointIndex(sectionPoints is array, point2D is array, point3D is Vector, 
-                                    tolerance is ValueWithUnits) returns map
+export function addOrGetPointIndex(sectionPoints is array, point2D is array, point3D is Vector,
+                                    tolerance is ValueWithUnits, spatialGrid is map) returns map
 {
-    // Check for existing point within tolerance
-    for (var i = 0; i < size(sectionPoints); i += 1)
+    // Compute grid key for this point
+    var gridKey = computeGridKey(point3D, GRID_CELL_SIZE);
+
+    // Check only points in this grid cell (O(1) average case vs O(n) linear search)
+    var cellIndices = spatialGrid[gridKey];
+    if (cellIndices == undefined)
+        cellIndices = [];
+
+    // Check existing points in cell
+    for (var idx in cellIndices)
     {
-        var existing = sectionPoints[i];
+        var existing = sectionPoints[idx];
         if (norm(existing.point3D - point3D) < tolerance)
         {
-            return { "sectionPoints" : sectionPoints, "index" : i };
+            return { "sectionPoints" : sectionPoints, "spatialGrid" : spatialGrid, "index" : idx };
         }
     }
-    
+
     // Add new point
     var newIndex = size(sectionPoints);
     sectionPoints = append(sectionPoints, {
         "point2D" : point2D,
         "point3D" : point3D
     });
-    
-    return { "sectionPoints" : sectionPoints, "index" : newIndex };
+
+    // Update spatial grid
+    cellIndices = append(cellIndices, newIndex);
+    spatialGrid[gridKey] = cellIndices;
+
+    return { "sectionPoints" : sectionPoints, "spatialGrid" : spatialGrid, "index" : newIndex };
 }
 
 // =============================================================================

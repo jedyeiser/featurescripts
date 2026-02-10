@@ -557,6 +557,7 @@ function processCrossSections(context is Context, id is Id, definition is map) r
         
         // PHASE C: Build bodyData using triangulation module
         var sectionPoints = [];
+        var spatialGrid = {};  // Phase 4: Spatial grid for O(1) point deduplication
         var bodyData = [];
 
         for (var body in intersectingBodies)
@@ -572,9 +573,10 @@ function processCrossSections(context is Context, id is Id, definition is map) r
             var bodyCurves = bodyToCurves[bodyIdx];
             if (bodyCurves == undefined)
                 bodyCurves = [];
-            
-            var result = processBodyCurves(bodyCurves, frame, sectionPoints);
+
+            var result = processBodyCurves(bodyCurves, frame, sectionPoints, spatialGrid);
             sectionPoints = result.sectionPoints;
+            spatialGrid = result.spatialGrid;
             
             bodyData = append(bodyData, {
                 "bodyIdx" : bodyIdx,

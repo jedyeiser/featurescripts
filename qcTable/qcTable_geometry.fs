@@ -440,7 +440,7 @@ function getBottomEdges(context is Context, id is Id, swBody is Query, swExtents
         });
 
         opPlane(context, id + (i ~ "plane"), {
-            'plane': plane(planeLine.origin, planeLine.direction)
+            "plane" : plane(planeLine.origin, planeLine.direction)
         });
 
         var searchPlane = qCreatedBy(id + (i ~ "plane"), EntityType.BODY);
@@ -504,10 +504,10 @@ function getBottomEdges(context is Context, id is Id, swBody is Query, swExtents
             }
         }
 
-        opDeleteBodies(context, id + ("deletePlane" ~ i), {'entities': searchPlane});
+        opDeleteBodies(context, id + ("deletePlane" ~ i), {"entities" : searchPlane});
     }
 
-    opDeleteBodies(context, id + "deleteDummy", {'entities': dummySpline});
+    opDeleteBodies(context, id + "deleteDummy", {"entities" : dummySpline});
 
     insideEdges = evaluateQuery(context, qUnion(insideEdges));
     outsideEdges = evaluateQuery(context, qUnion(outsideEdges));
@@ -541,12 +541,12 @@ function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is
     for (var i = 0; i < size(params); i += 1)
     {
         var planeLine = evEdgeTangentLine(context, {
-            'edge': qOwnedByBody(dummySpline, EntityType.EDGE),
-            'parameter': params[i]
+            "edge" : qOwnedByBody(dummySpline, EntityType.EDGE),
+            "parameter" : params[i]
         });
 
         opPlane(context, id + (i ~ "plane"), {
-            'plane': plane(planeLine.origin, planeLine.direction)
+            "plane" : plane(planeLine.origin, planeLine.direction)
         });
 
         var searchPlane = qCreatedBy(id + (i ~ "plane"), EntityType.BODY);
@@ -563,8 +563,8 @@ function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is
         for (var edge in evIntersectEdges)
         {
             var edgeDist = evDistance(context, {
-                'side0': edge,
-                'side1': searchPlane
+                "side0" : edge,
+                "side1" : searchPlane
             });
 
             var zVal = edgeDist.sides[0].point[2];
@@ -610,10 +610,10 @@ function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is
             }
         }
 
-        opDeleteBodies(context, id + ("deletePlane" ~ i), {'entities': searchPlane});
+        opDeleteBodies(context, id + ("deletePlane" ~ i), {"entities" : searchPlane});
     }
 
-    opDeleteBodies(context, id + "deleteDummy", {'entities': dummySpline});
+    opDeleteBodies(context, id + "deleteDummy", {"entities" : dummySpline});
 
     insideEdges = evaluateQuery(context, qUnion(insideEdges));
     outsideEdges = evaluateQuery(context, qUnion(outsideEdges));
@@ -637,8 +637,8 @@ function getCenterSpline(context is Context, id is Id, insidePath is Path, outsi
         var outsidePoint = evPathTangentLines(context, outsidePath, [param]).tangentLines[0].origin;
 
         var pointDist = evDistance(context, {
-            'side0': insidePoint,
-            'side1': outsidePoint
+            "side0" : insidePoint,
+            "side1" : outsidePoint
         });
 
         var flipOutside = (pointDist.distance > 15 * millimeter);
@@ -653,7 +653,7 @@ function getCenterSpline(context is Context, id is Id, insidePath is Path, outsi
     }
 
     opFitSpline(context, id + "centerSpline", {
-        'points': splinePoints
+        "points" : splinePoints
     });
 
     return qCreatedBy(id + "centerSpline", EntityType.BODY);

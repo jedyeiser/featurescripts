@@ -6,6 +6,41 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ---
 
+## Function Call Syntax
+
+### evaluateSpline() and All Standard Library Functions
+**Date**: 2026-02-09
+**Issue**: FeatureScript functions require named parameter maps, not positional arguments
+
+**WRONG** (positional arguments):
+```featurescript
+var point = evaluateSpline(curve, param);
+var dist = evDistance(context, edge1, edge2);
+```
+
+**CORRECT** (named parameter map):
+```featurescript
+var point = evaluateSpline({
+    "spline" : curve,
+    "parameters" : [param]  // Must be array, even for single parameter
+})[0];  // Returns array, extract first element
+
+var dist = evDistance(context, {
+    "side0" : edge1,
+    "side1" : edge2
+});
+```
+
+**Key Points**:
+- ALL FeatureScript standard library functions take a single map argument with named parameters
+- `evaluateSpline` requires `"parameters"` as an array (e.g., `[0.5]`), not a scalar
+- `evaluateSpline` returns an array of points (even for single parameter)
+- Only exception: some functions take `context` as first positional arg, then parameter map
+
+**Lesson Learned**: Never assume positional arguments work in FeatureScript. Always use parameter maps with string keys.
+
+---
+
 ## Import Issues
 
 ### Namespace Imports Not Supported
@@ -310,6 +345,150 @@ stations = append(stations, {
 
 **Files Fixed**: qcTable_geometry.fs (lines 96, 294-300, 338-339, 423-439, 529-545), qcTable_merge.fs (line 47), qcTable_stations.fs (lines 37, 252, 270, 292)
 
+### Operation Parameters Must Use Quoted String Keys
+**Date**: 2026-02-09
+**Issue**: Map parameters to Onshape operations (`op*`, `ev*` functions) must use quoted string keys, even when no variable conflict exists. This is more restrictive than general map key rules.
+**Incorrect Pattern**:
+```featurescript
+var measurePlane = plane(origin, normal);
+
+// ❌ ERROR - Unquoted key in operation parameter
+opPlane(context, id + "measurePlane", {
+    plane: measurePlane  // ERROR: Cannot use 'plane' as key
+});
+
+evDistance(context, {
+    side0: point1,  // ERROR: Even though 'side0' doesn't conflict
+    side1: point2   // ERROR: Must quote operation params
+});
+```
+**Correct Pattern**:
+```featurescript
+var measurePlane = plane(origin, normal);
+
+// ✅ CORRECT - Always quote keys in operation parameters
+opPlane(context, id + "measurePlane", {
+    "plane" : measurePlane  // Quoted key required
+});
+
+evDistance(context, {
+    "side0" : point1,  // Quote all op*/ev* params
+    "side1" : point2
+});
+
+// All operation examples
+opPattern(context, id, {
+    "entities" : bodies,
+    "transforms" : transforms,
+    "instanceNames" : ["name"]
+});
+
+opSplitPart(context, id, {
+    "targets" : target,
+    "tool" : tool,
+    "keepTools" : true,
+    "keepType" : SplitOperationKeepType.KEEP_BACK
+});
+```
+
+**Lesson Learned**:
+- **Always quote ALL keys in operation parameters** (`op*`, `ev*` functions)
+- This applies even if no local variable conflicts exist
+- Onshape operations have stricter parsing requirements than general maps
+- Use double quotes `"key"` for consistency
+
+**Why This Matters**: Onshape's operation functions use a more restrictive parser that requires explicit string keys to avoid ambiguity with field names.
+
+**Files Fixed**: qcTable_geometry.fs (all op*/ev* calls throughout)
+
+### ID Concatenation Requires Parentheses for String Operations
+**Date**: 2026-02-09
+**Issue**: The `+` operator (Id concatenation) has higher precedence than `~` (string concatenation). Must use parentheses when building dynamic Id strings.
+**Incorrect Pattern**:
+```featurescript
+for (var i = 0; i < 10; i += 1)
+{
+    // ❌ ERROR - Evaluates as (id + i) ~ "plane"
+    opPlane(context, id + i ~ "plane", {...});
+
+    // This tries to:
+    // 1. Add number to Id: id + i
+    // 2. Concatenate result with string: (result) ~ "plane"
+    // 3. Fails because can't concatenate Id with string
+}
+```
+**Correct Pattern**:
+```featurescript
+for (var i = 0; i < 10; i += 1)
+{
+    // ✅ CORRECT - Parentheses force string concatenation first
+    opPlane(context, id + (i ~ "plane"), {...});
+
+    // This correctly:
+    // 1. Concatenate number with string: i ~ "plane" → "0plane"
+    // 2. Add string to Id: id + "0plane"
+}
+
+// More examples
+opDeleteBodies(context, id + ("deletePlane" ~ i), {...});
+var searchPlane = qCreatedBy(id + (i ~ "plane"), EntityType.BODY);
+```
+
+**Lesson Learned**:
+- **Always wrap string concatenation in parentheses** when adding to Id
+- Pattern: `id + (variable ~ "suffix")` not `id + variable ~ "suffix"`
+- Applies to any dynamic Id generation in loops
+- The `+` operator binds tighter than `~`
+
+**Operator Precedence**:
+1. `+` (Id concatenation) - higher precedence
+2. `~` (string concatenation) - lower precedence
+
+**Files Fixed**: qcTable_geometry.fs (lines 442, 446, 507, 548, 552, 613)
+
+### ValueWithUnits Comparisons Require .value Property
+**Date**: 2026-02-09
+**Issue**: When comparing `ValueWithUnits` to raw numbers (like tolerance constants), must access the `.value` property.
+**Incorrect Pattern**:
+```featurescript
+var deltaZ = widestHighest[2] - highestWidest[2];  // ValueWithUnits
+
+// ❌ ERROR - Comparing ValueWithUnits to number
+if (abs(deltaZ) < TOLERANCE.zeroLength)  // TOLERANCE.zeroLength is raw number
+{
+    // ...
+}
+```
+**Correct Pattern**:
+```featurescript
+var deltaZ = widestHighest[2] - highestWidest[2];  // ValueWithUnits
+
+// ✅ CORRECT - Extract numeric value first
+if (abs(deltaZ.value) < TOLERANCE.zeroLength)  // Compare number to number
+{
+    // ...
+}
+
+// Or compare ValueWithUnits to ValueWithUnits
+if (abs(deltaZ) < (TOLERANCE.zeroLength * meter))  // Both ValueWithUnits
+{
+    // ...
+}
+```
+
+**Lesson Learned**:
+- `ValueWithUnits` has two properties: `.value` (number) and `.unit` (unit type)
+- Tolerance constants like `TOLERANCE.zeroLength` are raw numbers, not `ValueWithUnits`
+- Cannot compare `ValueWithUnits` directly to raw numbers
+- Options:
+  1. Extract `.value` property: `myLength.value`
+  2. Convert number to `ValueWithUnits`: `number * meter`
+- Prefer option 1 for tolerance comparisons
+
+**Why This Matters**: Type safety - FeatureScript enforces that comparisons are type-compatible.
+
+**Files Fixed**: qcTable_geometry.fs (line 257)
+
 ### Always Use Braces for Control Flow Statements
 **Date**: 2026-01-31
 **Issue**: **CRITICAL BUG** - Control flow statements (if, else, for, while) without braces execute only the FIRST statement conditionally. Additional indented statements that appear to be part of the block execute unconditionally, causing severe logic errors.
@@ -412,10 +591,11 @@ export function buildCurveDataArray(bsplines is array) returns array
 
 ## Statistics
 
-- **Total Corrections**: 5
+- **Total Corrections**: 8
 - **Last Updated**: 2026-02-09
-- **Most Common Category**: FeatureScript Syntax (3), Import Issues (1), Type System (1)
+- **Most Common Category**: FeatureScript Syntax (6), Import Issues (1), Type System (1)
 - **Critical Bugs Found**: 1 (Missing braces in control flow)
+- **Latest Additions**: Operation parameter quoting, ID concatenation precedence, ValueWithUnits comparisons
 
 ---
 
