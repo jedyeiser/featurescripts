@@ -466,7 +466,7 @@ export function addUserPoints(
 
     for (var vertex in vertices)
     {
-        var point = evVertexPoint(context, {vertex: vertex});
+        var point = evVertexPoint(context, {"vertex" : vertex});
 
         stations = append(stations, {
             x: point[0],
