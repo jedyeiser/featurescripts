@@ -298,45 +298,40 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     var refLength = abs(acpXOrdered - fcpXOrdered);
     var tailLength = abs(xEnd - acpXOrdered);
 
-    // Allocate sections to reference region (must include FCP and ACP)
-    var numRefSections = max(2, floor(numSections * 0.5));  // At least 2, target ~50%
+    // Allocate ALL requested sections to reference region (FCP to ACP)
+    var numRefSections = numSections;  // User's requested count goes entirely to reference
 
-    // Compute reference spacing
+    // Compute reference spacing (for use in tip/tail calculations)
     var refSpacing = refLength / (numRefSections - 1);
 
-    // Allocate sections to tip and tail regions
+    // Allocate ADDITIONAL sections to tip and tail regions (beyond requested numSections)
+    // Use reference spacing as target, but cap to avoid excessive sections
     var numTipSections = 0;
-    if (tipLength > refSpacing * 0.5)
+    if (tipLength > refSpacing * 0.5)  // Only add tip if region is significant
     {
-        numTipSections = max(2, ceil(tipLength / refSpacing));
+        // Add 2-4 sections depending on region length
+        var idealTipCount = ceil(tipLength / refSpacing);
+        numTipSections = min(idealTipCount, 4);  // Cap at 4 to avoid excess
     }
     else if (tipLength > 1e-6 * meter)
     {
-        numTipSections = 1;
+        numTipSections = 1;  // Minimal region gets 1 section
     }
 
     var numTailSections = 0;
-    if (tailLength > refSpacing * 0.5)
+    if (tailLength > refSpacing * 0.5)  // Only add tail if region is significant
     {
-        numTailSections = max(2, ceil(tailLength / refSpacing));
+        var idealTailCount = ceil(tailLength / refSpacing);
+        numTailSections = min(idealTailCount, 4);  // Cap at 4 to avoid excess
     }
     else if (tailLength > 1e-6 * meter)
     {
-        numTailSections = 1;
+        numTailSections = 1;  // Minimal region gets 1 section
     }
 
-    // Adjust allocations if total exceeds requested numSections
-    var totalAllocated = numTipSections + numRefSections + numTailSections;
-    if (totalAllocated > numSections)
-    {
-        // Scale down tip and tail proportionally
-        var excess = totalAllocated - numSections;
-        var tipCut = floor(excess * numTipSections / (numTipSections + numTailSections + 0.001));
-        var tailCut = excess - tipCut;
-
-        numTipSections = max(0, numTipSections - tipCut);
-        numTailSections = max(0, numTailSections - tailCut);
-    }
+    // NOTE: No adjustment needed - tip/tail are bonus sections beyond numSections
+    // Total sections = numTipSections + numRefSections + numTailSections
+    //                = (0-4) + numSections + (0-4)
 
     // Determine spatial ordering (does edge go left-to-right or right-to-left?)
     var tipIsLeft = (xStart < xEnd);  // True if edge goes left-to-right
@@ -395,13 +390,15 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     // Generate X positions for all three regions
     var xPositions = [];
 
-    // Tip region
+    // Tip region (EXCLUDE fcpXOrdered boundary to avoid duplication)
     if (numTipSections > 0)
     {
         for (var i = 0; i < numTipSections; i += 1)
         {
-            var t = (numTipSections == 1) ? 0.5 : (i / (numTipSections - 1));
-            var x = xStart + t * (fcpXOrdered - xStart);  // Use signed offset, not absolute length
+            // Use (i+1)/(numTipSections+1) to create points strictly BETWEEN xStart and fcpXOrdered
+            // This excludes both endpoints
+            var t = (i + 1) / (numTipSections + 1);
+            var x = xStart + t * (fcpXOrdered - xStart);
             xPositions = append(xPositions, x);
         }
     }
@@ -414,13 +411,14 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
         xPositions = append(xPositions, x);
     }
 
-    // Tail region
+    // Tail region (EXCLUDE acpXOrdered boundary to avoid duplication)
     if (numTailSections > 0)
     {
         for (var i = 0; i < numTailSections; i += 1)
         {
-            var t = (numTailSections == 1) ? 0.5 : (i / (numTailSections - 1));
-            var x = acpXOrdered + t * (xEnd - acpXOrdered);  // Use signed offset, not absolute length
+            // Use (i+1)/(numTailSections+1) to create points strictly BETWEEN acpXOrdered and xEnd
+            var t = (i + 1) / (numTailSections + 1);
+            var x = acpXOrdered + t * (xEnd - acpXOrdered);
             xPositions = append(xPositions, x);
         }
     }
