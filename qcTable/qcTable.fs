@@ -10,10 +10,12 @@ export import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba7
 import(path : "f78f146e807209053299e5a5", version : "6aecfce23a24f4e092d8d713");
 
 //import qcTable_geometry
-import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba723b9");
+import(path : "0f9cf9b21a3c654880d3167c", version : "c762fdf4fac88a3085971a15");
+
 
 //import qcTable_merge
-import(path : "ff9221b7148cfda8a449abff", version : "55fa348279ead98a1ba723b9");
+import(path : "7fe95d3b9947e33ce37bdeab", version : "bca40b789b97d69b30d61900");
+
 
 /**
  * QC Table Feature - Main Feature Definition
@@ -299,21 +301,21 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             if (definition.keepWires)
             {
                 setProperty(context, {
-                    entities: swSetup.centerSplineBottom,
-                    propertyType: PropertyType.NAME,
-                    value: "SW_BOTTOM_CENTER_WIRE"
+                    'entities': swSetup.centerSplineBottom,
+                    'propertyType': PropertyType.NAME,
+                    'value': "SW_BOTTOM_CENTER_WIRE"
                 });
 
                 setProperty(context, {
-                    entities: swSetup.centerSplineTop,
-                    propertyType: PropertyType.NAME,
-                    value: "SW_TOP_CENTER_WIRE"
+                    'entities': swSetup.centerSplineTop,
+                    'propertyType': PropertyType.NAME,
+                    'value': "SW_TOP_CENTER_WIRE"
                 });
             }
             else
             {
                 opDeleteBodies(context, id + "deleteSWWires", {
-                    entities: qUnion([swSetup.centerSplineBottom, swSetup.centerSplineTop])
+                    'entities': qUnion([swSetup.centerSplineBottom, swSetup.centerSplineTop])
                 });
             }
         }
@@ -323,9 +325,9 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===================================================================
 
         var formatConfig = {
-            tableUnits: definition.tableUnits,
-            sigFigs: definition.sigFigs,
-            showUnits: definition.showUnits
+            'tableUnits': definition.tableUnits,
+            'sigFigs': definition.sigFigs,
+            'showUnits': definition.showUnits
         } as FormatConfig;
 
         var tableData = mergeStationData(
@@ -351,14 +353,14 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===================================================================
 
         setAttribute(context, {
-            entities: qOrigin(EntityType.BODY),
-            name: "qcTableData",
-            attribute: {
-                data: tableData,
-                hasCore: hasCore,
-                hasSW: hasSW,
-                tableOrder: definition.tableOrder,
-                format: formatConfig
+            'entities': qOrigin(EntityType.BODY),
+            'name': "qcTableData",
+            'attribute': {
+                'data': tableData,
+                'hasCore': hasCore,
+                'hasSW': hasSW,
+                'tableOrder': definition.tableOrder,
+                'format': formatConfig
             }
         });
 
@@ -390,8 +392,8 @@ export const qcTable = defineTable(function(context is Context, definition is ma
 
         // Get attribute data
         var tableAttribute = getAttribute(context, {
-            entity: bodiesWithAttribute[0],
-            name: "qcTableData"
+            'entity': bodiesWithAttribute[0],
+            'name': "qcTableData"
         });
 
         var tableData = tableAttribute.data;
