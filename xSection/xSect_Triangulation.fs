@@ -44,7 +44,9 @@ import(path : "c2c3edd39b85fde5e6062533", version : "f27666c99d8984e7de77d30b");
 
 // Note: Using POINT_DEDUP_TOL from xsectUtils for consistency
 const POINT_TOLERANCE = POINT_DEDUP_TOL;
-const GRID_CELL_SIZE = 1 * millimeter;  // Spatial grid cell size for O(1) point lookup
+// Grid cell size: 10× dedup tolerance provides safety margin for spatial hashing
+// Ensures duplicate points within tolerance land in same or adjacent cells
+const GRID_CELL_SIZE = 10 * POINT_DEDUP_TOL;  // = 10 micrometers (1e-5 m)
 
 // =============================================================================
 // SPATIAL GRID HELPERS (Phase 4 Optimization)
@@ -154,7 +156,9 @@ export function processBodyCurves(bodyCurves is array, frame is CoordSystem, sec
 
 /**
  * Group curves into closed boundary loops by matching endpoints.
- * 
+ *
+ * Optimized: Uses boolean marking instead of array removal (O(n) vs O(n²)).
+ *
  * @param curves {array} : Array of { bSplineCurve, ... }
  * @param tolerance {ValueWithUnits} : Endpoint matching tolerance
  * @returns {array} : Array of curve groups (each group is array of curves forming closed loop)
@@ -163,37 +167,58 @@ function groupCurvesIntoBoundaries(curves is array, tolerance is ValueWithUnits)
 {
     if (size(curves) == 0)
         return [];
-    
-    var remaining = curves;
+
+    var nCurves = size(curves);
+    var used = makeArray(nCurves, false);  // Track which curves are already grouped
+    var remainingCount = nCurves;
     var groups = [];
-    
-    while (size(remaining) > 0)
+
+    while (remainingCount > 0)
     {
-        // Start a new group with first remaining curve
-        var group = [{ "bSplineCurve" : remaining[0].bSplineCurve, "reversed" : false }];
-        remaining = subArray(remaining, 1, size(remaining));
-        
+        // Find first unused curve
+        var firstIdx = -1;
+        for (var i = 0; i < nCurves; i += 1)
+        {
+            if (!used[i])
+            {
+                firstIdx = i;
+                break;
+            }
+        }
+
+        if (firstIdx == -1)
+            break;  // Should never happen, but safety check
+
+        // Start a new group with first unused curve
+        var group = [{ "bSplineCurve" : curves[firstIdx].bSplineCurve, "reversed" : false }];
+        used[firstIdx] = true;
+        remainingCount -= 1;
+
         var chainStart = getCurveEndpoint(group[0].bSplineCurve, false);
         var chainEnd = getCurveEndpoint(group[0].bSplineCurve, true);
-        
+
         // Try to extend the chain
         var changed = true;
-        while (changed && size(remaining) > 0)
+        while (changed && remainingCount > 0)
         {
             changed = false;
-            
-            for (var i = 0; i < size(remaining); i += 1)
+
+            for (var i = 0; i < nCurves; i += 1)
             {
-                var curve = remaining[i];
+                if (used[i])
+                    continue;  // Skip already-used curves
+
+                var curve = curves[i];
                 var curveStart = getCurveEndpoint(curve.bSplineCurve, false);
                 var curveEnd = getCurveEndpoint(curve.bSplineCurve, true);
-                
+
                 // Check if curve connects to chain end
                 if (norm(chainEnd - curveStart) < tolerance)
                 {
                     group = append(group, { "bSplineCurve" : curve.bSplineCurve, "reversed" : false });
                     chainEnd = curveEnd;
-                    remaining = removeIndex(remaining, i);
+                    used[i] = true;
+                    remainingCount -= 1;
                     changed = true;
                     break;
                 }
@@ -201,7 +226,8 @@ function groupCurvesIntoBoundaries(curves is array, tolerance is ValueWithUnits)
                 {
                     group = append(group, { "bSplineCurve" : curve.bSplineCurve, "reversed" : true });
                     chainEnd = curveStart;
-                    remaining = removeIndex(remaining, i);
+                    used[i] = true;
+                    remainingCount -= 1;
                     changed = true;
                     break;
                 }
@@ -210,7 +236,8 @@ function groupCurvesIntoBoundaries(curves is array, tolerance is ValueWithUnits)
                 {
                     group = insertAtIndex(group, 0, { "bSplineCurve" : curve.bSplineCurve, "reversed" : false });
                     chainStart = curveStart;
-                    remaining = removeIndex(remaining, i);
+                    used[i] = true;
+                    remainingCount -= 1;
                     changed = true;
                     break;
                 }
@@ -218,13 +245,14 @@ function groupCurvesIntoBoundaries(curves is array, tolerance is ValueWithUnits)
                 {
                     group = insertAtIndex(group, 0, { "bSplineCurve" : curve.bSplineCurve, "reversed" : true });
                     chainStart = curveEnd;
-                    remaining = removeIndex(remaining, i);
+                    used[i] = true;
+                    remainingCount -= 1;
                     changed = true;
                     break;
                 }
             }
         }
-        
+
         // Check if loop is closed
         if (norm(chainStart - chainEnd) < tolerance)
         {

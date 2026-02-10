@@ -29,6 +29,22 @@ import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
 import(path : "74231d1d53f5a117d47d17a9", version : "efd6872fd0b7e73a7f8f034d");
 
 // =============================================================================
+// OVERLAP DETECTION CONSTANTS
+// =============================================================================
+
+/**
+ * Overlap percentage threshold for curve deduplication.
+ *
+ * Two curves are considered to fully overlap if >= 80% of control points
+ * from one curve lie on the other. This value balances:
+ * - False negatives: Too high (>90%) misses legitimate overlaps from tessellation
+ * - False positives: Too low (<70%) merges distinct adjacent curves
+ *
+ * Chosen at 80% based on typical B-spline approximation quality.
+ */
+const OVERLAP_PERCENTAGE_THRESHOLD = 0.8;
+
+// =============================================================================
 // CURVE OVERLAP DETECTION TYPES
 // =============================================================================
 
@@ -658,7 +674,7 @@ export function detectCurveOverlap(curveA is BSplineCurve, curveB is BSplineCurv
 
     // Count how many points from A are on B
     var aOnB = 0;
-    var minNeededForA = ceil(nA * 0.8);  // 80% threshold
+    var minNeededForA = ceil(nA * OVERLAP_PERCENTAGE_THRESHOLD);
 
     for (var i = 0; i < nA; i += 1)
     {
@@ -680,7 +696,7 @@ export function detectCurveOverlap(curveA is BSplineCurve, curveB is BSplineCurv
 
     // Count how many points from B are on A (similar optimization)
     var bOnA = 0;
-    var minNeededForB = ceil(nB * 0.8);
+    var minNeededForB = ceil(nB * OVERLAP_PERCENTAGE_THRESHOLD);
 
     for (var i = 0; i < nB; i += 1)
     {
@@ -701,8 +717,8 @@ export function detectCurveOverlap(curveA is BSplineCurve, curveB is BSplineCurv
     }
 
     // Classification logic (unchanged)
-    var aFullyOnB = (aOnB >= nA * 0.8);
-    var bFullyOnA = (bOnA >= nB * 0.8);
+    var aFullyOnB = (aOnB >= nA * OVERLAP_PERCENTAGE_THRESHOLD);
+    var bFullyOnA = (bOnA >= nB * OVERLAP_PERCENTAGE_THRESHOLD);
 
     if (aFullyOnB && bFullyOnA)
     {

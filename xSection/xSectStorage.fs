@@ -7,6 +7,31 @@ import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
 // xSectLanguage (translation lookups)
 import(path : "a0fab52ee4d0b16ffbc1c603", version : "1fc06d17b359529b01d83f40");
 
+// =============================================================================
+// DISPLAY ROUNDING CONSTANTS
+// =============================================================================
+
+/**
+ * Rounding precision for stiffness values in display tables.
+ * Units: lb/in (imperial) and mm/30kg (metric)
+ * Value chosen to show meaningful variation while avoiding false precision.
+ */
+const STIFFNESS_ROUNDING_PRECISION = 0.05;
+
+/**
+ * Rounding precision for stiffness in metric units (mm deflection).
+ * Units: mm/30kg
+ * Slightly coarser than imperial due to typical measurement resolution.
+ */
+const STIFFNESS_ROUNDING_PRECISION_METRIC = 0.1;
+
+/**
+ * Rounding precision for mass/weight display.
+ * Units: kg
+ * Chosen for typical manufacturing weighing precision (10g resolution).
+ */
+const WEIGHT_ROUNDING_PRECISION = 0.01;
+
 
 /**
  * XSECTION STORAGE MODULE
@@ -172,10 +197,10 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
 
     if (beamAnalysis != undefined)
     {
-        var prisLbIn = roundValue(beamAnalysis.prismaticStiffness_lbin, 0.05);   // 0.05 lb/in
-        var prisMm = roundValue(beamAnalysis.prismaticStiffness_mm, 0.1);        // 0.1 mm
-        var estLbIn = roundValue(beamAnalysis.estimatedStiffness_lbin, 0.05);    // 0.05 lb/in
-        var estMm = roundValue(beamAnalysis.estimatedStiffness_mm, 0.1);         // 0.1 mm
+        var prisLbIn = roundValue(beamAnalysis.prismaticStiffness_lbin, STIFFNESS_ROUNDING_PRECISION);
+        var prisMm = roundValue(beamAnalysis.prismaticStiffness_mm, STIFFNESS_ROUNDING_PRECISION_METRIC);
+        var estLbIn = roundValue(beamAnalysis.estimatedStiffness_lbin, STIFFNESS_ROUNDING_PRECISION);
+        var estMm = roundValue(beamAnalysis.estimatedStiffness_mm, STIFFNESS_ROUNDING_PRECISION_METRIC);
 
         summaryTable = append(summaryTable, [summaryLookup["Prismatic stiffness (lb/in)"], prisLbIn]);
         summaryTable = append(summaryTable, [summaryLookup["Prismatic stiffness (mm/30kg)"], prisMm]);
@@ -183,7 +208,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         summaryTable = append(summaryTable, [summaryLookup["Estimated stiffness (mm/30kg)"], estMm]);
     }
 
-    var weightKg = roundValue(totalWeight / kilogram, 0.01);  // 0.01 kg precision
+    var weightKg = roundValue(totalWeight / kilogram, WEIGHT_ROUNDING_PRECISION);
     summaryTable = append(summaryTable, [summaryLookup["Weight (kg)"], weightKg]);
 
     // Cross-section table header (apply translations)

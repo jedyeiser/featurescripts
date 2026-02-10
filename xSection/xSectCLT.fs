@@ -4,11 +4,35 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 // xSectMaterials (buildMaterialLookup, normalizeMaterialName)
 import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
 
+// =============================================================================
+// TOLERANCE CONSTANTS
+// =============================================================================
+
+/**
+ * Area threshold for detecting degenerate polygons.
+ * Below this value, treat body cross-section as having zero area.
+ */
+const ZERO_AREA_TOLERANCE = 1e-15 * meter * meter;
+
+/**
+ * Minimum extensional stiffness for valid beam analysis.
+ * Guards against division by zero when computing neutral axis and EI_eff.
+ * Value chosen to detect numerical issues while allowing very flexible materials.
+ */
+const MIN_EXTENSIONAL_STIFFNESS = 1e-10 * newton;
+
+/**
+ * Warning threshold for suspiciously low extensional stiffness.
+ * Alerts user to possible material assignment issues or degenerate geometry.
+ * Set higher than MIN_EXTENSIONAL_STIFFNESS to flag edge cases.
+ */
+const LOW_STIFFNESS_WARNING = 1e-6 * newton;
+
 
 /**
  * CROSS-SECTION CLT MODULE
  * ========================
- * 
+ *
  * Computes beam-level mechanical properties at each cross-section using
  * Classical Laminate Theory (CLT) principles applied to discrete body geometry.
  *
@@ -198,56 +222,6 @@ export function scaleMatrix3x3(m is array, scalar) returns array
 
 
 // =============================================================================
-// SECTION GEOMETRY
-// =============================================================================
-
-/**
- * Compute bounding box dimensions for a cross-section from its points.
- *
- * @param sectionPoints {array} : Shared point storage [{point2D, point3D}, ...]
- * @returns {map} : { sectionWidth, sectionHeight, minX, maxX, minY, maxY }
- */
-function computeSectionBounds(sectionPoints is array) returns map
-{
-    if (size(sectionPoints) == 0)
-    {
-        return {
-            "sectionWidth" : 0 * meter,
-            "sectionHeight" : 0 * meter,
-            "minX" : 0 * meter,
-            "maxX" : 0 * meter,
-            "minY" : 0 * meter,
-            "maxY" : 0 * meter
-        };
-    }
-
-    var minX = sectionPoints[0].point2D[0];
-    var maxX = minX;
-    var minY = sectionPoints[0].point2D[1];
-    var maxY = minY;
-
-    for (var i = 1; i < size(sectionPoints); i += 1)
-    {
-        var x = sectionPoints[i].point2D[0];
-        var y = sectionPoints[i].point2D[1];
-        minX = min(minX, x);
-        maxX = max(maxX, x);
-        minY = min(minY, y);
-        maxY = max(maxY, y);
-    }
-
-    return {
-        "sectionWidth" : maxX - minX,
-        "sectionHeight" : maxY - minY,
-        "minX" : minX,
-        "maxX" : maxX,
-        "minY" : minY,
-        "maxY" : maxY
-    };
-}
-
-
-// =============================================================================
 // MAIN ENTRY POINT
 // =============================================================================
 
@@ -307,10 +281,9 @@ export function computeCLTProperties(data is map) returns map
     {
         var mechProps = assembleSectionMechanics(section, bodies);
 
-        // Add geometric bounds
-        var bounds = computeSectionBounds(section.sectionPoints);
-        mechProps.sectionWidth = bounds.sectionWidth;
-        mechProps.sectionHeight = bounds.sectionHeight;
+        // Add geometric bounds (reuse pre-computed bounding box from section data)
+        mechProps.sectionWidth = section.boundingBox.width;
+        mechProps.sectionHeight = section.boundingBox.height;
 
         var updatedSection = section;
         updatedSection.mechanicalProperties = mechProps;
@@ -384,7 +357,7 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         var Ixx_centroid_k = props.Iyy;         // second moment about width axis (bending stiffness)
 
         // Skip bodies with effectively zero area (degenerate geometry)
-        if (abs(area_k) < 1e-15 * meter * meter)
+        if (abs(area_k) < ZERO_AREA_TOLERANCE)
         {
             bodyContributions = append(bodyContributions, {
                 "bodyIdx" : bodyIdx,
@@ -436,7 +409,7 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
     var EI_eff = 0 * newton * meter * meter;
 
     // Guard against zero extensional stiffness (e.g. all bodies are IGNORE)
-    if (abs(A[0][0]) > 1e-10 * newton)
+    if (abs(A[0][0]) > MIN_EXTENSIONAL_STIFFNESS)
     {
         // Neutral axis: the Y location where axial strain is zero under
         // pure bending. Derived from the condition B_eff = 0 when the
@@ -453,7 +426,7 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         EI_eff = D[0][0] - (B[0][0] * B[0][0]) / A[0][0];
 
         // Warn if stiffness is suspiciously low
-        if (abs(A[0][0]) < 1e-6 * newton)
+        if (abs(A[0][0]) < LOW_STIFFNESS_WARNING)
         {
             println("WARNING: Section has very low extensional stiffness (A11 = " ~ A[0][0] ~ ")");
         }

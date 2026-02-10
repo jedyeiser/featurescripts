@@ -4,6 +4,19 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 // xSectMaterials (for tryGetKey helper)
 import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
 
+// =============================================================================
+// PLANE VALIDATION CONSTANTS
+// =============================================================================
+
+/**
+ * Tolerance for plane normal alignment with world X axis.
+ *
+ * FCP/ACP planes must be perpendicular to ski axis (world X), meaning their
+ * normal vector should have near-zero Y component. This value (0.01 ≈ 0.6°)
+ * allows for minor CAD alignment imperfections while catching major errors.
+ */
+const PLANE_NORMAL_Y_TOLERANCE = 0.01;
+
 
 /**
  * XSECTION REFERENCE POINTS MODULE
@@ -76,7 +89,7 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
             var facePlane = evPlane(context, { "face" : faceEntities[0] });
 
             // Validate: plane normal must be parallel to world X (no Y component)
-            if (abs(facePlane.normal[1]) > 0.01)
+            if (abs(facePlane.normal[1]) > PLANE_NORMAL_Y_TOLERANCE)
             {
                 throw regenError("FCP/ACP plane must be normal to the ski axis (world X). This plane has a Y component in its normal.");
             }
