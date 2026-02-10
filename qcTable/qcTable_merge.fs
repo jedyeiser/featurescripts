@@ -251,56 +251,57 @@ export function sortTableRows(rows is array, tableOrder is TABLE_ORDER) returns 
 export function buildColumnDefinitions(
     hasCore is boolean,
     hasSW is boolean,
-    detailLevel is DETAIL_LEVEL) returns array
+    detailLevel is DETAIL_LEVEL,
+    language is LANGUAGE) returns array
 {
     var columns = [];
 
     // STANDARD columns (always present)
-    columns = append(columns, tableColumnDefinition("callout", "Callout"));
-    columns = append(columns, tableColumnDefinition("station", "Station"));
-    columns = append(columns, tableColumnDefinition("x_mrs", "X"));
+    columns = append(columns, tableColumnDefinition("callout", translateColumnName("Callout", language)));
+    columns = append(columns, tableColumnDefinition("station", translateColumnName("Station", language)));
+    columns = append(columns, tableColumnDefinition("x_mrs", translateColumnName("X", language)));
 
     if (hasCore)
     {
-        columns = append(columns, tableColumnDefinition("core_height", "Core Height"));
+        columns = append(columns, tableColumnDefinition("core_height", translateColumnName("Core Height", language)));
     }
 
     if (hasSW)
     {
-        columns = append(columns, tableColumnDefinition("sw_height", "SW Height"));
+        columns = append(columns, tableColumnDefinition("sw_height", translateColumnName("SW Height", language)));
     }
 
     // Core/SW delta (only if both present)
     if (hasCore && hasSW)
     {
-        columns = append(columns, tableColumnDefinition("core_sw_delta", "Core/SW \u0394"));
+        columns = append(columns, tableColumnDefinition("core_sw_delta", translateColumnName("Core/SW \u0394", language)));
     }
 
     // DETAILS columns (additional measurements)
     if (detailLevel == DETAIL_LEVEL.DETAILS)
     {
         // Distance references
-        columns = append(columns, tableColumnDefinition("x_acp", "X from ACP"));
+        columns = append(columns, tableColumnDefinition("x_acp", translateColumnName("X from ACP", language)));
 
         if (hasCore)
         {
-            columns = append(columns, tableColumnDefinition("x_core", "X from Core Tail"));
+            columns = append(columns, tableColumnDefinition("x_core", translateColumnName("X from Core Tail", language)));
         }
 
         if (hasSW)
         {
-            columns = append(columns, tableColumnDefinition("x_sw", "X from SW Tail"));
+            columns = append(columns, tableColumnDefinition("x_sw", translateColumnName("X from SW Tail", language)));
         }
 
         // Core geometry details
         if (hasCore)
         {
-            columns = append(columns, tableColumnDefinition("coreWidth", "Core Width"));
-            columns = append(columns, tableColumnDefinition("groovedThickness", "Grooved Thickness"));
-            columns = append(columns, tableColumnDefinition("topWidth", "Top Width"));
-            columns = append(columns, tableColumnDefinition("topAngle", "Top Angle"));
-            columns = append(columns, tableColumnDefinition("baseRoutDepth", "BR Depth"));
-            columns = append(columns, tableColumnDefinition("baseRoutWidth", "BR Width"));
+            columns = append(columns, tableColumnDefinition("coreWidth", translateColumnName("Core Width", language)));
+            columns = append(columns, tableColumnDefinition("groovedThickness", translateColumnName("Grooved Thickness", language)));
+            columns = append(columns, tableColumnDefinition("topWidth", translateColumnName("Top Width", language)));
+            columns = append(columns, tableColumnDefinition("topAngle", translateColumnName("Top Angle", language)));
+            columns = append(columns, tableColumnDefinition("baseRoutDepth", translateColumnName("BR Depth", language)));
+            columns = append(columns, tableColumnDefinition("baseRoutWidth", translateColumnName("BR Width", language)));
         }
     }
 

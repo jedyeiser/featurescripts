@@ -1957,9 +1957,26 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     // OPTIONAL: Convert to strict arcs if requested
     if (strictArcs)
     {
-        var arcCurves = forceQuadraticNurbs(context, id + "strictArcs", outputCurves);
+        // Extract BSpline data from queries
+        var bSplineData = mapArray(outputCurves, function(curveQuery) {
+            return evApproximateBSplineCurve(context, { "edge" : curveQuery });
+        });
+
+        // Convert to rational quadratic NURBS (arcs)
+        var arcBSplines = forceQuadraticNurbs(context, id + "strictArcs", bSplineData);
+
+        // Create curve entities from arc definitions
+        var arcCurves = [];
+        for (var i = 0; i < size(arcBSplines); i += 1)
+        {
+            opCreateBSplineCurve(context, id + ("strictArc" ~ i), {
+                "bSplineCurve" : arcBSplines[i]
+            });
+            arcCurves = append(arcCurves, qCreatedBy(id + ("strictArc" ~ i), EntityType.EDGE));
+        }
+
         outputCurves = arcCurves;
-        println("  Converted to strict arcs (rational quadratic NURBS)");
+        println("  Converted to strict arcs (rational quadratic NURBS): " ~ size(arcCurves) ~ " arcs");
     }
 
     // NOTE: To validate final radius accuracy, run analyzeFootprint on the output curves
