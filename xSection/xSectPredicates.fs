@@ -1,6 +1,10 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
+//import xSectLanguage (export/import)
+export import(path : "a0fab52ee4d0b16ffbc1c603", version : "1fc06d17b359529b01d83f40");
+
+
 /**
  * PREDICATES - UI Definitions for EI Cross Section Feature
  * =========================================================
@@ -236,10 +240,15 @@ export predicate eiXSectPrecondition(definition is map)
     // Output Options
     // -------------------------------------------------------------------------
     
-    annotation { "Name" : "Create composites", 
-                 "Default" : true, 
-                 "Description" : "Creates a composite part of unique wires for each cross section" }
-    definition.createComposites is boolean;
+    annotation { "Group Name" : "Output Options", "Collapsed By Default" : true }
+    {
+        annotation { "Name" : "Create composites", "Default" : true,  "Description" : "Creates a composite part of unique wires for each cross section" }
+        definition.createComposites is boolean;
+        
+        annotation { "Name" : "Language", "Default" : LANGUAGE.ENG, "Description" : "Custom table headers will be in the language selected" }
+        definition.tableLanguage is LANGUAGE;
+        
+    }
 
     // -------------------------------------------------------------------------
     // Debug Options

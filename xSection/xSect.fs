@@ -2,31 +2,31 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectPredicates (UI definitions)
-export import(path : "17142132b20343b5f125e7e7", version : "ebc711c41b22e6018e89599c");
+export import(path : "17142132b20343b5f125e7e7", version : "c48016953afa1239d5c80e18");
 
 // xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "c7d444cfe9f333eaffb6d356");
+import(path : "c2c3edd39b85fde5e6062533", version : "f27666c99d8984e7de77d30b");
 
 // xSectCLT (CLT computations)
-import(path : "74231d1d53f5a117d47d17a9", version : "4440e5b641b869a485547113");
+import(path : "74231d1d53f5a117d47d17a9", version : "efd6872fd0b7e73a7f8f034d");
 
 // xSectBeamAnalysis (beam stiffness computations)
-import(path : "ebac109589e3bf405d3f3ae7", version : "758b33074135ab5f0f9f20f0");
+import(path : "ebac109589e3bf405d3f3ae7", version : "e7462d0d919372f4701957f8");
 
 //import xSectMatrials
-import(path : "f8e590162884d45f56e0a05f", version : "a10b83decf148c418d18a345");
+import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
 //import xSectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "41272ded5f73b6463e3596f2");
+import(path : "3cb3cff6974529bf6bed096b", version : "971c170990701acd707939ce");
 //import xSectVisualization
-import(path : "19991d0446ad0551339572d9", version : "2dd1f0c390eae958e18fdc69");
+import(path : "19991d0446ad0551339572d9", version : "b665d5e43f61f23f7cb24fbf");
 //import xSectStorage
-import(path : "a2f2ae10eb446d33ccd47bb9", version : "2d7c18f95f9ee9c504375da0");
+import(path : "a2f2ae10eb446d33ccd47bb9", version : "202bdefa57b70e2135887b1a");
 //import xSectComposites
-import(path : "8c01f1526e7b93cc89fe9811", version : "7eb3bf3a5c60b2ec5aa1fe56");
+import(path : "8c01f1526e7b93cc89fe9811", version : "34a882ee0326a5ab03014d3c");
 //import xSectDebug
-import(path : "4973f90e73d48ab3578831f0", version : "55b4a50f5b7a943a5e991dfc");
+import(path : "4973f90e73d48ab3578831f0", version : "ebccd506b82430ffb9ef50d1");
 //import xSectReferencePoints
-import(path : "08fddb59786b6bfee020ee05", version : "0461959ec365efb642f937cf");
+import(path : "08fddb59786b6bfee020ee05", version : "8312065a8b5197e176480ae6");
 
 
 // =============================================================================
@@ -371,7 +371,14 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
         println("═══════════════════════════════════════");
 
-        var tableData = buildTableData(crossSectionData.crossSections, beamAnalysisResults, totalWeight);
+        // Extract language preference (default to English)
+        var language = LANGUAGE.ENG;
+        if (definition.tableLanguage != undefined)
+        {
+            language = definition.tableLanguage;
+        }
+
+        var tableData = buildTableData(crossSectionData.crossSections, beamAnalysisResults, totalWeight, language);
 
         // -----------------------------------------------------------------
         // Step 8: Store analysis data as attribute on origin

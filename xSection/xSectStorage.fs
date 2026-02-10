@@ -2,7 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "a10b83decf148c418d18a345");
+import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
+
+// xSectLanguage (translation lookups)
+import(path : "a0fab52ee4d0b16ffbc1c603", version : "1fc06d17b359529b01d83f40");
 
 
 /**
@@ -89,16 +92,16 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
         sectionDetails = append(sectionDetails, sectionDetail);
     }
 
-    // Get feature name (if provided)
-    var featureName = "";
-    if (definition.featureName != undefined && definition.featureName != "")
+    // Get analysis name (if provided)
+    var analysisName = "";
+    if (definition.analysisName != undefined && definition.analysisName != "")
     {
-        featureName = definition.featureName;
+        analysisName = definition.analysisName;
     }
 
     // Build complete data structure
     var analysisData = {
-        "featureName" : featureName,
+        "analysisName" : analysisName,
         "details" : {
             "bodies" : bodyDetails,
             "crossSections" : sectionDetails,
@@ -155,10 +158,15 @@ export function roundValue(value is number, precision is number) returns number
  * @param crossSections {array} : Cross-section data with mechanical properties
  * @param beamAnalysis {map} : Beam stiffness results (or undefined if not computed)
  * @param totalWeight {ValueWithUnits} : Total beam weight
+ * @param language {LANGUAGE} : Language for table headers and metrics
  * @returns {map} : { summary: array, crossSections: array }
  */
-export function buildTableData(crossSections is array, beamAnalysis, totalWeight is ValueWithUnits) returns map
+export function buildTableData(crossSections is array, beamAnalysis, totalWeight is ValueWithUnits, language is LANGUAGE) returns map
 {
+    // Get translation lookups for this language
+    var summaryLookup = overallAnalysisTranslationLookup[language];
+    var headerLookup = mainTableHeaderTranslationLookup[language];
+
     // Summary table
     var summaryTable = [];
 
@@ -169,18 +177,26 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         var estLbIn = roundValue(beamAnalysis.estimatedStiffness_lbin, 0.05);    // 0.05 lb/in
         var estMm = roundValue(beamAnalysis.estimatedStiffness_mm, 0.1);         // 0.1 mm
 
-        summaryTable = append(summaryTable, ["Prismatic stiffness (lb/in)", prisLbIn]);
-        summaryTable = append(summaryTable, ["Prismatic stiffness (mm/30kg)", prisMm]);
-        summaryTable = append(summaryTable, ["Estimated stiffness (lb/in)", estLbIn]);
-        summaryTable = append(summaryTable, ["Estimated stiffness (mm/30kg)", estMm]);
+        summaryTable = append(summaryTable, [summaryLookup["Prismatic stiffness (lb/in)"], prisLbIn]);
+        summaryTable = append(summaryTable, [summaryLookup["Prismatic stiffness (mm/30kg)"], prisMm]);
+        summaryTable = append(summaryTable, [summaryLookup["Estimated stiffness (lb/in)"], estLbIn]);
+        summaryTable = append(summaryTable, [summaryLookup["Estimated stiffness (mm/30kg)"], estMm]);
     }
 
     var weightKg = roundValue(totalWeight / kilogram, 0.01);  // 0.01 kg precision
-    summaryTable = append(summaryTable, ["Weight (kg)", weightKg]);
+    summaryTable = append(summaryTable, [summaryLookup["Weight (kg)"], weightKg]);
 
-    // Cross-section table header
+    // Cross-section table header (apply translations)
     var csTable = [
-        ["Station", "X", "EI", "NA Height", "Beam Width", "Beam Height", "Lineal Density"]
+        [
+            headerLookup["Station"],
+            headerLookup["X"],
+            headerLookup["EI"],
+            headerLookup["NA Height"],
+            headerLookup["Beam Width"],
+            headerLookup["Beam Height"],
+            headerLookup["Lineal Density"]
+        ]
     ];
 
     // Add data rows

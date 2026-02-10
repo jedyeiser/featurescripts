@@ -1,0 +1,26 @@
+Stiffness tools.
+
+We are going to develop a suite of features centered around ski/snowboard stiffness analyis. Look at the xSect Reference, we're going to want to import a number of those files and reuse
+functions.
+
+The first function is going to generate/guess an updated profile based on a variety of input information, and the deep analysis that will be done beforehand on the ski/snowboard cross
+section. Again, look at our reference documents.
+
+user provides a query for an EI curve, or a set of G0 continuous curves that define the target stiffness of the beam. Default units are 1mm of height in Z = 1Nm^2 of bending stiffness.
+
+We must assume that the EI curves defines the desired stiffness profile of a ski. A cross section at a given x value should get it's stiffness from the EI curve at that same X value.
+
+User provides measured stiffness profile.
+
+If the two profiles are not equal within a specified tolerance, solve for the updated profile, one cross section at a time.
+
+We are going to solve for the 'correct ski profile height to hit the target EI curve' at each cross section. We have a theoretical EI curve, and we have detailed part data - CRITICALLY with
+verticies of our triangles.
+
+In each cross section, we assume that verticies above the neutral axis will change in height with the change in the beam height. Vertex heights below the neutral axis will not change -
+necessarily.
+
+This approach means that we will need to calculate the neutral axis at each iteration. We need to be clever here and prevent verticies moving in such a way that A: areas are zero or B the
+triangle 'flips' (top point is above neutral axis, two other points are below neutral axis. We should prevent the top point from moving below the neutral axis height. If we get to the point
+where we're trying to do so, we should move the verticies to 'logically sound' positions as close to the 'target move' as possible, re-evaluate where the 'new neutral axis is' and move on. We
+should spend some time discussing.

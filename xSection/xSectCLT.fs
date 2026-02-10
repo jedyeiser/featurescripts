@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (buildMaterialLookup, normalizeMaterialName)
-import(path : "f8e590162884d45f56e0a05f", version : "a10b83decf148c418d18a345");
+import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
 
 
 /**

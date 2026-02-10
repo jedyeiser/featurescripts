@@ -27,6 +27,7 @@ export function createVisualizationCurves(context is Context, id is Id,
 {
     createEICurve(context, id + "eiCurve", crossSectionData, namePrefix);
     createNeutralAxisCurve(context, id + "naCurve", crossSectionData, namePrefix);
+    createLinealDensityCurve(context, id + "ldCurve", crossSectionData, namePrefix);
 }
 
 /**
@@ -148,5 +149,74 @@ export function createNeutralAxisCurve(context is Context, id is Id, crossSectio
     catch (e)
     {
         println("WARNING: Failed to create neutral axis curve - " ~ e);
+    }
+}
+
+/**
+ * Create a lineal density visualization curve in the XZ plane.
+ *
+ * Scale: 1 kg/m of lineal density = 100mm of curve height in Z.
+ * X position = world X of each cross-section origin.
+ * Z position = lineal_density * 100mm.
+ * Y position = 0 (lives in XZ plane).
+ *
+ * @param context {Context}
+ * @param id {Id}
+ * @param crossSectionData {map} : Full data with mechanicalProperties
+ * @param namePrefix {string} : Analysis name prefix for curve naming
+ */
+export function createLinealDensityCurve(context is Context, id is Id,
+                                          crossSectionData is map, namePrefix is string)
+{
+    var sections = crossSectionData.crossSections;
+    if (size(sections) < 2)
+        return;
+
+    var points = [];
+    for (var section in sections)
+    {
+        var worldX = section.frame.origin[0];
+
+        // Sum lineal density from all body contributions
+        var linealDensity = 0 * kilogram / meter;
+        for (var contrib in section.mechanicalProperties.bodyContributions)
+        {
+            if (contrib.linearDensity != undefined)
+            {
+                linealDensity = linealDensity + contrib.linearDensity;
+            }
+        }
+
+        // Scale: 1 kg/m = 100mm of height in world Z
+        var zHeight = (linealDensity / (kilogram / meter)) * 100 * millimeter;
+
+        points = append(points, vector(worldX, 0 * meter, zHeight));
+    }
+
+    try
+    {
+        opFitSpline(context, id, {
+                "points" : points
+        });
+
+        var curveName = "linealDensity_curve";
+        if (namePrefix != "")
+        {
+            curveName = namePrefix ~ "_linealDensity";
+        }
+
+        var createdBodies = evaluateQuery(context, qCreatedBy(id, EntityType.BODY));
+        if (size(createdBodies) > 0)
+        {
+            setProperty(context, {
+                    "entities" : createdBodies[0],
+                    "propertyType" : PropertyType.NAME,
+                    "value" : curveName
+            });
+        }
+    }
+    catch (e)
+    {
+        println("WARNING: Failed to create lineal density curve - " ~ e);
     }
 }

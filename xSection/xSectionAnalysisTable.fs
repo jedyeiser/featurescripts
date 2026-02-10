@@ -49,20 +49,20 @@ precondition
         {
             var analysisData = allData[key];
             var tableData = analysisData.tableData;
-            var featureName = analysisData.featureName;
+            var analysisName = analysisData.analysisName;
 
-            // Use feature name in title if provided
-            var titleSuffix = "";
-            if (featureName != undefined && featureName != "")
+            // Use analysis name in title if provided
+            var titlePrefix = "";
+            if (analysisName != undefined && analysisName != "")
             {
-                titleSuffix = " - " ~ featureName;
+                titlePrefix = analysisName ~ " - ";
             }
 
             // Build summary table
-            var summaryTable = buildSummaryTable(tableData.summary, titleSuffix);
+            var summaryTable = buildSummaryTable(tableData.summary, titlePrefix);
 
             // Build cross-section details table
-            var detailsTable = buildCrossSectionTable(tableData.crossSections, titleSuffix);
+            var detailsTable = buildCrossSectionTable(tableData.crossSections, titlePrefix);
 
             allTables = append(allTables, summaryTable);
             allTables = append(allTables, detailsTable);
@@ -75,7 +75,7 @@ precondition
 /**
  * Build summary table with overall beam stiffness metrics.
  */
-function buildSummaryTable(summaryData is array, titleSuffix is string) returns Table
+function buildSummaryTable(summaryData is array, titlePrefix is string) returns Table
 {
     // Define columns
     var columns = [
@@ -94,13 +94,13 @@ function buildSummaryTable(summaryData is array, titleSuffix is string) returns 
         rows = append(rows, tableRow(cellData));
     }
 
-    return table("Beam Analysis Summary" ~ titleSuffix, columns, rows);
+    return table(titlePrefix ~ "Beam Analysis Summary", columns, rows);
 }
 
 /**
  * Build cross-section details table with per-section properties.
  */
-function buildCrossSectionTable(csData is array, titleSuffix is string) returns Table
+function buildCrossSectionTable(csData is array, titlePrefix is string) returns Table
 {
     // First row is header
     var header = csData[0];
@@ -133,5 +133,5 @@ function buildCrossSectionTable(csData is array, titleSuffix is string) returns 
         rows = append(rows, tableRow(cellData));
     }
 
-    return table("Cross-Section Details (" ~ (size(csData) - 1) ~ " sections)" ~ titleSuffix, columns, rows);
+    return table(titlePrefix ~ "Cross-Section Details (" ~ (size(csData) - 1) ~ " sections)", columns, rows);
 }
