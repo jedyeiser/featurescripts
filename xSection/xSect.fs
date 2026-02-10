@@ -128,10 +128,15 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         {
             materialLookup = buildMaterialLookup(csvData);
         }
+        else
+        {
+            println("WARNING: Material CSV not loaded or invalid format");
+        }
     }
-    catch
+    catch (e)
     {
-        // CSV not loaded yet or malformed -- proceed with empty lookup
+        println("ERROR parsing material CSV: " ~ e);
+        // Proceed with empty lookup
     }
     
     // -----------------------------------------------------------------
@@ -494,8 +499,16 @@ function processCrossSections(context is Context, id is Id, definition is map) r
 
     var crossSections = [];
 
+    println("Processing " ~ size(frames) ~ " cross-sections...");
+
     for (var i = 0; i < size(frames); i += 1)
     {
+        // Progress indicator every 10 sections
+        if (i % 10 == 0 && i > 0)
+        {
+            println("  Section " ~ i ~ " / " ~ size(frames) ~ " (" ~ floor(100.0 * i / size(frames)) ~ "%)");
+        }
+
         var frame = frames[i];
         var xSectPlane = plane(frame.origin, frame.zAxis);
         
@@ -609,7 +622,9 @@ function processCrossSections(context is Context, id is Id, definition is map) r
             "bodyData" : bodyData
         });
     }
-    
+
+    println("Cross-section processing complete: " ~ size(crossSections) ~ " sections analyzed");
+
     return {
         "bodies" : bodies,
         "crossSections" : crossSections
@@ -1071,35 +1086,72 @@ function curveEndpointsTouch(curveA is BSplineCurve, curveB is BSplineCurve, tol
 }
 
 /**
- * Detect overlap between two curves.
+ * Detect overlap between two curves with early-abort optimization.
+ *
+ * Checks control point proximity to classify overlap:
+ * - FULL_CONTAINMENT: >=80% of points from one curve lie on the other
+ * - PARTIAL_OVERLAP: >=2 points match but not full containment
+ * - NONE: <2 points match or early-abort triggered
+ *
+ * Early-abort logic:
+ * - Success: Stop once 80% threshold reached (no need to check remaining points)
+ * - Failure: Abort if first 3 points show no match (curves likely don't overlap)
  */
 function detectCurveOverlap(curveA is BSplineCurve, curveB is BSplineCurve, tol is ValueWithUnits) returns map
 {
     var cpA = curveA.controlPoints;
     var cpB = curveB.controlPoints;
-    
+    var nA = size(cpA);
+    var nB = size(cpB);
+
+    // Count how many points from A are on B
     var aOnB = 0;
-    for (var pt in cpA)
+    var minNeededForA = ceil(nA * 0.8);  // 80% threshold
+
+    for (var i = 0; i < nA; i += 1)
     {
+        var pt = cpA[i];
         var closest = closestPointOnPolyline(pt, cpB);
         if (closest.distance < tol)
             aOnB += 1;
+
+        // Early success - if we've reached 80%, stop checking
+        if (aOnB >= minNeededForA)
+            break;
+
+        // Early failure - if we've checked 3 points and none match, abort
+        if (i >= 2 && aOnB == 0)
+        {
+            return { "overlapType" : OverlapType.NONE, "aContainsB" : false };
+        }
     }
-    
+
+    // Count how many points from B are on A (similar optimization)
     var bOnA = 0;
-    for (var pt in cpB)
+    var minNeededForB = ceil(nB * 0.8);
+
+    for (var i = 0; i < nB; i += 1)
     {
+        var pt = cpB[i];
         var closest = closestPointOnPolyline(pt, cpA);
         if (closest.distance < tol)
             bOnA += 1;
+
+        // Early success
+        if (bOnA >= minNeededForB)
+            break;
+
+        // Early failure
+        if (i >= 2 && bOnA == 0)
+        {
+            return { "overlapType" : OverlapType.NONE, "aContainsB" : false };
+        }
     }
-    
-    var nA = size(cpA);
-    var nB = size(cpB);
-    
+
+    // Classification logic (unchanged)
     var aFullyOnB = (aOnB >= nA * 0.8);
     var bFullyOnA = (bOnA >= nB * 0.8);
-    
+
     if (aFullyOnB && bFullyOnA)
     {
         return { "overlapType" : OverlapType.FULL_CONTAINMENT, "aContainsB" : (nA >= nB) };
@@ -1116,7 +1168,7 @@ function detectCurveOverlap(curveA is BSplineCurve, curveB is BSplineCurve, tol 
     {
         return { "overlapType" : OverlapType.PARTIAL_OVERLAP, "aContainsB" : false };
     }
-    
+
     return { "overlapType" : OverlapType.NONE, "aContainsB" : false };
 }
 

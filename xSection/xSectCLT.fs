@@ -447,6 +447,16 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         //
         // For a symmetric layup (B = 0), this reduces to D11.
         EI_eff = D[0][0] - (B[0][0] * B[0][0]) / A[0][0];
+
+        // Warn if stiffness is suspiciously low
+        if (abs(A[0][0]) < 1e-6 * newton)
+        {
+            println("WARNING: Section has very low extensional stiffness (A11 = " ~ A[0][0] ~ ")");
+        }
+    }
+    else
+    {
+        println("WARNING: Zero extensional stiffness detected - all bodies may be set to IGNORE");
     }
 
     return {
@@ -514,23 +524,45 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
 export function buildMaterialLookup(csvData) returns map
 {
     if (!(csvData is array))
+    {
+        println("WARNING: Material CSV is not an array");
         return {};
+    }
 
     var lookup = {};
+    var validRows = 0;
+    var skippedRows = 0;
 
     for (var row in csvData)
     {
         // Skip rows that don't have enough columns or have empty name
         if (size(row) < 11)
+        {
+            skippedRows += 1;
             continue;
+        }
 
         var name = row[1];
         if (name == undefined || name == "")
+        {
+            skippedRows += 1;
             continue;
+        }
 
         // Skip header row or any row where density isn't numeric
         if (!(row[2] is number))
+        {
+            skippedRows += 1;
             continue;
+        }
+
+        // Validate Young's modulus is numeric
+        if (!(row[4] is number))
+        {
+            println("WARNING: Skipping material row with invalid Young's modulus: " ~ toString(name));
+            skippedRows += 1;
+            continue;
+        }
 
         var key = normalizeMaterialName(name);
 
@@ -561,7 +593,11 @@ export function buildMaterialLookup(csvData) returns map
             "youngsModulus" : youngsModulus,
             "qMatrix" : qMatrix
         };
+        validRows += 1;
     }
+
+    println("Material library: " ~ validRows ~ " materials loaded" ~
+            (skippedRows > 0 ? (", " ~ skippedRows ~ " rows skipped") : ""));
 
     return lookup;
 }

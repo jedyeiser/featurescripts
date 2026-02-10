@@ -1702,8 +1702,10 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     var kReference = [];
 
     // Inflection bounds (will be updated each iteration)
-    var inflectionXMin = newFcpX;  // Default to full sidecut
+    var inflectionXMin = newFcpX;  // Default to full sidecut (NEW space)
     var inflectionXMax = newAcpX;
+    var refInflectionXMin = refFcpX;  // Default to full sidecut (REFERENCE space)
+    var refInflectionXMax = refAcpX;
 
     // ITERATION LOOP: Adjust scale factor until radius matches target
     for (var iteration = 0; iteration < maxIterations; iteration += 1)
@@ -1736,14 +1738,27 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         // Scale curvature SELECTIVELY
         // - Between inflections: apply radiusScaleFactor
         // - Outside inflections (taper): keep original
+        //
+        // CRITICAL: Use REFERENCE space coordinates consistently!
+        // - kReference was sampled at refXSamples (reference space)
+        // - inflectionXMin/Max are in NEW space
+        // - Must transform inflection bounds to reference space for comparison
         var scaledK = [];
+
+        // Transform inflection bounds from NEW space to REFERENCE space
+        // Formula: refX = refFcpX + (newX - newFcpX) / xScale
+        var xScale = (newAcpX - newFcpX) / (refAcpX - refFcpX);
+        refInflectionXMin = refFcpX + (inflectionXMin - newFcpX) / xScale;
+        refInflectionXMax = refFcpX + (inflectionXMax - newFcpX) / xScale;
+
         for (var i = 0; i < size(kReference); i += 1)
         {
-            var x = newFcpX + (i / (size(kReference) - 1)) * (newAcpX - newFcpX);
+            // Use REFERENCE X coordinate (matching how kReference was sampled)
+            var xRef = refXSamples[i];
             var k = kReference[i];
 
-            // Check if this sample is between inflections (sidecut region)
-            if (x >= inflectionXMin && x <= inflectionXMax)
+            // Check if this sample is between inflections (sidecut region) in REFERENCE space
+            if (xRef >= refInflectionXMin && xRef <= refInflectionXMax)
             {
                 // Scale sidecut curvature
                 scaledK = append(scaledK, k * radiusScaleFactor);
@@ -1830,8 +1845,9 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         // EVALUATE ACTUAL RADIUS between inflection points (like analyzeFootprint)
         var actualRadius = evaluateRadiusBetweenInflections(tempCurve, evalXMin, evalXMax);
 
-        println("  Inflection bounds: [" ~ toString(inflectionXMin) ~ ", " ~ toString(inflectionXMax) ~ "]");
-        println("  Scaling curvature only between inflections");
+        println("  Inflection bounds (NEW space): [" ~ toString(inflectionXMin) ~ ", " ~ toString(inflectionXMax) ~ "]");
+        println("  Inflection bounds (REF space): [" ~ toString(refInflectionXMin) ~ ", " ~ toString(refInflectionXMax) ~ "]");
+        println("  Scaling curvature only between inflections (coordinate space fix applied)");
         println("  FB inflection: " ~ (fbInflection.found ? ("X=" ~ toString(fbInflection.x)) : "not found"));
         println("  AB inflection: " ~ (abInflection.found ? ("X=" ~ toString(abInflection.x)) : "not found"));
         println("  Actual radius: " ~ toString(actualRadius) ~ " (between X=" ~ toString(evalXMin) ~ " to " ~ toString(evalXMax) ~ ")");

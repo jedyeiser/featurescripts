@@ -1,6 +1,7 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
+// IMPORT: tools/math_utils.fs (for safeSign)
 
 /**
  * Shared mathematical utilities for footprint analysis.

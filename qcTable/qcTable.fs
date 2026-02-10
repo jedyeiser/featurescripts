@@ -120,6 +120,9 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===== Table Formatting =====
         annotation { "Group Name" : "Table Formatting", "Collapsed By Default" : true }
         {
+            annotation { "Name" : "Detail Level", "UIHint" : UIHint.SHOW_LABEL, "Default" : DETAIL_LEVEL.STANDARD }
+            definition.detailLevel is DETAIL_LEVEL;
+
             annotation { "Name" : "Table Order", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORDER.DESCENDING }
             definition.tableOrder is TABLE_ORDER;
 
@@ -301,21 +304,21 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             if (definition.keepWires)
             {
                 setProperty(context, {
-                    'entities': swSetup.centerSplineBottom,
-                    'propertyType': PropertyType.NAME,
-                    'value': "SW_BOTTOM_CENTER_WIRE"
+                    "entities" : swSetup.centerSplineBottom,
+                    "propertyType" : PropertyType.NAME,
+                    "value" : "SW_BOTTOM_CENTER_WIRE"
                 });
 
                 setProperty(context, {
-                    'entities': swSetup.centerSplineTop,
-                    'propertyType': PropertyType.NAME,
-                    'value': "SW_TOP_CENTER_WIRE"
+                    "entities" : swSetup.centerSplineTop,
+                    "propertyType" : PropertyType.NAME,
+                    "value" : "SW_TOP_CENTER_WIRE"
                 });
             }
             else
             {
                 opDeleteBodies(context, id + "deleteSWWires", {
-                    'entities': qUnion([swSetup.centerSplineBottom, swSetup.centerSplineTop])
+                    "entities" : qUnion([swSetup.centerSplineBottom, swSetup.centerSplineTop])
                 });
             }
         }
@@ -325,9 +328,10 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===================================================================
 
         var formatConfig = {
-            'tableUnits': definition.tableUnits,
-            'sigFigs': definition.sigFigs,
-            'showUnits': definition.showUnits
+            "tableUnits" : definition.tableUnits,
+            "sigFigs" : definition.sigFigs,
+            "showUnits" : definition.showUnits,
+            "detailLevel" : definition.detailLevel
         } as FormatConfig;
 
         var tableData = mergeStationData(
@@ -353,14 +357,14 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===================================================================
 
         setAttribute(context, {
-            'entities': qOrigin(EntityType.BODY),
-            'name': "qcTableData",
-            'attribute': {
-                'data': tableData,
-                'hasCore': hasCore,
-                'hasSW': hasSW,
-                'tableOrder': definition.tableOrder,
-                'format': formatConfig
+            "entities" : qOrigin(EntityType.BODY),
+            "name" : "qcTableData",
+            "attribute" : {
+                "data" : tableData,
+                "hasCore" : hasCore,
+                "hasSW" : hasSW,
+                "detailLevel" : definition.detailLevel,
+                "format" : formatConfig
             }
         });
 
@@ -392,16 +396,17 @@ export const qcTable = defineTable(function(context is Context, definition is ma
 
         // Get attribute data
         var tableAttribute = getAttribute(context, {
-            'entity': bodiesWithAttribute[0],
-            'name': "qcTableData"
+            "entity" : bodiesWithAttribute[0],
+            "name" : "qcTableData"
         });
 
         var tableData = tableAttribute.data;
         var hasCore = tableAttribute.hasCore;
         var hasSW = tableAttribute.hasSW;
+        var detailLevel = tableAttribute.detailLevel;
 
         // Build dynamic column definitions
-        var columns = buildColumnDefinitions(hasCore, hasSW);
+        var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel);
 
         // Build table rows
         var rows = [];

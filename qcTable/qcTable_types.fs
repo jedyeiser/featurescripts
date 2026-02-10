@@ -73,6 +73,17 @@ export enum EXPORT_UNITS
     CENTIMETER
 }
 
+/**
+ * Detail level for table columns
+ */
+export enum DETAIL_LEVEL
+{
+    annotation { "Name" : "Standard (Essential columns only)" }
+    STANDARD,
+    annotation { "Name" : "Details (All measurements)" }
+    DETAILS
+}
+
 // ============================================================================
 // CONSTANTS AND BOUNDS
 // ============================================================================
@@ -204,6 +215,7 @@ export predicate canBeFormatConfig(value)
     value.tableUnits is EXPORT_UNITS;
     value.sigFigs is number;
     value.showUnits is boolean;
+    value.detailLevel is DETAIL_LEVEL;
 }
 
 // ============================================================================
