@@ -131,6 +131,9 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Table Order", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORDER.DESCENDING }
             definition.tableOrder is TABLE_ORDER;
 
+            annotation { "Name" : "Language", "Default" : LANGUAGE.ENG }
+            definition.language is LANGUAGE;
+
             annotation { "Name" : "Table Units", "Default" : EXPORT_UNITS.MILLIMETER }
             definition.tableUnits is EXPORT_UNITS;
 
@@ -336,7 +339,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             "tableUnits" : definition.tableUnits,
             "sigFigs" : definition.sigFigs,
             "showUnits" : definition.showUnits,
-            "detailLevel" : definition.detailLevel
+            "detailLevel" : definition.detailLevel,
+            "language" : definition.language
         } as FormatConfig;
 
         var tableData = mergeStationData(
@@ -409,9 +413,11 @@ export const qcTable = defineTable(function(context is Context, definition is ma
         var hasCore = tableAttribute.hasCore;
         var hasSW = tableAttribute.hasSW;
         var detailLevel = tableAttribute.detailLevel;
+        var formatConfig = tableAttribute.format;
+        var language = (formatConfig.language != undefined) ? formatConfig.language : LANGUAGE.ENG;
 
         // Build dynamic column definitions
-        var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel);
+        var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel, language);
 
         // Build table rows
         var rows = [];

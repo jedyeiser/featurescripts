@@ -15,61 +15,75 @@ import(path : "onshape/std/common.fs", version : "2878.0");
      CHN,
  }
  
- export const langColLookup = 
+ export const langColLookup =
  {
      LANGUAGE.ENG : {
-         "Callout" : "Callout", 
-         "Station": "Station", 
-         "X" : "X", 
-         "Core height" : "Core height", 
-         "Sidewall height" : "Sidewall height",
-         "Core/SW Δ" : "Core/SW Δ", 
-         "Dist from ACP" : "Dist from ACP", 
-         "Dist from core tail" : "Dist from core tail", 
-         "Dist from SW tail" : "Dist from SW tail",
-         "Core width" : "Core width", 
-         "Grooved thickness" : "Grooved thickness",
-         "Top width" : "Top width",
-         "Top angle" : "Top angle",
+         "Callout" : "Callout",
+         "Station": "Station",
+         "X" : "X",
+         "Core Height" : "Core Height",
+         "SW Height" : "SW Height",
+         "Core/SW \u0394" : "Core/SW \u0394",
+         "X from ACP" : "X from ACP",
+         "X from Core Tail" : "X from Core Tail",
+         "X from SW Tail" : "X from SW Tail",
+         "Core Width" : "Core Width",
+         "Grooved Thickness" : "Grooved Thickness",
+         "Top Width" : "Top Width",
+         "Top Angle" : "Top Angle",
          "BR Depth" : "BR Depth",
          "BR Width" : "BR Width"
      },
      LANGUAGE.GER : {
-         "Callout" : "Name", 
-         "Station": "Punkt T", 
-         "X" : "Wert X", 
-         "Core height" : "HK", 
-         "Sidewall height" : "SW",
-         "Core/SW Δ" : "HK/SW Δ", 
-         "Dist from ACP" : "Abstand von EDA", 
-         "Dist from core tail" : "Abstand vom Kernende", 
-         "Dist from SW tail" : "Abstand von SW ende",
-         "Core width" : "Kernbreite", 
-         "Grooved thickness" : "Grooved dicke",
-         "Top width" : "Oberer breite",
-         "Top angle" : "Oberer winkel",
+         "Callout" : "Name",
+         "Station": "Punkt T",
+         "X" : "Wert X",
+         "Core Height" : "HK",
+         "SW Height" : "SW",
+         "Core/SW \u0394" : "HK/SW Δ",
+         "X from ACP" : "Abstand von EDA",
+         "X from Core Tail" : "Abstand vom Kernende",
+         "X from SW Tail" : "Abstand von SW ende",
+         "Core Width" : "Kernbreite",
+         "Grooved Thickness" : "Grooved dicke",
+         "Top Width" : "Oberer breite",
+         "Top Angle" : "Oberer winkel",
          "BR Depth" : "BR hohe",
          "BR Width" : "BR breite"
      },
      LANGUAGE.CHN : {
-         "Callout" : "点名称", 
-         "Station": "车站编号", 
-         "X" : "X", 
-         "Core height" : "木芯高度", 
-         "Sidewall height" : "侧壁高度",
-         "Core/SW Δ" : "芯部/侧壁 Δ", 
-         "Dist from ACP" : "距离ACP", 
-         "Dist from core tail" : "距核心尾部距离", 
-         "Dist from SW tail" : "距侧壁尾部距离",
-         "Core width" : "芯宽", 
-         "Grooved thickness" : "沟槽厚度",
-         "Top width" : "顶部宽度",
-         "Top angle" : "顶角",
+         "Callout" : "点名称",
+         "Station": "车站编号",
+         "X" : "X",
+         "Core Height" : "木芯高度",
+         "SW Height" : "侧壁高度",
+         "Core/SW \u0394" : "芯部/侧壁 Δ",
+         "X from ACP" : "距离ACP",
+         "X from Core Tail" : "距核心尾部距离",
+         "X from SW Tail" : "距侧壁尾部距离",
+         "Core Width" : "芯宽",
+         "Grooved Thickness" : "沟槽厚度",
+         "Top Width" : "顶部宽度",
+         "Top Angle" : "顶角",
          "BR Depth" : "基路深度",
          "BR Width" : "基线宽度"
      }
  };
 
+/**
+ * Translate a column name from English to the specified language
+ * Returns English name if translation not found (safe fallback)
+ */
+export function translateColumnName(englishName is string, language is LANGUAGE) returns string
+{
+    var langMap = langColLookup[language];
+    if (langMap == undefined) return englishName;
+
+    var translated = langMap[englishName];
+    if (translated == undefined) return englishName;
+
+    return translated;
+}
 
 /**
  * QC Table Types and Constants
@@ -286,6 +300,7 @@ export predicate canBeFormatConfig(value)
     value.sigFigs is number;
     value.showUnits is boolean;
     value.detailLevel is DETAIL_LEVEL;
+    value.language is LANGUAGE;
 }
 
 // ============================================================================
