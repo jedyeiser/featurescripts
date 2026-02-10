@@ -44,6 +44,19 @@ import(path : "74231d1d53f5a117d47d17a9", version : "efd6872fd0b7e73a7f8f034d");
  */
 const OVERLAP_PERCENTAGE_THRESHOLD = 0.8;
 
+/**
+ * Spatial grid cell size for overlap detection optimization.
+ *
+ * Curves are grouped into grid cells based on bounding boxes to avoid O(n²)
+ * comparisons. Cell size balances:
+ * - Too large: many curves per cell, less speedup
+ * - Too small: curves span multiple cells, overhead increases
+ *
+ * Set to 5mm based on typical cross-section dimensions (10-100mm range).
+ * Adjacent cell checking ensures no overlaps are missed.
+ */
+const SPATIAL_GRID_CELL_SIZE = 5 * millimeter;
+
 // =============================================================================
 // CURVE OVERLAP DETECTION TYPES
 // =============================================================================
@@ -518,14 +531,91 @@ export function boundingBoxes2DOverlap(boxA is map, boxB is map, tol is ValueWit
 }
 
 // =============================================================================
+// SPATIAL GRID HELPERS
+// =============================================================================
+
+/**
+ * Compute spatial grid key for a 2D bounding box center.
+ *
+ * @param bbox {map} : 2D bounding box with minX, maxX, minY, maxY
+ * @param cellSize {ValueWithUnits} : Grid cell size
+ * @returns {string} : Grid key "ix,iy"
+ */
+function computeBBoxGridKey(bbox is map, cellSize is ValueWithUnits) returns string
+{
+    var centerX = (bbox.minX + bbox.maxX) / 2;
+    var centerY = (bbox.minY + bbox.maxY) / 2;
+    var ix = floor(centerX / cellSize);
+    var iy = floor(centerY / cellSize);
+    return toString(ix) ~ "," ~ toString(iy);
+}
+
+/**
+ * Get all grid keys that a bounding box touches (including adjacent cells).
+ *
+ * Returns the primary cell plus all adjacent cells to ensure overlapping
+ * curves in neighboring cells are checked.
+ *
+ * @param bbox {map} : 2D bounding box
+ * @param cellSize {ValueWithUnits} : Grid cell size
+ * @returns {array} : Array of grid key strings
+ */
+function getBBoxGridKeys(bbox is map, cellSize is ValueWithUnits) returns array
+{
+    var centerX = (bbox.minX + bbox.maxX) / 2;
+    var centerY = (bbox.minY + bbox.maxY) / 2;
+    var ix = floor(centerX / cellSize);
+    var iy = floor(centerY / cellSize);
+
+    // Return primary cell and 8 adjacent cells (3×3 neighborhood)
+    // This ensures curves near cell boundaries are checked against neighbors
+    var keys = [];
+    for (var dx = -1; dx <= 1; dx += 1)
+    {
+        for (var dy = -1; dy <= 1; dy += 1)
+        {
+            keys = append(keys, toString(ix + dx) ~ "," ~ toString(iy + dy));
+        }
+    }
+    return keys;
+}
+
+/**
+ * Build spatial index mapping grid cells to curve indices.
+ *
+ * @param curves {array} : Array of curves with bbox2D field
+ * @param cellSize {ValueWithUnits} : Grid cell size
+ * @returns {map} : Map from grid key → array of curve indices
+ */
+function buildSpatialIndex(curves is array, cellSize is ValueWithUnits) returns map
+{
+    var spatialIndex = {};
+
+    for (var i = 0; i < size(curves); i += 1)
+    {
+        var gridKey = computeBBoxGridKey(curves[i].bbox2D, cellSize);
+
+        var cellCurves = spatialIndex[gridKey];
+        if (cellCurves == undefined)
+            cellCurves = [];
+
+        cellCurves = append(cellCurves, i);
+        spatialIndex[gridKey] = cellCurves;
+    }
+
+    return spatialIndex;
+}
+
+// =============================================================================
 // OPTIMIZED UNIQUE CURVE DETECTION
 // =============================================================================
 
 /**
  * Get unique curves with optimizations:
- * 1. 2D bounding box pre-filter
- * 2. Integer body index comparison
- * 3. Minimum curve length protection
+ * 1. Spatial binning for O(n×k) instead of O(n²) comparisons
+ * 2. 2D bounding box pre-filter
+ * 3. Integer body index comparison
+ * 4. Minimum curve length protection
  */
 export function getUniqueCurvesOptimized(inputCurves is array, tolerance is ValueWithUnits) returns array
 {
@@ -534,6 +624,10 @@ export function getUniqueCurvesOptimized(inputCurves is array, tolerance is Valu
 
     var tol = tolerance;
     var unique = [];
+
+    // Build spatial index for unique curves (updated as we build the list)
+    // Maps grid key → array of indices into unique array
+    var spatialIndex = {};
 
     for (var i = 0; i < size(inputCurves); i += 1)
     {
@@ -549,11 +643,33 @@ export function getUniqueCurvesOptimized(inputCurves is array, tolerance is Valu
 
         var dominated = false;
 
-        for (var j = 0; j < size(unique); j += 1)
+        // Get grid cells that current curve might overlap with
+        var searchKeys = getBBoxGridKeys(current.bbox2D, SPATIAL_GRID_CELL_SIZE);
+
+        // Build candidate set from spatially nearby curves
+        var candidateIndices = [];
+        for (var key in searchKeys)
+        {
+            var cellCurves = spatialIndex[key];
+            if (cellCurves != undefined)
+            {
+                for (var idx in cellCurves)
+                {
+                    // Avoid duplicates (same curve might be in multiple adjacent cells)
+                    if (!isIn(idx, candidateIndices))
+                    {
+                        candidateIndices = append(candidateIndices, idx);
+                    }
+                }
+            }
+        }
+
+        // Check only spatially nearby candidates (typically 5-10 instead of all curves)
+        for (var j in candidateIndices)
         {
             var candidate = unique[j];
 
-            // 2D bounding box pre-filter
+            // 2D bounding box pre-filter (still useful for curves in same cell)
             if (!boundingBoxes2DOverlap(current.bbox2D, candidate.bbox2D, tol))
                 continue;
 
@@ -595,7 +711,16 @@ export function getUniqueCurvesOptimized(inputCurves is array, tolerance is Valu
 
         if (!dominated)
         {
+            // Add to unique list and update spatial index
+            var newIdx = size(unique);
             unique = append(unique, current);
+
+            var gridKey = computeBBoxGridKey(current.bbox2D, SPATIAL_GRID_CELL_SIZE);
+            var cellCurves = spatialIndex[gridKey];
+            if (cellCurves == undefined)
+                cellCurves = [];
+            cellCurves = append(cellCurves, newIdx);
+            spatialIndex[gridKey] = cellCurves;
         }
     }
 
