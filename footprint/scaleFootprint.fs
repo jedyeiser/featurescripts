@@ -10,11 +10,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/ef834eed6e0d2df
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
 
 // Import geometry utilities
-export import(path : "67c190b80e8b74dcee72e7ff", version : "80af530f524e50f6e20b5ea6");
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d55e73dcbcde20bc962c0807");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "0c6a9d6a0814f11fc3b25ce4");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "66b1789ffae3e397fd0e6051");
 
 // Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "c068872b6b000969a2ffc7cb");
+import(path : "66f4f03cf728e94b8f823585", version : "929f34ea6ac87b301cbf9ff9");
 
 
 
@@ -1936,34 +1936,9 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
 
     println("  Created " ~ size(outputCurves) ~ " output curves");
 
-    // CLEANUP: Simplify curves to reduce control points
-    var simplifiedCurves = [];
-    for (var curve in outputCurves)
-    {
-        // Sample points from the curve (fewer than original ~25-30 target points)
-        var samplePoints = [];
-        var numSamples = 15;  // Reduced sample count for simplification
-
-        for (var i = 0; i < numSamples; i += 1)
-        {
-            var param = i / (numSamples - 1);
-            var point = evaluateSpline(curve, param);
-            samplePoints = append(samplePoints, point);
-        }
-
-        // Re-approximate with looser tolerance and fewer max control points
-        var simplified = approximateSpline(context, {
-            "degree" : outputDegree,
-            "tolerance" : 0.01 * millimeter,  // 10x looser than original (fewer CPs)
-            "maxControlPoints" : 15,  // Reduced from 30
-            "targets" : [approximationTarget({ "positions" : samplePoints })],
-            "interpolateIndices" : [0, size(samplePoints) - 1]
-        })[0];
-
-        simplifiedCurves = append(simplifiedCurves, simplified);
-    }
-    outputCurves = simplifiedCurves;
-    println("  Simplified curves to reduce control points");
+    // NOTE: Post-process simplification was tested but caused catastrophic radius error
+    // (16.06m vs 21m target). Control point count is less important than accuracy.
+    // To reduce CPs, adjust the original approximation parameters instead.
 
     // OPTIONAL: Convert to strict arcs if requested
     if (strictArcs)
