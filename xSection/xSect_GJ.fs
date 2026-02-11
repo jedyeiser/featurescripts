@@ -19,6 +19,26 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 // IMPORT: tools/solvers.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
+/**
+ * UNIT CONVENTION
+ * ===============
+ * This module uses plain number calculations with implicit units:
+ *
+ * Implicit Units:
+ * - Coordinates (y, z): meters [m]
+ * - Shear modulus (G): pascals [N/m²]
+ * - Areas (A): square meters [m²]
+ * - Shape gradients (dNdy, dNdz): inverse meters [1/m]
+ * - Polar moments (Jp): meters^4 [m⁴]
+ * - Stiffness (K): pascals [N/m²]
+ * - Loads (f): newtons [N]
+ * - Torsional stiffness (GJ): newton-meters² [N·m²]
+ *
+ * Units are:
+ * - STRIPPED at entry: coordinates from sectionPoints, G from qMatrix
+ * - IMPLICIT during calculation (documented in comments)
+ * - RESTORED at exit: final GJ returned as ValueWithUnits
+ */
 
 const MIN_AREA = 1e-12;  // Implicit m² (coordinates are unitless)
 
@@ -67,12 +87,12 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     var G_elem = extractShearModuli(triangles, bodyIndices, bodies);
 
     // Check if any structural material exists
-    var totalG = 0;
+    var totalG = 0.0;  // Plain number
     for (var i = 0; i < size(G_elem); i += 1)
     {
-        totalG += G_elem[i] / (newton / (meter * meter));
+        totalG += G_elem[i];  // Already plain numbers
     }
-    if (totalG < 1e-6) // Essentially zero
+    if (totalG < 1e-6)  // Essentially zero (implicit N/m²)
     {
         println("WARNING: No structural material found - GJ = 0");
         return 0 * newton * meter * meter;
@@ -165,7 +185,7 @@ function buildGlobalMesh(section is map) returns map
  * @param triangles : Array of [i,j,k] node indices
  * @param bodyIndices : Body index for each triangle
  * @param bodies : Body material definitions with Q matrices
- * @returns : Array of G values (ValueWithUnits) - one per triangle
+ * @returns : Array of G values (plain numbers, implicit N/m²) - one per triangle
  *
  * Lookup chain: triangle → bodyIdx → Q matrix → Q[2][2] (Q66)
  * Q is stored as 3×3: [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
@@ -180,7 +200,7 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
     for (var i = 0; i < size(triangles); i += 1)
     {
         var bodyIdx = bodyIndices[i];
-        var G = 0 * newton / (meter * meter);
+        var G_val = 0.0;  // Plain number, implicit N/m²
 
         // Find corresponding body material
         for (var body in bodies)
@@ -193,13 +213,14 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
                 {
                     // Q66 is shear modulus - stored at [2][2] in 3×3 matrix
                     // Q = [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
-                    G = body.materialData.qMatrix[2][2];
+                    var G = body.materialData.qMatrix[2][2];  // ValueWithUnits (N/m²)
+                    G_val = G / (newton / (meter * meter));   // Strip to plain number
                 }
                 break;
             }
         }
 
-        G_elem = append(G_elem, G);
+        G_elem = append(G_elem, G_val);
     }
 
     return G_elem;
@@ -209,7 +230,7 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
  * Assemble global FEM system K·ψ = f
  *
  * @param triangles : Array of [i,j,k] node indices
- * @param G_elem : Shear modulus for each triangle
+ * @param G_elem : Shear modulus for each triangle (plain numbers, implicit N/m²)
  * @param sectionPoints : Array of {point2D: [y,z], ...}
  * @param numNodes : Total number of nodes
  * @returns : map with { K: array (n×n), f: array (n×1), numNodes: int }
@@ -229,10 +250,6 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     var K = makeArray(n);
     var f = makeArray(n);
 
-    // Define unit constants for consistent use
-    const K_unit = newton / (meter * meter);  // Stiffness units
-    const f_unit = newton;                     // Force units
-
     for (var i = 0; i < n; i += 1)
     {
         K[i] = makeArray(n, 0.0);
@@ -248,10 +265,10 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         var i2 = tri[1];
         var i3 = tri[2];
 
-        var G = G_elem[e];
+        var G = G_elem[e];  // Plain number, implicit N/m²
 
         // Skip elements with zero stiffness
-        if (G < 1e-6 * newton / (meter * meter))
+        if (G < 1e-6)  // Implicit N/m²
         {
             continue;
         }
@@ -293,15 +310,17 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
             var ia = nodeIndices[a];
 
             // Element load vector
-            var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);
-            f[ia] += f_local / f_unit;  // Strip units before accumulating
+            // Dimensional analysis: (N/m²) * m² * m * (1/m) = N
+            var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);  // All plain numbers
+            f[ia] += f_local;  // No unit stripping needed
 
             // Element stiffness matrix
             for (var b = 0; b < 3; b += 1)
             {
                 var ib = nodeIndices[b];
-                var K_local = G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b]);
-                K[ia][ib] += K_local / K_unit;  // Strip units before accumulating
+                // Dimensional analysis: (N/m²) * m² * (1/m)² = N/m²
+                var K_local = G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b]);  // All plain numbers
+                K[ia][ib] += K_local;  // No unit stripping needed
             }
         }
     }
@@ -413,7 +432,7 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
  * Compute GJ from warping function and polar moments
  *
  * @param triangles : Array of [i,j,k] node indices
- * @param G_elem : Shear modulus for each triangle
+ * @param G_elem : Shear modulus for each triangle (plain numbers, implicit N/m²)
  * @param psi : Warping function values at nodes (dimensionless)
  * @param sectionPoints : Array of {point2D: [y,z], ...}
  * @returns : GJ in N·m²
@@ -429,7 +448,7 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
  */
 function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array) returns ValueWithUnits
 {
-    var GJ = 0 * newton * meter * meter;
+    var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
 
     for (var e = 0; e < size(triangles); e += 1)
     {
@@ -438,10 +457,10 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
         var i2 = tri[1];
         var i3 = tri[2];
 
-        var G = G_elem[e];
+        var G = G_elem[e];  // Plain number, implicit N/m²
 
         // Skip elements with zero stiffness
-        if (G < 1e-6 * newton / (meter * meter))
+        if (G < 1e-6)  // Implicit N/m²
         {
             continue;
         }
@@ -494,11 +513,13 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
         // Warping correction
         var warp_correction = A * (y_c * dpsi_dz - z_c * dpsi_dy);
 
-        // Accumulate GJ
-        GJ += G * (Jp_e + warp_correction);
+        // Accumulate GJ element contribution
+        // Dimensional analysis: (N/m²) * m⁴ = N·m²
+        GJ_sum += G * (Jp_e + warp_correction);  // All plain numbers, implicit N·m²
     }
 
-    return GJ;
+    // Restore units to result
+    return GJ_sum * newton * meter * meter;
 }
 
 /**
