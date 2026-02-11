@@ -492,7 +492,7 @@ export function projectPointOnChain(context is Context, chain is CurveChain,
     const edgeLength = norm(edgeVector);
 
     var localParam = 0.5; // Default to midpoint
-    if (edgeLength > TOLERANCE.zeroLength)
+    if (edgeLength > TOLERANCE.zeroLength * meter)
     {
         localParam = dot(toPoint, edgeVector) / (edgeLength * edgeLength);
         localParam = max(0.0, min(1.0, localParam));
