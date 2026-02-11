@@ -312,7 +312,7 @@ export function checkCoplanarity(context is Context,
 
     // Rough normal estimate
     var normal = cross(tangent1, tangent2);
-    if (norm(normal) < 1e-10)
+    if (norm(normal) < (1e-10 * meter))
     {
         // Chains are nearly parallel, use arbitrary perpendicular
         normal = perpendicularVector(tangent1);
