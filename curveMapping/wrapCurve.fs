@@ -81,6 +81,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Description" : "Print BSpline data from source curves",
                         "Default" : false }
             definition.debugSourceBSplines is boolean;
+
+            annotation { "Name" : "Print wrapped BSplines",
+                        "Description" : "Print BSpline data from wrapped output curves",
+                        "Default" : false }
+            definition.debugWrappedCurves is boolean;
         }
     }
     {
@@ -242,6 +247,17 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 "keepSeparateAtG0" : true
             });
 
+            // Debug: Print wrapped curves
+            if (definition.debugWrappedCurves)
+            {
+                println("\n=== WRAPPED CURVES FROM SOURCE #" ~ (i + 1) ~ " ===");
+                for (var k = 0; k < size(joinedCurves); k += 1)
+                {
+                    println("Wrapped Curve #" ~ (i + 1) ~ "." ~ (k + 1));
+                    printBSplineInfo(joinedCurves[k]);
+                }
+            }
+
             // Create geometry from mapped curves
             for (var j = 0; j < size(joinedCurves); j += 1)
             {
@@ -266,7 +282,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         minimalSegmentation : false,
         debugFromBSplines : false,
         debugToBSplines : false,
-        debugSourceBSplines : false
+        debugSourceBSplines : false,
+        debugWrappedCurves : false
     });
 
 /**

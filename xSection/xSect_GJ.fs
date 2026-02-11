@@ -107,7 +107,7 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     // Solve linear system for warping function ψ
     var psi = solveFEMSystem(femSystem.K, femSystem.f, numNodes);
 
-    if (psi == undefined)
+    if (psi == undefined || size(psi) == 0)
     {
         println("ERROR: FEM system failed to solve - returning GJ = 0");
         return 0 * newton * meter * meter;
@@ -449,6 +449,13 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
 function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array) returns ValueWithUnits
 {
     var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
+
+    // Defensive check: ensure psi array is valid
+    if (size(psi) == 0)
+    {
+        println("WARNING: Empty psi array in computeGJFromWarping - returning GJ = 0");
+        return 0 * newton * meter * meter;
+    }
 
     for (var e = 0; e < size(triangles); e += 1)
     {
