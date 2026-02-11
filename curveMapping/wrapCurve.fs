@@ -70,8 +70,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         const minimalSegmentation = definition.showAdvanced ? definition.minimalSegmentation : false;
 
         // Step 1: Build curve chains with continuity validation
-        var fromChain is CurveChain;
-        var toChain is CurveChain;
+        var fromChain;
+        var toChain;
 
         try
         {
