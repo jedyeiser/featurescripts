@@ -218,6 +218,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
             headerLookup["X"],
             headerLookup["EI"],
             headerLookup["NA Height"],
+            headerLookup["NA Height %"],
             headerLookup["Beam Width"],
             headerLookup["Beam Height"],
             headerLookup["Lineal Density"]
@@ -231,7 +232,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         var stationNum = section.stationNumber;  // Extract station number from section data
         var xCoord = section.frame.origin[0] / millimeter;  // World X in mm
         var EI = section.mechanicalProperties.EI_eff / (newton * meter * meter);
-        var naHeight = section.mechanicalProperties.neutralAxisY / millimeter;
+        var naHeight = -section.mechanicalProperties.neutralAxisY / millimeter;  // Flip sign for display
 
         // NOTE: boundingBox dimensions are in plane-local coordinates (2D cross-section).
         //       boundingBox.width = horizontal extent in plane = BEAM HEIGHT (vertical in world)
@@ -259,7 +260,14 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         beamWidth = roundValue(beamWidth, 0.05);     // 0.05mm precision
         linealDensityVal = roundValue(linealDensityVal, 0.01);  // 0.01 kg/m precision
 
-        csTable = append(csTable, [stationNum, xCoord, EI, naHeight, beamWidth, beamHeight, linealDensityVal]);
+        // Calculate NA as percentage of beam height (after sign flip and rounding)
+        var naPercentage = 0;
+        if (beamHeight > 0.05)  // Guard: only compute if beam height > tolerance
+        {
+            naPercentage = roundValue((naHeight / beamHeight) * 100, 0.1);  // 0.1% precision
+        }
+
+        csTable = append(csTable, [stationNum, xCoord, EI, naHeight, naPercentage, beamWidth, beamHeight, linealDensityVal]);
     }
 
     return {
