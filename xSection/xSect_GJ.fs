@@ -16,15 +16,10 @@ FeatureScript 2878;
  */
 
 import(path : "onshape/std/common.fs", version : "2878.0");
-
-// IMPORT PLACEHOLDER: tools/solvers.fs
-// This import will be replaced with Onshape document ID when copying to FeatureStudio.
-// The solveLinearSystem() function is called at line 372.
-// For local development, this will show as an error - this is expected and will
-// resolve when the code is deployed to Onshape with proper document ID.
 // IMPORT: tools/solvers.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
-// Geometric tolerance for validation checks
+
 const MIN_AREA = 1e-12 * meter * meter;
 
 /**
@@ -192,11 +187,13 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
         {
             if (body.bodyIdx == bodyIdx)
             {
-                if (body.hasMaterialData && body.Q != undefined)
+                if (body.hasMaterialData &&
+                    body.materialData != undefined &&
+                    body.materialData.qMatrix != undefined)
                 {
                     // Q66 is shear modulus - stored at [2][2] in 3×3 matrix
                     // Q = [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
-                    G = body.Q[2][2];
+                    G = body.materialData.qMatrix[2][2];
                 }
                 break;
             }

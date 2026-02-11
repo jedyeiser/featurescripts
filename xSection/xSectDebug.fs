@@ -2,9 +2,9 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectPredicates (for DEBUG_COLOR_SEQUENCE and XSectionDebugType enum)
-import(path : "17142132b20343b5f125e7e7", version : "a806656adf93f9a68f926c7f");
+import(path : "17142132b20343b5f125e7e7", version : "0e25c0a56662fafd96d4d17b");
 // tools/debug - provides debugControlPolygon
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/8944e3e431de4929b0a28fbc", version : "889ff7e9c358da182dc0bf8a");
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/8944e3e431de4929b0a28fbc", version : "889ff7e9c358da182dc0bf8a");
 
 /**
  * XSECTION DEBUG MODULE
