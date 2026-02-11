@@ -27,7 +27,7 @@ export predicate canBeCurveChain(value)
     value.continuity is ChainContinuity;
     value.edgeBoundaries is array;     // Normalized arc-length boundaries [0, s1, s2, ..., 1]
     value.totalLength is ValueWithUnits;
-    value.numSamples is number;        // Arc-length table resolution
+    value.arcLengthTable is map;       // Pre-computed arc-length lookup table
     value.isValid is boolean;
 }
 
@@ -96,13 +96,16 @@ export function buildCurveChain(context is Context, edges is Query,
     }
     edgeBoundaries = append(edgeBoundaries, 1.0);
 
+    // Build arc-length table by sampling the path
+    const arcLengthTable = buildPathArcLengthTable(context, path, numSamples);
+
     return {
         "edges" : edgeArray,
         "path" : path,
         "continuity" : continuity,
         "edgeBoundaries" : edgeBoundaries,
         "totalLength" : totalLength,
-        "numSamples" : numSamples,
+        "arcLengthTable" : arcLengthTable,
         "isValid" : true
     } as CurveChain;
 }
@@ -182,8 +185,41 @@ function validateChainContinuity(context is Context, edgeArray is array,
 }
 
 /**
- * Map chain parameter [0,1] to path distance parameter.
- * Uses arc-length-based mapping via path length.
+ * Build arc-length lookup table for a path.
+ * @internal
+ */
+function buildPathArcLengthTable(context is Context, path is Path,
+                                 numSamples is number) returns map
+{
+    // Sample path at uniform parameters
+    var pathParams = [];
+    for (var i = 0; i <= numSamples; i += 1)
+    {
+        pathParams = append(pathParams, i / numSamples);
+    }
+
+    // Evaluate all points
+    const pathEval = evPathTangentLines(context, path, pathParams);
+
+    // Compute cumulative arc lengths
+    var arcLengths = [0 * meter];
+    for (var i = 1; i < size(pathEval.tangentLines); i += 1)
+    {
+        const dist = norm(pathEval.tangentLines[i].origin -
+                         pathEval.tangentLines[i - 1].origin);
+        arcLengths = append(arcLengths, arcLengths[i - 1] + dist);
+    }
+
+    return {
+        "parameters" : pathParams,
+        "arcLengths" : arcLengths,
+        "totalLength" : arcLengths[size(arcLengths) - 1]
+    };
+}
+
+/**
+ * Map chain parameter [0,1] to path parameter using arc-length table.
+ * @internal
  */
 function chainParamToPathParam(context is Context, chain is CurveChain,
                                chainParam is number) returns number
@@ -191,30 +227,41 @@ function chainParamToPathParam(context is Context, chain is CurveChain,
     // Clamp to [0, 1]
     const clampedParam = max(0.0, min(1.0, chainParam));
 
-    // Target arc length
+    // Target arc length along chain
     const targetLength = clampedParam * chain.totalLength;
 
-    // Use evPathLength to find path parameter at this arc length
-    // Binary search for the path parameter that gives us targetLength
-    var low = 0.0;
-    var high = 1.0;
-    const tolerance = 1e-6;
+    // Find bracketing indices in arc-length table
+    const table = chain.arcLengthTable;
+    const arcLengths = table.arcLengths;
+    const parameters = table.parameters;
 
-    for (var iter = 0; iter < 20; iter += 1)
+    // Handle endpoints
+    if (targetLength <= arcLengths[0])
+        return parameters[0];
+    if (targetLength >= arcLengths[size(arcLengths) - 1])
+        return parameters[size(parameters) - 1];
+
+    // Binary search for bracketing interval
+    var low = 0;
+    var high = size(arcLengths) - 1;
+
+    while (high - low > 1)
     {
-        const mid = (low + high) / 2;
-        const pathLength = evPathLength(context, chain.path, 0.0, mid);
-
-        if (abs(pathLength - targetLength) < tolerance * meter)
-            return mid;
-
-        if (pathLength < targetLength)
+        const mid = floor((low + high) / 2);
+        if (arcLengths[mid] < targetLength)
             low = mid;
         else
             high = mid;
     }
 
-    return (low + high) / 2;
+    // Linear interpolation between samples
+    const s0 = arcLengths[low];
+    const s1 = arcLengths[high];
+    const p0 = parameters[low];
+    const p1 = parameters[high];
+
+    const t = (targetLength - s0) / (s1 - s0);
+    return p0 + t * (p1 - p0);
 }
 
 /**

@@ -1,14 +1,15 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
-//import curveChain
-import(path : "670e82ad72abc97906ec9038", version : "a014a924eabd5caabe07c144");
-//import curveMappingUtils
-import(path : "de955d503dbb0ec88622e51b", version : "a677b5e4a3d7238db49bf848");
-//import curveMappingCore
-import(path : "6638c0f5c2e8e93ce8eb29a8", version : "e0d96c8cf13d89ea20ad83c6");
+//import curveChain(export import)
+export import(path : "670e82ad72abc97906ec9038", version : "64dc9244c25196d5236b6e33");
+//import curveMappingUtils(export import)
+export import(path : "de955d503dbb0ec88622e51b", version : "c9021c710052b752f3eab663");
+//import curveMappingCore (export import)
+export import(path : "683d867c35fdab9c98d47556", version : "af2d406a34cc80a3f648a41e");
+
 //import tools/bspline_data
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
 annotation { "Feature Type Name" : "Wrap Curve",
              "Feature Type Description" : "Map curves from one reference edge to another using Frenet frame transformations",
@@ -69,6 +70,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         const minimalSegmentation = definition.showAdvanced ? definition.minimalSegmentation : false;
 
         // Step 1: Build curve chains with continuity validation
+        var fromChain is CurveChain = undefined;
+        var toChain is CurveChain = undefined;
+        
         try
         {
             var fromChain = buildCurveChain(context, definition.fromEdge,
