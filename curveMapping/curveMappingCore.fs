@@ -42,13 +42,13 @@ function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureR
     var frame = frenetResult.frame;
     const localVector = worldPoint - frame.origin;
 
-    // Handle degenerate case: line with undefined normal/binormal
-    if (frame.xAxis == undefined || frame.yAxis == undefined)
+    // Handle degenerate case: line with zero curvature (no defined normal/binormal)
+    // Check if curvature is effectively zero
+    if (abs(frenetResult.curvature) < 1e-10 / meter)
     {
         // Construct arbitrary orthonormal frame from tangent
         const tangent = frame.zAxis;
         const normal = perpendicularVector(tangent);
-        const binormal = cross(tangent, normal);
         frame = coordSystem(frame.origin, normal, tangent);
     }
 
@@ -58,7 +58,7 @@ function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureR
     // frame.yAxis = binormal direction
     const tangentCoord = dot(localVector, frame.zAxis);
     const normalCoord = dot(localVector, frame.xAxis);
-    const binormalCoord = dot(localVector, frame.yAxis);
+    const binormalCoord = dot(localVector, yAxis(frame));
 
     return vector(tangentCoord, normalCoord, binormalCoord);
 }
@@ -74,13 +74,13 @@ function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvature
 {
     var frame = frenetResult.frame;
 
-    // Handle degenerate case: line with undefined normal/binormal
-    if (frame.xAxis == undefined || frame.yAxis == undefined)
+    // Handle degenerate case: line with zero curvature (no defined normal/binormal)
+    // Check if curvature is effectively zero
+    if (abs(frenetResult.curvature) < 1e-10 / meter)
     {
         // Construct arbitrary orthonormal frame from tangent
         const tangent = frame.zAxis;
         const normal = perpendicularVector(tangent);
-        const binormal = cross(tangent, normal);
         frame = coordSystem(frame.origin, normal, tangent);
     }
 
@@ -88,7 +88,7 @@ function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvature
     return frame.origin +
            localCoords[0] * frame.zAxis +
            localCoords[1] * frame.xAxis +
-           localCoords[2] * frame.yAxis;
+           localCoords[2] * yAxis(frame);
 }
 
 /**
@@ -631,14 +631,14 @@ function checkFrameConsistency(fromFrame is EdgeCurvatureResult,
 {
     // Check if normals point in broadly same direction
     const normalDot = dot(fromFrame.frame.xAxis, toFrame.frame.xAxis);
-    const binormalDot = dot(fromFrame.frame.yAxis, toFrame.frame.yAxis);
+    const binormalDot = dot(yAxis(fromFrame.frame), yAxis(toFrame.frame));
 
     const normalFlip = (normalDot < 0);
     const binormalFlip = (binormalDot < 0);
 
     // Compute max angle deviation
     const normalAngle = angleBetween(fromFrame.frame.xAxis, toFrame.frame.xAxis);
-    const binormalAngle = angleBetween(fromFrame.frame.yAxis, toFrame.frame.yAxis);
+    const binormalAngle = angleBetween(yAxis(fromFrame.frame), yAxis(toFrame.frame));
     const maxAngle = max(normalAngle, binormalAngle);
 
     const consistent = !normalFlip && !binormalFlip;
