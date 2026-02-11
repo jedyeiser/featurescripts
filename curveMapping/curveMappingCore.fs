@@ -7,6 +7,8 @@ import(path : "670e82ad72abc97906ec9038", version : "64dc9244c25196d5236b6e33");
 import(path : "de955d503dbb0ec88622e51b", version : "c9021c710052b752f3eab663");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+//import tools/curve_operations
+import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/1d56e3dea90e1f3e43d53701", version : "TBD_UPDATE_ON_SYNC");
 
 /**
  * Mapping mode for curve transformation.
@@ -434,11 +436,19 @@ export function mapCurveSegmented(context is Context,
         // Map all points
         const mappedResults = mapPointsToCurve(context, mapping, sourcePoints);
 
+        // Extract positions for curve construction
         var mappedPoints = [];
         for (var result in mappedResults)
         {
             mappedPoints = append(mappedPoints, result.mappedPoint);
         }
+
+        // Extract tangent vectors at segment endpoints
+        // EdgeCurvatureResult.frame has frame.zAxis = tangent direction
+        const startFrame = mappedResults[0].toFrame;
+        const endFrame = mappedResults[size(mappedResults) - 1].toFrame;
+        const startTangent = startFrame.frame.zAxis;  // Unitless direction vector
+        const endTangent = endFrame.frame.zAxis;
 
         // Detect if mapped points are nearly linear
         const isLinear = detectLinearSegment(mappedPoints, 1e-5 * meter);
@@ -446,8 +456,29 @@ export function mapCurveSegmented(context is Context,
         // Choose degree based on linearity (minimum degree 2 for approximateSpline)
         const degree = isLinear ? 2 : 3;
 
-        // Approximate with endpoint interpolation
-        const mappedCurve = approximateWithEndpoints(context, mappedPoints, degree, {});
+        // Use tangent-constrained approximation for non-linear segments
+        // Try tangent-constrained approximation, fall back to position-only
+        var mappedCurve;
+        if (isLinear)
+        {
+            // Linear segments don't need tangent constraints
+            mappedCurve = approximateWithEndpoints(context, mappedPoints, degree, {});
+        }
+        else
+        {
+            try silent
+            {
+                mappedCurve = approximateWithTangents(context, mappedPoints, degree, {
+                    "startTangent" : startTangent,
+                    "endTangent" : endTangent
+                });
+            }
+            catch
+            {
+                println("WARNING: Tangent-constrained approximation failed, using position-only");
+                mappedCurve = approximateWithEndpoints(context, mappedPoints, degree, {});
+            }
+        }
 
         // Determine edge indices
         const fromEdgeIndex = findEdgeIndexAtParam(mapping.fromChain, segStart);
@@ -461,7 +492,9 @@ export function mapCurveSegmented(context is Context,
             "fromEdgeIndex" : fromEdgeIndex,
             "toEdgeIndex" : toEdgeIndex,
             "sourceParamRange" : [segStart, segEnd],
-            "continuityBefore" : (i > 0) ? mapping.fromChain.continuity : undefined
+            "continuityBefore" : (i > 0) ? mapping.fromChain.continuity : undefined,
+            "startTangent" : startTangent,  // For validation
+            "endTangent" : endTangent       // For validation
         });
     }
 
@@ -525,53 +558,96 @@ export function joinMappedSegments(context is Context,
                                    options is map) returns array
 {
     const keepSeparateAtG0 = options.keepSeparateAtG0 ?? true;
+    const debugOutput = options.debugOutput ?? false;
 
     if (size(segments) <= 1)
     {
-        // Nothing to join
-        var curves = [];
-        for (var seg in segments)
-        {
-            curves = append(curves, seg.curve);
-        }
-        return curves;
+        // Nothing to join - return curve array
+        return size(segments) == 0 ? [] : [segments[0].curve];
     }
 
-    // Group segments by continuity
+    // Group segments by continuity requirements
     var groups = [];
-    var currentGroup = [segments[0].curve];
+    var currentGroup = [segments[0]];
 
     for (var i = 1; i < size(segments); i += 1)
     {
         const seg = segments[i];
         const continuity = seg.continuityBefore;
 
-        if (continuity != undefined && continuity == ChainContinuity.G1)
+        if (continuity == ChainContinuity.G1)
         {
-            // Can join with C1
-            currentGroup = append(currentGroup, seg.curve);
+            // Join with C1 continuity
+            currentGroup = append(currentGroup, seg);
         }
-        else if (continuity != undefined && continuity == ChainContinuity.G0 && !keepSeparateAtG0)
+        else if (continuity == ChainContinuity.G0 && !keepSeparateAtG0)
         {
-            // Join with C0
-            currentGroup = append(currentGroup, seg.curve);
+            // Join with C0 only
+            currentGroup = append(currentGroup, seg);
         }
         else
         {
-            // Start new group
+            // Break: start new group
             groups = append(groups, currentGroup);
-            currentGroup = [seg.curve];
+            currentGroup = [seg];
         }
     }
     groups = append(groups, currentGroup);
 
-    // Join each group (simplified: return individual curves for now)
+    // Join each group using tools/curve_operations.fs
     var result = [];
     for (var group in groups)
     {
-        for (var curve in group)
+        if (size(group) == 1)
         {
-            result = append(result, curve);
+            // Single curve - no joining needed
+            result = append(result, group[0].curve);
+        }
+        else
+        {
+            // Join multiple curves with continuity enforcement
+            var joinedCurve = group[0].curve;
+
+            if (debugOutput)
+            {
+                println("Joining " ~ size(group) ~ " segments");
+            }
+
+            for (var j = 1; j < size(group); j += 1)
+            {
+                const continuityType = (group[j].continuityBefore == ChainContinuity.G1)
+                                     ? ContinuityType.C1
+                                     : ContinuityType.C0;
+
+                // Use tools/curve_operations.fs joinCurves()
+                // adjustB = true: adjust new segment to match previous
+                joinedCurve = joinCurves(context, joinedCurve, group[j].curve,
+                                       continuityType, {
+                    "tolerance" : 1e-6 * meter,
+                    "adjustA" : false,  // Keep previous curve fixed
+                    "adjustB" : true    // Adjust new curve to match tangent
+                });
+
+                // Validate continuity if debugging
+                if (debugOutput && j < size(group))
+                {
+                    const validation = validateTangentContinuity(context,
+                        group[j - 1].curve, group[j].curve,
+                        { "tolerance" : 1e-3 * radian });
+
+                    if (!validation.continuous)
+                    {
+                        println("WARNING: G1 discontinuity at segment " ~ (j - 1) ~ " -> " ~ j);
+                        println("  Angle error: " ~ toString(validation.angleError * 180 / PI) ~ " deg");
+                    }
+                    else
+                    {
+                        println("✓ G1 continuous at segment " ~ (j - 1) ~ " -> " ~ j);
+                    }
+                }
+            }
+
+            result = append(result, joinedCurve);
         }
     }
 

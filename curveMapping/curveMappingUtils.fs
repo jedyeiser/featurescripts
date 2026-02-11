@@ -88,6 +88,90 @@ export function approximateWithEndpoints(context is Context, points is array,
 }
 
 /**
+ * Approximate BSpline through points with endpoint tangent constraints.
+ * Uses Onshape's approximateSpline with derivative constraints to enforce
+ * G1 continuity at endpoints.
+ *
+ * @param context : Onshape context
+ * @param points : Points to fit (MUST include endpoints)
+ * @param degree : Spline degree
+ * @param options : {
+ *                    tolerance: ValueWithUnits (default 1e-5 m)
+ *                    maxControlPoints: number (default 50)
+ *                    startTangent: Vector (required, unitless direction)
+ *                    endTangent: Vector (required, unitless direction)
+ *                  }
+ * @returns BSplineCurve fitted curve with tangent constraints
+ */
+export function approximateWithTangents(context is Context,
+                                       points is array,
+                                       degree is number,
+                                       options is map) returns BSplineCurve
+{
+    const tolerance = options.tolerance ?? (1e-5 * meter);
+    const maxControlPoints = options.maxControlPoints ?? 50;
+
+    // Validate inputs
+    if (size(points) < degree + 1)
+    {
+        throw regenError("approximateWithTangents: Not enough points for degree " ~ degree);
+    }
+
+    // Extract tangents (required)
+    if (options.startTangent == undefined || options.endTangent == undefined)
+    {
+        throw regenError("approximateWithTangents: startTangent and endTangent required");
+    }
+
+    // Estimate derivative magnitude from chord length
+    // Per splineUtils.fs line 50: "magnitude is ignored" when parameters not specified
+    // But we still need reasonable scale for numerical stability
+    const chordLength = norm(points[size(points) - 1] - points[0]);
+    const avgSegmentLength = chordLength / (size(points) - 1);
+
+    const startDerivative = options.startTangent * avgSegmentLength;
+    const endDerivative = options.endTangent * avgSegmentLength;
+
+    // Build ApproximationTarget with derivatives
+    const target = approximationTarget({
+        "positions" : points,
+        "startDerivative" : startDerivative,
+        "endDerivative" : endDerivative
+    });
+
+    // Call approximateSpline with derivative constraints
+    const curves = approximateSpline(context, {
+        "targets" : [target],
+        "degree" : max(degree, 2),  // Minimum degree 2
+        "tolerance" : tolerance,
+        "maxControlPoints" : maxControlPoints,
+        "isPeriodic" : false,
+        "interpolateIndices" : [0, size(points) - 1]  // Force endpoint interpolation
+    });
+
+    if (size(curves) == 0)
+    {
+        throw regenError("approximateWithTangents: approximateSpline returned no curves");
+    }
+
+    // Verify endpoints match within tolerance
+    const curve = curves[0];
+    const endpoints = getBSplineEndpoints(curve);
+
+    const startError = norm(endpoints.start - points[0]);
+    const endError = norm(endpoints.end - points[size(points) - 1]);
+
+    if (startError > 1e-7 * meter || endError > 1e-7 * meter)
+    {
+        println("WARNING: approximateWithTangents endpoint mismatch");
+        println("  Start error: " ~ startError);
+        println("  End error: " ~ endError);
+    }
+
+    return curve;
+}
+
+/**
  * Ensure sampling array includes t=0.0 and t=1.0 exactly.
  *
  * @param parameters : Parameter array (may or may not include endpoints)
@@ -340,5 +424,61 @@ export function checkCoplanarity(context is Context,
         "maxDeviation" : maxDeviation,
         "fittedPlane" : fittedPlane,
         "angle" : angle
+    };
+}
+
+/**
+ * Validate tangent continuity between curves.
+ * Returns angle error and whether curves are G1 continuous.
+ *
+ * @param context : Onshape context
+ * @param curveA : First curve
+ * @param curveB : Second curve
+ * @param options : {
+ *                    tolerance: ValueWithUnits (default 1e-3 rad)
+ *                  }
+ * @returns {
+ *            continuous: boolean,
+ *            angleError: ValueWithUnits,
+ *            tangentA: Vector,
+ *            tangentB: Vector
+ *          }
+ */
+export function validateTangentContinuity(context is Context,
+                                         curveA is BSplineCurve,
+                                         curveB is BSplineCurve,
+                                         options is map) returns map
+{
+    const tolerance = options.tolerance ?? (1e-3 * radian);
+
+    // Get endpoints
+    const rangeA = getBSplineParamRange(curveA);
+    const rangeB = getBSplineParamRange(curveB);
+
+    // Evaluate tangents at join (use evaluateSpline with nDerivatives: 1)
+    const evalA = evaluateSpline({
+        "spline" : curveA,
+        "parameters" : [rangeA.uMax],
+        "nDerivatives" : 1
+    });
+    const tangentA = normalize(evalA[1][0]);  // evalA[1] = array of derivatives
+
+    const evalB = evaluateSpline({
+        "spline" : curveB,
+        "parameters" : [rangeB.uMin],
+        "nDerivatives" : 1
+    });
+    const tangentB = normalize(evalB[1][0]);
+
+    // Compute angle between tangents
+    const dotProduct = dot(tangentA, tangentB);
+    const angleError = acos(clamp(dotProduct, -1, 1));
+    const continuous = (angleError < tolerance);
+
+    return {
+        "continuous" : continuous,
+        "angleError" : angleError,
+        "tangentA" : tangentA,
+        "tangentB" : tangentB
     };
 }
