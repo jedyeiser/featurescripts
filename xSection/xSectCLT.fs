@@ -2,7 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (buildMaterialLookup, normalizeMaterialName)
-import(path : "f8e590162884d45f56e0a05f", version : "32c54f5061b096612985f073");
+import(path : "f8e590162884d45f56e0a05f", version : "d22c9376fcd6d4800b130756");
+
+// xSect_GJ (computeTorsionalStiffness)
+// IMPORT: xSection/xSect_GJ.fs
 
 // =============================================================================
 // TOLERANCE CONSTANTS
@@ -436,12 +439,27 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         println("WARNING: Zero extensional stiffness detected - all bodies may be set to IGNORE");
     }
 
+    // =====================================================================
+    // Compute torsional stiffness (GJ) using FEM
+    // =====================================================================
+
+    var GJ_eff = 0 * newton * meter * meter;
+    try
+    {
+        GJ_eff = computeTorsionalStiffness(section, bodies);
+    }
+    catch (e)
+    {
+        println("WARNING: GJ computation failed - " ~ e);
+    }
+
     return {
         "A" : A,
         "B" : B,
         "D" : D,
         "neutralAxisY" : neutralAxisY,
         "EI_eff" : EI_eff,
+        "GJ_eff" : GJ_eff,
         "bodyContributions" : bodyContributions
     };
 }

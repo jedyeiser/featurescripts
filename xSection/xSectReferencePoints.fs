@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "32c54f5061b096612985f073");
+import(path : "f8e590162884d45f56e0a05f", version : "d22c9376fcd6d4800b130756");
 
 // =============================================================================
 // PLANE VALIDATION CONSTANTS

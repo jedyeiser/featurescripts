@@ -504,7 +504,7 @@ export function newtonND(F, J, x0 is array, tol is number, maxIter is number) re
  * @param n {number} : System dimension
  * @returns {array|undefined} : Solution vector, or undefined if singular
  */
-function solveLinearSystem(A is array, b is array, n is number)
+export function solveLinearSystem(A is array, b is array, n is number)
 {
     // Special case for 2×2 (most common in curve/surface work)
     if (n == 2)

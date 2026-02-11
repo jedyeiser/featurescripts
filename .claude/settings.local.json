@@ -30,7 +30,8 @@
       "Bash(dir:*)",
       "Bash(wc:*)",
       "Bash(du:*)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "WebSearch"
     ]
   }
 }

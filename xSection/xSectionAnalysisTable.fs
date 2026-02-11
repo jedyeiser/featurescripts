@@ -110,10 +110,12 @@ function buildCrossSectionTable(csData is array, titlePrefix is string) returns 
         tableColumnDefinition("section", header[0]),
         tableColumnDefinition("xCoord", header[1], TableTextAlignment.RIGHT),
         tableColumnDefinition("EI", header[2], TableTextAlignment.RIGHT),
-        tableColumnDefinition("naHeight", header[3], TableTextAlignment.RIGHT),
-        tableColumnDefinition("beamHeight", header[4], TableTextAlignment.RIGHT),
-        tableColumnDefinition("beamWidth", header[5], TableTextAlignment.RIGHT),
-        tableColumnDefinition("linealDensity", header[6], TableTextAlignment.RIGHT)
+        tableColumnDefinition("GJ", header[3], TableTextAlignment.RIGHT),
+        tableColumnDefinition("naHeight", header[4], TableTextAlignment.RIGHT),
+        tableColumnDefinition("naPercentage", header[5], TableTextAlignment.RIGHT),
+        tableColumnDefinition("beamWidth", header[6], TableTextAlignment.RIGHT),
+        tableColumnDefinition("beamHeight", header[7], TableTextAlignment.RIGHT),
+        tableColumnDefinition("linealDensity", header[8], TableTextAlignment.RIGHT)
     ];
 
     // Build rows from data (skip header row)
@@ -125,10 +127,12 @@ function buildCrossSectionTable(csData is array, titlePrefix is string) returns 
             "section" : toString(rowData[0]),
             "xCoord" : toString(rowData[1]),
             "EI" : toString(rowData[2]),
-            "naHeight" : toString(rowData[3]),
-            "beamHeight" : toString(rowData[4]),
-            "beamWidth" : toString(rowData[5]),
-            "linealDensity" : toString(rowData[6])
+            "GJ" : toString(rowData[3]),
+            "naHeight" : toString(rowData[4]),
+            "naPercentage" : toString(rowData[5]),
+            "beamWidth" : toString(rowData[6]),
+            "beamHeight" : toString(rowData[7]),
+            "linealDensity" : toString(rowData[8])
         };
         rows = append(rows, tableRow(cellData));
     }

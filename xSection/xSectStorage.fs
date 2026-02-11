@@ -2,10 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "32c54f5061b096612985f073");
+import(path : "f8e590162884d45f56e0a05f", version : "d22c9376fcd6d4800b130756");
 
 // xSectLanguage (translation lookups)
-import(path : "a0fab52ee4d0b16ffbc1c603", version : "e4d29abb9a77e981c0317d63");
+import(path : "a0fab52ee4d0b16ffbc1c603", version : "84f3456df9538fc7432272eb");
 
 // =============================================================================
 // DISPLAY ROUNDING CONSTANTS
@@ -105,6 +105,7 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
             "xCoord" : section.frame.origin[0],
             "frame" : section.frame,
             "EI_eff" : section.mechanicalProperties.EI_eff,
+            "GJ_eff" : section.mechanicalProperties.GJ_eff,
             "neutralAxisY" : section.mechanicalProperties.neutralAxisY,
             "boundingBox" : section.boundingBox,
             "linealDensity" : linealDensity,
@@ -217,6 +218,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
             headerLookup["Station"],
             headerLookup["X"],
             headerLookup["EI"],
+            headerLookup["GJ"],
             headerLookup["NA Height"],
             headerLookup["NA Percentage"],
             headerLookup["Beam Width"],
@@ -232,6 +234,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         var stationNum = section.stationNumber;  // Extract station number from section data
         var xCoord = section.frame.origin[0] / millimeter;  // World X in mm
         var EI = section.mechanicalProperties.EI_eff / (newton * meter * meter);
+        var GJ = section.mechanicalProperties.GJ_eff / (newton * meter * meter);
         var naHeight = -section.mechanicalProperties.neutralAxisY / millimeter;  // Flip sign for display
 
         // NOTE: boundingBox dimensions are in plane-local coordinates (2D cross-section).
@@ -255,6 +258,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         // Apply rounding
         xCoord = roundValue(xCoord, 0.05);           // 0.05mm precision
         EI = roundValue(EI, 0.1);                    // 0.1 N·m² precision
+        GJ = roundValue(GJ, 0.1);                    // 0.1 N·m² precision
         naHeight = roundValue(naHeight, 0.05);       // 0.05mm precision
         beamHeight = roundValue(beamHeight, 0.05);   // 0.05mm precision
         beamWidth = roundValue(beamWidth, 0.05);     // 0.05mm precision
@@ -267,7 +271,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
             naPercentage = roundValue((naHeight / beamHeight) * 100, 0.1);  // 0.1% precision
         }
 
-        csTable = append(csTable, [stationNum, xCoord, EI, naHeight, naPercentage, beamWidth, beamHeight, linealDensityVal]);
+        csTable = append(csTable, [stationNum, xCoord, EI, GJ, naHeight, naPercentage, beamWidth, beamHeight, linealDensityVal]);
     }
 
     return {

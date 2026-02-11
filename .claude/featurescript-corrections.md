@@ -589,13 +589,133 @@ export function buildCurveDataArray(bsplines is array) returns array
 
 ---
 
+## Matrix and Array Indexing
+
+### Q Matrix Storage is 3×3, Not 6×6
+**Date**: 2026-02-10
+**Issue**: Classical Laminate Theory Q matrix is stored as 3×3 array in xSection code, not the full 6×6 matrix
+**Incorrect Pattern**:
+```featurescript
+// Attempting to access Q66 shear modulus
+var G = body.Q[5][5];  // ❌ ERROR - Index out of bounds!
+
+// Assuming full 6×6 matrix layout:
+// [[Q11, Q12, Q13, Q14, Q15, Q16],
+//  [Q21, Q22, Q23, Q24, Q25, Q26],
+//  ...
+//  [Q61, Q62, Q63, Q64, Q65, Q66]]
+```
+**Correct Pattern**:
+```featurescript
+// Q is stored as 3×3 reduced stiffness matrix
+// [[Q11, Q12, Q16],
+//  [Q12, Q22, Q26],
+//  [Q16, Q26, Q66]]
+
+var G = body.Q[2][2];  // ✓ Q66 is at [2][2] in 3×3 matrix
+
+// For isotropic materials: Q66 = E/(2*(1+ν))
+// For orthotropic materials: Q66 = G12
+```
+**Reference**: xSectCLT.fs lines 77-87 (Q matrix documentation)
+
+**Lesson Learned**:
+- xSection code uses **3×3 reduced stiffness matrix**, not full 6×6
+- Q66 (shear modulus) is accessed at `Q[2][2]`, NOT `Q[5][5]`
+- Always check data structure documentation before accessing matrix elements
+- The 3×3 format is standard for plane stress/CLT formulations
+- Indices map: Q11=[0][0], Q22=[1][1], Q66=[2][2]
+
+**Files Fixed**: xSect_GJ.fs line 193
+
+---
+
+## Units Handling
+
+### Dimensional Analysis Required for Unit Stripping
+**Date**: 2026-02-10
+**Issue**: When stripping units for numerical solvers, must perform dimensional analysis to get correct unit factors
+**Incorrect Pattern**:
+```featurescript
+// FEM stiffness matrix K and load vector f
+// Assembled with: K += G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b])
+//                 f += G * A * (z_c * dNdy[a] - y_c * dNdz[a])
+
+// ❌ WRONG - Guessed units without dimensional analysis
+var K_unit = newton;                 // Wrong!
+var f_unit = newton * meter;         // Wrong!
+
+K_plain[i][j] = K[i][j] / K_unit;
+f_plain[i] = f[i] / f_unit;
+```
+**Correct Pattern**:
+```featurescript
+// Perform dimensional analysis:
+// K: G * A * (dNdy)² = (N/m²) * m² * (1/m)² = N/m²
+// f: G * A * distance * dNdy = (N/m²) * m² * m * (1/m) = N
+
+var K_unit = newton / (meter * meter);  // ✓ N/m²
+var f_unit = newton;                     // ✓ N
+
+K_plain[i][j] = K[i][j] / K_unit;
+f_plain[i] = f[i] / f_unit;
+
+// Document the dimensional analysis in comments!
+```
+**Lesson Learned**:
+- **Never guess units** - always perform dimensional analysis
+- Write out the calculation chain: `quantity = A * B * C`
+- Track units through each step: `[N/m²] * [m²] * [1/m²] = [N/m²]`
+- Add comments showing the dimensional analysis
+- Common mistake: simplifying unit expressions mentally without checking
+- Shape function gradients have units `[1/length]`
+- For FEM: Stiffness ~ G*A*grad², Load ~ G*A*distance*grad
+
+**Files Fixed**: xSect_GJ.fs lines 354-357
+
+### Polar Moment of Inertia Formula for Triangles
+**Date**: 2026-02-10
+**Issue**: Polar moment calculation requires all six cross-product terms, not just three
+**Incorrect Pattern**:
+```featurescript
+// ❌ INCOMPLETE - Missing y1*y3 and z1*z3 cross terms
+var y_cross = y1*y2 + y2*y3 + y3*y1;  // Only 3 terms
+var z_cross = z1*z2 + z2*z3 + z3*z1;  // Only 3 terms
+var Jp = (A / 6.0) * (y_sq + z_sq + y_cross + z_cross);
+```
+**Correct Pattern**:
+```featurescript
+// ✓ CORRECT - All six cross terms for each axis
+// Jp = Iy + Iz where:
+//   Iy = ∫z² dA = (A/6) * (z1² + z2² + z3² + z1*z2 + z1*z3 + z2*z3)
+//   Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1*y2 + y1*y3 + y2*y3)
+
+var Iy = (A / 6.0) * (z1*z1 + z2*z2 + z3*z3 + z1*z2 + z1*z3 + z2*z3);
+var Iz = (A / 6.0) * (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
+var Jp_e = Iy + Iz;
+
+// Alternative: Write all terms explicitly
+// y1*y2 + y1*y3 + y2*y3 (not y1*y2 + y2*y3 + y3*y1)
+```
+**Lesson Learned**:
+- Closed-form integrals for triangles need **all pairwise products**
+- For three vertices (i,j,k), cross terms are: i*j + i*k + j*k
+- The pattern i*j + j*k + k*i is the **same set** (just reordered), but less clear
+- Better to write as two separate formulas (Iy and Iz) for clarity
+- Verify closed-form formulas against textbook references
+- Second moment formulas: n² terms + n(n-1)/2 cross terms = n(n+1)/2 total
+
+**Files Fixed**: xSect_GJ.fs lines 456-462
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 8
-- **Last Updated**: 2026-02-09
-- **Most Common Category**: FeatureScript Syntax (6), Import Issues (1), Type System (1)
-- **Critical Bugs Found**: 1 (Missing braces in control flow)
-- **Latest Additions**: Operation parameter quoting, ID concatenation precedence, ValueWithUnits comparisons
+- **Total Corrections**: 11
+- **Last Updated**: 2026-02-10
+- **Most Common Category**: FeatureScript Syntax (6), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
+- **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
+- **Latest Additions**: Q matrix 3×3 storage, dimensional analysis for unit stripping, polar moment formula
 
 ---
 
