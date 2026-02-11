@@ -231,8 +231,8 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
 
     for (var i = 0; i < n; i += 1)
     {
-        K[i] = makeArray(n, 0.0);
-        f[i] = 0.0;
+        K[i] = makeArray(n, 0.0 * newton / (meter * meter));
+        f[i] = 0.0 * newton;
     }
 
     // Loop over all triangles
