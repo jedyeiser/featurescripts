@@ -2,13 +2,14 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 //import curveChain
-import(path : "670e82ad72abc97906ec9038", version : "64dc9244c25196d5236b6e33");
+import(path : "670e82ad72abc97906ec9038", version : "9b4465a71fe746c08e1290d5");
 //import curveMappingUtils
-import(path : "de955d503dbb0ec88622e51b", version : "c9021c710052b752f3eab663");
+import(path : "de955d503dbb0ec88622e51b", version : "7ad38baccd6573d3fb22f005");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import tools/curve_operations
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/1d56e3dea90e1f3e43d53701", version : "TBD_UPDATE_ON_SYNC");
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
+
 
 /**
  * Mapping mode for curve transformation.
