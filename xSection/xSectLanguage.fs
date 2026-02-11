@@ -34,6 +34,7 @@ export const mainTableHeaderTranslationLookup = {
         "NA Height" : "NA Height",
         "Beam Width" : "Beam Width",
         "Beam Height" : "Beam Height",
+        "NA Percentage": "NA Percentage"
         "Lineal Density" : "Lineal Density"
     },
     LANGUAGE.GER : {
@@ -43,6 +44,7 @@ export const mainTableHeaderTranslationLookup = {
         "NA Height" : "Höhe der neutralen Achse",
         "Beam Width" : "Strahlbreite",
         "Beam Height" : "Strahlenhöhe",
+        "NA Percentage": "Neutrale Achshöhe/Balkenhöhe"
         "Lineal Density" : "Lineare Dichte"
     }
 };
