@@ -580,32 +580,6 @@ function getBBoxGridKeys(bbox is map, cellSize is ValueWithUnits) returns array
     return keys;
 }
 
-/**
- * Build spatial index mapping grid cells to curve indices.
- *
- * @param curves {array} : Array of curves with bbox2D field
- * @param cellSize {ValueWithUnits} : Grid cell size
- * @returns {map} : Map from grid key → array of curve indices
- */
-function buildSpatialIndex(curves is array, cellSize is ValueWithUnits) returns map
-{
-    var spatialIndex = {};
-
-    for (var i = 0; i < size(curves); i += 1)
-    {
-        var gridKey = computeBBoxGridKey(curves[i].bbox2D, cellSize);
-
-        var cellCurves = spatialIndex[gridKey];
-        if (cellCurves == undefined)
-            cellCurves = [];
-
-        cellCurves = append(cellCurves, i);
-        spatialIndex[gridKey] = cellCurves;
-    }
-
-    return spatialIndex;
-}
-
 // =============================================================================
 // OPTIMIZED UNIQUE CURVE DETECTION
 // =============================================================================

@@ -16,10 +16,15 @@ FeatureScript 2878;
  */
 
 import(path : "onshape/std/common.fs", version : "2878.0");
+
+// IMPORT PLACEHOLDER: tools/solvers.fs
+// This import will be replaced with Onshape document ID when copying to FeatureStudio.
+// The solveLinearSystem() function is called at line 372.
+// For local development, this will show as an error - this is expected and will
+// resolve when the code is deployed to Onshape with proper document ID.
 // IMPORT: tools/solvers.fs
 
 // Geometric tolerance for validation checks
-const GEOM_TOL = 1e-6 * meter;
 const MIN_AREA = 1e-12 * meter * meter;
 
 /**
