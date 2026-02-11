@@ -504,8 +504,8 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
 /**
  * Compute constant shape function gradients for linear triangle
  *
- * @param y1, z1, y2, z2, y3, z3 : Nodal coordinates (ValueWithUnits)
- * @returns : map with { dNdy: [3], dNdz: [3], area: ValueWithUnits }
+ * @param y1, z1, y2, z2, y3, z3 : Nodal coordinates (plain numbers, implicit meters)
+ * @returns : map with { dNdy: [3], dNdz: [3], area: number }
  *
  * Linear shape functions:
  *   N1 = (a1 + b1*y + c1*z) / (2*A)
