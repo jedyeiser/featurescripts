@@ -309,13 +309,13 @@ function printBSplineInfo(bspline is BSplineCurve)
 
     // Print endpoints
     println("  Start Point: [" ~
-            toString(endpoints.startPt[0] / meter) ~ ", " ~
-            toString(endpoints.startPt[1] / meter) ~ ", " ~
-            toString(endpoints.startPt[2] / meter) ~ "] m");
+            toString(endpoints.start[0] / meter) ~ ", " ~
+            toString(endpoints.start[1] / meter) ~ ", " ~
+            toString(endpoints.start[2] / meter) ~ "] m");
     println("  End Point: [" ~
-            toString(endpoints.endPt[0] / meter) ~ ", " ~
-            toString(endpoints.endPt[1] / meter) ~ ", " ~
-            toString(endpoints.endPt[2] / meter) ~ "] m");
+            toString(endpoints.end[0] / meter) ~ ", " ~
+            toString(endpoints.end[1] / meter) ~ ", " ~
+            toString(endpoints.end[2] / meter) ~ "] m");
 
     // Print control points (only first/last to avoid clutter)
     println("  First CP: [" ~
@@ -327,11 +327,21 @@ function printBSplineInfo(bspline is BSplineCurve)
             toString(cps[numCPs - 1][1] / meter) ~ ", " ~
             toString(cps[numCPs - 1][2] / meter) ~ "] m");
 
+    // Print ALL control points for detailed debugging
+    println("  All Control Points:");
+    for (var i = 0; i < numCPs; i += 1)
+    {
+        println("    CP[" ~ i ~ "]: [" ~
+                toString(cps[i][0] / meter) ~ ", " ~
+                toString(cps[i][1] / meter) ~ ", " ~
+                toString(cps[i][2] / meter) ~ "] m");
+    }
+
     // Print continuity info if multiple spans
     const numSpans = getNumSpans(bspline);
     if (numSpans > 1)
     {
-        const minContinuity = getMinInteriorContinuity(bspline);
+        const minContinuity = getMinInteriorContinuity(bspline, KNOT_TOLERANCE);
         println("  Spans: " ~ numSpans);
         println("  Min Interior Continuity: C" ~ minContinuity);
     }

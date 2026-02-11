@@ -20,7 +20,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 
-const MIN_AREA = 1e-12 * meter * meter;
+const MIN_AREA = 1e-12;  // Implicit m² (coordinates are unitless)
 
 /**
  * Main entry point: Compute torsional stiffness GJ for a cross-section
@@ -520,9 +520,9 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
  * Area (signed):
  *   2*A = (y2-y1)*(z3-z1) - (y3-y1)*(z2-z1)
  */
-export function computeShapeGradients(y1 is ValueWithUnits, z1 is ValueWithUnits,
-                                       y2 is ValueWithUnits, z2 is ValueWithUnits,
-                                       y3 is ValueWithUnits, z3 is ValueWithUnits) returns map
+export function computeShapeGradients(y1 is number, z1 is number,
+                                       y2 is number, z2 is number,
+                                       y3 is number, z3 is number) returns map
 {
     // Compute twice the signed area
     var twoA = (y2 - y1) * (z3 - z1) - (y3 - y1) * (z2 - z1);
@@ -535,8 +535,8 @@ export function computeShapeGradients(y1 is ValueWithUnits, z1 is ValueWithUnits
     {
         // Return zero gradients for degenerate triangles
         return {
-            "dNdy" : [0.0 / meter, 0.0 / meter, 0.0 / meter],
-            "dNdz" : [0.0 / meter, 0.0 / meter, 0.0 / meter],
+            "dNdy" : [0.0, 0.0, 0.0],
+            "dNdz" : [0.0, 0.0, 0.0],
             "area" : A
         };
     }
