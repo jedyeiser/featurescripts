@@ -49,9 +49,17 @@ function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureR
     // Check if curvature is effectively zero
     if (abs(frenetResult.curvature) < 1e-10 / meter)
     {
-        // Construct arbitrary orthonormal frame from tangent
+        // For zero-curvature (linear) edges, construct frame from tangent
+        // Use world Y-axis as reference to ensure consistent normal direction
         const tangent = frame.zAxis;
-        const normal = perpendicularVector(tangent);
+        const worldUp = vector(0, 1, 0);
+
+        // If tangent is parallel to worldUp, use worldX instead
+        const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
+                          vector(1, 0, 0) : worldUp;
+
+        const binormal = normalize(cross(tangent, refVector));
+        const normal = cross(binormal, tangent);
         frame = coordSystem(frame.origin, normal, tangent);
     }
 
@@ -81,9 +89,17 @@ function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvature
     // Check if curvature is effectively zero
     if (abs(frenetResult.curvature) < 1e-10 / meter)
     {
-        // Construct arbitrary orthonormal frame from tangent
+        // For zero-curvature (linear) edges, construct frame from tangent
+        // Use world Y-axis as reference to ensure consistent normal direction
         const tangent = frame.zAxis;
-        const normal = perpendicularVector(tangent);
+        const worldUp = vector(0, 1, 0);
+
+        // If tangent is parallel to worldUp, use worldX instead
+        const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
+                          vector(1, 0, 0) : worldUp;
+
+        const binormal = normalize(cross(tangent, refVector));
+        const normal = cross(binormal, tangent);
         frame = coordSystem(frame.origin, normal, tangent);
     }
 
@@ -252,7 +268,14 @@ export function mapPointToCurve(context is Context, mapping is map,
     }
 
     // 5. Get Frenet frame at toParam
-    const toFrame = getChainFrenetFrame(context, mapping.toChain, toParam);
+    var toFrame = getChainFrenetFrame(context, mapping.toChain, toParam);
+
+    // 5a. Check frame consistency and adjust if needed
+    const consistency = checkFrameConsistency(fromFrame, toFrame);
+    if (!consistency.consistent)
+    {
+        toFrame = adjustFrameOrientation(fromFrame, toFrame, consistency);
+    }
 
     // 6. Transform local coords to world using toFrame (CORRECT ORDER)
     const mappedPoint = frenetPointToWorld(localCoords, toFrame);
