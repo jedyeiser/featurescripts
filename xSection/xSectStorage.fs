@@ -218,7 +218,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
             headerLookup["X"],
             headerLookup["EI"],
             headerLookup["NA Height"],
-            headerLookup["NA Height %"],
+            headerLookup["NA Percentage"],
             headerLookup["Beam Width"],
             headerLookup["Beam Height"],
             headerLookup["Lineal Density"]
