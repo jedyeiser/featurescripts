@@ -70,13 +70,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         const minimalSegmentation = definition.showAdvanced ? definition.minimalSegmentation : false;
 
         // Step 1: Build curve chains with continuity validation
-        var fromChain is CurveChain = undefined;
-        var toChain is CurveChain = undefined;
-        
+        var fromChain is CurveChain;
+        var toChain is CurveChain;
+
         try
         {
-            var fromChain = buildCurveChain(context, definition.fromEdge,
-                                           definition.chainContinuity, {});
+            fromChain = buildCurveChain(context, definition.fromEdge,
+                                       definition.chainContinuity, {});
         }
         catch (error)
         {
@@ -85,8 +85,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
         try
         {
-            var toChain = buildCurveChain(context, definition.toEdge,
-                                         definition.chainContinuity, {});
+            toChain = buildCurveChain(context, definition.toEdge,
+                                     definition.chainContinuity, {});
         }
         catch (error)
         {
