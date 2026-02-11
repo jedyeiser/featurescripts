@@ -9,7 +9,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6
 /**
  * Approximate BSpline through points with guaranteed endpoint interpolation.
  *
- * Fixes the endpoint accuracy bug from old geometryManipulators code.
+ * Uses interpolateIndices to guarantee endpoint interpolation.
  *
  * @param context : Onshape context
  * @param points : Points to fit (MUST include endpoints)
@@ -18,7 +18,6 @@ import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6
  *                    tolerance: ValueWithUnits (default 1e-5 m)
  *                    maxControlPoints: number (default 50)
  *                    isPeriodic: boolean (default false)
- *                    endpointWeight: number (default 1000) // High weight for endpoints
  *                  }
  * @returns BSplineCurve fitted curve
  */
@@ -29,7 +28,6 @@ export function approximateWithEndpoints(context is Context, points is array,
     const tolerance = options.tolerance ?? (1e-5 * meter);
     const maxControlPoints = options.maxControlPoints ?? 50;
     const isPeriodic = options.isPeriodic ?? false;
-    const endpointWeight = options.endpointWeight ?? 1000;
 
     if (size(points) < degree + 1)
     {
@@ -37,33 +35,18 @@ export function approximateWithEndpoints(context is Context, points is array,
                         " spline (need at least " ~ (degree + 1) ~ ")");
     }
 
-    // Create weighted approximation targets
-    // High weight at endpoints ensures interpolation
-    var weights = [];
-    for (var i = 0; i < size(points); i += 1)
-    {
-        if (i == 0 || i == size(points) - 1)
-        {
-            weights = append(weights, endpointWeight);
-        }
-        else
-        {
-            weights = append(weights, 1.0);
-        }
-    }
-
     const target = approximationTarget({
-        "positions" : points,
-        "weights" : weights
+        "positions" : points
     });
 
     // Call standard approximation - returns ARRAY
     const curves = approximateSpline(context, {
-        "approximationTargets" : [target],
+        "targets" : [target],
         "degree" : degree,
         "tolerance" : tolerance,
         "maxControlPoints" : maxControlPoints,
-        "isPeriodic" : isPeriodic
+        "isPeriodic" : isPeriodic,
+        "interpolateIndices" : [0, size(points) - 1]  // Force endpoint interpolation
     });
 
     // Extract first (and only) curve from array
@@ -92,7 +75,7 @@ export function approximateWithEndpoints(context is Context, points is array,
     if (startError > errorTol || endError > errorTol)
     {
         // Warning: endpoints not exact
-        // This shouldn't happen with high weights, but log if it does
+        // This shouldn't happen with interpolateIndices, but log if it does
         println("WARNING: Endpoint approximation not exact.");
         println("  Start error: " ~ toString(startError));
         println("  End error: " ~ toString(endError));

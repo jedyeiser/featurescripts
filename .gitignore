@@ -23,6 +23,7 @@ Desktop.ini
 *.bak
 *.backup
 ~*
+nul
 
 # Logs
 *.log

@@ -63,6 +63,25 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Default" : false }
             definition.minimalSegmentation is boolean;
         }
+
+        annotation { "Group Name" : "Debug Options",
+                    "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print from BSplines",
+                        "Description" : "Print BSpline data from 'from' reference chain",
+                        "Default" : false }
+            definition.debugFromBSplines is boolean;
+
+            annotation { "Name" : "Print to BSplines",
+                        "Description" : "Print BSpline data from 'to' reference chain",
+                        "Default" : false }
+            definition.debugToBSplines is boolean;
+
+            annotation { "Name" : "Print source BSplines",
+                        "Description" : "Print BSpline data from source curves",
+                        "Default" : false }
+            definition.debugSourceBSplines is boolean;
+        }
     }
     {
         // Default values
@@ -91,6 +110,50 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         catch
         {
             throw regenError("To edge chain error", ["toEdge"]);
+        }
+
+        // Debug: Print from chain BSplines
+        if (definition.debugFromBSplines)
+        {
+            println("\n=== FROM REFERENCE CHAIN ===");
+            const fromEdges = evaluateQuery(context, definition.fromEdge);
+            for (var i = 0; i < size(fromEdges); i += 1)
+            {
+                try
+                {
+                    const bspline = evApproximateBSplineCurve(context, {
+                        "edge" : fromEdges[i]
+                    });
+                    println("FROM Edge #" ~ (i + 1));
+                    printBSplineInfo(bspline);
+                }
+                catch
+                {
+                    println("FROM Edge #" ~ (i + 1) ~ ": Could not convert to BSpline");
+                }
+            }
+        }
+
+        // Debug: Print to chain BSplines
+        if (definition.debugToBSplines)
+        {
+            println("\n=== TO REFERENCE CHAIN ===");
+            const toEdges = evaluateQuery(context, definition.toEdge);
+            for (var i = 0; i < size(toEdges); i += 1)
+            {
+                try
+                {
+                    const bspline = evApproximateBSplineCurve(context, {
+                        "edge" : toEdges[i]
+                    });
+                    println("TO Edge #" ~ (i + 1));
+                    printBSplineInfo(bspline);
+                }
+                catch
+                {
+                    println("TO Edge #" ~ (i + 1) ~ ": Could not convert to BSpline");
+                }
+            }
         }
 
         // Step 2: Determine alignment point
@@ -151,6 +214,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 continue;
             }
 
+            // Debug: Print source curve BSpline
+            if (definition.debugSourceBSplines)
+            {
+                println("\n=== SOURCE CURVE #" ~ (i + 1) ~ " ===");
+                printBSplineInfo(sourceBSpline);
+            }
+
             // Map curve with segmentation
             var mappedSegments;
             try
@@ -193,7 +263,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         mappingMode : MappingMode.LENGTH,
         showAdvanced : false,
         numSamples : 25,
-        minimalSegmentation : false
+        minimalSegmentation : false,
+        debugFromBSplines : false,
+        debugToBSplines : false,
+        debugSourceBSplines : false
     });
 
 /**
@@ -211,4 +284,55 @@ export function wrapCurveEditLogic(context is Context, id is Id, oldDefinition i
     }
 
     return definition;
+}
+
+/**
+ * Print detailed BSpline information for debugging.
+ * Uses bspline_data.fs accessor functions.
+ */
+function printBSplineInfo(bspline is BSplineCurve)
+{
+    const degree = getDegree(bspline);
+    const numCPs = getNumControlPoints(bspline);
+    const knots = getKnotVector(bspline);
+    const cps = getControlPoints(bspline);
+    const paramRange = getBSplineParamRange(bspline);
+    const endpoints = getBSplineEndpoints(bspline);
+
+    println("  Degree: " ~ degree);
+    println("  Control Points: " ~ numCPs);
+    println("  Rational: " ~ isRational(bspline));
+    println("  Periodic: " ~ isPeriodic(bspline));
+    println("  Dimension: " ~ getDimension(bspline));
+    println("  Param Range: [" ~ paramRange.uMin ~ ", " ~ paramRange.uMax ~ "]");
+    println("  Knot Vector: " ~ knots);
+
+    // Print endpoints
+    println("  Start Point: [" ~
+            toString(endpoints.startPt[0] / meter) ~ ", " ~
+            toString(endpoints.startPt[1] / meter) ~ ", " ~
+            toString(endpoints.startPt[2] / meter) ~ "] m");
+    println("  End Point: [" ~
+            toString(endpoints.endPt[0] / meter) ~ ", " ~
+            toString(endpoints.endPt[1] / meter) ~ ", " ~
+            toString(endpoints.endPt[2] / meter) ~ "] m");
+
+    // Print control points (only first/last to avoid clutter)
+    println("  First CP: [" ~
+            toString(cps[0][0] / meter) ~ ", " ~
+            toString(cps[0][1] / meter) ~ ", " ~
+            toString(cps[0][2] / meter) ~ "] m");
+    println("  Last CP: [" ~
+            toString(cps[numCPs - 1][0] / meter) ~ ", " ~
+            toString(cps[numCPs - 1][1] / meter) ~ ", " ~
+            toString(cps[numCPs - 1][2] / meter) ~ "] m");
+
+    // Print continuity info if multiple spans
+    const numSpans = getNumSpans(bspline);
+    if (numSpans > 1)
+    {
+        const minContinuity = getMinInteriorContinuity(bspline);
+        println("  Spans: " ~ numSpans);
+        println("  Min Interior Continuity: C" ~ minContinuity);
+    }
 }

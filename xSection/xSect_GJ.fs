@@ -262,12 +262,12 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         var pt2 = sectionPoints[i2].point2D;
         var pt3 = sectionPoints[i3].point2D;
 
-        var y1 = pt1[0] * meter;
-        var z1 = pt1[1] * meter;
-        var y2 = pt2[0] * meter;
-        var z2 = pt2[1] * meter;
-        var y3 = pt3[0] * meter;
-        var z3 = pt3[1] * meter;
+        var y1 = pt1[0];
+        var z1 = pt1[1];
+        var y2 = pt2[0];
+        var z2 = pt2[1];
+        var y3 = pt3[0];
+        var z3 = pt3[1];
 
         // Compute shape function gradients and area
         var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
@@ -451,12 +451,12 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
         var pt2 = sectionPoints[i2].point2D;
         var pt3 = sectionPoints[i3].point2D;
 
-        var y1 = pt1[0] * meter;
-        var z1 = pt1[1] * meter;
-        var y2 = pt2[0] * meter;
-        var z2 = pt2[1] * meter;
-        var y3 = pt3[0] * meter;
-        var z3 = pt3[1] * meter;
+        var y1 = pt1[0];
+        var z1 = pt1[1];
+        var y2 = pt2[0];
+        var z2 = pt2[1];
+        var y3 = pt3[0];
+        var z3 = pt3[1];
 
         // Compute shape function gradients and area
         var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
