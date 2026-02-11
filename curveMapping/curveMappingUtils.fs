@@ -39,10 +39,13 @@ export function approximateWithEndpoints(context is Context, points is array,
         "positions" : points
     });
 
+    // Ensure minimum degree requirement for approximateSpline (degree must be >= 2)
+    const adjustedDegree = max(degree, 2);
+
     // Call standard approximation - returns ARRAY
     const curves = approximateSpline(context, {
         "targets" : [target],
-        "degree" : degree,
+        "degree" : adjustedDegree,
         "tolerance" : tolerance,
         "maxControlPoints" : maxControlPoints,
         "isPeriodic" : isPeriodic,

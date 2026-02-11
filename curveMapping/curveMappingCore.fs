@@ -443,8 +443,8 @@ export function mapCurveSegmented(context is Context,
         // Detect if mapped points are nearly linear
         const isLinear = detectLinearSegment(mappedPoints, 1e-5 * meter);
 
-        // Choose degree based on linearity
-        const degree = isLinear ? 1 : 3;
+        // Choose degree based on linearity (minimum degree 2 for approximateSpline)
+        const degree = isLinear ? 2 : 3;
 
         // Approximate with endpoint interpolation
         const mappedCurve = approximateWithEndpoints(context, mappedPoints, degree, {});
