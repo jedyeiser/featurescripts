@@ -343,7 +343,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
  */
 function applyBoundaryCondition(K is array, f is array, n is number) returns map
 {
-    // Pin first node
+    // Pin first node to remove rigid body mode
     for (var j = 0; j < n; j += 1)
     {
         K[0][j] = 0.0;
@@ -352,7 +352,30 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
     K[0][0] = 1.0;
     f[0] = 0.0;
 
-    println("Applied BC: K[0][0] = " ~ K[0][0] ~ ", K[1][1] = " ~ K[1][1]);
+    // Pin any unused nodes (disconnected from mesh) to prevent singularity
+    // These nodes have zero diagonal entries (not part of any triangle)
+    var pinnedNodes = 0;
+    for (var i = 1; i < n; i += 1)
+    {
+        if (abs(K[i][i]) < 1e-15)
+        {
+            // Node i is unused - pin it
+            for (var j = 0; j < n; j += 1)
+            {
+                K[i][j] = 0.0;
+                K[j][i] = 0.0;
+            }
+            K[i][i] = 1.0;
+            f[i] = 0.0;
+            pinnedNodes += 1;
+        }
+    }
+
+    if (pinnedNodes > 0)
+    {
+        println("  Pinned " ~ pinnedNodes ~ " unused nodes (disconnected from mesh)");
+    }
+    println("  BC applied: K[0][0] = " ~ K[0][0] ~ ", K[1][1] = " ~ K[1][1]);
 
     return {
         "K" : K,

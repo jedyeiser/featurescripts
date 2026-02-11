@@ -39,8 +39,18 @@ export enum AlignmentMode
  */
 function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureResult) returns Vector
 {
-    const frame = frenetResult.frame;
+    var frame = frenetResult.frame;
     const localVector = worldPoint - frame.origin;
+
+    // Handle degenerate case: line with undefined normal/binormal
+    if (frame.xAxis == undefined || frame.yAxis == undefined)
+    {
+        // Construct arbitrary orthonormal frame from tangent
+        const tangent = frame.zAxis;
+        const normal = perpendicularVector(tangent);
+        const binormal = cross(tangent, normal);
+        frame = coordSystem(frame.origin, normal, tangent);
+    }
 
     // Project onto Frenet frame axes
     // frame.zAxis = tangent direction
@@ -62,7 +72,17 @@ function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureR
  */
 function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvatureResult) returns Vector
 {
-    const frame = frenetResult.frame;
+    var frame = frenetResult.frame;
+
+    // Handle degenerate case: line with undefined normal/binormal
+    if (frame.xAxis == undefined || frame.yAxis == undefined)
+    {
+        // Construct arbitrary orthonormal frame from tangent
+        const tangent = frame.zAxis;
+        const normal = perpendicularVector(tangent);
+        const binormal = cross(tangent, normal);
+        frame = coordSystem(frame.origin, normal, tangent);
+    }
 
     // Reconstruct world point from Frenet coordinates
     return frame.origin +
