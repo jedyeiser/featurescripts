@@ -231,7 +231,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
 
     for (var i = 0; i < n; i += 1)
     {
-        K[i] = makeArray(n, 0.0 * newton / (meter * meter));
+        K[i] = makeArray(n, 0.0 * newton);
         f[i] = 0.0 * newton;
     }
 
@@ -352,13 +352,13 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
 function solveFEMSystem(K is array, f is array, n is number) returns array
 {
     // Strip units from K and f for solver
-    // K has units: G * A * (dN/dy)² = (N/m²) * m² * (1/m²) = N/m²
+    // K has units: G * A * (dN/dy)² = (N/m²) * m² * (1/m²) = N
     // f has units: G * A * distance * (dN/dy) = (N/m²) * m² * m * (1/m) = N
     var K_plain = makeArray(n);
     var f_plain = makeArray(n);
 
-    var K_unit = newton / (meter * meter);  // N/m²
-    var f_unit = newton;                     // N
+    var K_unit = newton;  // N
+    var f_unit = newton;  // N
 
     for (var i = 0; i < n; i += 1)
     {
@@ -501,6 +501,17 @@ export function computeShapeGradients(y1 is ValueWithUnits, z1 is ValueWithUnits
 
     // Area (take absolute value)
     var A = abs(twoA) / 2.0;
+
+    // Check for degenerate triangle before dividing by twoA
+    if (A < MIN_AREA)
+    {
+        // Return zero gradients for degenerate triangles
+        return {
+            "dNdy" : [0.0 / meter, 0.0 / meter, 0.0 / meter],
+            "dNdz" : [0.0 / meter, 0.0 / meter, 0.0 / meter],
+            "area" : A
+        };
+    }
 
     // Shape function gradients (dimensionless / meter)
     var dNdy = makeArray(3);

@@ -80,7 +80,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
         catch (error)
         {
-            throw regenError("From edge chain error: " ~ error.message, ["fromEdge"]);
+            throw regenError("From edge chain error", ["fromEdge"]);
         }
 
         try
@@ -90,7 +90,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
         catch (error)
         {
-            throw regenError("To edge chain error: " ~ error.message, ["toEdge"]);
+            throw regenError("To edge chain error", ["toEdge"]);
         }
 
         // Step 2: Determine alignment point
@@ -142,7 +142,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             catch (error)
             {
                 reportFeatureWarning(context, id,
-                    "Could not convert edge " ~ (i + 1) ~ " to BSpline: " ~ error.message);
+                    "Could not convert edge " ~ (i + 1) ~ " to BSpline: " ~ toString(error));
                 continue;
             }
 
@@ -158,7 +158,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             catch (error)
             {
                 reportFeatureWarning(context, id,
-                    "Could not map curve " ~ (i + 1) ~ ": " ~ error.message);
+                    "Could not map curve " ~ (i + 1) ~ ": " ~ toString(error));
                 continue;
             }
 
@@ -179,7 +179,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 catch (error)
                 {
                     reportFeatureWarning(context, id,
-                        "Could not create mapped curve " ~ (i + 1) ~ "." ~ (j + 1) ~ ": " ~ error.message);
+                        "Could not create mapped curve " ~ (i + 1) ~ "." ~ (j + 1) ~ ": " ~ toString(error));
                 }
             }
         }
