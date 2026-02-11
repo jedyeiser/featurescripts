@@ -304,11 +304,11 @@ export function mapCurveSegmented(context is Context,
     const startPoint = evaluateSpline({
         "spline" : sourceCurve,
         "parameters" : [sourceRange.uMin]
-    })[0];
+    })[0][0];
     const endPoint = evaluateSpline({
         "spline" : sourceCurve,
         "parameters" : [sourceRange.uMax]
-    })[0];
+    })[0][0];
 
     // Project endpoints onto fromChain to get span
     const startProj = projectPointOnChain(context, mapping.fromChain, startPoint, {});
@@ -392,7 +392,7 @@ export function mapCurveSegmented(context is Context,
                 const testPt = evaluateSpline({
                     "spline" : sourceCurve,
                     "parameters" : [testParam]
-                })[0];
+                })[0][0];
 
                 const dist = norm(testPt - chainPt);
                 if (bestDist == undefined || dist < bestDist)
@@ -406,7 +406,7 @@ export function mapCurveSegmented(context is Context,
             const sourcePt = evaluateSpline({
                 "spline" : sourceCurve,
                 "parameters" : [bestParam]
-            })[0];
+            })[0][0];
 
             sourcePoints = append(sourcePoints, sourcePt);
         }

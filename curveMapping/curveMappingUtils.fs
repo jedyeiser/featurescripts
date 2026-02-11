@@ -78,11 +78,11 @@ export function approximateWithEndpoints(context is Context, points is array,
     const startEval = evaluateSpline({
         "spline" : curve,
         "parameters" : [paramRange.uMin]
-    })[0];
+    })[0][0];
     const endEval = evaluateSpline({
         "spline" : curve,
         "parameters" : [paramRange.uMax]
-    })[0];
+    })[0][0];
 
     const startError = norm(startEval - points[0]);
     const endError = norm(endEval - points[size(points) - 1]);
@@ -161,7 +161,7 @@ function computeBSplineArcLength(curve is BSplineCurve, startParam is number,
         const point = evaluateSpline({
             "spline" : curve,
             "parameters" : [param]
-        })[0];
+        })[0][0];
 
         if (prevPoint != undefined)
         {
@@ -216,11 +216,11 @@ export function validateMappedCurve(context is Context,
     const mappedStart = evaluateSpline({
         "spline" : mappedCurve,
         "parameters" : [mappedRange.uMin]
-    })[0];
+    })[0][0];
     const mappedEnd = evaluateSpline({
         "spline" : mappedCurve,
         "parameters" : [mappedRange.uMax]
-    })[0];
+    })[0][0];
 
     // Check endpoint accuracy against expected targets (if provided)
     var endpointError = 0 * meter;
