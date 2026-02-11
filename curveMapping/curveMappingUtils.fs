@@ -77,11 +77,11 @@ export function approximateWithEndpoints(context is Context, points is array,
     const paramRange = getBSplineParamRange(curve);
     const startEval = evaluateSpline({
         "spline" : curve,
-        "parameters" : [paramRange.min]
+        "parameters" : [paramRange.uMin]
     })[0];
     const endEval = evaluateSpline({
         "spline" : curve,
-        "parameters" : [paramRange.max]
+        "parameters" : [paramRange.uMax]
     })[0];
 
     const startError = norm(startEval - points[0]);
@@ -215,11 +215,11 @@ export function validateMappedCurve(context is Context,
     // Evaluate endpoints
     const mappedStart = evaluateSpline({
         "spline" : mappedCurve,
-        "parameters" : [mappedRange.min]
+        "parameters" : [mappedRange.uMin]
     })[0];
     const mappedEnd = evaluateSpline({
         "spline" : mappedCurve,
-        "parameters" : [mappedRange.max]
+        "parameters" : [mappedRange.uMax]
     })[0];
 
     // Check endpoint accuracy against expected targets (if provided)
@@ -244,8 +244,8 @@ export function validateMappedCurve(context is Context,
 
     if (checkLength)
     {
-        const sourceLength = computeBSplineArcLength(sourceCurve, sourceRange.min, sourceRange.max, 50);
-        const mappedLength = computeBSplineArcLength(mappedCurve, mappedRange.min, mappedRange.max, 50);
+        const sourceLength = computeBSplineArcLength(sourceCurve, sourceRange.uMin, sourceRange.uMax, 50);
+        const mappedLength = computeBSplineArcLength(mappedCurve, mappedRange.uMin, mappedRange.uMax, 50);
 
         lengthRatio = mappedLength / sourceLength;
 

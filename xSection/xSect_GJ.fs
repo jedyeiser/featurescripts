@@ -240,6 +240,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     }
 
     // Loop over all triangles
+    var validElements = 0;
     for (var e = 0; e < size(triangles); e += 1)
     {
         var tri = triangles[e];
@@ -254,6 +255,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         {
             continue;
         }
+        validElements += 1;
 
         // Get nodal coordinates in local (y,z) frame
         var pt1 = sectionPoints[i1].point2D;
@@ -304,6 +306,20 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         }
     }
 
+    // Diagnostic: Check if matrix has any non-zero entries
+    var nnz = 0;
+    for (var i = 0; i < n; i += 1)
+    {
+        for (var j = 0; j < n; j += 1)
+        {
+            if (abs(K[i][j]) > 1e-15)
+            {
+                nnz += 1;
+            }
+        }
+    }
+    println("FEM assembly: " ~ n ~ " nodes, " ~ size(triangles) ~ " triangles, " ~ validElements ~ " valid elements, " ~ nnz ~ " non-zero K entries");
+
     return {
         "K" : K,
         "f" : f,
@@ -335,6 +351,8 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
     }
     K[0][0] = 1.0;
     f[0] = 0.0;
+
+    println("Applied BC: K[0][0] = " ~ K[0][0] ~ ", K[1][1] = " ~ K[1][1]);
 
     return {
         "K" : K,

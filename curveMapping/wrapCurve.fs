@@ -78,7 +78,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             fromChain = buildCurveChain(context, definition.fromEdge,
                                        definition.chainContinuity, {});
         }
-        catch (error)
+        catch
         {
             throw regenError("From edge chain error", ["fromEdge"]);
         }
@@ -88,7 +88,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             toChain = buildCurveChain(context, definition.toEdge,
                                      definition.chainContinuity, {});
         }
-        catch (error)
+        catch
         {
             throw regenError("To edge chain error", ["toEdge"]);
         }

@@ -303,11 +303,11 @@ export function mapCurveSegmented(context is Context,
     // Evaluate endpoints
     const startPoint = evaluateSpline({
         "spline" : sourceCurve,
-        "parameters" : [sourceRange.min]
+        "parameters" : [sourceRange.uMin]
     })[0];
     const endPoint = evaluateSpline({
         "spline" : sourceCurve,
-        "parameters" : [sourceRange.max]
+        "parameters" : [sourceRange.uMax]
     })[0];
 
     // Project endpoints onto fromChain to get span
@@ -382,13 +382,13 @@ export function mapCurveSegmented(context is Context,
             // Find closest point on source curve using evDistance
             // Create a temporary vertex at chainPt for evDistance
             // Simplified: sample source curve and find closest
-            var bestParam = sourceRange.min;
+            var bestParam = sourceRange.uMin;
             var bestDist = undefined;
 
             // Sample source curve to find closest parameter
             for (var k = 0; k <= 20; k += 1)
             {
-                const testParam = sourceRange.min + (k / 20) * (sourceRange.max - sourceRange.min);
+                const testParam = sourceRange.uMin + (k / 20) * (sourceRange.uMax - sourceRange.uMin);
                 const testPt = evaluateSpline({
                     "spline" : sourceCurve,
                     "parameters" : [testParam]
