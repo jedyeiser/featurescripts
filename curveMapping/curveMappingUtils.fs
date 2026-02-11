@@ -67,6 +67,10 @@ export function approximateWithEndpoints(context is Context, points is array,
     });
 
     // Extract first (and only) curve from array
+    if (size(curves) == 0)
+    {
+        throw regenError("Failed to approximate spline through points");
+    }
     const curve = curves[0];
 
     // Verify endpoint accuracy

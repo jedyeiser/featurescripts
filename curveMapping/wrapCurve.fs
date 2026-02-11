@@ -99,14 +99,19 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             // User specified alignment point
             const alignVertex = evaluateQuery(context, definition.alignmentPoint)[0];
-            if (alignVertex is BodyType.MATE_CONNECTOR)
+
+            // Try as mate connector first (using try silent pattern)
+            const mateConnectorResult = try silent(evMateConnector(context, {
+                "mateConnector" : alignVertex
+            }));
+
+            if (mateConnectorResult != undefined)
             {
-                alignmentPoint = evMateConnector(context, {
-                    "mateConnector" : alignVertex
-                }).origin;
+                alignmentPoint = mateConnectorResult.origin;
             }
             else
             {
+                // Must be a vertex
                 alignmentPoint = evVertexPoint(context, {
                     "vertex" : alignVertex
                 });

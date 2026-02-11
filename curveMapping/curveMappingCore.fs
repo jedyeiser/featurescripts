@@ -643,19 +643,35 @@ function adjustFrameOrientation(fromFrame is EdgeCurvatureResult,
                                 toFrame is EdgeCurvatureResult,
                                 consistency is map) returns EdgeCurvatureResult
 {
-    var adjustedFrame = toFrame;
-
-    if (consistency.normalFlip)
+    if (!consistency.normalFlip && !consistency.binormalFlip)
     {
-        // Flip normal (xAxis)
-        adjustedFrame.frame.xAxis = -adjustedFrame.frame.xAxis;
+        // No adjustment needed
+        return toFrame;
     }
 
-    if (consistency.binormalFlip)
+    // Need to reconstruct frame with flipped axes
+    // coordSystem(origin, xAxis, zAxis) - derives yAxis = cross(zAxis, xAxis)
+    var newXAxis = consistency.normalFlip ? -toFrame.frame.xAxis : toFrame.frame.xAxis;
+    var newZAxis = toFrame.frame.zAxis; // Tangent direction never flips
+
+    // If binormal flips, we need to flip the derived yAxis
+    // Since yAxis = cross(zAxis, xAxis), flipping yAxis means negating xAxis
+    if (consistency.binormalFlip && !consistency.normalFlip)
     {
-        // Flip binormal (yAxis)
-        adjustedFrame.frame.yAxis = -adjustedFrame.frame.yAxis;
+        newXAxis = -newXAxis;
+    }
+    else if (consistency.binormalFlip && consistency.normalFlip)
+    {
+        // Both flip: xAxis already flipped, need to unflip for yAxis calculation
+        newXAxis = toFrame.frame.xAxis;
     }
 
-    return adjustedFrame;
+    const newFrame = coordSystem(toFrame.frame.origin, newXAxis, newZAxis);
+
+    // Reconstruct EdgeCurvatureResult with new frame
+    return {
+        "frame" : newFrame,
+        "curvature" : toFrame.curvature,
+        "torsion" : toFrame.torsion
+    };
 }

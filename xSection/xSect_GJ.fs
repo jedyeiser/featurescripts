@@ -229,10 +229,14 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     var K = makeArray(n);
     var f = makeArray(n);
 
+    // Define unit constants for consistent use
+    const K_unit = newton / (meter * meter);  // Stiffness units
+    const f_unit = newton;                     // Force units
+
     for (var i = 0; i < n; i += 1)
     {
-        K[i] = makeArray(n, 0.0 * newton);
-        f[i] = 0.0 * newton;
+        K[i] = makeArray(n, 0.0);
+        f[i] = 0.0;
     }
 
     // Loop over all triangles
@@ -288,14 +292,14 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
 
             // Element load vector
             var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);
-            f[ia] += f_local;
+            f[ia] += f_local / f_unit;  // Strip units before accumulating
 
             // Element stiffness matrix
             for (var b = 0; b < 3; b += 1)
             {
                 var ib = nodeIndices[b];
                 var K_local = G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b]);
-                K[ia][ib] += K_local;
+                K[ia][ib] += K_local / K_unit;  // Strip units before accumulating
             }
         }
     }
@@ -351,27 +355,9 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
  */
 function solveFEMSystem(K is array, f is array, n is number) returns array
 {
-    // Strip units from K and f for solver
-    // K has units: G * A * (dN/dy)² = (N/m²) * m² * (1/m²) = N
-    // f has units: G * A * distance * (dN/dy) = (N/m²) * m² * m * (1/m) = N
-    var K_plain = makeArray(n);
-    var f_plain = makeArray(n);
-
-    var K_unit = newton;  // N
-    var f_unit = newton;  // N
-
-    for (var i = 0; i < n; i += 1)
-    {
-        K_plain[i] = makeArray(n);
-        for (var j = 0; j < n; j += 1)
-        {
-            K_plain[i][j] = K[i][j] / K_unit;
-        }
-        f_plain[i] = f[i] / f_unit;
-    }
-
+    // K and f are already plain numbers (units were stripped during accumulation)
     // Solve using dense Gaussian elimination (returns undefined if singular)
-    var psi = solveLinearSystem(K_plain, f_plain, n);
+    var psi = solveLinearSystem(K, f, n);
 
     if (psi == undefined)
     {
