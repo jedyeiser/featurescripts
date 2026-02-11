@@ -2,31 +2,31 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectPredicates (UI definitions)
-export import(path : "17142132b20343b5f125e7e7", version : "c48016953afa1239d5c80e18");
+export import(path : "17142132b20343b5f125e7e7", version : "131003d40b8c47ecc764fd09");
 
 // xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "f27666c99d8984e7de77d30b");
+import(path : "c2c3edd39b85fde5e6062533", version : "22e36084c7a3deaba8553abc");
 
 // xSectCLT (CLT computations)
-import(path : "74231d1d53f5a117d47d17a9", version : "efd6872fd0b7e73a7f8f034d");
+import(path : "74231d1d53f5a117d47d17a9", version : "31cbeb1b629ee01ad23fa333");
 
 // xSectBeamAnalysis (beam stiffness computations)
-import(path : "ebac109589e3bf405d3f3ae7", version : "e7462d0d919372f4701957f8");
+import(path : "ebac109589e3bf405d3f3ae7", version : "93a83d845ca3a79f30094992");
 
 //import xSectMatrials
-import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
+import(path : "f8e590162884d45f56e0a05f", version : "32c54f5061b096612985f073");
 //import xSectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "971c170990701acd707939ce");
+import(path : "3cb3cff6974529bf6bed096b", version : "8cc5a6316dc08ba2517c1fd2");
 //import xSectVisualization
-import(path : "19991d0446ad0551339572d9", version : "b665d5e43f61f23f7cb24fbf");
+import(path : "19991d0446ad0551339572d9", version : "1e3b4294686500623ff3708c");
 //import xSectStorage
-import(path : "a2f2ae10eb446d33ccd47bb9", version : "202bdefa57b70e2135887b1a");
+import(path : "a2f2ae10eb446d33ccd47bb9", version : "ea63bd8dc2e529469115ebe1");
 //import xSectComposites
-import(path : "8c01f1526e7b93cc89fe9811", version : "34a882ee0326a5ab03014d3c");
+import(path : "8c01f1526e7b93cc89fe9811", version : "dcde5b6bbec5a27962e9ee78");
 //import xSectDebug
-import(path : "4973f90e73d48ab3578831f0", version : "ebccd506b82430ffb9ef50d1");
+import(path : "4973f90e73d48ab3578831f0", version : "9bf773a89fdaca76c1cb3534");
 //import xSectReferencePoints
-import(path : "08fddb59786b6bfee020ee05", version : "8312065a8b5197e176480ae6");
+import(path : "08fddb59786b6bfee020ee05", version : "7aad397b79ddb7d9e8fb0959");
 
 
 // =============================================================================

@@ -2,10 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "d8e1f253456602fa8e20d0fe");
+import(path : "f8e590162884d45f56e0a05f", version : "32c54f5061b096612985f073");
 
 // xSectLanguage (translation lookups)
-import(path : "a0fab52ee4d0b16ffbc1c603", version : "1fc06d17b359529b01d83f40");
+import(path : "a0fab52ee4d0b16ffbc1c603", version : "e4d29abb9a77e981c0317d63");
 
 // =============================================================================
 // DISPLAY ROUNDING CONSTANTS
@@ -218,7 +218,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
             headerLookup["X"],
             headerLookup["EI"],
             headerLookup["NA Height"],
-            headerLookup["NA Percentage"],
+            headerLookup["NA Height %"],
             headerLookup["Beam Width"],
             headerLookup["Beam Height"],
             headerLookup["Lineal Density"]
