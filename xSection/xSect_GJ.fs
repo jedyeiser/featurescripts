@@ -424,6 +424,26 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
         }
     }
 
+    // DEFENSIVE: Pin nodes with extremely small diagonals (likely numerical artifacts)
+    // These fall in the "dead zone" [1e-15, 1e-12) where they're non-zero but too small
+    // to scale reliably. Pinning them prevents solver failure.
+    for (var i = 1; i < n; i += 1)
+    {
+        var d = abs(K[i][i]);
+        if (d >= 1e-15 && d < 1e-12)
+        {
+            // Pin this problematic node
+            for (var j = 0; j < n; j += 1)
+            {
+                K[i][j] = 0.0;
+                K[j][i] = 0.0;
+            }
+            K[i][i] = 1.0;
+            f[i] = 0.0;
+            pinnedNodes += 1;
+        }
+    }
+
     var activeNodes = n - 1 - pinnedNodes;  // Subtract node 0 and pinned nodes
     println("  BC applied: " ~ activeNodes ~ " active nodes, " ~
         (pinnedNodes + 1) ~ " pinned (including node 0)");
@@ -485,17 +505,35 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
 
     // STEP 1: Compute diagonal scaling factors D[i] = sqrt(|K[i][i]|)
     var D = makeArray(n);
+    var deadZoneCount = 0;
     for (var i = 0; i < n; i += 1)
     {
         var diagEntry = abs(K[i][i]);
-        if (diagEntry < 1e-10)  // Avoid division by zero (pinned nodes or unused)
+
+        // Detect dead-zone diagonals (should be pinned by applyBoundaryCondition)
+        if (diagEntry >= 1e-15 && diagEntry < 1e-12)
         {
-            D[i] = 1.0;  // No scaling for pinned nodes
+            deadZoneCount += 1;
+        }
+
+        // CRITICAL: Use 1e-15 threshold to match solver's pivot singularity check
+        // Old threshold of 1e-10 created a "dead zone" where diagonals were:
+        // - Too small to scale reliably (D=1.0 set)
+        // - But off-diagonals still got scaled by other rows
+        // - This AMPLIFIED ill-conditioning instead of fixing it
+        if (diagEntry < 1e-15)
+        {
+            D[i] = 1.0;  // No scaling for pinned nodes (K[i][i] = 1.0)
         }
         else
         {
             D[i] = sqrt(diagEntry);
         }
+    }
+
+    if (deadZoneCount > 0)
+    {
+        println("  WARNING: " ~ deadZoneCount ~ " diagonals in dead zone [1e-15, 1e-12) - should have been pinned!");
     }
 
     // STEP 2: Scale the system - K_scaled[i][j] = K[i][j] / (D[i] * D[j])
