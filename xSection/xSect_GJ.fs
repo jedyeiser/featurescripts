@@ -40,7 +40,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e235
  * - RESTORED at exit: final GJ returned as ValueWithUnits
  */
 
-const MIN_AREA = 1e-12;  // Implicit m² (coordinates are unitless)
+const MIN_AREA = 1e-8;  // 0.01 mm² - filter degenerate triangles (implicit m²)
 
 /**
  * Main entry point: Compute torsional stiffness GJ for a cross-section
@@ -370,8 +370,16 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     println("  Valid elements: " ~ validElements ~ " (" ~
         (100.0 * validElements / size(triangles)) ~ "%)");
     println("  Skipped: " ~ skippedZeroG ~ " (G<1e-6), " ~
-        skippedDegenerateArea ~ " (area<1e-12 m²)");
+        skippedDegenerateArea ~ " (area<1e-8 m²)");
     println("  Non-zero K entries: " ~ nnz);
+
+    // Warn if too many degenerate triangles (indicates mesh quality issues)
+    if (skippedDegenerateArea > size(triangles) * 0.1)
+    {
+        var pct = (skippedDegenerateArea * 100.0 / size(triangles));
+        println("  WARNING: " ~ skippedDegenerateArea ~ " triangles skipped due to tiny area (" ~
+                pct ~ "%) - check mesh quality");
+    }
 
     return {
         "K" : K,
@@ -424,30 +432,9 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
         }
     }
 
-    // DEFENSIVE: Pin nodes with extremely small diagonals (likely numerical artifacts)
-    // These fall in the "dead zone" [1e-15, 1e-12) where they're non-zero but too small
-    // to scale reliably. Pinning them prevents solver failure.
-    for (var i = 1; i < n; i += 1)
-    {
-        var d = abs(K[i][i]);
-        if (d >= 1e-15 && d < 1e-12)
-        {
-            // Pin this problematic node
-            for (var j = 0; j < n; j += 1)
-            {
-                K[i][j] = 0.0;
-                K[j][i] = 0.0;
-            }
-            K[i][i] = 1.0;
-            f[i] = 0.0;
-            pinnedNodes += 1;
-        }
-    }
-
     var activeNodes = n - 1 - pinnedNodes;  // Subtract node 0 and pinned nodes
     println("  BC applied: " ~ activeNodes ~ " active nodes, " ~
         (pinnedNodes + 1) ~ " pinned (including node 0)");
-    println("    K[0][0] = " ~ K[0][0] ~ ", K[1][1] = " ~ K[1][1]);
 
     return {
         "K" : K,
@@ -462,18 +449,10 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
  * @param f : Load vector (n×1) with units
  * @param n : Number of nodes
  * @returns : ψ array (dimensionless) or undefined if solver fails
- *
- * Uses diagonal scaling to improve numerical conditioning:
- * 1. Compute D[i] = sqrt(|K[i][i]|) for each row
- * 2. Scale system: (D^-1 K D^-1) (D·ψ) = D^-1 f
- * 3. Solve scaled system (all diagonals become ±1)
- * 4. Unscale solution: ψ = D^-1 ψ_scaled
- *
- * This brings matrix entries to O(1), making absolute pivot tolerance meaningful.
  */
 function solveFEMSystem(K is array, f is array, n is number) returns array
 {
-    // Check matrix diagonal health before scaling
+    // Check matrix diagonal health
     var diagZeros = 0;
     var diagNonZeros = 0;
     var diagMax = 0.0;
@@ -496,85 +475,20 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
 
     println("  Matrix diagonal: " ~ diagNonZeros ~ " non-zero, " ~
         diagZeros ~ " zero entries");
-    println("    Before scaling: diagonal range [" ~ diagMin ~ ", " ~ diagMax ~ "]");
+    println("    Diagonal range: [" ~ diagMin ~ ", " ~ diagMax ~ "]");
 
     if (diagZeros > n / 2)
     {
         println("  WARNING: More than 50% of diagonal is zero - matrix likely singular");
     }
 
-    // STEP 1: Compute diagonal scaling factors D[i] = sqrt(|K[i][i]|)
-    var D = makeArray(n);
-    var deadZoneCount = 0;
-    for (var i = 0; i < n; i += 1)
-    {
-        var diagEntry = abs(K[i][i]);
+    // Solve system using dense Gaussian elimination
+    var psi = solveLinearSystem(K, f, n);
 
-        // Detect dead-zone diagonals (should be pinned by applyBoundaryCondition)
-        if (diagEntry >= 1e-15 && diagEntry < 1e-12)
-        {
-            deadZoneCount += 1;
-        }
-
-        // CRITICAL: Use 1e-15 threshold to match solver's pivot singularity check
-        // Old threshold of 1e-10 created a "dead zone" where diagonals were:
-        // - Too small to scale reliably (D=1.0 set)
-        // - But off-diagonals still got scaled by other rows
-        // - This AMPLIFIED ill-conditioning instead of fixing it
-        if (diagEntry < 1e-15)
-        {
-            D[i] = 1.0;  // No scaling for pinned nodes (K[i][i] = 1.0)
-        }
-        else
-        {
-            D[i] = sqrt(diagEntry);
-        }
-    }
-
-    if (deadZoneCount > 0)
-    {
-        println("  WARNING: " ~ deadZoneCount ~ " diagonals in dead zone [1e-15, 1e-12) - should have been pinned!");
-    }
-
-    // STEP 2: Scale the system - K_scaled[i][j] = K[i][j] / (D[i] * D[j])
-    // This makes all diagonal entries equal to ±1
-    for (var i = 0; i < n; i += 1)
-    {
-        for (var j = 0; j < n; j += 1)
-        {
-            K[i][j] = K[i][j] / (D[i] * D[j]);
-        }
-        f[i] = f[i] / D[i];
-    }
-
-    // Verify scaling improved conditioning
-    var scaledDiagMax = 0.0;
-    var scaledDiagMin = 1e99;
-    for (var i = 0; i < n; i += 1)
-    {
-        var d = abs(K[i][i]);
-        if (d > 1e-15)
-        {
-            if (d > scaledDiagMax) scaledDiagMax = d;
-            if (d < scaledDiagMin) scaledDiagMin = d;
-        }
-    }
-    println("    After scaling:  diagonal range [" ~ scaledDiagMin ~ ", " ~ scaledDiagMax ~ "]");
-
-    // STEP 3: Solve scaled system using dense Gaussian elimination
-    var psi_scaled = solveLinearSystem(K, f, n);
-
-    if (psi_scaled == undefined)
+    if (psi == undefined)
     {
         println("ERROR: Linear solver failed - matrix is singular or ill-conditioned");
         return [];  // Return empty array instead of undefined
-    }
-
-    // STEP 4: Unscale solution - psi[i] = psi_scaled[i] / D[i]
-    var psi = makeArray(n);
-    for (var i = 0; i < n; i += 1)
-    {
-        psi[i] = psi_scaled[i] / D[i];
     }
 
     return psi;

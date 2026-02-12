@@ -287,15 +287,52 @@ export function buildCurveMapping(context is Context, id is Id,
 export function mapPointToCurve(context is Context, mapping is map,
                                 sourcePoint is Vector) returns map
 {
+    // Debug logging for discontinuity point (Source Curve #2 end = Source Curve #1 start)
+    const DEBUG_POINT = vector(-0.39614141149134563, 0, -0.09297370585036258) * meter;
+    const isDebugPoint = norm(sourcePoint - DEBUG_POINT) < 0.001 * meter;
+
+    if (isDebugPoint)
+    {
+        println("\n========================================");
+        println("=== DEBUGGING DISCONTINUITY POINT ===");
+        println("Source point: " ~ toString(sourcePoint));
+        println("========================================");
+    }
+
     // 1. Project sourcePoint onto fromChain
     const fromProj = projectPointOnChain(context, mapping.fromChain, sourcePoint, {});
     const fromParam = fromProj.chainParameter;
 
+    if (isDebugPoint)
+    {
+        println("\n1. PROJECTION ONTO FROM CHAIN:");
+        println("   fromParam: " ~ fromParam);
+        println("   Projected point: " ~ toString(fromProj.point));
+        println("   Distance to chain: " ~ toString(fromProj.distance));
+    }
+
     // 2. Get Frenet frame at fromParam
     const fromFrame = getChainFrenetFrame(context, mapping.fromChain, fromParam);
 
+    if (isDebugPoint)
+    {
+        println("\n2. FROM FRAME:");
+        println("   Origin: " ~ toString(fromFrame.frame.origin));
+        println("   Tangent (zAxis): " ~ toString(fromFrame.frame.zAxis));
+        println("   Normal (xAxis): " ~ toString(fromFrame.frame.xAxis));
+        println("   Binormal (yAxis): " ~ toString(yAxis(fromFrame.frame)));
+        println("   Curvature: " ~ toString(fromFrame.curvature));
+    }
+
     // 3. Transform sourcePoint to Frenet coordinates (CORRECT ORDER)
     const localCoords = worldPointToFrenet(sourcePoint, fromFrame, mapping.planeNormal);
+
+    if (isDebugPoint)
+    {
+        println("\n3. LOCAL COORDINATES:");
+        println("   [tangent, normal, binormal]: " ~ toString(localCoords));
+        println("   PlaneNormal used: " ~ toString(mapping.planeNormal));
+    }
 
     // 4. Compute toParam based on mapping mode
     var toParam;
@@ -308,6 +345,19 @@ export function mapPointToCurve(context is Context, mapping is map,
 
         const toArcLength = mapping.toRefArcLength + deltaArcLength;
         toParam = chainParameterAtArcLength(mapping.toChain, toArcLength);
+
+        if (isDebugPoint)
+        {
+            println("\n4. MAPPING (LENGTH mode):");
+            println("   FROM chain length: " ~ toString(getChainLength(mapping.fromChain)));
+            println("   fromArcLength: " ~ toString(fromArcLength));
+            println("   Reference fromArcLength: " ~ toString(mapping.fromRefArcLength));
+            println("   deltaArcLength: " ~ toString(deltaArcLength));
+            println("   TO chain length: " ~ toString(getChainLength(mapping.toChain)));
+            println("   Reference toArcLength: " ~ toString(mapping.toRefArcLength));
+            println("   toArcLength: " ~ toString(toArcLength));
+            println("   toParam: " ~ toParam);
+        }
     }
     else // PARAM mode
     {
@@ -317,14 +367,45 @@ export function mapPointToCurve(context is Context, mapping is map,
 
         // Clamp to [0, 1]
         toParam = max(0.0, min(1.0, toParam));
+
+        if (isDebugPoint)
+        {
+            println("\n4. MAPPING (PARAM mode):");
+            println("   fromParam: " ~ fromParam);
+            println("   Reference fromParam: " ~ mapping.fromRefParam);
+            println("   deltaParam: " ~ deltaParam);
+            println("   Reference toParam: " ~ mapping.toRefParam);
+            println("   toParam (before clamp): " ~ (mapping.toRefParam + deltaParam));
+            println("   toParam (after clamp): " ~ toParam);
+        }
     }
 
     // 5. Get Frenet frame at toParam
     var toFrame = getChainFrenetFrame(context, mapping.toChain, toParam);
 
+    if (isDebugPoint)
+    {
+        println("\n5. TO FRAME:");
+        println("   Origin: " ~ toString(toFrame.frame.origin));
+        println("   Tangent (zAxis): " ~ toString(toFrame.frame.zAxis));
+        println("   Normal (xAxis): " ~ toString(toFrame.frame.xAxis));
+        println("   Binormal (yAxis): " ~ toString(yAxis(toFrame.frame)));
+        println("   Curvature: " ~ toString(toFrame.curvature));
+    }
+
     // 5a. Check frame consistency and determine plane normal orientation for toFrame
     const consistency = checkFrameConsistency(fromFrame, toFrame);
     var toPlaneNormal = mapping.planeNormal;
+
+    if (isDebugPoint)
+    {
+        println("\n5a. FRAME CONSISTENCY:");
+        println("   Consistent: " ~ consistency.consistent);
+        println("   Normal flip: " ~ consistency.normalFlip);
+        println("   Binormal flip: " ~ consistency.binormalFlip);
+        println("   Normal dot product: " ~ dot(fromFrame.frame.xAxis, toFrame.frame.xAxis));
+        println("   Binormal dot product: " ~ dot(yAxis(fromFrame.frame), yAxis(toFrame.frame)));
+    }
 
     if (!consistency.consistent)
     {
@@ -336,10 +417,26 @@ export function mapPointToCurve(context is Context, mapping is map,
         {
             toPlaneNormal = -toPlaneNormal;
         }
+
+        if (isDebugPoint)
+        {
+            println("   Frame adjusted!");
+            println("   New toFrame.xAxis: " ~ toString(toFrame.frame.xAxis));
+            println("   New toFrame.yAxis: " ~ toString(yAxis(toFrame.frame)));
+            println("   toPlaneNormal flipped: " ~ toString(toPlaneNormal));
+        }
     }
 
     // 6. Transform local coords to world using toFrame with ORIENTED plane normal
     const mappedPoint = frenetPointToWorld(localCoords, toFrame, toPlaneNormal);
+
+    if (isDebugPoint)
+    {
+        println("\n6. MAPPED POINT:");
+        println("   mappedPoint: " ~ toString(mappedPoint));
+        println("   toPlaneNormal used: " ~ toString(toPlaneNormal));
+        println("========================================\n");
+    }
 
     return {
         "fromParam" : fromParam,
