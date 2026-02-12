@@ -40,7 +40,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e235
  * - RESTORED at exit: final GJ returned as ValueWithUnits
  */
 
-const MIN_AREA = 1e-8;  // 0.01 mm² - filter degenerate triangles (implicit m²)
+const MIN_AREA = 1e-6;  // 1 mm² - filter sub-millimeter triangles (implicit m²)
 
 /**
  * Main entry point: Compute torsional stiffness GJ for a cross-section
