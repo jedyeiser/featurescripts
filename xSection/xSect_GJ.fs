@@ -145,6 +145,9 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
         GJ = 0 * newton * meter * meter;
     }
 
+    // Output successful GJ value
+    println("  GJ = " ~ (GJ / (newton * meter * meter)) ~ " N·m²");
+
     return GJ;
 }
 
@@ -370,7 +373,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     println("  Valid elements: " ~ validElements ~ " (" ~
         (100.0 * validElements / size(triangles)) ~ "%)");
     println("  Skipped: " ~ skippedZeroG ~ " (G<1e-6), " ~
-        skippedDegenerateArea ~ " (area<1e-8 m²)");
+        skippedDegenerateArea ~ " (area<1e-6 m²)");
     println("  Non-zero K entries: " ~ nnz);
 
     // Warn if too many degenerate triangles (indicates mesh quality issues)
