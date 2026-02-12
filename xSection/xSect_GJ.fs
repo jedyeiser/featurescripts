@@ -443,42 +443,100 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
  * @param n : Number of nodes
  * @returns : ψ array (dimensionless) or undefined if solver fails
  *
- * Strips units for solveLinearSystem() call (expects plain numbers)
- * Returns dimensionless ψ values
+ * Uses diagonal scaling to improve numerical conditioning:
+ * 1. Compute D[i] = sqrt(|K[i][i]|) for each row
+ * 2. Scale system: (D^-1 K D^-1) (D·ψ) = D^-1 f
+ * 3. Solve scaled system (all diagonals become ±1)
+ * 4. Unscale solution: ψ = D^-1 ψ_scaled
+ *
+ * This brings matrix entries to O(1), making absolute pivot tolerance meaningful.
  */
 function solveFEMSystem(K is array, f is array, n is number) returns array
 {
-    // Check matrix condition before solving
+    // Check matrix diagonal health before scaling
     var diagZeros = 0;
     var diagNonZeros = 0;
+    var diagMax = 0.0;
+    var diagMin = 1e99;
+
     for (var i = 0; i < n; i += 1)
     {
-        if (abs(K[i][i]) < 1e-15)
+        var d = abs(K[i][i]);
+        if (d < 1e-15)
         {
             diagZeros += 1;
         }
         else
         {
             diagNonZeros += 1;
+            if (d > diagMax) diagMax = d;
+            if (d < diagMin) diagMin = d;
         }
     }
 
     println("  Matrix diagonal: " ~ diagNonZeros ~ " non-zero, " ~
         diagZeros ~ " zero entries");
+    println("    Before scaling: diagonal range [" ~ diagMin ~ ", " ~ diagMax ~ "]");
 
     if (diagZeros > n / 2)
     {
         println("  WARNING: More than 50% of diagonal is zero - matrix likely singular");
     }
 
-    // K and f are already plain numbers (units were stripped during accumulation)
-    // Solve using dense Gaussian elimination (returns undefined if singular)
-    var psi = solveLinearSystem(K, f, n);
+    // STEP 1: Compute diagonal scaling factors D[i] = sqrt(|K[i][i]|)
+    var D = makeArray(n);
+    for (var i = 0; i < n; i += 1)
+    {
+        var diagEntry = abs(K[i][i]);
+        if (diagEntry < 1e-10)  // Avoid division by zero (pinned nodes or unused)
+        {
+            D[i] = 1.0;  // No scaling for pinned nodes
+        }
+        else
+        {
+            D[i] = sqrt(diagEntry);
+        }
+    }
 
-    if (psi == undefined)
+    // STEP 2: Scale the system - K_scaled[i][j] = K[i][j] / (D[i] * D[j])
+    // This makes all diagonal entries equal to ±1
+    for (var i = 0; i < n; i += 1)
+    {
+        for (var j = 0; j < n; j += 1)
+        {
+            K[i][j] = K[i][j] / (D[i] * D[j]);
+        }
+        f[i] = f[i] / D[i];
+    }
+
+    // Verify scaling improved conditioning
+    var scaledDiagMax = 0.0;
+    var scaledDiagMin = 1e99;
+    for (var i = 0; i < n; i += 1)
+    {
+        var d = abs(K[i][i]);
+        if (d > 1e-15)
+        {
+            if (d > scaledDiagMax) scaledDiagMax = d;
+            if (d < scaledDiagMin) scaledDiagMin = d;
+        }
+    }
+    println("    After scaling:  diagonal range [" ~ scaledDiagMin ~ ", " ~ scaledDiagMax ~ "]");
+
+    // STEP 3: Solve scaled system using dense Gaussian elimination
+    var psi_scaled = solveLinearSystem(K, f, n);
+
+    if (psi_scaled == undefined)
     {
         println("ERROR: Linear solver failed - matrix is singular or ill-conditioned");
         return [];  // Return empty array instead of undefined
+    }
+
+    // STEP 4: Unscale solution - psi[i] = psi_scaled[i] / D[i]
+    var psi = makeArray(n);
+    for (var i = 0; i < n; i += 1)
+    {
+        psi[i] = psi_scaled[i] / D[i];
     }
 
     return psi;
