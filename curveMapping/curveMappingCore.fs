@@ -38,9 +38,10 @@ export enum AlignmentMode
  *
  * @param worldPoint : Point in world coordinates
  * @param frenetResult : EdgeCurvatureResult with frame
+ * @param planeNormal : Optional plane normal for degenerate frame construction (can be undefined)
  * @returns Local coordinates [tangent, normal, binormal]
  */
-function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureResult) returns Vector
+function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureResult, planeNormal) returns Vector
 {
     var frame = frenetResult.frame;
     const localVector = worldPoint - frame.origin;
@@ -49,16 +50,35 @@ function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureR
     // Check if curvature is effectively zero
     if (abs(frenetResult.curvature) < 1e-10 / meter)
     {
-        // For zero-curvature (linear) edges, construct frame from tangent
-        // Use world Y-axis as reference to ensure consistent normal direction
+        // For zero-curvature (linear) edges, construct frame using plane context
         const tangent = frame.zAxis;
-        const worldUp = vector(0, 1, 0);
 
-        // If tangent is parallel to worldUp, use worldX instead
-        const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
-                          vector(1, 0, 0) : worldUp;
+        var binormal;  // Out-of-plane direction
 
-        const binormal = normalize(cross(tangent, refVector));
+        if (planeNormal != undefined)
+        {
+            // Use plane normal as binormal (out-of-plane direction)
+            // Ensure it's orthogonal to tangent
+            const dotProduct = dot(tangent, planeNormal);
+            if (abs(dotProduct) > 0.01)  // Not orthogonal - project to make it so
+            {
+                binormal = normalize(planeNormal - dotProduct * tangent);
+            }
+            else
+            {
+                binormal = normalize(planeNormal);
+            }
+        }
+        else
+        {
+            // Fallback: use world Y-axis (original behavior)
+            const worldUp = vector(0, 1, 0);
+            const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
+                              vector(1, 0, 0) : worldUp;
+            binormal = normalize(cross(tangent, refVector));
+        }
+
+        // Normal is perpendicular to both tangent and binormal, in the plane
         const normal = cross(binormal, tangent);
         frame = coordSystem(frame.origin, normal, tangent);
     }
@@ -79,9 +99,10 @@ function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureR
  *
  * @param localCoords : Local coordinates [tangent, normal, binormal]
  * @param frenetResult : EdgeCurvatureResult with frame
+ * @param planeNormal : Optional plane normal for degenerate frame construction (can be undefined)
  * @returns Point in world coordinates
  */
-function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvatureResult) returns Vector
+function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvatureResult, planeNormal) returns Vector
 {
     var frame = frenetResult.frame;
 
@@ -89,16 +110,35 @@ function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvature
     // Check if curvature is effectively zero
     if (abs(frenetResult.curvature) < 1e-10 / meter)
     {
-        // For zero-curvature (linear) edges, construct frame from tangent
-        // Use world Y-axis as reference to ensure consistent normal direction
+        // For zero-curvature (linear) edges, construct frame using plane context
         const tangent = frame.zAxis;
-        const worldUp = vector(0, 1, 0);
 
-        // If tangent is parallel to worldUp, use worldX instead
-        const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
-                          vector(1, 0, 0) : worldUp;
+        var binormal;  // Out-of-plane direction
 
-        const binormal = normalize(cross(tangent, refVector));
+        if (planeNormal != undefined)
+        {
+            // Use plane normal as binormal (out-of-plane direction)
+            // Ensure it's orthogonal to tangent
+            const dotProduct = dot(tangent, planeNormal);
+            if (abs(dotProduct) > 0.01)  // Not orthogonal - project to make it so
+            {
+                binormal = normalize(planeNormal - dotProduct * tangent);
+            }
+            else
+            {
+                binormal = normalize(planeNormal);
+            }
+        }
+        else
+        {
+            // Fallback: use world Y-axis (original behavior)
+            const worldUp = vector(0, 1, 0);
+            const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
+                              vector(1, 0, 0) : worldUp;
+            binormal = normalize(cross(tangent, refVector));
+        }
+
+        // Normal is perpendicular to both tangent and binormal, in the plane
         const normal = cross(binormal, tangent);
         frame = coordSystem(frame.origin, normal, tangent);
     }
@@ -255,7 +295,7 @@ export function mapPointToCurve(context is Context, mapping is map,
     const fromFrame = getChainFrenetFrame(context, mapping.fromChain, fromParam);
 
     // 3. Transform sourcePoint to Frenet coordinates (CORRECT ORDER)
-    const localCoords = worldPointToFrenet(sourcePoint, fromFrame);
+    const localCoords = worldPointToFrenet(sourcePoint, fromFrame, mapping.planeNormal);
 
     // 4. Compute toParam based on mapping mode
     var toParam;
@@ -290,7 +330,7 @@ export function mapPointToCurve(context is Context, mapping is map,
     }
 
     // 6. Transform local coords to world using toFrame (CORRECT ORDER)
-    const mappedPoint = frenetPointToWorld(localCoords, toFrame);
+    const mappedPoint = frenetPointToWorld(localCoords, toFrame, mapping.planeNormal);
 
     return {
         "fromParam" : fromParam,
