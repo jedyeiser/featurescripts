@@ -322,15 +322,24 @@ export function mapPointToCurve(context is Context, mapping is map,
     // 5. Get Frenet frame at toParam
     var toFrame = getChainFrenetFrame(context, mapping.toChain, toParam);
 
-    // 5a. Check frame consistency and adjust if needed
+    // 5a. Check frame consistency and determine plane normal orientation for toFrame
     const consistency = checkFrameConsistency(fromFrame, toFrame);
+    var toPlaneNormal = mapping.planeNormal;
+
     if (!consistency.consistent)
     {
+        // Frame orientation is flipped - adjust toFrame AND flip plane normal
         toFrame = adjustFrameOrientation(fromFrame, toFrame, consistency);
+
+        // Flip plane normal to match adjusted frame orientation
+        if (toPlaneNormal != undefined)
+        {
+            toPlaneNormal = -toPlaneNormal;
+        }
     }
 
-    // 6. Transform local coords to world using toFrame (CORRECT ORDER)
-    const mappedPoint = frenetPointToWorld(localCoords, toFrame, mapping.planeNormal);
+    // 6. Transform local coords to world using toFrame with ORIENTED plane normal
+    const mappedPoint = frenetPointToWorld(localCoords, toFrame, toPlaneNormal);
 
     return {
         "fromParam" : fromParam,
