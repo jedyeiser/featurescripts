@@ -287,52 +287,15 @@ export function buildCurveMapping(context is Context, id is Id,
 export function mapPointToCurve(context is Context, mapping is map,
                                 sourcePoint is Vector) returns map
 {
-    // Debug logging for discontinuity point (Source Curve #2 end = Source Curve #1 start)
-    const DEBUG_POINT = vector(-0.39614141149134563, 0, -0.09297370585036258) * meter;
-    const isDebugPoint = norm(sourcePoint - DEBUG_POINT) < 0.001 * meter;
-
-    if (isDebugPoint)
-    {
-        println("\n========================================");
-        println("=== DEBUGGING DISCONTINUITY POINT ===");
-        println("Source point: " ~ toString(sourcePoint));
-        println("========================================");
-    }
-
     // 1. Project sourcePoint onto fromChain
     const fromProj = projectPointOnChain(context, mapping.fromChain, sourcePoint, {});
     const fromParam = fromProj.chainParameter;
 
-    if (isDebugPoint)
-    {
-        println("\n1. PROJECTION ONTO FROM CHAIN:");
-        println("   fromParam: " ~ fromParam);
-        println("   Projected point: " ~ toString(fromProj.point));
-        println("   Distance to chain: " ~ toString(fromProj.distance));
-    }
-
     // 2. Get Frenet frame at fromParam
     const fromFrame = getChainFrenetFrame(context, mapping.fromChain, fromParam);
 
-    if (isDebugPoint)
-    {
-        println("\n2. FROM FRAME:");
-        println("   Origin: " ~ toString(fromFrame.frame.origin));
-        println("   Tangent (zAxis): " ~ toString(fromFrame.frame.zAxis));
-        println("   Normal (xAxis): " ~ toString(fromFrame.frame.xAxis));
-        println("   Binormal (yAxis): " ~ toString(yAxis(fromFrame.frame)));
-        println("   Curvature: " ~ toString(fromFrame.curvature));
-    }
-
     // 3. Transform sourcePoint to Frenet coordinates (CORRECT ORDER)
     const localCoords = worldPointToFrenet(sourcePoint, fromFrame, mapping.planeNormal);
-
-    if (isDebugPoint)
-    {
-        println("\n3. LOCAL COORDINATES:");
-        println("   [tangent, normal, binormal]: " ~ toString(localCoords));
-        println("   PlaneNormal used: " ~ toString(mapping.planeNormal));
-    }
 
     // 4. Compute toParam based on mapping mode
     var toParam;
@@ -345,19 +308,6 @@ export function mapPointToCurve(context is Context, mapping is map,
 
         const toArcLength = mapping.toRefArcLength + deltaArcLength;
         toParam = chainParameterAtArcLength(mapping.toChain, toArcLength);
-
-        if (isDebugPoint)
-        {
-            println("\n4. MAPPING (LENGTH mode):");
-            println("   FROM chain length: " ~ toString(getChainLength(mapping.fromChain)));
-            println("   fromArcLength: " ~ toString(fromArcLength));
-            println("   Reference fromArcLength: " ~ toString(mapping.fromRefArcLength));
-            println("   deltaArcLength: " ~ toString(deltaArcLength));
-            println("   TO chain length: " ~ toString(getChainLength(mapping.toChain)));
-            println("   Reference toArcLength: " ~ toString(mapping.toRefArcLength));
-            println("   toArcLength: " ~ toString(toArcLength));
-            println("   toParam: " ~ toParam);
-        }
     }
     else // PARAM mode
     {
@@ -367,45 +317,14 @@ export function mapPointToCurve(context is Context, mapping is map,
 
         // Clamp to [0, 1]
         toParam = max(0.0, min(1.0, toParam));
-
-        if (isDebugPoint)
-        {
-            println("\n4. MAPPING (PARAM mode):");
-            println("   fromParam: " ~ fromParam);
-            println("   Reference fromParam: " ~ mapping.fromRefParam);
-            println("   deltaParam: " ~ deltaParam);
-            println("   Reference toParam: " ~ mapping.toRefParam);
-            println("   toParam (before clamp): " ~ (mapping.toRefParam + deltaParam));
-            println("   toParam (after clamp): " ~ toParam);
-        }
     }
 
     // 5. Get Frenet frame at toParam
     var toFrame = getChainFrenetFrame(context, mapping.toChain, toParam);
 
-    if (isDebugPoint)
-    {
-        println("\n5. TO FRAME:");
-        println("   Origin: " ~ toString(toFrame.frame.origin));
-        println("   Tangent (zAxis): " ~ toString(toFrame.frame.zAxis));
-        println("   Normal (xAxis): " ~ toString(toFrame.frame.xAxis));
-        println("   Binormal (yAxis): " ~ toString(yAxis(toFrame.frame)));
-        println("   Curvature: " ~ toString(toFrame.curvature));
-    }
-
     // 5a. Check frame consistency and determine plane normal orientation for toFrame
     const consistency = checkFrameConsistency(fromFrame, toFrame);
     var toPlaneNormal = mapping.planeNormal;
-
-    if (isDebugPoint)
-    {
-        println("\n5a. FRAME CONSISTENCY:");
-        println("   Consistent: " ~ consistency.consistent);
-        println("   Normal flip: " ~ consistency.normalFlip);
-        println("   Binormal flip: " ~ consistency.binormalFlip);
-        println("   Normal dot product: " ~ dot(fromFrame.frame.xAxis, toFrame.frame.xAxis));
-        println("   Binormal dot product: " ~ dot(yAxis(fromFrame.frame), yAxis(toFrame.frame)));
-    }
 
     if (!consistency.consistent)
     {
@@ -417,26 +336,10 @@ export function mapPointToCurve(context is Context, mapping is map,
         {
             toPlaneNormal = -toPlaneNormal;
         }
-
-        if (isDebugPoint)
-        {
-            println("   Frame adjusted!");
-            println("   New toFrame.xAxis: " ~ toString(toFrame.frame.xAxis));
-            println("   New toFrame.yAxis: " ~ toString(yAxis(toFrame.frame)));
-            println("   toPlaneNormal flipped: " ~ toString(toPlaneNormal));
-        }
     }
 
     // 6. Transform local coords to world using toFrame with ORIENTED plane normal
     const mappedPoint = frenetPointToWorld(localCoords, toFrame, toPlaneNormal);
-
-    if (isDebugPoint)
-    {
-        println("\n6. MAPPED POINT:");
-        println("   mappedPoint: " ~ toString(mappedPoint));
-        println("   toPlaneNormal used: " ~ toString(toPlaneNormal));
-        println("========================================\n");
-    }
 
     return {
         "fromParam" : fromParam,
@@ -527,6 +430,17 @@ export function mapCurveSegmented(context is Context,
         throw regenError("Source curve is perpendicular to reference chain - cannot map");
     }
 
+    // Map source curve endpoints explicitly to guarantee G0 continuity
+    // This ensures that adjacent source curves sharing an endpoint will produce
+    // wrapped curves that also share the mapped endpoint (no gap).
+    const mappedStartResult = mapPointToCurve(context, mapping, startPoint);
+    const mappedEndResult = mapPointToCurve(context, mapping, endPoint);
+
+    const exactStartMapped = mappedStartResult.mappedPoint;
+    const exactEndMapped = mappedEndResult.mappedPoint;
+    const exactStartTangent = mappedStartResult.toFrame.frame.zAxis;
+    const exactEndTangent = mappedEndResult.toFrame.frame.zAxis;
+
     // Find edge boundaries within span
     const boundaries = mapping.fromChain.edgeBoundaries;
     var segmentPoints = [spanStart];
@@ -565,10 +479,18 @@ export function mapCurveSegmented(context is Context,
         const segStart = segmentPoints[i];
         const segEnd = segmentPoints[i + 1];
 
+        const isFirstSegment = (i == 0);
+        const isLastSegment = (i == size(segmentPoints) - 2);
+
         // Sample points uniformly within this segment by PROJECTING onto fromChain
-        // This is the CORRECT approach, not linear interpolation
+        // For first/last segments, we'll use exact endpoints and skip redundant samples
         var sampleChainParams = [];
-        for (var j = 0; j < numSamplesPerSegment; j += 1)
+
+        // Determine sampling range to avoid duplicating exact endpoints
+        const startJ = isFirstSegment ? 1 : 0;
+        const endJ = isLastSegment ? numSamplesPerSegment - 2 : numSamplesPerSegment - 1;
+
+        for (var j = startJ; j <= endJ; j += 1)
         {
             const t = j / (numSamplesPerSegment - 1);
             const chainParam = segStart + t * (segEnd - segStart);
@@ -576,8 +498,12 @@ export function mapCurveSegmented(context is Context,
         }
 
         // Evaluate fromChain at these parameters to get world points
-        const chainEval = evaluateChain(context, mapping.fromChain, sampleChainParams, 0);
-        const chainPoints = chainEval.points;
+        var chainPoints = [];
+        if (size(sampleChainParams) > 0)
+        {
+            const chainEval = evaluateChain(context, mapping.fromChain, sampleChainParams, 0);
+            chainPoints = chainEval.points;
+        }
 
         // Project each chain point onto source curve to get CORRECT source parameters
         var sourcePoints = [];
@@ -615,22 +541,66 @@ export function mapCurveSegmented(context is Context,
             sourcePoints = append(sourcePoints, sourcePt);
         }
 
-        // Map all points
-        const mappedResults = mapPointsToCurve(context, mapping, sourcePoints);
+        // Map all interior points
+        var mappedResults = [];
+        if (size(sourcePoints) > 0)
+        {
+            mappedResults = mapPointsToCurve(context, mapping, sourcePoints);
+        }
 
-        // Extract positions for curve construction
+        // Build final mapped points array with exact endpoints
         var mappedPoints = [];
+
+        // First segment: start with exact mapped start point
+        if (isFirstSegment)
+        {
+            mappedPoints = append(mappedPoints, exactStartMapped);
+        }
+
+        // Add interior mapped points
         for (var result in mappedResults)
         {
             mappedPoints = append(mappedPoints, result.mappedPoint);
         }
 
+        // Last segment: end with exact mapped end point
+        if (isLastSegment)
+        {
+            mappedPoints = append(mappedPoints, exactEndMapped);
+        }
+
         // Extract tangent vectors at segment endpoints
-        // EdgeCurvatureResult.frame has frame.zAxis = tangent direction
-        const startFrame = mappedResults[0].toFrame;
-        const endFrame = mappedResults[size(mappedResults) - 1].toFrame;
-        const startTangent = startFrame.frame.zAxis;  // Unitless direction vector
-        const endTangent = endFrame.frame.zAxis;
+        // Use exact tangents for first/last segments to maintain continuity
+        var startTangent;
+        var endTangent;
+
+        if (isFirstSegment)
+        {
+            startTangent = exactStartTangent;
+        }
+        else if (size(mappedResults) > 0)
+        {
+            startTangent = mappedResults[0].toFrame.frame.zAxis;
+        }
+        else
+        {
+            // Fallback: no interior points, use exact tangent
+            startTangent = exactStartTangent;
+        }
+
+        if (isLastSegment)
+        {
+            endTangent = exactEndTangent;
+        }
+        else if (size(mappedResults) > 0)
+        {
+            endTangent = mappedResults[size(mappedResults) - 1].toFrame.frame.zAxis;
+        }
+        else
+        {
+            // Fallback: no interior points, use exact tangent
+            endTangent = exactEndTangent;
+        }
 
         // Detect if mapped points are nearly linear
         const isLinear = detectLinearSegment(mappedPoints, 1e-5 * meter);
