@@ -86,13 +86,35 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     // Extract shear modulus for each triangle from material Q matrices
     var G_elem = extractShearModuli(triangles, bodyIndices, bodies);
 
-    // Check if any structural material exists
-    var totalG = 0.0;  // Plain number
+    // Compute G statistics for diagnostics
+    var G_min = 1e99;
+    var G_max = 0.0;
+    var G_sum = 0.0;
+    var G_count = 0;
+
     for (var i = 0; i < size(G_elem); i += 1)
     {
-        totalG += G_elem[i];  // Already plain numbers
+        var G = G_elem[i];
+        if (G >= 1e-6)  // Only count valid G values
+        {
+            G_min = min(G_min, G);
+            G_max = max(G_max, G);
+            G_sum += G;
+            G_count += 1;
+        }
     }
-    if (totalG < 1e-6)  // Essentially zero (implicit N/m²)
+
+    var G_mean = (G_count > 0) ? (G_sum / G_count) : 0.0;
+
+    println("  Shear modulus G: " ~ G_count ~ "/" ~ size(G_elem) ~ " valid triangles");
+    if (G_count > 0)
+    {
+        println("    G range: [" ~ (G_min / 1e9) ~ ", " ~ (G_max / 1e9) ~ "] GPa");
+        println("    G mean: " ~ (G_mean / 1e9) ~ " GPa");
+    }
+
+    // Check if any structural material exists
+    if (G_count == 0)
     {
         println("WARNING: No structural material found - GJ = 0");
         return 0 * newton * meter * meter;
@@ -258,6 +280,9 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
 
     // Loop over all triangles
     var validElements = 0;
+    var skippedZeroG = 0;
+    var skippedDegenerateArea = 0;
+
     for (var e = 0; e < size(triangles); e += 1)
     {
         var tri = triangles[e];
@@ -270,9 +295,9 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         // Skip elements with zero stiffness
         if (G < 1e-6)  // Implicit N/m²
         {
+            skippedZeroG += 1;
             continue;
         }
-        validElements += 1;
 
         // Get nodal coordinates in local (y,z) frame
         var pt1 = sectionPoints[i1].point2D;
@@ -295,8 +320,11 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         // Skip degenerate triangles
         if (A < MIN_AREA)
         {
+            skippedDegenerateArea += 1;
             continue;
         }
+
+        validElements += 1;
 
         // Centroid
         var y_c = (y1 + y2 + y3) / 3.0;
@@ -337,7 +365,13 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
             }
         }
     }
-    println("FEM assembly: " ~ n ~ " nodes, " ~ size(triangles) ~ " triangles, " ~ validElements ~ " valid elements, " ~ nnz ~ " non-zero K entries");
+
+    println("FEM assembly: " ~ n ~ " nodes, " ~ size(triangles) ~ " triangles");
+    println("  Valid elements: " ~ validElements ~ " (" ~
+        (100.0 * validElements / size(triangles)) ~ "%)");
+    println("  Skipped: " ~ skippedZeroG ~ " (G<1e-6), " ~
+        skippedDegenerateArea ~ " (area<1e-12 m²)");
+    println("  Non-zero K entries: " ~ nnz);
 
     return {
         "K" : K,
@@ -390,11 +424,10 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
         }
     }
 
-    if (pinnedNodes > 0)
-    {
-        println("  Pinned " ~ pinnedNodes ~ " unused nodes (disconnected from mesh)");
-    }
-    println("  BC applied: K[0][0] = " ~ K[0][0] ~ ", K[1][1] = " ~ K[1][1]);
+    var activeNodes = n - 1 - pinnedNodes;  // Subtract node 0 and pinned nodes
+    println("  BC applied: " ~ activeNodes ~ " active nodes, " ~
+        (pinnedNodes + 1) ~ " pinned (including node 0)");
+    println("    K[0][0] = " ~ K[0][0] ~ ", K[1][1] = " ~ K[1][1]);
 
     return {
         "K" : K,
@@ -415,6 +448,29 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
  */
 function solveFEMSystem(K is array, f is array, n is number) returns array
 {
+    // Check matrix condition before solving
+    var diagZeros = 0;
+    var diagNonZeros = 0;
+    for (var i = 0; i < n; i += 1)
+    {
+        if (abs(K[i][i]) < 1e-15)
+        {
+            diagZeros += 1;
+        }
+        else
+        {
+            diagNonZeros += 1;
+        }
+    }
+
+    println("  Matrix diagonal: " ~ diagNonZeros ~ " non-zero, " ~
+        diagZeros ~ " zero entries");
+
+    if (diagZeros > n / 2)
+    {
+        println("  WARNING: More than 50% of diagonal is zero - matrix likely singular");
+    }
+
     // K and f are already plain numbers (units were stripped during accumulation)
     // Solve using dense Gaussian elimination (returns undefined if singular)
     var psi = solveLinearSystem(K, f, n);

@@ -184,10 +184,11 @@ export function buildCurveMapping(context is Context, id is Id,
     // Check coplanarity if requested
     var isCoplanar = true;
     var coplanarityAngle = undefined;
+    var coplanarCheck = undefined;
 
     if (checkCoplanar)
     {
-        const coplanarCheck = checkCoplanarity(context, fromChain, toChain, {});
+        coplanarCheck = checkCoplanarity(context, fromChain, toChain, {});
         isCoplanar = coplanarCheck.coplanar;
 
         if (!isCoplanar)
@@ -204,6 +205,16 @@ export function buildCurveMapping(context is Context, id is Id,
         }
     }
 
+    // Store fitted plane for use in degenerate frame construction
+    var geometryPlane = undefined;
+    var planeNormal = undefined;
+
+    if (checkCoplanar && coplanarCheck != undefined)
+    {
+        geometryPlane = coplanarCheck.fittedPlane;
+        planeNormal = geometryPlane.normal;
+    }
+
     return {
         "fromChain" : fromChain,
         "toChain" : toChain,
@@ -213,7 +224,8 @@ export function buildCurveMapping(context is Context, id is Id,
         "toRefArcLength" : toRefArcLength,
         "mappingMode" : mappingMode,
         "isCoplanar" : isCoplanar,
-        "coplanarityAngle" : coplanarityAngle
+        "coplanarityAngle" : coplanarityAngle,
+        "planeNormal" : planeNormal
     };
 }
 
