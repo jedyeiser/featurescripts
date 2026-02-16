@@ -31,7 +31,8 @@
       "Bash(wc:*)",
       "Bash(du:*)",
       "Bash(git diff:*)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:cad.onshape.com)"
     ]
   }
 }

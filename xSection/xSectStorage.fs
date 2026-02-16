@@ -2,10 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "a1ad9bff2cfcba05aa58223c");
+import(path : "f8e590162884d45f56e0a05f", version : "c1ed21359067557e016d706f");
 
 // xSectLanguage (translation lookups)
-import(path : "a0fab52ee4d0b16ffbc1c603", version : "5f6c2b956d38400d32faffcb");
+import(path : "a0fab52ee4d0b16ffbc1c603", version : "ebef05218d4ba7a748b45a0a");
 
 // =============================================================================
 // DISPLAY ROUNDING CONSTANTS
@@ -113,7 +113,9 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
                 "A" : section.mechanicalProperties.A,
                 "B" : section.mechanicalProperties.B,
                 "D" : section.mechanicalProperties.D
-            }
+            },
+            "sectionPoints" : section.sectionPoints,  // For gjAnalysis feature
+            "bodyData" : section.bodyData             // For gjAnalysis feature
         };
         sectionDetails = append(sectionDetails, sectionDetail);
     }

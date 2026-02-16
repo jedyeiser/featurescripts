@@ -36,7 +36,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 export import(path : "onshape/std/coordSystem.fs", version : "2878.0");
 
 // xSectUtils (provides POINT_DEDUP_TOL constant)
-import(path : "c2c3edd39b85fde5e6062533", version : "64387702b8874925c8bb9338");
+import(path : "c2c3edd39b85fde5e6062533", version : "da2d35fba1c845b77344ec27");
 
 // =============================================================================
 // CONSTANTS

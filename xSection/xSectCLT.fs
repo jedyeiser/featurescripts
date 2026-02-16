@@ -2,10 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (buildMaterialLookup, normalizeMaterialName)
-import(path : "f8e590162884d45f56e0a05f", version : "a1ad9bff2cfcba05aa58223c");
+import(path : "f8e590162884d45f56e0a05f", version : "c1ed21359067557e016d706f");
 
 // xSect_GJ (computeTorsionalStiffness)
-import(path : "9df6ba3db06d479fabe63c1d", version : "84bd1943f66e22efefb13a3c");
+import(path : "9df6ba3db06d479fabe63c1d", version : "db3ab34a6db490e67f3edff7");
 
 
 // =============================================================================
@@ -441,18 +441,11 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
     }
 
     // =====================================================================
-    // Compute torsional stiffness (GJ) using FEM
+    // Torsional stiffness (GJ) computation moved to separate gjAnalysis feature
     // =====================================================================
-
+    // GJ computation is expensive and not always needed. Users can run the
+    // gjAnalysis feature separately to compute GJ on-demand.
     var GJ_eff = 0 * newton * meter * meter;
-    try
-    {
-        GJ_eff = computeTorsionalStiffness(section, bodies);
-    }
-    catch (e)
-    {
-        println("WARNING: GJ computation failed - " ~ e);
-    }
 
     return {
         "A" : A,
