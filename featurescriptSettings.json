@@ -97,7 +97,7 @@
         "internal tools document"
       ],
       "last_pull": "2026-02-14T21:21:40.190601+00:00",
-      "last_push": "2026-02-12T03:06:26.897806+00:00",
+      "last_push": "2026-02-16T17:15:56.181369+00:00",
       "document_id": "f8deedeb1fbd819a8fa20113",
       "workspace_id": "2bac53cbf0cd1504ada12137"
     },
@@ -116,6 +116,34 @@
       "last_push": "2026-02-12T03:05:44.014892+00:00",
       "document_id": "08e8748f2ef24eea16072b75",
       "workspace_id": "e24fbbae7712ef62dd256c89"
+    },
+    {
+      "name": "curveExport",
+      "description": "Tool to export points along curves",
+      "working_directory": "./curveExport",
+      "onshape_url": "https://k2-sports.onshape.com/documents/5bb9a71fea810816c474760a/w/acabaca03b9999427200d616/e/bb19352a0506cfe875024180",
+      "references": [
+        "Onshape Standard Library",
+        "internal tools document"
+      ],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "5bb9a71fea810816c474760a",
+      "workspace_id": "acabaca03b9999427200d616"
+    },
+    {
+      "name": "gordonSurface",
+      "description": "Gordon surface feature and supporting curve features",
+      "working_directory": "./gordonSurface",
+      "onshape_url": "https://k2-sports.onshape.com/documents/d0950ed72a894fbe35c27d43/w/55351e2bc9e8b4ec141bf4b6/e/51c4e18aab64c557561f2b92",
+      "references": [
+        "Onshape Standard Library",
+        "internal tools document"
+      ],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "d0950ed72a894fbe35c27d43",
+      "workspace_id": "55351e2bc9e8b4ec141bf4b6"
     }
   ],
   "sync_metadata": {}
