@@ -74,6 +74,8 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
 
         var bodyDetail = {
             "bodyIndex" : bodyEntry.bodyIdx,
+            "bodyIdx" : bodyEntry.bodyIdx,
+            "hasMaterialData" : bodyEntry.hasMaterialData == true,
             "bodyName" : bodyEntry.bodyName,
             "materialName" : bodyEntry.materialName,
             "materialData" : bodyEntry.materialData,

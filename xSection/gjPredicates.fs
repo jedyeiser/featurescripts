@@ -3,6 +3,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 
 // IMPORT: xSection/gjDataAccess.fs
 // IMPORT: xSection/xSect_GJ.fs
+// IMPORT: xSection/gjAnalysis.fs
 
 /**
  * GJ ANALYSIS FEATURE DEFINITION
@@ -75,9 +76,3 @@ export function gjAnalysisEditLogic(context is Context, id is Id, oldDefinition 
 
     return definition;
 }
-
-/**
- * Main implementation function for GJ Analysis feature.
- * Declared here, implemented in gjAnalysis.fs to keep predicates clean.
- */
-export function gjAnalysisMain(context is Context, id is Id, definition is map);

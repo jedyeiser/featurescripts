@@ -1,3 +1,815 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
+// IMPORT: tools/arc_length.fs
+// IMPORT: tools/curve_operations.fs
+// IMPORT: tools/bspline_data.fs
+// IMPORT: tools/solvers.fs
+
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+export enum AlongType
+{
+    annotation { "Name" : "Along Chain (Arc Length)" } CHAIN,
+    annotation { "Name" : "Along Query Geometry" }     QUERY,
+    annotation { "Name" : "Along World Axis" }         WORLD
+}
+
+export enum AlongAxis
+{
+    annotation { "Name" : "World X" } WORLD_X,
+    annotation { "Name" : "World Y" } WORLD_Y,
+    annotation { "Name" : "World Z" } WORLD_Z
+}
+
+export enum ExportUnits
+{
+    annotation { "Name" : "Millimeters" } MILLIMETER,
+    annotation { "Name" : "Inches" }      INCH,
+    annotation { "Name" : "Centimeters" } CENTIMETER
+}
+
+
+// =============================================================================
+// BOUNDS CONSTANTS
+// =============================================================================
+
+export const NUM_POINTS_BOUNDS =
+{
+    (unitless) : [2, 20, 500]
+} as IntegerBoundSpec;
+
+export const SIG_FIGS_BOUNDS =
+{
+    (unitless) : [1, 4, 8]
+} as IntegerBoundSpec;
+
+
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
+
+/**
+ * Returns unit scale factor: converts meters to the requested unit.
+ */
+export function getUnitScaleFactor(units is ExportUnits) returns number
+{
+    if (units == ExportUnits.MILLIMETER)
+        return 1000;
+    else if (units == ExportUnits.INCH)
+        return 1 / 0.0254;
+    else
+        return 100; // CENTIMETER
+}
+
+/**
+ * Returns unit suffix string (with leading space), or "" if showUnits is false.
+ */
+export function getUnitSuffix(units is ExportUnits, showUnits is boolean) returns string
+{
+    if (!showUnits)
+        return "";
+    if (units == ExportUnits.MILLIMETER)
+        return " mm";
+    else if (units == ExportUnits.INCH)
+        return " in";
+    else
+        return " cm";
+}
+
+/**
+ * Round value to N significant figures.
+ */
+export function roundToPrecision(value is number, sigFigs is number) returns number
+{
+    if (abs(value) < 1e-15)
+        return 0;
+    var magnitude = pow(10, sigFigs - floor(log10(abs(value)) + 1));
+    return round(value * magnitude) / magnitude;
+}
+
+/**
+ * Format a ValueWithUnits coordinate as string using formatConfig.
+ * formatConfig = { tableUnits, sigFigs, showUnits, addParameters, addSlopes }
+ */
+export function formatCoord(value is ValueWithUnits, formatConfig is map) returns string
+{
+    var scale = getUnitScaleFactor(formatConfig.tableUnits);
+    var scaled = value.value * scale;
+    var rounded = roundToPrecision(scaled, formatConfig.sigFigs);
+    return toString(rounded) ~ getUnitSuffix(formatConfig.tableUnits, formatConfig.showUnits);
+}
+
+/**
+ * Format a dimensionless scalar as string (rounded to sigFigs significant figures).
+ */
+export function formatScalar(value is number, sigFigs is number) returns string
+{
+    var rounded = roundToPrecision(value, sigFigs);
+    return toString(rounded);
+}
+
+
+// =============================================================================
+// CURVE REVERSAL HELPER
+// =============================================================================
+
+/**
+ * Reverse the direction of a BSplineCurve by reversing control points
+ * and flipping the knot vector (remapped to same [uMin, uMax] range).
+ */
+function reverseBSplineCurve(curve is BSplineCurve) returns BSplineCurve
+{
+    var knots = curve.knots;
+    var cps = curve.controlPoints;
+    var n = size(knots);
+    var uMin = knots[0];
+    var uMax = knots[n - 1];
+
+    // Reverse control points
+    var reversedCP = [];
+    for (var i = size(cps) - 1; i >= 0; i -= 1)
+    {
+        reversedCP = append(reversedCP, cps[i]);
+    }
+
+    // Flip knots: new knot = uMin + uMax - knots[n-1-i], reversed order
+    var reversedKnots = [];
+    for (var i = n - 1; i >= 0; i -= 1)
+    {
+        reversedKnots = append(reversedKnots, uMin + uMax - knots[i]);
+    }
+
+    // Handle rational curves
+    var reversedWeights = undefined;
+    if (curve.isRational && curve.weights != undefined)
+    {
+        var wts = curve.weights;
+        reversedWeights = [];
+        for (var i = size(wts) - 1; i >= 0; i -= 1)
+        {
+            reversedWeights = append(reversedWeights, wts[i]);
+        }
+    }
+
+    return {
+        "degree"        : curve.degree,
+        "isPeriodic"    : curve.isPeriodic,
+        "controlPoints" : reversedCP,
+        "knots"         : reversedKnots,
+        "weights"       : reversedWeights,
+        "isRational"    : curve.isRational,
+        "dimension"     : curve.dimension
+    } as BSplineCurve;
+}
+
+
+// =============================================================================
+// CHAIN ASSEMBLY
+// =============================================================================
+
+/**
+ * Evaluate edges and order them into a G0-continuous chain.
+ *
+ * Returns { curves: array[BSplineCurve], chainStart: Vector }
+ */
+export function collectAndOrderEdges(context is Context, edgeQuery is Query) returns map
+{
+    var edgeArray = evaluateQuery(context, edgeQuery);
+    var curves = [];
+
+    // Approximate each edge as BSplineCurve
+    for (var edge in edgeArray)
+    {
+        var curve = evApproximateBSplineCurve(context, {
+            "edge"      : edge,
+            "tolerance" : 1e-5  // unitless (meters)
+        });
+        curves = append(curves, curve);
+    }
+
+    if (size(curves) == 0)
+    {
+        throw regenError("ExportCurve: No edges found in selection.");
+    }
+
+    if (size(curves) == 1)
+    {
+        var ep = getBSplineEndpoints(curves[0]);
+        return { "curves" : curves, "chainStart" : ep.start };
+    }
+
+    // Greedily order into chain
+    var connTolerance = 1e-4 * meter;
+
+    // Pick the first curve as head; try to find a chain from it
+    var pool = [];
+    for (var i = 1; i < size(curves); i += 1)
+    {
+        pool = append(pool, curves[i]);
+    }
+
+    var orderedCurves = [curves[0]];
+
+    while (size(pool) > 0)
+    {
+        var headEP = getBSplineEndpoints(orderedCurves[size(orderedCurves) - 1]);
+        var found = false;
+
+        for (var pi = 0; pi < size(pool); pi += 1)
+        {
+            var candidate = pool[pi];
+            var conn = checkEndpointConnection(orderedCurves[size(orderedCurves) - 1], candidate, connTolerance);
+
+            if (conn.connected)
+            {
+                var connType = conn.connectionType;
+
+                // We need A.end to connect to B.start — only "A_END_B_START" is already correct
+                if (connType == "A_END_B_START")
+                {
+                    // Already correct orientation
+                    orderedCurves = append(orderedCurves, candidate);
+                }
+                else if (connType == "A_END_B_END" || connType == "A_START_B_END")
+                {
+                    // Need to reverse candidate so its start touches our end
+                    orderedCurves = append(orderedCurves, reverseBSplineCurve(candidate));
+                }
+                else
+                {
+                    // A_START_B_START: our start connects to candidate's start — reverse the whole chain up to now?
+                    // Actually this means the first curve was picked backwards; reverse first curve
+                    // and then candidate connects from A.end.
+                    // Simpler: reverse head chain and append candidate normally.
+                    // But we can't easily reverse the accumulated chain.
+                    // Instead, reverse the candidate (so B.end was at A.start, and B.start is free).
+                    // That won't work either. Let's reverse the candidate so its end touches our tail's end...
+                    // Actually A_START_B_START means orderedCurves.last.start == candidate.start.
+                    // Since we're tracking the tail (end of last curve), this shouldn't happen
+                    // unless the first curve was backwards. Reverse the candidate so its end connects
+                    // to something else — this case shouldn't occur mid-chain if head was set correctly.
+                    // Best: reverse the candidate (B.start becomes B.end which is at tail.end's location? No)
+                    // This case indicates the first curve in orderedCurves is reversed.
+                    // For robustness, append candidate reversed — but it won't match. Skip for now.
+                    println("ExportCurve WARNING: unexpected A_START_B_START connection type mid-chain. Skipping.");
+                    found = false;
+                    continue;
+                }
+
+                // Remove from pool
+                var newPool = [];
+                for (var pj = 0; pj < size(pool); pj += 1)
+                {
+                    if (pj != pi)
+                    {
+                        newPool = append(newPool, pool[pj]);
+                    }
+                }
+                pool = newPool;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            // Could not extend chain - try starting from the other end of orderedCurves[0]
+            // Reverse the entire accumulated chain and try again
+            if (size(orderedCurves) == 1)
+            {
+                // Only first curve so far - flip it and retry
+                orderedCurves[0] = reverseBSplineCurve(orderedCurves[0]);
+
+                var headEP2 = getBSplineEndpoints(orderedCurves[0]);
+                var found2 = false;
+
+                for (var pi2 = 0; pi2 < size(pool); pi2 += 1)
+                {
+                    var candidate2 = pool[pi2];
+                    var conn2 = checkEndpointConnection(orderedCurves[0], candidate2, connTolerance);
+
+                    if (conn2.connected)
+                    {
+                        var connType2 = conn2.connectionType;
+                        if (connType2 == "A_END_B_START")
+                        {
+                            orderedCurves = append(orderedCurves, candidate2);
+                        }
+                        else if (connType2 == "A_END_B_END" || connType2 == "A_START_B_END")
+                        {
+                            orderedCurves = append(orderedCurves, reverseBSplineCurve(candidate2));
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+                        var newPool2 = [];
+                        for (var pj2 = 0; pj2 < size(pool); pj2 += 1)
+                        {
+                            if (pj2 != pi2)
+                            {
+                                newPool2 = append(newPool2, pool[pj2]);
+                            }
+                        }
+                        pool = newPool2;
+                        found2 = true;
+                        break;
+                    }
+                }
+
+                if (!found2)
+                {
+                    throw regenError("ExportCurve: Edges are not G0-connected. Could not build chain.");
+                }
+            }
+            else
+            {
+                throw regenError("ExportCurve: Edges are not G0-connected. Could not build chain.");
+            }
+        }
+    }
+
+    var chainStart = getBSplineEndpoints(orderedCurves[0]).start;
+
+    return {
+        "curves"     : orderedCurves,
+        "chainStart" : chainStart
+    };
+}
+
+/**
+ * Join an ordered array of BSplineCurves (each A.end must touch B.start)
+ * into a single composite BSplineCurve via pairwise C0 join.
+ */
+export function assembleCurveChain(context is Context, orderedCurves is array) returns BSplineCurve
+{
+    if (size(orderedCurves) == 0)
+    {
+        throw regenError("assembleCurveChain: No curves to assemble.");
+    }
+
+    var result = orderedCurves[0];
+
+    for (var i = 1; i < size(orderedCurves); i += 1)
+    {
+        result = joinCurves(context, result, orderedCurves[i], ContinuityType.C0, {});
+    }
+
+    return result;
+}
+
+
+// =============================================================================
+// SAMPLING — CHAIN MODE
+// =============================================================================
+
+/**
+ * Sample numPoints evenly-spaced (arc length) points along a chain curve.
+ *
+ * Returns array of sample maps:
+ *   { point, param, arcLength, tangent?, normal? }
+ */
+export function sampleChain(chainCurve is BSplineCurve, numPoints is number, addSlopes is boolean) returns array
+{
+    var samplesResult = uniformArcLengthSamples(chainCurve, numPoints, {});
+    var parameters = samplesResult.parameters;
+    var points     = samplesResult.points;
+    var arcLengths = samplesResult.arcLengths;
+
+    var samples = [];
+
+    for (var i = 0; i < numPoints; i += 1)
+    {
+        var u  = parameters[i];
+        var pt = points[i];
+        var s  = arcLengths[i];
+
+        var sampleMap = {
+            "point"     : pt,
+            "param"     : u,
+            "arcLength" : s
+        };
+
+        if (addSlopes)
+        {
+            var evalResult = evaluateSpline({
+                "spline"       : chainCurve,
+                "parameters"   : [u],
+                "nDerivatives" : 2
+            });
+            var velocity     = evalResult[1][0];
+            var acceleration = evalResult[2][0];
+
+            var tangent  = normalize(velocity);
+            var crossVec = cross(velocity, acceleration);
+
+            var binormal;
+            if (norm(crossVec).value < 1e-10)
+            {
+                // Degenerate: curve is locally straight — pick arbitrary perpendicular
+                var arb = vector(0, 0, 1);
+                if (abs(dot(tangent, arb)) > 0.9)
+                {
+                    arb = vector(1, 0, 0);
+                }
+                binormal = normalize(cross(tangent, arb));
+            }
+            else
+            {
+                binormal = normalize(crossVec);
+            }
+
+            var normal = cross(binormal, tangent);
+
+            sampleMap = {
+                "point"     : pt,
+                "param"     : u,
+                "arcLength" : s,
+                "tangent"   : tangent,
+                "normal"    : normal
+            };
+        }
+
+        samples = append(samples, sampleMap);
+    }
+
+    return samples;
+}
+
+
+// =============================================================================
+// SAMPLING — QUERY AND WORLD MODES
+// =============================================================================
+
+/**
+ * Returns unitless world axis direction vector.
+ */
+export function getAxisDirection(axis is AlongAxis) returns Vector
+{
+    if (axis == AlongAxis.WORLD_X)
+        return vector(1, 0, 0);
+    else if (axis == AlongAxis.WORLD_Y)
+        return vector(0, 1, 0);
+    else
+        return vector(0, 0, 1);
+}
+
+/**
+ * Determine the slicing direction from a reference geometry query.
+ * Edge → must be a Line; returns line.direction.
+ * Face → must be a Plane; returns plane.normal.
+ */
+export function getQueryDirection(context is Context, geomQuery is Query) returns Vector
+{
+    var entities = evaluateQuery(context, geomQuery);
+    if (size(entities) == 0)
+    {
+        throw regenError("ExportCurve: Reference geometry query returned no entities.");
+    }
+
+    var entity = entities[0];
+
+    // Try edge (Line)
+    try
+    {
+        var curveDef = evCurveDefinition(context, {
+            "edge"                : entity,
+            "returnBSplinesAsOther" : true
+        });
+        if (curveDef is Line)
+        {
+            return curveDef.direction;
+        }
+        throw regenError("ExportCurve: Reference edge must be a straight line.");
+    }
+
+    // Try face (Plane)
+    try
+    {
+        var surfDef = evSurfaceDefinition(context, {
+            "face" : entity
+        });
+        if (surfDef is Plane)
+        {
+            return surfDef.normal;
+        }
+        throw regenError("ExportCurve: Reference face must be planar.");
+    }
+
+    throw regenError("ExportCurve: Reference geometry must be a line edge or planar face.");
+}
+
+/**
+ * Find min and max projection of curves array onto direction vector.
+ * Returns { minT: ValueWithUnits, maxT: ValueWithUnits }
+ */
+export function projectCurveBounds(curves is array, direction is Vector) returns map
+{
+    var numSamples = 20;
+    var minT = undefined;
+    var maxT = undefined;
+
+    for (var curve in curves)
+    {
+        var range = getBSplineParamRange(curve);
+        var uMin  = range.uMin;
+        var uMax  = range.uMax;
+
+        var params = [];
+        for (var i = 0; i < numSamples; i += 1)
+        {
+            params = append(params, uMin + (uMax - uMin) * i / (numSamples - 1));
+        }
+
+        var evalResult = evaluateSpline({
+            "spline"     : curve,
+            "parameters" : params
+        });
+        var positions = evalResult[0];
+
+        for (var pt in positions)
+        {
+            var t = dot(pt, direction);
+            if (minT == undefined || t.value < minT.value)
+            {
+                minT = t;
+            }
+            if (maxT == undefined || t.value > maxT.value)
+            {
+                maxT = t;
+            }
+        }
+    }
+
+    return { "minT" : minT, "maxT" : maxT };
+}
+
+/**
+ * Find intersections of a BSplineCurve with a plane defined by:
+ *   dot(point, planeNormal) = planeD
+ *
+ * planeNormal is unitless; planeD has ValueWithUnits (meters).
+ * Returns array of { param: number, point: Vector }
+ */
+export function intersectCurveWithPlane(curve is BSplineCurve, planeNormal is Vector, planeD) returns array
+{
+    var numSamples = 50;
+    var range = getBSplineParamRange(curve);
+    var uMin  = range.uMin;
+    var uMax  = range.uMax;
+
+    // Build uniform parameter samples
+    var params = [];
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        params = append(params, uMin + (uMax - uMin) * i / (numSamples - 1));
+    }
+
+    // Batch evaluate positions
+    var evalResult = evaluateSpline({
+        "spline"     : curve,
+        "parameters" : params
+    });
+    var positions = evalResult[0];
+
+    // Compute signed distance for each sample (in meters)
+    var fValues = [];
+    for (var pt in positions)
+    {
+        var fVal = dot(pt, planeNormal) - planeD;
+        fValues = append(fValues, fVal);
+    }
+
+    // Find sign-change brackets and refine each root
+    var intersections = [];
+    var planeDval = planeD.value;
+
+    for (var i = 0; i < numSamples - 1; i += 1)
+    {
+        var fa = fValues[i].value;
+        var fb = fValues[i + 1].value;
+
+        if (fa * fb < 0)
+        {
+            var uA = params[i];
+            var uB = params[i + 1];
+
+            // Define function for root solver (strip units to get number)
+            var rootFunc = function(u)
+            {
+                var er = evaluateSpline({
+                    "spline"     : curve,
+                    "parameters" : [u]
+                });
+                var fv = dot(er[0][0], planeNormal) - planeD;
+                return fv.value;
+            };
+
+            var rootResult = solveRootHybrid(rootFunc, uA, uB, 1e-9, 60);
+            var uRoot = rootResult.u;
+
+            var ptResult = evaluateSpline({
+                "spline"     : curve,
+                "parameters" : [uRoot]
+            });
+            var ptRoot = ptResult[0][0];
+
+            intersections = append(intersections, { "param" : uRoot, "point" : ptRoot });
+        }
+        else if (abs(fa) < 1e-12)
+        {
+            // Exact zero at left endpoint — add it directly (skip if already added)
+            if (i == 0 || fValues[i - 1].value * fa >= 0)
+            {
+                var ptResult = evaluateSpline({
+                    "spline"     : curve,
+                    "parameters" : [params[i]]
+                });
+                intersections = append(intersections, { "param" : params[i], "point" : ptResult[0][0] });
+            }
+        }
+    }
+
+    return intersections;
+}
+
+/**
+ * Sample curve intersections with N evenly-spaced planes along direction.
+ * Planes cover the projection bounds of all curves.
+ *
+ * Returns array of sample maps (same format as sampleChain output).
+ */
+export function sampleByPlanes(context is Context, orderedCurves is array, direction is Vector,
+                                numPoints is number, chainStart is Vector, addSlopes is boolean) returns array
+{
+    var bounds = projectCurveBounds(orderedCurves, direction);
+    var minT   = bounds.minT;
+    var maxT   = bounds.maxT;
+
+    var samples = [];
+
+    for (var i = 0; i < numPoints; i += 1)
+    {
+        var t = (numPoints == 1) ? 0.5 : (i / (numPoints - 1));
+        var planeD = minT + t * (maxT - minT);
+
+        // Collect all intersections across all curves
+        var allIntersections = [];
+        for (var curve in orderedCurves)
+        {
+            var inters = intersectCurveWithPlane(curve, direction, planeD);
+            for (var inter in inters)
+            {
+                allIntersections = append(allIntersections, {
+                    "param" : inter.param,
+                    "point" : inter.point,
+                    "curve" : curve
+                });
+            }
+        }
+
+        if (size(allIntersections) == 0)
+        {
+            println("ExportCurve WARNING: No intersection found for plane " ~ i ~ ". Skipping.");
+            continue;
+        }
+
+        // Pick intersection nearest to chainStart
+        var bestInter = allIntersections[0];
+        var bestDist  = norm(bestInter.point - chainStart).value;
+
+        for (var inter in allIntersections)
+        {
+            var d = norm(inter.point - chainStart).value;
+            if (d < bestDist)
+            {
+                bestDist  = d;
+                bestInter = inter;
+            }
+        }
+
+        var u    = bestInter.param;
+        var pt   = bestInter.point;
+        var owningCurve = bestInter.curve;
+
+        // Arc length in QUERY/WORLD mode: projection offset from minT
+        var arcLength = planeD - minT;
+
+        var sampleMap = {
+            "point"     : pt,
+            "param"     : u,
+            "arcLength" : arcLength
+        };
+
+        if (addSlopes)
+        {
+            var evalResult = evaluateSpline({
+                "spline"       : owningCurve,
+                "parameters"   : [u],
+                "nDerivatives" : 2
+            });
+            var velocity     = evalResult[1][0];
+            var acceleration = evalResult[2][0];
+
+            var tangent  = normalize(velocity);
+            var crossVec = cross(velocity, acceleration);
+
+            var binormal;
+            if (norm(crossVec).value < 1e-10)
+            {
+                var arb = vector(0, 0, 1);
+                if (abs(dot(tangent, arb)) > 0.9)
+                {
+                    arb = vector(1, 0, 0);
+                }
+                binormal = normalize(cross(tangent, arb));
+            }
+            else
+            {
+                binormal = normalize(crossVec);
+            }
+
+            var normal = cross(binormal, tangent);
+
+            sampleMap = {
+                "point"     : pt,
+                "param"     : u,
+                "arcLength" : arcLength,
+                "tangent"   : tangent,
+                "normal"    : normal
+            };
+        }
+
+        samples = append(samples, sampleMap);
+    }
+
+    return samples;
+}
+
+
+// =============================================================================
+// TABLE DATA BUILDER
+// =============================================================================
+
+/**
+ * Build array of row maps from samples, ready for use with tableRow().
+ *
+ * formatConfig = { tableUnits, sigFigs, showUnits, addParameters, addSlopes }
+ */
+export function buildTableRows(samples is array, formatConfig is map) returns array
+{
+    var rows = [];
+    var idx  = 1;
+
+    for (var sample in samples)
+    {
+        var pt = sample.point;
+
+        var xNum = pt[0].value * getUnitScaleFactor(formatConfig.tableUnits);
+        var yNum = pt[1].value * getUnitScaleFactor(formatConfig.tableUnits);
+        var zNum = pt[2].value * getUnitScaleFactor(formatConfig.tableUnits);
+
+        var rowMap = {
+            "n"   : toString(idx),
+            "x"   : formatCoord(pt[0], formatConfig),
+            "y"   : formatCoord(pt[1], formatConfig),
+            "z"   : formatCoord(pt[2], formatConfig),
+            "csv" : formatScalar(xNum, formatConfig.sigFigs) ~ ", " ~
+                    formatScalar(yNum, formatConfig.sigFigs) ~ ", " ~
+                    formatScalar(zNum, formatConfig.sigFigs)
+        };
+
+        if (formatConfig.addParameters)
+        {
+            rowMap["param"]     = formatScalar(sample.param, formatConfig.sigFigs);
+            rowMap["arclength"] = formatCoord(sample.arcLength, formatConfig);
+        }
+
+        if (formatConfig.addSlopes && sample.tangent != undefined)
+        {
+            var tx = sample.tangent[0];
+            var ty = sample.tangent[1];
+            var tz = sample.tangent[2];
+            var nx = sample.normal[0];
+            var ny = sample.normal[1];
+            var nz = sample.normal[2];
+
+            rowMap["tx"] = formatScalar(tx, formatConfig.sigFigs);
+            rowMap["ty"] = formatScalar(ty, formatConfig.sigFigs);
+            rowMap["tz"] = formatScalar(tz, formatConfig.sigFigs);
+            rowMap["nx"] = formatScalar(nx, formatConfig.sigFigs);
+            rowMap["ny"] = formatScalar(ny, formatConfig.sigFigs);
+            rowMap["nz"] = formatScalar(nz, formatConfig.sigFigs);
+        }
+
+        rows = append(rows, rowMap);
+        idx  += 1;
+    }
+
+    return rows;
+}

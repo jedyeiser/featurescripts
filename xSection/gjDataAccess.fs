@@ -143,6 +143,28 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
         }
     }
 
+    // Sync GJ values into tableData so the displayed table reflects new values.
+    // Table layout: row 0 = header, rows 1+ = data. GJ is column index 3.
+    var csTable = featureData.details.crossSections;  // Re-read for table update
+    if (featureData.tableData != undefined &&
+        featureData.tableData.crossSections != undefined &&
+        size(featureData.tableData.crossSections) > 1)
+    {
+        var tableRows = featureData.tableData.crossSections;
+        for (var i = 0; i < size(updatedCrossSections); i += 1)
+        {
+            var tableRow = i + 1;  // Skip header at index 0
+            if (tableRow < size(tableRows) && updatedCrossSections[i].GJ_eff != undefined)
+            {
+                var GJ_raw = updatedCrossSections[i].GJ_eff / (newton * meter * meter);
+                // Round to 0.1 N·m² precision (matches buildTableData rounding in xSectStorage.fs)
+                tableRows[tableRow][3] = round(GJ_raw * 10.0) / 10.0;
+            }
+        }
+        featureData.tableData["crossSections"] = tableRows;
+        attributeData[featureKey] = featureData;
+    }
+
     // Write updated attribute
     try
     {
