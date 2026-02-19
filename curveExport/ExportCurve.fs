@@ -104,6 +104,9 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
         annotation { "Name" : "Flip Evaluation Order", "Default" : false }
         definition.flipOrder is boolean;
 
+        annotation { "Name" : "Show Debug Points", "Default" : false }
+        definition.showDebugPoints is boolean;
+
         annotation { "Name" : "Export Name", "Default" : "" }
         definition.exportName is string;
     }
@@ -153,6 +156,15 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
                 flipped = append(flipped, samples[i]);
             }
             samples = flipped;
+        }
+
+        // Render debug points at each sample location
+        if (definition.showDebugPoints)
+        {
+            for (var sample in samples)
+            {
+                addDebugPoint(context, sample.point, DebugColor.CYAN);
+            }
         }
 
         // Build row data
