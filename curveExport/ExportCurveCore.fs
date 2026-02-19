@@ -8,7 +8,8 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fe
 // IMPORT: tools/bspline_data.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 // IMPORT: tools/solvers.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+
 
 
 // =============================================================================
