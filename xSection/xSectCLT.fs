@@ -2,10 +2,10 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // xSectMaterials (buildMaterialLookup, normalizeMaterialName)
-import(path : "f8e590162884d45f56e0a05f", version : "c1ed21359067557e016d706f");
+import(path : "f8e590162884d45f56e0a05f", version : "b68b3e44226906853f6724cf");
 
 // xSect_GJ (computeTorsionalStiffness)
-import(path : "9df6ba3db06d479fabe63c1d", version : "db3ab34a6db490e67f3edff7");
+import(path : "9df6ba3db06d479fabe63c1d", version : "6f697a0bc681a79b387e3d9b");
 
 
 // =============================================================================

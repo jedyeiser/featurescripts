@@ -1,8 +1,11 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
-// IMPORT: xSection/gjDataAccess.fs
-// IMPORT: xSection/xSect_GJ.fs
+// IMPORT: xSection/gjDataAccess
+import(path : "12c9e75dc2139eb927245033", version : "0dfcef24764b1de6fb74d6f2");
+// IMPORT: xSection/xSect_GJ
+import(path : "9df6ba3db06d479fabe63c1d", version : "6f697a0bc681a79b387e3d9b");
+
 
 /**
  * GJ ANALYSIS IMPLEMENTATION

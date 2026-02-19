@@ -17,16 +17,16 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  */
 
 // IMPORTS - xSectPredicates (for MaterialBehavior and MaterialType enums)
-import(path : "17142132b20343b5f125e7e7", version : "c41ca927dcb611bd3447f1a8");
+import(path : "17142132b20343b5f125e7e7", version : "915cfab04b2ac30586bf3b10");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "da2d35fba1c845b77344ec27");
+import(path : "c2c3edd39b85fde5e6062533", version : "715a10837362eb3958ac7af2");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "857160ffef5d908655ef0217");
+import(path : "08d3a8d4e34a60d45d46e261", version : "19b81053d10d0acd1b7b7bd3");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
-import(path : "f8e590162884d45f56e0a05f", version : "c1ed21359067557e016d706f");
+import(path : "f8e590162884d45f56e0a05f", version : "b68b3e44226906853f6724cf");
 
 // IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
-import(path : "74231d1d53f5a117d47d17a9", version : "08464ac72c179a339c57798a");
+import(path : "74231d1d53f5a117d47d17a9", version : "6e4f0f6d6fb192e03179b3af");
 
 // =============================================================================
 // OVERLAP DETECTION CONSTANTS
