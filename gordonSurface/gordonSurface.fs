@@ -1120,12 +1120,12 @@ export function makeSurfacesCompatible(
     // Step 2: Merge knot vectors
     var mergedUKnots = [];
     var mergedVKnots = [];
-    const tolerance = 1e-10;
-    
+    const tolerance = 1e-7;  // Match curve compat tolerance; avoids floating-point map-key issues
+
     for (var surf in elevated)
     {
-        mergedUKnots = mergeKnotVectors(getInteriorKnotsFromVector(surf.uKnots, maxUDegree), mergedUKnots, tolerance);
-        mergedVKnots = mergeKnotVectors(getInteriorKnotsFromVector(surf.vKnots, maxVDegree), mergedVKnots, tolerance);
+        mergedUKnots = mergeInteriorKnots(mergedUKnots, getInteriorKnotsFromVector(surf.uKnots, maxUDegree), tolerance);
+        mergedVKnots = mergeInteriorKnots(mergedVKnots, getInteriorKnotsFromVector(surf.vKnots, maxVDegree), tolerance);
     }
     
     // Step 3: Insert missing knots into each surface
@@ -1437,36 +1437,87 @@ function getInteriorKnotsFromVector(knots is array, degree is number) returns ar
 
 /**
  * Find knots in target that aren't in current (or have lower multiplicity).
+ * Uses consume-and-match to avoid floating-point map-key issues.
  */
 function getKnotsToInsertArray(currentInterior is array, targetInterior is array, tolerance is number) returns array
 {
-    var currentMap = {};
-    for (var knot in currentInterior)
-    {
-        var key = round(knot / tolerance) * tolerance;
-        currentMap[key] = (currentMap[key] == undefined) ? 1 : currentMap[key] + 1;
-    }
-    
-    var targetMap = {};
-    for (var knot in targetInterior)
-    {
-        var key = round(knot / tolerance) * tolerance;
-        targetMap[key] = (targetMap[key] == undefined) ? 1 : targetMap[key] + 1;
-    }
-    
+    var remaining = [];
+    for (var k in currentInterior) { remaining = append(remaining, k); }
     var toInsert = [];
-    for (var key, targetMult in targetMap)
+
+    for (var ti = 0; ti < size(targetInterior); ti += 1)
     {
-        var currentMult = (currentMap[key] == undefined) ? 0 : currentMap[key];
-        var needed = targetMult - currentMult;
-        
-        for (var i = 0; i < needed; i += 1)
+        var targetKnot = targetInterior[ti];
+        var matchIdx = -1;
+        for (var ri = 0; ri < size(remaining); ri += 1)
         {
-            toInsert = append(toInsert, key);
+            if (abs(targetKnot - remaining[ri]) <= tolerance)
+            {
+                matchIdx = ri;
+                break;
+            }
+        }
+        if (matchIdx >= 0)
+        {
+            var newRemaining = [];
+            for (var ri = 0; ri < size(remaining); ri += 1)
+            {
+                if (ri != matchIdx)
+                    newRemaining = append(newRemaining, remaining[ri]);
+            }
+            remaining = newRemaining;
+        }
+        else
+        {
+            toInsert = append(toInsert, targetKnot);
         }
     }
-    
+
     return sort(toInsert, function(a, b) { return a - b; });
+}
+
+
+/**
+ * Merge two interior knot arrays into the max-multiplicity union.
+ * Uses consume-and-match to avoid floating-point map-key issues.
+ */
+function mergeInteriorKnots(arr1 is array, arr2 is array, tolerance is number) returns array
+{
+    var result = [];
+    for (var k in arr1) { result = append(result, k); }
+
+    var remaining = [];
+    for (var k in arr1) { remaining = append(remaining, k); }
+
+    for (var ti = 0; ti < size(arr2); ti += 1)
+    {
+        var targetKnot = arr2[ti];
+        var matchIdx = -1;
+        for (var ri = 0; ri < size(remaining); ri += 1)
+        {
+            if (abs(targetKnot - remaining[ri]) <= tolerance)
+            {
+                matchIdx = ri;
+                break;
+            }
+        }
+        if (matchIdx >= 0)
+        {
+            var newRemaining = [];
+            for (var ri = 0; ri < size(remaining); ri += 1)
+            {
+                if (ri != matchIdx)
+                    newRemaining = append(newRemaining, remaining[ri]);
+            }
+            remaining = newRemaining;
+        }
+        else
+        {
+            result = append(result, targetKnot);
+        }
+    }
+
+    return sort(result, function(a, b) { return a - b; });
 }
 
 
