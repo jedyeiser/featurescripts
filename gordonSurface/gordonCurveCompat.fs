@@ -24,6 +24,9 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
 //import gordon_knot_ops
 
+// TEMPORARY: set false after debugging complete
+const COMPAT_DEBUG = true;
+
 annotation { "Feature Type Name" : "makeCurvesCompitable", "Feature Type Description" : "" }
 export const makeCompatableCurves = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -192,6 +195,17 @@ export function makeCurvesCompatible(context is Context, id is Id, curves is arr
         }
     }
 
+    // Step 2 debug: print each curve's state after elevation
+    if (COMPAT_DEBUG)
+    {
+        for (var i = 0; i < size(elevated); i += 1)
+        {
+            println("  [compat] Curve " ~ i ~ " after elevation: degree=" ~ elevated[i].degree ~
+                    " CPs=" ~ size(elevated[i].controlPoints) ~
+                    " interior=" ~ getInteriorKnots(elevated[i]));
+        }
+    }
+
     // Step 3: Gather and merge all interior knots
     var mergedInterior = [];
     for (var curve in elevated)
@@ -200,12 +214,23 @@ export function makeCurvesCompatible(context is Context, id is Id, curves is arr
         mergedInterior = mergeKnotVectors(mergedInterior, interior, tolerance);
     }
 
+    if (COMPAT_DEBUG)
+    {
+        println("  [compat] mergedInterior (" ~ size(mergedInterior) ~ " entries): " ~ mergedInterior);
+    }
+
     // Step 4: Insert missing knots into each curve
     var compatible = [];
-    for (var curve in elevated)
+    for (var i = 0; i < size(elevated); i += 1)
     {
+        var curve = elevated[i];
         var myInterior = getInteriorKnots(curve);
         var toInsert = getKnotsToInsert(myInterior, mergedInterior, tolerance);
+
+        if (COMPAT_DEBUG)
+        {
+            println("  [compat] Curve " ~ i ~ " toInsert=" ~ toInsert ~ " CPs before=" ~ size(curve.controlPoints));
+        }
 
         if (size(toInsert) > 0)
         {
@@ -215,6 +240,11 @@ export function makeCurvesCompatible(context is Context, id is Id, curves is arr
         {
             compatible = append(compatible, curve);
         }
+
+        if (COMPAT_DEBUG)
+        {
+            println("  [compat] Curve " ~ i ~ " CPs after=" ~ size(compatible[i].controlPoints));
+        }
     }
 
     return compatible;
@@ -222,35 +252,44 @@ export function makeCurvesCompatible(context is Context, id is Id, curves is arr
 
 /**
  * Find knots in target that aren't in current (or have lower multiplicity).
+ * Uses a consume-and-match loop to avoid floating-point map-key hashing issues.
  */
 function getKnotsToInsert(currentInterior is array, targetInterior is array, tolerance is number) returns array
 {
-    // Count multiplicities in current
-    var currentMap = {};
-    for (var knot in currentInterior)
-    {
-        var key = round(knot / tolerance) * tolerance;
-        currentMap[key] = (currentMap[key] == undefined) ? 1 : currentMap[key] + 1;
-    }
-
-    // Count multiplicities in target
-    var targetMap = {};
-    for (var knot in targetInterior)
-    {
-        var key = round(knot / tolerance) * tolerance;
-        targetMap[key] = (targetMap[key] == undefined) ? 1 : targetMap[key] + 1;
-    }
-
-    // Find what's missing
+    // Work through targetInterior; consume matching entries from currentInterior one-by-one.
+    // This correctly handles multiplicities without floating-point key hashing.
+    var remaining = currentInterior;
     var toInsert = [];
-    for (var key, targetMult in targetMap)
-    {
-        var currentMult = (currentMap[key] == undefined) ? 0 : currentMap[key];
-        var needed = targetMult - currentMult;
 
-        for (var i = 0; i < needed; i += 1)
+    for (var ti = 0; ti < size(targetInterior); ti += 1)
+    {
+        var targetKnot = targetInterior[ti];
+        var matchIdx = -1;
+
+        for (var ri = 0; ri < size(remaining); ri += 1)
         {
-            toInsert = append(toInsert, key);
+            if (abs(targetKnot - remaining[ri]) <= tolerance)
+            {
+                matchIdx = ri;
+                break;
+            }
+        }
+
+        if (matchIdx >= 0)
+        {
+            // Consume this entry so multiplicity is respected
+            var newRemaining = [];
+            for (var ri = 0; ri < size(remaining); ri += 1)
+            {
+                if (ri != matchIdx)
+                    newRemaining = append(newRemaining, remaining[ri]);
+            }
+            remaining = newRemaining;
+        }
+        else
+        {
+            // Not present in current — needs insertion
+            toInsert = append(toInsert, targetKnot);
         }
     }
 

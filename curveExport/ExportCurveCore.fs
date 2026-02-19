@@ -104,7 +104,7 @@ export function getUnitSuffix(units is ExportUnits, showUnits is boolean) return
 /**
  * Round value to N significant figures.
  */
-export function roundToPrecision(value is number, sigFigs is number) returns number
+function roundToSigFigs(value is number, sigFigs is number) returns number
 {
     if (abs(value) < 1e-15)
     {
@@ -123,7 +123,7 @@ export function formatCoord(value is ValueWithUnits, formatConfig is map) return
 {
     var scale = getUnitScaleFactor(formatConfig.tableUnits);
     var scaled = value.value * scale;
-    var rounded = roundToPrecision(scaled, formatConfig.sigFigs);
+    var rounded = roundToSigFigs(scaled, formatConfig.sigFigs);
     return toString(rounded) ~ getUnitSuffix(formatConfig.tableUnits, formatConfig.showUnits);
 }
 
@@ -132,7 +132,7 @@ export function formatCoord(value is ValueWithUnits, formatConfig is map) return
  */
 export function formatScalar(value is number, sigFigs is number) returns string
 {
-    var rounded = roundToPrecision(value, sigFigs);
+    var rounded = roundToSigFigs(value, sigFigs);
     return toString(rounded);
 }
 
