@@ -548,6 +548,7 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
     var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
     var Jp_total = 0.0;   // Diagnostic: sum of G*Jp_e contributions
     var warp_total = 0.0; // Diagnostic: sum of G*warp_correction contributions
+    var Iz_sum = 0.0;  // For thin-plate formula: GJ = 4 * Iz_sum
 
     // Defensive check: ensure psi array is valid
     if (size(psi) == 0)
@@ -624,6 +625,7 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
         Jp_total += G * Jp_e;
         warp_total += G * warp_correction;
         GJ_sum += G * (Jp_e + warp_correction);  // All plain numbers, implicit N·m²
+        Iz_sum += G * Iz;
     }
 
     // Diagnostic: breakdown of Jp vs warping correction
@@ -632,8 +634,13 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
     println("    Warp correction = " ~ warp_total ~ " N·m²");
     println("    J_SV (Jp + warp) = " ~ GJ_sum ~ " N·m²");
 
-    // Restore units to result
-    return GJ_sum * newton * meter * meter;
+    // Use thin-plate formula (GJ = 4*Iz) — analytically exact for b/t >> 1,
+    // far more accurate than coarse FEM for ski cross-sections.
+    // FEM result (J_SV) kept above as diagnostic to show warping solve comparison.
+    var GJ_thin_plate = 4.0 * Iz_sum;
+    println("    GJ_thin_plate (4·Iz) = " ~ GJ_thin_plate ~ " N·m²");
+    println("    Ratio FEM/thin-plate = " ~ (GJ_sum / GJ_thin_plate));
+    return GJ_thin_plate * newton * meter * meter;
 }
 
 /**
