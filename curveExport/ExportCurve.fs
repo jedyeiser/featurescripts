@@ -198,7 +198,7 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
 // =============================================================================
 
 annotation { "Table Type Name" : "Curve Export Table" }
-export const curveExportTable = defineTable(function(context is Context, definition is map) returns Table
+export const curveExportTable = defineTable(function(context is Context, definition is map) returns TableArray
     precondition
     {
     }
@@ -207,7 +207,7 @@ export const curveExportTable = defineTable(function(context is Context, definit
 
         if (size(anchors) == 0)
         {
-            return table("Curve Export (No Data)", [], []);
+            return tableArray([table("Curve Export (No Data)", [], [])]);
         }
 
         var exportList = getAttribute(context, {
@@ -217,58 +217,47 @@ export const curveExportTable = defineTable(function(context is Context, definit
 
         if (size(exportList) == 0)
         {
-            return table("Curve Export (No Data)", [], []);
+            return tableArray([table("Curve Export (No Data)", [], [])]);
         }
 
-        // Determine superset of optional columns across all exports
-        var needParams = false;
-        var needSlopes = false;
+        var tables = [];
         for (var entry in exportList)
         {
+            // Title: use export name if set, otherwise generic title
+            var title = (entry.name == "") ? "Curve Export" : ("Curve Export: " ~ entry.name);
+
+            // Columns based on this export's own formatConfig
+            var cols = [
+                tableColumnDefinition("n",   "N"),
+                tableColumnDefinition("x",   "X"),
+                tableColumnDefinition("y",   "Y"),
+                tableColumnDefinition("z",   "Z"),
+                tableColumnDefinition("csv", "X, Y, Z")
+            ];
+
             if (entry.formatConfig.addParameters)
-                needParams = true;
-            if (entry.formatConfig.addSlopes)
-                needSlopes = true;
-        }
-
-        // Build column definitions
-        var cols = [
-            tableColumnDefinition("n",   "N"),
-            tableColumnDefinition("x",   "X"),
-            tableColumnDefinition("y",   "Y"),
-            tableColumnDefinition("z",   "Z"),
-            tableColumnDefinition("csv", "X, Y, Z")
-        ];
-
-        if (needParams)
-        {
-            cols = append(cols, tableColumnDefinition("param",     "Param"));
-            cols = append(cols, tableColumnDefinition("arclength", "Arc Length"));
-        }
-
-        if (needSlopes)
-        {
-            cols = concatenateArrays([cols, [
-                tableColumnDefinition("tangent", "Tangent [tx, ty, tz]"),
-                tableColumnDefinition("normal",  "Normal [nx, ny, nz]")
-            ]]);
-        }
-
-        // Build rows; separator row before each group when multiple exports exist
-        var multipleExports = size(exportList) > 1;
-        var rows = [];
-        for (var entry in exportList)
-        {
-            if (multipleExports)
             {
-                var displayName = (entry.name == "") ? "(Default)" : entry.name;
-                rows = append(rows, tableRow({ "n" : "--- " ~ displayName ~ " ---" }));
+                cols = append(cols, tableColumnDefinition("param",     "Param"));
+                cols = append(cols, tableColumnDefinition("arclength", "Arc Length"));
             }
+
+            if (entry.formatConfig.addSlopes)
+            {
+                cols = concatenateArrays([cols, [
+                    tableColumnDefinition("tangent", "Tangent [tx, ty, tz]"),
+                    tableColumnDefinition("normal",  "Normal [nx, ny, nz]")
+                ]]);
+            }
+
+            // Rows
+            var rows = [];
             for (var r in entry.rows)
             {
                 rows = append(rows, tableRow(r));
             }
+
+            tables = append(tables, table(title, cols, rows));
         }
 
-        return table("Curve Export", cols, rows);
+        return tableArray(tables);
     });
