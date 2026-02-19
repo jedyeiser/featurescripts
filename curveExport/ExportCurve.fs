@@ -2,6 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // IMPORT: ExportCurveCore.fs
+import(path : "666228ba3514cc062764888b", version : "349d87725d452bf2c88bab4b");
 
 
 /**

@@ -2,9 +2,13 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // IMPORT: tools/arc_length.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/curve_operations.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
 // IMPORT: tools/bspline_data.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 // IMPORT: tools/solvers.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
 
 
 // =============================================================================
@@ -592,7 +596,6 @@ export function intersectCurveWithPlane(curve is BSplineCurve, planeNormal is Ve
 
     // Find sign-change brackets and refine each root
     var intersections = [];
-    var planeDval = planeD.value;
 
     for (var i = 0; i < numSamples - 1; i += 1)
     {
