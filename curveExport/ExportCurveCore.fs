@@ -217,6 +217,14 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
         throw regenError("ExportCurve: No edges found in selection.");
     }
 
+    // Log all endpoints for diagnosis
+    println("collectAndOrderEdges: " ~ toString(size(curves)) ~ " curves");
+    for (var i = 0; i < size(curves); i += 1)
+    {
+        var ep = getBSplineEndpoints(curves[i]);
+        println("  curve[" ~ toString(i) ~ "] start=" ~ toString(ep.start) ~ " end=" ~ toString(ep.end));
+    }
+
     if (size(curves) == 1)
     {
         var ep = getBSplineEndpoints(curves[0]);
@@ -224,7 +232,8 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
     }
 
     // Greedily order into chain
-    var connTolerance = 1e-4 * meter;
+    var connTolerance = 1e-6 * meter;
+    println("  connTolerance=" ~ toString(connTolerance));
 
     // Pick the first curve as head; try to find a chain from it
     var pool = [];
@@ -242,6 +251,13 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
         for (var pi = 0; pi < size(pool); pi += 1)
         {
             var candidate = pool[pi];
+            var tailEp = getBSplineEndpoints(orderedCurves[size(orderedCurves) - 1]);
+            var candEp = getBSplineEndpoints(candidate);
+            println("  [loop1] tail.end=" ~ toString(tailEp.end)
+                ~ " cand.start=" ~ toString(candEp.start)
+                ~ " d=" ~ toString(norm(tailEp.end - candEp.start))
+                ~ " cand.end=" ~ toString(candEp.end)
+                ~ " d2=" ~ toString(norm(tailEp.end - candEp.end)));
             var conn = checkEndpointConnection(orderedCurves[size(orderedCurves) - 1], candidate, connTolerance);
 
             if (conn.connected)
@@ -298,6 +314,13 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
                 for (var pi2 = 0; pi2 < size(pool); pi2 += 1)
                 {
                     var candidate2 = pool[pi2];
+                    var tailEp2 = getBSplineEndpoints(orderedCurves[0]);
+                    var candEp2 = getBSplineEndpoints(candidate2);
+                    println("  [loop2-flip] tail.end=" ~ toString(tailEp2.end)
+                        ~ " cand.start=" ~ toString(candEp2.start)
+                        ~ " d=" ~ toString(norm(tailEp2.end - candEp2.start))
+                        ~ " cand.end=" ~ toString(candEp2.end)
+                        ~ " d2=" ~ toString(norm(tailEp2.end - candEp2.end)));
                     var conn2 = checkEndpointConnection(orderedCurves[0], candidate2, connTolerance);
 
                     if (conn2.connected)
