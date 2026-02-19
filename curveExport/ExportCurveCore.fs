@@ -766,9 +766,9 @@ export function intersectCurveWithPlane(curve is BSplineCurve, planeNormal is Ve
 
             intersections = append(intersections, { "param" : uRoot, "point" : ptRoot });
         }
-        else if (abs(fa) < 1e-12)
+        else if (abs(fa) < 1e-7)
         {
-            // Exact zero at left endpoint — add it directly (skip if already added)
+            // Near-zero at left endpoint — add it directly (skip if already added)
             if (i == 0 || fValues[i - 1].value * fa >= 0)
             {
                 var ptResult = evaluateSpline({
@@ -777,6 +777,21 @@ export function intersectCurveWithPlane(curve is BSplineCurve, planeNormal is Ve
                 });
                 intersections = append(intersections, { "param" : params[i], "point" : ptResult[0][0] });
             }
+        }
+    }
+
+    // Check the last sample — the loop only tests it as fb, never as fa
+    var fLast = fValues[numSamples - 1].value;
+    if (abs(fLast) < 1e-7)
+    {
+        var prevF = fValues[numSamples - 2].value;
+        if (prevF * fLast >= 0)  // not already captured by a sign-change bracket
+        {
+            var ptResult = evaluateSpline({
+                "spline"     : curve,
+                "parameters" : [params[numSamples - 1]]
+            });
+            intersections = append(intersections, { "param" : params[numSamples - 1], "point" : ptResult[0][0] });
         }
     }
 
@@ -937,19 +952,12 @@ export function buildTableRows(samples is array, formatConfig is map) returns ar
 
         if (formatConfig.addSlopes && sample.tangent != undefined)
         {
-            var tx = sample.tangent[0];
-            var ty = sample.tangent[1];
-            var tz = sample.tangent[2];
-            var nx = sample.normal[0];
-            var ny = sample.normal[1];
-            var nz = sample.normal[2];
-
-            rowMap["tx"] = formatScalar(tx, formatConfig.sigFigs);
-            rowMap["ty"] = formatScalar(ty, formatConfig.sigFigs);
-            rowMap["tz"] = formatScalar(tz, formatConfig.sigFigs);
-            rowMap["nx"] = formatScalar(nx, formatConfig.sigFigs);
-            rowMap["ny"] = formatScalar(ny, formatConfig.sigFigs);
-            rowMap["nz"] = formatScalar(nz, formatConfig.sigFigs);
+            rowMap["tangent"] = "[" ~ formatScalar(sample.tangent[0], formatConfig.sigFigs) ~ ", " ~
+                                       formatScalar(sample.tangent[1], formatConfig.sigFigs) ~ ", " ~
+                                       formatScalar(sample.tangent[2], formatConfig.sigFigs) ~ "]";
+            rowMap["normal"]  = "[" ~ formatScalar(sample.normal[0], formatConfig.sigFigs) ~ ", " ~
+                                       formatScalar(sample.normal[1], formatConfig.sigFigs) ~ ", " ~
+                                       formatScalar(sample.normal[2], formatConfig.sigFigs) ~ "]";
         }
 
         rows = append(rows, rowMap);

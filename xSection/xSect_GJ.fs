@@ -123,6 +123,21 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     // Assemble global FEM system K·ψ = f
     var femSystem = assembleFEMSystem(triangles, G_elem, section.sectionPoints, numNodes);
 
+    // Tikhonov regularization: add ε·I to prevent ill-conditioned pivot failure.
+    // ε = 1e-10 * max(diag(K)) is negligible vs physics but prevents near-zero pivots.
+    var K_reg = femSystem.K;
+    var maxKDiag = 0.0;
+    for (var i = 0; i < numNodes; i += 1)
+    {
+        if (abs(K_reg[i][i]) > maxKDiag) { maxKDiag = abs(K_reg[i][i]); }
+    }
+    var regEps = maxKDiag * 1e-10;
+    for (var i = 0; i < numNodes; i += 1)
+    {
+        K_reg[i][i] += regEps;
+    }
+    femSystem = { "K" : K_reg, "f" : femSystem.f };
+
     // Apply boundary condition to remove rigid body mode (pin one node)
     femSystem = applyBoundaryCondition(femSystem.K, femSystem.f, numNodes);
 
@@ -264,7 +279,7 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
  *   K_local[a,b] = G * A * (dNdy[a]*dNdy[b] + dNdz[a]*dNdz[b])
  *
  * Element load:
- *   f_local[a] = G * A * (y_c * dNdz[a] - z_c * dNdy[a])
+ *   f_local[a] = G * A * (z_c * dNdy[a] - y_c * dNdz[a])
  *
  * where (y_c, z_c) is triangle centroid
  */
@@ -342,7 +357,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
 
             // Element load vector
             // Dimensional analysis: (N/m²) * m² * m * (1/m) = N
-            var f_local = G * A * (y_c * dNdz[a] - z_c * dNdy[a]);  // All plain numbers
+            var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);  // All plain numbers
             f[ia] += f_local;  // No unit stripping needed
 
             // Element stiffness matrix
@@ -373,7 +388,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     println("  Valid elements: " ~ validElements ~ " (" ~
         (100.0 * validElements / size(triangles)) ~ "%)");
     println("  Skipped: " ~ skippedZeroG ~ " (G<1e-6), " ~
-        skippedDegenerateArea ~ " (area<1e-6 m²)");
+        skippedDegenerateArea ~ " (area<1e-12 m²)");
     println("  Non-zero K entries: " ~ nnz);
 
     // Warn if too many degenerate triangles (indicates mesh quality issues)

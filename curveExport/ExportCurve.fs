@@ -100,6 +100,9 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
 
         annotation { "Name" : "Include Slopes (Tangent / Normal)", "Default" : false }
         definition.addSlopes is boolean;
+
+        annotation { "Name" : "Flip Evaluation Order", "Default" : false }
+        definition.flipOrder is boolean;
     }
     {
         // Build format config
@@ -136,6 +139,17 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
             var direction = getAxisDirection(definition.alongAxis);
             samples = sampleByPlanes(context, orderedCurves, direction,
                                      definition.numPoints, chainStart, definition.addSlopes);
+        }
+
+        // Reverse sample order if requested
+        if (definition.flipOrder)
+        {
+            var flipped = [];
+            for (var i = size(samples) - 1; i >= 0; i -= 1)
+            {
+                flipped = append(flipped, samples[i]);
+            }
+            samples = flipped;
         }
 
         // Build row data
@@ -196,12 +210,8 @@ export const curveExportTable = defineTable(function(context is Context, definit
         if (fc.addSlopes)
         {
             cols = concatenateArrays([cols, [
-                tableColumnDefinition("tx", "TX"),
-                tableColumnDefinition("ty", "TY"),
-                tableColumnDefinition("tz", "TZ"),
-                tableColumnDefinition("nx", "NX"),
-                tableColumnDefinition("ny", "NY"),
-                tableColumnDefinition("nz", "NZ")
+                tableColumnDefinition("tangent", "Tangent [tx, ty, tz]"),
+                tableColumnDefinition("normal",  "Normal [nx, ny, nz]")
             ]]);
         }
 
