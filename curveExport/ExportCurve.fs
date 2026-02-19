@@ -158,28 +158,37 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
         // Build row data
         var rows = buildTableRows(samples, formatConfig);
 
-        // Read any accumulated data map from earlier features this regeneration
+        // Read accumulated list from earlier features this regeneration
         var anchorQuery = qOrigin(EntityType.BODY);
         var existingAnchors = evaluateQuery(context, qHasAttribute("curveExportData"));
-        var dataMap = {};
+        var exportList = [];
         if (size(existingAnchors) > 0)
         {
-            dataMap = getAttribute(context, {
+            exportList = getAttribute(context, {
                 "entity" : existingAnchors[0],
                 "name"   : "curveExportData"
             });
         }
 
-        // Add / overwrite this export's entry in the shared map
-        dataMap[definition.exportName] = {
+        // Remove any prior entry with the same name (idempotent re-run safety)
+        var filteredList = [];
+        for (var entry in exportList)
+        {
+            if (entry.name != definition.exportName)
+                filteredList = append(filteredList, entry);
+        }
+
+        // Append this export's entry
+        filteredList = append(filteredList, {
+            "name"         : definition.exportName,
             "rows"         : rows,
             "formatConfig" : formatConfig
-        };
+        });
 
         setAttribute(context, {
             "entities"  : anchorQuery,
             "name"      : "curveExportData",
-            "attribute" : dataMap
+            "attribute" : filteredList
         });
     });
 
@@ -201,27 +210,24 @@ export const curveExportTable = defineTable(function(context is Context, definit
             return table("Curve Export (No Data)", [], []);
         }
 
-        var dataMap = getAttribute(context, {
+        var exportList = getAttribute(context, {
             "entity" : anchors[0],
             "name"   : "curveExportData"
         });
 
-        // Collect export names (map iteration order = feature-tree insertion order)
-        var names = [];
-        for (var name in dataMap)
+        if (size(exportList) == 0)
         {
-            names = append(names, name);
+            return table("Curve Export (No Data)", [], []);
         }
 
         // Determine superset of optional columns across all exports
         var needParams = false;
         var needSlopes = false;
-        for (var name in dataMap)
+        for (var entry in exportList)
         {
-            var fc = dataMap[name].formatConfig;
-            if (fc.addParameters)
+            if (entry.formatConfig.addParameters)
                 needParams = true;
-            if (fc.addSlopes)
+            if (entry.formatConfig.addSlopes)
                 needSlopes = true;
         }
 
@@ -248,17 +254,17 @@ export const curveExportTable = defineTable(function(context is Context, definit
             ]]);
         }
 
-        // Build rows; insert a separator row before each named group when multiple exports exist
-        var multipleExports = size(names) > 1;
+        // Build rows; separator row before each group when multiple exports exist
+        var multipleExports = size(exportList) > 1;
         var rows = [];
-        for (var name in dataMap)
+        for (var entry in exportList)
         {
             if (multipleExports)
             {
-                var displayName = (name == "") ? "(Default)" : name;
+                var displayName = (entry.name == "") ? "(Default)" : entry.name;
                 rows = append(rows, tableRow({ "n" : "--- " ~ displayName ~ " ---" }));
             }
-            for (var r in dataMap[name].rows)
+            for (var r in entry.rows)
             {
                 rows = append(rows, tableRow(r));
             }
