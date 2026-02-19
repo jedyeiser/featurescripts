@@ -709,13 +709,33 @@ var Jp_e = Iy + Iz;
 
 ---
 
+### No pow() Function — Use ^ Operator
+**Date**: 2026-02-18
+**Issue**: `pow(base, exponent)` does not exist in FeatureScript. Calling it with 2 arguments throws "function pow with 2 arguments not found".
+**Incorrect Pattern**:
+```featurescript
+var magnitude = pow(10, exponent);  // ❌ ERROR - no pow() function
+```
+**Correct Pattern**:
+```featurescript
+var magnitude = 10 ^ exponent;  // ✅ Use ^ operator for exponentiation
+```
+**Lesson Learned**:
+- FeatureScript uses `^` for exponentiation (not `**` or `pow()`)
+- The std/math.fs header explicitly states: "There is no `pow` function: exponentiation is done using the `^` operator."
+- Available math functions: `log(x)` (natural log), `log10(x)`, `exp(x)`, `abs(x)`, `floor(x)`, `ceil(x)`, `round(x)`, `sqrt(x)`
+
+**Files Fixed**: ExportCurveCore.fs (roundToPrecision)
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 11
-- **Last Updated**: 2026-02-10
-- **Most Common Category**: FeatureScript Syntax (6), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
+- **Total Corrections**: 12
+- **Last Updated**: 2026-02-18
+- **Most Common Category**: FeatureScript Syntax (7), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: Q matrix 3×3 storage, dimensional analysis for unit stripping, polar moment formula
+- **Latest Additions**: No pow() function (use ^ operator)
 
 ---
 

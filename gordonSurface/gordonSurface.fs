@@ -151,11 +151,6 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
                     "edge" : uEdges[i]
             });
             uBSplines = append(uBSplines, bSplineRep);
-            for (var j = 0; j < size(uBSplines); j += 1)
-           {
-               var endPt = evaluateSpline({ "spline" : uBSplines[j], "parameters" : [1.0] })[0][0];
-               println("U-curve " ~ j ~ " endpoint: " ~ endPt);
-           }
         }
         
         var vBSplines = [];
@@ -165,11 +160,6 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
                     "edge" : vEdges[i]
             });
             vBSplines = append(vBSplines, bSplineRep);
-            for (var j = 0; j < size(vBSplines); j += 1)
-           {
-               var endPt = evaluateSpline({ "spline" : vBSplines[j], "parameters" : [1.0] })[0][0];
-               println("V-curve " ~ j ~ " endpoint: " ~ endPt);
-           }
         }
         
         // Make curves compatible (within each family)
@@ -186,17 +176,6 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
             vBSplines[i] = normalizeBSplineCurve(context, id + ("normalizeV" ~ i), vBSplines[i]);
         }
         
-        for (var i = 0; i < size(uBSplines); i += 1)
-       {
-           var lastCP = uBSplines[i].controlPoints[size(uBSplines[i].controlPoints) - 1];
-           println("U-curve " ~ i ~ " last CP: " ~ lastCP);
-       }
-       for (var i = 0; i < size(vBSplines); i += 1)
-       {
-           var lastCP = vBSplines[i].controlPoints[size(vBSplines[i].controlPoints) - 1];
-           println("V-curve " ~ i ~ " last CP: " ~ lastCP);
-       }    
-        
         // Compute intersection grid and parameters
         var intersectionData = computeIntersectionGrid(context, uBSplines, vBSplines);
         
@@ -209,13 +188,11 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
         
         if (vParamResult.reversed)
         {
-            println("Note: Reversing uBSplines array to match parameter direction");
             uBSplines = reverse(uBSplines);
             needRecompute = true;
         }
         if (uParamResult.reversed)
         {
-            println("Note: Reversing vBSplines array to match parameter direction");
             vBSplines = reverse(vBSplines);
             needRecompute = true;
         }
@@ -231,36 +208,6 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
         var intersectionGrid = intersectionData.points;
         var vParams_intersection = vParamResult.params;
         var uParams_intersection = uParamResult.params;
-        
-        // Debug output
-        println("vParams (for u-curves): " ~ vParams_intersection);
-        println("uParams (for v-curves): " ~ uParams_intersection);
-        
-        // If parameters were reversed, we need to reverse the corresponding curves
-        // so that curve[i] still corresponds to params[i]
-        if (vParamResult.reversed)
-        {
-            println("Note: Reversing uBSplines to match parameter direction");
-            uBSplines = reverse(uBSplines);
-        }
-        if (uParamResult.reversed)
-        {
-            println("Note: Reversing vBSplines to match parameter direction");
-            vBSplines = reverse(vBSplines);
-        }
-        
-        // Debug output
-        println("Raw vParams: " ~ intersectionData.vParams);
-        println("Sanitized vParams: " ~ vParams_intersection ~ " (reversed: " ~ vParamResult.reversed ~ ")");
-        println("Raw uParams: " ~ intersectionData.uParams);
-        println("Sanitized uParams: " ~ uParams_intersection ~ " (reversed: " ~ uParamResult.reversed ~ ")");
-
-        
-        // Debug: show what we're working with
-        println("Raw vParams: " ~ intersectionData.vParams);
-        println("Sanitized vParams: " ~ vParams_intersection);
-        println("Raw uParams: " ~ intersectionData.uParams);
-        println("Sanitized uParams: " ~ uParams_intersection);
         
         if (definition.printInputCurves)
         {
@@ -306,10 +253,6 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
             });
         }
         
-        println("vParams (from intersections, for u-curves): " ~ vParams_intersection);
-        println("uParams (from intersections, for v-curves): " ~ uParams_intersection);
-        
-        
         // T: Tensor product through intersection grid
         // intersectionGrid[i][j] is at parameter (uParams_intersection[j], vParams_intersection[i])
         // So rowParams = vParams_intersection, colParams = uParams_intersection
@@ -330,7 +273,6 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
             });
         }
         
-        // TODO: Make surfaces compatible and assemble final Gordon surface
         var compatibleSurfaces = makeSurfacesCompatible(context, id + "compat", [Su, Sv, T]);
         
         var gordon = assembleGordonSurface(compatibleSurfaces[0], compatibleSurfaces[1], compatibleSurfaces[2]);
@@ -1578,54 +1520,6 @@ export function assembleGordonSurface(
     surfaceDef = normalizeSurfaceDef(surfaceDef);
     
     return bSplineSurface(surfaceDef);
-}
-
-
-/**
- * Full Gordon surface construction from curve network.
- *
- * @param context {Context}
- * @param id {Id}
- * @param uCurves {array} : Array of BSplineCurves running in u-direction
- * @param vCurves {array} : Array of BSplineCurves running in v-direction
- * @param intersectionGrid {array} : 2D array of intersection points, grid[i][j] = uCurves[i] ∩ vCurves[j]
- * @param uParams {array} : Parameter values for u-curves in v-direction
- * @param vParams {array} : Parameter values for v-curves in u-direction
- * @param uDegree {number} : Desired u-degree
- * @param vDegree {number} : Desired v-degree
- * @returns {BSplineSurface}
- */
-export function createGordonSurface(
-    context is Context,
-    id is Id,
-    uCurves is array,
-    vCurves is array,
-    intersectionGrid is array,
-    uParams is array,
-    vParams is array,
-    uDegree is number,
-    vDegree is number
-) returns BSplineSurface
-{
-    // Step 1: Create S_u by skinning through u-curves
-    var Su = createSkinningSurface(context, id + "Su", uCurves, vDegree, VParamMode.CHORD_LENGTH);
-    
-    // Step 2: Create S_v by skinning through v-curves
-    // Note: v-curves run perpendicular, so we skin them and the result has u/v swapped
-    var SvRaw = createSkinningSurface(context, id + "Sv", vCurves, uDegree, VParamMode.CHORD_LENGTH);
-    var Sv = transposeSurface(SvRaw);
-    
-    // Step 3: Create tensor product surface T through intersection points
-    var T = createTensorProductSurface(context, id + "T", intersectionGrid, vParams, uParams, uDegree, vDegree);
-    
-    // Step 4: Make all three surfaces compatible
-    var compatibleSurfaces = makeSurfacesCompatible(context, id + "compat", [Su, Sv, T]);
-    Su = compatibleSurfaces[0];
-    Sv = compatibleSurfaces[1];
-    T = compatibleSurfaces[2];
-    
-    // Step 5: Assemble Gordon surface
-    return assembleGordonSurface(Su, Sv, T);
 }
 
 

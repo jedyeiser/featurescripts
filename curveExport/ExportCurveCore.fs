@@ -103,7 +103,8 @@ export function roundToPrecision(value is number, sigFigs is number) returns num
     {
         return 0;
     }
-    var magnitude = pow(10, sigFigs - floor(log10(abs(value)) + 1));
+    var exp = sigFigs - floor(log10(abs(value)) + 1);
+    var magnitude = 10 ^ exp;
     return round(value * magnitude) / magnitude;
 }
 
