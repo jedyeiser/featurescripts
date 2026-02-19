@@ -477,15 +477,11 @@ export function joinCurves(context is Context, curveA is BSplineCurve, curveB is
         joinedCP = append(joinedCP, cpB[i]);
     }
 
-    // Concatenate knot vectors.
-    // A ends with (degree+1) repeated knots at uMax_A; B starts with (degree+1) at the same value.
-    // For C0 continuity at the junction, the merged knot must have multiplicity = degree.
-    // So take all of A except its last knot, then skip B's first (degree+1) clamped knots.
-    // This gives junction multiplicity = degree → C0, and total knot count = nA + nB + degree ✓.
+    // Concatenate knot vectors (skip duplicates at join)
     var joinedKnots = [];
-    for (var i = 0; i < size(compatA.knots) - 1; i += 1)
+    for (var knot in compatA.knots)
     {
-        joinedKnots = append(joinedKnots, compatA.knots[i]);
+        joinedKnots = append(joinedKnots, knot);
     }
     // Skip first degree+1 knots of B (they're at the join point)
     for (var i = degree + 1; i < size(knotsB); i += 1)

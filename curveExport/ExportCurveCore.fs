@@ -9,6 +9,8 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fe
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 // IMPORT: tools/solvers.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+// IMPORT: tools/bspline_knots.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 
 
 
@@ -405,6 +407,87 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
 }
 
 /**
+ * Local C0 join: concatenates two BSplineCurves at their shared endpoint.
+ * Fixes the off-by-one knot count bug in the shared joinCurves function.
+ * Junction knot multiplicity = degree → C0 continuity.
+ */
+function joinCurvesC0(context is Context, curveA is BSplineCurve, curveB is BSplineCurve) returns BSplineCurve
+{
+    var tolerance = 1e-6 * meter;
+
+    var endpointsA = getBSplineEndpoints(curveA);
+    var endpointsB = getBSplineEndpoints(curveB);
+    var gap = norm(endpointsA.end - endpointsB.start);
+    if (gap > tolerance)
+    {
+        throw regenError("joinCurvesC0: Curves do not meet within tolerance. Gap = " ~ gap);
+    }
+
+    var compat = makeCurvesCompatible(context, curveA, curveB);
+    var compatA = compat.curveA;
+    var compatB = compat.curveB;
+    var degree = compatA.degree;
+
+    var rangeA = getBSplineParamRange(compatA);
+    var rangeB = getBSplineParamRange(compatB);
+    var paramShift = rangeA.uMax - rangeB.uMin;
+
+    var knotsB = [];
+    for (var knot in compatB.knots)
+    {
+        knotsB = append(knotsB, knot + paramShift);
+    }
+
+    // Concatenate control points (skip first of B — duplicate at junction)
+    var joinedCP = [];
+    for (var cp in compatA.controlPoints)
+    {
+        joinedCP = append(joinedCP, cp);
+    }
+    for (var i = 1; i < size(compatB.controlPoints); i += 1)
+    {
+        joinedCP = append(joinedCP, compatB.controlPoints[i]);
+    }
+
+    // Concatenate knots.
+    // Drop A's last knot so junction multiplicity = degree (C0) not degree+1 (break).
+    // Total = (nA + degree) + nB = nA + nB + degree = (nA + nB - 1) + degree + 1  ✓
+    var joinedKnots = [];
+    for (var i = 0; i < size(compatA.knots) - 1; i += 1)
+    {
+        joinedKnots = append(joinedKnots, compatA.knots[i]);
+    }
+    for (var i = degree + 1; i < size(knotsB); i += 1)
+    {
+        joinedKnots = append(joinedKnots, knotsB[i]);
+    }
+
+    // Weights (rational case)
+    var joinedWeights = [];
+    if (compatA.isRational && compatA.weights != undefined)
+    {
+        for (var w in compatA.weights)
+        {
+            joinedWeights = append(joinedWeights, w);
+        }
+        for (var i = 1; i < size(compatB.weights); i += 1)
+        {
+            joinedWeights = append(joinedWeights, compatB.weights[i]);
+        }
+    }
+
+    return {
+        "degree"        : degree,
+        "isPeriodic"    : false,
+        "controlPoints" : joinedCP,
+        "knots"         : joinedKnots,
+        "weights"       : joinedWeights,
+        "isRational"    : compatA.isRational,
+        "dimension"     : compatA.dimension
+    } as BSplineCurve;
+}
+
+/**
  * Join an ordered array of BSplineCurves (each A.end must touch B.start)
  * into a single composite BSplineCurve via pairwise C0 join.
  */
@@ -419,7 +502,7 @@ export function assembleCurveChain(context is Context, orderedCurves is array) r
 
     for (var i = 1; i < size(orderedCurves); i += 1)
     {
-        result = joinCurves(context, result, orderedCurves[i], ContinuityType.C0, {});
+        result = joinCurvesC0(context, result, orderedCurves[i]);
     }
 
     return result;
