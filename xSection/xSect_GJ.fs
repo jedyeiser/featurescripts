@@ -40,7 +40,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e235
  * - RESTORED at exit: final GJ returned as ValueWithUnits
  */
 
-const MIN_AREA = 1e-6;  // 1 mm² - filter sub-millimeter triangles (implicit m²)
+const MIN_AREA = 1e-12;  // 1 μm² - only filter truly degenerate triangles (implicit m²)
 
 /**
  * Main entry point: Compute torsional stiffness GJ for a cross-section
@@ -264,7 +264,7 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
  *   K_local[a,b] = G * A * (dNdy[a]*dNdy[b] + dNdz[a]*dNdz[b])
  *
  * Element load:
- *   f_local[a] = G * A * (z_c * dNdy[a] - y_c * dNdz[a])
+ *   f_local[a] = G * A * (y_c * dNdz[a] - z_c * dNdy[a])
  *
  * where (y_c, z_c) is triangle centroid
  */
@@ -342,7 +342,7 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
 
             // Element load vector
             // Dimensional analysis: (N/m²) * m² * m * (1/m) = N
-            var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);  // All plain numbers
+            var f_local = G * A * (y_c * dNdz[a] - z_c * dNdy[a]);  // All plain numbers
             f[ia] += f_local;  // No unit stripping needed
 
             // Element stiffness matrix
@@ -518,6 +518,8 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
 function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array) returns ValueWithUnits
 {
     var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
+    var Jp_total = 0.0;   // Diagnostic: sum of G*Jp_e contributions
+    var warp_total = 0.0; // Diagnostic: sum of G*warp_correction contributions
 
     // Defensive check: ensure psi array is valid
     if (size(psi) == 0)
@@ -591,8 +593,16 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
 
         // Accumulate GJ element contribution
         // Dimensional analysis: (N/m²) * m⁴ = N·m²
+        Jp_total += G * Jp_e;
+        warp_total += G * warp_correction;
         GJ_sum += G * (Jp_e + warp_correction);  // All plain numbers, implicit N·m²
     }
+
+    // Diagnostic: breakdown of Jp vs warping correction
+    // After fix, warp_total should be strongly negative for flat/wide sections
+    println("    Jp total = " ~ Jp_total ~ " N·m²");
+    println("    Warp correction = " ~ warp_total ~ " N·m²");
+    println("    J_SV (Jp + warp) = " ~ GJ_sum ~ " N·m²");
 
     // Restore units to result
     return GJ_sum * newton * meter * meter;
