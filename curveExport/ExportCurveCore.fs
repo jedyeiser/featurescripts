@@ -58,11 +58,17 @@ export const SIG_FIGS_BOUNDS =
 export function getUnitScaleFactor(units is ExportUnits) returns number
 {
     if (units == ExportUnits.MILLIMETER)
+    {
         return 1000;
+    }
     else if (units == ExportUnits.INCH)
+    {
         return 1 / 0.0254;
+    }
     else
+    {
         return 100; // CENTIMETER
+    }
 }
 
 /**
@@ -71,13 +77,21 @@ export function getUnitScaleFactor(units is ExportUnits) returns number
 export function getUnitSuffix(units is ExportUnits, showUnits is boolean) returns string
 {
     if (!showUnits)
+    {
         return "";
+    }
     if (units == ExportUnits.MILLIMETER)
+    {
         return " mm";
+    }
     else if (units == ExportUnits.INCH)
+    {
         return " in";
+    }
     else
+    {
         return " cm";
+    }
 }
 
 /**
@@ -86,7 +100,9 @@ export function getUnitSuffix(units is ExportUnits, showUnits is boolean) return
 export function roundToPrecision(value is number, sigFigs is number) returns number
 {
     if (abs(value) < 1e-15)
+    {
         return 0;
+    }
     var magnitude = pow(10, sigFigs - floor(log10(abs(value)) + 1));
     return round(value * magnitude) / magnitude;
 }
@@ -216,7 +232,6 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
 
     while (size(pool) > 0)
     {
-        var headEP = getBSplineEndpoints(orderedCurves[size(orderedCurves) - 1]);
         var found = false;
 
         for (var pi = 0; pi < size(pool); pi += 1)
@@ -228,35 +243,24 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
             {
                 var connType = conn.connectionType;
 
-                // We need A.end to connect to B.start — only "A_END_B_START" is already correct
+                // We need A.end to connect to B.start for forward chain extension.
+                // A_END_B_START: A.end == B.start → correct, no reversal needed.
+                // A_END_B_END:   A.end == B.end   → reverse B so new B.start == A.end.
+                // A_START_*:     connects to A.start, not A.end → not a valid forward extension.
                 if (connType == "A_END_B_START")
                 {
                     // Already correct orientation
                     orderedCurves = append(orderedCurves, candidate);
                 }
-                else if (connType == "A_END_B_END" || connType == "A_START_B_END")
+                else if (connType == "A_END_B_END")
                 {
-                    // Need to reverse candidate so its start touches our end
+                    // Reverse candidate so its new start == A.end
                     orderedCurves = append(orderedCurves, reverseBSplineCurve(candidate));
                 }
                 else
                 {
-                    // A_START_B_START: our start connects to candidate's start — reverse the whole chain up to now?
-                    // Actually this means the first curve was picked backwards; reverse first curve
-                    // and then candidate connects from A.end.
-                    // Simpler: reverse head chain and append candidate normally.
-                    // But we can't easily reverse the accumulated chain.
-                    // Instead, reverse the candidate (so B.end was at A.start, and B.start is free).
-                    // That won't work either. Let's reverse the candidate so its end touches our tail's end...
-                    // Actually A_START_B_START means orderedCurves.last.start == candidate.start.
-                    // Since we're tracking the tail (end of last curve), this shouldn't happen
-                    // unless the first curve was backwards. Reverse the candidate so its end connects
-                    // to something else — this case shouldn't occur mid-chain if head was set correctly.
-                    // Best: reverse the candidate (B.start becomes B.end which is at tail.end's location? No)
-                    // This case indicates the first curve in orderedCurves is reversed.
-                    // For robustness, append candidate reversed — but it won't match. Skip for now.
-                    println("ExportCurve WARNING: unexpected A_START_B_START connection type mid-chain. Skipping.");
-                    found = false;
+                    // A_START_B_START or A_START_B_END: connects to A.start, not A.end.
+                    // Not a valid forward extension of the chain — skip to next candidate.
                     continue;
                 }
 
@@ -284,7 +288,6 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
                 // Only first curve so far - flip it and retry
                 orderedCurves[0] = reverseBSplineCurve(orderedCurves[0]);
 
-                var headEP2 = getBSplineEndpoints(orderedCurves[0]);
                 var found2 = false;
 
                 for (var pi2 = 0; pi2 < size(pool); pi2 += 1)
@@ -299,7 +302,7 @@ export function collectAndOrderEdges(context is Context, edgeQuery is Query) ret
                         {
                             orderedCurves = append(orderedCurves, candidate2);
                         }
-                        else if (connType2 == "A_END_B_END" || connType2 == "A_START_B_END")
+                        else if (connType2 == "A_END_B_END")
                         {
                             orderedCurves = append(orderedCurves, reverseBSplineCurve(candidate2));
                         }
@@ -452,11 +455,17 @@ export function sampleChain(chainCurve is BSplineCurve, numPoints is number, add
 export function getAxisDirection(axis is AlongAxis) returns Vector
 {
     if (axis == AlongAxis.WORLD_X)
+    {
         return vector(1, 0, 0);
+    }
     else if (axis == AlongAxis.WORLD_Y)
+    {
         return vector(0, 1, 0);
+    }
     else
+    {
         return vector(0, 0, 1);
+    }
 }
 
 /**
@@ -466,19 +475,14 @@ export function getAxisDirection(axis is AlongAxis) returns Vector
  */
 export function getQueryDirection(context is Context, geomQuery is Query) returns Vector
 {
-    var entities = evaluateQuery(context, geomQuery);
-    if (size(entities) == 0)
-    {
-        throw regenError("ExportCurve: Reference geometry query returned no entities.");
-    }
+    // Filter to edges and faces separately
+    var edgeEntities = evaluateQuery(context, qEntityFilter(geomQuery, EntityType.EDGE));
+    var faceEntities = evaluateQuery(context, qEntityFilter(geomQuery, EntityType.FACE));
 
-    var entity = entities[0];
-
-    // Try edge (Line)
-    try
+    if (size(edgeEntities) > 0)
     {
         var curveDef = evCurveDefinition(context, {
-            "edge"                : entity,
+            "edge"                 : edgeEntities[0],
             "returnBSplinesAsOther" : true
         });
         if (curveDef is Line)
@@ -487,12 +491,10 @@ export function getQueryDirection(context is Context, geomQuery is Query) return
         }
         throw regenError("ExportCurve: Reference edge must be a straight line.");
     }
-
-    // Try face (Plane)
-    try
+    else if (size(faceEntities) > 0)
     {
         var surfDef = evSurfaceDefinition(context, {
-            "face" : entity
+            "face" : faceEntities[0]
         });
         if (surfDef is Plane)
         {
@@ -500,8 +502,10 @@ export function getQueryDirection(context is Context, geomQuery is Query) return
         }
         throw regenError("ExportCurve: Reference face must be planar.");
     }
-
-    throw regenError("ExportCurve: Reference geometry must be a line edge or planar face.");
+    else
+    {
+        throw regenError("ExportCurve: Reference geometry must be a line edge or planar face.");
+    }
 }
 
 /**
