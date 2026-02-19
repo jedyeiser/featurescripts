@@ -156,21 +156,6 @@ export function printCurveDetails(curve is BSplineCurve, numCPs is number)
 }
 
 /**
- * Print an array of curves (for debugging curve families).
- */
-export function printCurveArray(curves is array, familyLabel is string, format is PrintFormat)
-{
-    println("╔═══════════════════════════════════════════════════════════════╗");
-    println("║ CURVE FAMILY: " ~ familyLabel ~ " (" ~ size(curves) ~ " curves)");
-    println("╚═══════════════════════════════════════════════════════════════╝");
-    
-    for (var i = 0; i < size(curves); i += 1)
-    {
-        printCurve(curves[i], familyLabel ~ "[" ~ i ~ "]", format);
-    }
-}
-
-/**
  * Print intersection grid for debugging.
  */
 export function printIntersectionGrid(grid is array, label is string)

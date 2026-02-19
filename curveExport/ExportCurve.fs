@@ -103,6 +103,9 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
 
         annotation { "Name" : "Flip Evaluation Order", "Default" : false }
         definition.flipOrder is boolean;
+
+        annotation { "Name" : "Export Name", "Default" : "" }
+        definition.exportName is string;
     }
     {
         // Build format config
@@ -156,12 +159,15 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
         var rows = buildTableRows(samples, formatConfig);
 
         // Store attribute on a stable anchor entity
+        var attrKey = (definition.exportName == "") ? "curveExportData" : ("curveExportData_" ~ definition.exportName);
+
         setAttribute(context, {
             "entities"  : qOrigin(EntityType.BODY),
-            "name"      : "curveExportData",
+            "name"      : attrKey,
             "attribute" : {
                 "rows"         : rows,
-                "formatConfig" : formatConfig
+                "formatConfig" : formatConfig,
+                "exportName"   : definition.exportName
             }
         });
     });
@@ -175,10 +181,14 @@ annotation { "Table Type Name" : "Curve Export Table" }
 export const curveExportTable = defineTable(function(context is Context, definition is map) returns Table
     precondition
     {
+        annotation { "Name" : "Export Name", "Default" : "" }
+        definition.exportName is string;
     }
     {
+        var attrKey = (definition.exportName == "") ? "curveExportData" : ("curveExportData_" ~ definition.exportName);
+
         // Look for attribute on any entity
-        var anchors = evaluateQuery(context, qHasAttribute("curveExportData"));
+        var anchors = evaluateQuery(context, qHasAttribute(attrKey));
 
         if (size(anchors) == 0)
         {
@@ -187,7 +197,7 @@ export const curveExportTable = defineTable(function(context is Context, definit
 
         var attr = getAttribute(context, {
             "entity" : anchors[0],
-            "name"   : "curveExportData"
+            "name"   : attrKey
         });
 
         var fc = attr.formatConfig;
@@ -222,5 +232,6 @@ export const curveExportTable = defineTable(function(context is Context, definit
             rows = append(rows, tableRow(r));
         }
 
-        return table("Curve Export", cols, rows);
+        var tableTitle = (definition.exportName == "") ? "Curve Export" : ("Curve Export: " ~ definition.exportName);
+        return table(tableTitle, cols, rows);
     });

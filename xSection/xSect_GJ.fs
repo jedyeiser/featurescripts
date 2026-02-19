@@ -120,8 +120,35 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
         return 0 * newton * meter * meter;
     }
 
+    // Compute G-weighted centroid as shear center approximation.
+    // y, z for FEM must be measured from shear center; using ski base inflates Jp and
+    // corrupts ψ, causing the inverted GJ curve.
+    var G_A_total = 0.0;
+    var Gy_A_total = 0.0;
+    var Gz_A_total = 0.0;
+    for (var e = 0; e < size(triangles); e += 1)
+    {
+        var G = G_elem[e];
+        if (G < 1e-6) { continue; }
+        var tri = triangles[e];
+        var pt1 = section.sectionPoints[tri[0]].point2D;
+        var pt2 = section.sectionPoints[tri[1]].point2D;
+        var pt3 = section.sectionPoints[tri[2]].point2D;
+        var y1 = pt1[0] / meter; var z1 = pt1[1] / meter;
+        var y2 = pt2[0] / meter; var z2 = pt2[1] / meter;
+        var y3 = pt3[0] / meter; var z3 = pt3[1] / meter;
+        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
+        if (shapeData.area < MIN_AREA) { continue; }
+        G_A_total += G * shapeData.area;
+        Gy_A_total += G * shapeData.area * (y1 + y2 + y3) / 3.0;
+        Gz_A_total += G * shapeData.area * (z1 + z2 + z3) / 3.0;
+    }
+    var y_bar = (G_A_total > 0) ? Gy_A_total / G_A_total : 0.0;
+    var z_bar = (G_A_total > 0) ? Gz_A_total / G_A_total : 0.0;
+    println("  G-weighted centroid: y=" ~ (y_bar * 1000) ~ " mm, z=" ~ (z_bar * 1000) ~ " mm");
+
     // Assemble global FEM system K·ψ = f
-    var femSystem = assembleFEMSystem(triangles, G_elem, section.sectionPoints, numNodes);
+    var femSystem = assembleFEMSystem(triangles, G_elem, section.sectionPoints, numNodes, y_bar, z_bar);
 
     // Tikhonov regularization: add ε·I to prevent ill-conditioned pivot failure.
     // ε = 1e-10 * max(diag(K)) is negligible vs physics but prevents near-zero pivots.
@@ -151,7 +178,7 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     }
 
     // Integrate GJ from warping function and polar moments
-    var GJ = computeGJFromWarping(triangles, G_elem, psi, section.sectionPoints);
+    var GJ = computeGJFromWarping(triangles, G_elem, psi, section.sectionPoints, y_bar, z_bar);
 
     // Validate result
     if (GJ < 0 * newton * meter * meter)
@@ -283,7 +310,7 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
  *
  * where (y_c, z_c) is triangle centroid
  */
-function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is array, numNodes is number) returns map
+function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is array, numNodes is number, y_bar is number, z_bar is number) returns map
 {
     // Initialize global arrays
     var n = numNodes;
@@ -322,12 +349,12 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         var pt2 = sectionPoints[i2].point2D;
         var pt3 = sectionPoints[i3].point2D;
 
-        var y1 = pt1[0] / meter;
-        var z1 = pt1[1] / meter;
-        var y2 = pt2[0] / meter;
-        var z2 = pt2[1] / meter;
-        var y3 = pt3[0] / meter;
-        var z3 = pt3[1] / meter;
+        var y1 = pt1[0] / meter - y_bar;
+        var z1 = pt1[1] / meter - z_bar;
+        var y2 = pt2[0] / meter - y_bar;
+        var z2 = pt2[1] / meter - z_bar;
+        var y3 = pt3[0] / meter - y_bar;
+        var z3 = pt3[1] / meter - z_bar;
 
         // Compute shape function gradients and area
         var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
@@ -371,25 +398,11 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         }
     }
 
-    // Diagnostic: Check if matrix has any non-zero entries
-    var nnz = 0;
-    for (var i = 0; i < n; i += 1)
-    {
-        for (var j = 0; j < n; j += 1)
-        {
-            if (abs(K[i][j]) > 1e-15)
-            {
-                nnz += 1;
-            }
-        }
-    }
-
     println("FEM assembly: " ~ n ~ " nodes, " ~ size(triangles) ~ " triangles");
     println("  Valid elements: " ~ validElements ~ " (" ~
         (100.0 * validElements / size(triangles)) ~ "%)");
     println("  Skipped: " ~ skippedZeroG ~ " (G<1e-6), " ~
         skippedDegenerateArea ~ " (area<1e-12 m²)");
-    println("  Non-zero K entries: " ~ nnz);
 
     // Warn if too many degenerate triangles (indicates mesh quality issues)
     if (skippedDegenerateArea > size(triangles) * 0.1)
@@ -530,7 +543,7 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
  * Polar moment (exact closed form):
  *   Jp = A/6 * (y1² + y2² + y3² + z1² + z2² + z3² + y1*y2 + y2*y3 + y3*y1 + z1*z2 + z2*z3 + z3*z1)
  */
-function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array) returns ValueWithUnits
+function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array, y_bar is number, z_bar is number) returns ValueWithUnits
 {
     var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
     var Jp_total = 0.0;   // Diagnostic: sum of G*Jp_e contributions
@@ -563,12 +576,12 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
         var pt2 = sectionPoints[i2].point2D;
         var pt3 = sectionPoints[i3].point2D;
 
-        var y1 = pt1[0] / meter;
-        var z1 = pt1[1] / meter;
-        var y2 = pt2[0] / meter;
-        var z2 = pt2[1] / meter;
-        var y3 = pt3[0] / meter;
-        var z3 = pt3[1] / meter;
+        var y1 = pt1[0] / meter - y_bar;
+        var z1 = pt1[1] / meter - z_bar;
+        var y2 = pt2[0] / meter - y_bar;
+        var z2 = pt2[1] / meter - z_bar;
+        var y3 = pt3[0] / meter - y_bar;
+        var z3 = pt3[1] / meter - z_bar;
 
         // Compute shape function gradients and area
         var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
