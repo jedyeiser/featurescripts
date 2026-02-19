@@ -223,8 +223,8 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
         
         if (definition.printInputCurves)
         {
-            printCurveArray(uBSplines, "U-Curves (after compatibility)", definition.inputCurveFormat);
-            printCurveArray(vBSplines, "V-Curves (after compatibility)", definition.inputCurveFormat);
+            printCurveFamily(uBSplines, "U-Curves (after compatibility)", definition.inputCurveFormat);
+            printCurveFamily(vBSplines, "V-Curves (after compatibility)", definition.inputCurveFormat);
             printIntersectionGrid(intersectionGrid, "Intersection Grid");
         }
         

@@ -158,17 +158,28 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
         // Build row data
         var rows = buildTableRows(samples, formatConfig);
 
-        // Store attribute on a stable anchor entity
-        var attrKey = (definition.exportName == "") ? "curveExportData" : ("curveExportData_" ~ definition.exportName);
+        // Read any accumulated data map from earlier features this regeneration
+        var anchorQuery = qOrigin(EntityType.BODY);
+        var existingAnchors = evaluateQuery(context, qHasAttribute("curveExportData"));
+        var dataMap = {};
+        if (size(existingAnchors) > 0)
+        {
+            dataMap = getAttribute(context, {
+                "entity" : existingAnchors[0],
+                "name"   : "curveExportData"
+            });
+        }
+
+        // Add / overwrite this export's entry in the shared map
+        dataMap[definition.exportName] = {
+            "rows"         : rows,
+            "formatConfig" : formatConfig
+        };
 
         setAttribute(context, {
-            "entities"  : qOrigin(EntityType.BODY),
-            "name"      : attrKey,
-            "attribute" : {
-                "rows"         : rows,
-                "formatConfig" : formatConfig,
-                "exportName"   : definition.exportName
-            }
+            "entities"  : anchorQuery,
+            "name"      : "curveExportData",
+            "attribute" : dataMap
         });
     });
 
@@ -181,26 +192,38 @@ annotation { "Table Type Name" : "Curve Export Table" }
 export const curveExportTable = defineTable(function(context is Context, definition is map) returns Table
     precondition
     {
-        annotation { "Name" : "Export Name", "Default" : "" }
-        definition.exportName is string;
     }
     {
-        var attrKey = (definition.exportName == "") ? "curveExportData" : ("curveExportData_" ~ definition.exportName);
-
-        // Look for attribute on any entity
-        var anchors = evaluateQuery(context, qHasAttribute(attrKey));
+        var anchors = evaluateQuery(context, qHasAttribute("curveExportData"));
 
         if (size(anchors) == 0)
         {
             return table("Curve Export (No Data)", [], []);
         }
 
-        var attr = getAttribute(context, {
+        var dataMap = getAttribute(context, {
             "entity" : anchors[0],
-            "name"   : attrKey
+            "name"   : "curveExportData"
         });
 
-        var fc = attr.formatConfig;
+        // Collect export names (map iteration order = feature-tree insertion order)
+        var names = [];
+        for (var name in dataMap)
+        {
+            names = append(names, name);
+        }
+
+        // Determine superset of optional columns across all exports
+        var needParams = false;
+        var needSlopes = false;
+        for (var name in dataMap)
+        {
+            var fc = dataMap[name].formatConfig;
+            if (fc.addParameters)
+                needParams = true;
+            if (fc.addSlopes)
+                needSlopes = true;
+        }
 
         // Build column definitions
         var cols = [
@@ -211,13 +234,13 @@ export const curveExportTable = defineTable(function(context is Context, definit
             tableColumnDefinition("csv", "X, Y, Z")
         ];
 
-        if (fc.addParameters)
+        if (needParams)
         {
             cols = append(cols, tableColumnDefinition("param",     "Param"));
             cols = append(cols, tableColumnDefinition("arclength", "Arc Length"));
         }
 
-        if (fc.addSlopes)
+        if (needSlopes)
         {
             cols = concatenateArrays([cols, [
                 tableColumnDefinition("tangent", "Tangent [tx, ty, tz]"),
@@ -225,13 +248,21 @@ export const curveExportTable = defineTable(function(context is Context, definit
             ]]);
         }
 
-        // Build rows
+        // Build rows; insert a separator row before each named group when multiple exports exist
+        var multipleExports = size(names) > 1;
         var rows = [];
-        for (var r in attr.rows)
+        for (var name in dataMap)
         {
-            rows = append(rows, tableRow(r));
+            if (multipleExports)
+            {
+                var displayName = (name == "") ? "(Default)" : name;
+                rows = append(rows, tableRow({ "n" : "--- " ~ displayName ~ " ---" }));
+            }
+            for (var r in dataMap[name].rows)
+            {
+                rows = append(rows, tableRow(r));
+            }
         }
 
-        var tableTitle = (definition.exportName == "") ? "Curve Export" : ("Curve Export: " ~ definition.exportName);
-        return table(tableTitle, cols, rows);
+        return table("Curve Export", cols, rows);
     });

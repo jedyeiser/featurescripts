@@ -104,7 +104,7 @@ export function printSurfaceDetails(surface is BSplineSurface, numU is number, n
 /**
  * Print B-spline curve data for debugging.
  */
-export function printCurve(curve is BSplineCurve, label is string, format is PrintFormat)
+export function printCurve(curve is map, label is string, format is PrintFormat)
 {
     println("═══════════════════════════════════════════════════════════════");
     println("CURVE: " ~ label);
@@ -137,7 +137,7 @@ export function printCurve(curve is BSplineCurve, label is string, format is Pri
 /**
  * Print full curve data.
  */
-export function printCurveDetails(curve is BSplineCurve, numCPs is number)
+export function printCurveDetails(curve is map, numCPs is number)
 {
     println("  Knots:");
     println("    " ~ knotVectorToString(curve.knots));
@@ -178,6 +178,21 @@ export function printIntersectionGrid(grid is array, label is string)
     }
     println("───────────────────────────────────────────────────────────────");
     println("");
+}
+
+/**
+ * Print an array of curves (for debugging curve families).
+ * Accepts curves with either KnotArray or plain array knots.
+ */
+export function printCurveFamily(curves is array, familyLabel is string, format is PrintFormat)
+{
+    println("╔═══════════════════════════════════════════════════════════════╗");
+    println("║ CURVE FAMILY: " ~ familyLabel ~ " (" ~ size(curves) ~ " curves)");
+    println("╚═══════════════════════════════════════════════════════════════╝");
+    for (var i = 0; i < size(curves); i += 1)
+    {
+        printCurve(curves[i], familyLabel ~ "[" ~ i ~ "]", format);
+    }
 }
 
 // ============================================================================
