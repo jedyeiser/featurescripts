@@ -206,12 +206,18 @@ export function makeCurvesCompatible(context is Context, id is Id, curves is arr
         }
     }
 
-    // Step 3: Gather and merge all interior knots
+    // Step 3: Build max-multiplicity union of all interior knots.
+    // Uses getKnotsToInsert instead of mergeKnotVectors to avoid floating-point
+    // map-key issues that cause mergeKnotVectors to return empty results.
     var mergedInterior = [];
     for (var curve in elevated)
     {
         var interior = getInteriorKnots(curve);
-        mergedInterior = mergeKnotVectors(mergedInterior, interior, tolerance);
+        // Add what's in interior but not yet represented in mergedInterior
+        var toAdd = getKnotsToInsert(mergedInterior, interior, tolerance);
+        for (var k in toAdd)
+            mergedInterior = append(mergedInterior, k);
+        mergedInterior = sort(mergedInterior, function(a, b) { return a - b; });
     }
 
     if (COMPAT_DEBUG)

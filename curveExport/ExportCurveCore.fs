@@ -522,9 +522,10 @@ export function assembleCurveChain(context is Context, orderedCurves is array) r
 export function sampleChain(chainCurve is BSplineCurve, numPoints is number, addSlopes is boolean) returns array
 {
     var samplesResult = uniformArcLengthSamples(chainCurve, numPoints, {});
-    var parameters = samplesResult.parameters;
-    var points     = samplesResult.points;
-    var arcLengths = samplesResult.arcLengths;
+    var parameters  = samplesResult.parameters;
+    var points      = samplesResult.points;
+    var arcLengths  = samplesResult.arcLengths;
+    var totalLength = samplesResult.totalLength;
 
     var samples = [];
 
@@ -534,9 +535,11 @@ export function sampleChain(chainCurve is BSplineCurve, numPoints is number, add
         var pt = points[i];
         var s  = arcLengths[i];
 
+        var normalizedParam = (totalLength.value > 0) ? (s.value / totalLength.value) : 0;
+
         var sampleMap = {
             "point"     : pt,
-            "param"     : u,
+            "param"     : normalizedParam,
             "arcLength" : s
         };
 
@@ -573,7 +576,7 @@ export function sampleChain(chainCurve is BSplineCurve, numPoints is number, add
 
             sampleMap = {
                 "point"     : pt,
-                "param"     : u,
+                "param"     : normalizedParam,
                 "arcLength" : s,
                 "tangent"   : tangent,
                 "normal"    : normal
@@ -862,7 +865,7 @@ export function sampleByPlanes(context is Context, orderedCurves is array, direc
 
         var sampleMap = {
             "point"     : pt,
-            "param"     : u,
+            "param"     : t,
             "arcLength" : arcLength
         };
 
@@ -898,7 +901,7 @@ export function sampleByPlanes(context is Context, orderedCurves is array, direc
 
             sampleMap = {
                 "point"     : pt,
-                "param"     : u,
+                "param"     : t,
                 "arcLength" : arcLength,
                 "tangent"   : tangent,
                 "normal"    : normal
