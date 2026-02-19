@@ -285,8 +285,16 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
             });
         }
         
+        println("[compat-in] Su: " ~ size(Su.controlPoints) ~ "u × " ~ size(Su.controlPoints[0]) ~ "v  deg=" ~ Su.uDegree ~ "×" ~ Su.vDegree);
+        println("[compat-in] Sv: " ~ size(Sv.controlPoints) ~ "u × " ~ size(Sv.controlPoints[0]) ~ "v  deg=" ~ Sv.uDegree ~ "×" ~ Sv.vDegree);
+        println("[compat-in] T:  " ~ size(T.controlPoints) ~ "u × " ~ size(T.controlPoints[0]) ~ "v  deg=" ~ T.uDegree ~ "×" ~ T.vDegree);
+
         var compatibleSurfaces = makeSurfacesCompatible(context, id + "compat", [Su, Sv, T]);
-        
+
+        println("[compat-out] Su: " ~ size(compatibleSurfaces[0].controlPoints) ~ "u × " ~ size(compatibleSurfaces[0].controlPoints[0]) ~ "v  deg=" ~ compatibleSurfaces[0].uDegree ~ "×" ~ compatibleSurfaces[0].vDegree);
+        println("[compat-out] Sv: " ~ size(compatibleSurfaces[1].controlPoints) ~ "u × " ~ size(compatibleSurfaces[1].controlPoints[0]) ~ "v  deg=" ~ compatibleSurfaces[1].uDegree ~ "×" ~ compatibleSurfaces[1].vDegree);
+        println("[compat-out] T:  " ~ size(compatibleSurfaces[2].controlPoints) ~ "u × " ~ size(compatibleSurfaces[2].controlPoints[0]) ~ "v  deg=" ~ compatibleSurfaces[2].uDegree ~ "×" ~ compatibleSurfaces[2].vDegree);
+
         var gordon = assembleGordonSurface(compatibleSurfaces[0], compatibleSurfaces[1], compatibleSurfaces[2]);
         
         if (definition.print_S_u || definition.print_S_v || definition.print_tensor)
