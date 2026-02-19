@@ -1441,39 +1441,22 @@ function getInteriorKnotsFromVector(knots is array, degree is number) returns ar
  */
 function getKnotsToInsertArray(currentInterior is array, targetInterior is array, tolerance is number) returns array
 {
-    var remaining = [];
-    for (var k in currentInterior) { remaining = append(remaining, k); }
+    var ci = 0;
     var toInsert = [];
 
     for (var ti = 0; ti < size(targetInterior); ti += 1)
     {
         var targetKnot = targetInterior[ti];
-        var matchIdx = -1;
-        for (var ri = 0; ri < size(remaining); ri += 1)
-        {
-            if (abs(targetKnot - remaining[ri]) <= tolerance)
-            {
-                matchIdx = ri;
-                break;
-            }
-        }
-        if (matchIdx >= 0)
-        {
-            var newRemaining = [];
-            for (var ri = 0; ri < size(remaining); ri += 1)
-            {
-                if (ri != matchIdx)
-                    newRemaining = append(newRemaining, remaining[ri]);
-            }
-            remaining = newRemaining;
-        }
+        while (ci < size(currentInterior) && currentInterior[ci] < targetKnot - tolerance)
+            ci += 1;
+
+        if (ci < size(currentInterior) && abs(targetKnot - currentInterior[ci]) <= tolerance)
+            ci += 1;  // consumed
         else
-        {
             toInsert = append(toInsert, targetKnot);
-        }
     }
 
-    return sort(toInsert, function(a, b) { return a - b; });
+    return toInsert;  // already sorted (targetInterior is sorted)
 }
 
 
@@ -1484,40 +1467,24 @@ function getKnotsToInsertArray(currentInterior is array, targetInterior is array
 function mergeInteriorKnots(arr1 is array, arr2 is array, tolerance is number) returns array
 {
     var result = [];
-    for (var k in arr1) { result = append(result, k); }
+    var i1 = 0;
+    var i2 = 0;
 
-    var remaining = [];
-    for (var k in arr1) { remaining = append(remaining, k); }
-
-    for (var ti = 0; ti < size(arr2); ti += 1)
+    while (i1 < size(arr1) || i2 < size(arr2))
     {
-        var targetKnot = arr2[ti];
-        var matchIdx = -1;
-        for (var ri = 0; ri < size(remaining); ri += 1)
-        {
-            if (abs(targetKnot - remaining[ri]) <= tolerance)
-            {
-                matchIdx = ri;
-                break;
-            }
-        }
-        if (matchIdx >= 0)
-        {
-            var newRemaining = [];
-            for (var ri = 0; ri < size(remaining); ri += 1)
-            {
-                if (ri != matchIdx)
-                    newRemaining = append(newRemaining, remaining[ri]);
-            }
-            remaining = newRemaining;
-        }
+        if (i1 >= size(arr1))
+        { result = append(result, arr2[i2]); i2 += 1; }
+        else if (i2 >= size(arr2))
+        { result = append(result, arr1[i1]); i1 += 1; }
+        else if (abs(arr1[i1] - arr2[i2]) <= tolerance)
+        { result = append(result, arr1[i1]); i1 += 1; i2 += 1; }
+        else if (arr1[i1] < arr2[i2])
+        { result = append(result, arr1[i1]); i1 += 1; }
         else
-        {
-            result = append(result, targetKnot);
-        }
+        { result = append(result, arr2[i2]); i2 += 1; }
     }
 
-    return sort(result, function(a, b) { return a - b; });
+    return result;  // already sorted (merge of two sorted arrays)
 }
 
 
