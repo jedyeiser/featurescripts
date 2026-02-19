@@ -16,13 +16,55 @@ import(path : "b3c74a9035256a2ff6bd0004", version : "2c35626cef2707cee449fcbf");
 
 
 annotation { "Feature Type Name" : "Simplify surface", "Feature Type Description" : "Takes a face and approximation parameters as input and returns a simplified 'cleaned' face" }
-export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
+export const simplifySurface = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        // Define the parameters of the feature type
+        annotation { "Name" : "Face", "Filter" : EntityType.FACE, "MaxNumberOfPicks" : 1 }
+        definition.face is Query;
+
+        annotation { "Name" : "Tolerance" }
+        isLength(definition.tolerance, { (meter) : [1e-5, 0.001, 0.1], (inch) : [1e-4, 0.001, 0.05] });
+
+        annotation { "Name" : "Continuity" }
+        definition.continuityType is GeometricContinuity;
+
+        if (definition.continuityType == GeometricContinuity.G2)
+        {
+            annotation { "Name" : "G2 mode" }
+            definition.g2Mode is G2Mode;
+        }
+
+        annotation { "Name" : "Mode" }
+        definition.mode is CleanupMode;
+
+        annotation { "Name" : "U curve count" }
+        isInteger(definition.uCurveCount, { (unitless) : [2, 5, 20] });
+
+        annotation { "Name" : "V curve count" }
+        isInteger(definition.vCurveCount, { (unitless) : [2, 5, 20] });
+
+        annotation { "Name" : "Replace face" }
+        definition.replaceFace is boolean;
     }
     {
-        // Define the function's action
+        var newSurface = cleanupSurface(context, id, definition.face, definition.tolerance,
+            definition.continuityType,
+            definition.continuityType == GeometricContinuity.G2 ? definition.g2Mode : G2Mode.BEST_EFFORT,
+            definition.mode, definition.uCurveCount, definition.vCurveCount);
+
+        opCreateBSplineSurface(context, id + "simplified", { "bSplineSurface" : newSurface });
+
+        if (definition.replaceFace)
+        {
+            var newFace = qCreatedBy(id + "simplified", EntityType.FACE);
+            opReplaceFace(context, id + "replace", {
+                "replaceFaces"  : definition.face,
+                "templateFace"  : newFace
+            });
+            opDeleteBodies(context, id + "cleanup", {
+                "bodies" : qCreatedBy(id + "simplified", EntityType.BODY)
+            });
+        }
     });
 
 
