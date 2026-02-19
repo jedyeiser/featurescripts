@@ -2,7 +2,7 @@ FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "3daad04c9476213127ca2053");
+export import(path : "050a4670bd42b2ca8da04540", version : "12d448b531f4133be59a1a61");
 //import tools/bspline_knots
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 //import tools/transition_functions (export.import)

@@ -3,14 +3,13 @@ FeatureScript 2878;
 /**
  * Torsional Stiffness (GJ) Calculation for Cross-Sections
  *
- * Implements Saint-Venant FEM method to compute effective torsional stiffness.
- * Uses linear triangular elements with isotropic shear modulus (Tier 1 approach).
+ * Implements the thin-plate Saint-Venant formula: GJ = 4 · Σ_e G_e · Iz_e
+ * Analytically exact for b/t >> 1; ~10% error for b/t ≈ 7 (underfoot).
+ * O(n) — no FEM solve required.
  *
- * Mathematical Background:
- * - Governing equation: ∇·(G ∇ψ) = 0 (interior)
- * - Boundary condition: G ∂ψ/∂n = G(z·ny - y·nz)
- * - FEM discretization: K·ψ = f
- * - GJ integration: GJ = Σ G_e * (Jp_e + warp_correction)
+ * Shear modulus per element uses G_torsion back-calculated from the Q matrix:
+ * - Balanced laminates (±45°, woven, isotropic): G_torsion = (Q11 - Q12) / 2
+ * - Unbalanced (0°-dominant UD): G_torsion = Q66
  *
  * @see GJ_torsional_stiffness_reference.md for mathematical derivation
  */
@@ -51,11 +50,9 @@ const MIN_AREA = 1e-12;  // 1 μm² - only filter truly degenerate triangles (im
  *
  * Process:
  * 1. Extract triangulated mesh from section.bodyData
- * 2. Build shear modulus array (one G per triangle from Q66)
- * 3. Assemble global FEM system (K·ψ = f)
- * 4. Apply boundary condition (pin one node)
- * 5. Solve for warping function ψ
- * 6. Integrate GJ from ψ gradients and polar moments
+ * 2. Build G_torsion array (one G per triangle, back-calculated from Q matrix)
+ * 3. Compute G-weighted centroid as shear center approximation
+ * 4. Integrate GJ = 4·Σ G_e·Iz_e (thin-plate formula, O(n))
  */
 export function computeTorsionalStiffness(section is map, bodies is array) returns ValueWithUnits
 {
@@ -74,13 +71,7 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
 
     if (numNodes > 2000)
     {
-        println("ERROR: Mesh too large (" ~ numNodes ~ " nodes) - skipping GJ computation");
-        return 0 * newton * meter * meter;
-    }
-
-    if (numNodes > 500)
-    {
-        println("WARNING: Large mesh (" ~ numNodes ~ " nodes) - GJ computation may be slow");
+        println("WARNING: Very large mesh (" ~ numNodes ~ " nodes) - check mesh quality");
     }
 
     // Extract shear modulus for each triangle from material Q matrices
@@ -147,50 +138,17 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     var z_bar = (G_A_total > 0) ? Gz_A_total / G_A_total : 0.0;
     println("  G-weighted centroid: y=" ~ (y_bar * 1000) ~ " mm, z=" ~ (z_bar * 1000) ~ " mm");
 
-    // Assemble global FEM system K·ψ = f
-    var femSystem = assembleFEMSystem(triangles, G_elem, section.sectionPoints, numNodes, y_bar, z_bar);
+    // Compute GJ using thin-plate formula (O(n), no FEM solve needed)
+    var GJ_val = computeGJThinPlate(triangles, G_elem, section.sectionPoints, y_bar, z_bar);
 
-    // Tikhonov regularization: add ε·I to prevent ill-conditioned pivot failure.
-    // ε = 1e-10 * max(diag(K)) is negligible vs physics but prevents near-zero pivots.
-    var K_reg = femSystem.K;
-    var maxKDiag = 0.0;
-    for (var i = 0; i < numNodes; i += 1)
+    if (GJ_val <= 0.0)
     {
-        if (abs(K_reg[i][i]) > maxKDiag) { maxKDiag = abs(K_reg[i][i]); }
-    }
-    var regEps = maxKDiag * 1e-10;
-    for (var i = 0; i < numNodes; i += 1)
-    {
-        K_reg[i][i] += regEps;
-    }
-    femSystem = { "K" : K_reg, "f" : femSystem.f };
-
-    // Apply boundary condition to remove rigid body mode (pin one node)
-    femSystem = applyBoundaryCondition(femSystem.K, femSystem.f, numNodes);
-
-    // Solve linear system for warping function ψ
-    var psi = solveFEMSystem(femSystem.K, femSystem.f, numNodes);
-
-    if (psi == undefined || size(psi) == 0)
-    {
-        println("ERROR: FEM system failed to solve - returning GJ = 0");
+        println("WARNING: GJ = 0 (no valid elements?) - clamping to 0");
         return 0 * newton * meter * meter;
     }
 
-    // Integrate GJ from warping function and polar moments
-    var GJ = computeGJFromWarping(triangles, G_elem, psi, section.sectionPoints, y_bar, z_bar);
-
-    // Validate result
-    if (GJ < 0 * newton * meter * meter)
-    {
-        println("WARNING: Negative GJ detected (" ~ GJ ~ ") - clamping to 0 (numerical issue)");
-        GJ = 0 * newton * meter * meter;
-    }
-
-    // Output successful GJ value
-    println("  GJ = " ~ (GJ / (newton * meter * meter)) ~ " N·m²");
-
-    return GJ;
+    println("  GJ = " ~ GJ_val ~ " N·m²");
+    return GJ_val * newton * meter * meter;
 }
 
 /**
@@ -254,10 +212,10 @@ function buildGlobalMesh(section is map) returns map
  * @param bodies : Body material definitions with Q matrices
  * @returns : Array of G values (plain numbers, implicit N/m²) - one per triangle
  *
- * Lookup chain: triangle → bodyIdx → Q matrix → Q[2][2] (Q66)
+ * Lookup chain: triangle → bodyIdx → Q matrix → G_torsion
  * Q is stored as 3×3: [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
- * - Isotropic: Q66 = E/(2*(1+ν))
- * - Orthotropic: Q66 = G12
+ * - Balanced (±45°, woven, isotropic): G_torsion = (Q11 - Q12) / 2  [back-calc gives true G12]
+ * - Unbalanced (0°-dominant UD): G_torsion = Q66  [= G12 on-axis]
  * - Missing material: G = 0 (contributes no stiffness)
  */
 function extractShearModuli(triangles is array, bodyIndices is array, bodies is array) returns array
@@ -278,10 +236,17 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
                     body.materialData != undefined &&
                     body.materialData.qMatrix != undefined)
                 {
-                    // Q66 is shear modulus - stored at [2][2] in 3×3 matrix
+                    // Use torsional shear modulus (not Q66 directly):
+                    //   Balanced laminates (±45°, woven, isotropic): G_torsion = (Q11 - Q12) / 2
+                    //   Unbalanced (0°-dominant UD): G_torsion = Q66
                     // Q = [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
-                    var G = body.materialData.qMatrix[2][2];  // ValueWithUnits (N/m²)
-                    G_val = G / (newton / (meter * meter));   // Strip to plain number
+                    var Pa = newton / (meter * meter);
+                    var Q11 = body.materialData.qMatrix[0][0] / Pa;
+                    var Q12 = body.materialData.qMatrix[0][1] / Pa;
+                    var Q22 = body.materialData.qMatrix[1][1] / Pa;
+                    var Q66 = body.materialData.qMatrix[2][2] / Pa;
+                    var ratio = (Q22 > 1e-6) ? (Q11 / Q22) : 1e9;
+                    G_val = (ratio < 3.0) ? ((Q11 - Q12) / 2.0) : Q66;
                 }
                 break;
             }
@@ -291,6 +256,51 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
     }
 
     return G_elem;
+}
+
+/**
+ * Compute GJ using the thin-plate Saint-Venant formula: GJ = 4 · Σ_e G_e · Iz_e
+ *
+ * Analytically exact for b/t >> 1; ~10% error for b/t ≈ 7 (underfoot).
+ * O(n) — does not require FEM solve.
+ *
+ * @param triangles : Array of [i,j,k] node indices
+ * @param G_elem : Torsional shear modulus per triangle (plain numbers, implicit N/m²)
+ * @param sectionPoints : Array of {point2D: [y,z], ...}
+ * @param y_bar : G-weighted centroid y coordinate (plain number, implicit m)
+ * @param z_bar : G-weighted centroid z coordinate (plain number, implicit m)
+ * @returns : GJ as plain number (implicit N·m²)
+ */
+function computeGJThinPlate(triangles is array, G_elem is array,
+                             sectionPoints is array, y_bar is number, z_bar is number) returns number
+{
+    var Iz_sum = 0.0;
+    for (var e = 0; e < size(triangles); e += 1)
+    {
+        var G = G_elem[e];
+        if (G < 1e-6) { continue; }
+
+        var tri = triangles[e];
+        var pt1 = sectionPoints[tri[0]].point2D;
+        var pt2 = sectionPoints[tri[1]].point2D;
+        var pt3 = sectionPoints[tri[2]].point2D;
+
+        var y1 = pt1[0] / meter - y_bar;
+        var y2 = pt2[0] / meter - y_bar;
+        var y3 = pt3[0] / meter - y_bar;
+        var z1 = pt1[1] / meter - z_bar;
+        var z2 = pt2[1] / meter - z_bar;
+        var z3 = pt3[1] / meter - z_bar;
+
+        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
+        if (shapeData.area < MIN_AREA) { continue; }
+
+        // Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1·y2 + y1·y3 + y2·y3)
+        var Iz = (shapeData.area / 6.0) *
+                 (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
+        Iz_sum += G * Iz;
+    }
+    return 4.0 * Iz_sum;  // GJ = 4·Σ G_e·Iz_e, implicit N·m²
 }
 
 /**

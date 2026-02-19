@@ -5,14 +5,67 @@ import(path : "onshape/std/common.fs", version : "2856.0");
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 //import constEnums (export/import)
 
-export import(path : "050a4670bd42b2ca8da04540", version : "3daad04c9476213127ca2053");
+export import(path : "050a4670bd42b2ca8da04540", version : "12d448b531f4133be59a1a61");
 //import modifyCurveEnd
-import(path : "c6dca62049572faaa07ddd10", version : "457f0da1d1d669f392f5eea8");
+import(path : "c6dca62049572faaa07ddd10", version : "08f67685092465b852f9e65e");
 //import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "e5ff29eb67168db1826ff881");
+import(path : "b9e1608a507a242d87720d9b", version : "7725b8caf230860c44ca2ae2");
 //import gordonSurface
-import(path : "b3c74a9035256a2ff6bd0004", version : "571d588f8113ce4815cc92ed");
+import(path : "b3c74a9035256a2ff6bd0004", version : "2c35626cef2707cee449fcbf");
 
+
+
+annotation { "Feature Type Name" : "Simplify surface", "Feature Type Description" : "Takes a face and approximation parameters as input and returns a simplified 'cleaned' face" }
+export const simplifySurface = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Face", "Filter" : EntityType.FACE, "MaxNumberOfPicks" : 1 }
+        definition.face is Query;
+
+        annotation { "Name" : "Tolerance" }
+        isLength(definition.tolerance, { (meter) : [1e-5, 0.001, 0.1], (inch) : [1e-4, 0.001, 0.05] });
+
+        annotation { "Name" : "Continuity" }
+        definition.continuityType is GeometricContinuity;
+
+        if (definition.continuityType == GeometricContinuity.G2)
+        {
+            annotation { "Name" : "G2 mode" }
+            definition.g2Mode is G2Mode;
+        }
+
+        annotation { "Name" : "Mode" }
+        definition.mode is CleanupMode;
+
+        annotation { "Name" : "U curve count" }
+        isInteger(definition.uCurveCount, { (unitless) : [2, 5, 20] });
+
+        annotation { "Name" : "V curve count" }
+        isInteger(definition.vCurveCount, { (unitless) : [2, 5, 20] });
+
+        annotation { "Name" : "Replace face" }
+        definition.replaceFace is boolean;
+    }
+    {
+        var newSurface = cleanupSurface(context, id, definition.face, definition.tolerance,
+            definition.continuityType,
+            definition.continuityType == GeometricContinuity.G2 ? definition.g2Mode : G2Mode.BEST_EFFORT,
+            definition.mode, definition.uCurveCount, definition.vCurveCount);
+
+        opCreateBSplineSurface(context, id + "simplified", { "bSplineSurface" : newSurface });
+
+        if (definition.replaceFace)
+        {
+            var newFace = qCreatedBy(id + "simplified", EntityType.FACE);
+            opReplaceFace(context, id + "replace", {
+                "replaceFaces" : definition.face,
+                "templateFace" : newFace
+            });
+            opDeleteBodies(context, id + "cleanup", {
+                "bodies" : qCreatedBy(id + "simplified", EntityType.BODY)
+            });
+        }
+    });
 
 
 /**

@@ -4,11 +4,11 @@ import(path : "onshape/std/common.fs", version : "2856.0");
 //import tools/bspline_knots
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 // import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "e5ff29eb67168db1826ff881");
+import(path : "b9e1608a507a242d87720d9b", version : "7725b8caf230860c44ca2ae2");
 // constEnums
-export import(path : "050a4670bd42b2ca8da04540", version : "3daad04c9476213127ca2053");
+export import(path : "050a4670bd42b2ca8da04540", version : "12d448b531f4133be59a1a61");
 //scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "51c0dedf11ff33f0ebc7b096");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "4ba8e037c53d816ed5b2eb6c");
 
 
 
