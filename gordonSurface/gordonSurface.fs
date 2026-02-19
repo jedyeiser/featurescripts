@@ -163,8 +163,20 @@ export const gordonSurface = defineFeature(function(context is Context, id is Id
         }
         
         // Make curves compatible (within each family)
+        if (definition.printInputCurves)
+        {
+            println("U-curves BEFORE compatibility: " ~ compatibilityReport(uBSplines));
+            println("V-curves BEFORE compatibility: " ~ compatibilityReport(vBSplines));
+        }
+
         uBSplines = makeCurvesCompatible(context, id + "makeUcurvesCompatible", uBSplines);
         vBSplines = makeCurvesCompatible(context, id + "makeVcurvesCompatible", vBSplines);
+
+        if (definition.printInputCurves)
+        {
+            println("U-curves AFTER compatibility: " ~ compatibilityReport(uBSplines));
+            println("V-curves AFTER compatibility: " ~ compatibilityReport(vBSplines));
+        }
 
         // Normalize curves to ensure proper format for evaluateSpline
         for (var i = 0; i < size(uBSplines); i += 1)
@@ -1146,9 +1158,8 @@ export function elevateSurfaceUDegree(context is Context, id is Id, surface is B
         return surface;
     }
     
-    var numU = size(surface.controlPoints);
     var numV = size(surface.controlPoints[0]);
-    
+
     // Elevate each row (constant v)
     var elevatedRows = [];
     for (var v = 0; v < numV; v += 1)
@@ -1211,8 +1222,7 @@ export function elevateSurfaceVDegree(context is Context, id is Id, surface is B
         return surface;
     
     var numU = size(surface.controlPoints);
-    var numV = size(surface.controlPoints[0]);
-    
+
     // Elevate each column (constant u)
     var elevatedCols = [];
     for (var u = 0; u < numU; u += 1)
@@ -1277,9 +1287,8 @@ export function refineSurfaceUKnots(context is Context, surface is BSplineSurfac
         return surface;
     }
     
-    var numU = size(surface.controlPoints);
     var numV = size(surface.controlPoints[0]);
-    
+
     var refinedRows = [];
     for (var v = 0; v < numV; v += 1)
     {
@@ -1343,8 +1352,7 @@ export function refineSurfaceVKnots(context is Context, surface is BSplineSurfac
     }
     
     var numU = size(surface.controlPoints);
-    var numV = size(surface.controlPoints[0]);
-    
+
     var refinedCols = [];
     for (var u = 0; u < numU; u += 1)
     {

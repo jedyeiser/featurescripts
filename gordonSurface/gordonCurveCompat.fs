@@ -166,7 +166,7 @@ export function makeCurvesCompatible(context is Context, id is Id, curves is arr
         return curves;
     }
 
-    const tolerance = 1e-10;
+    const tolerance = 1e-7;
 
     // Step 1: Find max degree
     var maxDegree = 0;
