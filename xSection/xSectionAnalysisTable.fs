@@ -5,6 +5,8 @@ import(path : "onshape/std/table.fs", version : "2878.0");
 // xSectMaterials (for tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "b68b3e44226906853f6724cf");
 
+// IMPORT: xSectPredicates.fs (for BodyTableType enum)
+
 /**
  * Cross-Section Analysis Table
  *
@@ -204,36 +206,72 @@ function buildRenderedMaterialTable(matTableData is map, titlePrefix is string) 
 /**
  * Build body detail table — one row per section, dynamic columns per body.
  *
- * Fixed prefix:  Station | X (mm) | EI_calc (N·m²) | NA Height (mm)
- * Per body k:    {name} Area (mm²) | {name} Centroid (mm) |
- *                {name} I (mm⁴) | {name} EI (N·m²) | {name} %
- * Fixed suffix:  EI_sum (N·m²)
+ * Column layout varies by bodyTableType:
+ *   Fixed prefix (always):  Station | X (mm) | EI_calc (N·m²) | NA Height (mm)
+ *   FULL:     per body → Area | Centroid | I | EI | %   + EI_sum
+ *   GEO_ONLY: per body → Area | Centroid | I            (no EI_sum)
+ *   EI_ONLY:  per body → EI | %                         + EI_sum
+ *   BASIC:    per body → Area | Centroid above NA | EI | % + EI_sum
  */
 function buildRenderedBodyTable(bodyTableData is map, titlePrefix is string) returns Table
 {
     var bodyNames = bodyTableData.bodyNames;
     var numBodies = size(bodyNames);
 
-    // Build columns
+    // Read bodyTableType; fall back to FULL for backwards compatibility
+    var bodyTableType = tryGetKey(bodyTableData, "bodyTableType");
+    if (bodyTableType == undefined)
+    {
+        bodyTableType = BodyTableType.FULL;
+    }
+
+    // Fixed prefix columns (always present)
     var columns = [
-        tableColumnDefinition("bdt_station", "Station",       TableTextAlignment.RIGHT),
-        tableColumnDefinition("bdt_x",       "X (mm)",        TableTextAlignment.RIGHT),
-        tableColumnDefinition("bdt_EI_calc", "EI_calc (N·m²)", TableTextAlignment.RIGHT),
-        tableColumnDefinition("bdt_NA",      "NA Height (mm)", TableTextAlignment.RIGHT)
+        tableColumnDefinition("bdt_station", "Station",          TableTextAlignment.RIGHT),
+        tableColumnDefinition("bdt_x",       "X (mm)",           TableTextAlignment.RIGHT),
+        tableColumnDefinition("bdt_EI_calc", "EI_calc (N·m²)",   TableTextAlignment.RIGHT),
+        tableColumnDefinition("bdt_NA",      "NA Height (mm)",    TableTextAlignment.RIGHT)
     ];
 
+    // Per-body columns — vary by type
     for (var k = 0; k < numBodies; k += 1)
     {
         var bName = bodyNames[k];
         var kStr = toString(k);
-        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_area", bName ~ " Area (mm²)",    TableTextAlignment.RIGHT));
-        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_ctr",  bName ~ " Centroid (mm)", TableTextAlignment.RIGHT));
-        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_I",    bName ~ " I (mm⁴)",       TableTextAlignment.RIGHT));
-        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_EI",   bName ~ " EI (N·m²)",     TableTextAlignment.RIGHT));
-        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_pct",  bName ~ " %",             TableTextAlignment.RIGHT));
+
+        if (bodyTableType == BodyTableType.FULL)
+        {
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_area", bName ~ " Area (mm²)",    TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_ctr",  bName ~ " Centroid (mm)", TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_I",    bName ~ " I (mm⁴)",       TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_EI",   bName ~ " EI (N·m²)",     TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_pct",  bName ~ " %",             TableTextAlignment.RIGHT));
+        }
+        else if (bodyTableType == BodyTableType.GEO_ONLY)
+        {
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_area", bName ~ " Area (mm²)",    TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_ctr",  bName ~ " Centroid (mm)", TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_I",    bName ~ " I (mm⁴)",       TableTextAlignment.RIGHT));
+        }
+        else if (bodyTableType == BodyTableType.EI_ONLY)
+        {
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_EI",   bName ~ " EI (N·m²)",     TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_pct",  bName ~ " %",             TableTextAlignment.RIGHT));
+        }
+        else if (bodyTableType == BodyTableType.BASIC)
+        {
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_area",   bName ~ " Area (mm²)",            TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_ctr_na", bName ~ " Centroid above NA (mm)", TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_EI",     bName ~ " EI (N·m²)",             TableTextAlignment.RIGHT));
+            columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_pct",    bName ~ " %",                     TableTextAlignment.RIGHT));
+        }
     }
 
-    columns = append(columns, tableColumnDefinition("bdt_EI_sum", "EI_sum (N·m²)", TableTextAlignment.RIGHT));
+    // Fixed suffix: EI_sum for all types except GEO_ONLY
+    if (bodyTableType != BodyTableType.GEO_ONLY)
+    {
+        columns = append(columns, tableColumnDefinition("bdt_EI_sum", "EI_sum (N·m²)", TableTextAlignment.RIGHT));
+    }
 
     // Build rows
     var rows = [];
@@ -252,29 +290,78 @@ function buildRenderedBodyTable(bodyTableData is map, titlePrefix is string) ret
             var kStr = toString(k);
             var bData = bodyList[k];
 
-            var areaStr    = "";
-            var ctrStr     = "";
-            var iStr       = "";
-            var eiStr      = "";
-            var pctStr     = "";
-
-            if (bData != undefined && bData.noMaterial == false)
+            if (bodyTableType == BodyTableType.FULL)
             {
-                areaStr = toString(bData.area_mm2);
-                ctrStr  = toString(bData.centroid_mm);
-                iStr    = toString(bData.I_centroid_mm4);
-                eiStr   = toString(bData.EI_body);
-                pctStr  = toString(bData.pct);
+                var areaStr = "";
+                var ctrStr  = "";
+                var iStr    = "";
+                var eiStr   = "";
+                var pctStr  = "";
+                if (bData != undefined && bData.noMaterial == false)
+                {
+                    areaStr = toString(bData.area_mm2);
+                    ctrStr  = toString(bData.centroid_mm);
+                    iStr    = toString(bData.I_centroid_mm4);
+                    eiStr   = toString(bData.EI_body);
+                    pctStr  = toString(bData.pct);
+                }
+                cellData["b" ~ kStr ~ "_area"] = areaStr;
+                cellData["b" ~ kStr ~ "_ctr"]  = ctrStr;
+                cellData["b" ~ kStr ~ "_I"]    = iStr;
+                cellData["b" ~ kStr ~ "_EI"]   = eiStr;
+                cellData["b" ~ kStr ~ "_pct"]  = pctStr;
             }
-
-            cellData["b" ~ kStr ~ "_area"] = areaStr;
-            cellData["b" ~ kStr ~ "_ctr"]  = ctrStr;
-            cellData["b" ~ kStr ~ "_I"]    = iStr;
-            cellData["b" ~ kStr ~ "_EI"]   = eiStr;
-            cellData["b" ~ kStr ~ "_pct"]  = pctStr;
+            else if (bodyTableType == BodyTableType.GEO_ONLY)
+            {
+                var areaStr = "";
+                var ctrStr  = "";
+                var iStr    = "";
+                if (bData != undefined)
+                {
+                    areaStr = toString(bData.area_mm2);
+                    ctrStr  = toString(bData.centroid_mm);
+                    iStr    = toString(bData.I_centroid_mm4);
+                }
+                cellData["b" ~ kStr ~ "_area"] = areaStr;
+                cellData["b" ~ kStr ~ "_ctr"]  = ctrStr;
+                cellData["b" ~ kStr ~ "_I"]    = iStr;
+            }
+            else if (bodyTableType == BodyTableType.EI_ONLY)
+            {
+                var eiStr  = "";
+                var pctStr = "";
+                if (bData != undefined && bData.noMaterial == false)
+                {
+                    eiStr  = toString(bData.EI_body);
+                    pctStr = toString(bData.pct);
+                }
+                cellData["b" ~ kStr ~ "_EI"]  = eiStr;
+                cellData["b" ~ kStr ~ "_pct"] = pctStr;
+            }
+            else if (bodyTableType == BodyTableType.BASIC)
+            {
+                var areaStr  = "";
+                var ctrNaStr = "";
+                var eiStr    = "";
+                var pctStr   = "";
+                if (bData != undefined && bData.noMaterial == false)
+                {
+                    areaStr  = toString(bData.area_mm2);
+                    ctrNaStr = toString(bData.centroid_above_na_mm);
+                    eiStr    = toString(bData.EI_body);
+                    pctStr   = toString(bData.pct);
+                }
+                cellData["b" ~ kStr ~ "_area"]   = areaStr;
+                cellData["b" ~ kStr ~ "_ctr_na"] = ctrNaStr;
+                cellData["b" ~ kStr ~ "_EI"]     = eiStr;
+                cellData["b" ~ kStr ~ "_pct"]    = pctStr;
+            }
         }
 
-        cellData["bdt_EI_sum"] = toString(rowData.EI_sum);
+        if (bodyTableType != BodyTableType.GEO_ONLY)
+        {
+            cellData["bdt_EI_sum"] = toString(rowData.EI_sum);
+        }
         rows = append(rows, tableRow(cellData));
     }
 

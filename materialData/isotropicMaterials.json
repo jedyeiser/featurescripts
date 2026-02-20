@@ -11,18 +11,7 @@
     "cte_l": 4.9999999999999996e-06,
     "cte_t": 4.9999999999999996e-06,
     "k_l": 1,
-    "k_t": 1,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": null,
-    "theta_deg": null,
-    "cos_theta": null,
-    "sin_theta": null,
-    "E_theta": null,
-    "E_theta_per_E1": null
+    "k_t": 1
   },
   {
     "name": "Carbon Fiber Tow",
@@ -36,18 +25,7 @@
     "cte_l": -4.9999999999999996e-06,
     "cte_t": 8e-06,
     "k_l": 15,
-    "k_t": 1.5,
-    "fiber_v12": 0.28200000000000003,
-    "fiber_E1": 44400,
-    "fiber_E2": 7058.823529411764,
-    "fiber_G12": 2673.6430542778285,
-    "fiber_Vf": 0.6,
-    "theta_rad": 0,
-    "theta_deg": 0,
-    "cos_theta": 1,
-    "sin_theta": 0,
-    "E_theta": 44400,
-    "E_theta_per_E1": 1
+    "k_t": 1.5
   },
   {
     "name": "Aramid Tow",
@@ -61,18 +39,7 @@
     "cte_l": -2e-06,
     "cte_t": 6.5e-05,
     "k_l": 0.4,
-    "k_t": 0.2,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.012667712312862069,
-    "theta_deg": 1.129032258064516,
-    "cos_theta": 0.9999197656053286,
-    "sin_theta": 0.012667373515640066,
-    "E_theta": 43961.505303844795,
-    "E_theta_per_E1": 0.9901239933298377
+    "k_t": 0.2
   },
   {
     "name": "Flax Tow",
@@ -86,18 +53,7 @@
     "cte_l": 7.499999999999999e-06,
     "cte_t": 4.9999999999999996e-05,
     "k_l": 0.5,
-    "k_t": 0.35,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.025335424625724138,
-    "theta_deg": 2.258064516129032,
-    "cos_theta": 0.9996790752964305,
-    "sin_theta": 0.025332714313187926,
-    "E_theta": 42697.4769651575,
-    "E_theta_per_E1": 0.9616548866026463
+    "k_t": 0.35
   },
   {
     "name": "Resin",
@@ -111,18 +67,7 @@
     "cte_l": 5.9999999999999995e-05,
     "cte_t": 5.9999999999999995e-05,
     "k_l": 0.2,
-    "k_t": 0.2,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.03800313693858621,
-    "theta_deg": 3.3870967741935485,
-    "cos_theta": 0.9992779676965883,
-    "sin_theta": 0.03799399000073918,
-    "E_theta": 40747.89366283572,
-    "E_theta_per_E1": 0.9177453527665702
+    "k_t": 0.2
   },
   {
     "name": "Stitching",
@@ -136,18 +81,7 @@
     "cte_l": 5.9999999999999995e-05,
     "cte_t": 5.9999999999999995e-05,
     "k_l": 0.2,
-    "k_t": 0.2,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.050670849251448276,
-    "theta_deg": 4.516129032258064,
-    "cos_theta": 0.9987165071710528,
-    "sin_theta": 0.05064916883871271,
-    "E_theta": 38305.14177307986,
-    "E_theta_per_E1": 0.8627284183126094
+    "k_t": 0.2
   },
   {
     "name": "FPA_UD",
@@ -161,18 +95,7 @@
     "cte_l": -4.1316289339946515e-06,
     "cte_t": -2.1481468403096235e-06,
     "k_l": null,
-    "k_t": null,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.06333856156431035,
-    "theta_deg": 5.645161290322581,
-    "cos_theta": 0.9979947838167149,
-    "sin_theta": 0.06329622006588148,
-    "E_theta": 35572.17792890255,
-    "E_theta_per_E1": 0.8011751785788863
+    "k_t": null
   },
   {
     "name": "FPA_WVN",
@@ -186,18 +109,7 @@
     "cte_l": -4.2701299714578946e-06,
     "cte_t": -4.270129971457895e-06,
     "k_l": null,
-    "k_t": null,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.07600627387717242,
-    "theta_deg": 6.774193548387097,
-    "cos_theta": 0.9971129134476474,
-    "sin_theta": 0.07593311422524629,
-    "E_theta": 32729.546265828518,
-    "E_theta_per_E1": 0.7371519429240657
+    "k_t": null
   },
   {
     "name": "FPLY_UD",
@@ -211,18 +123,7 @@
     "cte_l": -4.1316289339946515e-06,
     "cte_t": -2.1481468403096235e-06,
     "k_l": null,
-    "k_t": null,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.08867398619003448,
-    "theta_deg": 7.903225806451613,
-    "cos_theta": 0.9960710375765209,
-    "sin_theta": 0.08855782348970034,
-    "E_theta": 29917.709938218213,
-    "E_theta_per_E1": 0.6738222959058157
+    "k_t": null
   },
   {
     "name": "FPLY_090",
@@ -236,17 +137,6 @@
     "cte_l": -4.2701299714578946e-06,
     "cte_t": -4.270129971457895e-06,
     "k_l": null,
-    "k_t": null,
-    "fiber_v12": null,
-    "fiber_E1": null,
-    "fiber_E2": null,
-    "fiber_G12": null,
-    "fiber_Vf": null,
-    "theta_rad": 0.10134169850289655,
-    "theta_deg": 9.032258064516128,
-    "cos_theta": 0.9948693233918952,
-    "sin_theta": 0.10116832198743217,
-    "E_theta": 27233.324484739052,
-    "E_theta_per_E1": 0.6133631640706994
+    "k_t": null
   }
 ]

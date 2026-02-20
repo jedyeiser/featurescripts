@@ -452,7 +452,7 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
             bodyDataByIdx[toString(bd.bodyIdx)] = bd;
         }
 
-        // --- Pass 1: compute EI_body for each body, accumulate EI_sum ---
+        // --- Pass 1: compute geometry and EI_body for each body, accumulate EI_sum ---
         var bodyResults = [];
         var EI_sum_val = 0;
 
@@ -467,21 +467,13 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
                 continue;
             }
 
-            var body = bodies[k];
-            if (body.hasMaterialData != true)
-            {
-                // Body present geometrically but no material
-                bodyResults = append(bodyResults, { "noMaterial" : true });
-                continue;
-            }
-
             var props = bdMap.totalSectionProperties;
             var area = props.area;
 
             // Skip degenerate geometry
             if (area < 1e-12 * meter * meter)
             {
-                bodyResults = append(bodyResults, { "noMaterial" : true });
+                bodyResults = append(bodyResults, undefined);
                 continue;
             }
 
@@ -491,6 +483,23 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
 
             // Parallel-axis shift from centroid to neutral axis
             var d_k = yBar_k / meter - naHeight_m;
+
+            var body = bodies[k];
+            var hasMat = body.hasMaterialData == true;
+
+            if (!hasMat)
+            {
+                // Body present geometrically but no material — store geometry only
+                bodyResults = append(bodyResults, {
+                    "area"         : area,
+                    "centroid_y"   : yBar_k,
+                    "Iyy_centroid" : Iyy_centroid,
+                    "d_k"          : d_k,
+                    "noMaterial"   : true
+                });
+                continue;
+            }
+
             var I_k_NA = Iyy_centroid / (meter^4) + (area / (meter * meter)) * d_k * d_k;
 
             // Q11 in Pa (strip units)
@@ -503,6 +512,7 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
                 "area"         : area,
                 "centroid_y"   : yBar_k,
                 "Iyy_centroid" : Iyy_centroid,
+                "d_k"          : d_k,
                 "EI_body_raw"  : EI_body_k,
                 "noMaterial"   : false
             });
@@ -520,15 +530,23 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
                 continue;
             }
 
-            if (res.noMaterial == true)
-            {
-                finalBodyResults = append(finalBodyResults, { "noMaterial" : true });
-                continue;
-            }
-
             var area_mm2 = roundValue(res.area / (millimeter * millimeter), 0.01);
             var centroid_mm = roundValue(res.centroid_y / millimeter, 0.01);
             var I_centroid_mm4 = roundValue(res.Iyy_centroid / (millimeter^4), 0.1);
+            var centroid_above_na_mm = roundValue(res.d_k * 1000, 0.01);
+
+            if (res.noMaterial == true)
+            {
+                finalBodyResults = append(finalBodyResults, {
+                    "area_mm2"             : area_mm2,
+                    "centroid_mm"          : centroid_mm,
+                    "I_centroid_mm4"       : I_centroid_mm4,
+                    "centroid_above_na_mm" : centroid_above_na_mm,
+                    "noMaterial"           : true
+                });
+                continue;
+            }
+
             var EI_body = roundValue(res.EI_body_raw, 0.01);
 
             var pct = 0;
@@ -538,12 +556,13 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
             }
 
             finalBodyResults = append(finalBodyResults, {
-                "area_mm2"       : area_mm2,
-                "centroid_mm"    : centroid_mm,
-                "I_centroid_mm4" : I_centroid_mm4,
-                "EI_body"        : EI_body,
-                "pct"            : pct,
-                "noMaterial"     : false
+                "area_mm2"             : area_mm2,
+                "centroid_mm"          : centroid_mm,
+                "I_centroid_mm4"       : I_centroid_mm4,
+                "centroid_above_na_mm" : centroid_above_na_mm,
+                "EI_body"              : EI_body,
+                "pct"                  : pct,
+                "noMaterial"           : false
             });
         }
 

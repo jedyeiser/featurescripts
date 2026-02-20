@@ -87,6 +87,20 @@ export enum MaterialType
     ORTHOTROPIC
 }
 
+export enum BodyTableType
+{
+    annotation { "Name" : "None" }
+    NONE,
+    annotation { "Name" : "Basic (EI, area, centroid above NA)" }
+    BASIC,
+    annotation { "Name" : "EI only (EI contribution + %)" }
+    EI_ONLY,
+    annotation { "Name" : "Geometry only (area, centroid, I)" }
+    GEO_ONLY,
+    annotation { "Name" : "Full (area, centroid, I, EI, %)" }
+    FULL
+}
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -255,9 +269,9 @@ export predicate eiXSectPrecondition(definition is map)
         definition.addMaterialTable is boolean;
 
         annotation { "Name" : "Body detail table",
-                     "Default" : false,
-                     "Description" : "Include a per-section breakdown of each body's area, centroid, I, and EI contribution." }
-        definition.addBodyTable is boolean;
+                     "Default" : BodyTableType.NONE,
+                     "Description" : "Include a per-section breakdown of each body's contributions. Choose detail level." }
+        definition.bodyTableType is BodyTableType;
 
     }
 

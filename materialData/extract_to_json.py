@@ -41,10 +41,8 @@ import openpyxl
 METADATA_COL_START  = 1    # Column A  ('Row')
 METADATA_COL_END    = 29   # Column AC ('Purchased Widths (mm)')
 COMPONENT_COL_START = 30   # Column AD (Component 1, field 1 = 'Material')
-COMPONENT_SIZE      = 30   # columns per component (gained α1, α2, αx, αy, αxy vs old file)
+COMPONENT_SIZE      = 30   # columns per component
 NUM_COMPONENTS      = 9
-COMBINED_COL_START  = 300  # Column KR ('MTL.Q̄11')
-COMBINED_COL_END    = 315  # Column LC ('MTL.S̄26')
 
 
 # ---------------------------------------------------------------------------
@@ -69,19 +67,6 @@ RAW_MATERIALS_FIELD_MAP: dict[int, str] = {
     10: 'cte_t',
     11: 'k_l',
     12: 'k_t',
-    # col 13 (M): empty — omit
-    14: 'fiber_v12',
-    15: 'fiber_E1',
-    16: 'fiber_E2',
-    17: 'fiber_G12',
-    18: 'fiber_Vf',
-    # col 19 (S): empty — omit
-    20: 'theta_rad',
-    21: 'theta_deg',
-    22: 'cos_theta',
-    23: 'sin_theta',
-    24: 'E_theta',
-    25: 'E_theta_per_E1',
 }
 
 # Composite_Calculator metadata section (row-2 label -> JSON field name)
@@ -101,15 +86,6 @@ METADATA_FIELD_MAP: dict[str, str] = {
     'Resin Weight':                     'resin_weight',
     'Composite weight':                 'composite_weight',
     'Density':                          'density',
-    'has_0':                            'has_0',
-    'has_90':                           'has_90',
-    'has_45':                           'has_45',
-    'has_rand':                         'has_rand',
-    'mattTag':                          'matt_tag',
-    '+/45Tag':                          'plus_minus_45_tag',
-    '0/90Tag':                          'zero_90_tag',
-    'uniTag':                           'uni_tag',
-    'triaxTag':                         'triax_tag',
     'tags':                             'tags',
     'Thck. (mm)':                       'thickness_mm',
     'E0':                               'E0',
@@ -117,59 +93,17 @@ METADATA_FIELD_MAP: dict[str, str] = {
     'Purchased Widths (mm)':            'purchased_widths_mm',
 }
 
-# Per-component field suffix (row-2 label -> suffix appended to 'component_N_')
-# Unicode: Δ=U+0394, θ=U+03B8, α=U+03B1, combining macron=U+0304
-COMPONENT_FIELD_MAP: dict[str, str] = {
-    'Material':           'material',
-    'Orientation':        'orientation',
-    'gsm':                'gsm',
-    'Fiber V (m3)':       'fiber_volume_m3',
-    'Comp. Vol':          'composite_volume_m3',
-    'Vol. Frac':          'volume_fraction',
-    'Comp. Thck':         'thickness_mm',
-    'E1':                 'E1',
-    'E2':                 'E2',
-    '\u03b11':            'alpha_1',       # α1
-    '\u03b12':            'alpha_2',       # α2
-    'G12':                'G12',
-    'v12':                'v12',
-    'v21':                'v21',
-    '\u0394':             'delta',         # Δ
-    'Q11':                'Q_11',
-    'Q22':                'Q_22',
-    'Q12':                'Q_12',
-    'Q66':                'Q_66',
-    'm = cos(\u03b8)':    'm_cos_theta',   # m = cos(θ)
-    'n = sin(\u03b8)':    'n_sin_theta',   # n = sin(θ)
-    'Q\u030411':          'Q_bar_11',      # Q̄11
-    'Q\u030422':          'Q_bar_22',
-    'Q\u030412':          'Q_bar_12',
-    'Q\u030466':          'Q_bar_66',
-    'Q\u030416':          'Q_bar_16',
-    'Q\u030426':          'Q_bar_26',
-    '\u03b1x':            'alpha_x',       # αx
-    '\u03b1y':            'alpha_y',       # αy
-    '\u03b1xy':           'alpha_xy',      # αxy
-}
-
-# Combined-laminate section (row-2 label -> JSON field name)
-MTL_FIELD_MAP: dict[str, str] = {
-    'MTL.Q\u030411': 'mtl_Q_bar_11',
-    'MTL.Q\u030422': 'mtl_Q_bar_22',
-    'MTL.Q\u030412': 'mtl_Q_bar_12',
-    'MTL.Q\u030466': 'mtl_Q_bar_66',
-    'MTL.Q\u030416': 'mtl_Q_bar_16',
-    'MTL.Q\u030426': 'mtl_Q_bar_26',
-    '\u03b1x':        'mtl_alpha_x',      # αx (MTL combined CTE)
-    '\u03b1y':        'mtl_alpha_y',
-    '\u03b1xy':       'mtl_alpha_xy',
-    'det(Q)':         'det_Q',
-    'MTL.S\u030411': 'mtl_S_bar_11',
-    'MTL.S\u030422': 'mtl_S_bar_22',
-    'MTL.S\u030412': 'mtl_S_bar_12',
-    'MTL.S\u030466': 'mtl_S_bar_66',
-    'MTL.S\u030416': 'mtl_S_bar_16',
-    'MTL.S\u030426': 'mtl_S_bar_26',
+# Fixed 0-based offsets within each 30-column component block for the 9 kept fields
+COMPONENT_KEPT_OFFSETS: dict[int, str] = {
+    0:  'material',
+    1:  'orientation',
+    2:  'gsm',
+    7:  'E1',
+    8:  'E2',
+    9:  'alpha_1',
+    10: 'alpha_2',
+    11: 'G12',
+    12: 'v12',
 }
 
 
@@ -213,45 +147,25 @@ def sanitize_name(raw: str) -> str:
     return s.lower()
 
 
-def build_composite_headers(ws) -> dict[int, str]:
+def build_metadata_headers(ws) -> dict[int, str]:
     """Return a mapping of 1-based column index -> JSON field name for
-    Composite_Calculator, built from the row-2 field labels.
+    the Composite_Calculator metadata section (cols 1–29), built from row-2 labels.
     """
     row2: dict[int, str | None] = {}
     for row in ws.iter_rows(min_row=2, max_row=2, min_col=1,
-                            max_col=COMBINED_COL_END, values_only=True):
+                            max_col=METADATA_COL_END, values_only=True):
         for col_0based, val in enumerate(row):
             row2[col_0based + 1] = val
 
     header_map: dict[int, str] = {}
-
-    # Metadata (cols 1–29)
     for col_idx in range(METADATA_COL_START, METADATA_COL_END + 1):
         raw = row2.get(col_idx)
         if raw is None:
             continue
         raw_str = str(raw)
-        header_map[col_idx] = METADATA_FIELD_MAP.get(raw_str, sanitize_name(raw_str))
-
-    # Component sections (9 × 30 columns starting at col 30)
-    for comp_num in range(1, NUM_COMPONENTS + 1):
-        start = COMPONENT_COL_START + (comp_num - 1) * COMPONENT_SIZE
-        for offset in range(COMPONENT_SIZE):
-            col_idx = start + offset
-            raw = row2.get(col_idx)
-            if raw is None:
-                continue
-            raw_str = str(raw)
-            suffix = COMPONENT_FIELD_MAP.get(raw_str, sanitize_name(raw_str))
-            header_map[col_idx] = f'component_{comp_num}_{suffix}'
-
-    # Combined-laminate section (cols 300–315)
-    for col_idx in range(COMBINED_COL_START, COMBINED_COL_END + 1):
-        raw = row2.get(col_idx)
-        if raw is None:
-            continue
-        raw_str = str(raw)
-        header_map[col_idx] = MTL_FIELD_MAP.get(raw_str, sanitize_name(raw_str))
+        if raw_str not in METADATA_FIELD_MAP:
+            continue  # skip columns not explicitly listed (drops flags, individual tags, etc.)
+        header_map[col_idx] = METADATA_FIELD_MAP[raw_str]
 
     return header_map
 
@@ -263,18 +177,13 @@ def build_composite_headers(ws) -> dict[int, str]:
 def extract_isotropic(wb: openpyxl.Workbook) -> list[dict]:
     """Extract 'Raw materials' sheet -> isotropicMaterials.json records.
 
-    Row 1 has proper headers for cols A–L.
-    Row 2 is the first data row (Fiberglass Tow), but cols N–R and T–Y in
-    that row contain sub-label strings ('v12', 'E1', …) rather than data;
-    those string values are treated as null for that row only.
+    Only cols 1–12 (A–L) are read; the sub-label computed section is dropped.
     """
     ws = wb['Raw materials']
     col_map = RAW_MATERIALS_FIELD_MAP
-    # Cols that contain sub-label strings in row 2 (but numeric data in others)
-    sublabel_cols = frozenset({14, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25})
     records = []
 
-    for row in ws.iter_rows(min_row=2, min_col=1, max_col=25, values_only=True):
+    for row in ws.iter_rows(min_row=2, min_col=1, max_col=12, values_only=True):
         name_val = row[0]  # col A
         if name_val is None or (isinstance(name_val, str) and not name_val.strip()):
             continue
@@ -282,11 +191,8 @@ def extract_isotropic(wb: openpyxl.Workbook) -> list[dict]:
         record: dict = {}
         for col_0based, val in enumerate(row):
             col_1based = col_0based + 1
-            if col_1based not in col_map:
-                continue  # omit cols 13 (M) and 19 (S)
-            if col_1based in sublabel_cols and isinstance(val, str):
-                val = None  # row-2 sub-label text, not numeric data
-            record[col_map[col_1based]] = val
+            if col_1based in col_map:
+                record[col_map[col_1based]] = val
 
         records.append(record)
 
@@ -298,24 +204,45 @@ def extract_orthotropic(wb: openpyxl.Workbook) -> list[dict]:
 
     Row 1: section labels.  Row 2: field labels.  Rows 3+: data.
     Skip rows where col B (vendor) is null.
+
+    Top-level fields come from metadata cols 1–29.  Component data is assembled
+    into a 'components' array (up to 9 slots); slots with a null material are
+    skipped.  Only the 9 fields in COMPONENT_KEPT_OFFSETS are kept per component.
+    The MTL combined section (cols 300–315) is not read.
     """
     ws = wb['Composite_Calculator']
-    col_map = build_composite_headers(ws)
+    metadata_map = build_metadata_headers(ws)
+
+    # Pre-read all component rows in one pass up to the last component column
+    last_component_col = COMPONENT_COL_START + NUM_COMPONENTS * COMPONENT_SIZE - 1
     records = []
 
     for row in ws.iter_rows(min_row=3, min_col=METADATA_COL_START,
-                            max_col=COMBINED_COL_END, values_only=True):
+                            max_col=last_component_col, values_only=True):
         # row[1] == col B (vendor) — skip blank rows
         vendor_val = row[1]
         if vendor_val is None or (isinstance(vendor_val, str) and not vendor_val.strip()):
             continue
 
+        # Pass 1: metadata fields (cols 1–29)
         record: dict = {}
-        for col_0based, val in enumerate(row):
-            col_1based = col_0based + METADATA_COL_START
-            if col_1based in col_map:
-                record[col_map[col_1based]] = val
+        for col_idx, field_name in metadata_map.items():
+            record[field_name] = row[col_idx - 1]  # row is 0-based
 
+        # Pass 2: component slots
+        components: list[dict] = []
+        for slot in range(NUM_COMPONENTS):
+            slot_start_col = COMPONENT_COL_START + slot * COMPONENT_SIZE  # 1-based
+            # offset 0 = 'material' — null means no more components
+            material_val = row[slot_start_col - 1]
+            if material_val is None or (isinstance(material_val, str) and not material_val.strip()):
+                break
+            comp: dict = {}
+            for offset, field_name in COMPONENT_KEPT_OFFSETS.items():
+                comp[field_name] = row[slot_start_col - 1 + offset]
+            components.append(comp)
+
+        record['components'] = components
         records.append(record)
 
     return clean_nan_values(records)
