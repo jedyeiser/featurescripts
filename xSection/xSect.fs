@@ -28,9 +28,6 @@ import(path : "4973f90e73d48ab3578831f0", version : "f211e9dbed8c286bb70f05fb");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "11686088c6c8185a95ce8d18");
 
-// IMPORT: xSectDetailTables.fs
-
-
 // =============================================================================
 // FEATURE DEFINITION
 // =============================================================================

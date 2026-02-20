@@ -2,7 +2,8 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/table.fs", version : "2878.0");
 
-// IMPORT: xSectMaterials.fs
+// xSectMaterials (for tryGetKey)
+import(path : "f8e590162884d45f56e0a05f", version : "b68b3e44226906853f6724cf");
 
 /**
  * Cross-Section Analysis Table
