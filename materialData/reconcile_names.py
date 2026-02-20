@@ -62,7 +62,8 @@ def normalize(name: str) -> str:
 def load_csv(path: str) -> list:
     """Return [(name, category), ...] from a material CSV."""
     rows = []
-    with open(path, newline="", encoding="utf-8") as f:
+    # utf-8-sig strips the UTF-8 BOM that Excel adds to the first column header
+    with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             name = row.get("Name", "").strip()
             cat  = row.get("Category", "").strip()
@@ -86,12 +87,12 @@ def load_name_map(path: str) -> dict:
     """Return {csv_name: row_dict} for an existing name_map.csv, or {}."""
     if not os.path.exists(path):
         return {}
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         return {row["csv_name"]: row for row in csv.DictReader(f)}
 
 
 def save_name_map(path: str, rows: list) -> None:
-    with open(path, "w", newline="", encoding="utf-8") as f:
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         writer.writeheader()
         writer.writerows(rows)

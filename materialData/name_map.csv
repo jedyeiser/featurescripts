@@ -1,134 +1,134 @@
-csv_name,category,json_file,json_key,match_type,notes
-Chomarat: DIAGONAP DTF 20.72.3.06,,orthotropicMaterials.json,Chomarat:DIAGONAP DTF 20.72.3.06,normalized,
-Chomarat: DIAGONAP DT 17.60.3.06,,,,none,NEEDS_RESEARCH
-Chomarat: DIAGONAP DTF 17.38.3.06,,orthotropicMaterials.json,Chomarat:DIAGONAP DTF 17.38.3.06,normalized,
-Chomarat: DIAGONAP DTF 14VC.38.3.06,,orthotropicMaterials.json,Chomarat:DIAGONAP DTF 14VC.38.3.06,normalized,
-Chomarat: DIAGONAP DX FT 13.04,,orthotropicMaterials.json,Chomarat:DIAGONAP DX FT 13.04,normalized,
-Chomarat: RUBAN CARBONE 9284,,orthotropicMaterials.json,Chomarat:RUBAN CARBONE 9284,normalized,
-Chomarat: RUBAN 7018 F,,orthotropicMaterials.json,Chomarat:RUBAN 7018 F,normalized,
-Chomarat: RUBAN 2016,,orthotropicMaterials.json,Chomarat:RUBAN 2016,normalized,
-Chomarat: ROVINAP 42 F2.08,,orthotropicMaterials.json,Chomarat:ROVINAP 42 F2.08,normalized,
-Chomarat: ROVINAP 24 F.08,,orthotropicMaterials.json,Chomarat:ROVINAP 24 F.08,normalized,
-Chomarat: ROVINAP 60.08,,orthotropicMaterials.json,Chomarat:ROVINAP 60.08,normalized,
-Chomarat: G-TAPE 6073FT,,orthotropicMaterials.json,Chomarat:G-TAPE 6073FT,normalized,
-Chomarat: G-PLY TL360/330 T3/V30,,orthotropicMaterials.json,Chomarat:G-PLY TL360/330 T3/V30,normalized,
-Chomarat: C-PLY SP TBX270 C3.4 12K HS,,orthotropicMaterials.json,Chomarat:C-PLY SP TBX270 C3.4 12K HS,normalized,
-Chomarat: C-TAPE U150P 12K x 43mm,,,,none,NEEDS_RESEARCH
-Chomarat: C-TAPE U1160P 12K x 30mm,,,,none,NEEDS_RESEARCH
-Chomarat: DIAGOTEX D988C,,orthotropicMaterials.json,Chomarat:DIAGOTEX D988C,normalized,
-Chomarat: TER2A Tape U90C58L P 12K F,,orthotropicMaterials.json,Chomarat:TER2A Tape U90C58L P 12K F,normalized,
-Chomarat: Volumat: 300T/300,,,,none,NEEDS_RESEARCH
-HongTex: E-LT-400,,orthotropicMaterials.json,HongTex:E-LT-400,normalized,
-HongTex: E-LT-540,,orthotropicMaterials.json,HongTex:E-LT-540,normalized,
-HongTex: E-LT-600,,orthotropicMaterials.json,HongTex:E-LT-600,normalized,
-HongTex: E-LT-660,,orthotropicMaterials.json,HongTex:E-LT-660,normalized,
-HongTex: E-LT-750,,orthotropicMaterials.json,HongTex:E-LT-750,normalized,
-HongTex: E-LT-830,,orthotropicMaterials.json,HongTex:E-LT-830,normalized,
-HongTex: E-LT-980,,orthotropicMaterials.json,HongTex:E-LT-980,normalized,
-HongTex: E-LT-660-10C,,orthotropicMaterials.json,HongTex:E-LT-660-10C,normalized,
-HongTex: EC-DBL-635,,orthotropicMaterials.json,HongTex:EC-DBL-635,normalized,
-HongTex: EC-DBL-800-30M,,orthotropicMaterials.json,HongTex:EC-DBL-800-30M,normalized,
-HongTex: E-DBL-670-30M,,orthotropicMaterials.json,HongTex:E-DBL-670-30M,normalized,
-HongTex: E-DBL-680-30M,,,,none,NEEDS_RESEARCH
-HongTex: E-DBL-800-30M,,orthotropicMaterials.json,HongTex:E-DBL-800-30M,normalized,
-HongTex: E-DBL-950-30M,,orthotropicMaterials.json,HongTex:E-DBL-950-30M,normalized,
-HongTex: E-DBL-1150-30M,,orthotropicMaterials.json,HongTex:E-DBL-1150-30M,normalized,
-HongTex: 9 oz. Uni,,,,none,NEEDS_RESEARCH
-HongTex: 13 oz. Uni,,,,none,NEEDS_RESEARCH
-HongTex: 17 oz. Uni,,,,none,NEEDS_RESEARCH
-HongTex: K2-20,,orthotropicMaterials.json,HongTex:K2-20,normalized,
-HongTex: K2-22,,orthotropicMaterials.json,HongTex:K2-22,normalized,
-BComp: AMPLITEX 5057-6,,orthotropicMaterials.json,BComp:AMPLITEX 5057-6,normalized,
-BComp: Amplitex 115gsm-C 125gsm-F - 52mm,,,,none,NEEDS_RESEARCH
-A&P Technology: BIMAX 374,,orthotropicMaterials.json,A&P Technology:BIMAX 374,normalized,
-A&P Technology: UNI-4.0-SM,,orthotropicMaterials.json,A&P Technology:UNI-4.0-SM,normalized,
-HongTex: TWILL-3K,,orthotropicMaterials.json,HongTex:TWILL-3K,normalized,
-Hexcel: Polyspeed GC-EV 530B,,orthotropicMaterials.json,Hexcel:Polyspeed GC-EV 530B,normalized,
-Hexcel: Polyspeed GC-EV 750B,,orthotropicMaterials.json,Hexcel:Polyspeed GC-EV 750B,normalized,
-Hexcel: Polyspeed GC-EV BB566,,orthotropicMaterials.json,Hexcel:Polyspeed GC-EV BB566,normalized,
-Hexcel: Polyspeed HMGC-EV 606B,,orthotropicMaterials.json,Hexcel:Polyspeed HMGC-EV 606B,normalized,
-Hexcel: Polyspeed NR-C/Flax EV 405B,,orthotropicMaterials.json,Hexcel:Polyspeed NR-C/Flax EV 405B,normalized,
-Hexcel: G-EV 696R,,,,none,NEEDS_RESEARCH
-Nico Fiber,,,,none,NEEDS_RESEARCH
-Owens Corning: GLASS MAT M723 450gsm,,orthotropicMaterials.json,Owens Corning:GLASS MAT M723 450gsm,normalized,
-Owens Corning: GLASS MAT M723 600gsm,,orthotropicMaterials.json,Owens Corning:GLASS MAT M723 600gsm,normalized,
-Glass - Braid,,,,none,NEEDS_RESEARCH
-Glass - Rovings in braid,,,,none,NEEDS_RESEARCH
-XuRui: G50 Fleece Veil,,,,none,NEEDS_RESEARCH
-XuRui:G100 Fleece Veil,,,,none,NEEDS_RESEARCH
-Ash,,,,none,NEEDS_RESEARCH
-Aspen,,,,none,NEEDS_RESEARCH
-Paulownia,,,,none,NEEDS_RESEARCH
-Hard Maple,,,,none,NEEDS_RESEARCH
-Soft Maple,,,,none,NEEDS_RESEARCH
-European Beech,,,,none,NEEDS_RESEARCH
-Birch,,,,none,NEEDS_RESEARCH
-Bamboo,,,,none,NEEDS_RESEARCH
-Fir,,,,none,NEEDS_RESEARCH
-Poplar - Light,,,,none,NEEDS_RESEARCH
-Poplar,,,,none,NEEDS_RESEARCH
-Poplar - Dense,,,,none,NEEDS_RESEARCH
-WBK # N21 - Offset Stringer (1x): Pal/Map,,,,none,NEEDS_RESEARCH
-WBK # N12 - Offset Stringer (2x): Asp/Map,,,,none,NEEDS_RESEARCH
-WBK # N3 - Solid: Asp Veneer,,,,none,NEEDS_RESEARCH
-WBK # N5 - Alternating: Fir/Asp,,,,none,NEEDS_RESEARCH
-WBK # N8 - Double Barrel: Fir/Asp,,,,none,NEEDS_RESEARCH
-WBK # N2 - Solid: Asp,,,,none,NEEDS_RESEARCH
-WBK # N4 - Solid: Pal,,,,none,NEEDS_RESEARCH
-WBK # N13 - Offset Stringers (1x): Asp/Map,,,,none,NEEDS_RESEARCH
-WBK # N14 - Alternating Asp/Pal,,,,none,NEEDS_RESEARCH
-Isosport: IsoCore 150,,,,none,NEEDS_RESEARCH
-Isosport: IsoCore 250,,,,none,NEEDS_RESEARCH
-Armacell: Struct GRX 100,,,,none,NEEDS_RESEARCH
-Armacell: Struct GRX 115,,,,none,NEEDS_RESEARCH
-Armacell: Struct GRX 150,,,,none,NEEDS_RESEARCH
-Armacell: Struct GRX 250,,,,none,NEEDS_RESEARCH
-CDW: Steel Edge,,,,none,NEEDS_RESEARCH
-Freidrich: Steel Edge,,,,none,NEEDS_RESEARCH
-AMAG: Titanal,,,,none,NEEDS_RESEARCH
-Crown: DS 4001,,,,none,NEEDS_RESEARCH
-Crown: F7501,,,,none,NEEDS_RESEARCH
-CPS: P-Tex 4504,,,,none,NEEDS_RESEARCH
-CPS: P-Tex 3000,,,,none,NEEDS_RESEARCH
-CPS: P-Tex 2100,,,,none,NEEDS_RESEARCH
-CPS: P-Tex 2000,,,,none,NEEDS_RESEARCH
-CPS: P-Tex 1100,,,,none,NEEDS_RESEARCH
-CPS: P-Tex 900,,,,none,NEEDS_RESEARCH
-Watom: Duraclear 117,,,,none,NEEDS_RESEARCH
-Watom: Duraclear 111,,,,none,NEEDS_RESEARCH
-Watom: 210,,,,none,NEEDS_RESEARCH
-Watom: 211,,,,none,NEEDS_RESEARCH
-Isosport: IS 4800,,,,none,NEEDS_RESEARCH
-Isosport: TPU IE 3200 SM 2EV 031,,,,none,NEEDS_RESEARCH
-Isosport: ICP 5275,,,,none,NEEDS_RESEARCH
-Isosport: ICP 5278,,,,none,NEEDS_RESEARCH
-CPS: TP455,,,,none,NEEDS_RESEARCH
-Semperit: Haberkorn Rubber,,,,none,NEEDS_RESEARCH
-Argotec: Urethane,,,,none,NEEDS_RESEARCH
-CPS: ABS/TPU Sidewall,,,,none,NEEDS_RESEARCH
-IMS Plast: CPAN 125 GT2 ABS,,,,none,NEEDS_RESEARCH
-Crown: DS2000 UHMWPE,,,,none,NEEDS_RESEARCH
-BASF: Modipur injection foam,,,,none,NEEDS_RESEARCH
-Hexcell: G-R80 Laminate,,,,none,NEEDS_RESEARCH
-Hexcell: G-EV R68,,,,none,NEEDS_RESEARCH
-Hexcell: G-EV 765R,,,,none,NEEDS_RESEARCH
-Hexcell: G-EV R82,,,,none,NEEDS_RESEARCH
-CDW: Kaltbandstahl C75S,,,,none,NEEDS_RESEARCH
-3D Printed ABS,,,,none,NEEDS_RESEARCH
-3D Printed PP,,,,none,NEEDS_RESEARCH
-3D Printed TPU,,,,none,NEEDS_RESEARCH
-Carbon Conversions: re-Evo MCF-SB 200gsm,,,,none,NEEDS_RESEARCH
-BComp: BCore 300 XL,,,,none,NEEDS_RESEARCH
-Ecomass: 4703ZC71 - TPU/SS - 3.0g/cc,,,,none,NEEDS_RESEARCH
-Ecomass: 4703ZC76 - TPU/SS - 3.4g/cc,,,,none,NEEDS_RESEARCH
-Ecomass: 4703ZC87 - TPU/SS - 4.5g/cc,,,,none,NEEDS_RESEARCH
-Freudenberg: Enkamat 7210,,,,none,NEEDS_RESEARCH
-Desmovit: DP R 3918,,,,none,NEEDS_RESEARCH
-Geba: TPU 3918,,,,none,NEEDS_RESEARCH
-Geba: TPU 3919,,,,none,NEEDS_RESEARCH
-Socrep: TPU 511/519,,,,none,NEEDS_RESEARCH
-ITOCHU: HS40 F22 12K 800 tex Carbon Roving,,,,none,NEEDS_RESEARCH
-ITOCHU: HS40 E13 6K 400 tex Carbon Roving,,,,none,NEEDS_RESEARCH
-BASF: E1160D50 TPU,,,,none,NEEDS_RESEARCH
-BASF: 1165D50STR TPU,,,,none,NEEDS_RESEARCH
-BASF: 1154D50 TPU,,,,none,NEEDS_RESEARCH
+﻿csv_name,category,json_file,json_key,match_type,notes
+Chomarat: DIAGONAP DTF 20.72.3.06,Fiberglass,orthotropicMaterials.json,Chomarat:DIAGONAP DTF 20.72.3.06,normalized,
+Chomarat: DIAGONAP DT 17.60.3.06,Fiberglass,orthotropicMaterials.json,Chomarat:DIAGONAP DT 17.60.3.06,normalized,
+Chomarat: DIAGONAP DTF 17.38.3.06,Fiberglass,orthotropicMaterials.json,Chomarat:DIAGONAP DTF 17.38.3.06,normalized,
+Chomarat: DIAGONAP DTF 14VC.38.3.06,Fiberglass,orthotropicMaterials.json,Chomarat:DIAGONAP DTF 14VC.38.3.06,normalized,
+Chomarat: DIAGONAP DX FT 13.04,Fiberglass,orthotropicMaterials.json,Chomarat:DIAGONAP DX FT 13.04,normalized,
+Chomarat: RUBAN CARBONE 9284,Carbon Fiber,orthotropicMaterials.json,Chomarat:RUBAN CARBONE 9284,normalized,
+Chomarat: RUBAN 7018 F,Fiberglass,orthotropicMaterials.json,Chomarat:RUBAN 7018 F,normalized,
+Chomarat: RUBAN 2016,Fiberglass,orthotropicMaterials.json,Chomarat:RUBAN 2016,normalized,
+Chomarat: ROVINAP 42 F2.08,Fiberglass,orthotropicMaterials.json,Chomarat:ROVINAP 42 F2.08,normalized,
+Chomarat: ROVINAP 24 F.08,Fiberglass,orthotropicMaterials.json,Chomarat:ROVINAP 24 F.08,normalized,
+Chomarat: ROVINAP 60.08,Fiberglass,orthotropicMaterials.json,Chomarat:ROVINAP 60.08,normalized,
+Chomarat: G-TAPE 6073FT,Fiberglass,orthotropicMaterials.json,Chomarat:G-TAPE 6073FT,normalized,
+Chomarat: G-PLY TL360/330 T3/V30,Fiberglass,orthotropicMaterials.json,Chomarat:G-PLY TL360/330 T3/V30,normalized,
+Chomarat: C-PLY SP TBX270 C3.4 12K HS,Carbon Fiber,orthotropicMaterials.json,Chomarat:C-PLY SP TBX270 C3.4 12K HS,normalized,
+Chomarat: C-TAPE U150P 12K x 43mm,Carbon Fiber,orthotropicMaterials.json,Chomarat:C-TAPE U150P 12K F x 43mm,confirmed,
+Chomarat: C-TAPE U1160P 12K x 30mm,Carbon Fiber,orthotropicMaterials.json,Chomarat:C-TAPE U1160P 12K F x 30mm,confirmed,
+Chomarat: DIAGOTEX D988C,Carbon Fiber,orthotropicMaterials.json,Chomarat:DIAGOTEX D988C,normalized,
+Chomarat: TER2A Tape U90C58L P 12K F,Carbon Fiber,orthotropicMaterials.json,Chomarat:TER2A Tape U90C58L P 12K F,normalized,
+Chomarat: Volumat: 300T/300,Binding Mat,,,none,NEEDS_RESEARCH
+HongTex: E-LT-400,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-400,normalized,
+HongTex: E-LT-540,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-540,normalized,
+HongTex: E-LT-600,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-600,normalized,
+HongTex: E-LT-660,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-660,normalized,
+HongTex: E-LT-750,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-750,normalized,
+HongTex: E-LT-830,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-830,normalized,
+HongTex: E-LT-980,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-980,normalized,
+HongTex: E-LT-660-10C,Fiberglass,orthotropicMaterials.json,HongTex:E-LT-660-10C,normalized,
+HongTex: EC-DBL-635,Fiberglass/Carbon,orthotropicMaterials.json,HongTex:EC-DBL-635,normalized,
+HongTex: EC-DBL-800-30M,Fiberglass/Carbon,orthotropicMaterials.json,HongTex:EC-DBL-800-30M,normalized,
+HongTex: E-DBL-670-30M,Fiberglass,orthotropicMaterials.json,HongTex:E-DBL-670-30M,normalized,
+HongTex: E-DBL-680-30M,Fiberglass,orthotropicMaterials.json,HongTex:E-DBL-680-M30,confirmed,
+HongTex: E-DBL-800-30M,Fiberglass,orthotropicMaterials.json,HongTex:E-DBL-800-30M,normalized,
+HongTex: E-DBL-950-30M,Fiberglass,orthotropicMaterials.json,HongTex:E-DBL-950-30M,normalized,
+HongTex: E-DBL-1150-30M,Fiberglass,orthotropicMaterials.json,HongTex:E-DBL-1150-30M,normalized,
+HongTex: 9 oz. Uni,Fiberglass,,,none,NEEDS_RESEARCH
+HongTex: 13 oz. Uni,Fiberglass,orthotropicMaterials.json,HongTex:13 OZ UNI,confirmed,
+HongTex: 17 oz. Uni,Fiberglass,,,none,NEEDS_RESEARCH
+HongTex: K2-20,Fiberglass,orthotropicMaterials.json,HongTex:K2-20,normalized,
+HongTex: K2-22,Fiberglass,orthotropicMaterials.json,HongTex:K2-22,normalized,
+BComp: AMPLITEX 5057-6,Flax,orthotropicMaterials.json,BComp:AMPLITEX 5057-6,normalized,
+BComp: Amplitex 115gsm-C 125gsm-F - 52mm,Carbon/Flax,,,none,NEEDS_RESEARCH
+A&P Technology: BIMAX 374,Carbon Fiber,orthotropicMaterials.json,A&P Technology:BIMAX 374,normalized,
+A&P Technology: UNI-4.0-SM,Carbon Fiber,orthotropicMaterials.json,A&P Technology:UNI-4.0-SM,normalized,
+HongTex: TWILL-3K,Carbon Fiber,orthotropicMaterials.json,HongTex:TWILL-3K,normalized,
+Hexcel: Polyspeed GC-EV 530B,Precure laminate,orthotropicMaterials.json,Hexcel:Polyspeed GC-EV 530B,normalized,
+Hexcel: Polyspeed GC-EV 750B,Precure laminate,orthotropicMaterials.json,Hexcel:Polyspeed GC-EV 750B,normalized,
+Hexcel: Polyspeed GC-EV BB566,Precure laminate,orthotropicMaterials.json,Hexcel:Polyspeed GC-EV BB566,normalized,
+Hexcel: Polyspeed HMGC-EV 606B,Precure laminate,orthotropicMaterials.json,Hexcel:Polyspeed HMGC-EV 606B,normalized,
+Hexcel: Polyspeed NR-C/Flax EV 405B,Precure laminate,orthotropicMaterials.json,Hexcel:Polyspeed NR-C/Flax EV 405B,normalized,
+Hexcel: G-EV 696R,Precure laminate,,,none,NEEDS_RESEARCH
+Nico Fiber,Fleece,,,none,NEEDS_RESEARCH
+Owens Corning: GLASS MAT M723 450gsm,Binding Mat,orthotropicMaterials.json,Owens Corning:GLASS MAT M723 450gsm,normalized,
+Owens Corning: GLASS MAT M723 600gsm,Binding Mat,orthotropicMaterials.json,Owens Corning:GLASS MAT M723 600gsm,normalized,
+Glass - Braid,Braid,,,none,NEEDS_RESEARCH
+Glass - Rovings in braid,Braid,,,none,NEEDS_RESEARCH
+XuRui: G50 Fleece Veil,Fleece,,,none,NEEDS_RESEARCH
+XuRui:G100 Fleece Veil,Fleece,,,none,NEEDS_RESEARCH
+Ash,Core - Wood,,,none,NEEDS_RESEARCH
+Aspen,Core - Wood,,,none,NEEDS_RESEARCH
+Paulownia,Core - Wood,,,none,NEEDS_RESEARCH
+Hard Maple,Core - Wood,,,none,NEEDS_RESEARCH
+Soft Maple,Core - Wood,,,none,NEEDS_RESEARCH
+European Beech,Core - Wood,,,none,NEEDS_RESEARCH
+Birch,Core - Wood,,,none,NEEDS_RESEARCH
+Bamboo,Core - Wood,,,none,NEEDS_RESEARCH
+Fir,Core - Wood,,,none,NEEDS_RESEARCH
+Poplar - Light,Core - Wood,,,none,NEEDS_RESEARCH
+Poplar,Core - Wood,,,none,NEEDS_RESEARCH
+Poplar - Dense,Core - Wood,,,none,NEEDS_RESEARCH
+WBK # N21 - Offset Stringer (1x): Pal/Map,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N12 - Offset Stringer (2x): Asp/Map,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N3 - Solid: Asp Veneer,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N5 - Alternating: Fir/Asp,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N8 - Double Barrel: Fir/Asp,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N2 - Solid: Asp,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N4 - Solid: Pal,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N13 - Offset Stringers (1x): Asp/Map,Core - Composite,,,none,NEEDS_RESEARCH
+WBK # N14 - Alternating Asp/Pal,Core - Composite,,,none,NEEDS_RESEARCH
+Isosport: IsoCore 150,Core - Foam,,,none,NEEDS_RESEARCH
+Isosport: IsoCore 250,Core - Foam,,,none,NEEDS_RESEARCH
+Armacell: Struct GRX 100,Core - Foam,,,none,NEEDS_RESEARCH
+Armacell: Struct GRX 115,Core - Foam,,,none,NEEDS_RESEARCH
+Armacell: Struct GRX 150,Core - Foam,,,none,NEEDS_RESEARCH
+Armacell: Struct GRX 250,Core - Foam,,,none,NEEDS_RESEARCH
+CDW: Steel Edge,Steel,,,none,NEEDS_RESEARCH
+Freidrich: Steel Edge,Steel,,,none,NEEDS_RESEARCH
+AMAG: Titanal,Titanal,,,none,NEEDS_RESEARCH
+Crown: DS 4001,Sintered base material,,,none,NEEDS_RESEARCH
+Crown: F7501,Extruded base material,,,none,NEEDS_RESEARCH
+CPS: P-Tex 4504,Sintered base material,,,none,NEEDS_RESEARCH
+CPS: P-Tex 3000,Sintered base material,,,none,NEEDS_RESEARCH
+CPS: P-Tex 2100,Sintered base material,,,none,NEEDS_RESEARCH
+CPS: P-Tex 2000,Sintered base material,,,none,NEEDS_RESEARCH
+CPS: P-Tex 1100,Extruded base material,,,none,NEEDS_RESEARCH
+CPS: P-Tex 900,Extruded base material,,,none,NEEDS_RESEARCH
+Watom: Duraclear 117,Top Material,,,none,NEEDS_RESEARCH
+Watom: Duraclear 111,Top Material,,,none,NEEDS_RESEARCH
+Watom: 210,Top Material,,,none,NEEDS_RESEARCH
+Watom: 211,Top Material,,,none,NEEDS_RESEARCH
+Isosport: IS 4800,Sintered base material,,,none,NEEDS_RESEARCH
+Isosport: TPU IE 3200 SM 2EV 031,TPU,,,none,NEEDS_RESEARCH
+Isosport: ICP 5275,Top Material,,,none,NEEDS_RESEARCH
+Isosport: ICP 5278,Top Material,,,none,NEEDS_RESEARCH
+CPS: TP455,Plastic,,,none,NEEDS_RESEARCH
+Semperit: Haberkorn Rubber,Rubber,,,none,NEEDS_RESEARCH
+Argotec: Urethane,Urethane,,,none,NEEDS_RESEARCH
+CPS: ABS/TPU Sidewall,Sidewall,,,none,NEEDS_RESEARCH
+IMS Plast: CPAN 125 GT2 ABS,Sidewall,,,none,NEEDS_RESEARCH
+Crown: DS2000 UHMWPE,Sidewall,,,none,NEEDS_RESEARCH
+BASF: Modipur injection foam,PU Foam,,,none,NEEDS_RESEARCH
+Hexcell: G-R80 Laminate,Precure laminate,,,none,NEEDS_RESEARCH
+Hexcell: G-EV R68,Precure laminate,,,none,NEEDS_RESEARCH
+Hexcell: G-EV 765R,Precure laminate,,,none,NEEDS_RESEARCH
+Hexcell: G-EV R82,Precure laminate,,,none,NEEDS_RESEARCH
+CDW: Kaltbandstahl C75S,Steel,,,none,NEEDS_RESEARCH
+3D Printed ABS,3D Print,,,none,NEEDS_RESEARCH
+3D Printed PP,3D Print,,,none,NEEDS_RESEARCH
+3D Printed TPU,3D Print,,,none,NEEDS_RESEARCH
+Carbon Conversions: re-Evo MCF-SB 200gsm,Carbon Fiber,,,none,NEEDS_RESEARCH
+BComp: BCore 300 XL,Wood,,,none,NEEDS_RESEARCH
+Ecomass: 4703ZC71 - TPU/SS - 3.0g/cc,Plastic - Weighted,,,none,NEEDS_RESEARCH
+Ecomass: 4703ZC76 - TPU/SS - 3.4g/cc,Plastic - Weighted,,,none,NEEDS_RESEARCH
+Ecomass: 4703ZC87 - TPU/SS - 4.5g/cc,Plastic - Weighted,,,none,NEEDS_RESEARCH
+Freudenberg: Enkamat 7210,PU Material,,,none,NEEDS_RESEARCH
+Desmovit: DP R 3918,Plastic,,,none,NEEDS_RESEARCH
+Geba: TPU 3918,Plastic,,,none,NEEDS_RESEARCH
+Geba: TPU 3919,Plastic,,,none,NEEDS_RESEARCH
+Socrep: TPU 511/519,Sidewall,,,none,NEEDS_RESEARCH
+ITOCHU: HS40 F22 12K 800 tex Carbon Roving,Carbon Fiber,,,none,NEEDS_RESEARCH
+ITOCHU: HS40 E13 6K 400 tex Carbon Roving,Carbon Fiber,,,none,NEEDS_RESEARCH
+BASF: E1160D50 TPU,Injection,,,none,NEEDS_RESEARCH
+BASF: 1165D50STR TPU,Injection,,,none,NEEDS_RESEARCH
+BASF: 1154D50 TPU,Injection,,,none,NEEDS_RESEARCH
