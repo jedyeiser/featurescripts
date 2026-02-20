@@ -28,6 +28,8 @@ import(path : "4973f90e73d48ab3578831f0", version : "f211e9dbed8c286bb70f05fb");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "11686088c6c8185a95ce8d18");
 
+// IMPORT: xSectDetailTables.fs
+
 
 // =============================================================================
 // FEATURE DEFINITION
@@ -379,6 +381,18 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
 
         var tableData = buildTableData(crossSectionData.crossSections, beamAnalysisResults, totalWeight, language);
+
+        if (definition.addMaterialTable == true)
+        {
+            var matTableData = buildMaterialTableData(crossSectionData.bodies);
+            tableData["materialTable"] = matTableData;
+        }
+
+        if (definition.addBodyTable == true)
+        {
+            var bodyTableData = buildBodyTableData(crossSectionData.crossSections, crossSectionData.bodies);
+            tableData["bodyTable"] = bodyTableData;
+        }
 
         // -----------------------------------------------------------------
         // Step 8: Store analysis data as attribute on origin

@@ -2,6 +2,8 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/table.fs", version : "2878.0");
 
+// IMPORT: xSectMaterials.fs
+
 /**
  * Cross-Section Analysis Table
  *
@@ -66,6 +68,18 @@ precondition
 
             allTables = append(allTables, summaryTable);
             allTables = append(allTables, detailsTable);
+
+            var matTableData = tryGetKey(tableData, "materialTable");
+            if (matTableData != undefined)
+            {
+                allTables = append(allTables, buildRenderedMaterialTable(matTableData, titlePrefix));
+            }
+
+            var bodyTableData = tryGetKey(tableData, "bodyTable");
+            if (bodyTableData != undefined)
+            {
+                allTables = append(allTables, buildRenderedBodyTable(bodyTableData, titlePrefix));
+            }
         }
 
         // Return all tables
@@ -138,4 +152,130 @@ function buildCrossSectionTable(csData is array, titlePrefix is string) returns 
     }
 
     return table(titlePrefix ~ "Cross-Section Details (" ~ (size(csData) - 1) ~ " sections)", columns, rows);
+}
+
+/**
+ * Build material table — one row per unique material with full Q-matrix.
+ *
+ * Columns: ID | Material | Category | Density (kg/m³) | E (GPa) | ν |
+ *          Q11 | Q22 | Q12 | Q66 | Q16 | Q26  (all Q in GPa)
+ */
+function buildRenderedMaterialTable(matTableData is map, titlePrefix is string) returns Table
+{
+    var columns = [
+        tableColumnDefinition("mat_id",      "ID",              TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_name",    "Material"),
+        tableColumnDefinition("mat_cat",     "Category"),
+        tableColumnDefinition("mat_density", "Density (kg/m³)", TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_E",       "E (GPa)",         TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_nu",      "ν",               TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_Q11",     "Q11 (GPa)",       TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_Q22",     "Q22 (GPa)",       TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_Q12",     "Q12 (GPa)",       TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_Q66",     "Q66 (GPa)",       TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_Q16",     "Q16 (GPa)",       TableTextAlignment.RIGHT),
+        tableColumnDefinition("mat_Q26",     "Q26 (GPa)",       TableTextAlignment.RIGHT)
+    ];
+
+    var rows = [];
+    for (var rowData in matTableData.rows)
+    {
+        var cellData = {
+            "mat_id"      : toString(rowData.id),
+            "mat_name"    : toString(rowData.name),
+            "mat_cat"     : toString(rowData.category),
+            "mat_density" : toString(rowData.density),
+            "mat_E"       : toString(rowData.E),
+            "mat_nu"      : toString(rowData.nu),
+            "mat_Q11"     : toString(rowData.Q11),
+            "mat_Q22"     : toString(rowData.Q22),
+            "mat_Q12"     : toString(rowData.Q12),
+            "mat_Q66"     : toString(rowData.Q66),
+            "mat_Q16"     : toString(rowData.Q16),
+            "mat_Q26"     : toString(rowData.Q26)
+        };
+        rows = append(rows, tableRow(cellData));
+    }
+
+    return table(titlePrefix ~ "Materials (" ~ toString(size(matTableData.rows)) ~ " unique)", columns, rows);
+}
+
+/**
+ * Build body detail table — one row per section, dynamic columns per body.
+ *
+ * Fixed prefix:  Station | X (mm) | EI_calc (N·m²) | NA Height (mm)
+ * Per body k:    {name} Area (mm²) | {name} Centroid (mm) |
+ *                {name} I (mm⁴) | {name} EI (N·m²) | {name} %
+ * Fixed suffix:  EI_sum (N·m²)
+ */
+function buildRenderedBodyTable(bodyTableData is map, titlePrefix is string) returns Table
+{
+    var bodyNames = bodyTableData.bodyNames;
+    var numBodies = size(bodyNames);
+
+    // Build columns
+    var columns = [
+        tableColumnDefinition("bdt_station", "Station",       TableTextAlignment.RIGHT),
+        tableColumnDefinition("bdt_x",       "X (mm)",        TableTextAlignment.RIGHT),
+        tableColumnDefinition("bdt_EI_calc", "EI_calc (N·m²)", TableTextAlignment.RIGHT),
+        tableColumnDefinition("bdt_NA",      "NA Height (mm)", TableTextAlignment.RIGHT)
+    ];
+
+    for (var k = 0; k < numBodies; k += 1)
+    {
+        var bName = bodyNames[k];
+        var kStr = toString(k);
+        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_area", bName ~ " Area (mm²)",    TableTextAlignment.RIGHT));
+        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_ctr",  bName ~ " Centroid (mm)", TableTextAlignment.RIGHT));
+        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_I",    bName ~ " I (mm⁴)",       TableTextAlignment.RIGHT));
+        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_EI",   bName ~ " EI (N·m²)",     TableTextAlignment.RIGHT));
+        columns = append(columns, tableColumnDefinition("b" ~ kStr ~ "_pct",  bName ~ " %",             TableTextAlignment.RIGHT));
+    }
+
+    columns = append(columns, tableColumnDefinition("bdt_EI_sum", "EI_sum (N·m²)", TableTextAlignment.RIGHT));
+
+    // Build rows
+    var rows = [];
+    for (var rowData in bodyTableData.rows)
+    {
+        var cellData = {
+            "bdt_station" : toString(rowData.station),
+            "bdt_x"       : toString(rowData.x_mm),
+            "bdt_EI_calc" : toString(rowData.EI_calc),
+            "bdt_NA"      : toString(rowData.NA_height_mm)
+        };
+
+        var bodyList = rowData.bodies;
+        for (var k = 0; k < numBodies; k += 1)
+        {
+            var kStr = toString(k);
+            var bData = bodyList[k];
+
+            var areaStr    = "";
+            var ctrStr     = "";
+            var iStr       = "";
+            var eiStr      = "";
+            var pctStr     = "";
+
+            if (bData != undefined && bData.noMaterial == false)
+            {
+                areaStr = toString(bData.area_mm2);
+                ctrStr  = toString(bData.centroid_mm);
+                iStr    = toString(bData.I_centroid_mm4);
+                eiStr   = toString(bData.EI_body);
+                pctStr  = toString(bData.pct);
+            }
+
+            cellData["b" ~ kStr ~ "_area"] = areaStr;
+            cellData["b" ~ kStr ~ "_ctr"]  = ctrStr;
+            cellData["b" ~ kStr ~ "_I"]    = iStr;
+            cellData["b" ~ kStr ~ "_EI"]   = eiStr;
+            cellData["b" ~ kStr ~ "_pct"]  = pctStr;
+        }
+
+        cellData["bdt_EI_sum"] = toString(rowData.EI_sum);
+        rows = append(rows, tableRow(cellData));
+    }
+
+    return table(titlePrefix ~ "Body Detail (" ~ toString(size(bodyTableData.rows)) ~ " sections, " ~ toString(numBodies) ~ " bodies)", columns, rows);
 }

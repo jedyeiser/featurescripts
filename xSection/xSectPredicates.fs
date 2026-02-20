@@ -248,7 +248,17 @@ export predicate eiXSectPrecondition(definition is map)
         
         annotation { "Name" : "Language", "Default" : LANGUAGE.ENG, "Description" : "Custom table headers will be in the language selected" }
         definition.tableLanguage is LANGUAGE;
-        
+
+        annotation { "Name" : "Material table",
+                     "Default" : false,
+                     "Description" : "Include a table of all unique materials with full Q-matrix data." }
+        definition.addMaterialTable is boolean;
+
+        annotation { "Name" : "Body detail table",
+                     "Default" : false,
+                     "Description" : "Include a per-section breakdown of each body's area, centroid, I, and EI contribution." }
+        definition.addBodyTable is boolean;
+
     }
 
     // -------------------------------------------------------------------------
