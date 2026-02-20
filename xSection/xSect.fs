@@ -385,10 +385,15 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
             tableData["materialTable"] = matTableData;
         }
 
-        if (definition.bodyTableType != undefined && definition.bodyTableType != BodyTableType.NONE)
+        if (definition.addBodyTable == true)
         {
             var bodyTableData = buildBodyTableData(crossSectionData.crossSections, crossSectionData.bodies);
-            bodyTableData["bodyTableType"] = definition.bodyTableType;
+            var btt = tryGetKey(definition, "bodyTableType");
+            if (btt == undefined)
+            {
+                btt = BodyTableType.FULL;
+            }
+            bodyTableData["bodyTableType"] = btt;
             tableData["bodyTable"] = bodyTableData;
         }
 

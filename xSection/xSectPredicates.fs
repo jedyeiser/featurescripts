@@ -89,8 +89,6 @@ export enum MaterialType
 
 export enum BodyTableType
 {
-    annotation { "Name" : "None" }
-    NONE,
     annotation { "Name" : "Basic (EI, area, centroid above NA)" }
     BASIC,
     annotation { "Name" : "EI only (EI contribution + %)" }
@@ -269,9 +267,17 @@ export predicate eiXSectPrecondition(definition is map)
         definition.addMaterialTable is boolean;
 
         annotation { "Name" : "Body detail table",
-                     "Default" : BodyTableType.NONE,
-                     "Description" : "Include a per-section breakdown of each body's contributions. Choose detail level." }
-        definition.bodyTableType is BodyTableType;
+                     "Default" : false,
+                     "Description" : "Include a per-section breakdown of each body's contributions." }
+        definition.addBodyTable is boolean;
+
+        if (definition.addBodyTable)
+        {
+            annotation { "Name" : "Detail level",
+                         "Default" : BodyTableType.FULL,
+                         "Description" : "Choose which columns to include in the body detail table." }
+            definition.bodyTableType is BodyTableType;
+        }
 
     }
 
