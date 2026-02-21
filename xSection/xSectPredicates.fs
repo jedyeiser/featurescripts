@@ -154,7 +154,7 @@ export predicate eiXSectPrecondition(definition is map)
     definition.selBodies is Query;
     
     annotation { "Name" : "Material library",
-                 "Description" : "CSV with columns: Category, Name, Density, Poisson's Ratio, Young's Modulus, Q11-Q66, Available dimensions" }
+                 "Description" : "CSV with columns: Category, Name, Density, Poisson's Ratio, Young's Modulus, Q11-Q66, CTE_x, CTE_y" }
     definition.materialCSV is TableData;
 
     annotation { "Name" : "Refresh CSV data", "Description" : "Force re-read of the material library after updating the table element." }

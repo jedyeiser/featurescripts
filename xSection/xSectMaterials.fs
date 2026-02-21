@@ -39,7 +39,9 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  *   8: Q66 [GPa]
  *   9: Q16 [GPa]
  *  10: Q26 [GPa]
- *  11: Available dimensions
+ *  11: CTE_x [1/K]
+ *  12: CTE_y [1/K]
+ *  13: Available dimensions (unused)
  *
  * Q matrix is stored as:
  *   [[Q11, Q12, Q16],
@@ -63,7 +65,9 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  *     density: ValueWithUnits (kg/m³),
  *     poissonsRatio: number,
  *     youngsModulus: ValueWithUnits (Pa),
- *     qMatrix: array (3×3, entries in Pa)
+ *     qMatrix: array (3×3, entries in Pa),
+ *     cte_x: ValueWithUnits (1/K),
+ *     cte_y: ValueWithUnits (1/K)
  * }
  */
 export function buildMaterialLookup(csvData) returns map
@@ -81,7 +85,7 @@ export function buildMaterialLookup(csvData) returns map
     for (var row in csvData)
     {
         // Skip rows that don't have enough columns or have empty name
-        if (size(row) < 11)
+        if (size(row) < 13)
         {
             skippedRows += 1;
             continue;
@@ -126,6 +130,9 @@ export function buildMaterialLookup(csvData) returns map
         var Q16 = row[9] * 1e9 * pascal;
         var Q26 = row[10] * 1e9 * pascal;
 
+        var cte_x = row[11] / kelvin;
+        var cte_y = row[12] / kelvin;
+
         var qMatrix = [
             [Q11, Q12, Q16],
             [Q12, Q22, Q26],
@@ -139,7 +146,8 @@ export function buildMaterialLookup(csvData) returns map
             "poissonsRatio" : poissonsRatio,
             "youngsModulus" : youngsModulus,
             "qMatrix" : qMatrix,
-            "rawRow" : row
+            "cte_x" : cte_x,
+            "cte_y" : cte_y
         };
         validRows += 1;
     }
