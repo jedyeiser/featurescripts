@@ -157,6 +157,12 @@ export predicate eiXSectPrecondition(definition is map)
                  "Description" : "CSV with columns: Category, Name, Density, Poisson's Ratio, Young's Modulus, Q11-Q66, Available dimensions" }
     definition.materialCSV is TableData;
 
+    annotation { "Name" : "Refresh CSV data", "Description" : "Force re-read of the material library after updating the table element." }
+    isButton(definition.refreshCSV);
+
+    annotation { "Name" : "CSV refresh token", "UIHint" : UIHint.ALWAYS_HIDDEN }
+    isInteger(definition.csvRefreshToken, { (unitless) : [0, 0, 1000] } as IntegerBoundSpec);
+
     annotation { "Name" : "Number of cross sections", 
                  "Description" : "Number of evenly spaced locations along selected edge. Includes endpoints." }
     isInteger(definition.numSections, numXsectionBounds);

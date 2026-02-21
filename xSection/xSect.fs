@@ -107,9 +107,20 @@ import(path : "08fddb59786b6bfee020ee05", version : "11686088c6c8185a95ce8d18");
  * maps don't survive definition serialization.
  */
 export function elFunc(context is Context, id is Id, oldDefinition is map, definition is map,
-                       isCreating is boolean) returns map
+                       isCreating is boolean, specifiedParameters is map, hiddenBodies is Query,
+                       clickedButton is string) returns map
 {
     var updatedDef = definition;
+
+    // Handle CSV refresh button
+    if (clickedButton == "refreshCSV")
+    {
+        var currentToken = tryGetKey(definition, "csvRefreshToken");
+        if (currentToken == undefined || !(currentToken is number))
+            currentToken = 0;
+        updatedDef.csvRefreshToken = currentToken + 1;
+        println("CSV refresh requested — re-reading material library (token=" ~ toString(updatedDef.csvRefreshToken) ~ ")");
+    }
 
     // -----------------------------------------------------------------
     // Step 1: Parse CSV into lookup map (for name matching)

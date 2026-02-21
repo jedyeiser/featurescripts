@@ -46,10 +46,9 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  *    [Q12, Q22, Q26],
  *    [Q16, Q26, Q66]]
  *
- * The lookup map is keyed by normalized names (trimmed + lowercased) to
- * handle minor discrepancies between Onshape material library names and
- * CSV names (extra spaces, casing differences, etc.). Use the companion
- * function normalizeMaterialName() when looking up values.
+ * The lookup map is keyed by normalized names (exact match) via the companion
+ * function normalizeMaterialName(). Names must match exactly as they appear
+ * in the CSV and in Onshape's material library.
  *
  * Usage in editing logic:
  *   var lookup = buildMaterialLookup(definition.materialCSV.csvData);
@@ -112,6 +111,14 @@ export function buildMaterialLookup(csvData) returns map
 
         var key = normalizeMaterialName(name);
 
+        // DIAGNOSTIC: Print raw CSV values for known-failing materials to confirm what Onshape table supplies
+        if (name == "CPS: P-Tex 3000" || name == "Isosport: ICP 5275" || name == "HongTex: 13 oz. Uni")
+        {
+            println("CSV_RAW [" ~ name ~ "]: row[4]=" ~ toString(row[4]) ~
+                    " row[5]=" ~ toString(row[5]) ~ " row[6]=" ~ toString(row[6]) ~
+                    " row[7]=" ~ toString(row[7]));
+        }
+
         // Parse numeric values with units
         // csvData from TableData provides numbers directly; we attach units
         var density = row[2] * kilogram / meter^3;
@@ -150,11 +157,10 @@ export function buildMaterialLookup(csvData) returns map
 
 /**
  * Normalize a material name for lookup matching.
- * Currently uses exact match (identity function).
- * TODO: Add trim/lowercase when FeatureScript string indexing is resolved.
+ * Returns the name unchanged (identity function). Names must match exactly.
  *
  * @param name {string} : Raw material name
- * @returns {string} : Key for lookup
+ * @returns {string} : Key for lookup (same as input)
  */
 export function normalizeMaterialName(name is string) returns string
 {

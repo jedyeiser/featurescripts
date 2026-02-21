@@ -1,73 +1,73 @@
-﻿Category,Name,Density [kg/m^3],Poisson's Ratio,Young's Modulus [Pa]
-Fiberglass,Chomarat: DIAGONAP DTF 20.72.3.06,2094.23494,0.31,33327371.12
-Fiberglass,Chomarat: DIAGONAP DT 17.60.3.06,1962.899582,0.32,29277944.86
-Fiberglass,Chomarat: DIAGONAP DTF 17.38.3.06,1820.657297,0.33,21324060.85
-Fiberglass,Chomarat: DIAGONAP DTF 14VC.38.3.06,1848.575244,0.53,26417449.63
-Fiberglass,Chomarat: DIAGONAP DX FT 13.04,1647.52948,0.33,7114455.462
-Carbon Fiber,Chomarat: RUBAN CARBONE 9284,1501.578119,0.27,117402989.4
-Fiberglass,Chomarat: RUBAN 7018 F,1789.131223,0.29,31781282.26
-Fiberglass,Chomarat: RUBAN 2016,1926.32955,0.28,37883391.34
-Fiberglass,Chomarat: ROVINAP 42 F2.08,1907.278862,0.17,31096423.17
-Fiberglass,Chomarat: ROVINAP 24 F.08,1845.389493,0.14,25621733.4
-Fiberglass,Chomarat: ROVINAP 60.08,1820.426419,0.19,29654046.14
-Fiberglass,Chomarat: G-TAPE 6073FT,1994,0.15,35777981.33
-Fiberglass,Chomarat: G-PLY TL360/330 T3/V30,1958.696887,0.33,24469373.16
-Carbon Fiber,Chomarat: C-PLY SP TBX270 C3.4 12K HS,1388.593434,0.68,6684870.625
-Carbon Fiber,Chomarat: C-TAPE U150P 12K x 43mm,1502.117209,0.26,117846269
-Carbon Fiber,Chomarat: C-TAPE U1160P 12K x 30mm,1549.11517,0.19,121992842.8
-Carbon Fiber,Chomarat: DIAGOTEX D988C,1535.439013,0.7,10826701.88
-Carbon Fiber,Chomarat: TER2A Tape U90C58L P 12K F,1478.89424,0.2,84527049.35
+Category,Name,Density [kg/m^3],Poisson's Ratio,Young's Modulus [Pa]
+Fiberglass,Chomarat: DIAGONAP DTF 20.72.3.06,2080.26,0.474953,3.32961e+10
+Fiberglass,Chomarat: DIAGONAP DT 17.60.3.06,1962.9,0.48339,2.97517e+10
+Fiberglass,Chomarat: DIAGONAP DTF 17.38.3.06,1820.66,0.537813,2.16456e+10
+Fiberglass,Chomarat: DIAGONAP DTF 14VC.38.3.06,1848.58,0.640854,2.81122e+10
+Fiberglass,Chomarat: DIAGONAP DX FT 13.04,1647.53,0.657747,7.2631e+09
+Carbon Fiber,Chomarat: RUBAN CARBONE 9284,1501.58,0.264369,1.19286e+11
+Fiberglass,Chomarat: RUBAN 7018 F,1789.13,0.290177,3.31231e+10
+Fiberglass,Chomarat: RUBAN 2016,1926.33,0.282144,3.944e+10
+Fiberglass,Chomarat: ROVINAP 42 F2.08,1907.28,0.162634,3.21297e+10
+Fiberglass,Chomarat: ROVINAP 24 F.08,1845.39,0.13434,2.6774e+10
+Fiberglass,Chomarat: ROVINAP 60.08,1820.43,0.18437,3.01574e+10
+Fiberglass,Chomarat: G-TAPE 6073FT,1994,0.145342,3.57291e+10
+Fiberglass,Chomarat: G-PLY TL360/330 T3/V30,1958.7,0.536794,2.49016e+10
+Carbon Fiber,Chomarat: C-PLY SP TBX270 C3.4 12K HS,1517.89,0.863233,9.58452e+09
+Carbon Fiber,Chomarat: C-TAPE U150P 12K x 43mm,1502.12,0.263973,1.19776e+11
+Carbon Fiber,Chomarat: C-TAPE U1160P 12K x 30mm,1549.12,0.170829,1.18911e+11
+Carbon Fiber,Chomarat: DIAGOTEX D988C,1535.44,0.858038,1.13052e+10
+Carbon Fiber,Chomarat: TER2A Tape U90C58L P 12K F,1478.89,0.175652,8.55727e+10
 Binding Mat,Chomarat: Volumat: 300T/300,1994,0.08,7591294.766
-Fiberglass,HongTex: E-LT-400,1962.312253,0.15,30060373.86
-Fiberglass,HongTex: E-LT-540,1963.434441,0.13,28830087.67
-Fiberglass,HongTex: E-LT-600,1963.025061,0.14,29547842.16
-Fiberglass,HongTex: E-LT-660,1965.719758,0.15,30295292.77
-Fiberglass,HongTex: E-LT-750,1971.577816,0.16,31392083.27
-Fiberglass,HongTex: E-LT-830,1971.402533,0.17,31953793.14
-Fiberglass,HongTex: E-LT-980,1974.745473,0.15,30827005.41
-Fiberglass,HongTex: E-LT-660-10C,1961.209514,0.15,31865974.74
-Fiberglass/Carbon,HongTex: EC-DBL-635,1879.692201,0.3,42352811.78
-Fiberglass/Carbon,HongTex: EC-DBL-800-30M,1917.752621,0.3,35831223.11
-Fiberglass,HongTex: E-DBL-670-30M,1947.333512,0.28,31938121.71
-Fiberglass,HongTex: E-DBL-680-30M,1979.123636,0.3,24087271.64
-Fiberglass,HongTex: E-DBL-800-30M,1973.460669,0.3,23876342.43
-Fiberglass,HongTex: E-DBL-950-30M,1976.88987,0.3,21079034.75
-Fiberglass,HongTex: E-DBL-1150-30M,1979.852828,0.3,26586196.44
+Fiberglass,HongTex: E-LT-400,1962.31,0.137512,3.39057e+10
+Fiberglass,HongTex: E-LT-540,1963.43,0.124285,3.24509e+10
+Fiberglass,HongTex: E-LT-600,1963.03,0.131541,3.32941e+10
+Fiberglass,HongTex: E-LT-660,1965.72,0.138333,3.41038e+10
+Fiberglass,HongTex: E-LT-750,1971.58,0.148325,3.52437e+10
+Fiberglass,HongTex: E-LT-830,1971.4,0.156243,3.58975e+10
+Fiberglass,HongTex: E-LT-980,1974.75,0.139458,3.45198e+10
+Fiberglass,HongTex: E-LT-660-10C,1961.21,0.138543,3.53157e+10
+Fiberglass/Carbon,HongTex: EC-DBL-635,1879.69,0.50147,4.23788e+10
+Fiberglass/Carbon,HongTex: EC-DBL-800-30M,1917.75,0.501137,3.64845e+10
+Fiberglass,HongTex: E-DBL-670-30M,1947.33,0.308631,3.64247e+10
+Fiberglass,HongTex: E-DBL-680-30M,1979.12,0.523094,2.66313e+10
+Fiberglass,HongTex: E-DBL-800-30M,1973.46,0.525263,2.64853e+10
+Fiberglass,HongTex: E-DBL-950-30M,1976.89,0.562239,2.31944e+10
+Fiberglass,HongTex: E-DBL-1150-30M,1979.85,0.496023,2.9505e+10
 Fiberglass,HongTex: 9 oz. Uni,2290.53,0.28,42240000000
-Fiberglass,HongTex: 13 oz. Uni,1974.610389,0.28,36803112.44
+Fiberglass,HongTex: 13 oz. Uni,1974.61,0.282038,4.14198e+10
 Fiberglass,HongTex: 17 oz. Uni,2955.9,0.28,42240000000
-Fiberglass,HongTex: K2-20,1965.741579,0.15,30285012.03
-Fiberglass,HongTex: K2-22,1968.749298,0.16,31241154.34
-Flax,BComp: AMPLITEX 5057-6,1340,0.34,31800000
+Fiberglass,HongTex: K2-20,1965.74,0.138202,3.40914e+10
+Fiberglass,HongTex: K2-22,1968.75,0.148174,3.51332e+10
+Flax,BComp: AMPLITEX 5057-6,1340,0.342,3.534e+10
 Carbon/Flax,BComp: Amplitex 115gsm-C 125gsm-F - 52mm,1450,0.33,48263300000
-Carbon Fiber,A&P Technology: BIMAX 374,1520,0.68,9617355.592
-Carbon Fiber,A&P Technology: UNI-4.0-SM,1520,0.26,118500000
-Carbon Fiber,HongTex: TWILL-3K,1520,0.33,62393340.31
-Precure laminate,Hexcel: Polyspeed GC-EV 530B,1770.44487,0.23,74878543.48
-Precure laminate,Hexcel: Polyspeed GC-EV 750B,1790.189789,0.25,67706488.45
-Precure laminate,Hexcel: Polyspeed GC-EV BB566,1905.123337,0.4,13497414.87
-Precure laminate,Hexcel: Polyspeed HMGC-EV 606B,1892.86251,0.24,54169654.01
-Precure laminate,Hexcel: Polyspeed NR-C/Flax EV 405B,1515.157859,0.25,70488078.87
+Carbon Fiber,A&P Technology: BIMAX 374,1520,0.863305,9.68789e+09
+Carbon Fiber,A&P Technology: UNI-4.0-SM,1520,0.264,1.3224e+11
+Carbon Fiber,HongTex: TWILL-3K,1520,0.0226616,6.92661e+10
+Precure laminate,Hexcel: Polyspeed GC-EV 530B,1642.36,0.233663,6.07039e+10
+Precure laminate,Hexcel: Polyspeed GC-EV 750B,1790.19,0.240759,7.21505e+10
+Precure laminate,Hexcel: Polyspeed GC-EV BB566,1750.1,0.601446,1.15511e+10
+Precure laminate,Hexcel: Polyspeed HMGC-EV 606B,1740.29,0.244875,4.47716e+10
+Precure laminate,Hexcel: Polyspeed NR-C/Flax EV 405B,1438.13,0.230669,6.34894e+10
 Precure laminate,Hexcel: G-EV 696R,1994,0.15,31598370.79
 Fleece,Nico Fiber,1980,0.33,3447380000
-Binding Mat,Owens Corning: GLASS MAT M723 450gsm,1994,0.33,7075200
-Binding Mat,Owens Corning: GLASS MAT M723 600gsm,1994,0.33,7075200
+Binding Mat,Owens Corning: GLASS MAT M723 450gsm,1994,0.282,6.7488e+09
+Binding Mat,Owens Corning: GLASS MAT M723 600gsm,1994,0.282,6.7488e+09
 Braid,Glass - Braid,1980,0.33,9652660.206
 Braid,Glass - Rovings in braid,1980,0.33,40679068.01
 Fleece,XuRui: G50 Fleece Veil,1577,0.33,3447380000
 Fleece,XuRui:G100 Fleece Veil,1577,0.33,3447380000
-Core - Wood,Ash,680,0.33,12310000
-Core - Wood,Aspen,450,0.33,9750000
-Core - Wood,Paulownia,280,0.33,5600000
-Core - Wood,Hard Maple,705,0.33,12620000
-Core - Wood,Soft Maple,550,0.33,11300000
-Core - Wood,European Beech,710,0.33,14310000
-Core - Wood,Birch,740,0.33,13860000
-Core - Wood,Bamboo,1150,0.33,12600000
-Core - Wood,Fir,415,0.33,10240000
-Core - Wood,Poplar - Light,370,0.33,7590000
-Core - Wood,Poplar,412.5,0.33,9245000
-Core - Wood,Poplar - Dense,455,0.33,10900000
+Core - Wood,Ash,680,0.33,1.231e+10
+Core - Wood,Aspen,450,0.33,9.75e+09
+Core - Wood,Paulownia,280,0.33,5.6e+09
+Core - Wood,Hard Maple,705,0.33,1.262e+10
+Core - Wood,Soft Maple,550,0.33,1.13e+10
+Core - Wood,European Beech,710,0.33,1.431e+10
+Core - Wood,Birch,740,0.33,1.386e+10
+Core - Wood,Bamboo,1150,0.33,1.26e+10
+Core - Wood,Fir,415,0.33,1.024e+10
+Core - Wood,Poplar - Light,370,0.33,7.59e+09
+Core - Wood,Poplar,412.5,0.33,9.245e+09
+Core - Wood,Poplar - Dense,455,0.33,1.09e+10
 Core - Composite,WBK # N21 - Offset Stringer (1x): Pal/Map,421.88,0.33,6894760000
 Core - Composite,WBK # N12 - Offset Stringer (2x): Asp/Map,604.4,0.33,13444780000
 Core - Composite,WBK # N3 - Solid: Asp Veneer,570.3,0.33,9307920000
@@ -83,52 +83,52 @@ Core - Foam,Armacell: Struct GRX 100,100,0.33,120000000
 Core - Foam,Armacell: Struct GRX 115,115,0.33,140000000
 Core - Foam,Armacell: Struct GRX 150,150,0.33,185000000
 Core - Foam,Armacell: Struct GRX 250,250,0.33,300000000
-Steel,CDW: Steel Edge,8050,0.33,2.07E+11
-Steel,Freidrich: Steel Edge,8050,0.33,2.07E+11
-Titanal,AMAG: Titanal,2700,0.33,68947570000
-Sintered base material,Crown: DS 4001,970,0.33,1516850000
-Extruded base material,Crown: F7501,970,0.33,1516850000
-Sintered base material,CPS: P-Tex 4504,970,0.33,1516850000
-Sintered base material,CPS: P-Tex 3000,970,0.33,1516850000
-Sintered base material,CPS: P-Tex 2100,970,0.33,1516850000
-Sintered base material,CPS: P-Tex 2000,970,0.33,1516850000
-Extruded base material,CPS: P-Tex 1100,970,0.33,1516850000
-Extruded base material,CPS: P-Tex 900,970,0.33,1516850000
-Top Material,Watom: Duraclear 117,1070,0.33,1723690000
-Top Material,Watom: Duraclear 111,1070,0.33,1723690000
-Top Material,Watom: 210,1070,0.33,1723690000
-Top Material,Watom: 211,1070,0.33,1723690000
-Sintered base material,Isosport: IS 4800,970,0.33,1516850000
-TPU,Isosport: TPU IE 3200 SM 2EV 031,1370,0.33,2068430000
-Top Material,Isosport: ICP 5275,1070,0.33,1723690000
-Top Material,Isosport: ICP 5278,1070,0.33,1723690000
-Plastic,CPS: TP455,750,0.33,750000000
-Rubber,Semperit: Haberkorn Rubber,1070,0.33,344740000
-Urethane,Argotec: Urethane,1070,0.33,344740000
-Sidewall,CPS: ABS/TPU Sidewall,1070,0.33,2068430000
-Sidewall,IMS Plast: CPAN 125 GT2 ABS,1070,0.33,2068430000
-Sidewall,Crown: DS2000 UHMWPE,970,0.33,2068430000
+Steel,CDW: Steel Edge,8050,0.29,2.07E+11
+Steel,Freidrich: Steel Edge,8050,0.29,2.07E+11
+Titanal,AMAG: Titanal,2810,0.33,7.17e+10
+Sintered base material,Crown: DS 4001,935,0.46,9e+08
+Extruded base material,Crown: F7501,935,0.46,7e+08
+Sintered base material,CPS: P-Tex 4504,935,0.46,9e+08
+Sintered base material,CPS: P-Tex 3000,935,0.46,9e+08
+Sintered base material,CPS: P-Tex 2100,935,0.46,9e+08
+Sintered base material,CPS: P-Tex 2000,935,0.46,9e+08
+Extruded base material,CPS: P-Tex 1100,935,0.46,7e+08
+Extruded base material,CPS: P-Tex 900,935,0.46,7e+08
+Top Material,Watom: Duraclear 117,1070,0.48,1e+08
+Top Material,Watom: Duraclear 111,1070,0.48,1e+08
+Top Material,Watom: 210,1070,0.48,1e+08
+Top Material,Watom: 211,1070,0.48,1e+08
+Sintered base material,Isosport: IS 4800,935,0.46,9e+08
+TPU,Isosport: TPU IE 3200 SM 2EV 031,1370,0.47,3e+08
+Top Material,Isosport: ICP 5275,1070,0.38,1.2e+09
+Top Material,Isosport: ICP 5278,1070,0.38,1.2e+09
+Plastic,CPS: TP455,750,0.4,750000000
+Rubber,Semperit: Haberkorn Rubber,1070,0.499,3e+06
+Urethane,Argotec: Urethane,1070,0.45,3e+07
+Sidewall,CPS: ABS/TPU Sidewall,1070,0.38,2.3e+09
+Sidewall,IMS Plast: CPAN 125 GT2 ABS,1070,0.38,2.3e+09
+Sidewall,Crown: DS2000 UHMWPE,935,0.46,9e+08
 PU Foam,BASF: Modipur injection foam,600,0.33,20340000
 Precure laminate,Hexcell: G-R80 Laminate,1980,0.33,40679070000
 Precure laminate,Hexcell: G-EV R68,1980,0.33,40679070000
 Precure laminate,Hexcell: G-EV 765R,1980,0.33,40679070000
 Precure laminate,Hexcell: G-EV R82,1980,0.33,40679070000
-Steel,CDW: Kaltbandstahl C75S,8050,0.33,2.07E+11
-3D Print,3D Printed ABS,970,0.33,2068430000
-3D Print,3D Printed PP,970,0.33,2068430000
-3D Print,3D Printed TPU,970,0.33,2068430000
+Steel,CDW: Kaltbandstahl C75S,8050,0.29,2.07E+11
+3D Print,3D Printed ABS,970,0.38,2.3e+09
+3D Print,3D Printed PP,900,0.44,1.6e+09
+3D Print,3D Printed TPU,970,0.47,1.5e+08
 Carbon Fiber,Carbon Conversions: re-Evo MCF-SB 200gsm,1368.4,0.33,21218410000
 Wood,BComp: BCore 300 XL,300,0.33,6200000000
-Plastic - Weighted,Ecomass: 4703ZC71 - TPU/SS - 3.0g/cc,3000,0.33,51700000000
-Plastic - Weighted,Ecomass: 4703ZC76 - TPU/SS - 3.4g/cc,3400,0.33,51700000000
-Plastic - Weighted,Ecomass: 4703ZC87 - TPU/SS - 4.5g/cc,4500,0.33,72400000000
+Plastic - Weighted,Ecomass: 4703ZC71 - TPU/SS - 3.0g/cc,3000,0.44,1.07e+08
+Plastic - Weighted,Ecomass: 4703ZC76 - TPU/SS - 3.4g/cc,3400,0.43,1.25e+08
+Plastic - Weighted,Ecomass: 4703ZC87 - TPU/SS - 4.5g/cc,4500,0.4,1.97e+08
 PU Material,Freudenberg: Enkamat 7210,10,0.33,1000
-Plastic,Desmovit: DP R 3918,970,0.33,2068430000
-Plastic,Geba: TPU 3918,1370,0.33,2068430000
-Plastic,Geba: TPU 3919,1370,0.33,2068430000
-Sidewall,Socrep: TPU 511/519,1200,0.33,20000000
-Carbon Fiber,ITOCHU: HS40 F22 12K 800 tex Carbon Roving,1577,0.33,68947570000
-Carbon Fiber,ITOCHU: HS40 E13 6K 400 tex Carbon Roving,1577,0.33,68947570000
-Injection,BASF: E1160D50 TPU,1370,0.33,2068430000
-Injection,BASF: 1165D50STR TPU,1370,0.33,2068430000
-Injection,BASF: 1154D50 TPU,1370,0.33,2068430000
+Plastic,Desmovit: DP R 3918,1290,0.37,1.25e+09
+Plastic,Geba: TPU 3918,1290,0.37,1.25e+09
+Plastic,Geba: TPU 3919,1300,0.37,1.15e+09
+Sidewall,Socrep: TPU 511/519,1200,0.499,5e+06
+Carbon Fiber,ITOCHU: HS40 F22 12K 800 tex Carbon Roving,1577,0.3,1.4e+11
+Carbon Fiber,ITOCHU: HS40 E13 6K 400 tex Carbon Roving,1577,0.3,1.4e+11
+Injection,BASF: E1160D50 TPU,1120,0.48,1.2e+08
+Injection,BASF: 1165D50STR TPU,1200,0.48,2e+08
+Injection,BASF: 1154D50 TPU,1170,0.48,9e+07
