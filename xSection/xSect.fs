@@ -27,7 +27,8 @@ import(path : "8c01f1526e7b93cc89fe9811", version : "63bec95540302c55419de58a");
 import(path : "4973f90e73d48ab3578831f0", version : "f211e9dbed8c286bb70f05fb");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "11686088c6c8185a95ce8d18");
-// IMPORT: xSect_GJ.fs
+// xSect_GJ (torsional stiffness)
+import(path : "9df6ba3db06d479fabe63c1d", version : "6f697a0bc681a79b387e3d9b");
 
 // =============================================================================
 // FEATURE DEFINITION
@@ -295,11 +296,18 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // -----------------------------------------------------------------
         // Step 3b: Compute torsional stiffness (GJ) inline
         // -----------------------------------------------------------------
-        for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
+        try
         {
-            var section = crossSectionData.crossSections[i];
-            var gjValue = computeTorsionalStiffness(section, crossSectionData.bodies);
-            crossSectionData.crossSections[i].mechanicalProperties.GJ_eff = gjValue;
+            for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
+            {
+                var section = crossSectionData.crossSections[i];
+                var gjValue = computeTorsionalStiffness(section, crossSectionData.bodies);
+                crossSectionData.crossSections[i].mechanicalProperties.GJ_eff = gjValue;
+            }
+        }
+        catch (e)
+        {
+            println("WARNING: GJ inline computation failed - " ~ e);
         }
 
         // -----------------------------------------------------------------
