@@ -206,6 +206,19 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
             if (csvMatch != undefined)
             {
                 hasMaterialData = true;
+                var r = csvMatch.rawRow;
+                println("  CSV match [" ~ materialName ~ "]:");
+                println("    [0]Cat="     ~ toString(r[0])  ~
+                        " [1]Name="      ~ toString(r[1])  ~
+                        " [2]Density="   ~ toString(r[2])  ~
+                        " [3]nu="        ~ toString(r[3])  ~
+                        " [4]E="         ~ toString(r[4])  ~
+                        " [5]Q11="       ~ toString(r[5])  ~
+                        " [6]Q22="       ~ toString(r[6])  ~
+                        " [7]Q12="       ~ toString(r[7])  ~
+                        " [8]Q66="       ~ toString(r[8])  ~
+                        " [9]Q16="       ~ toString(r[9])  ~
+                        " [10]Q26="      ~ toString(r[10]));
             }
         }
 

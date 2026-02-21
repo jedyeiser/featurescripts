@@ -111,14 +111,6 @@ export function buildMaterialLookup(csvData) returns map
 
         var key = normalizeMaterialName(name);
 
-        // DIAGNOSTIC: Print raw CSV values for known-failing materials to confirm what Onshape table supplies
-        if (name == "CPS: P-Tex 3000" || name == "Isosport: ICP 5275" || name == "HongTex: 13 oz. Uni")
-        {
-            println("CSV_RAW [" ~ name ~ "]: row[4]=" ~ toString(row[4]) ~
-                    " row[5]=" ~ toString(row[5]) ~ " row[6]=" ~ toString(row[6]) ~
-                    " row[7]=" ~ toString(row[7]));
-        }
-
         // Parse numeric values with units
         // csvData from TableData provides numbers directly; we attach units
         var density = row[2] * kilogram / meter^3;
@@ -144,7 +136,8 @@ export function buildMaterialLookup(csvData) returns map
             "density" : density,
             "poissonsRatio" : poissonsRatio,
             "youngsModulus" : youngsModulus,
-            "qMatrix" : qMatrix
+            "qMatrix" : qMatrix,
+            "rawRow" : row
         };
         validRows += 1;
     }
