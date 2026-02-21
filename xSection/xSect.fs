@@ -221,7 +221,7 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
                         " [10]Q26="      ~ toString(r[10]) ~
                         " [11]CTE_x="    ~ (size(r) > 11 ? toString(r[11]) : "n/a") ~
                         " [12]CTE_y="    ~ (size(r) > 12 ? toString(r[12]) : "n/a") ~
-                        " [13]dims(len)=" ~ (size(r) > 13 ? toString(size(r[13])) : "n/a"));
+                        " [13]dims="     ~ (size(r) > 13 ? toString(r[13]) : "n/a"));
             }
         }
 
