@@ -136,12 +136,10 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         }
         else
         {
-            println("WARNING: Material CSV not loaded or invalid format");
         }
     }
     catch (e)
     {
-        println("ERROR parsing material CSV: " ~ e);
         // Proceed with empty lookup
     }
 
@@ -174,7 +172,6 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         }
         catch (e)
         {
-            println("WARNING: Could not read body name - " ~ e);
         }
 
         // --- Read Onshape material name ---
@@ -192,7 +189,6 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         }
         catch (e)
         {
-            println("WARNING: Could not read material property - " ~ e);
         }
 
         // --- Match against CSV ---
