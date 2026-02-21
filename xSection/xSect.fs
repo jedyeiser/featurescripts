@@ -27,6 +27,7 @@ import(path : "8c01f1526e7b93cc89fe9811", version : "63bec95540302c55419de58a");
 import(path : "4973f90e73d48ab3578831f0", version : "f211e9dbed8c286bb70f05fb");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "11686088c6c8185a95ce8d18");
+// IMPORT: xSect_GJ.fs
 
 // =============================================================================
 // FEATURE DEFINITION
@@ -119,7 +120,6 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         if (currentToken == undefined || !(currentToken is number))
             currentToken = 0;
         updatedDef.csvRefreshToken = currentToken + 1;
-        println("CSV refresh requested — re-reading material library (token=" ~ toString(updatedDef.csvRefreshToken) ~ ")");
     }
 
     // -----------------------------------------------------------------
@@ -157,8 +157,6 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
     // values by matching against the old definition's bodyArray.
     // -----------------------------------------------------------------
     var newBodyArray = [];
-
-    println("Material lookup: " ~ size(materialLookup) ~ " entries");
 
     for (var i = 0; i < size(selectedBodies); i += 1)
     {
@@ -206,21 +204,6 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
             if (csvMatch != undefined)
             {
                 hasMaterialData = true;
-                var r = csvMatch.rawRow;
-                println("  CSV match [" ~ materialName ~ "]:");
-                println("    [0]Cat="     ~ toString(r[0])  ~
-                        " [1]Name="      ~ toString(r[1])  ~
-                        " [2]Density="   ~ toString(r[2])  ~
-                        " [3]nu="        ~ toString(r[3])  ~
-                        " [4]E="         ~ toString(r[4])  ~
-                        " [5]Q11="       ~ toString(r[5])  ~
-                        " [6]Q22="       ~ toString(r[6])  ~
-                        " [7]Q12="       ~ toString(r[7])  ~
-                        " [8]Q66="       ~ toString(r[8])  ~
-                        " [9]Q16="       ~ toString(r[9])  ~
-                        " [10]Q26="      ~ toString(r[10]) ~
-                        " [11]CTE_x="    ~ (size(r) > 11 ? toString(r[11]) : "n/a") ~
-                        " [12]CTE_y="    ~ (size(r) > 12 ? toString(r[12]) : "n/a"));
             }
         }
 
@@ -259,12 +242,6 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
     }
 
     updatedDef.bodyArray = newBodyArray;
-
-    println("Bodies found: " ~ size(newBodyArray));
-    for (var b in newBodyArray)
-    {
-        println("  " ~ b.bodyName ~ " | " ~ b.materialName ~ " | matched=" ~ b.hasMaterialData);
-    }
 
     // -----------------------------------------------------------------
     // Step 4: Clean up debug filters
@@ -305,14 +282,6 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         var fcpX = resolveReferencePointX(context, definition.fcpQuery, definition.xSectAlong);
         var acpX = resolveReferencePointX(context, definition.acpQuery, definition.xSectAlong);
 
-        if (fcpX != undefined && acpX != undefined)
-        {
-            println("FCP/ACP detected - using adaptive spacing:");
-            println("  FCP X: " ~ (fcpX / millimeter) ~ " mm");
-            println("  ACP X: " ~ (acpX / millimeter) ~ " mm");
-            println("  Span: " ~ (abs(acpX - fcpX) / millimeter) ~ " mm");
-        }
-
         // -----------------------------------------------------------------
         // Step 2: Process all cross-sections (intersect, triangulate)
         // -----------------------------------------------------------------
@@ -324,17 +293,19 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         crossSectionData = computeCLTProperties(crossSectionData);
 
         // -----------------------------------------------------------------
-        // Step 4: Compute actual body masses (volume-based)
+        // Step 3b: Compute torsional stiffness (GJ) inline
         // -----------------------------------------------------------------
-        var massData = computeActualBodyMasses(crossSectionData.bodies);
-
-        // Debug: print EI at each section
         for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
         {
             var section = crossSectionData.crossSections[i];
-            var mp = section.mechanicalProperties;
-            println("Station " ~ section.stationNumber ~ " | EI=" ~ mp.EI_eff ~ " | NA=" ~ mp.neutralAxisY);
+            var gjValue = computeTorsionalStiffness(section, crossSectionData.bodies);
+            crossSectionData.crossSections[i].mechanicalProperties.GJ_eff = gjValue;
         }
+
+        // -----------------------------------------------------------------
+        // Step 4: Compute actual body masses (volume-based)
+        // -----------------------------------------------------------------
+        var massData = computeActualBodyMasses(crossSectionData.bodies);
 
         // -----------------------------------------------------------------
         // Step 5: Compute beam stiffness (if FCP/ACP defined)
@@ -348,11 +319,6 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
             var eiData = extractEIData(crossSectionData);
             var stiffness = computeBeamStiffness(eiData, xFCP, xACP);
             beamAnalysisResults = stiffness;
-
-            println("EI_bar = " ~ stiffness.EI_bar);
-            println("Span L = " ~ stiffness.L);
-            println("Prismatic: " ~ stiffness.prismaticStiffness_lbin ~ " lb/in, " ~ stiffness.prismaticStiffness_mm ~ " mm");
-            println("Estimated: " ~ stiffness.estimatedStiffness_lbin ~ " lb/in, " ~ stiffness.estimatedStiffness_mm ~ " mm");
         }
 
         // -----------------------------------------------------------------
@@ -377,24 +343,6 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // Step 7: Compute total weight and build table data
         // -----------------------------------------------------------------
         var totalWeight = massData.totalMass;
-
-        // Debug: Print mass analysis
-        println("═══════════════════════════════════════");
-        println("  MASS ANALYSIS");
-        println("═══════════════════════════════════════");
-        println("Total mass (volume-based): " ~ (totalWeight / kilogram) ~ " kg");
-        println("");
-        for (var bodyMass in massData.bodyMasses)
-        {
-            if (bodyMass.hasMaterial)
-            {
-                println("  " ~ bodyMass.bodyName ~ ":");
-                println("    Volume:  " ~ (bodyMass.volume / (meter^3)) ~ " m³");
-                println("    Density: " ~ (bodyMass.density / (kilogram / meter^3)) ~ " kg/m³");
-                println("    Mass:    " ~ (bodyMass.mass / kilogram) ~ " kg");
-            }
-        }
-        println("═══════════════════════════════════════");
 
         // Extract language preference (default to English)
         var language = LANGUAGE.ENG;
@@ -430,13 +378,10 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         {
             storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData, massData);
 
-            println("");
-            println("═══════════════════════════════════════");
-            println("  Analysis complete!");
-            println("  Insert 'Cross-Section Analysis' table to view results.");
-            println("  Feature ID: " ~ toAttributeId(id));
-            println("═══════════════════════════════════════");
-            println("");
+            if (definition.debug)
+            {
+                println("Analysis complete. Feature ID: " ~ toAttributeId(id));
+            }
         }
         catch (e)
         {

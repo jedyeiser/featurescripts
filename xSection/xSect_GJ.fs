@@ -97,13 +97,6 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
 
     var G_mean = (G_count > 0) ? (G_sum / G_count) : 0.0;
 
-    println("  Shear modulus G: " ~ G_count ~ "/" ~ size(G_elem) ~ " valid triangles");
-    if (G_count > 0)
-    {
-        println("    G range: [" ~ (G_min / 1e9) ~ ", " ~ (G_max / 1e9) ~ "] GPa");
-        println("    G mean: " ~ (G_mean / 1e9) ~ " GPa");
-    }
-
     // Check if any structural material exists
     if (G_count == 0)
     {
@@ -136,7 +129,6 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     }
     var y_bar = (G_A_total > 0) ? Gy_A_total / G_A_total : 0.0;
     var z_bar = (G_A_total > 0) ? Gz_A_total / G_A_total : 0.0;
-    println("  G-weighted centroid: y=" ~ (y_bar * 1000) ~ " mm, z=" ~ (z_bar * 1000) ~ " mm");
 
     // Compute GJ using thin-plate formula (O(n), no FEM solve needed)
     var GJ_val = computeGJThinPlate(triangles, G_elem, section.sectionPoints, y_bar, z_bar);
@@ -147,7 +139,6 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
         return 0 * newton * meter * meter;
     }
 
-    println("  GJ = " ~ GJ_val ~ " N·m²");
     return GJ_val * newton * meter * meter;
 }
 
@@ -408,12 +399,6 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
         }
     }
 
-    println("FEM assembly: " ~ n ~ " nodes, " ~ size(triangles) ~ " triangles");
-    println("  Valid elements: " ~ validElements ~ " (" ~
-        (100.0 * validElements / size(triangles)) ~ "%)");
-    println("  Skipped: " ~ skippedZeroG ~ " (G<1e-6), " ~
-        skippedDegenerateArea ~ " (area<1e-12 m²)");
-
     // Warn if too many degenerate triangles (indicates mesh quality issues)
     if (skippedDegenerateArea > size(triangles) * 0.1)
     {
@@ -473,10 +458,6 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
         }
     }
 
-    var activeNodes = n - 1 - pinnedNodes;  // Subtract node 0 and pinned nodes
-    println("  BC applied: " ~ activeNodes ~ " active nodes, " ~
-        (pinnedNodes + 1) ~ " pinned (including node 0)");
-
     return {
         "K" : K,
         "f" : f
@@ -513,10 +494,6 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
             if (d < diagMin) diagMin = d;
         }
     }
-
-    println("  Matrix diagonal: " ~ diagNonZeros ~ " non-zero, " ~
-        diagZeros ~ " zero entries");
-    println("    Diagonal range: [" ~ diagMin ~ ", " ~ diagMax ~ "]");
 
     if (diagZeros > n / 2)
     {

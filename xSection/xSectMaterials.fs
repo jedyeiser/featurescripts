@@ -144,9 +144,6 @@ export function buildMaterialLookup(csvData) returns map
         validRows += 1;
     }
 
-    println("Material library: " ~ validRows ~ " materials loaded" ~
-            (skippedRows > 0 ? (", " ~ skippedRows ~ " rows skipped") : ""));
-
     return lookup;
 }
 

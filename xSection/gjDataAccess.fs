@@ -72,8 +72,6 @@ export function readXSectAnalysisData(context is Context, xSectFeature is Query)
         throw "Missing or empty 'crossSections' array in attribute data";
     }
 
-    println("Read " ~ size(details.crossSections) ~ " cross-sections from xSect feature");
-
     return {
         "bodies" : details.bodies,
         "crossSections" : details.crossSections
@@ -174,7 +172,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
             "attribute" : attributeData
         });
 
-        println("Updated GJ values in attribute for feature: " ~ featureKey);
     }
     catch (e)
     {

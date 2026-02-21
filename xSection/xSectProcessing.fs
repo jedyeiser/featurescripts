@@ -178,16 +178,8 @@ export function processCrossSections(context is Context, id is Id, definition is
 
     var crossSections = [];
 
-    println("Processing " ~ size(frameData) ~ " cross-sections...");
-
     for (var i = 0; i < size(frameData); i += 1)
     {
-        // Progress indicator every 10 sections
-        if (i % 10 == 0 && i > 0)
-        {
-            println("  Section " ~ i ~ " / " ~ size(frameData) ~ " (" ~ floor(100.0 * i / size(frameData)) ~ "%)");
-        }
-
         var frame = frameData[i].frame;
         var stationNumber = frameData[i].stationNumber;
         var xSectPlane = plane(frame.origin, frame.zAxis);
@@ -361,8 +353,6 @@ export function processCrossSections(context is Context, id is Id, definition is
             "boundingBox" : sectionBoundingBox
         });
     }
-
-    println("Cross-section processing complete: " ~ size(crossSections) ~ " sections analyzed");
 
     return {
         "bodies" : bodies,

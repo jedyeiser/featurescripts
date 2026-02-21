@@ -28,6 +28,8 @@ export function createVisualizationCurves(context is Context, id is Id,
     createEICurve(context, id + "eiCurve", crossSectionData, namePrefix);
     createNeutralAxisCurve(context, id + "naCurve", crossSectionData, namePrefix);
     createLinealDensityCurve(context, id + "ldCurve", crossSectionData, namePrefix);
+    createGJCurve(context, id + "gjCurve", crossSectionData.crossSections, namePrefix);
+    createProfileHeightCurve(context, id + "phCurve", crossSectionData.crossSections, namePrefix);
 }
 
 // =============================================================================
@@ -196,4 +198,65 @@ export function createLinealDensityCurve(context is Context, id is Id,
     }
 
     createGenericCurve(context, id, points, "linealDensity_curve", "linealDensity", namePrefix);
+}
+
+/**
+ * Create a GJ (torsional stiffness) visualization curve in the XZ plane.
+ *
+ * Scale: 1mm of curve height in Z = 1 N·m² of torsional stiffness (same as EI).
+ * X position = world X of each cross-section origin.
+ * Z position = GJ_eff * millimeter.
+ * Y position = 0.
+ *
+ * Stations where GJ_eff == 0 are skipped (no material data).
+ * If fewer than 2 valid points exist, the curve is not created.
+ *
+ * @param context {Context}
+ * @param id {Id}
+ * @param sections {array} : crossSectionData.crossSections
+ * @param namePrefix {string} : Analysis name prefix for curve naming
+ */
+export function createGJCurve(context is Context, id is Id, sections is array, namePrefix is string)
+{
+    var points = [];
+
+    for (var section in sections)
+    {
+        var gjValue = section.mechanicalProperties.GJ_eff;
+        if (gjValue == undefined || gjValue <= 0 * newton * meter * meter)
+            continue;
+
+        var worldX = section.frame.origin[0];
+        var zHeight = (gjValue / (newton * meter * meter)) * millimeter;
+        points = append(points, vector(worldX, 0 * meter, zHeight));
+    }
+
+    createGenericCurve(context, id, points, "GJ_curve", "GJ", namePrefix);
+}
+
+/**
+ * Create a profile height curve showing beam thickness at each station.
+ *
+ * Scale: 1:1 (actual thickness in meters displayed as Z height).
+ * X position = world X of each cross-section origin.
+ * Z position = section.boundingBox.width (beam HEIGHT = thickness direction).
+ * Y position = 0. Z = 0 baseline = zero thickness.
+ *
+ * @param context {Context}
+ * @param id {Id}
+ * @param sections {array} : crossSectionData.crossSections
+ * @param namePrefix {string} : Analysis name prefix for curve naming
+ */
+export function createProfileHeightCurve(context is Context, id is Id, sections is array, namePrefix is string)
+{
+    var points = [];
+
+    for (var section in sections)
+    {
+        var worldX = section.frame.origin[0];
+        var thickness = section.boundingBox.width;
+        points = append(points, vector(worldX, 0 * meter, thickness));
+    }
+
+    createGenericCurve(context, id, points, "profileHeight_curve", "profileHeight", namePrefix);
 }

@@ -162,7 +162,6 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
             "attribute" : existingData
         });
 
-        println("Stored analysis data with key: " ~ featureKey);
     }
     catch (e)
     {

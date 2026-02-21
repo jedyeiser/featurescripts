@@ -61,9 +61,6 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     var crossSections = xSectData.crossSections;
     var numSections = size(crossSections);
 
-    println("=== GJ Analysis Started ===");
-    println("Processing " ~ numSections ~ " cross-sections");
-
     // =========================================================================
     // STEP 2: Compute GJ for each cross-section
     // =========================================================================
@@ -94,9 +91,6 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
         {
             GJ_eff = computeTorsionalStiffness(section, bodies);
             successCount += 1;
-
-            var GJ_val = GJ_eff / (newton * meter * meter);
-            println("  Section " ~ i ~ " (station " ~ stationNum ~ "): GJ = " ~ GJ_val ~ " N·m²");
 
             // Update section with new GJ value (only on success)
             section.GJ_eff = GJ_eff;
@@ -131,16 +125,6 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     // Summary
     // =========================================================================
 
-    println("=== GJ Analysis Complete ===");
-    println("  Success: " ~ successCount ~ " sections");
-    if (failCount > 0)
-    {
-        println("  Failed:  " ~ failCount ~ " sections");
-    }
-    if (skipCount > 0)
-    {
-        println("  Skipped: " ~ skipCount ~ " sections (missing data)");
-    }
 }
 
 /**
@@ -189,7 +173,6 @@ function getXSectFeatureFromEntity(context is Context, entityQuery is Query) ret
     var featureKeys = keys(attributeData);
     if (size(featureKeys) == 1)
     {
-        println("Auto-detected xSect feature: " ~ featureKeys[0]);
         return qFeature(featureKeys[0]);
     }
 

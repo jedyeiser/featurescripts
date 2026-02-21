@@ -36,7 +36,6 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
     }
     {
         var oldID = keys(definition.xSectFeature)[0][0];
-        println('oldID -> ' ~ oldID);
 
         var allEIData = getAttribute(context, {
                 "entity" : qOrigin(EntityType.BODY),
@@ -50,9 +49,6 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
         var bodies = crossSectionDetails.bodies;
         var crossSections = crossSectionDetails.crossSections;
         var numSections = size(crossSections);
-
-        println("=== GJ Analysis Started ===");
-        println("Processing " ~ numSections ~ " cross-sections");
 
         var successCount = 0;
         var failCount = 0;
@@ -77,7 +73,6 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
             {
                 var GJ_eff = computeTorsionalStiffness(section, bodies);
                 var GJ_val = GJ_eff / (newton * meter * meter);
-                println("  Section " ~ i ~ " (station " ~ stationNum ~ "): GJ = " ~ GJ_val ~ " N·m²");
 
                 // Update section GJ_eff
                 crossSections[i].GJ_eff = GJ_eff;
@@ -112,14 +107,4 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
             "attribute" : allEIData
         });
 
-        println("=== GJ Analysis Complete ===");
-        println("  Success: " ~ successCount ~ " sections");
-        if (failCount > 0)
-        {
-            println("  Failed:  " ~ failCount ~ " sections");
-        }
-        if (skipCount > 0)
-        {
-            println("  Skipped: " ~ skipCount ~ " sections (missing mesh data)");
-        }
     });
