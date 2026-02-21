@@ -32,13 +32,13 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  *   1: Name
  *   2: Density [kg/m³]
  *   3: Poisson's Ratio
- *   4: Young's Modulus [Pa]
- *   5: Q11 [Pa]
- *   6: Q22 [Pa]
- *   7: Q12 [Pa]
- *   8: Q66 [Pa]
- *   9: Q16 [Pa]
- *  10: Q26 [Pa]
+ *   4: Young's Modulus [GPa]
+ *   5: Q11 [GPa]
+ *   6: Q22 [GPa]
+ *   7: Q12 [GPa]
+ *   8: Q66 [GPa]
+ *   9: Q16 [GPa]
+ *  10: Q26 [GPa]
  *  11: Available dimensions
  *
  * Q matrix is stored as:
@@ -113,16 +113,18 @@ export function buildMaterialLookup(csvData) returns map
 
         // Parse numeric values with units
         // csvData from TableData provides numbers directly; we attach units
+        // E and Q values are stored in GPa in the CSV to avoid Onshape Table
+        // int32 sign-bit corruption that affects values in [1.07, 2.15] GPa when stored as Pa.
         var density = row[2] * kilogram / meter^3;
         var poissonsRatio = row[3];
-        var youngsModulus = row[4] * pascal;
+        var youngsModulus = row[4] * 1e9 * pascal;
 
-        var Q11 = row[5] * pascal;
-        var Q22 = row[6] * pascal;
-        var Q12 = row[7] * pascal;
-        var Q66 = row[8] * pascal;
-        var Q16 = row[9] * pascal;
-        var Q26 = row[10] * pascal;
+        var Q11 = row[5] * 1e9 * pascal;
+        var Q22 = row[6] * 1e9 * pascal;
+        var Q12 = row[7] * 1e9 * pascal;
+        var Q66 = row[8] * 1e9 * pascal;
+        var Q16 = row[9] * 1e9 * pascal;
+        var Q26 = row[10] * 1e9 * pascal;
 
         var qMatrix = [
             [Q11, Q12, Q16],
