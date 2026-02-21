@@ -66,8 +66,8 @@ import(path : "onshape/std/common.fs", version : "2878.0");
  *     poissonsRatio: number,
  *     youngsModulus: ValueWithUnits (Pa),
  *     qMatrix: array (3×3, entries in Pa),
- *     cte_x: ValueWithUnits (1/K),
- *     cte_y: ValueWithUnits (1/K)
+ *     cte_x: number (1/K, dimensionless — unit implicit),
+ *     cte_y: number (1/K, dimensionless — unit implicit)
  * }
  */
 export function buildMaterialLookup(csvData) returns map
@@ -130,8 +130,18 @@ export function buildMaterialLookup(csvData) returns map
         var Q16 = row[9] * 1e9 * pascal;
         var Q26 = row[10] * 1e9 * pascal;
 
-        var cte_x = (size(row) > 11 && row[11] is number) ? row[11] / kelvin : 0 / kelvin;
-        var cte_y = (size(row) > 12 && row[12] is number) ? row[12] / kelvin : 0 / kelvin;
+        var cte_x = 0;
+        if (size(row) > 11)
+        {
+            if (row[11] is number)
+                cte_x = row[11];
+        }
+        var cte_y = 0;
+        if (size(row) > 12)
+        {
+            if (row[12] is number)
+                cte_y = row[12];
+        }
 
         var qMatrix = [
             [Q11, Q12, Q16],
