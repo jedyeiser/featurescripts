@@ -85,7 +85,7 @@ export function buildMaterialLookup(csvData) returns map
     for (var row in csvData)
     {
         // Skip rows that don't have enough columns or have empty name
-        if (size(row) < 13)
+        if (size(row) < 11)
         {
             skippedRows += 1;
             continue;
@@ -130,8 +130,8 @@ export function buildMaterialLookup(csvData) returns map
         var Q16 = row[9] * 1e9 * pascal;
         var Q26 = row[10] * 1e9 * pascal;
 
-        var cte_x = row[11] / kelvin;
-        var cte_y = row[12] / kelvin;
+        var cte_x = (size(row) > 11 && row[11] is number) ? row[11] / kelvin : 0 / kelvin;
+        var cte_y = (size(row) > 12 && row[12] is number) ? row[12] / kelvin : 0 / kelvin;
 
         var qMatrix = [
             [Q11, Q12, Q16],
