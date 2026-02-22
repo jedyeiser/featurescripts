@@ -296,24 +296,28 @@ import(path : "onshape/std/common.fs", version : "2856.0");
 export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
+    debug("estimateDeflectionEditLogic called");
+    debug(definition.applied1LocationType);
+    debug(definition.applied1IsQuery);
+
     // Applied load 1 (always visible)
-    definition.applied1NeedsWidth = (definition.applied1LoadShape \!= LoadType.POINT);
+    definition.applied1NeedsWidth = (definition.applied1LoadShape != LoadType.POINT);
     definition.applied1IsQuery    = (definition.applied1LocationType == LocationType.QUERY);
 
     // Applied load 2 (shown when secondApplied == true)
-    definition.applied2NeedsWidth = (definition.applied2LoadShape \!= LoadType.POINT);
+    definition.applied2NeedsWidth = (definition.applied2LoadShape != LoadType.POINT);
     definition.applied2IsQuery    = (definition.applied2LocationType == LocationType.QUERY);
 
     // Support load 1 (always visible)
-    definition.support1NeedsWidth = (definition.support1LoadShape \!= LoadType.POINT);
+    definition.support1NeedsWidth = (definition.support1LoadShape != LoadType.POINT);
     definition.support1IsQuery    = (definition.support1LocationType == LocationType.QUERY);
 
     // Support load 2 (always visible)
-    definition.support2NeedsWidth = (definition.support2LoadShape \!= LoadType.POINT);
+    definition.support2NeedsWidth = (definition.support2LoadShape != LoadType.POINT);
     definition.support2IsQuery    = (definition.support2LocationType == LocationType.QUERY);
 
     // Support load 3 (shown when addThirdSupport == true)
-    definition.support3NeedsWidth = (definition.support3LoadShape \!= LoadType.POINT);
+    definition.support3NeedsWidth = (definition.support3LoadShape != LoadType.POINT);
     definition.support3IsQuery    = (definition.support3LocationType == LocationType.QUERY);
 
     return definition;
