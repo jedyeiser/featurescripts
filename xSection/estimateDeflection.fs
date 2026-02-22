@@ -49,6 +49,22 @@ import(path : "onshape/std/common.fs", version : "2856.0");
  export const LoadBalanceBounds = {(unitless) : [0.001, .75, .999]} as RealBoundSpec;
  export const EvaluationPointBounds = {(unitless) : [20, 100, 500]} as IntegerBoundSpec;
  export const AppliedLoadBounds = {(unitless) : [3, 80, 600]} as RealBoundSpec;
+
+export enum OutputSpan
+{
+    FULL_EI,
+    SUPPORT_SPAN
+}
+
+export enum CurveOutput
+{
+    FIT,
+    APPROX
+}
+
+export const ApproxToleranceBounds  = {(meter) : [1e-7, 1e-4, 1e-2]} as LengthBoundSpec;
+export const MaxControlPointsBounds = {(unitless) : [4, 50, 500]} as IntegerBoundSpec;
+export const ApproxDegreeBounds     = {(unitless) : [1, 3, 9]} as IntegerBoundSpec;
  
  export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
@@ -74,6 +90,8 @@ import(path : "onshape/std/common.fs", version : "2856.0");
     // Support load 3 (shown when addThirdSupport == true)
     definition.support3NeedsWidth = (definition.support3LoadShape != LoadType.POINT);
     definition.support3IsQuery    = (definition.support3LocationType == LocationType.QUERY);
+
+    definition.approxNeedsOptions = (definition.curveOutput == CurveOutput.APPROX);
 
     return definition;
 }
@@ -509,11 +527,35 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             
             
          }
-         
-         
-         
-         
-         
+
+         annotation { "Group Name" : "Output Options", "Collapsed By Default" : false }
+         {
+             annotation { "Name" : "Output span" }
+             definition.outputSpan is OutputSpan;
+
+             annotation { "Name" : "Curve output type" }
+             definition.curveOutput is CurveOutput;
+
+             annotation { "Name" : "approxNeedsOptions", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+             definition.approxNeedsOptions is boolean;
+
+             if (definition.approxNeedsOptions)
+             {
+                 annotation { "Group Name" : "Approximation Options", "Collapsed By Default" : false,
+                              "Driving Parameter" : "approxNeedsOptions" }
+                 {
+                     annotation { "Name" : "Approximation tolerance",
+                                  "Description" : "Maximum deviation of approximated curve from computed points" }
+                     isLength(definition.approxTolerance, ApproxToleranceBounds);
+
+                     annotation { "Name" : "Maximum control points" }
+                     isInteger(definition.maxControlPoints, MaxControlPointsBounds);
+
+                     annotation { "Name" : "Curve degree" }
+                     isInteger(definition.curveDegree, ApproxDegreeBounds);
+                 }
+             }
+         }
      }
      {
         // --- 1. Extract EI data from selected edges ---
@@ -551,20 +593,8 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         var N = definition.numEvalPoints;
         var xMin = eiData[0].x;
         var xMax = eiData[size(eiData) - 1].x;
-        if (xMax - xMin < 1e-6 * meter)
-        {
-            throw regenError("EI profile has zero X range.");
-        }
 
-        // --- 2. Build uniform eval grid ---
-        var dx = (xMax - xMin) / (N - 1);
-        var x_eval = [];
-        for (var i = 0; i < N; i += 1)
-        {
-            x_eval = append(x_eval, xMin + i * dx);
-        }
-
-        // --- 3. Resolve support X positions ---
+        // --- 2. Resolve support X positions ---
         var xs1;
         if (definition.support1IsQuery)
         {
@@ -603,7 +633,60 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
-        // --- 4. Resolve applied load X positions ---
+        // --- 3. Compute evaluation span ---
+        var xEvalMin = xMin;
+        var xEvalMax = xMax;
+        if (definition.outputSpan == OutputSpan.SUPPORT_SPAN)
+        {
+            xEvalMin = xs1;
+            xEvalMax = xs1;
+
+            if (definition.support1LoadShape != LoadType.POINT)
+            {
+                var hw1 = definition.support1Width / 2;
+                if (xs1 - hw1 < xEvalMin) { xEvalMin = xs1 - hw1; }
+                if (xs1 + hw1 > xEvalMax) { xEvalMax = xs1 + hw1; }
+            }
+
+            if (xs2 < xEvalMin) { xEvalMin = xs2; }
+            if (xs2 > xEvalMax) { xEvalMax = xs2; }
+            if (definition.support2LoadShape != LoadType.POINT)
+            {
+                var hw2 = definition.support2Width / 2;
+                if (xs2 - hw2 < xEvalMin) { xEvalMin = xs2 - hw2; }
+                if (xs2 + hw2 > xEvalMax) { xEvalMax = xs2 + hw2; }
+            }
+
+            if (definition.addThirdSupport)
+            {
+                if (xs3 < xEvalMin) { xEvalMin = xs3; }
+                if (xs3 > xEvalMax) { xEvalMax = xs3; }
+                if (definition.support3LoadShape != LoadType.POINT)
+                {
+                    var hw3 = definition.support3Width / 2;
+                    if (xs3 - hw3 < xEvalMin) { xEvalMin = xs3 - hw3; }
+                    if (xs3 + hw3 > xEvalMax) { xEvalMax = xs3 + hw3; }
+                }
+            }
+
+            // Clamp to EI data bounds
+            if (xEvalMin < xMin) { xEvalMin = xMin; }
+            if (xEvalMax > xMax) { xEvalMax = xMax; }
+        }
+        if (xEvalMax - xEvalMin < 1e-6 * meter)
+        {
+            throw regenError("Evaluation span is zero. Check support positions and output span setting.");
+        }
+
+        // --- 4. Build uniform eval grid ---
+        var dx = (xEvalMax - xEvalMin) / (N - 1);
+        var x_eval = [];
+        for (var i = 0; i < N; i += 1)
+        {
+            x_eval = append(x_eval, xEvalMin + i * dx);
+        }
+
+        // --- 5. Resolve applied load X positions ---
         var x1;
         if (definition.applied1IsQuery)
         {
@@ -627,7 +710,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
-        // --- 5. Compute reactions by moment balance ---
+        // --- 6. Compute reactions by moment balance ---
         var F_total = definition.appliedLoad * newton;
         var F1;
         var F2;
@@ -660,7 +743,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             R1 = F_total - R2;
         }
 
-        // --- 6. Classify loads as distributed or point loads ---
+        // --- 7. Classify loads as distributed or point loads ---
         // distLoads: { "center", "force", "shape", "width", "sign" }  sign: +1=upward, -1=downward
         // pointLoads: { "x", "force" }  force: positive=upward
         var distLoads = [];
@@ -727,7 +810,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
-        // --- 7. Build distributed net load q_net at each eval point ---
+        // --- 8. Build distributed net load q_net at each eval point ---
         var q_net = [];
         for (var i = 0; i < N; i += 1)
         {
@@ -739,7 +822,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             q_net = append(q_net, q);
         }
 
-        // --- 8. Build shear V(x) by trapezoidal integration, then add point load jumps ---
+        // --- 9. Build shear V(x) by trapezoidal integration, then add point load jumps ---
         var V_arr = [];
         V_arr = append(V_arr, 0 * newton);
         for (var i = 1; i < N; i += 1)
@@ -759,7 +842,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
-        // --- 9. Build moment M(x) by trapezoidal integration of V ---
+        // --- 10. Build moment M(x) by trapezoidal integration of V ---
         var M_arr = [];
         M_arr = append(M_arr, 0 * newton * meter);
         for (var i = 1; i < N; i += 1)
@@ -768,7 +851,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             M_arr = append(M_arr, m_new);
         }
 
-        // --- 10. Integrate curvature twice to get raw deflection ---
+        // --- 11. Integrate curvature twice to get raw deflection + apply BCs ---
         // kappa = M / EI  [1/m];  theta = integral(kappa dx) [rad];  delta = integral(theta dx) [m]
         var EI_min = 1e-3 * newton * meter * meter;  // 0.001 N*m^2 — physical floor for any ski section
         var kappa_arr = [];
@@ -800,7 +883,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             delta_arr = append(delta_arr, d_new);
         }
 
-        // --- 11. Apply zero-deflection BCs at outer supports ---
+        // Apply zero-deflection BCs at outer supports (part of step 11)
         // delta_corrected(x) = delta_raw(x) + C1*(x - x_eval[0]) + C2
         // Enforces delta_corrected = 0 at xs1 and xs2.
         var i1 = findNearestIndex(x_eval, xs1);
@@ -819,17 +902,33 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             deflection = append(deflection, delta_arr[i] + C1 * (x_eval[i] - x_eval[0]) + C2);
         }
 
-        // --- 12. Create deflection spline curve (XZ plane, Z = deflection in meters) ---
+        // --- 12. Create deflection spline curve (XZ plane, Z = deflection) ---
         var pts = [];
         for (var i = 0; i < N; i += 1)
         {
             pts = append(pts, vector(x_eval[i], 0 * meter, deflection[i]));
         }
-        opFitSpline(context, id + "deflCurve", { "points" : pts });
+
+        if (definition.curveOutput == CurveOutput.APPROX)
+        {
+            var approxResult = approximateSpline(context, {
+                "degree"           : definition.curveDegree,
+                "tolerance"        : definition.approxTolerance,
+                "isPeriodic"       : false,
+                "targets"          : [{ "positions" : pts }],
+                "maxControlPoints" : definition.maxControlPoints
+            });
+            opCreateBSplineCurve(context, id + "deflCurve", { "bSplineCurve" : approxResult[0] });
+        }
+        else
+        {
+            opFitSpline(context, id + "deflCurve", { "points" : pts });
+        }
+
         setProperty(context, {
-            "entities" : qCreatedBy(id + "deflCurve", EntityType.BODY),
+            "entities"     : qCreatedBy(id + "deflCurve", EntityType.BODY),
             "propertyType" : PropertyType.NAME,
-            "value" : "deflection_curve"
+            "value"        : "deflection_curve"
         });
      });
  
