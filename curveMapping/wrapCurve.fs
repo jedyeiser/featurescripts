@@ -1,5 +1,6 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
+import(path : "onshape/std/approximationUtils.fs", version : "2878.0");
 import(path : "onshape/std/path.fs", version : "2878.0");
 
 
@@ -11,6 +12,8 @@ import(path : "ad98c7f43a25a4c0e8a428e7", version : "042d1f54f7653e339f4bdc05");
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
+// IMPORT: tools/point_projection.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
@@ -29,6 +32,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map from (source reference)" }
             definition.fromEdges is Query;
+
+            annotation { "Name" : "From reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on from curve" }
+            definition.fromRef is Query;
         }
 
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
@@ -41,6 +47,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
             annotation { "Name" : "Flip", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
             definition.flipTo is boolean;
+
+            annotation { "Name" : "To reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on to curve" }
+            definition.toRef is Query;
+
+            annotation { "Name" : "Flip normal", "Default" : false, "Description" : "When true, flips the frenet frame normal vector on the to chain" }
+            definition.flipToNormal is boolean;
         }
 
         annotation { "Name" : "Source curves",
@@ -48,8 +60,24 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Curves to map from fromEdge to toEdge" }
         definition.sourceCurves is Query;
 
-        annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-        isLength(definition.samplingDensity, samplingDensityBounds);
+        annotation { "Name" : "Advanced options",
+                    "Default" : false }
+        definition.showAdvanced is boolean;
+
+        if (definition.showAdvanced)
+        {
+            annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+            isLength(definition.samplingDensity, samplingDensityBounds);
+
+            annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
+            isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+            annotation { "Name" : "Maximum control points" }
+            isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
+
+            annotation { "Name" : "Tolerance" }
+            isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+        }
 
         annotation { "Group Name" : "Debug Options",
                     "Collapsed By Default" : true }
@@ -68,6 +96,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Description" : "Print BSpline data from source curves",
                         "Default" : false }
             definition.debugSourceBSplines is boolean;
+
+            annotation { "Name" : "Print wrapped BSplines",
+                        "Description" : "Print BSpline data from wrapped output curves",
+                        "Default" : false }
+            definition.debugWrappedCurves is boolean;
 
             annotation { "Name" : "Show from frames",
                         "Description" : "Draw Frenet frame axes along the from reference path",
@@ -101,15 +134,31 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         if (definition.debugShowToFrames)
             debugDrawFrames(context, id + "toFrames", toFrenetPath, 10);
 
-        // 2. For each source curve: sample uniformly by arc-length
+        // 2. Resolve reference alignment arc-lengths
+        var fromRefPt  = getRefPoint(context, definition.fromRef);
+        var toRefPt    = getRefPoint(context, definition.toRef);
+        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt);
+        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt);
+
+        // 3. Approximation options (with defaults for when showAdvanced is false)
+        var degree = 3;
+        if (definition.approximationDegree != undefined)
+            degree = definition.approximationDegree;
+
+        // 4. For each source curve: sample, map, fit, create
         var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
 
+            // Determine number of sample points from sampling density
             var srcArcTable = buildArcLengthTable(srcBSpline, 200);
-            var numSamples  = max([5, ceil(srcArcTable.totalLength / definition.samplingDensity) + 1]);
+            var samplingDensity = 1 * millimeter;
+            if (definition.samplingDensity != undefined)
+                samplingDensity = definition.samplingDensity;
+            var numSamples = max([5, ceil(srcArcTable.totalLength / samplingDensity) + 1]);
 
+            // Sample source curve uniformly by arc-length
             var samples   = uniformArcLengthSamples(srcBSpline, numSamples, {});
             var srcPoints = samples.points;
 
@@ -118,6 +167,58 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
                         " samples, length = " ~ toString(srcArcTable.totalLength));
             }
+
+            // Map each sampled point through Frenet frame transformation
+            var mappedPoints = [];
+            for (var pt in srcPoints)
+            {
+                // Project source point onto from-path; get Frenet frame there
+                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+                var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+
+                // Express point in from-frame local coordinates [tangent, normal, binormal]
+                var localCoords = worldPointToFrenet(pt, fromResult);
+
+                // Linear arc-length mapping from from-path to to-path
+                var s_to = toRefArc + (s_from - fromRefArc);
+
+                // Get to-frame at mapped arc-length
+                var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
+
+                // Determine effective to-frame normal sign (apply flipToNormal toggle)
+                var toSign = toResult.sign;
+                if (definition.flipToNormal)
+                    toSign = -1 * toSign;
+
+                // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
+                var toFrameResult = toResult;
+                if (toSign != fromResult.sign)
+                {
+                    var flippedFrame = coordSystem(toResult.frame.origin,
+                                                   -1 * toResult.frame.xAxis,
+                                                   toResult.frame.zAxis);
+                    toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
+                }
+
+                mappedPoints = append(mappedPoints, frenetPointToWorld(localCoords, toFrameResult));
+            }
+
+            // Fit BSpline through mapped points
+            var approxDef  = { 
+                "targets": [approximationTarget({'positions' : mappedPoints})], 
+                "tolearance" : definition.approximationTolerance,
+                "maxCPs" : definition.approximationMaxCPs,
+                "degree": degree };
+            var mappedCurve = approximateSpline(context, approxDef)[0]; //approximateSpline returns an array of solutions, one for each approximation target. 
+
+            if (definition.debugWrappedCurves)
+            {
+                println("Wrapped curve " ~ toString(i) ~ ": " ~ toString(size(mappedCurve.controlPoints)) ~
+                        " CPs, degree " ~ toString(mappedCurve.degree));
+            }
+
+            // Create geometry
+            opCreateBSplineCurve(context, id + (toString(i) ~ "wrappedCurve"), { "bSplineCurve": mappedCurve });
         }
     });
 
@@ -153,10 +254,11 @@ function debugDrawFrames(context is Context, id is Id,
         var tangentEnd = origin + arrowLen * result.frame.zAxis;
         var tangentCurve = {
             "degree"        : 1,
-            "isPeriodic"    : false,
-            "isRational"    : false,
+            "dimension" : 3,
+            "isPeriodic" : false,
+            "isRational" : false,
             "controlPoints" : [origin, tangentEnd],
-            "knots"         : [0, 0, 1, 1]
+            "knots" : [0, 0, 1, 1]
         } as BSplineCurve;
         opCreateBSplineCurve(context,
                              id + (toString(i) ~ "t"),
@@ -165,11 +267,12 @@ function debugDrawFrames(context is Context, id is Id,
         // Normal arrow (xAxis, sign-corrected)
         var normalEnd = origin + arrowLen * result.frame.xAxis;
         var normalCurve = {
-            "degree"        : 1,
-            "isPeriodic"    : false,
-            "isRational"    : false,
+            "degree" : 1,
+            "dimension" : 3,
+            "isPeriodic" : false,
+            "isRational" : false,
             "controlPoints" : [origin, normalEnd],
-            "knots"         : [0, 0, 1, 1]
+            "knots" : [0, 0, 1, 1]
         } as BSplineCurve;
         opCreateBSplineCurve(context,
                              id + (toString(i) ~ "n"),
@@ -428,4 +531,77 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
         "sign"     : sign,
         "edgeIndex": edgeIdx
     };
+}
+
+
+// ============================================================================
+// projectOntoFrenetPath  (internal helper)
+// ============================================================================
+
+/**
+ * Project a point onto a FrenetPath and return the global arc-length position.
+ *
+ * Tests each edge's BSpline, picks the closest, then converts the BSpline
+ * parameter to arc-length accounting for traversal direction.
+ *
+ * @param frenetPath {map}    - result from buildFrenetPath
+ * @param point      {Vector} - query point with units
+ * @returns {ValueWithUnits}  - arc-length along the path
+ */
+function projectOntoFrenetPath(frenetPath is map, point is Vector)
+{
+    var edgeData    = frenetPath.edgeData;
+    var bestDist    = inf * meter;
+    var bestEdgeIdx = 0;
+    var bestParam   = 0;
+
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        var result = projectPointOnCurve(edgeData[i].bspline, point, {});
+        if (result.distance < bestDist)
+        {
+            bestDist    = result.distance;
+            bestEdgeIdx = i;
+            bestParam   = result.parameter;
+        }
+    }
+
+    var edgeDat = edgeData[bestEdgeIdx];
+
+    // Convert BSpline parameter → arc-length from BSpline uMin
+    var physFrac      = arcLengthFraction(edgeDat.arcLengthTable, bestParam);
+    var physArcLength = physFrac * edgeDat.length;
+
+    // Convert to local arc from traversal start
+    var localArc = edgeDat.stdDir ? physArcLength : (edgeDat.length - physArcLength);
+
+    return edgeDat.startArcLength + localArc;
+}
+
+
+// ============================================================================
+// getRefPoint  (internal helper)
+// ============================================================================
+
+/**
+ * Extract a world point from a vertex, mate connector, or planar face query.
+ *
+ * @param context  {Context}
+ * @param refQuery {Query} - vertex, mate connector, or planar face
+ * @returns {Vector} - 3D position with units
+ */
+function getRefPoint(context is Context, refQuery is Query) returns Vector
+{
+    var pt = undefined;
+
+    try silent { pt = evVertexPoint(context, { "vertex": refQuery }); }
+    if (pt != undefined) return pt;
+
+    try silent { pt = evMateConnector(context, { "mateConnector": refQuery }).origin; }
+    if (pt != undefined) return pt;
+
+    try silent { pt = evPlane(context, { "face": refQuery }).origin; }
+    if (pt != undefined) return pt;
+
+    throw regenError("Cannot evaluate reference point from selection");
 }
