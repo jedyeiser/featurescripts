@@ -311,7 +311,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                     // Evaluate source curve at junction arc-length
                     var u_junction  = parameterAtArcLength(srcArcTable, s_src_junction);
-                    var pt_junction = evaluateSpline({ "spline": srcBSpline, "parameters": [u_junction] })[0];
+                    var pt_junction = computeFrenetFrame(srcBSpline, u_junction).frame.origin;
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
