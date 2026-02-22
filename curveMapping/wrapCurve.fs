@@ -267,7 +267,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
             var segStartIdx = 0;
             var segCount    = 0;
-            var junctionPt  = undefined;  // carry-over exact junction point between spans
+            var junctionPt      = undefined;  // carry-over exact junction point between spans
+            var junctionTangent = undefined;  // carry-over junction tangent direction in to-space
 
             while (segStartIdx < size(mappedData))
             {
@@ -278,6 +279,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     segEndIdx += 1;
 
                 var segPoints = [];
+
+                // Capture carry-over tangent from previous span's junction before clearing
+                var carryOverTangent = junctionTangent;
+                junctionTangent = undefined;
 
                 // Prepend exact junction point carried over from end of previous span
                 if (junctionPt != undefined)
@@ -310,8 +315,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                                          t * (samples.arcLengths[segEndIdx + 1] - samples.arcLengths[segEndIdx]);
 
                     // Evaluate source curve at junction arc-length
-                    var u_junction  = parameterAtArcLength(srcArcTable, s_src_junction);
-                    var pt_junction = computeFrenetFrame(srcBSpline, u_junction).frame.origin;
+                    var u_junction       = parameterAtArcLength(srcArcTable, s_src_junction);
+                    var srcJunctionFrame = computeFrenetFrame(srcBSpline, u_junction);
+                    var pt_junction      = srcJunctionFrame.frame.origin;
+                    var srcTangent       = srcJunctionFrame.frame.zAxis;  // unit tangent on source curve
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
@@ -327,18 +334,38 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
 
+                    // Transform source tangent through Frenet frames (direction-only, no origin offset)
+                    // Project world tangent onto from-frame axes, then reconstruct in to-frame
+                    var fTangential        = dot(srcTangent, fromResult_j.frame.zAxis);
+                    var fNormal            = dot(srcTangent, fromResult_j.frame.xAxis);
+                    var fBinormal          = dot(srcTangent, yAxis(fromResult_j.frame));
+                    var junctionTangentDir = fTangential * toFrameResult_j.frame.zAxis +
+                                            fNormal     * toFrameResult_j.frame.xAxis +
+                                            fBinormal   * yAxis(toFrameResult_j.frame);
+
                     // Append to current span; carry over to next span's start
-                    segPoints  = append(segPoints, junctionWorldPt);
-                    junctionPt = junctionWorldPt;
+                    segPoints       = append(segPoints, junctionWorldPt);
+                    junctionPt      = junctionWorldPt;
+                    junctionTangent = junctionTangentDir;
                 }
 
                 if (size(segPoints) >= degree + 1)
                 {
+                    // Scale for derivative constraints: average inter-point spacing
+                    var approxScale = norm(segPoints[size(segPoints) - 1] - segPoints[0]) /
+                                      max([1, size(segPoints) - 1]);
+
+                    var targetDef = { "positions": segPoints };
+                    if (carryOverTangent != undefined)
+                        targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
+                    if (junctionTangent != undefined)
+                        targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
+
                     var approxDef = {
-                        "targets"    : [approximationTarget({'positions' : segPoints})],
-                        "tolearance" : definition.approximationTolerance,
-                        "maxCPs"     : definition.approximationMaxCPs,
-                        "degree"     : degree };
+                        "targets"          : [approximationTarget(targetDef)],
+                        "tolerance"        : definition.approximationTolerance,
+                        "maxControlPoints" : definition.approximationMaxCPs,
+                        "degree"           : degree };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
 
                     if (definition.debugWrappedCurves)

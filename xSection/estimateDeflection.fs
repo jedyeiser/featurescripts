@@ -65,8 +65,15 @@ export enum CurveOutput
 export const ApproxToleranceBounds  = {(meter) : [1e-7, 1e-4, 1e-2]} as LengthBoundSpec;
 export const MaxControlPointsBounds = {(unitless) : [4, 50, 500]} as IntegerBoundSpec;
 export const ApproxDegreeBounds     = {(unitless) : [1, 3, 9]} as IntegerBoundSpec;
- 
- export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
+
+export enum RegionType
+{
+    APPROXIMATE,
+    BRIDGING,
+    FREE_DRAG
+}
+
+export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
     println("estimateDeflectionEditLogic called");
@@ -93,9 +100,144 @@ export const ApproxDegreeBounds     = {(unitless) : [1, 3, 9]} as IntegerBoundSp
 
     definition.approxNeedsOptions = (definition.curveOutput == CurveOutput.APPROX);
 
+    // --- Back out EI logic ---
+    if (definition.backOutEI)
+    {
+        // Initialize trimBoundaries if empty or undefined
+        if (definition.trimBoundaries == undefined || size(definition.trimBoundaries) == 0)
+        {
+            var startX = 0 * meter;
+            var endX = 1 * meter;
+            // Use support positions if both are X_VAL type
+            if (definition.support1LocationType == LocationType.X_VAL &&
+                definition.support2LocationType == LocationType.X_VAL)
+            {
+                if (definition.support1X < definition.support2X)
+                {
+                    startX = definition.support1X;
+                    endX = definition.support2X;
+                }
+                else
+                {
+                    startX = definition.support2X;
+                    endX = definition.support1X;
+                }
+            }
+            definition.trimBoundaries = [
+                { "boundaryName" : "Start", "boundaryX" : startX },
+                { "boundaryName" : "End",   "boundaryX" : endX }
+            ];
+        }
+
+        // Sort trimBoundaries by boundaryX ascending (insertion sort)
+        for (var i = 1; i < size(definition.trimBoundaries); i += 1)
+        {
+            var key = definition.trimBoundaries[i];
+            var j = i - 1;
+            while (j >= 0 && definition.trimBoundaries[j].boundaryX > key.boundaryX)
+            {
+                definition.trimBoundaries[j + 1] = definition.trimBoundaries[j];
+                j -= 1;
+            }
+            definition.trimBoundaries[j + 1] = key;
+        }
+
+        // Sync regionParams length to trimBoundaries.length - 1
+        var nRegions = size(definition.trimBoundaries) - 1;
+        if (nRegions < 0)
+        {
+            nRegions = 0;
+        }
+        if (definition.regionParams == undefined)
+        {
+            definition.regionParams = [];
+        }
+        var currentSize = size(definition.regionParams);
+
+        // Add default entries for new regions
+        for (var k = currentSize; k < nRegions; k += 1)
+        {
+            definition.regionParams = append(definition.regionParams, {
+                "regionType"      : RegionType.APPROXIMATE,
+                "approxDegree"    : 3,
+                "maxCP"           : 20,
+                "approxTolerance" : 1e-4 * meter,
+                "cpX"             : [],
+                "cpZ"             : [],
+                "isInitialized"   : false
+            });
+        }
+
+        // Remove extra entries if boundaries were deleted
+        if (currentSize > nRegions)
+        {
+            var trimmedParams = [];
+            for (var k = 0; k < nRegions; k += 1)
+            {
+                trimmedParams = append(trimmedParams, definition.regionParams[k]);
+            }
+            definition.regionParams = trimmedParams;
+        }
+
+        // Validate: first and last regions cannot be BRIDGING (no neighbor on one side)
+        var nR = size(definition.regionParams);
+        if (nR > 0)
+        {
+            if (definition.regionParams[0].regionType == RegionType.BRIDGING)
+            {
+                var r0 = definition.regionParams[0];
+                r0.regionType = RegionType.APPROXIMATE;
+                definition.regionParams[0] = r0;
+                println("Warning: First region cannot be BRIDGING. Reverted to APPROXIMATE.");
+            }
+            if (nR > 1 && definition.regionParams[nR - 1].regionType == RegionType.BRIDGING)
+            {
+                var rLast = definition.regionParams[nR - 1];
+                rLast.regionType = RegionType.APPROXIMATE;
+                definition.regionParams[nR - 1] = rLast;
+                println("Warning: Last region cannot be BRIDGING. Reverted to APPROXIMATE.");
+            }
+        }
+    }
+
     return definition;
 }
 
+
+// =============================================================================
+// MANIPULATOR CHANGE FUNCTION
+// =============================================================================
+
+/**
+ * Called when the user drags a CP manipulator. Updates the stored cpZ value
+ * for the dragged control point so the feature body uses the new position.
+ * Phases 3+: iterate all known region/CP keys and check which changed.
+ */
+export function estimateDeflectionManipulatorChange(
+    context is Context, definition is map, newManipulators is map) returns map
+{
+    if (definition.backOutEI && definition.regionParams != undefined)
+    {
+        for (var i = 0; i < size(definition.regionParams); i += 1)
+        {
+            var region = definition.regionParams[i];
+            if (region.cpX != undefined)
+            {
+                for (var j = 0; j < size(region.cpX); j += 1)
+                {
+                    var key = "r" ~ toString(i) ~ "c" ~ toString(j);
+                    if (newManipulators[key] != undefined)
+                    {
+                        var r = definition.regionParams[i];
+                        r.cpZ[j] = newManipulators[key].offset / meter;
+                        definition.regionParams[i] = r;
+                    }
+                }
+            }
+        }
+    }
+    return definition;
+}
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -297,6 +439,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
 
  annotation { "Feature Type Name" : "Estimate Deflection",
              "Editing Logic Function" : "estimateDeflectionEditLogic",
+             "Manipulator Change Function" : "estimateDeflectionManipulatorChange",
              "Feature Type Description" : "Estimates beam deflection given an EI profile and loading conditions" }
  export const estimateDeflection = defineFeature(function(context is Context, id is Id, definition is map)
      precondition
@@ -561,6 +704,61 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
 
                      annotation { "Name" : "Curve degree" }
                      isInteger(definition.curveDegree, ApproxDegreeBounds);
+                 }
+             }
+         }
+
+         annotation { "Name" : "Back out EI", "Default" : false }
+         definition.backOutEI is boolean;
+
+         if (definition.backOutEI)
+         {
+             annotation { "Group Name" : "EI Back-Out", "Driving Parameter" : "backOutEI",
+                          "Collapsed By Default" : false }
+             {
+                 annotation { "Name" : "Trim Boundaries", "Item name" : "Boundary",
+                              "Show labels" : true, "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
+                 definition.trimBoundaries is array;
+                 for (var boundary in definition.trimBoundaries)
+                 {
+                     annotation { "Name" : "Label" }
+                     boundary.boundaryName is string;
+
+                     annotation { "Name" : "X" }
+                     isLength(boundary.boundaryX, LENGTH_BOUNDS);
+                 }
+
+                 annotation { "Name" : "Regions", "Item name" : "Region",
+                              "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
+                 definition.regionParams is array;
+                 for (var region in definition.regionParams)
+                 {
+                     annotation { "Name" : "Type" }
+                     region.regionType is RegionType;
+
+                     if (region.regionType != RegionType.BRIDGING)
+                     {
+                         annotation { "Name" : "Degree" }
+                         isInteger(region.approxDegree, ApproxDegreeBounds);
+
+                         annotation { "Name" : "Max CPs" }
+                         isInteger(region.maxCP, { (unitless) : [4, 20, 500] } as IntegerBoundSpec);
+                     }
+
+                     if (region.regionType == RegionType.APPROXIMATE)
+                     {
+                         annotation { "Name" : "Tolerance" }
+                         isLength(region.approxTolerance, ApproxToleranceBounds);
+                     }
+
+                     annotation { "Name" : "cpX", "UIHint" : UIHint.HIDDEN }
+                     region.cpX is array;
+
+                     annotation { "Name" : "cpZ", "UIHint" : UIHint.HIDDEN }
+                     region.cpZ is array;
+
+                     annotation { "Name" : "Initialized", "UIHint" : UIHint.HIDDEN }
+                     region.isInitialized is boolean;
                  }
              }
          }
