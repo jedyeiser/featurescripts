@@ -437,6 +437,97 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
             runningSign = -1 * runningSign;
     }
 
+    // 4.5. Post-process: set line xAxis from adjacent curve context
+    //      For each line edge, if an adjacent edge is a curve, borrow that curve's
+    //      Frenet normal at the shared vertex so the frame is continuous at the junction.
+    //      Prefer the NEXT edge (arc after line drives the normal).
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        if (!edgeData[i].isLine)
+            continue;
+
+        var contextXAxis = undefined;
+
+        // Prefer next edge (line followed by arc → arc drives the normal)
+        if (i + 1 < size(edgeData) && !edgeData[i + 1].isLine)
+        {
+            var nextEd    = edgeData[i + 1];
+            var nextNK    = size(nextEd.bspline.knots);
+            var nextDeg   = nextEd.bspline.degree;
+            // Traversal start of next edge
+            var nextParam = nextEd.stdDir ? nextEd.bspline.knots[nextDeg]
+                                          : nextEd.bspline.knots[nextNK - nextDeg - 1];
+            contextXAxis = computeFrenetFrame(nextEd.bspline, nextParam).frame.xAxis;
+        }
+        else if (i - 1 >= 0 && !edgeData[i - 1].isLine)
+        {
+            var prevEd    = edgeData[i - 1];
+            var prevNK    = size(prevEd.bspline.knots);
+            var prevDeg   = prevEd.bspline.degree;
+            // Traversal end of prev edge
+            var prevParam = prevEd.stdDir ? prevEd.bspline.knots[prevNK - prevDeg - 1]
+                                          : prevEd.bspline.knots[prevDeg];
+            contextXAxis = computeFrenetFrame(prevEd.bspline, prevParam).frame.xAxis;
+        }
+        // else: isolated line or line–line — keep world-axis heuristic
+
+        if (contextXAxis != undefined)
+        {
+            var lf = edgeData[i].lineFrame;
+            edgeData[i] = mergeMaps(edgeData[i], {
+                "lineFrame": coordSystem(lf.origin, contextXAxis, lf.zAxis)
+            });
+        }
+    }
+
+    // 4.6. Validate normal continuity at each junction
+    //      Raw xAxis values (before sign correction) must be nearly parallel at each joint.
+    //      abs(dot) catches both parallel and antiparallel as valid — sign tracking handles
+    //      the antiparallel case downstream.
+    var normalContinuityTol = 0.9; // cos(~26°)
+
+    for (var i = 0; i < size(edgeData) - 1; i += 1)
+    {
+        var xEnd;
+        if (edgeData[i].isLine)
+        {
+            xEnd = edgeData[i].lineFrame.xAxis;
+        }
+        else
+        {
+            var edI  = edgeData[i];
+            var nKI  = size(edI.bspline.knots);
+            var degI = edI.bspline.degree;
+            // Traversal end of edge i
+            var pI   = edI.stdDir ? edI.bspline.knots[nKI - degI - 1]
+                                  : edI.bspline.knots[degI];
+            xEnd = computeFrenetFrame(edI.bspline, pI).frame.xAxis;
+        }
+
+        var xStart;
+        if (edgeData[i + 1].isLine)
+        {
+            xStart = edgeData[i + 1].lineFrame.xAxis;
+        }
+        else
+        {
+            var edJ  = edgeData[i + 1];
+            var nKJ  = size(edJ.bspline.knots);
+            var degJ = edJ.bspline.degree;
+            // Traversal start of edge i+1
+            var pJ   = edJ.stdDir ? edJ.bspline.knots[degJ]
+                                  : edJ.bspline.knots[nKJ - degJ - 1];
+            xStart = computeFrenetFrame(edJ.bspline, pJ).frame.xAxis;
+        }
+
+        if (abs(dot(xEnd, xStart)) < normalContinuityTol)
+        {
+            throw regenError("Reference edge normals are not coplanar at junction " ~ toString(i) ~
+                             " — use a planar edge chain.",
+                             qUnion([edgeData[i].query, edgeData[i + 1].query]));
+        }
+    }
+
     // 5. Compute total length by summing edges (avoids dependency on evPathLength)
     var totalLength = 0 * meter;
     for (var ed in edgeData)
