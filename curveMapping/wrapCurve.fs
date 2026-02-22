@@ -98,6 +98,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Description" : "Print BSpline data from wrapped output curves",
                         "Default" : false }
             definition.debugWrappedCurves is boolean;
+
+            annotation { "Name" : "Show from frames",
+                        "Description" : "Draw Frenet frame axes along the from reference path",
+                        "Default" : false }
+            definition.debugShowFromFrames is boolean;
+
+            annotation { "Name" : "Show to frames",
+                        "Description" : "Draw Frenet frame axes along the to reference path",
+                        "Default" : false }
+            definition.debugShowToFrames is boolean;
         }
     }
 
@@ -114,6 +124,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             println("To path: " ~ toString(size(toFrenetPath.edgeData)) ~ " edge(s), totalLength = " ~ toString(toFrenetPath.totalLength));
         }
+
+        if (definition.debugShowFromFrames)
+            debugDrawFrames(context, id + "fromFrames", fromFrenetPath, 10);
+
+        if (definition.debugShowToFrames)
+            debugDrawFrames(context, id + "toFrames", toFrenetPath, 10);
 
         // 2. Resolve reference alignment arc-lengths
         var fromRefPt  = getRefPoint(context, definition.fromRef);
@@ -198,6 +214,62 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             opCreateBSplineCurve(context, id + (toString(i) ~ "wrappedCurve"), { "bSplineCurve": mappedCurve });
         }
     });
+
+
+// ============================================================================
+// debugDrawFrames  (internal helper)
+// ============================================================================
+
+/**
+ * Draw short wire segments visualising the Frenet frame at evenly-spaced
+ * arc-length positions along a FrenetPath.
+ *
+ * For each sample:
+ *   - a "t" segment shows the tangent (zAxis)
+ *   - an "n" segment shows the sign-corrected normal (xAxis)
+ *
+ * Arrow length is 1/3 of the spacing between samples so consecutive arrows
+ * never overlap.
+ */
+function debugDrawFrames(context is Context, id is Id,
+                         frenetPath is map, numSamples is number)
+{
+    var totalLength = frenetPath.totalLength;
+    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
+
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var s      = totalLength * i / (numSamples - 1);
+        var result = getFrameAtArcLength(context, frenetPath, s);
+        var origin = result.frame.origin;
+
+        // Tangent arrow (zAxis)
+        var tangentEnd = origin + arrowLen * result.frame.zAxis;
+        var tangentCurve = {
+            "degree"        : 1,
+            "isPeriodic"    : false,
+            "isRational"    : false,
+            "controlPoints" : [origin, tangentEnd],
+            "knots"         : [0, 0, 1, 1]
+        } as BSplineCurve;
+        opCreateBSplineCurve(context,
+                             id + (toString(i) ~ "t"),
+                             { "bSplineCurve": tangentCurve });
+
+        // Normal arrow (xAxis, sign-corrected)
+        var normalEnd = origin + arrowLen * result.frame.xAxis;
+        var normalCurve = {
+            "degree"        : 1,
+            "isPeriodic"    : false,
+            "isRational"    : false,
+            "controlPoints" : [origin, normalEnd],
+            "knots"         : [0, 0, 1, 1]
+        } as BSplineCurve;
+        opCreateBSplineCurve(context,
+                             id + (toString(i) ~ "n"),
+                             { "bSplineCurve": normalCurve });
+    }
+}
 
 
 // ============================================================================
