@@ -230,20 +230,27 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 /**
  * Draw Frenet frames at evenly-spaced arc-length positions along a FrenetPath.
  *
- * Uses the built-in debug(context, CoordSystem) function, which draws three
- * ephemeral RGB arrows (xAxis=RED normal, yAxis=GREEN binormal, zAxis=BLUE
- * tangent) that are only visible while the feature dialog is open — no
- * persistent wire bodies are created.
+ * Uses addDebugArrow directly so arrow length scales with path geometry
+ * (1/3 of inter-sample spacing) rather than using a hardcoded 5cm length.
+ * Also avoids the console println that debug(context, CoordSystem) emits.
+ *
+ * Colors: xAxis (normal) = RED, yAxis (binormal) = GREEN, zAxis (tangent) = BLUE
  */
 function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
 {
     var totalLength = frenetPath.totalLength;
+    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
+    var arrowRadius = arrowLen * 0.05;
 
     for (var i = 0; i < numSamples; i += 1)
     {
         var s      = totalLength * i / (numSamples - 1);
         var result = getFrameAtArcLength(context, frenetPath, s);
-        debug(context, result.frame);
+        var origin = result.frame.origin;
+
+        addDebugArrow(context, origin, origin + arrowLen * result.frame.xAxis,  arrowRadius,           DebugColor.RED);
+        addDebugArrow(context, origin, origin + arrowLen * yAxis(result.frame),  arrowRadius * (2 / 3), DebugColor.GREEN);
+        addDebugArrow(context, origin, origin + arrowLen * result.frame.zAxis,   arrowRadius * 0.5,     DebugColor.BLUE);
     }
 }
 
