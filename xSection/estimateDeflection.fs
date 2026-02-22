@@ -602,6 +602,13 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         var xMin = eiData[0].x;
         var xMax = eiData[size(eiData) - 1].x;
 
+        // --- 1b. Sample plate stiffness (if enabled) ---
+        var plateData = [];
+        if (definition.addPlateConditions)
+        {
+            plateData = sampleEdgesForEI(context, definition.plateStiffness, definition.numEvalPoints);
+        }
+
         // --- 2. Resolve support X positions ---
         var xs1;
         if (definition.support1IsQuery)
@@ -736,17 +743,18 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         var R1;
         var R2;
         var R3 = 0 * newton;
+        var M0 = (definition.addPlateConditions ? definition.reactionMoment : 0) * newton * meter;
         if (definition.addThirdSupport)
         {
             R3 = F_total * definition.supportLoadBalance;
             var remainder = F_total - R3;
-            var momentArm = F1 * (x1 - xs1) + F2 * (x2 - xs1) - R3 * (xs3 - xs1);
+            var momentArm = F1 * (x1 - xs1) + F2 * (x2 - xs1) - R3 * (xs3 - xs1) + M0;
             R2 = momentArm / (xs2 - xs1);
             R1 = remainder - R2;
         }
         else
         {
-            var momentArm = F1 * (x1 - xs1) + F2 * (x2 - xs1);
+            var momentArm = F1 * (x1 - xs1) + F2 * (x2 - xs1) + M0;
             R2 = momentArm / (xs2 - xs1);
             R1 = F_total - R2;
         }
@@ -914,6 +922,16 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             M_arr = append(M_arr, m_new);
         }
 
+        // --- 10a. Inject concentrated reaction moment (if enabled) ---
+        if (definition.addPlateConditions && definition.reactionMoment != 0)
+        {
+            var iM = findNearestIndex(x_eval, definition.reactionMomentX);
+            for (var i = iM; i < N; i += 1)
+            {
+                M_arr[i] = M_arr[i] + definition.reactionMoment * newton * meter;
+            }
+        }
+
         // --- 10b. Enforce M = 0 at outer support positions (simply-supported BCs) ---
         // Trapezoidal integration starts M[0] = 0 at xEvalMin, not at xs1.
         // Any non-zero q_net between xEvalMin and xs1 (e.g. distributed support straddle)
@@ -958,6 +976,18 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         for (var i = 0; i < N; i += 1)
         {
             var EI_i = interpEI(eiData, x_eval[i]);
+
+            // Add plate stiffness contribution if within plate x-range
+            if (definition.addPlateConditions && size(plateData) > 0)
+            {
+                var xpMin = plateData[0].x;
+                var xpMax = plateData[size(plateData) - 1].x;
+                if (x_eval[i] >= xpMin && x_eval[i] <= xpMax)
+                {
+                    EI_i = EI_i + interpEI(plateData, x_eval[i]);
+                }
+            }
+
             if (EI_i < EI_min)
             {
                 EI_i = EI_min;
