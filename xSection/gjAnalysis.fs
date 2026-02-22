@@ -2,9 +2,9 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 // IMPORT: xSection/gjDataAccess
-import(path : "12c9e75dc2139eb927245033", version : "009f2fb3b7652346f43dcb9c");
+import(path : "12c9e75dc2139eb927245033", version : "ceb38626308ce6f11f580e49");
 // IMPORT: xSection/xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "01ff18cd88c62b73db496011");
+import(path : "9df6ba3db06d479fabe63c1d", version : "0e68885e3b5e21a4c36925e7");
 
 
 /**

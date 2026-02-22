@@ -8,6 +8,9 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
 import(path : "ad98c7f43a25a4c0e8a428e7", version : "63d775b3f3586154f31324be");
+// IMPORT: tools/arc_length.fs
+// IMPORT: tools/frenet.fs
+// IMPORT: tools/point_projection.fs
 
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
@@ -26,12 +29,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map from (source reference)" }
             definition.fromEdges is Query;
-            
-            annotation { "Name" : "From reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 , "Description" : "reference point on from curve"}
+
+            annotation { "Name" : "From reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on from curve" }
             definition.fromRef is Query;
-            
         }
-        
+
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "To edge(s)",
@@ -39,25 +41,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map to (target reference)" }
             definition.toEdges is Query;
-            
+
             annotation { "Name" : "Flip", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
             definition.flipTo is boolean;
-            
+
             annotation { "Name" : "To reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on to curve" }
             definition.toRef is Query;
-            
+
             annotation { "Name" : "Flip normal", "Default" : false, "Description" : "When true, flips the frenet frame normal vector on the to chain" }
             definition.flipToNormal is boolean;
-            
         }
-        
-
 
         annotation { "Name" : "Source curves",
                     "Filter" : EntityType.EDGE,
                     "Description" : "Curves to map from fromEdge to toEdge" }
         definition.sourceCurves is Query;
-
 
         annotation { "Name" : "Advanced options",
                     "Default" : false }
@@ -67,7 +65,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
             isLength(definition.samplingDensity, samplingDensityBounds);
-            
+
             annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
             isInteger(definition.approximationDegree, DEGREE_BOUND);
 
@@ -76,7 +74,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
             annotation { "Name" : "Tolerance" }
             isLength(definition.approximationTolerance, TOLERANCE_BOUND);
-            
         }
 
         annotation { "Group Name" : "Debug Options",
@@ -103,314 +100,427 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             definition.debugWrappedCurves is boolean;
         }
     }
-    
+
     {
-        var processedRefs = processEdgeRefs(context, id, definition);
-        definition.processedRefs = processedRefs;
+        // 1. Build FrenetPaths for from/to references
+        var fromFrenetPath = buildFrenetPath(context, id, definition.fromEdges, false);
+        var toFrenetPath   = buildFrenetPath(context, id, definition.toEdges,   definition.flipTo);
+
+        if (definition.debugFromBSplines)
+        {
+            println("From path: " ~ toString(size(fromFrenetPath.edgeData)) ~ " edge(s), totalLength = " ~ toString(fromFrenetPath.totalLength));
+        }
+        if (definition.debugToBSplines)
+        {
+            println("To path: " ~ toString(size(toFrenetPath.edgeData)) ~ " edge(s), totalLength = " ~ toString(toFrenetPath.totalLength));
+        }
+
+        // 2. Resolve reference alignment arc-lengths
+        var fromRefPt  = getRefPoint(context, definition.fromRef);
+        var toRefPt    = getRefPoint(context, definition.toRef);
+        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt);
+        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt);
+
+        // 3. Approximation options (with defaults for when showAdvanced is false)
+        var degree = 3;
+        if (definition.approximationDegree != undefined)
+            degree = definition.approximationDegree;
+
+        // 4. For each source curve: sample, map, fit, create
+        var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
+        for (var i = 0; i < size(sourceCurveArray); i += 1)
+        {
+            var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
+
+            // Determine number of sample points from sampling density
+            var srcArcTable = buildArcLengthTable(srcBSpline, 200);
+            var samplingDensity = 1 * millimeter;
+            if (definition.samplingDensity != undefined)
+                samplingDensity = definition.samplingDensity;
+            var numSamples = max([5, ceil(srcArcTable.totalLength / samplingDensity) + 1]);
+
+            // Sample source curve uniformly by arc-length
+            var samples   = uniformArcLengthSamples(srcBSpline, numSamples, {});
+            var srcPoints = samples.points;
+
+            if (definition.debugSourceBSplines)
+            {
+                println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
+                        " samples, length = " ~ toString(srcArcTable.totalLength));
+            }
+
+            // Map each sampled point through Frenet frame transformation
+            var mappedPoints = [];
+            for (var pt in srcPoints)
+            {
+                // Project source point onto from-path; get Frenet frame there
+                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+                var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+
+                // Express point in from-frame local coordinates [tangent, normal, binormal]
+                var localCoords = worldPointToFrenet(pt, fromResult);
+
+                // Linear arc-length mapping from from-path to to-path
+                var s_to = toRefArc + (s_from - fromRefArc);
+
+                // Get to-frame at mapped arc-length
+                var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
+
+                // Determine effective to-frame normal sign (apply flipToNormal toggle)
+                var toSign = toResult.sign;
+                if (definition.flipToNormal)
+                    toSign = -1 * toSign;
+
+                // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
+                var toFrameResult = toResult;
+                if (toSign != fromResult.sign)
+                {
+                    var flippedFrame = coordSystem(toResult.frame.origin,
+                                                   -1 * toResult.frame.xAxis,
+                                                   toResult.frame.zAxis);
+                    toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
+                }
+
+                mappedPoints = append(mappedPoints, frenetPointToWorld(localCoords, toFrameResult));
+            }
+
+            // Fit BSpline through mapped points
+            var approxDef  = { "points": mappedPoints, "degree": degree };
+            var mappedCurve = approximateSpline(approxDef);
+
+            if (definition.debugWrappedCurves)
+            {
+                println("Wrapped curve " ~ toString(i) ~ ": " ~ toString(size(mappedCurve.controlPoints)) ~
+                        " CPs, degree " ~ toString(mappedCurve.degree));
+            }
+
+            // Create geometry
+            opCreateBSplineCurve(context, id + (toString(i) ~ "wrappedCurve"), { "bSplineCurve": mappedCurve });
+        }
     });
-    
+
+
+// ============================================================================
+// buildFrenetPath
+// ============================================================================
+
 /**
- * Processes input to and from curves such that they can be used
- * to deform geometry. Engorces G1 continuity and throws an error if curves
- * do not conform. Provides information about how frenet frames should change along the reference
- * @param context {Context} : context
- * @param definition {{
- *      @field fromEdges {Query} : Query for from edges
- *      @field toEdges {Query} : Query for to eges
- * }}
- * @returns {map} : a map with keys 'toRef' and 'fromRef'
+ * Preprocess a G1-continuous edge chain into a queryable FrenetPath structure.
+ *
+ * Validates G1 continuity via constructPath, optionally reverses the chain,
+ * and computes per-edge metadata: arc-length tables, inflection arc-lengths,
+ * and cumulative normal sign.
+ *
+ * @param context   {Context}
+ * @param id        {Id}
+ * @param sourceEdges {Query}  : edges forming a single G1-continuous chain
+ * @param flipRef   {boolean} : if true, reverse the chain direction
+ * @returns {map} :
+ *   "path"        {Path}            - ordered Path from constructPath
+ *   "totalLength" {ValueWithUnits}  - total arc-length of the chain
+ *   "edgeData"    {array}           - per-edge maps (index 0 = chain start)
+ *
+ * Each edgeData entry contains:
+ *   query, bspline, stdDir, isLine, length,
+ *   arcLengthTable, localInflectionArcs,
+ *   lineFrame (lines only), lineStartPt (lines only),
+ *   startArcLength, startSign
  */
- export function processEdgeRefs(context is Context, id is Id, definition is map) returns map
- {
-     var fromRef = processEdgeRef(context,id, definition, 'from', false);
-     var toRef = processEdgeRef(context, id, definition, 'to', definition.flipTo);
-     return {'toRef' : toRef, 'fromRef' : fromRef};
- }
- 
-/**
- * Processes a group of edges to ensure G1 continuity and 
- * provide metadata about the set of edges, including information
- * that will be used to get internally consistent frente frames
- * @param context {Context} : context
- * @param definition {{
- *      @field fromEdges {Query} : Query for from edges
- *      @field toEdges {Query} : Query for to eges
- * }}
- * @param region {string} : region name. Will be used to select fromEdges or toEges, as well as reporting correct 
- * @param flipRef {boolean} : if true, flips standard chain evaluation direction. 
- * @returns {{
- *      @field startPoint {Vector} : Chain startpoint. Corresponds to parameter 0
- *      @field endPoint {Vector} : Chain endpoint. Corresponds to parameter 1
- *      @field startFrenet {frame} : coordinate system at parameter 0
- *      @field endFrenet {frame} : coordinate system at parameter 1
- *      @field length {ValueWithUnits} : Length of the chain in mm
- *      @field edges {array} : array of edge maps. Edge map keys include length, startPathParam, endPathParam, BSplineCurve, curveType, frenetDef, etc
- * 
- */
-export function processEdgeRef(context is Context, id is Id, definition is map, sourceString is string, flipRef is boolean) returns map
+export function buildFrenetPath(context is Context, id is Id, sourceEdges is Query, flipRef is boolean) returns map
 {
-    var edgePath;
-    var sourceEdges = (sourceString == "from") ? definition.fromEdges : definition.toEdges;
-    var retMap = {'flip' : flipRef};
-    
+    // 1. Validate G1 continuity and get ordered path
+    var path;
     try
     {
-        @constructPaths(context, {"edges" : sourceEdges}); // can run dimensionless. We don't atually want the path - we just want to see if we can create one. 
+        path = constructPath(context, sourceEdges);
     }
     catch (error)
     {
-        reportFeatureInfo(context, id, (sourceString ~ " edges must be G1 continuous"));
-        throw regenError((sourceString ~ " edges must be G1 continuous"), (sourceString ~ "Edges"), sourceEdges);
+        throw regenError("Reference edges must be G1 continuous", sourceEdges);
     }
-    
-    //we were able to create a path, we have G1 continuity. Moving on. 
-    
-    // startpoint defaults to the point closest to the minimum corner
-    var refBox = evBox3d(context, {
-            "topology" : sourceEdges,
-            "tight" : true
-    });
 
-    var allEdges = evaluateQuery(context, qUnion([sourceEdges]));
-    var edgeMapArray = mapArray(allEdges, function(x) {return {"query" : x};}); // add edge query
-    edgeMapArray = mapArray(edgeMapArray, function(x) {return mergeMaps(x, {"length" : evLength(context, { "entities" : x.query})});}); // add length of each edge
-    edgeMapArray = mapArray(edgeMapArray, function(x) {return mergeMaps(x, {"BSplineCurve" : evApproximateBSplineCurve(context, { "edge" : x.query})});}); // evaluate BSplineCurve for each edge
-    edgeMapArray = mapArray(edgeMapArray, function(x) {return mergeMaps(x, {"curveDef" : evCurveDefinition(context, { "edge" : x.query})});}); // get curve definition for each edge. This will include BSpline info for BSPlines, but also call out arcs, and - importantly - lines. 
-    
-    for (var i = 0; i < size(edgeMapArray); i += 1) // add edge endpoints as well as edge index. 
+    // 2. Optionally reverse traversal direction
+    if (flipRef)
+        path = reverse(path);
+
+    // 3. Build per-edge data
+    var edgeData = [];
+    var nEdges   = size(path.edges);
+
+    for (var i = 0; i < nEdges; i += 1)
     {
-        var curveType = edgeMapArray[i]['curveDef']['curveType'];
-        
-        var endLines = evEdgeTangentLines(context, {
-                "edge" : edgeMapArray[i].query,
-                "parameters" : [0,1]
-        });
-        
-        edgeMapArray[i]['startPoint'] = endLines[0].origin;
-        edgeMapArray[i]['endPoint'] = endLines[1].origin;
-        edgeMapArray[i]['index'] = i;
-        
-    }
-    
-    for (var i = 0; i < size(edgeMapArray); i += 1) // map edge adjacency for each edge. 
-    {
-        var adjacentEdges = [];
-        var thisStart = edgeMapArray[i].startPoint;
-        var thisEnd = edgeMapArray[i].endPoint;
-        var startFree = true;
-        var endFree = true;
-        for (var j = 0; j < size(edgeMapArray); j += 1)
+        var edge    = path.edges[i];
+        var flipped = path.flipped[i];
+        var stdDir  = !flipped;  // true = traverse param 0→1
+
+        var bspline  = evApproximateBSplineCurve(context, { "edge": edge });
+        var length   = evLength(context, { "entities": edge });
+        var curveDef = evCurveDefinition(context, { "edge": edge });
+        var isLine   = (curveDef.curveType == CurveType.LINE);
+
+        // Always build arc-length table — used for both projection and frame lookup
+        var arcLengthTable = buildArcLengthTable(bspline, 100);
+
+        var localInflectionArcs = [];
+        var lineFrame           = undefined;
+        var lineStartPt         = undefined;
+
+        if (isLine)
         {
-            if (i == j) // we don't want to compare an edge to itself. 
-            {
-                continue;
-            }
-            else
-            {
-                var otherStart = edgeMapArray[j].startPoint;
-                var otherEnd = edgeMapArray[j].endPoint;
-                if ((norm(thisStart - otherStart) < 1e-6 * meter) || (norm(thisStart - otherEnd) < 1e-6 * meter)) // if this startpoint is within 1e-6 * meter of one of the endpoints of the other curve, we've found an adjacent curve
-                {
-                    adjacentEdges = append(adjacentEdges, j);
-                    var startFree = false;
-                }
-                if ((norm(thisEnd - otherStart) < 1e-6 * meter) || (norm(thisEnd - otherEnd) < 1e-6 * meter)) // if this endpoint is within 1e-6 * meter of one of the endpoints of the other curve, we've found an adjacent curve
-                {
-                    adjacentEdges = append(adjacentEdges, j);
-                    var endFree = false;   
-                }
-                
-            }
-            
-        }
-        edgeMapArray[i]['adjacentEdges'] = adjacentEdges; // add the adjacency array to the edgeMap
-        edgeMapArray[i]['endFreedom'] = {'startFree' : startFree, 'endFree' : endFree}; // add endFreedom to the edgeMap
-        
-        if (edgeMapArray[i].curveDef.curveType != CurveType.LINE) // if this isn't a line, we want to look into some start and stop coordinate systems 
-        {
-            var endpointCurvatures = evEdgeCurvatures(context, {
-                    "edge" : edgeMapArray[i].query,
-                    "parameters" : [0, 1]
-            });
-            edgeMapArray[i]['frenetDef'] = {'startFrame' : endpointCurvatures[0].frame, 'endFrame' : endpointCurvatures[1].frame};
-        }
-    }
-    
-    //find startpoint (closest free point to min corner) start chaining. 
-    var possibleStartEdges = (size(edgeMapArray) > 1) ? filter(edgeMapArray, function(x) {return size(x.adjacentEdges) > 1;}) : edgeMapArray;
-    for (var i = 0; i < size(possibleStartEdges); i += 1)
-    {
-        var distToBoxMin = 100 * meter;
-        if (possibleStartEdges[i].endFreedom.startFree)
-        {
-            distToBoxMin = norm(refBox.minCorner - possibleStartEdges[i].startPoint);
-        }
-        if (possibleStartEdges[i].endFreedom.endFree)
-        {
-            distToBoxMin = norm(refBox.minCorner - possibleStartEdges[i].endPoint);
-        }
-        possibleStartEdges[i]['distToBoxMin'] = distToBoxMin;
-    }
-    
-    var minStartDist = min(mapArray(possibleStartEdges, function(x) {return x.distToBoxMin;}));
-    var startEdge = filter(possibleStartEdges, function(x) {return abs(minStartDist - x.distToBoxMin) < 1e-6 * meter;})[0];
-    
-    var nextIndex = startEdge.index;
-    var nextStart = (startEdge.endFreedom.startFree) ? startEdge.startPoint : startEdge.endPoint; //next start point
-    
-    var chainLength = 0 * meter;
-    
-    for (var i = 0; i < size(edgeMapArray); i += 1) //chaining loop. 
-    {
-        var thisEdge = edgeMapArray[(nextIndex)];
-        edgeMapArray[i]['chainOrder'] = i;
-        var stdDir = norm(thisEdge.startPoint - nextStart) < 1e-6 * meter; // if the start point (param 0) is at nextStart, we're evaluating in a standard direction. 
-        edgeMapArray[i]['stdDir'] = stdDir;
-        
-        // evaluate next loop
-        nextStart = stdDir ? thisEdge.endPoint : thisEdge.startPoint;
-        var edgeContainsNextStart = filter(edgeMapArray, function(x) {return ( (norm(x.startPoint - nextStart) <= 1e-6 * meter) || (norm(x.endPoint - nextStart) <= 1e-6 * meter));});
-        var nextEdge = (size(edgeMapArray) > 1) ? filter(edgeContainsNextStart, function(x) {return x.index != thisEdge.index;})[0] : edgeMapArray[0]; // the explicit assumption here is that only two edges will share an endpoint
-        nextIndex = nextEdge.index;
-        chainLength += thisEdge.length;
-        
-    }
-    
-    //order edges
-    edgeMapArray = sort(edgeMapArray, function(a, b) {return a.chainOrder - b.chainOrder;});
-    
-    var needSearchCurvature = !any(keys(edgeMapArray[0]), function(x) {return x =='frenetDef';}); //if the first element already has a frenet def, than we're all set. 
-    //Otherwise, we've got to figure out what the frenet frame at the start of the chain is. Note that we will have frenetFrames defined for all curve types except lines
-    
-    if (needSearchCurvature)
-    {
-        
-        var hasFrameInfo = filter(edgeMapArray, function(x) {return any(keys(x) , function(y) {return y == 'frenetDef';});});
-        if (size(hasFrameInfo) == 0)
-        {
-            retMap['hasFrenetDriver'] = false; // no curves have a frenet refrence. 
-            var bestFrame = lineFrenetFrame(line(edgeMapArray[0].curveDef.origin, edgeMapArray[0].curveDef.direction));
-            edgeMapArray[0]['frenetDef'] = {'startFrame' : coordSystem(edgeMapArray[0].startPoint, bestFrame.xAxis, bestFrame.zAxis), 'endFrame' : coordSystem(edgeMapArray[0].endPoint, bestFrame.xAxis, bestFrame.zAxis)};
+            // Build Frenet frame for the line, direction-corrected for traversal
+            var lineDir = curveDef.direction;
+            if (!stdDir)
+                lineDir = -1 * lineDir;
+
+            lineFrame = lineFrenetFrame({ "origin": curveDef.origin, "direction": lineDir });
+
+            // Store traversal-start position for position interpolation in getFrameAtArcLength
+            var endLines = evEdgeTangentLines(context, { "edge": edge, "parameters": [0, 1] });
+            lineStartPt  = stdDir ? endLines[0].origin : endLines[1].origin;
         }
         else
         {
-            retMap['hasFrenetDriver'] = true; //we have a frenet Frame def in at least one of the edges
-            var firstDriver = hasFrameInfo[0];
-            var drivingFrame = firstDriver.stdDir ? firstDriver.startFrame : firstDriver.endFrame;
-            // We SHOULD be ok with these assumptions, but they seem a bit brittle. Worth looking into once functionality 
-            edgeMapArray[0]['frenetDef'] = {'startFrame' : coordSystem(edgeMapArray[0].startPoint, drivingFrame.xAxis, drivingFrame.zAxis), 'endFrame' : coordSystem(edgeMapArray[0].endPoint, drivingFrame.xAxis, drivingFrame.zAxis)};
-            
-        }
-    }
-    
-    //no additional searching necessary if we have a frenetDef in the first edge. We DO however need to work through the chain to:
-    //1. Adjust the zAxis of each frame so that it points in the correct direction 0 -> 1
-    //2. Compare the xAxis of frenet frames of two adjacent edges. Really, these need to be parallel/antiparallel. If they're not, transformations are ill defined
-    // and we need to throw an error. the xAxis of a 'new' edge should flip (if necessary) to allign with the preceeding edge. 
-    //3. Understand inflection points within an edge and specify parameters where we should 'flip' the x-Axis. 
-    
-    var refXAxis = (edgeMapArray[0].stdDir) ? edgeMapArray[0].frenetDef.startFrame.xAxis : edgeMapArray[0].frenetDef.endFrame.xAxis; //we update each loop. This is the 'last frame along the chain from the last edge'. 
-    
-    for (var i = 0; i < size(edgeMapArray); i += 1) //iterate over edges, assign/flip start/end frames. Check coherence. 
-    {
-        var thisEdge = edgeMapArray[i];
-        if (!any(keys(edgeMapArray[i]), function(x) {return x == "frenetDef";})) //we're somewhere in the chain and hit an edge without a frenetDef, which must be a line. 
-        {
-            var lastEdge = edgeMapArray[i-1];
-            var lastFrame = lastEdge.stdDir ? lastEdge.frenetDef.endFrame : lastEdge.frenetFDef.startFrame;
-            edgeMapArray[i]['frenetDef'] = {'startFrame' : coordSystem(thisEdge.startPoint, lastFrame.xAxis, lastFrame.zAxis), 'endFrame' : coordSystem(thisEdge.endPoint, lastFrame.xAxis, lastFrame.zAxis)};
-            
-        }
-        var thisStartFrame = flipFrameToMatchCurve(context, thisEdge.frenetDef.startFrame, thisEdge.BSplineCurve, 0, thisEdge.stdDir);
-        var thisEndFrame = flipFrameToMatchCurve(context, thisEdge.frenetDef.endFrame, thisEdge.BSplineCurve, 1, thisEdge.stdDir);
-        //Frame zAxes pointing in chain direction. 
-        
+            // Detect inflection points and record them as local arc-length positions
+            if (bSplineMayHaveInflection(bspline))
+            {
+                var nCPs           = size(bspline.controlPoints);
+                var rawInflections = findBSplineInflections(bspline, 4 * nCPs, 1e-4);
 
-        var dirDot = dot(thisStartFrame.xAxis, refXAxis);
-        if (dirDot < 0.9) // normals don't point in the same/opposite directions
-        {
-            reportFeatureInfo(context, id, (sourceString ~ " edges must have curvature pointing in parallel/antiparallel directions at junctions"));
-            throw regenError((sourceString ~ " edges must have curvature pointing in parallel/antiparallel directions at junctions"), (sourceString ~ "Edges"), sourceEdges);
-        }
-        
-        else // parallelish/antiparallelish xAxes
-        {
-            //does this edge have inflection points? If so, find them. 
-            edgeMapArray[i]['hasInflections'] = false;
-            edgeMapArray[i]['inflectionParams'] = [];
-            var searchInflections = bSplineMayHaveInflection(edgeMapArray[i].BSplineCurve);
-            
-            if (searchInflections)
-            {
-                var foundInflections = findBSplineInflections(edgeMapArray[i].BSplineCurve, 4 * size(edgeMapArray[i].BSplineCurve.controlPoints), 0.0001);    
-                edgeMapArray[i]['hasInflections'] = true;
-                edgeMapArray[i]['inflectionParams'] = foundInflections;
-            }
-            
-            if (dirDot < 0) // xAxes point in the opposite direction. Flip 
-            {
-                if (edgeMapArray[i].stdDir)
+                for (var u_inf in rawInflections)
                 {
-                    thisStartFrame.xAxis = -1 * thisStartFrame.xAxis;
+                    // Convert BSpline parameter to arc-length fraction, then to physical arc-length
+                    var physFrac      = arcLengthFraction(arcLengthTable, u_inf);
+                    var physArcLength = physFrac * length;  // arc from BSpline param=uMin
+
+                    // Convert to local arc (from traversal start)
+                    var localArc = stdDir ? physArcLength : (length - physArcLength);
+                    localInflectionArcs = append(localInflectionArcs, localArc);
                 }
-                else
+
+                // Sort ascending by local arc-length
+                localInflectionArcs = sort(localInflectionArcs, function(a, b)
                 {
-                    thisEndFrame.xAxis = -1 * thisEndFrame.xAxis;
-                }
-            }
-            
-            var inflectionFlip = 1;
-            for (var p in edgeMapArray[i].inflectionParams)
-            {
-                inflectionFlip *= -1;
-            }
-            
-            if (edgeMapArray[i].stdDir)
-            {
-                thisEndFrame.xAxis = thisEndFrame.xAxis * inflectionFlip; //if theres one inflection, flips xAxis. If two, flips twice, so reverts. 
-                refXAxis  = thisEndFrame.xAxis;
-            }
-            else // not standard dir
-            {
-                thisStartFrame.xAxis = thisStartFrame.xAxis * inflectionFlip;
-                refXAxis = thisStartFrame.xAxis;
+                    return (a - b) / meter;
+                });
             }
         }
-        
-        // Now insert the conditioned frames back in
-        edgeMapArray[i].frenetDef = {'startFrame' : thisStartFrame, 'endFrame' : thisEndFrame};    
+
+        edgeData = append(edgeData, {
+            "query"              : edge,
+            "bspline"            : bspline,
+            "stdDir"             : stdDir,
+            "isLine"             : isLine,
+            "length"             : length,
+            "arcLengthTable"     : arcLengthTable,
+            "localInflectionArcs": localInflectionArcs,
+            "lineFrame"          : lineFrame,
+            "lineStartPt"        : lineStartPt
+        });
     }
-    
-    //now get 
-    
-    retMap['edgeMapArray'] = edgeMapArray;
-    
-    return retMap;
+
+    // 4. Propagate cumulative startArcLength and startSign across edges
+    var runningArc  = 0 * meter;
+    var runningSign = 1;
+
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        edgeData[i] = mergeMaps(edgeData[i], {
+            "startArcLength": runningArc,
+            "startSign"     : runningSign
+        });
+
+        runningArc += edgeData[i].length;
+
+        // Each inflection flips the sign; an even count is a net identity
+        if (size(edgeData[i].localInflectionArcs) % 2 == 1)
+            runningSign = -1 * runningSign;
+    }
+
+    // 5. Compute total length by summing edges (avoids dependency on evPathLength)
+    var totalLength = 0 * meter;
+    for (var ed in edgeData)
+        totalLength += ed.length;
+
+    return {
+        "path"       : path,
+        "totalLength": totalLength,
+        "edgeData"   : edgeData
+    };
 }
 
-function flipFrameToMatchCurve(context is Context, frame is CoordSystem, curve is BSplineCurve, parameter is number, stdDir is boolean) returns CoordSystem
+
+// ============================================================================
+// getFrameAtArcLength
+// ============================================================================
+
+/**
+ * Return a globally consistent Frenet frame at any arc-length along the path.
+ *
+ * Handles multi-edge chains, non-standard traversal (stdDir=false), and
+ * inflection points. The normal (xAxis) sign is tracked cumulatively so it
+ * never discontinuously flips across the entire chain.
+ *
+ * @param context    {Context}
+ * @param frenetPath {map}           - result from buildFrenetPath
+ * @param arcLength  {ValueWithUnits}- global arc-length position (clamped)
+ * @returns {map} :
+ *   "frame"     {CoordSystem} - zAxis=tangent, xAxis=sign-corrected normal
+ *   "sign"      {number}      - current normal sign (+1 or -1)
+ *   "edgeIndex" {number}      - index of the edge containing this position
+ */
+export function getFrameAtArcLength(context is Context, frenetPath is map, arcLength) returns map
 {
-    var cps = curve.controlPoints;
-    var n = size(cps);
+    var edgeData    = frenetPath.edgeData;
+    var totalLength = frenetPath.totalLength;
 
-    // Determine reference direction from the control polygon
-    var referenceDir = (parameter < 0.5) ?
-        normalize(cps[1] - cps[0]) :
-        normalize(cps[n - 1] - cps[n - 2]);
+    // 1. Clamp arc-length to valid range
+    var clampedArc = arcLength;
+    if (arcLength < 0 * meter)     { clampedArc = 0 * meter; }
+    else if (arcLength > totalLength) { clampedArc = totalLength; }
 
-    // If non-standard direction, we want frames pointing from param 1 -> 0
-    if (!stdDir)
+    // 2. Find the edge whose span contains clampedArc
+    //    (last edge where startArcLength <= clampedArc)
+    var edgeIdx = 0;
+    for (var i = 0; i < size(edgeData); i += 1)
     {
-        referenceDir = -referenceDir;
+        if (edgeData[i].startArcLength <= clampedArc)
+            edgeIdx = i;
     }
 
-    // Flip if the frame's tangent opposes the desired direction
-    if (dot(frame.zAxis, referenceDir) < 0)
+    var edgeDat = edgeData[edgeIdx];
+
+    // 3. Local arc-length within this edge (from its traversal start)
+    var localArc = clampedArc - edgeDat.startArcLength;
+
+    // 4. Count inflections we have passed (localInflectionArcs <= localArc)
+    var inflectionsBefore = 0;
+    for (var infArc in edgeDat.localInflectionArcs)
     {
-        frame = coordSystem(frame.origin, frame.xAxis, -frame.zAxis);
+        if (infArc <= localArc)
+            inflectionsBefore += 1;
     }
 
-    return frame;
+    // 5. Effective normal sign at this position
+    var sign = edgeDat.startSign;
+    if (inflectionsBefore % 2 == 1)
+        sign = -1 * sign;
+
+    var frame;
+
+    if (edgeDat.isLine)
+    {
+        // 6a. Line: interpolate position along traversal direction
+        var position = edgeDat.lineStartPt + localArc * edgeDat.lineFrame.zAxis;
+        frame = coordSystem(position, edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
+    }
+    else
+    {
+        // 6b. Curved: convert local arc-length to BSpline parameter
+        var u;
+        if (edgeDat.stdDir)
+        {
+            u = parameterAtArcLength(edgeDat.arcLengthTable, localArc);
+        }
+        else
+        {
+            // Traversal is param 1→0; localArc=0 corresponds to uMax
+            u = parameterAtArcLength(edgeDat.arcLengthTable, edgeDat.length - localArc);
+        }
+
+        var rawResult = computeFrenetFrame(edgeDat.bspline, u);
+
+        if (!edgeDat.stdDir)
+        {
+            // Flip zAxis so it points in the traversal direction (param 1→0)
+            frame = coordSystem(rawResult.frame.origin,
+                                rawResult.frame.xAxis,
+                                -1 * rawResult.frame.zAxis);
+        }
+        else
+        {
+            frame = rawResult.frame;
+        }
+
+        // Apply cumulative normal sign correction to xAxis
+        frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
+    }
+
+    return {
+        "frame"    : frame,
+        "sign"     : sign,
+        "edgeIndex": edgeIdx
+    };
 }
 
 
+// ============================================================================
+// projectOntoFrenetPath  (internal helper)
+// ============================================================================
+
+/**
+ * Project a point onto a FrenetPath and return the global arc-length position.
+ *
+ * Tests each edge's BSpline, picks the closest, then converts the BSpline
+ * parameter to arc-length accounting for traversal direction.
+ *
+ * @param frenetPath {map}    - result from buildFrenetPath
+ * @param point      {Vector} - query point with units
+ * @returns {ValueWithUnits}  - arc-length along the path
+ */
+function projectOntoFrenetPath(frenetPath is map, point is Vector)
+{
+    var edgeData    = frenetPath.edgeData;
+    var bestDist    = inf * meter;
+    var bestEdgeIdx = 0;
+    var bestParam   = 0;
+
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        var result = projectPointOnCurve(edgeData[i].bspline, point, {});
+        if (result.distance < bestDist)
+        {
+            bestDist    = result.distance;
+            bestEdgeIdx = i;
+            bestParam   = result.parameter;
+        }
+    }
+
+    var edgeDat = edgeData[bestEdgeIdx];
+
+    // Convert BSpline parameter → arc-length from BSpline uMin
+    var physFrac      = arcLengthFraction(edgeDat.arcLengthTable, bestParam);
+    var physArcLength = physFrac * edgeDat.length;
+
+    // Convert to local arc from traversal start
+    var localArc = edgeDat.stdDir ? physArcLength : (edgeDat.length - physArcLength);
+
+    return edgeDat.startArcLength + localArc;
+}
+
+
+// ============================================================================
+// getRefPoint  (internal helper)
+// ============================================================================
+
+/**
+ * Extract a world point from a vertex, mate connector, or planar face query.
+ *
+ * @param context  {Context}
+ * @param refQuery {Query} - vertex, mate connector, or planar face
+ * @returns {Vector} - 3D position with units
+ */
+function getRefPoint(context is Context, refQuery is Query) returns Vector
+{
+    var pt = undefined;
+
+    try silent { pt = evVertexPoint(context, { "vertex": refQuery }); }
+    if (pt != undefined) return pt;
+
+    try silent { pt = evMateConnector(context, { "mateConnector": refQuery }).origin; }
+    if (pt != undefined) return pt;
+
+    try silent { pt = evPlane(context, { "face": refQuery }).origin; }
+    if (pt != undefined) return pt;
+
+    throw regenError("Cannot evaluate reference point from selection");
+}

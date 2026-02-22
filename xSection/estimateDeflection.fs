@@ -311,6 +311,10 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                       "Description" : "Draws shear/moment diagrams and load arrows for diagnosis (visible while editing only)" }
          definition.debugMode is boolean;
 
+         annotation { "Name" : "Print load summary", "Default" : false,
+                      "Description" : "Prints reactions, load catalogue, equilibrium check, and M boundary values to the FeatureScript console on each regen" }
+         definition.printLoadSummary is boolean;
+
 
          annotation { "Name" : "Add plate/mounting conditions?", "Default" : false, "Description" : "When true, allows users to add an additional query for plate stiffness as well as apply a mounting reaction moment" }
          definition.addPlateConditions is boolean;
@@ -333,7 +337,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
          
          annotation { "Group Name" : "Applied load data", "Collapsed By Default" : false }
          {
-             annotation { "Name" : "My Count" }
+             annotation { "Name" : "Applied load" , "Description" : "Total applied load in N" }
              isReal(definition.appliedLoad, AppliedLoadBounds);
              
              annotation { "Name" : "Applied load balance", "Description" : "The percentage of the applied load borne by the first Applied load. When only one applied load is provided, this defaults to 1" }
@@ -814,6 +818,46 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
+        // --- 7b. Print load summary (debug) ---
+        if (definition.printLoadSummary)
+        {
+            println("=== Load Summary ===");
+            println("  xs1 = " ~ toString(xs1 / meter * 1000) ~ " mm");
+            println("  xs2 = " ~ toString(xs2 / meter * 1000) ~ " mm");
+            if (definition.addThirdSupport)
+            {
+                println("  xs3 = " ~ toString(xs3 / meter * 1000) ~ " mm");
+            }
+            println("  R1 = " ~ toString(R1 / newton) ~ " N");
+            println("  R2 = " ~ toString(R2 / newton) ~ " N");
+            if (definition.addThirdSupport)
+            {
+                println("  R3 = " ~ toString(R3 / newton) ~ " N");
+            }
+            println("  F1 = " ~ toString(F1 / newton) ~ " N  (applied)");
+            if (definition.secondApplied)
+            {
+                println("  F2 = " ~ toString(F2 / newton) ~ " N  (applied)");
+            }
+            var netForce = R1 + R2 + R3 - F1 - F2;
+            println("  Equilibrium net = " ~ toString(netForce / newton) ~ " N  (expect ~0)");
+            println("  Distributed loads (" ~ toString(size(distLoads)) ~ "):");
+            for (var dl in distLoads)
+            {
+                println("    center=" ~ toString(dl.center / meter * 1000) ~ " mm"
+                    ~ "  force=" ~ toString(dl.force / newton) ~ " N"
+                    ~ "  width=" ~ toString(dl.width / meter * 1000) ~ " mm"
+                    ~ "  shape=" ~ toString(dl.shape)
+                    ~ "  sign=" ~ toString(dl.sign));
+            }
+            println("  Point loads (" ~ toString(size(pointLoads)) ~ "):");
+            for (var pl in pointLoads)
+            {
+                println("    x=" ~ toString(pl.x / meter * 1000) ~ " mm"
+                    ~ "  force=" ~ toString(pl.force / newton) ~ " N");
+            }
+        }
+
         // --- 8. Build distributed net load q_net at each eval point ---
         var q_net = [];
         for (var i = 0; i < N; i += 1)
@@ -867,10 +911,19 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             throw regenError("Support positions map to the same eval grid node. Increase numEvalPoints or move supports.");
         }
         var M_raw1  = M_arr[i1];
+        var M_raw2  = M_arr[i2];
         var M_slope = (M_arr[i2] - M_arr[i1]) / xSpan12;
         for (var i = 0; i < N; i += 1)
         {
             M_arr[i] = M_arr[i] - (M_raw1 + M_slope * (x_eval[i] - x_eval[i1]));
+        }
+        if (definition.printLoadSummary)
+        {
+            println("=== M Boundary Condition Check ===");
+            println("  M_raw(xs1)  = " ~ toString(M_raw1 / (newton * meter)) ~ " N·m  (before correction)");
+            println("  M_raw(xs2)  = " ~ toString(M_raw2 / (newton * meter)) ~ " N·m  (before correction)");
+            println("  M_corr(xs1) = " ~ toString(M_arr[i1] / (newton * meter)) ~ " N·m  (expect 0)");
+            println("  M_corr(xs2) = " ~ toString(M_arr[i2] / (newton * meter)) ~ " N·m  (expect 0)");
         }
 
         // --- 11. Integrate curvature twice to get raw deflection + apply BCs ---

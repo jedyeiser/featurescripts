@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 //import xSectLanguage (export/import)
-export import(path : "a0fab52ee4d0b16ffbc1c603", version : "76287bce792a49b70388b1a0");
+export import(path : "a0fab52ee4d0b16ffbc1c603", version : "606006d4a22f6a2e649824db");
 
 
 
