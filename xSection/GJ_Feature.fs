@@ -2,11 +2,11 @@ FeatureScript 2856;
 import(path : "onshape/std/common.fs", version : "2856.0");
 
 //import xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "6f697a0bc681a79b387e3d9b");
+import(path : "9df6ba3db06d479fabe63c1d", version : "01ff18cd88c62b73db496011");
 // import gjAnalysis
-import(path : "d30d288c7bf272efb0957cff", version : "b79ab69dba26c6808ea021f4");
+import(path : "d30d288c7bf272efb0957cff", version : "82afb1c5966d181fa0227c45");
 //import gjDataAccess
-import(path : "12c9e75dc2139eb927245033", version : "0dfcef24764b1de6fb74d6f2");
+import(path : "12c9e75dc2139eb927245033", version : "009f2fb3b7652346f43dcb9c");
 //import gjPredicates
 
 /**
