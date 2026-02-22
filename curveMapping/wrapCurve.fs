@@ -474,9 +474,18 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
         if (contextXAxis != undefined)
         {
             var lf = edgeData[i].lineFrame;
-            edgeData[i] = mergeMaps(edgeData[i], {
-                "lineFrame": coordSystem(lf.origin, contextXAxis, lf.zAxis)
-            });
+            // Project contextXAxis onto the plane perpendicular to the line tangent.
+            // This ensures exact perpendicularity for coordSystem even when the BSpline
+            // tangent at the junction drifts numerically from the line direction.
+            var tangent    = lf.zAxis;
+            var perpXAxis  = contextXAxis - dot(contextXAxis, tangent) * tangent;
+            if (norm(perpXAxis) > 1e-6)
+            {
+                edgeData[i] = mergeMaps(edgeData[i], {
+                    "lineFrame": coordSystem(lf.origin, normalize(perpXAxis), tangent)
+                });
+            }
+            // else: contextXAxis nearly parallel to tangent (degenerate) — keep heuristic
         }
     }
 
