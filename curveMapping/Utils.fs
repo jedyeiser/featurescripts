@@ -24,6 +24,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
 // produce meter², dots produce meter⁴, and comparing those to 0 or thresholds
 // gets messy. Stripping units up front keeps the math clean.
 // The inflection parameters we return are unitless regardless.
+/*
 function stripUnits(controlPoints is array) returns array
 {
     var result = makeArray(size(controlPoints));
@@ -33,6 +34,7 @@ function stripUnits(controlPoints is array) returns array
                            controlPoints[i][2] / meter);
     return result;
 }
+*/
 
 
 // ============================================================================

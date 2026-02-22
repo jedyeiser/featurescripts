@@ -760,23 +760,23 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         // Support 1
         if (definition.support1LoadShape == LoadType.POINT)
         {
-            pointLoads = append(pointLoads, { "x" : xs1, "force" : R1 });
+            pointLoads = append(pointLoads, { "x" : xs1, "force" : R1, "label" : "R1" });
         }
         else
         {
             distLoads = append(distLoads, { "center" : xs1, "force" : R1,
-                "shape" : definition.support1LoadShape, "width" : definition.support1Width, "sign" : 1 });
+                "shape" : definition.support1LoadShape, "width" : definition.support1Width, "sign" : 1, "label" : "R1" });
         }
 
         // Support 2
         if (definition.support2LoadShape == LoadType.POINT)
         {
-            pointLoads = append(pointLoads, { "x" : xs2, "force" : R2 });
+            pointLoads = append(pointLoads, { "x" : xs2, "force" : R2, "label" : "R2" });
         }
         else
         {
             distLoads = append(distLoads, { "center" : xs2, "force" : R2,
-                "shape" : definition.support2LoadShape, "width" : definition.support2Width, "sign" : 1 });
+                "shape" : definition.support2LoadShape, "width" : definition.support2Width, "sign" : 1, "label" : "R2" });
         }
 
         // Support 3 (optional)
@@ -784,24 +784,24 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         {
             if (definition.support3LoadShape == LoadType.POINT)
             {
-                pointLoads = append(pointLoads, { "x" : xs3, "force" : R3 });
+                pointLoads = append(pointLoads, { "x" : xs3, "force" : R3, "label" : "R3" });
             }
             else
             {
                 distLoads = append(distLoads, { "center" : xs3, "force" : R3,
-                    "shape" : definition.support3LoadShape, "width" : definition.support3Width, "sign" : 1 });
+                    "shape" : definition.support3LoadShape, "width" : definition.support3Width, "sign" : 1, "label" : "R3" });
             }
         }
 
         // Applied load 1
         if (definition.applied1LoadShape == LoadType.POINT)
         {
-            pointLoads = append(pointLoads, { "x" : x1, "force" : -F1 });
+            pointLoads = append(pointLoads, { "x" : x1, "force" : -F1, "label" : "F1" });
         }
         else
         {
             distLoads = append(distLoads, { "center" : x1, "force" : F1,
-                "shape" : definition.applied1LoadShape, "width" : definition.applied1Width, "sign" : -1 });
+                "shape" : definition.applied1LoadShape, "width" : definition.applied1Width, "sign" : -1, "label" : "F1" });
         }
 
         // Applied load 2 (optional)
@@ -809,12 +809,12 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         {
             if (definition.applied2LoadShape == LoadType.POINT)
             {
-                pointLoads = append(pointLoads, { "x" : x2, "force" : -F2 });
+                pointLoads = append(pointLoads, { "x" : x2, "force" : -F2, "label" : "F2" });
             }
             else
             {
                 distLoads = append(distLoads, { "center" : x2, "force" : F2,
-                    "shape" : definition.applied2LoadShape, "width" : definition.applied2Width, "sign" : -1 });
+                    "shape" : definition.applied2LoadShape, "width" : definition.applied2Width, "sign" : -1, "label" : "F2" });
             }
         }
 
@@ -844,7 +844,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             println("  Distributed loads (" ~ toString(size(distLoads)) ~ "):");
             for (var dl in distLoads)
             {
-                println("    center=" ~ toString(dl.center / meter * 1000) ~ " mm"
+                println("    " ~ dl.label ~ ":  center=" ~ toString(dl.center / meter * 1000) ~ " mm"
                     ~ "  force=" ~ toString(dl.force / newton) ~ " N"
                     ~ "  width=" ~ toString(dl.width / meter * 1000) ~ " mm"
                     ~ "  shape=" ~ toString(dl.shape)
@@ -853,7 +853,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             println("  Point loads (" ~ toString(size(pointLoads)) ~ "):");
             for (var pl in pointLoads)
             {
-                println("    x=" ~ toString(pl.x / meter * 1000) ~ " mm"
+                println("    " ~ pl.label ~ ":  x=" ~ toString(pl.x / meter * 1000) ~ " mm"
                     ~ "  force=" ~ toString(pl.force / newton) ~ " N");
             }
         }
