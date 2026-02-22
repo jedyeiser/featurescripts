@@ -146,9 +146,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             }
         }
 
-        if (definition.debugShowFromFrames)
-            debugDrawFrames(context, fromFrenetPath, 10);
-
         if (definition.debugShowToFrames)
             debugDrawFrames(context, toFrenetPath, 10);
 
@@ -191,6 +188,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             }
         }
         fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+
+        if (definition.debugShowFromFrames)
+            debugDrawFrames(context, fromFrenetPath, 10);
 
         // 3. Approximation options (with defaults for when showAdvanced is false)
         var degree = 3;
