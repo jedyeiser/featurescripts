@@ -129,10 +129,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
 
         if (definition.debugShowFromFrames)
-            debugDrawFrames(context, id + "fromFrames", fromFrenetPath, 10);
+            debugDrawFrames(context, fromFrenetPath, 10);
 
         if (definition.debugShowToFrames)
-            debugDrawFrames(context, id + "toFrames", toFrenetPath, 10);
+            debugDrawFrames(context, toFrenetPath, 10);
 
         // 2. Resolve reference alignment arc-lengths
         var fromRefPt  = getRefPoint(context, definition.fromRef);
@@ -228,55 +228,22 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 // ============================================================================
 
 /**
- * Draw short wire segments visualising the Frenet frame at evenly-spaced
- * arc-length positions along a FrenetPath.
+ * Draw Frenet frames at evenly-spaced arc-length positions along a FrenetPath.
  *
- * For each sample:
- *   - a "t" segment shows the tangent (zAxis)
- *   - an "n" segment shows the sign-corrected normal (xAxis)
- *
- * Arrow length is 1/3 of the spacing between samples so consecutive arrows
- * never overlap.
+ * Uses the built-in debug(context, CoordSystem) function, which draws three
+ * ephemeral RGB arrows (xAxis=RED normal, yAxis=GREEN binormal, zAxis=BLUE
+ * tangent) that are only visible while the feature dialog is open — no
+ * persistent wire bodies are created.
  */
-function debugDrawFrames(context is Context, id is Id,
-                         frenetPath is map, numSamples is number)
+function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
 {
     var totalLength = frenetPath.totalLength;
-    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
 
     for (var i = 0; i < numSamples; i += 1)
     {
         var s      = totalLength * i / (numSamples - 1);
         var result = getFrameAtArcLength(context, frenetPath, s);
-        var origin = result.frame.origin;
-
-        // Tangent arrow (zAxis)
-        var tangentEnd = origin + arrowLen * result.frame.zAxis;
-        var tangentCurve = {
-            "degree"        : 1,
-            "dimension" : 3,
-            "isPeriodic" : false,
-            "isRational" : false,
-            "controlPoints" : [origin, tangentEnd],
-            "knots" : [0, 0, 1, 1]
-        } as BSplineCurve;
-        opCreateBSplineCurve(context,
-                             id + (toString(i) ~ "t"),
-                             { "bSplineCurve": tangentCurve });
-
-        // Normal arrow (xAxis, sign-corrected)
-        var normalEnd = origin + arrowLen * result.frame.xAxis;
-        var normalCurve = {
-            "degree" : 1,
-            "dimension" : 3,
-            "isPeriodic" : false,
-            "isRational" : false,
-            "controlPoints" : [origin, normalEnd],
-            "knots" : [0, 0, 1, 1]
-        } as BSplineCurve;
-        opCreateBSplineCurve(context,
-                             id + (toString(i) ~ "n"),
-                             { "bSplineCurve": normalCurve });
+        debug(context, result.frame);
     }
 }
 
