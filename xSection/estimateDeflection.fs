@@ -306,8 +306,12 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
          
          annotation { "Name" : "Number of evaluation points" }
          isInteger(definition.numEvalPoints, EvaluationPointBounds);
-         
-         
+
+         annotation { "Name" : "Debug mode", "Default" : false,
+                      "Description" : "Draws shear/moment diagrams and load arrows for diagnosis (visible while editing only)" }
+         definition.debugMode is boolean;
+
+
          annotation { "Name" : "Add plate/mounting conditions?", "Default" : false, "Description" : "When true, allows users to add an additional query for plate stiffness as well as apply a mounting reaction moment" }
          definition.addPlateConditions is boolean;
          
@@ -900,6 +904,84 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         for (var i = 0; i < N; i += 1)
         {
             deflection = append(deflection, delta_arr[i] + C1 * (x_eval[i] - x_eval[0]) + C2);
+        }
+
+        // --- 11b. Debug visualization (shear/moment diagrams + load arrows) ---
+        if (definition.debugMode)
+        {
+            var vizSpan = xEvalMax - xEvalMin;
+
+            // Find max |V| and |M| for scaling
+            var maxAbsV = 1e-9 * newton;
+            var maxAbsM = 1e-9 * newton * meter;
+            for (var i = 0; i < N; i += 1)
+            {
+                if (abs(V_arr[i]) > maxAbsV) { maxAbsV = abs(V_arr[i]); }
+                if (abs(M_arr[i]) > maxAbsM) { maxAbsM = abs(M_arr[i]); }
+            }
+            var scaleV = vizSpan * 0.2 / maxAbsV;   // [m / N]
+            var scaleM = vizSpan * 0.2 / maxAbsM;   // [m / (N·m)]
+            var scaleF = vizSpan * 0.2 / F_total;   // [m / N]
+
+            // Zero reference line (BLACK)
+            addDebugLine(context,
+                vector(xEvalMin, 0 * meter, 0 * meter),
+                vector(xEvalMax, 0 * meter, 0 * meter),
+                DebugColor.BLACK);
+
+            // Shear diagram polyline (BLUE)
+            for (var i = 0; i < N - 1; i += 1)
+            {
+                addDebugLine(context,
+                    vector(x_eval[i],     0 * meter, V_arr[i]     * scaleV),
+                    vector(x_eval[i + 1], 0 * meter, V_arr[i + 1] * scaleV),
+                    DebugColor.BLUE);
+            }
+
+            // Moment diagram polyline (MAGENTA)
+            for (var i = 0; i < N - 1; i += 1)
+            {
+                addDebugLine(context,
+                    vector(x_eval[i],     0 * meter, M_arr[i]     * scaleM),
+                    vector(x_eval[i + 1], 0 * meter, M_arr[i + 1] * scaleM),
+                    DebugColor.MAGENTA);
+            }
+
+            // Support reaction arrows: GREEN = upward (positive), RED = downward (negative)
+            var s1Color = (R1 >= 0 * newton) ? DebugColor.GREEN : DebugColor.RED;
+            addDebugLine(context,
+                vector(xs1, 0 * meter, 0 * meter),
+                vector(xs1, 0 * meter, R1 * scaleF),
+                s1Color);
+
+            var s2Color = (R2 >= 0 * newton) ? DebugColor.GREEN : DebugColor.RED;
+            addDebugLine(context,
+                vector(xs2, 0 * meter, 0 * meter),
+                vector(xs2, 0 * meter, R2 * scaleF),
+                s2Color);
+
+            if (definition.addThirdSupport)
+            {
+                var s3Color = (R3 >= 0 * newton) ? DebugColor.GREEN : DebugColor.RED;
+                addDebugLine(context,
+                    vector(xs3, 0 * meter, 0 * meter),
+                    vector(xs3, 0 * meter, R3 * scaleF),
+                    s3Color);
+            }
+
+            // Applied load arrows: downward (RED for load 1, ORANGE for load 2)
+            addDebugLine(context,
+                vector(x1, 0 * meter, 0 * meter),
+                vector(x1, 0 * meter, -F1 * scaleF),
+                DebugColor.RED);
+
+            if (definition.secondApplied)
+            {
+                addDebugLine(context,
+                    vector(x2, 0 * meter, 0 * meter),
+                    vector(x2, 0 * meter, -F2 * scaleF),
+                    DebugColor.ORANGE);
+            }
         }
 
         // --- 12. Create deflection spline curve (XZ plane, Z = deflection) ---
