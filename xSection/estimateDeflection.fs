@@ -1031,17 +1031,26 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         {
             var vizSpan = xEvalMax - xEvalMin;
 
-            // Find max |V| and |M| for scaling
-            var maxAbsV = 1e-9 * newton;
-            var maxAbsM = 1e-9 * newton * meter;
+            // Find max |V|, |M|, and |kappa| for scaling
+            var maxAbsV     = 1e-9 * newton;
+            var maxAbsM     = 1e-9 * newton * meter;
+            var maxAbsKappa = 1e-9 / meter;
             for (var i = 0; i < N; i += 1)
             {
-                if (abs(V_arr[i]) > maxAbsV) { maxAbsV = abs(V_arr[i]); }
-                if (abs(M_arr[i]) > maxAbsM) { maxAbsM = abs(M_arr[i]); }
+                if (abs(V_arr[i])     > maxAbsV)     { maxAbsV     = abs(V_arr[i]);     }
+                if (abs(M_arr[i])     > maxAbsM)     { maxAbsM     = abs(M_arr[i]);     }
+                if (abs(kappa_arr[i]) > maxAbsKappa) { maxAbsKappa = abs(kappa_arr[i]); }
             }
             var scaleV = vizSpan * 0.2 / maxAbsV;   // [m / N]
             var scaleM = vizSpan * 0.2 / maxAbsM;   // [m / (N·m)]
             var scaleF = vizSpan * 0.2 / F_total;   // [m / N]
+
+            // Power-of-10 scale for curvature: start at 1mm per (1/m), grow until max height >= 10mm
+            var scaleK = 0.001 * meter * meter;
+            while (maxAbsKappa * scaleK < 0.01 * meter && scaleK < 1e6 * meter * meter)
+            {
+                scaleK = scaleK * 10;
+            }
 
             // Zero reference line (BLACK)
             addDebugLine(context,
@@ -1065,6 +1074,15 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                     vector(x_eval[i],     0 * meter, M_arr[i]     * scaleM),
                     vector(x_eval[i + 1], 0 * meter, M_arr[i + 1] * scaleM),
                     DebugColor.MAGENTA);
+            }
+
+            // Curvature diagram polyline (CYAN)
+            for (var i = 0; i < N - 1; i += 1)
+            {
+                addDebugLine(context,
+                    vector(x_eval[i],     0 * meter, kappa_arr[i]     * scaleK),
+                    vector(x_eval[i + 1], 0 * meter, kappa_arr[i + 1] * scaleK),
+                    DebugColor.CYAN);
             }
 
             // Support reaction arrows: GREEN (all supports)
