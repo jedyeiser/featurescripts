@@ -158,6 +158,40 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt);
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt);
 
+        // Fix 1: Align isolated from-line xAxes with to-path normal.
+        // Must run after fromRefArc/toRefArc are resolved.
+        // Lines adjacent to a curve already got a curve-context xAxis in buildFrenetPath step 4.5;
+        // this handles the isolated-line case (no curve neighbor) by borrowing the to-path normal.
+        var fromEdgeData = fromFrenetPath.edgeData;
+        for (var i = 0; i < size(fromEdgeData); i += 1)
+        {
+            var ed = fromEdgeData[i];
+            if (!ed.isLine)
+                continue;
+
+            // Skip lines that already received a curve-context xAxis in step 4.5
+            var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
+                              (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
+            if (hasCurveCtx)
+                continue;
+
+            // Map mid-arc of this from-edge to to-path position
+            var midFromArc = ed.startArcLength + ed.length / 2;
+            var midToArc   = toRefArc + (midFromArc - fromRefArc);
+            var toXAxis    = getFrameAtArcLength(context, toFrenetPath, midToArc).frame.xAxis;
+
+            // Project to-xAxis onto the plane perpendicular to the from-edge tangent
+            var tangent   = ed.lineFrame.zAxis;
+            var perpXAxis = toXAxis - dot(toXAxis, tangent) * tangent;
+            if (norm(perpXAxis) > 1e-6)
+            {
+                fromEdgeData[i] = mergeMaps(ed, {
+                    "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
+                });
+            }
+        }
+        fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+
         // 3. Approximation options (with defaults for when showAdvanced is false)
         var degree = 3;
         if (definition.approximationDegree != undefined)
@@ -191,8 +225,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             // Map each sampled point through Frenet frame transformation;
             // record which to-edge each mapped point lands on for span splitting
             var mappedData = [];
-            for (var pt in srcPoints)
+            for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
+                var pt = srcPoints[sIdx];
+
                 // Project source point onto from-path; get Frenet frame there
                 var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
                 var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
@@ -223,13 +259,15 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
-                    "point"    : frenetPointToWorld(localCoords, toFrameResult)
+                    "point"    : frenetPointToWorld(localCoords, toFrameResult),
+                    "sFrom"    : s_from
                 });
             }
 
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
             var segStartIdx = 0;
             var segCount    = 0;
+            var junctionPt  = undefined;  // carry-over exact junction point between spans
 
             while (segStartIdx < size(mappedData))
             {
@@ -240,8 +278,59 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     segEndIdx += 1;
 
                 var segPoints = [];
+
+                // Prepend exact junction point carried over from end of previous span
+                if (junctionPt != undefined)
+                    segPoints = append(segPoints, junctionPt);
+                junctionPt = undefined;
+
                 for (var k = segStartIdx; k <= segEndIdx; k += 1)
                     segPoints = append(segPoints, mappedData[k].point);
+
+                // Inject exact boundary point at the junction to the next span
+                if (segEndIdx + 1 < size(mappedData))
+                {
+                    var nextEdgeIdx   = mappedData[segEndIdx + 1].edgeIndex;
+                    var s_to_boundary = toFrenetPath.edgeData[nextEdgeIdx].startArcLength;
+
+                    // Invert arc-length mapping to get from-path position at boundary
+                    var s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
+                    if (s_from_junction < 0 * meter)
+                        s_from_junction = 0 * meter;
+                    if (s_from_junction > fromFrenetPath.totalLength)
+                        s_from_junction = fromFrenetPath.totalLength;
+
+                    // Interpolate source arc-length between bracketing samples
+                    var sFrom_k   = mappedData[segEndIdx].sFrom;
+                    var sFrom_kp1 = mappedData[segEndIdx + 1].sFrom;
+                    var t = (s_from_junction - sFrom_k) / (sFrom_kp1 - sFrom_k);
+                    if (t < 0) t = 0;
+                    if (t > 1) t = 1;
+                    var s_src_junction = samples.arcLengths[segEndIdx] +
+                                         t * (samples.arcLengths[segEndIdx + 1] - samples.arcLengths[segEndIdx]);
+
+                    // Evaluate source curve at junction arc-length
+                    var u_junction  = parameterAtArcLength(srcArcTable, s_src_junction);
+                    var pt_junction = evaluateSpline({ "spline": srcBSpline, "parameters": [u_junction] })[0];
+
+                    // Map through frames with same sign-reconciliation as main loop
+                    var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
+                    var localCoords_j = worldPointToFrenet(pt_junction, fromResult_j);
+                    var toResult_j    = getFrameAtArcLength(context, toFrenetPath, s_to_boundary);
+                    var toSign_j      = toResult_j.sign;
+                    if (definition.flipToNormal) toSign_j = -1 * toSign_j;
+                    var toFrameResult_j = toResult_j;
+                    if (toSign_j != fromResult_j.sign)
+                    {
+                        toFrameResult_j = mergeMaps(toResult_j, { "frame":
+                            coordSystem(toResult_j.frame.origin, -1 * toResult_j.frame.xAxis, toResult_j.frame.zAxis) });
+                    }
+                    var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
+
+                    // Append to current span; carry over to next span's start
+                    segPoints  = append(segPoints, junctionWorldPt);
+                    junctionPt = junctionWorldPt;
+                }
 
                 if (size(segPoints) >= degree + 1)
                 {
