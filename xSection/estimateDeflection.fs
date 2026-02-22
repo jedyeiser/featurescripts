@@ -77,7 +77,21 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
     println("estimateDeflectionEditLogic called");
-   
+
+    // Backwards compatibility: default new parameters for existing feature instances
+    if (definition.backOutEI == undefined)
+    {
+        definition.backOutEI = false;
+    }
+    if (definition.trimBoundaries == undefined)
+    {
+        definition.trimBoundaries = [];
+    }
+    if (definition.regionParams == undefined)
+    {
+        definition.regionParams = [];
+    }
+
     // Applied load 1 (always visible)
     definition.applied1NeedsWidth = (definition.applied1LoadShape != LoadType.POINT);
     definition.applied1IsQuery    = (definition.applied1LocationType == LocationType.QUERY);
