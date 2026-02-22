@@ -530,6 +530,10 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         {
             throw regenError("EI profile has zero X range.");
         }
+        println("=== estimateDeflection debug ===");
+        println("EI samples: " ~ size(eiData) ~ ", xMin: " ~ (xMin / millimeter) ~ " mm, xMax: " ~ (xMax / millimeter) ~ " mm");
+        println("EI[0]: " ~ (eiData[0].EI / (newton * meter * meter)) ~ " N*m^2 at x=" ~ (eiData[0].x / millimeter) ~ " mm");
+        println("EI[last]: " ~ (eiData[size(eiData) - 1].EI / (newton * meter * meter)) ~ " N*m^2");
 
         // --- 2. Build uniform eval grid ---
         var dx = (xMax - xMin) / (N - 1);
@@ -602,6 +606,9 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
+        println("xs1: " ~ (xs1 / millimeter) ~ " mm, xs2: " ~ (xs2 / millimeter) ~ " mm");
+        println("x1: " ~ (x1 / millimeter) ~ " mm");
+
         // --- 5. Compute reactions by moment balance ---
         var F_total = definition.appliedLoad * newton;
         var F1;
@@ -634,6 +641,9 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             R2 = momentArm / (xs2 - xs1);
             R1 = F_total - R2;
         }
+
+        println("F_total: " ~ (F_total / newton) ~ " N, F1: " ~ (F1 / newton) ~ " N");
+        println("R1: " ~ (R1 / newton) ~ " N, R2: " ~ (R2 / newton) ~ " N");
 
         // --- 6. Classify loads as distributed or point loads ---
         // distLoads: { "center", "force", "shape", "width", "sign" }  sign: +1=upward, -1=downward
@@ -702,6 +712,8 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
+        println("pointLoads: " ~ size(pointLoads) ~ ", distLoads: " ~ size(distLoads));
+
         // --- 7. Build distributed net load q_net at each eval point ---
         var q_net = [];
         for (var i = 0; i < N; i += 1)
@@ -742,6 +754,9 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             var m_new = M_arr[i - 1] + (V_arr[i - 1] + V_arr[i]) / 2 * dx;
             M_arr = append(M_arr, m_new);
         }
+
+        println("V[0]: " ~ (V_arr[0] / newton) ~ " N, V[N-1]: " ~ (V_arr[N - 1] / newton) ~ " N");
+        println("M[0]: " ~ (M_arr[0] / (newton * meter)) ~ " N*m, M[N-1]: " ~ (M_arr[N - 1] / (newton * meter)) ~ " N*m");
 
         // --- 10. Integrate curvature twice to get raw deflection ---
         // kappa = M / EI  [1/m];  theta = integral(kappa dx) [rad];  delta = integral(theta dx) [m]
@@ -788,11 +803,19 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         var C1 = -(delta_arr[i2] - delta_arr[i1]) / xSpan12;
         var C2 = -(delta_arr[i1] + C1 * (x_eval[i1] - x_eval[0]));
 
+        println("BC indices: i1=" ~ i1 ~ ", i2=" ~ i2);
+        println("delta_raw[i1]: " ~ (delta_arr[i1] / millimeter) ~ " mm, delta_raw[i2]: " ~ (delta_arr[i2] / millimeter) ~ " mm");
+        println("C2: " ~ (C2 / millimeter) ~ " mm");
+
         var deflection = [];
         for (var i = 0; i < N; i += 1)
         {
             deflection = append(deflection, delta_arr[i] + C1 * (x_eval[i] - x_eval[0]) + C2);
         }
+        println("deflection[0]: " ~ (deflection[0] / millimeter) ~ " mm");
+        println("deflection[i1]: " ~ (deflection[i1] / millimeter) ~ " mm (should be ~0)");
+        println("deflection[i2]: " ~ (deflection[i2] / millimeter) ~ " mm (should be ~0)");
+        println("deflection[N-1]: " ~ (deflection[N - 1] / millimeter) ~ " mm");
 
         // --- 12. Create deflection spline curve (XZ plane, Z = deflection in meters) ---
         var pts = [];
