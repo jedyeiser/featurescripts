@@ -855,6 +855,24 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             M_arr = append(M_arr, m_new);
         }
 
+        // --- 10b. Enforce M = 0 at outer support positions (simply-supported BCs) ---
+        // Trapezoidal integration starts M[0] = 0 at xEvalMin, not at xs1.
+        // Any non-zero q_net between xEvalMin and xs1 (e.g. distributed support straddle)
+        // leaves M(xs1) != 0.  Subtract the line through M(xs1) and M(xs2) to zero both.
+        var i1 = findNearestIndex(x_eval, xs1);
+        var i2 = findNearestIndex(x_eval, xs2);
+        var xSpan12 = x_eval[i2] - x_eval[i1];
+        if (abs(xSpan12) < 1e-9 * meter)
+        {
+            throw regenError("Support positions map to the same eval grid node. Increase numEvalPoints or move supports.");
+        }
+        var M_raw1  = M_arr[i1];
+        var M_slope = (M_arr[i2] - M_arr[i1]) / xSpan12;
+        for (var i = 0; i < N; i += 1)
+        {
+            M_arr[i] = M_arr[i] - (M_raw1 + M_slope * (x_eval[i] - x_eval[i1]));
+        }
+
         // --- 11. Integrate curvature twice to get raw deflection + apply BCs ---
         // kappa = M / EI  [1/m];  theta = integral(kappa dx) [rad];  delta = integral(theta dx) [m]
         var EI_min = 1e-3 * newton * meter * meter;  // 0.001 N*m^2 — physical floor for any ski section
@@ -890,13 +908,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         // Apply zero-deflection BCs at outer supports (part of step 11)
         // delta_corrected(x) = delta_raw(x) + C1*(x - x_eval[0]) + C2
         // Enforces delta_corrected = 0 at xs1 and xs2.
-        var i1 = findNearestIndex(x_eval, xs1);
-        var i2 = findNearestIndex(x_eval, xs2);
-        var xSpan12 = x_eval[i2] - x_eval[i1];
-        if (abs(xSpan12) < 1e-9 * meter)
-        {
-            throw regenError("Support positions map to the same eval grid node. Increase numEvalPoints or move supports.");
-        }
+        // i1, i2, xSpan12 computed and validated in step 10b above.
         var C1 = -(delta_arr[i2] - delta_arr[i1]) / xSpan12;
         var C2 = -(delta_arr[i1] + C1 * (x_eval[i1] - x_eval[0]));
 
