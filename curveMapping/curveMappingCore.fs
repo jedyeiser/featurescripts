@@ -2,9 +2,9 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 
 //import curveChain
-import(path : "670e82ad72abc97906ec9038", version : "4487cfaaa3b3f472bdbabf52");
+import(path : "670e82ad72abc97906ec9038", version : "8529c8f32827197367a47119");
 //import curveMappingUtils
-import(path : "de955d503dbb0ec88622e51b", version : "6a56589ae2efc830cb7bdeb9");
+import(path : "de955d503dbb0ec88622e51b", version : "be91cf92b860d9a0f7191c73");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import tools/curve_operations

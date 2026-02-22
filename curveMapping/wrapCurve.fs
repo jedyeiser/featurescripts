@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "ad98c7f43a25a4c0e8a428e7", version : "042d1f54f7653e339f4bdc05");
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "5a9af7b361c62896e83f949f");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -15,6 +15,8 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 // IMPORT: tools/point_projection.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 // IMPORT: tools/printing.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+
 
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
