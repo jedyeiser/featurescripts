@@ -1047,7 +1047,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
 
             // Power-of-10 scale for curvature: start at 1mm per (1/m), grow until max height >= 10mm
             var scaleK = 0.001 * meter * meter;
-            while (maxAbsKappa * scaleK < 0.01 * meter && scaleK < 1e6 * meter * meter)
+            while (maxAbsKappa * scaleK < 0.1 * meter && scaleK < 1e7 * meter * meter)
             {
                 scaleK = scaleK * 10;
             }

@@ -14,6 +14,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
 // IMPORT: tools/point_projection.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
+// IMPORT: tools/printing.fs
 
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
@@ -102,6 +103,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Default" : false }
             definition.debugWrappedCurves is boolean;
 
+            annotation { "Name" : "Detailed BSpline output",
+                        "Description" : "Print full control points and knot vector (vs. metadata only)",
+                        "Default" : false }
+            definition.debugDetailedBSplines is boolean;
+
             annotation { "Name" : "Show from frames",
                         "Description" : "Draw Frenet frame axes along the from reference path",
                         "Default" : false }
@@ -121,11 +127,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
         if (definition.debugFromBSplines)
         {
+            var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
             println("From path: " ~ toString(size(fromFrenetPath.edgeData)) ~ " edge(s), totalLength = " ~ toString(fromFrenetPath.totalLength));
+            for (var j = 0; j < size(fromFrenetPath.edgeData); j += 1)
+            {
+                printBSpline(fromFrenetPath.edgeData[j].bspline, fmt, ["  -- From edge " ~ toString(j) ~ " --"]);
+            }
         }
         if (definition.debugToBSplines)
         {
+            var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
             println("To path: " ~ toString(size(toFrenetPath.edgeData)) ~ " edge(s), totalLength = " ~ toString(toFrenetPath.totalLength));
+            for (var j = 0; j < size(toFrenetPath.edgeData); j += 1)
+            {
+                printBSpline(toFrenetPath.edgeData[j].bspline, fmt, ["  -- To edge " ~ toString(j) ~ " --"]);
+            }
         }
 
         if (definition.debugShowFromFrames)
@@ -164,12 +180,15 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
             if (definition.debugSourceBSplines)
             {
+                var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
                         " samples, length = " ~ toString(srcArcTable.totalLength));
+                printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
-            // Map each sampled point through Frenet frame transformation
-            var mappedPoints = [];
+            // Map each sampled point through Frenet frame transformation;
+            // record which to-edge each mapped point lands on for span splitting
+            var mappedData = [];
             for (var pt in srcPoints)
             {
                 // Project source point onto from-path; get Frenet frame there
@@ -200,25 +219,50 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
                 }
 
-                mappedPoints = append(mappedPoints, frenetPointToWorld(localCoords, toFrameResult));
+                mappedData = append(mappedData, {
+                    "edgeIndex": toResult.edgeIndex,
+                    "point"    : frenetPointToWorld(localCoords, toFrameResult)
+                });
             }
 
-            // Fit BSpline through mapped points
-            var approxDef  = { 
-                "targets": [approximationTarget({'positions' : mappedPoints})], 
-                "tolearance" : definition.approximationTolerance,
-                "maxCPs" : definition.approximationMaxCPs,
-                "degree": degree };
-            var mappedCurve = approximateSpline(context, approxDef)[0]; //approximateSpline returns an array of solutions, one for each approximation target. 
+            // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
+            var segStartIdx = 0;
+            var segCount    = 0;
 
-            if (definition.debugWrappedCurves)
+            while (segStartIdx < size(mappedData))
             {
-                println("Wrapped curve " ~ toString(i) ~ ": " ~ toString(size(mappedCurve.controlPoints)) ~
-                        " CPs, degree " ~ toString(mappedCurve.degree));
-            }
+                // Collect the run of consecutive points on the same to-edge
+                var currentEdge = mappedData[segStartIdx].edgeIndex;
+                var segEndIdx   = segStartIdx;
+                while (segEndIdx + 1 < size(mappedData) && mappedData[segEndIdx + 1].edgeIndex == currentEdge)
+                    segEndIdx += 1;
 
-            // Create geometry
-            opCreateBSplineCurve(context, id + (toString(i) ~ "wrappedCurve"), { "bSplineCurve": mappedCurve });
+                var segPoints = [];
+                for (var k = segStartIdx; k <= segEndIdx; k += 1)
+                    segPoints = append(segPoints, mappedData[k].point);
+
+                if (size(segPoints) >= degree + 1)
+                {
+                    var approxDef = {
+                        "targets"    : [approximationTarget({'positions' : segPoints})],
+                        "tolearance" : definition.approximationTolerance,
+                        "maxCPs"     : definition.approximationMaxCPs,
+                        "degree"     : degree };
+                    var mappedCurve = approximateSpline(context, approxDef)[0];
+
+                    if (definition.debugWrappedCurves)
+                    {
+                        var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
+                        printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
+                    }
+
+                    opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
+                                         { "bSplineCurve": mappedCurve });
+                    segCount += 1;
+                }
+
+                segStartIdx = segEndIdx + 1;
+            }
         }
     });
 
@@ -466,7 +510,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     {
         // 6a. Line: interpolate position along traversal direction
         var position = edgeDat.lineStartPt + localArc * edgeDat.lineFrame.zAxis;
-        frame = coordSystem(position, edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
+        frame = coordSystem(position, sign * edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
     }
     else
     {
