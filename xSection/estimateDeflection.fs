@@ -1037,28 +1037,26 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                     DebugColor.MAGENTA);
             }
 
-            // Support reaction arrows: GREEN = upward (positive), RED = downward (negative)
-            var s1Color = (R1 >= 0 * newton) ? DebugColor.GREEN : DebugColor.RED;
+            // Support reaction arrows: GREEN (all supports)
             addDebugLine(context,
                 vector(xs1, 0 * meter, 0 * meter),
                 vector(xs1, 0 * meter, R1 * scaleF),
-                s1Color);
+                DebugColor.GREEN);
 
             addDebugLine(context,
                 vector(xs2, 0 * meter, 0 * meter),
                 vector(xs2, 0 * meter, R2 * scaleF),
-                DebugColor.RED);
+                DebugColor.GREEN);
 
             if (definition.addThirdSupport)
             {
-                var s3Color = (R3 >= 0 * newton) ? DebugColor.GREEN : DebugColor.RED;
                 addDebugLine(context,
                     vector(xs3, 0 * meter, 0 * meter),
                     vector(xs3, 0 * meter, R3 * scaleF),
-                    s3Color);
+                    DebugColor.GREEN);
             }
 
-            // Applied load arrows: downward (RED for load 1, ORANGE for load 2)
+            // Applied load arrows: RED (all applied loads)
             addDebugLine(context,
                 vector(x1, 0 * meter, 0 * meter),
                 vector(x1, 0 * meter, -F1 * scaleF),
@@ -1069,7 +1067,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                 addDebugLine(context,
                     vector(x2, 0 * meter, 0 * meter),
                     vector(x2, 0 * meter, -F2 * scaleF),
-                    DebugColor.ORANGE);
+                    DebugColor.RED);
             }
         }
 
