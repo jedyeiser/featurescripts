@@ -7,10 +7,13 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "ad98c7f43a25a4c0e8a428e7", version : "63d775b3f3586154f31324be");
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "042d1f54f7653e339f4bdc05");
 // IMPORT: tools/arc_length.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
 // IMPORT: tools/point_projection.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
@@ -201,8 +204,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             }
 
             // Fit BSpline through mapped points
-            var approxDef  = { "points": mappedPoints, "degree": degree };
-            var mappedCurve = approximateSpline(approxDef);
+            var approxDef  = { 
+                "targets": [approximationTarget({'positions' : mappedPoints})], 
+                "tolearance" : definition.approximationTolerance,
+                "maxCPs" : definition.approximationMaxCPs,
+                "degree": degree };
+            var mappedCurve = approximateSpline(context, approxDef)[0]; //approximateSpline returns an array of solutions, one for each approximation target. 
 
             if (definition.debugWrappedCurves)
             {

@@ -818,6 +818,21 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             }
         }
 
+        // Compute the span covered by all loads (used to mask M/V beyond load extents)
+        var xAffectedMin = xMax;
+        var xAffectedMax = xMin;
+        for (var dl in distLoads)
+        {
+            var hw = dl.width / 2;
+            if (dl.center - hw < xAffectedMin) { xAffectedMin = dl.center - hw; }
+            if (dl.center + hw > xAffectedMax) { xAffectedMax = dl.center + hw; }
+        }
+        for (var pl in pointLoads)
+        {
+            if (pl.x < xAffectedMin) { xAffectedMin = pl.x; }
+            if (pl.x > xAffectedMax) { xAffectedMax = pl.x; }
+        }
+
         // --- 7b. Print load summary (debug) ---
         if (definition.printLoadSummary)
         {
@@ -926,6 +941,16 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             println("  M_corr(xs2) = " ~ toString(M_arr[i2] / (newton * meter)) ~ " N·m  (expect 0)");
         }
 
+        // Zero M and V outside the load-affected span (physically correct: V=0, M=0 beyond all loads)
+        for (var i = 0; i < N; i += 1)
+        {
+            if (x_eval[i] < xAffectedMin || x_eval[i] > xAffectedMax)
+            {
+                V_arr[i] = 0 * newton;
+                M_arr[i] = 0 * newton * meter;
+            }
+        }
+
         // --- 11. Integrate curvature twice to get raw deflection + apply BCs ---
         // kappa = M / EI  [1/m];  theta = integral(kappa dx) [rad];  delta = integral(theta dx) [m]
         var EI_min = 1e-3 * newton * meter * meter;  // 0.001 N*m^2 — physical floor for any ski section
@@ -1019,11 +1044,10 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                 vector(xs1, 0 * meter, R1 * scaleF),
                 s1Color);
 
-            var s2Color = (R2 >= 0 * newton) ? DebugColor.GREEN : DebugColor.RED;
             addDebugLine(context,
                 vector(xs2, 0 * meter, 0 * meter),
                 vector(xs2, 0 * meter, R2 * scaleF),
-                s2Color);
+                DebugColor.RED);
 
             if (definition.addThirdSupport)
             {
