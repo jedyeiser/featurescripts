@@ -376,21 +376,64 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // ===== Isolated from-line xAxis fix =====
         // Lines adjacent to a curve got a curve-context xAxis in buildFrenetPath step 4.5;
         // isolated lines (no curve neighbor) borrow the to-path normal at the mapped arc-length.
+        //
+        // In the planar case, near-linear to-paths produce near-linear projected BSplines that
+        // buildFrenetPath classifies as BSplines (not CurveType.LINE), giving arbitrary xAxes.
+        // Pass 1 promotes such effectively-linear BSplines to line mode so pass 2 can fix them.
         var fromEdgeData = fromFrenetPath.edgeData;
+
+        // Pass 1 — promote effectively-linear BSplines to line mode
         for (var i = 0; i < size(fromEdgeData); i += 1)
         {
             var ed = fromEdgeData[i];
-            if (!ed.isLine)
+            if (ed.isLine)  continue;  // already exact line, skip
+
+            var cps     = ed.bspline.controlPoints;
+            var n       = size(cps);
+            var p0      = cps[0];
+            var p1      = cps[n - 1];
+            var chord    = p1 - p0;
+            var chordLen = norm(chord);
+
+            if (chordLen.value < 1e-10)  continue;  // degenerate edge, leave alone
+
+            var chordDir = normalize(chord);
+            var maxDev   = 0 * meter;
+            for (var j = 1; j < n - 1; j += 1)
             {
-                continue;
+                var diff    = cps[j] - p0;
+                var lateral = norm(diff - dot(diff, chordDir) * chordDir);
+                if (lateral > maxDev)  maxDev = lateral;
             }
+
+            if (maxDev >= 0.001 * ed.length)  continue;  // well-curved, leave alone
+
+            // Promote to line mode
+            var traversalStartPt = ed.stdDir ? cps[0]     : cps[n - 1];
+            var traversalEndPt   = ed.stdDir ? cps[n - 1] : cps[0];
+            var tangent          = normalize(traversalEndPt - traversalStartPt);
+
+            // Placeholder xAxis — perpendicular to tangent, overwritten in pass 2
+            var refVec    = (abs(dot(tangent, vector(1, 0, 0))) < 0.9) ? vector(1, 0, 0) : vector(0, 1, 0);
+            var tempXAxis = normalize(refVec - dot(refVec, tangent) * tangent);
+
+            fromEdgeData[i] = mergeMaps(ed, {
+                "isLine"     : true,
+                "lineStartPt": traversalStartPt,
+                "lineFrame"  : coordSystem(traversalStartPt, tempXAxis, tangent)
+            });
+        }
+
+        // Pass 2 — borrow xAxis from to-path for all isolated lines
+        // (exact lines from buildFrenetPath + newly-promoted lines from pass 1)
+        for (var i = 0; i < size(fromEdgeData); i += 1)
+        {
+            var ed = fromEdgeData[i];
+            if (!ed.isLine)  continue;
 
             var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
                               (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
-            if (hasCurveCtx)
-            {
-                continue;
-            }
+            if (hasCurveCtx)  continue;
 
             var midFromArc = ed.startArcLength + ed.length / 2;
             var midToArc   = toRefArc + (midFromArc - fromRefArc);
@@ -405,6 +448,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 });
             }
         }
+
         fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
 
         if (definition.debugShowFromFrames)

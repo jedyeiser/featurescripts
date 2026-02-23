@@ -101,7 +101,10 @@ import(path : "onshape/std/common.fs", version : "2892.0");
         
         annotation { "Name" : "Cross section feature", "MaxNumberOfPicks" : 1 }
         definition.xSectFeature is FeatureList;
-        
+
+        annotation { "Name" : "Target EI profile", "Filter" : EntityType.EDGE, "Description" : "Edges representing the target EI profile. World Z in mm = EI in N·m²" }
+        definition.targetEIQuery is Query;
+
         annotation { "Name" : "Measured EI from", "Default" : DataInheretenceType.INHERIT, "Decription" : "Specifies if we should treat our modeled EI as our measured EI" , "UIHint" : UIHint.SHOW_LABEL }
         definition.measuredEIType is DataInheretenceType;
         
