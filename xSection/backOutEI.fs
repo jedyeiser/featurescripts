@@ -12,12 +12,12 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *
  * Re-integration guide:
  *   1. Import this file from estimateDeflection.fs (add // IMPORT: backOutEI.fs)
- *   2. PRECONDITION: add `definition satisfies backOutEIPredicate;` at the end of the precondition
- *   3. EDITING LOGIC: replace the commented-out /* if (definition.backOutEI) */ block with
- *                     a call to `definition = applyBackOutEIEditLogic(definition, oldDefinition);`
+ *   2. PRECONDITION: add 'definition satisfies backOutEIPredicate;' at the end of the precondition
+ *   3. EDITING LOGIC: replace the commented-out 'if (definition.backOutEI)' block with
+ *                     a call to 'definition = applyBackOutEIEditLogic(definition, oldDefinition);'
  *                     Also restore the backwards-compat init block above it.
- *   4. FEATURE ANNOTATION: add `"Manipulator Change Function" : "estimateDeflectionManipulatorChange"`
- *   5. FEATURE BODY: un-comment the `/* if (definition.backOutEI && ...) */` block (step 11c)
+ *   4. FEATURE ANNOTATION: add '"Manipulator Change Function" : "estimateDeflectionManipulatorChange"'
+ *   5. FEATURE BODY: un-comment the 'if (definition.backOutEI && ...)' block (step 11c)
  */
 
 // =============================================================================
