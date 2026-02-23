@@ -663,9 +663,40 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                 " count=" ~ toString(size(segPoints)));
                     }
 
-                    opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
-                                         { "bSplineCurve": mappedCurve });
-                    segCount += 1;
+                    try
+                    {
+                        opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
+                                             { "bSplineCurve": mappedCurve });
+                        segCount += 1;
+                    }
+                    catch (e)
+                    {
+                        println("ERROR: wrapAndLoft opCreateBSplineCurve BAD_GEOMETRY - " ~ e);
+                        println("  curve i=" ~ i ~ "  seg=" ~ segCount ~
+                                "  segPoints count=" ~ size(segPoints));
+                        println("  approxScale=" ~ toString(approxScale / millimeter) ~ " mm");
+                        println("  carryOverTangent defined=" ~ (carryOverTangent != undefined));
+                        println("  junctionTangent  defined=" ~ (junctionTangent  != undefined));
+
+                        // Per-point coordinates
+                        for (var di = 0; di < size(segPoints); di += 1)
+                        {
+                            var dpt = segPoints[di];
+                            println("  [" ~ di ~ "] X=" ~ toString(dpt[0] / millimeter) ~
+                                    " mm  Y=" ~ toString(dpt[1] / millimeter) ~
+                                    " mm  Z=" ~ toString(dpt[2] / millimeter) ~ " mm");
+                        }
+
+                        // Debug geometry: polyline + points
+                        for (var di = 0; di < size(segPoints) - 1; di += 1)
+                        {
+                            addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
+                        }
+                        for (var di = 0; di < size(segPoints); di += 1)
+                        {
+                            addDebugPoint(context, segPoints[di], DebugColor.MAGENTA);
+                        }
+                    }
                 }
 
                 segStartIdx = segEndIdx + 1;
