@@ -805,7 +805,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                  }
 
                  // Hidden flat CP storage (written by feature body, read by manipulator change fn)
-                 annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpX" }
+                 annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpX", "Default" : [] }
                  definition.allCpX is array;
                  for (var cpX in definition.allCpX)
                  {
@@ -813,7 +813,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                      isReal(cpX.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
                  }
 
-                 annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
+                 annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ", "Default" : [] }
                  definition.allCpZ is array;
                  for (var cpZ in definition.allCpZ)
                  {
@@ -821,7 +821,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                      isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
                  }
 
-                 annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Sz" }
+                 annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Sz", "Default" : [] }
                  definition.cpRegionSizes is array;
                  for (var sz in definition.cpRegionSizes)
                  {
@@ -829,7 +829,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                      isInteger(sz.v, { (unitless) : [0, 0, 500] } as IntegerBoundSpec);
                  }
 
-                 annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Init" }
+                 annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Init", "Default" : [] }
                  definition.cpIsInitialized is array;
                  for (var init in definition.cpIsInitialized)
                  {
