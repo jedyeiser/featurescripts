@@ -418,9 +418,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var tempXAxis = normalize(refVec - dot(refVec, tangent) * tangent);
 
             fromEdgeData[i] = mergeMaps(ed, {
-                "isLine"     : true,
-                "lineStartPt": traversalStartPt,
-                "lineFrame"  : coordSystem(traversalStartPt, tempXAxis, tangent)
+                "isLine"              : true,
+                "lineStartPt"         : traversalStartPt,
+                "lineFrame"           : coordSystem(traversalStartPt, tempXAxis, tangent),
+                "localInflectionArcs" : []   // clear spurious inflections from near-linear BSpline
             });
 
             if (definition.debugFromBSplines)
@@ -430,6 +431,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         " maxDev=" ~ toString(maxDev) ~
                         " tangent=" ~ toString(tangent));
             }
+        }
+
+        // Pass 1.5 — recompute startSign now that promoted edges have clean localInflectionArcs.
+        // Spurious inflections on promoted near-linear BSplines would otherwise corrupt startSign
+        // propagation for all subsequent edges in the chain.
+        var recomputedSign = 1;
+        for (var i = 0; i < size(fromEdgeData); i += 1)
+        {
+            fromEdgeData[i] = mergeMaps(fromEdgeData[i], { "startSign": recomputedSign });
+            if (size(fromEdgeData[i].localInflectionArcs) % 2 == 1)
+                recomputedSign = -1 * recomputedSign;
         }
 
         // Pass 2 — borrow xAxis from to-path for all isolated lines
