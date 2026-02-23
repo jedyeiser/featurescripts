@@ -78,27 +78,17 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 {
     println("estimateDeflectionEditLogic called");
 
-    // Backwards compatibility: default new parameters for existing feature instances
-    if (definition.backOutEI == undefined)
-    {
-        definition.backOutEI = false;
-    }
-    if (definition.trimBoundaries == undefined)
-    {
-        definition.trimBoundaries = [];
-    }
-    if (definition.regionParams == undefined)
-    {
-        definition.regionParams = [];
-    }
+    /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
+    if (definition.backOutEI == undefined)      { definition.backOutEI = false; }
+    if (definition.trimBoundaries == undefined) { definition.trimBoundaries = []; }
+    if (definition.regionParams == undefined)   { definition.regionParams = []; }
     if (definition.allCpX == undefined)         { definition.allCpX = []; }
     if (definition.allCpZ == undefined)         { definition.allCpZ = []; }
     if (definition.cpRegionSizes == undefined)  { definition.cpRegionSizes = []; }
     if (definition.cpIsInitialized == undefined){ definition.cpIsInitialized = []; }
     if (definition.storedScaleK == undefined)   { definition.storedScaleK = 1e-3; }
-
-    // EI back-out temporarily disabled — force false regardless of stored value
     definition.backOutEI = false;
+    */
 
     // Applied load 1 (always visible)
     definition.applied1NeedsWidth = (definition.applied1LoadShape != LoadType.POINT);
@@ -122,8 +112,8 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 
     definition.approxNeedsOptions = (definition.curveOutput == CurveOutput.APPROX);
 
-    // --- Back out EI logic ---
-    if (definition.backOutEI)
+    // --- Back out EI logic --- DISABLED — restore when re-enabling backOutEI feature
+    /* if (definition.backOutEI)
     {
         // Initialize trimBoundaries if empty or undefined
         if (definition.trimBoundaries == undefined || size(definition.trimBoundaries) == 0)
@@ -247,21 +237,16 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
             }
             definition.cpIsInitialized = resetInit;
         }
-    }
+    } */
 
     return definition;
 }
 
 
 // =============================================================================
-// MANIPULATOR CHANGE FUNCTION
+// MANIPULATOR CHANGE FUNCTION — DISABLED (backOutEI feature trimmed out)
 // =============================================================================
-
-/**
- * Called when the user drags a CP manipulator. Updates the stored cpZ value
- * for the dragged control point so the feature body uses the new position.
- * Phases 3+: iterate all known region/CP keys and check which changed.
- */
+/* DISABLED — re-enable when restoring backOutEI / CP drag manipulators
 export function estimateDeflectionManipulatorChange(
     context is Context, definition is map, newManipulators is map) returns map
 {
@@ -293,6 +278,7 @@ export function estimateDeflectionManipulatorChange(
     definition.allCpZ = tempCpZ;
     return definition;
 }
+*/
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -494,7 +480,6 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
 
  annotation { "Feature Type Name" : "Estimate Deflection",
              "Editing Logic Function" : "estimateDeflectionEditLogic",
-             "Manipulator Change Function" : "estimateDeflectionManipulatorChange",
              "Feature Type Description" : "Estimates beam deflection given an EI profile and loading conditions" }
  export const estimateDeflection = defineFeature(function(context is Context, id is Id, definition is map)
      precondition
@@ -763,6 +748,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
              }
          }
 
+         /* DISABLED — backOutEI + CP storage arrays removed from precondition; re-enable to restore
          annotation { "Name" : "Back out EI", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
          definition.backOutEI is boolean;
 
@@ -798,8 +784,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
              annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
              init.v is boolean;
          }
-
-         /* DISABLED — EI back-out UI temporarily commented out; re-enable with backOutEI visible to restore
+         */ /* ALSO DISABLED — EI back-out UI temporarily commented out; re-enable with backOutEI visible to restore
          if (definition.backOutEI)
          {
              annotation { "Group Name" : "EI Back-Out", "Driving Parameter" : "backOutEI",
