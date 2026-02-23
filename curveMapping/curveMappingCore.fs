@@ -93,10 +93,32 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
         }
         else
         {
-            // Detect inflection points and record them as local arc-length positions
-            if (bSplineMayHaveInflection(bspline))
+            // Guard: skip inflection detection for near-linear BSplines.
+            // Nearly-collinear control polygons produce unreliable cross products in
+            // bSplineMayHaveInflection, generating spurious sign flips in getFrameAtArcLength.
+            // Threshold: max lateral deviation < 0.1% of edge length.
+            var cps          = bspline.controlPoints;
+            var nCPs         = size(cps);
+            var p0           = cps[0];
+            var p1           = cps[nCPs - 1];
+            var chord        = p1 - p0;
+            var chordLen     = norm(chord);
+            var isNearLinear = false;
+            if (chordLen.value > 1e-10)
             {
-                var nCPs           = size(bspline.controlPoints);
+                var chordDir = normalize(chord);
+                var maxDev   = 0 * meter;
+                for (var j = 1; j < nCPs - 1; j += 1)
+                {
+                    var diff    = cps[j] - p0;
+                    var lateral = norm(diff - dot(diff, chordDir) * chordDir);
+                    if (lateral > maxDev)  maxDev = lateral;
+                }
+                isNearLinear = (maxDev < 0.001 * length);
+            }
+
+            if (!isNearLinear && bSplineMayHaveInflection(bspline))
+            {
                 var rawInflections = findBSplineInflections(bspline, 4 * nCPs, 1e-4);
 
                 for (var u_inf in rawInflections)
