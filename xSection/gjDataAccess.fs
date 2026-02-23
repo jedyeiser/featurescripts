@@ -180,6 +180,136 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
 }
 
 /**
+ * Read cross-section analysis data by feature key string (no query needed).
+ *
+ * @param context {Context}
+ * @param featureKey {string} : Attribute key for the xSect feature
+ * @returns {map} : { bodies: array, crossSections: array }
+ * @throws : Error if attribute not found or data incomplete
+ */
+export function readXSectAnalysisDataByKey(context is Context, featureKey is string) returns map
+{
+    // Read attribute from origin point
+    var attributeData = try silent(getAttribute(context, {
+        "entity" : qOrigin(EntityType.BODY),
+        "name" : "CrossSectionAnalysis"
+    }));
+
+    if (attributeData == undefined)
+    {
+        throw "No CrossSectionAnalysis attribute found on origin - xSect feature may not have run yet";
+    }
+
+    // Extract feature-specific data
+    var featureData = attributeData[featureKey];
+    if (featureData == undefined)
+    {
+        throw "Feature data not found in attribute - feature ID: " ~ featureKey;
+    }
+
+    // Validate required fields
+    var details = featureData.details;
+    if (details == undefined)
+    {
+        throw "Missing 'details' field in attribute data";
+    }
+
+    if (details.bodies == undefined || size(details.bodies) == 0)
+    {
+        throw "Missing or empty 'bodies' array in attribute data";
+    }
+
+    if (details.crossSections == undefined || size(details.crossSections) == 0)
+    {
+        throw "Missing or empty 'crossSections' array in attribute data";
+    }
+
+    return {
+        "bodies" : details.bodies,
+        "crossSections" : details.crossSections
+    };
+}
+
+/**
+ * Update GJ values in the stored attribute by feature key string (no query needed).
+ *
+ * @param context {Context}
+ * @param featureKey {string} : Attribute key for the xSect feature
+ * @param updatedCrossSections {array} : Cross-sections with new GJ_eff values
+ */
+export function updateXSectGJDataByKey(context is Context, featureKey is string, updatedCrossSections is array)
+{
+    // Read existing attribute
+    var attributeData = try silent(getAttribute(context, {
+        "entity" : qOrigin(EntityType.BODY),
+        "name" : "CrossSectionAnalysis"
+    }));
+
+    if (attributeData == undefined)
+    {
+        println("WARNING: Cannot update attribute - attribute not found");
+        return;
+    }
+
+    // Get feature data
+    var featureData = attributeData[featureKey];
+    if (featureData == undefined || featureData.details == undefined)
+    {
+        println("WARNING: Cannot update attribute - feature data missing");
+        return;
+    }
+
+    // Update GJ values in cross-sections
+    var existingSections = featureData.details.crossSections;
+    if (size(existingSections) != size(updatedCrossSections))
+    {
+        println("WARNING: Section count mismatch - " ~ size(existingSections) ~
+                " existing vs " ~ size(updatedCrossSections) ~ " updated");
+    }
+
+    for (var i = 0; i < size(updatedCrossSections); i += 1)
+    {
+        if (i < size(existingSections) && updatedCrossSections[i].GJ_eff != undefined)
+        {
+            existingSections[i].GJ_eff = updatedCrossSections[i].GJ_eff;
+        }
+    }
+
+    // Sync GJ values into tableData
+    if (featureData.tableData != undefined &&
+        featureData.tableData.crossSections != undefined &&
+        size(featureData.tableData.crossSections) > 1)
+    {
+        var tableRows = featureData.tableData.crossSections;
+        for (var i = 0; i < size(updatedCrossSections); i += 1)
+        {
+            var tableRow = i + 1;
+            if (tableRow < size(tableRows) && updatedCrossSections[i].GJ_eff != undefined)
+            {
+                var GJ_raw = updatedCrossSections[i].GJ_eff / (newton * meter * meter);
+                tableRows[tableRow][3] = round(GJ_raw * 10.0) / 10.0;
+            }
+        }
+        featureData.tableData["crossSections"] = tableRows;
+        attributeData[featureKey] = featureData;
+    }
+
+    // Write updated attribute
+    try
+    {
+        setAttribute(context, {
+            "entities" : qOrigin(EntityType.BODY),
+            "name" : "CrossSectionAnalysis",
+            "attribute" : attributeData
+        });
+    }
+    catch (e)
+    {
+        println("WARNING: Failed to write updated attribute - " ~ e);
+    }
+}
+
+/**
  * Validate that a cross-section has the required data for GJ computation.
  *
  * @param section {map} : Cross-section data from attribute

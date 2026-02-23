@@ -41,7 +41,7 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     // STEP 0: Identify the xSect feature from the selected entity
     // =========================================================================
 
-    var xSectFeature = getXSectFeatureFromEntity(context, definition.xSectEntity);
+    var featureKey = getXSectFeatureFromEntity(context, definition.xSectEntity);
 
     // =========================================================================
     // STEP 1: Read cross-section data from xSect feature's attribute
@@ -50,7 +50,7 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     var xSectData;
     try
     {
-        xSectData = readXSectAnalysisData(context, xSectFeature);
+        xSectData = readXSectAnalysisDataByKey(context, featureKey);
     }
     catch (e)
     {
@@ -110,7 +110,7 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     // STEP 3: Update attribute with new GJ values
     // =========================================================================
 
-    updateXSectGJData(context, xSectFeature, updatedSections);
+    updateXSectGJDataByKey(context, featureKey, updatedSections);
 
     // =========================================================================
     // STEP 4: Create visualization curve (if requested)
@@ -135,10 +135,10 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
  *
  * @param context {Context}
  * @param entityQuery {Query} : Query for entity created by xSect feature
- * @returns {Query} : Query for the xSect feature ID
+ * @returns {string} : Attribute key (featureKey) for the xSect feature
  * @throws : Error if feature cannot be identified
  */
-function getXSectFeatureFromEntity(context is Context, entityQuery is Query) returns Query
+function getXSectFeatureFromEntity(context is Context, entityQuery is Query) returns string
 {
     // Evaluate the entity query
     var entities = evaluateQuery(context, entityQuery);
@@ -173,7 +173,7 @@ function getXSectFeatureFromEntity(context is Context, entityQuery is Query) ret
     var featureKeys = keys(attributeData);
     if (size(featureKeys) == 1)
     {
-        return qFeature(featureKeys[0]);
+        return featureKeys[0];
     }
 
     // Multiple xSect features - try to match based on entity
