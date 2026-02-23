@@ -117,6 +117,20 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
                 isNearLinear = (maxDev < 0.001 * length);
             }
 
+            // Promote near-linear BSplines to line mode so getFrameAtArcLength uses a
+            // stable, consistent xAxis instead of computeFrenetFrame's noisy normal.
+            // (computeFrenetFrame is unreliable when curvature ≈ 0.)
+            if (isNearLinear)
+            {
+                isLine = true;
+                var lineDir = normalize(chord);  // chordLen > 1e-10 guaranteed here
+                if (!stdDir)
+                    lineDir = -1 * lineDir;
+                var origin  = stdDir ? p0 : p1;
+                lineFrame   = lineFrenetFrame({ "origin": origin, "direction": lineDir });
+                lineStartPt = origin;
+            }
+
             if (!isNearLinear && bSplineMayHaveInflection(bspline))
             {
                 var rawInflections = findBSplineInflections(bspline, 4 * nCPs, 1e-4);

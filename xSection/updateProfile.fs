@@ -444,20 +444,31 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             }
 
             // Build 3D output point: world X = xCoord, Y = 0, Z = new thickness
-            outputPoints = append(outputPoints, vector([xCoord, 0 * meter, t_new_m * meter]));
+            outputPoints = append(outputPoints, vector(xCoord, 0 * meter, t_new_m * meter));
         }
 
         // --- 8. Fit spline through output points and name the resulting body ---
         if (size(outputPoints) >= 2)
         {
-            opFitSpline(context, id + "thicknessProfile", {
-                "points" : outputPoints
-            });
+            try
+            {
+                opFitSpline(context, id + "thicknessProfile", {
+                    "points" : outputPoints
+                });
 
-            setProperty(context, {
-                "entities"      : qCreatedBy(id + "thicknessProfile", EntityType.BODY),
-                "propertyType"  : PropertyType.NAME,
-                "propertyValue" : definition.outputCurveName
-            });
+                var createdBodies = evaluateQuery(context, qCreatedBy(id + "thicknessProfile", EntityType.BODY));
+                if (size(createdBodies) > 0)
+                {
+                    setProperty(context, {
+                        "entities"     : createdBodies[0],
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : definition.outputCurveName
+                    });
+                }
+            }
+            catch (e)
+            {
+                println("WARNING: updateProfile failed to create output spline - " ~ e);
+            }
         }
     });
