@@ -230,7 +230,7 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
                     oldR.regionTolerance != newR.regionTolerance ||
                     oldR.regionType      != newR.regionType)
                 {
-                    definition.cpIsInitialized[k] = false;
+                    definition.cpIsInitialized[k] = { "v" : false };
                 }
             }
         }
@@ -240,7 +240,7 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
             var resetInit = [];
             for (var k = 0; k < nRCheck; k += 1)
             {
-                resetInit = append(resetInit, false);
+                resetInit = append(resetInit, { "v" : false });
             }
             definition.cpIsInitialized = resetInit;
         }
@@ -272,7 +272,7 @@ export function estimateDeflectionManipulatorChange(
     var cpFlatOff = 0;
     for (var ri = 0; ri < nReg; ri += 1)
     {
-        var sz = definition.cpRegionSizes[ri];
+        var sz = definition.cpRegionSizes[ri].v;
         for (var j = 0; j < sz; j += 1)
         {
             var key = "r" ~ toString(ri) ~ "c" ~ toString(j);
@@ -280,9 +280,9 @@ export function estimateDeflectionManipulatorChange(
             {
                 // offset [m] / (scaleKVal [m²/m²] * m²) → kappa [1/m] → cpZ (= kappa * meter, dimensionless)
                 var newKappa = newManipulators[key].offset / (scaleKVal * meter * meter);
-                tempCpZ[cpFlatOff + j] = newKappa * meter;
+                tempCpZ[cpFlatOff + j] = { "v" : newKappa * meter };
                 // Mark region as initialized so feature body uses stored CPs
-                definition.cpIsInitialized[ri] = true;
+                definition.cpIsInitialized[ri] = { "v" : true };
             }
         }
         cpFlatOff = cpFlatOff + sz;
@@ -805,17 +805,37 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                  }
 
                  // Hidden flat CP storage (written by feature body, read by manipulator change fn)
-                 annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpX" }
                  definition.allCpX is array;
+                 for (var cpX in definition.allCpX)
+                 {
+                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+                     isReal(cpX.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+                 }
 
-                 annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
                  definition.allCpZ is array;
+                 for (var cpZ in definition.allCpZ)
+                 {
+                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+                     isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+                 }
 
-                 annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Sz" }
                  definition.cpRegionSizes is array;
+                 for (var sz in definition.cpRegionSizes)
+                 {
+                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+                     isInteger(sz.v, { (unitless) : [0, 0, 500] } as IntegerBoundSpec);
+                 }
 
-                 annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Init" }
                  definition.cpIsInitialized is array;
+                 for (var init in definition.cpIsInitialized)
+                 {
+                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
+                     init.v is boolean;
+                 }
 
                  annotation { "Name" : "storedScaleK", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 1e-3 }
                  isReal(definition.storedScaleK, { (unitless) : [0, 1e-3, 1e12] } as RealBoundSpec);
@@ -1407,7 +1427,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                 var xHi = xBounds[ri + 1];
 
                 var isInit = (ri < size(definition.cpIsInitialized) &&
-                              definition.cpIsInitialized[ri] == true);
+                              definition.cpIsInitialized[ri].v == true);
 
                 var regionCpX = [];
                 var regionCpZ = [];
@@ -1418,13 +1438,13 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                     var flatOff = 0;
                     for (var k = 0; k < ri; k += 1)
                     {
-                        flatOff = flatOff + definition.cpRegionSizes[k];
+                        flatOff = flatOff + definition.cpRegionSizes[k].v;
                     }
-                    var sz = definition.cpRegionSizes[ri];
+                    var sz = definition.cpRegionSizes[ri].v;
                     for (var k = 0; k < sz; k += 1)
                     {
-                        regionCpX = append(regionCpX, definition.allCpX[flatOff + k]);
-                        regionCpZ = append(regionCpZ, definition.allCpZ[flatOff + k]);
+                        regionCpX = append(regionCpX, definition.allCpX[flatOff + k].v);
+                        regionCpZ = append(regionCpZ, definition.allCpZ[flatOff + k].v);
                     }
                 }
                 else
@@ -1464,11 +1484,11 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                 // Accumulate into flat arrays
                 for (var k = 0; k < size(regionCpX); k += 1)
                 {
-                    newAllCpX = append(newAllCpX, regionCpX[k]);
-                    newAllCpZ = append(newAllCpZ, regionCpZ[k]);
+                    newAllCpX = append(newAllCpX, { "v" : regionCpX[k] });
+                    newAllCpZ = append(newAllCpZ, { "v" : regionCpZ[k] });
                 }
-                newCpSizes = append(newCpSizes, size(regionCpX));
-                newCpInit  = append(newCpInit,  size(regionCpX) > 0);
+                newCpSizes = append(newCpSizes, { "v" : size(regionCpX) });
+                newCpInit  = append(newCpInit,  { "v" : size(regionCpX) > 0 });
             }
 
             // Persist fitted CPs to hidden definition parameters
@@ -1483,14 +1503,14 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             var cpFlatOff = 0;
             for (var ri = 0; ri < nReg; ri += 1)
             {
-                var sz = newCpSizes[ri];
+                var sz = newCpSizes[ri].v;
                 for (var j = 0; j < sz; j += 1)
                 {
                     var key = "r" ~ toString(ri) ~ "c" ~ toString(j);
                     allManipulators[key] = linearManipulator({
-                        "base"      : vector(newAllCpX[cpFlatOff + j] * meter, 0 * meter, 0 * meter),
+                        "base"      : vector(newAllCpX[cpFlatOff + j].v * meter, 0 * meter, 0 * meter),
                         "direction" : vector(0, 0, 1),
-                        "offset"    : newAllCpZ[cpFlatOff + j] * definition.storedScaleK * meter
+                        "offset"    : newAllCpZ[cpFlatOff + j].v * definition.storedScaleK * meter
                     });
                 }
                 cpFlatOff = cpFlatOff + sz;
@@ -1507,7 +1527,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                 var flatOff2 = 0;
                 for (var ri = 0; ri < nReg; ri += 1)
                 {
-                    var sz2 = newCpSizes[ri];
+                    var sz2 = newCpSizes[ri].v;
                     if (!foundRegion && xi >= xBounds[ri] && xi <= xBounds[ri + 1] && sz2 >= 2)
                     {
                         var foundSpan = false;
@@ -1515,16 +1535,16 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                         {
                             if (!foundSpan)
                             {
-                                var x0 = newAllCpX[flatOff2 + k]     * meter;
-                                var x1 = newAllCpX[flatOff2 + k + 1] * meter;
+                                var x0 = newAllCpX[flatOff2 + k].v     * meter;
+                                var x1 = newAllCpX[flatOff2 + k + 1].v * meter;
                                 if (xi >= x0 && xi <= x1)
                                 {
                                     var span = x1 - x0;
                                     if (abs(span) > 1e-12 * meter)
                                     {
                                         var t = (xi - x0) / span;
-                                        var z0 = newAllCpZ[flatOff2 + k]     / meter;  // kappa [1/m]
-                                        var z1 = newAllCpZ[flatOff2 + k + 1] / meter;
+                                        var z0 = newAllCpZ[flatOff2 + k].v     / meter;  // kappa [1/m]
+                                        var z1 = newAllCpZ[flatOff2 + k + 1].v / meter;
                                         kappa_i = z0 + t * (z1 - z0);
                                     }
                                     foundSpan = true;
