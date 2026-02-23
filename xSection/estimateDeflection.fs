@@ -91,6 +91,11 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     {
         definition.regionParams = [];
     }
+    if (definition.allCpX == undefined)         { definition.allCpX = []; }
+    if (definition.allCpZ == undefined)         { definition.allCpZ = []; }
+    if (definition.cpRegionSizes == undefined)  { definition.cpRegionSizes = []; }
+    if (definition.cpIsInitialized == undefined){ definition.cpIsInitialized = []; }
+    if (definition.storedScaleK == undefined)   { definition.storedScaleK = 1e-3; }
 
     // Applied load 1 (always visible)
     definition.applied1NeedsWidth = (definition.applied1LoadShape != LoadType.POINT);
@@ -209,6 +214,36 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
                 println("Warning: Last region cannot be BRIDGING. Reverted to APPROXIMATE.");
             }
         }
+
+        // Reset cpIsInitialized for regions whose fit parameters changed
+        var nRCheck = size(definition.regionParams);
+        if (size(definition.cpIsInitialized) == nRCheck &&
+            oldDefinition.regionParams != undefined &&
+            size(oldDefinition.regionParams) == nRCheck)
+        {
+            for (var k = 0; k < nRCheck; k += 1)
+            {
+                var oldR = oldDefinition.regionParams[k];
+                var newR = definition.regionParams[k];
+                if (oldR.approxDegree    != newR.approxDegree   ||
+                    oldR.maxCP           != newR.maxCP           ||
+                    oldR.regionTolerance != newR.regionTolerance ||
+                    oldR.regionType      != newR.regionType)
+                {
+                    definition.cpIsInitialized[k] = false;
+                }
+            }
+        }
+        // If region count changed, reset all
+        if (size(definition.cpIsInitialized) != nRCheck)
+        {
+            var resetInit = [];
+            for (var k = 0; k < nRCheck; k += 1)
+            {
+                resetInit = append(resetInit, false);
+            }
+            definition.cpIsInitialized = resetInit;
+        }
     }
 
     return definition;
@@ -227,9 +262,32 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 export function estimateDeflectionManipulatorChange(
     context is Context, definition is map, newManipulators is map) returns map
 {
-    // Phase 3: CP drag — update flat allCpZ array from manipulator offsets.
-    // Keys are "r{i}c{j}" encoding region index i and CP index j.
-    // Implemented in Phase 3 alongside addManipulators in the feature body.
+    if (!definition.backOutEI)                   { return definition; }
+    if (definition.cpRegionSizes == undefined)   { return definition; }
+
+    var nReg = size(definition.regionParams);
+    var tempCpZ = definition.allCpZ;          // value copy for mutation
+    var scaleKVal = definition.storedScaleK;  // pure number = scaleK / (m²)
+
+    var cpFlatOff = 0;
+    for (var ri = 0; ri < nReg; ri += 1)
+    {
+        var sz = definition.cpRegionSizes[ri];
+        for (var j = 0; j < sz; j += 1)
+        {
+            var key = "r" ~ toString(ri) ~ "c" ~ toString(j);
+            if (newManipulators[key] is map)
+            {
+                // offset [m] / (scaleKVal [m²/m²] * m²) → kappa [1/m] → cpZ (= kappa * meter, dimensionless)
+                var newKappa = newManipulators[key].offset / (scaleKVal * meter * meter);
+                tempCpZ[cpFlatOff + j] = newKappa * meter;
+                // Mark region as initialized so feature body uses stored CPs
+                definition.cpIsInitialized[ri] = true;
+            }
+        }
+        cpFlatOff = cpFlatOff + sz;
+    }
+    definition.allCpZ = tempCpZ;
     return definition;
 }
 
@@ -745,6 +803,22 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                          isLength(region.regionTolerance, ApproxToleranceBounds);
                      }
                  }
+
+                 // Hidden flat CP storage (written by feature body, read by manipulator change fn)
+                 annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 definition.allCpX is array;
+
+                 annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 definition.allCpZ is array;
+
+                 annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 definition.cpRegionSizes is array;
+
+                 annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN }
+                 definition.cpIsInitialized is array;
+
+                 annotation { "Name" : "storedScaleK", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 1e-3 }
+                 isReal(definition.storedScaleK, { (unitless) : [0, 1e-3, 1e12] } as RealBoundSpec);
              }
          }
      }
@@ -1209,31 +1283,35 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
             deflection = append(deflection, delta_arr[i] + C1 * (x_eval[i] - x_eval[0]) + C2);
         }
 
+        // Compute scaleK for kappa visualization (used by debugMode CYAN line and backOutEI manipulators)
+        var maxAbsKappa = 1e-9 / meter;
+        for (var i = 0; i < N; i += 1)
+        {
+            if (abs(kappa_arr[i]) > maxAbsKappa) { maxAbsKappa = abs(kappa_arr[i]); }
+        }
+        var scaleK = 0.001 * meter * meter;
+        while (maxAbsKappa * scaleK < 0.1 * meter && scaleK < 1e7 * meter * meter)
+        {
+            scaleK = scaleK * 10;
+        }
+
         // --- 11b. Debug visualization (shear/moment diagrams + load arrows) ---
         if (definition.debugMode)
         {
             var vizSpan = xEvalMax - xEvalMin;
 
-            // Find max |V|, |M|, and |kappa| for scaling
+            // Find max |V|, |M| for scaling
             var maxAbsV     = 1e-9 * newton;
             var maxAbsM     = 1e-9 * newton * meter;
-            var maxAbsKappa = 1e-9 / meter;
             for (var i = 0; i < N; i += 1)
             {
                 if (abs(V_arr[i])     > maxAbsV)     { maxAbsV     = abs(V_arr[i]);     }
                 if (abs(M_arr[i])     > maxAbsM)     { maxAbsM     = abs(M_arr[i]);     }
-                if (abs(kappa_arr[i]) > maxAbsKappa) { maxAbsKappa = abs(kappa_arr[i]); }
             }
             var scaleV = vizSpan * 0.2 / maxAbsV;   // [m / N]
             var scaleM = vizSpan * 0.2 / maxAbsM;   // [m / (N·m)]
             var scaleF = vizSpan * 0.2 / F_total;   // [m / N]
-
-            // Power-of-10 scale for curvature: start at 1mm per (1/m), grow until max height >= 10mm
-            var scaleK = 0.001 * meter * meter;
-            while (maxAbsKappa * scaleK < 0.1 * meter && scaleK < 1e7 * meter * meter)
-            {
-                scaleK = scaleK * 10;
-            }
+            // scaleK computed above (shared with backOutEI)
 
             // Zero reference line (BLACK)
             addDebugLine(context,
@@ -1300,6 +1378,188 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                     vector(x2, 0 * meter, -F2 * scaleF),
                     DebugColor.RED);
             }
+        }
+
+        // --- 11c. backOutEI: fit kappa regions, add manipulators, output EI edge ---
+        if (definition.backOutEI && size(definition.trimBoundaries) >= 2)
+        {
+            // Step A: Resolve & clamp trim boundaries
+            var xBounds = [];
+            for (var boundary in definition.trimBoundaries)
+            {
+                var bx = boundary.boundaryX;
+                if (bx < xEvalMin) { bx = xEvalMin; }
+                if (bx > xEvalMax) { bx = xEvalMax; }
+                xBounds = append(xBounds, bx);
+            }
+
+            // Step B: Per-region spline fitting or recovery from stored CPs
+            var nReg = size(definition.regionParams);
+            var newAllCpX = [];
+            var newAllCpZ = [];
+            var newCpSizes = [];
+            var newCpInit = [];
+
+            for (var ri = 0; ri < nReg; ri += 1)
+            {
+                var region = definition.regionParams[ri];
+                var xLo = xBounds[ri];
+                var xHi = xBounds[ri + 1];
+
+                var isInit = (ri < size(definition.cpIsInitialized) &&
+                              definition.cpIsInitialized[ri] == true);
+
+                var regionCpX = [];
+                var regionCpZ = [];
+
+                if (isInit)
+                {
+                    // Recover stored CPs from flat arrays
+                    var flatOff = 0;
+                    for (var k = 0; k < ri; k += 1)
+                    {
+                        flatOff = flatOff + definition.cpRegionSizes[k];
+                    }
+                    var sz = definition.cpRegionSizes[ri];
+                    for (var k = 0; k < sz; k += 1)
+                    {
+                        regionCpX = append(regionCpX, definition.allCpX[flatOff + k]);
+                        regionCpZ = append(regionCpZ, definition.allCpZ[flatOff + k]);
+                    }
+                }
+                else
+                {
+                    // Collect kappa sample points in this X range
+                    var regionPts = [];
+                    for (var j = 0; j < N; j += 1)
+                    {
+                        if (x_eval[j] >= xLo && x_eval[j] <= xHi)
+                        {
+                            regionPts = append(regionPts, vector(x_eval[j], 0 * meter, kappa_arr[j] * scaleK));
+                        }
+                    }
+
+                    if (size(regionPts) >= 2 && region.regionType != RegionType.BRIDGING)
+                    {
+                        var fitTol = (region.regionType == RegionType.FREE_DRAG)
+                                     ? 1e-7 * meter
+                                     : region.regionTolerance;
+                        var fitResult = approximateSpline(context, {
+                            "degree"           : region.approxDegree,
+                            "tolerance"        : fitTol,
+                            "isPeriodic"       : false,
+                            "targets"          : [{ "positions" : regionPts }],
+                            "maxControlPoints" : region.maxCP
+                        });
+                        var spline = fitResult[0];
+                        for (var cp in spline.controlPoints)
+                        {
+                            regionCpX = append(regionCpX, cp[0] / meter);
+                            // cpZ = kappa * meter (dimensionless); kappa = cp[2] / scaleK [1/m]
+                            regionCpZ = append(regionCpZ, (cp[2] / scaleK) * meter);
+                        }
+                    }
+                }
+
+                // Accumulate into flat arrays
+                for (var k = 0; k < size(regionCpX); k += 1)
+                {
+                    newAllCpX = append(newAllCpX, regionCpX[k]);
+                    newAllCpZ = append(newAllCpZ, regionCpZ[k]);
+                }
+                newCpSizes = append(newCpSizes, size(regionCpX));
+                newCpInit  = append(newCpInit,  size(regionCpX) > 0);
+            }
+
+            // Persist fitted CPs to hidden definition parameters
+            definition.allCpX         = newAllCpX;
+            definition.allCpZ         = newAllCpZ;
+            definition.cpRegionSizes  = newCpSizes;
+            definition.cpIsInitialized = newCpInit;
+            definition.storedScaleK   = scaleK / (meter * meter);
+
+            // Step D: Add manipulators (one per CP, Z-direction drag)
+            var allManipulators = {};
+            var cpFlatOff = 0;
+            for (var ri = 0; ri < nReg; ri += 1)
+            {
+                var sz = newCpSizes[ri];
+                for (var j = 0; j < sz; j += 1)
+                {
+                    var key = "r" ~ toString(ri) ~ "c" ~ toString(j);
+                    allManipulators[key] = linearManipulator({
+                        "base"      : vector(newAllCpX[cpFlatOff + j] * meter, 0 * meter, 0 * meter),
+                        "direction" : vector(0, 0, 1),
+                        "offset"    : newAllCpZ[cpFlatOff + j] * definition.storedScaleK * meter
+                    });
+                }
+                cpFlatOff = cpFlatOff + sz;
+            }
+            addManipulators(context, id, allManipulators);
+
+            // Step E: Evaluate kappa_cleaned by linear interpolation over CP polyline per region
+            var kappa_cleaned = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                var xi = x_eval[j];
+                var kappa_i = kappa_arr[j];   // default: raw kappa
+                var foundRegion = false;
+                var flatOff2 = 0;
+                for (var ri = 0; ri < nReg; ri += 1)
+                {
+                    var sz2 = newCpSizes[ri];
+                    if (!foundRegion && xi >= xBounds[ri] && xi <= xBounds[ri + 1] && sz2 >= 2)
+                    {
+                        var foundSpan = false;
+                        for (var k = 0; k < sz2 - 1; k += 1)
+                        {
+                            if (!foundSpan)
+                            {
+                                var x0 = newAllCpX[flatOff2 + k]     * meter;
+                                var x1 = newAllCpX[flatOff2 + k + 1] * meter;
+                                if (xi >= x0 && xi <= x1)
+                                {
+                                    var span = x1 - x0;
+                                    if (abs(span) > 1e-12 * meter)
+                                    {
+                                        var t = (xi - x0) / span;
+                                        var z0 = newAllCpZ[flatOff2 + k]     / meter;  // kappa [1/m]
+                                        var z1 = newAllCpZ[flatOff2 + k + 1] / meter;
+                                        kappa_i = z0 + t * (z1 - z0);
+                                    }
+                                    foundSpan = true;
+                                }
+                            }
+                        }
+                        foundRegion = true;
+                    }
+                    flatOff2 = flatOff2 + sz2;
+                }
+                kappa_cleaned = append(kappa_cleaned, kappa_i);
+            }
+
+            // Step F: EI back-out  EI = M / kappa_cleaned
+            var EI_backout = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                var ki = kappa_cleaned[j];
+                var EI_j = (abs(ki) > 1e-6 / meter)
+                           ? M_arr[j] / ki
+                           : 0 * newton * meter * meter;
+                EI_backout = append(EI_backout, EI_j);
+            }
+
+            // Step G: Output edge — Z = EI [N·m²] encoded as Z [mm], matching selEI format
+            var eiPts = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                eiPts = append(eiPts, vector(
+                    x_eval[j],
+                    0 * meter,
+                    (EI_backout[j] / (newton * meter * meter)) * millimeter
+                ));
+            }
+            opFitSpline(context, id + "eiBackout", { "points" : eiPts });
         }
 
         // --- 12. Create deflection spline curve (XZ plane, Z = deflection) ---

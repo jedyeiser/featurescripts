@@ -16,6 +16,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+// IMPORT: curveMappingCore.fs
 
 
 
@@ -417,12 +418,6 @@ function debugDrawFrames(context is Context, frenetPath is map, numSamples is nu
 }
 
 
-// ============================================================================
-// buildFrenetPath
-// ============================================================================
-
-/**
- * Preprocess a G1-continuous edge chain into a queryable FrenetPath structure.
  *
  * Validates G1 continuity via constructPath, optionally reverses the chain,
  * and computes per-edge metadata: arc-length tables, inflection arc-lengths,

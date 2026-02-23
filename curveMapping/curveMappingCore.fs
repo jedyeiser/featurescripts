@@ -1,925 +1,503 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
-
-//import curveChain
-import(path : "670e82ad72abc97906ec9038", version : "8529c8f32827197367a47119");
-//import curveMappingUtils
-import(path : "de955d503dbb0ec88622e51b", version : "be91cf92b860d9a0f7191c73");
+import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
-//import tools/curve_operations
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+//import Utils
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "5a9af7b361c62896e83f949f");
+// IMPORT: tools/arc_length.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
+// IMPORT: tools/frenet.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
+// IMPORT: tools/point_projection.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
 
-/**
- * Mapping mode for curve transformation.
- */
-export enum MappingMode
-{
-    annotation { "Name" : "Preserve arc length" }
-    LENGTH,
-    annotation { "Name" : "Preserve parameter" }
-    PARAM
-}
-
-/**
- * Alignment mode for reference points.
- */
-export enum AlignmentMode
-{
-    annotation { "Name" : "Automatic (closest point)" }
-    AUTO,
-    annotation { "Name" : "Manual alignment" }
-    MANUAL
-}
+// ============================================================================
+// buildFrenetPath
+// ============================================================================
 
 /**
- * Transform world point to Frenet frame coordinates.
+ * Preprocess a G1-continuous edge chain into a queryable FrenetPath structure.
  *
- * @param worldPoint : Point in world coordinates
- * @param frenetResult : EdgeCurvatureResult with frame
- * @param planeNormal : Optional plane normal for degenerate frame construction (can be undefined)
- * @returns Local coordinates [tangent, normal, binormal]
+ * Validates G1 continuity via constructPath, optionally reverses the chain,
+ * and computes per-edge metadata: arc-length tables, inflection arc-lengths,
+ * and cumulative normal sign.
+ *
+ * @param context   {Context}
+ * @param id        {Id}
+ * @param sourceEdges {Query}  : edges forming a single G1-continuous chain
+ * @param flipRef   {boolean} : if true, reverse the chain direction
+ * @returns {map} :
+ *   "path"        {Path}            - ordered Path from constructPath
+ *   "totalLength" {ValueWithUnits}  - total arc-length of the chain
+ *   "edgeData"    {array}           - per-edge maps (index 0 = chain start)
+ *
+ * Each edgeData entry contains:
+ *   query, bspline, stdDir, isLine, length,
+ *   arcLengthTable, localInflectionArcs,
+ *   lineFrame (lines only), lineStartPt (lines only),
+ *   startArcLength, startSign
  */
-function worldPointToFrenet(worldPoint is Vector, frenetResult is EdgeCurvatureResult, planeNormal) returns Vector
+export function buildFrenetPath(context is Context, id is Id, sourceEdges is Query, flipRef is boolean) returns map
 {
-    var frame = frenetResult.frame;
-    const localVector = worldPoint - frame.origin;
-
-    // Handle degenerate case: line with zero curvature (no defined normal/binormal)
-    // Check if curvature is effectively zero
-    if (abs(frenetResult.curvature) < 1e-10 / meter)
+    // 1. Validate G1 continuity and get ordered path
+    var path;
+    try
     {
-        // For zero-curvature (linear) edges, construct frame using plane context
-        const tangent = frame.zAxis;
+        path = constructPath(context, sourceEdges);
+    }
+    catch (error)
+    {
+        throw regenError("Reference edges must be G1 continuous", sourceEdges);
+    }
 
-        var binormal;  // Out-of-plane direction
+    // 2. Optionally reverse traversal direction
+    if (flipRef)
+        path = reverse(path);
 
-        if (planeNormal != undefined)
+    // 3. Build per-edge data
+    var edgeData = [];
+    var nEdges   = size(path.edges);
+
+    for (var i = 0; i < nEdges; i += 1)
+    {
+        var edge    = path.edges[i];
+        var flipped = path.flipped[i];
+        var stdDir  = !flipped;  // true = traverse param 0→1
+
+        var bspline  = evApproximateBSplineCurve(context, { "edge": edge });
+        var length   = evLength(context, { "entities": edge });
+        var curveDef = evCurveDefinition(context, { "edge": edge });
+        var isLine   = (curveDef.curveType == CurveType.LINE);
+
+        // Always build arc-length table — used for both projection and frame lookup
+        var arcLengthTable = buildArcLengthTable(bspline, 100);
+
+        var localInflectionArcs = [];
+        var lineFrame           = undefined;
+        var lineStartPt         = undefined;
+
+        if (isLine)
         {
-            // Use plane normal as binormal (out-of-plane direction)
-            // Ensure it's orthogonal to tangent
-            const dotProduct = dot(tangent, planeNormal);
-            if (abs(dotProduct) > 0.01)  // Not orthogonal - project to make it so
-            {
-                binormal = normalize(planeNormal - dotProduct * tangent);
-            }
-            else
-            {
-                binormal = normalize(planeNormal);
-            }
+            // Build Frenet frame for the line, direction-corrected for traversal
+            var lineDir = curveDef.direction;
+            if (!stdDir)
+                lineDir = -1 * lineDir;
+
+            lineFrame = lineFrenetFrame({ "origin": curveDef.origin, "direction": lineDir });
+
+            // Store traversal-start position for position interpolation in getFrameAtArcLength
+            var endLines = evEdgeTangentLines(context, { "edge": edge, "parameters": [0, 1] });
+            lineStartPt  = stdDir ? endLines[0].origin : endLines[1].origin;
         }
         else
         {
-            // Fallback: use world Y-axis (original behavior)
-            const worldUp = vector(0, 1, 0);
-            const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
-                              vector(1, 0, 0) : worldUp;
-            binormal = normalize(cross(tangent, refVector));
-        }
-
-        // Normal is perpendicular to both tangent and binormal, in the plane
-        const normal = cross(binormal, tangent);
-        frame = coordSystem(frame.origin, normal, tangent);
-    }
-
-    // Project onto Frenet frame axes
-    // frame.zAxis = tangent direction
-    // frame.xAxis = principal normal direction
-    // frame.yAxis = binormal direction
-    const tangentCoord = dot(localVector, frame.zAxis);
-    const normalCoord = dot(localVector, frame.xAxis);
-    const binormalCoord = dot(localVector, yAxis(frame));
-
-    return vector(tangentCoord, normalCoord, binormalCoord);
-}
-
-/**
- * Transform Frenet frame coordinates to world point.
- *
- * @param localCoords : Local coordinates [tangent, normal, binormal]
- * @param frenetResult : EdgeCurvatureResult with frame
- * @param planeNormal : Optional plane normal for degenerate frame construction (can be undefined)
- * @returns Point in world coordinates
- */
-function frenetPointToWorld(localCoords is Vector, frenetResult is EdgeCurvatureResult, planeNormal) returns Vector
-{
-    var frame = frenetResult.frame;
-
-    // Handle degenerate case: line with zero curvature (no defined normal/binormal)
-    // Check if curvature is effectively zero
-    if (abs(frenetResult.curvature) < 1e-10 / meter)
-    {
-        // For zero-curvature (linear) edges, construct frame using plane context
-        const tangent = frame.zAxis;
-
-        var binormal;  // Out-of-plane direction
-
-        if (planeNormal != undefined)
-        {
-            // Use plane normal as binormal (out-of-plane direction)
-            // Ensure it's orthogonal to tangent
-            const dotProduct = dot(tangent, planeNormal);
-            if (abs(dotProduct) > 0.01)  // Not orthogonal - project to make it so
+            // Detect inflection points and record them as local arc-length positions
+            if (bSplineMayHaveInflection(bspline))
             {
-                binormal = normalize(planeNormal - dotProduct * tangent);
-            }
-            else
-            {
-                binormal = normalize(planeNormal);
-            }
-        }
-        else
-        {
-            // Fallback: use world Y-axis (original behavior)
-            const worldUp = vector(0, 1, 0);
-            const refVector = (abs(dot(tangent, worldUp)) > 0.99) ?
-                              vector(1, 0, 0) : worldUp;
-            binormal = normalize(cross(tangent, refVector));
-        }
+                var nCPs           = size(bspline.controlPoints);
+                var rawInflections = findBSplineInflections(bspline, 4 * nCPs, 1e-4);
 
-        // Normal is perpendicular to both tangent and binormal, in the plane
-        const normal = cross(binormal, tangent);
-        frame = coordSystem(frame.origin, normal, tangent);
-    }
-
-    // Reconstruct world point from Frenet coordinates
-    return frame.origin +
-           localCoords[0] * frame.zAxis +
-           localCoords[1] * frame.xAxis +
-           localCoords[2] * yAxis(frame);
-}
-
-/**
- * Set up curve mapping between fromChain and toChain.
- *
- * @param context : Onshape context
- * @param id : Feature ID for warnings/errors
- * @param fromChain : Source reference chain
- * @param toChain : Target reference chain
- * @param sourcePoint : Alignment point on source geometry
- * @param alignmentMode : AUTO or MANUAL
- * @param options : {
- *                    fromAlignPoint: Vector (required if MANUAL)
- *                    toAlignPoint: Vector (required if MANUAL)
- *                    mappingMode: MappingMode (default LENGTH)
- *                    checkCoplanar: boolean (default true)
- *                    warnNonCoplanar: boolean (default true)
- *                  }
- * @returns {
- *            fromChain: CurveChain,
- *            toChain: CurveChain,
- *            fromRefParam: number,
- *            toRefParam: number,
- *            fromRefArcLength: ValueWithUnits,
- *            toRefArcLength: ValueWithUnits,
- *            mappingMode: MappingMode,
- *            isCoplanar: boolean,
- *            coplanarityAngle: ValueWithUnits (if not coplanar)
- *          }
- */
-export function buildCurveMapping(context is Context, id is Id,
-                                  fromChain is CurveChain,
-                                  toChain is CurveChain,
-                                  sourcePoint is Vector,
-                                  alignmentMode is AlignmentMode,
-                                  options is map) returns map
-{
-    const mappingMode = options.mappingMode ?? MappingMode.LENGTH;
-    const checkCoplanar = options.checkCoplanar ?? true;
-    const warnNonCoplanar = options.warnNonCoplanar ?? true;
-
-    // Determine reference points
-    var fromRefParam;
-    var toRefParam;
-
-    if (alignmentMode == AlignmentMode.AUTO)
-    {
-        // Project sourcePoint onto both chains
-        const fromProj = projectPointOnChain(context, fromChain, sourcePoint, {});
-        const toProj = projectPointOnChain(context, toChain, sourcePoint, {});
-
-        fromRefParam = fromProj.chainParameter;
-        toRefParam = toProj.chainParameter;
-    }
-    else // MANUAL
-    {
-        if (options.fromAlignPoint == undefined || options.toAlignPoint == undefined)
-        {
-            throw regenError("Manual alignment requires fromAlignPoint and toAlignPoint",
-                           ["fromEdge", "toEdge"]);
-        }
-
-        const fromProj = projectPointOnChain(context, fromChain, options.fromAlignPoint, {});
-        const toProj = projectPointOnChain(context, toChain, options.toAlignPoint, {});
-
-        fromRefParam = fromProj.chainParameter;
-        toRefParam = toProj.chainParameter;
-    }
-
-    // Compute arc lengths at reference points
-    const fromRefArcLength = fromRefParam * getChainLength(fromChain);
-    const toRefArcLength = toRefParam * getChainLength(toChain);
-
-    // Check coplanarity if requested
-    var isCoplanar = true;
-    var coplanarityAngle = undefined;
-    var coplanarCheck = undefined;
-
-    if (checkCoplanar)
-    {
-        coplanarCheck = checkCoplanarity(context, fromChain, toChain, {});
-        isCoplanar = coplanarCheck.coplanar;
-
-        if (!isCoplanar)
-        {
-            coplanarityAngle = coplanarCheck.angle;
-
-            if (warnNonCoplanar)
-            {
-                reportFeatureInfo(context, id,
-                    "From and To curves not coplanar (max deviation: " ~
-                    toString(coplanarCheck.maxDeviation) ~ "). " ~
-                    "Mapping will still work but may produce unexpected results.");
-            }
-        }
-    }
-
-    // Store fitted plane for use in degenerate frame construction
-    var geometryPlane = undefined;
-    var planeNormal = undefined;
-
-    if (checkCoplanar && coplanarCheck != undefined)
-    {
-        geometryPlane = coplanarCheck.fittedPlane;
-        planeNormal = geometryPlane.normal;
-    }
-
-    return {
-        "fromChain" : fromChain,
-        "toChain" : toChain,
-        "fromRefParam" : fromRefParam,
-        "toRefParam" : toRefParam,
-        "fromRefArcLength" : fromRefArcLength,
-        "toRefArcLength" : toRefArcLength,
-        "mappingMode" : mappingMode,
-        "isCoplanar" : isCoplanar,
-        "coplanarityAngle" : coplanarityAngle,
-        "planeNormal" : planeNormal
-    };
-}
-
-/**
- * Map a single point from fromChain reference frame to toChain.
- *
- * @param context : Onshape context
- * @param mapping : Result from buildCurveMapping()
- * @param sourcePoint : Point to map (in world coordinates)
- * @returns {
- *            fromParam: number,
- *            fromFrame: EdgeCurvatureResult,
- *            localCoords: Vector,
- *            toParam: number,
- *            toFrame: EdgeCurvatureResult,
- *            mappedPoint: Vector
- *          }
- */
-export function mapPointToCurve(context is Context, mapping is map,
-                                sourcePoint is Vector) returns map
-{
-    // 1. Project sourcePoint onto fromChain
-    const fromProj = projectPointOnChain(context, mapping.fromChain, sourcePoint, {});
-    const fromParam = fromProj.chainParameter;
-
-    // 2. Get Frenet frame at fromParam
-    const fromFrame = getChainFrenetFrame(context, mapping.fromChain, fromParam);
-
-    // 3. Transform sourcePoint to Frenet coordinates (CORRECT ORDER)
-    const localCoords = worldPointToFrenet(sourcePoint, fromFrame, mapping.planeNormal);
-
-    // 4. Compute toParam based on mapping mode
-    var toParam;
-
-    if (mapping.mappingMode == MappingMode.LENGTH)
-    {
-        // Arc-length based mapping
-        const fromArcLength = fromParam * getChainLength(mapping.fromChain);
-        const deltaArcLength = fromArcLength - mapping.fromRefArcLength;
-
-        const toArcLength = mapping.toRefArcLength + deltaArcLength;
-        toParam = chainParameterAtArcLength(mapping.toChain, toArcLength);
-    }
-    else // PARAM mode
-    {
-        // Parameter delta preserved
-        const deltaParam = fromParam - mapping.fromRefParam;
-        toParam = mapping.toRefParam + deltaParam;
-
-        // Clamp to [0, 1]
-        toParam = max(0.0, min(1.0, toParam));
-    }
-
-    // 5. Get Frenet frame at toParam
-    var toFrame = getChainFrenetFrame(context, mapping.toChain, toParam);
-
-    // 5a. Check frame consistency and determine plane normal orientation for toFrame
-    const consistency = checkFrameConsistency(fromFrame, toFrame);
-    var toPlaneNormal = mapping.planeNormal;
-
-    if (!consistency.consistent)
-    {
-        // Frame orientation is flipped - adjust toFrame AND flip plane normal
-        toFrame = adjustFrameOrientation(fromFrame, toFrame, consistency);
-
-        // Flip plane normal to match adjusted frame orientation
-        if (toPlaneNormal != undefined)
-        {
-            toPlaneNormal = -toPlaneNormal;
-        }
-    }
-
-    // 6. Transform local coords to world using toFrame with ORIENTED plane normal
-    const mappedPoint = frenetPointToWorld(localCoords, toFrame, toPlaneNormal);
-
-    return {
-        "fromParam" : fromParam,
-        "fromFrame" : fromFrame,
-        "localCoords" : localCoords,
-        "toParam" : toParam,
-        "toFrame" : toFrame,
-        "mappedPoint" : mappedPoint
-    };
-}
-
-/**
- * Batch version of mapPointToCurve for performance.
- *
- * @param context : Onshape context
- * @param mapping : Result from buildCurveMapping()
- * @param sourcePoints : Array of points to map
- * @returns Array of mapping results (same structure as mapPointToCurve)
- */
-export function mapPointsToCurve(context is Context, mapping is map,
-                                 sourcePoints is array) returns array
-{
-    var results = [];
-
-    for (var point in sourcePoints)
-    {
-        results = append(results, mapPointToCurve(context, mapping, point));
-    }
-
-    return results;
-}
-
-/**
- * Map a source curve with automatic segmentation at from/to chain boundaries.
- *
- * CRITICAL: If source curve spans across from/to chain edge boundaries,
- * it will be segmented at those boundaries and each piece mapped independently.
- *
- * @param context : Onshape context
- * @param mapping : Result from buildCurveMapping()
- * @param sourceCurve : Curve to map (BSplineCurve)
- * @param options : {
- *                    numSamplesPerSegment: number (default 25)
- *                    minimalSegmentation: boolean (default false)
- *                  }
- * @returns Array of mapped curve segments: {
- *            curve: BSplineCurve,
- *            fromEdgeIndex: number,
- *            toEdgeIndex: number,
- *            sourceParamRange: [start, end],
- *            continuityBefore: ChainContinuity (if not first segment)
- *          }
- */
-export function mapCurveSegmented(context is Context,
-                                  mapping is map,
-                                  sourceCurve is BSplineCurve,
-                                  options is map) returns array
-{
-    const numSamplesPerSegment = options.numSamplesPerSegment ?? 25;
-    const minimalSegmentation = options.minimalSegmentation ?? false;
-
-    if (numSamplesPerSegment < 2)
-        throw regenError("numSamplesPerSegment must be at least 2");
-
-    // Get source curve parameter range
-    const sourceRange = getBSplineParamRange(sourceCurve);
-
-    // Evaluate endpoints
-    const startPoint = evaluateSpline({
-        "spline" : sourceCurve,
-        "parameters" : [sourceRange.uMin]
-    })[0][0];
-    const endPoint = evaluateSpline({
-        "spline" : sourceCurve,
-        "parameters" : [sourceRange.uMax]
-    })[0][0];
-
-    // Project endpoints onto fromChain to get span
-    const startProj = projectPointOnChain(context, mapping.fromChain, startPoint, {});
-    const endProj = projectPointOnChain(context, mapping.fromChain, endPoint, {});
-
-    const spanStart = min(startProj.chainParameter, endProj.chainParameter);
-    const spanEnd = max(startProj.chainParameter, endProj.chainParameter);
-
-    // Check for degenerate case
-    if (abs(spanEnd - spanStart) < 1e-10)
-    {
-        throw regenError("Source curve is perpendicular to reference chain - cannot map");
-    }
-
-    // Map source curve endpoints explicitly to guarantee G0 continuity
-    // This ensures that adjacent source curves sharing an endpoint will produce
-    // wrapped curves that also share the mapped endpoint (no gap).
-    const mappedStartResult = mapPointToCurve(context, mapping, startPoint);
-    const mappedEndResult = mapPointToCurve(context, mapping, endPoint);
-
-    const exactStartMapped = mappedStartResult.mappedPoint;
-    const exactEndMapped = mappedEndResult.mappedPoint;
-    const exactStartTangent = mappedStartResult.toFrame.frame.zAxis;
-    const exactEndTangent = mappedEndResult.toFrame.frame.zAxis;
-
-    // Find edge boundaries within span
-    const boundaries = mapping.fromChain.edgeBoundaries;
-    var segmentPoints = [spanStart];
-
-    for (var boundary in boundaries)
-    {
-        if (boundary > spanStart && boundary < spanEnd)
-        {
-            // Check if we should segment at this boundary
-            var shouldSegment = true;
-
-            if (minimalSegmentation)
-            {
-                // Only segment at C0 breaks (G0-only, not G1)
-                // Simplified: always segment unless both chains are G1
-                if (mapping.fromChain.continuity == ChainContinuity.G1 &&
-                    mapping.toChain.continuity == ChainContinuity.G1)
+                for (var u_inf in rawInflections)
                 {
-                    shouldSegment = false;
+                    // Convert BSpline parameter to arc-length fraction, then to physical arc-length
+                    var physFrac      = arcLengthFraction(arcLengthTable, u_inf);
+                    var physArcLength = physFrac * length;  // arc from BSpline param=uMin
+
+                    // Convert to local arc (from traversal start)
+                    var localArc = stdDir ? physArcLength : (length - physArcLength);
+                    localInflectionArcs = append(localInflectionArcs, localArc);
                 }
-            }
 
-            if (shouldSegment)
-            {
-                segmentPoints = append(segmentPoints, boundary);
-            }
-        }
-    }
-    segmentPoints = append(segmentPoints, spanEnd);
-
-    // Map each segment
-    var segments = [];
-
-    for (var i = 0; i < size(segmentPoints) - 1; i += 1)
-    {
-        const segStart = segmentPoints[i];
-        const segEnd = segmentPoints[i + 1];
-
-        const isFirstSegment = (i == 0);
-        const isLastSegment = (i == size(segmentPoints) - 2);
-
-        // Sample points uniformly within this segment by PROJECTING onto fromChain
-        // For first/last segments, we'll use exact endpoints and skip redundant samples
-        var sampleChainParams = [];
-
-        // Determine sampling range to avoid duplicating exact endpoints
-        const startJ = isFirstSegment ? 1 : 0;
-        const endJ = isLastSegment ? numSamplesPerSegment - 2 : numSamplesPerSegment - 1;
-
-        for (var j = startJ; j <= endJ; j += 1)
-        {
-            const t = j / (numSamplesPerSegment - 1);
-            const chainParam = segStart + t * (segEnd - segStart);
-            sampleChainParams = append(sampleChainParams, chainParam);
-        }
-
-        // Evaluate fromChain at these parameters to get world points
-        var chainPoints = [];
-        if (size(sampleChainParams) > 0)
-        {
-            const chainEval = evaluateChain(context, mapping.fromChain, sampleChainParams, 0);
-            chainPoints = chainEval.points;
-        }
-
-        // Project each chain point onto source curve to get CORRECT source parameters
-        var sourcePoints = [];
-        for (var chainPt in chainPoints)
-        {
-            // Find closest point on source curve using evDistance
-            // Create a temporary vertex at chainPt for evDistance
-            // Simplified: sample source curve and find closest
-            var bestParam = sourceRange.uMin;
-            var bestDist = undefined;
-
-            // Sample source curve to find closest parameter
-            for (var k = 0; k <= 20; k += 1)
-            {
-                const testParam = sourceRange.uMin + (k / 20) * (sourceRange.uMax - sourceRange.uMin);
-                const testPt = evaluateSpline({
-                    "spline" : sourceCurve,
-                    "parameters" : [testParam]
-                })[0][0];
-
-                const dist = norm(testPt - chainPt);
-                if (bestDist == undefined || dist < bestDist)
+                // Sort ascending by local arc-length
+                localInflectionArcs = sort(localInflectionArcs, function(a, b)
                 {
-                    bestDist = dist;
-                    bestParam = testParam;
-                }
-            }
-
-            // Evaluate source curve at this parameter
-            const sourcePt = evaluateSpline({
-                "spline" : sourceCurve,
-                "parameters" : [bestParam]
-            })[0][0];
-
-            sourcePoints = append(sourcePoints, sourcePt);
-        }
-
-        // Map all interior points
-        var mappedResults = [];
-        if (size(sourcePoints) > 0)
-        {
-            mappedResults = mapPointsToCurve(context, mapping, sourcePoints);
-        }
-
-        // Build final mapped points array with exact endpoints
-        var mappedPoints = [];
-
-        // First segment: start with exact mapped start point
-        if (isFirstSegment)
-        {
-            mappedPoints = append(mappedPoints, exactStartMapped);
-        }
-
-        // Add interior mapped points
-        for (var result in mappedResults)
-        {
-            mappedPoints = append(mappedPoints, result.mappedPoint);
-        }
-
-        // Last segment: end with exact mapped end point
-        if (isLastSegment)
-        {
-            mappedPoints = append(mappedPoints, exactEndMapped);
-        }
-
-        // Extract tangent vectors at segment endpoints
-        // Use exact tangents for first/last segments to maintain continuity
-        var startTangent;
-        var endTangent;
-
-        if (isFirstSegment)
-        {
-            startTangent = exactStartTangent;
-        }
-        else if (size(mappedResults) > 0)
-        {
-            startTangent = mappedResults[0].toFrame.frame.zAxis;
-        }
-        else
-        {
-            // Fallback: no interior points, use exact tangent
-            startTangent = exactStartTangent;
-        }
-
-        if (isLastSegment)
-        {
-            endTangent = exactEndTangent;
-        }
-        else if (size(mappedResults) > 0)
-        {
-            endTangent = mappedResults[size(mappedResults) - 1].toFrame.frame.zAxis;
-        }
-        else
-        {
-            // Fallback: no interior points, use exact tangent
-            endTangent = exactEndTangent;
-        }
-
-        // Detect if mapped points are nearly linear
-        const isLinear = detectLinearSegment(mappedPoints, 1e-5 * meter);
-
-        // Choose degree based on linearity (minimum degree 2 for approximateSpline)
-        const degree = isLinear ? 2 : 3;
-
-        // Use tangent-constrained approximation for non-linear segments
-        // Try tangent-constrained approximation, fall back to position-only
-        var mappedCurve;
-        if (isLinear)
-        {
-            // Linear segments don't need tangent constraints
-            mappedCurve = approximateWithEndpoints(context, mappedPoints, degree, {});
-        }
-        else
-        {
-            try silent
-            {
-                mappedCurve = approximateWithTangents(context, mappedPoints, degree, {
-                    "startTangent" : startTangent,
-                    "endTangent" : endTangent
+                    return (a - b) / meter;
                 });
             }
-            catch
-            {
-                println("WARNING: Tangent-constrained approximation failed, using position-only");
-                mappedCurve = approximateWithEndpoints(context, mappedPoints, degree, {});
-            }
         }
 
-        // Determine edge indices
-        const fromEdgeIndex = findEdgeIndexAtParam(mapping.fromChain, segStart);
-
-        // Map segStart through the mapping to get toChain parameter
-        const toSegStartParam = mapChainParameter(mapping, segStart);
-        const toEdgeIndex = findEdgeIndexAtParam(mapping.toChain, toSegStartParam);
-
-        segments = append(segments, {
-            "curve" : mappedCurve,
-            "fromEdgeIndex" : fromEdgeIndex,
-            "toEdgeIndex" : toEdgeIndex,
-            "sourceParamRange" : [segStart, segEnd],
-            "continuityBefore" : (i > 0) ? mapping.fromChain.continuity : undefined,
-            "startTangent" : startTangent,  // For validation
-            "endTangent" : endTangent       // For validation
+        edgeData = append(edgeData, {
+            "query"              : edge,
+            "bspline"            : bspline,
+            "stdDir"             : stdDir,
+            "isLine"             : isLine,
+            "length"             : length,
+            "arcLengthTable"     : arcLengthTable,
+            "localInflectionArcs": localInflectionArcs,
+            "lineFrame"          : lineFrame,
+            "lineStartPt"        : lineStartPt
         });
     }
 
-    return segments;
-}
+    // 4. Propagate cumulative startArcLength and startSign across edges
+    var runningArc  = 0 * meter;
+    var runningSign = 1;
 
-/**
- * Map a chain parameter from fromChain to toChain.
- * @internal
- */
-function mapChainParameter(mapping is map, fromParam is number) returns number
-{
-    if (mapping.mappingMode == MappingMode.LENGTH)
+    for (var i = 0; i < size(edgeData); i += 1)
     {
-        const fromArcLength = fromParam * getChainLength(mapping.fromChain);
-        const deltaArcLength = fromArcLength - mapping.fromRefArcLength;
-        const toArcLength = mapping.toRefArcLength + deltaArcLength;
-        return chainParameterAtArcLength(mapping.toChain, toArcLength);
-    }
-    else // PARAM mode
-    {
-        const deltaParam = fromParam - mapping.fromRefParam;
-        var toParam = mapping.toRefParam + deltaParam;
-        toParam = max(0.0, min(1.0, toParam));
-        return toParam;
-    }
-}
+        edgeData[i] = mergeMaps(edgeData[i], {
+            "startArcLength": runningArc,
+            "startSign"     : runningSign
+        });
 
-/**
- * Find which edge contains a given chain parameter.
- * @internal
- */
-function findEdgeIndexAtParam(chain is CurveChain, parameter is number) returns number
-{
-    const boundaries = chain.edgeBoundaries;
+        runningArc += edgeData[i].length;
 
-    for (var i = 0; i < size(boundaries) - 1; i += 1)
-    {
-        if (parameter >= boundaries[i] && parameter <= boundaries[i + 1])
-        {
-            return i;
-        }
+        // Each inflection flips the sign; an even count is a net identity
+        if (size(edgeData[i].localInflectionArcs) % 2 == 1)
+            runningSign = -1 * runningSign;
     }
 
-    // Fallback: return last edge
-    return size(boundaries) - 2;
-}
-
-/**
- * Join mapped curve segments with appropriate continuity.
- *
- * @param context : Onshape context
- * @param segments : From mapCurveSegmented()
- * @param options : {
- *                    keepSeparateAtG0: boolean (default true)
- *                  }
- * @returns Array of joined curves (may be fewer than input segments)
- */
-export function joinMappedSegments(context is Context,
-                                   segments is array,
-                                   options is map) returns array
-{
-    const keepSeparateAtG0 = options.keepSeparateAtG0 ?? true;
-    const debugOutput = options.debugOutput ?? false;
-
-    if (size(segments) <= 1)
+    // 4.5. Post-process: set line xAxis from adjacent curve context
+    //      For each line edge, if an adjacent edge is a curve, borrow that curve's
+    //      Frenet normal at the shared vertex so the frame is continuous at the junction.
+    //      Prefer the NEXT edge (arc after line drives the normal).
+    for (var i = 0; i < size(edgeData); i += 1)
     {
-        // Nothing to join - return curve array
-        return size(segments) == 0 ? [] : [segments[0].curve];
-    }
+        if (!edgeData[i].isLine)
+            continue;
 
-    // Group segments by continuity requirements
-    var groups = [];
-    var currentGroup = [segments[0]];
+        var contextXAxis = undefined;
 
-    for (var i = 1; i < size(segments); i += 1)
-    {
-        const seg = segments[i];
-        const continuity = seg.continuityBefore;
-
-        if (continuity == ChainContinuity.G1)
+        // Prefer next edge (line followed by arc → arc drives the normal)
+        if (i + 1 < size(edgeData) && !edgeData[i + 1].isLine)
         {
-            // Join with C1 continuity
-            currentGroup = append(currentGroup, seg);
+            var nextEd    = edgeData[i + 1];
+            var nextNK    = size(nextEd.bspline.knots);
+            var nextDeg   = nextEd.bspline.degree;
+            // Traversal start of next edge
+            var nextParam = nextEd.stdDir ? nextEd.bspline.knots[nextDeg]
+                                          : nextEd.bspline.knots[nextNK - nextDeg - 1];
+            contextXAxis = computeFrenetFrame(nextEd.bspline, nextParam).frame.xAxis;
         }
-        else if (continuity == ChainContinuity.G0 && !keepSeparateAtG0)
+        else if (i - 1 >= 0 && !edgeData[i - 1].isLine)
         {
-            // Join with C0 only
-            currentGroup = append(currentGroup, seg);
+            var prevEd    = edgeData[i - 1];
+            var prevNK    = size(prevEd.bspline.knots);
+            var prevDeg   = prevEd.bspline.degree;
+            // Traversal end of prev edge
+            var prevParam = prevEd.stdDir ? prevEd.bspline.knots[prevNK - prevDeg - 1]
+                                          : prevEd.bspline.knots[prevDeg];
+            contextXAxis = computeFrenetFrame(prevEd.bspline, prevParam).frame.xAxis;
         }
-        else
-        {
-            // Break: start new group
-            groups = append(groups, currentGroup);
-            currentGroup = [seg];
-        }
-    }
-    groups = append(groups, currentGroup);
+        // else: isolated line or line–line — keep world-axis heuristic
 
-    // Join each group using tools/curve_operations.fs
-    var result = [];
-    for (var group in groups)
-    {
-        if (size(group) == 1)
+        if (contextXAxis != undefined)
         {
-            // Single curve - no joining needed
-            result = append(result, group[0].curve);
-        }
-        else
-        {
-            // Join multiple curves with continuity enforcement
-            var joinedCurve = group[0].curve;
-
-            if (debugOutput)
+            var lf = edgeData[i].lineFrame;
+            // Project contextXAxis onto the plane perpendicular to the line tangent.
+            // This ensures exact perpendicularity for coordSystem even when the BSpline
+            // tangent at the junction drifts numerically from the line direction.
+            var tangent    = lf.zAxis;
+            var perpXAxis  = contextXAxis - dot(contextXAxis, tangent) * tangent;
+            if (norm(perpXAxis) > 1e-6)
             {
-                println("Joining " ~ size(group) ~ " segments");
-            }
-
-            for (var j = 1; j < size(group); j += 1)
-            {
-                const continuityType = (group[j].continuityBefore == ChainContinuity.G1)
-                                     ? ContinuityType.C1
-                                     : ContinuityType.C0;
-
-                // Use tools/curve_operations.fs joinCurves()
-                // adjustB = true: adjust new segment to match previous
-                joinedCurve = joinCurves(context, joinedCurve, group[j].curve,
-                                       continuityType, {
-                    "tolerance" : 1e-6 * meter,
-                    "adjustA" : false,  // Keep previous curve fixed
-                    "adjustB" : true    // Adjust new curve to match tangent
+                edgeData[i] = mergeMaps(edgeData[i], {
+                    "lineFrame": coordSystem(lf.origin, normalize(perpXAxis), tangent)
                 });
-
-                // Validate continuity if debugging
-                if (debugOutput && j < size(group))
-                {
-                    const validation = validateTangentContinuity(context,
-                        group[j - 1].curve, group[j].curve,
-                        { "tolerance" : 1e-3 * radian });
-
-                    if (!validation.continuous)
-                    {
-                        println("WARNING: G1 discontinuity at segment " ~ (j - 1) ~ " -> " ~ j);
-                        println("  Angle error: " ~ toString(validation.angleError * 180 / PI) ~ " deg");
-                    }
-                    else
-                    {
-                        println("✓ G1 continuous at segment " ~ (j - 1) ~ " -> " ~ j);
-                    }
-                }
             }
-
-            result = append(result, joinedCurve);
+            // else: contextXAxis nearly parallel to tangent (degenerate) — keep heuristic
         }
     }
 
-    return result;
-}
+    // 4.6. Validate normal continuity at each junction
+    //      Raw xAxis values (before sign correction) must be nearly parallel at each joint.
+    //      abs(dot) catches both parallel and antiparallel as valid — sign tracking handles
+    //      the antiparallel case downstream.
+    var normalContinuityTol = 0.9; // cos(~26°)
 
-/**
- * Check if mapped points are nearly linear.
- *
- * @param points : Mapped point array
- * @param tolerance : Linearity tolerance (default 1e-5 m)
- * @returns True if points lie on a line within tolerance
- */
-function detectLinearSegment(points is array, tolerance is ValueWithUnits)
-    returns boolean
-{
-    if (size(points) < 3)
-        return true;
-
-    // Fit line through points using least squares
-    const direction = normalize(points[size(points) - 1] - points[0]);
-    const origin = points[0];
-
-    // Measure max perpendicular distance from line
-    var maxDeviation = 0 * meter;
-
-    for (var point in points)
+    for (var i = 0; i < size(edgeData) - 1; i += 1)
     {
-        const toPoint = point - origin;
-        const projectedDistance = dot(toPoint, direction);
-        const projectedPoint = origin + projectedDistance * direction;
-        const deviation = norm(point - projectedPoint);
-
-        if (deviation > maxDeviation)
+        var xEnd;
+        if (edgeData[i].isLine)
         {
-            maxDeviation = deviation;
+            xEnd = edgeData[i].lineFrame.xAxis;
+        }
+        else
+        {
+            var edI  = edgeData[i];
+            var nKI  = size(edI.bspline.knots);
+            var degI = edI.bspline.degree;
+            // Traversal end of edge i
+            var pI   = edI.stdDir ? edI.bspline.knots[nKI - degI - 1]
+                                  : edI.bspline.knots[degI];
+            xEnd = computeFrenetFrame(edI.bspline, pI).frame.xAxis;
+        }
+
+        var xStart;
+        if (edgeData[i + 1].isLine)
+        {
+            xStart = edgeData[i + 1].lineFrame.xAxis;
+        }
+        else
+        {
+            var edJ  = edgeData[i + 1];
+            var nKJ  = size(edJ.bspline.knots);
+            var degJ = edJ.bspline.degree;
+            // Traversal start of edge i+1
+            var pJ   = edJ.stdDir ? edJ.bspline.knots[degJ]
+                                  : edJ.bspline.knots[nKJ - degJ - 1];
+            xStart = computeFrenetFrame(edJ.bspline, pJ).frame.xAxis;
+        }
+
+        if (abs(dot(xEnd, xStart)) < normalContinuityTol)
+        {
+            throw regenError("Reference edge normals are not coplanar at junction " ~ toString(i) ~
+                             " — use a planar edge chain.",
+                             qUnion([edgeData[i].query, edgeData[i + 1].query]));
         }
     }
 
-    return maxDeviation < tolerance;
-}
-
-/**
- * Check Frenet frame orientation consistency between curves.
- *
- * @param fromFrame : Frame on fromChain
- * @param toFrame : Frame on toChain
- * @returns {
- *            consistent: boolean,
- *            normalFlip: boolean,
- *            binormalFlip: boolean,
- *            maxAngle: ValueWithUnits
- *          }
- */
-function checkFrameConsistency(fromFrame is EdgeCurvatureResult,
-                               toFrame is EdgeCurvatureResult) returns map
-{
-    // Check if normals point in broadly same direction
-    const normalDot = dot(fromFrame.frame.xAxis, toFrame.frame.xAxis);
-    const binormalDot = dot(yAxis(fromFrame.frame), yAxis(toFrame.frame));
-
-    const normalFlip = (normalDot < 0);
-    const binormalFlip = (binormalDot < 0);
-
-    // Compute max angle deviation
-    const normalAngle = angleBetween(fromFrame.frame.xAxis, toFrame.frame.xAxis);
-    const binormalAngle = angleBetween(yAxis(fromFrame.frame), yAxis(toFrame.frame));
-    const maxAngle = max(normalAngle, binormalAngle);
-
-    const consistent = !normalFlip && !binormalFlip;
+    // 5. Compute total length by summing edges (avoids dependency on evPathLength)
+    var totalLength = 0 * meter;
+    for (var ed in edgeData)
+        totalLength += ed.length;
 
     return {
-        "consistent" : consistent,
-        "normalFlip" : normalFlip,
-        "binormalFlip" : binormalFlip,
-        "maxAngle" : maxAngle
+        "path"       : path,
+        "totalLength": totalLength,
+        "edgeData"   : edgeData
     };
 }
 
+
+// ============================================================================
+// getFrameAtArcLength
+// ============================================================================
+
 /**
- * Adjust toFrame orientation to match fromFrame (if needed).
+ * Return a globally consistent Frenet frame at any arc-length along the path.
  *
- * @param fromFrame : Reference frame
- * @param toFrame : Frame to adjust
- * @param consistency : Result from checkFrameConsistency
- * @returns Adjusted EdgeCurvatureResult
+ * Handles multi-edge chains, non-standard traversal (stdDir=false), and
+ * inflection points. The normal (xAxis) sign is tracked cumulatively so it
+ * never discontinuously flips across the entire chain.
+ *
+ * @param context    {Context}
+ * @param frenetPath {map}           - result from buildFrenetPath
+ * @param arcLength  {ValueWithUnits}- global arc-length position (clamped)
+ * @returns {map} :
+ *   "frame"     {CoordSystem} - zAxis=tangent, xAxis=sign-corrected normal
+ *   "sign"      {number}      - current normal sign (+1 or -1)
+ *   "edgeIndex" {number}      - index of the edge containing this position
  */
-function adjustFrameOrientation(fromFrame is EdgeCurvatureResult,
-                                toFrame is EdgeCurvatureResult,
-                                consistency is map) returns EdgeCurvatureResult
+export function getFrameAtArcLength(context is Context, frenetPath is map, arcLength) returns map
 {
-    if (!consistency.normalFlip && !consistency.binormalFlip)
+    var edgeData    = frenetPath.edgeData;
+    var totalLength = frenetPath.totalLength;
+
+    // 1. Clamp arc-length to valid range
+    var clampedArc = arcLength;
+    if (arcLength < 0 * meter)     { clampedArc = 0 * meter; }
+    else if (arcLength > totalLength) { clampedArc = totalLength; }
+
+    // 2. Find the edge whose span contains clampedArc
+    //    (last edge where startArcLength <= clampedArc)
+    var edgeIdx = 0;
+    for (var i = 0; i < size(edgeData); i += 1)
     {
-        // No adjustment needed
-        return toFrame;
+        if (edgeData[i].startArcLength <= clampedArc)
+            edgeIdx = i;
     }
 
-    // Need to reconstruct frame with flipped axes
-    // coordSystem(origin, xAxis, zAxis) - derives yAxis = cross(zAxis, xAxis)
-    var newXAxis = consistency.normalFlip ? -toFrame.frame.xAxis : toFrame.frame.xAxis;
-    var newZAxis = toFrame.frame.zAxis; // Tangent direction never flips
+    var edgeDat = edgeData[edgeIdx];
 
-    // If binormal flips, we need to flip the derived yAxis
-    // Since yAxis = cross(zAxis, xAxis), flipping yAxis means negating xAxis
-    if (consistency.binormalFlip && !consistency.normalFlip)
+    // 3. Local arc-length within this edge (from its traversal start)
+    var localArc = clampedArc - edgeDat.startArcLength;
+
+    // 4. Count inflections we have passed (localInflectionArcs <= localArc)
+    var inflectionsBefore = 0;
+    for (var infArc in edgeDat.localInflectionArcs)
     {
-        newXAxis = -newXAxis;
-    }
-    else if (consistency.binormalFlip && consistency.normalFlip)
-    {
-        // Both flip: xAxis already flipped, need to unflip for yAxis calculation
-        newXAxis = toFrame.frame.xAxis;
+        if (infArc <= localArc)
+            inflectionsBefore += 1;
     }
 
-    const newFrame = coordSystem(toFrame.frame.origin, newXAxis, newZAxis);
+    // 5. Effective normal sign at this position
+    var sign = edgeDat.startSign;
+    if (inflectionsBefore % 2 == 1)
+        sign = -1 * sign;
 
-    // Reconstruct EdgeCurvatureResult with new frame
+    var frame;
+
+    if (edgeDat.isLine)
+    {
+        // 6a. Line: interpolate position along traversal direction
+        var position = edgeDat.lineStartPt + localArc * edgeDat.lineFrame.zAxis;
+        frame = coordSystem(position, sign * edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
+    }
+    else
+    {
+        // 6b. Curved: convert local arc-length to BSpline parameter
+        var u;
+        if (edgeDat.stdDir)
+        {
+            u = parameterAtArcLength(edgeDat.arcLengthTable, localArc);
+        }
+        else
+        {
+            // Traversal is param 1→0; localArc=0 corresponds to uMax
+            u = parameterAtArcLength(edgeDat.arcLengthTable, edgeDat.length - localArc);
+        }
+
+        var rawResult = computeFrenetFrame(edgeDat.bspline, u);
+
+        if (!edgeDat.stdDir)
+        {
+            // Flip zAxis so it points in the traversal direction (param 1→0)
+            frame = coordSystem(rawResult.frame.origin,
+                                rawResult.frame.xAxis,
+                                -1 * rawResult.frame.zAxis);
+        }
+        else
+        {
+            frame = rawResult.frame;
+        }
+
+        // Apply cumulative normal sign correction to xAxis
+        frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
+    }
+
     return {
-        "frame" : newFrame,
-        "curvature" : toFrame.curvature,
-        "torsion" : toFrame.torsion
+        "frame"    : frame,
+        "sign"     : sign,
+        "edgeIndex": edgeIdx
     };
+}
+
+
+// ============================================================================
+// projectOntoFrenetPath
+// ============================================================================
+
+/**
+ * Project a point onto a FrenetPath and return the global arc-length position.
+ *
+ * Tests each edge's BSpline, picks the closest, then converts the BSpline
+ * parameter to arc-length accounting for traversal direction.
+ *
+ * @param frenetPath {map}    - result from buildFrenetPath
+ * @param point      {Vector} - query point with units
+ * @returns {ValueWithUnits}  - arc-length along the path
+ */
+export function projectOntoFrenetPath(frenetPath is map, point is Vector)
+{
+    var edgeData    = frenetPath.edgeData;
+    var bestDist    = inf * meter;
+    var bestEdgeIdx = 0;
+    var bestParam   = 0;
+
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        var result = projectPointOnCurve(edgeData[i].bspline, point, {});
+        if (result.distance < bestDist)
+        {
+            bestDist    = result.distance;
+            bestEdgeIdx = i;
+            bestParam   = result.parameter;
+        }
+    }
+
+    var edgeDat = edgeData[bestEdgeIdx];
+
+    // Convert BSpline parameter → arc-length from BSpline uMin
+    var physFrac      = arcLengthFraction(edgeDat.arcLengthTable, bestParam);
+    var physArcLength = physFrac * edgeDat.length;
+
+    // Convert to local arc from traversal start
+    var localArc = edgeDat.stdDir ? physArcLength : (edgeDat.length - physArcLength);
+
+    return edgeDat.startArcLength + localArc;
+}
+
+
+// ============================================================================
+// getRefPoint
+// ============================================================================
+
+/**
+ * Extract a world point from a vertex, mate connector, or planar face query.
+ *
+ * @param context  {Context}
+ * @param refQuery {Query} - vertex, mate connector, or planar face
+ * @returns {Vector} - 3D position with units
+ */
+export function getRefPoint(context is Context, refQuery is Query) returns Vector
+{
+    var pt = undefined;
+
+    try silent { pt = evVertexPoint(context, { "vertex": refQuery }); }
+    if (pt != undefined) return pt;
+
+    try silent { pt = evMateConnector(context, { "mateConnector": refQuery }).origin; }
+    if (pt != undefined) return pt;
+
+    try silent { pt = evPlane(context, { "face": refQuery }).origin; }
+    if (pt != undefined) return pt;
+
+    throw regenError("Cannot evaluate reference point from selection");
+}
+
+
+// ============================================================================
+// mapWorldPoints  (public API)
+// ============================================================================
+
+/**
+ * Map an array of 3D world points from one FrenetPath to another using the
+ * same per-point logic as the main wrapCurve mapping loop.
+ *
+ * @param context        {Context}
+ * @param fromFrenetPath {map}     - result from buildFrenetPath for the source path
+ * @param toFrenetPath   {map}     - result from buildFrenetPath for the target path
+ * @param fromRefArc     {ValueWithUnits} - arc-length of the reference point on the from-path
+ * @param toRefArc       {ValueWithUnits} - arc-length of the reference point on the to-path
+ * @param flipToNormal   {boolean} - when true, invert the to-path normal sign
+ * @param points         {array}   - array of Vector (3D world points with units)
+ * @returns {array}                - array of Vector (mapped world points, same length)
+ */
+export function mapWorldPoints(context is Context,
+                               fromFrenetPath is map,
+                               toFrenetPath   is map,
+                               fromRefArc     is ValueWithUnits,
+                               toRefArc       is ValueWithUnits,
+                               flipToNormal   is boolean,
+                               points         is array) returns array
+{
+    var result = [];
+    for (var i = 0; i < size(points); i += 1)
+    {
+        var pt = points[i];
+
+        // Project source point onto from-path; get Frenet frame there
+        var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+        var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+
+        // Express point in from-frame local coordinates [tangent, normal, binormal]
+        var localCoords = worldPointToFrenet(pt, fromResult);
+
+        // Linear arc-length mapping from from-path to to-path
+        var s_to = toRefArc + (s_from - fromRefArc);
+
+        // Get to-frame at mapped arc-length
+        var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
+
+        // Determine effective to-frame normal sign (apply flipToNormal toggle)
+        var toSign = toResult.sign;
+        if (flipToNormal)
+            toSign = -1 * toSign;
+
+        // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
+        var toFrameResult = toResult;
+        if (toSign != fromResult.sign)
+        {
+            var flippedFrame = coordSystem(toResult.frame.origin,
+                                           -1 * toResult.frame.xAxis,
+                                           toResult.frame.zAxis);
+            toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
+        }
+
+        result = append(result, frenetPointToWorld(localCoords, toFrameResult));
+    }
+    return result;
 }
