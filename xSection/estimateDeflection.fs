@@ -97,6 +97,9 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     if (definition.cpIsInitialized == undefined){ definition.cpIsInitialized = []; }
     if (definition.storedScaleK == undefined)   { definition.storedScaleK = 1e-3; }
 
+    // EI back-out temporarily disabled — force false regardless of stored value
+    definition.backOutEI = false;
+
     // Applied load 1 (always visible)
     definition.applied1NeedsWidth = (definition.applied1LoadShape != LoadType.POINT);
     definition.applied1IsQuery    = (definition.applied1LocationType == LocationType.QUERY);
@@ -760,7 +763,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
              }
          }
 
-         annotation { "Name" : "Back out EI", "Default" : false }
+         annotation { "Name" : "Back out EI", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
          definition.backOutEI is boolean;
 
          // Hidden flat CP storage — unconditional so Onshape always initializes to [] on passive regens
@@ -796,6 +799,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
              init.v is boolean;
          }
 
+         /* DISABLED — EI back-out UI temporarily commented out; re-enable with backOutEI visible to restore
          if (definition.backOutEI)
          {
              annotation { "Group Name" : "EI Back-Out", "Driving Parameter" : "backOutEI",
@@ -841,6 +845,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                  isReal(definition.storedScaleK, { (unitless) : [0, 1e-3, 1e12] } as RealBoundSpec);
              }
          }
+         */
      }
      {
         // --- 1. Extract EI data from selected edges ---
@@ -1401,7 +1406,8 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         }
 
         // --- 11c. backOutEI: fit kappa regions, add manipulators, output EI edge ---
-        if (definition.backOutEI && size(definition.trimBoundaries) >= 2)
+        // DISABLED — re-enable by removing the /* */ wrapping and making backOutEI visible
+        /* if (definition.backOutEI && size(definition.trimBoundaries) >= 2)
         {
             // Step A: Resolve & clamp trim boundaries
             var xBounds = [];
@@ -1580,7 +1586,7 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                 ));
             }
             opFitSpline(context, id + "eiBackout", { "points" : eiPts });
-        }
+        } */ // END DISABLED backOutEI block
 
         // --- 12. Create deflection spline curve (XZ plane, Z = deflection) ---
         var pts = [];
