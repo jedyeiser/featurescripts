@@ -172,13 +172,10 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
         for (var k = currentSize; k < nRegions; k += 1)
         {
             definition.regionParams = append(definition.regionParams, {
-                "regionType"      : RegionType.APPROXIMATE,
-                "approxDegree"    : 3,
-                "maxCP"           : 20,
-                "approxTolerance" : 1e-4 * meter,
-                "cpX"             : [],
-                "cpZ"             : [],
-                "isInitialized"   : false
+                "regionType"     : RegionType.APPROXIMATE,
+                "approxDegree"   : 3,
+                "maxCP"          : 20,
+                "regionTolerance": 1e-4 * meter
             });
         }
 
@@ -230,26 +227,9 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 export function estimateDeflectionManipulatorChange(
     context is Context, definition is map, newManipulators is map) returns map
 {
-    if (definition.backOutEI && definition.regionParams != undefined)
-    {
-        for (var i = 0; i < size(definition.regionParams); i += 1)
-        {
-            var region = definition.regionParams[i];
-            if (region.cpX != undefined)
-            {
-                for (var j = 0; j < size(region.cpX); j += 1)
-                {
-                    var key = "r" ~ toString(i) ~ "c" ~ toString(j);
-                    if (newManipulators[key] != undefined)
-                    {
-                        var r = definition.regionParams[i];
-                        r.cpZ[j] = newManipulators[key].offset / meter;
-                        definition.regionParams[i] = r;
-                    }
-                }
-            }
-        }
-    }
+    // Phase 3: CP drag — update flat allCpZ array from manipulator offsets.
+    // Keys are "r{i}c{j}" encoding region index i and CP index j.
+    // Implemented in Phase 3 alongside addManipulators in the feature body.
     return definition;
 }
 
@@ -762,17 +742,8 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                      if (region.regionType == RegionType.APPROXIMATE)
                      {
                          annotation { "Name" : "Tolerance" }
-                         isLength(region.approxTolerance, ApproxToleranceBounds);
+                         isLength(region.regionTolerance, ApproxToleranceBounds);
                      }
-
-                     annotation { "Name" : "cpX", "UIHint" : UIHint.HIDDEN }
-                     region.cpX is array;
-
-                     annotation { "Name" : "cpZ", "UIHint" : UIHint.HIDDEN }
-                     region.cpZ is array;
-
-                     annotation { "Name" : "Initialized", "UIHint" : UIHint.HIDDEN }
-                     region.isInitialized is boolean;
                  }
              }
          }

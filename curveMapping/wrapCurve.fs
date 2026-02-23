@@ -784,7 +784,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
  * @param point      {Vector} - query point with units
  * @returns {ValueWithUnits}  - arc-length along the path
  */
-function projectOntoFrenetPath(frenetPath is map, point is Vector)
+export function projectOntoFrenetPath(frenetPath is map, point is Vector)
 {
     var edgeData    = frenetPath.edgeData;
     var bestDist    = inf * meter;
@@ -826,7 +826,7 @@ function projectOntoFrenetPath(frenetPath is map, point is Vector)
  * @param refQuery {Query} - vertex, mate connector, or planar face
  * @returns {Vector} - 3D position with units
  */
-function getRefPoint(context is Context, refQuery is Query) returns Vector
+export function getRefPoint(context is Context, refQuery is Query) returns Vector
 {
     var pt = undefined;
 
@@ -840,4 +840,68 @@ function getRefPoint(context is Context, refQuery is Query) returns Vector
     if (pt != undefined) return pt;
 
     throw regenError("Cannot evaluate reference point from selection");
+}
+
+
+// ============================================================================
+// mapWorldPoints  (public API)
+// ============================================================================
+
+/**
+ * Map an array of 3D world points from one FrenetPath to another using the
+ * same per-point logic as the main wrapCurve mapping loop.
+ *
+ * @param context        {Context}
+ * @param fromFrenetPath {map}     - result from buildFrenetPath for the source path
+ * @param toFrenetPath   {map}     - result from buildFrenetPath for the target path
+ * @param fromRefArc     {ValueWithUnits} - arc-length of the reference point on the from-path
+ * @param toRefArc       {ValueWithUnits} - arc-length of the reference point on the to-path
+ * @param flipToNormal   {boolean} - when true, invert the to-path normal sign
+ * @param points         {array}   - array of Vector (3D world points with units)
+ * @returns {array}                - array of Vector (mapped world points, same length)
+ */
+export function mapWorldPoints(context is Context,
+                               fromFrenetPath is map,
+                               toFrenetPath   is map,
+                               fromRefArc     is ValueWithUnits,
+                               toRefArc       is ValueWithUnits,
+                               flipToNormal   is boolean,
+                               points         is array) returns array
+{
+    var result = [];
+    for (var i = 0; i < size(points); i += 1)
+    {
+        var pt = points[i];
+
+        // Project source point onto from-path; get Frenet frame there
+        var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+        var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+
+        // Express point in from-frame local coordinates [tangent, normal, binormal]
+        var localCoords = worldPointToFrenet(pt, fromResult);
+
+        // Linear arc-length mapping from from-path to to-path
+        var s_to = toRefArc + (s_from - fromRefArc);
+
+        // Get to-frame at mapped arc-length
+        var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
+
+        // Determine effective to-frame normal sign (apply flipToNormal toggle)
+        var toSign = toResult.sign;
+        if (flipToNormal)
+            toSign = -1 * toSign;
+
+        // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
+        var toFrameResult = toResult;
+        if (toSign != fromResult.sign)
+        {
+            var flippedFrame = coordSystem(toResult.frame.origin,
+                                           -1 * toResult.frame.xAxis,
+                                           toResult.frame.zAxis);
+            toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
+        }
+
+        result = append(result, frenetPointToWorld(localCoords, toFrameResult));
+    }
+    return result;
 }
