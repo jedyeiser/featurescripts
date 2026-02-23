@@ -468,7 +468,29 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             }
             catch (e)
             {
-                println("WARNING: updateProfile failed to create output spline - " ~ e);
+                println("ERROR: updateProfile opFitSpline INVALID_RESULT - " ~ e);
+                println("  outputPoints count = " ~ size(outputPoints));
+
+                // Print each point (X in mm, Z in mm — Y is always 0)
+                for (var i = 0; i < size(outputPoints); i += 1)
+                {
+                    var pt = outputPoints[i];
+                    var x_mm = toString(pt[0] / millimeter);
+                    var z_mm = toString(pt[2] / millimeter);
+                    println("  [" ~ i ~ "] X=" ~ x_mm ~ " mm  Z=" ~ z_mm ~ " mm");
+                }
+
+                // Draw debug polyline so we can see the point sequence in-canvas
+                for (var i = 0; i < size(outputPoints) - 1; i += 1)
+                {
+                    addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
+                }
+
+                // Draw a point at each candidate location
+                for (var i = 0; i < size(outputPoints); i += 1)
+                {
+                    addDebugPoint(context, outputPoints[i], DebugColor.MAGENTA);
+                }
             }
         }
     });
