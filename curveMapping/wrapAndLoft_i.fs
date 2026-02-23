@@ -422,6 +422,14 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 "lineStartPt": traversalStartPt,
                 "lineFrame"  : coordSystem(traversalStartPt, tempXAxis, tangent)
             });
+
+            if (definition.debugFromBSplines)
+            {
+                println("  Pass1: promoted edge " ~ toString(i) ~
+                        " length=" ~ toString(ed.length) ~
+                        " maxDev=" ~ toString(maxDev) ~
+                        " tangent=" ~ toString(tangent));
+            }
         }
 
         // Pass 2 — borrow xAxis from to-path for all isolated lines
@@ -645,10 +653,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
 
-                    if (definition.debugWrappedCurves)
+                    if (definition.debugWrappedCurves || definition.debugFromBSplines)
                     {
                         var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
+                        println("  segPoints[0]=" ~ toString(segPoints[0]) ~
+                                " segPoints[-1]=" ~ toString(segPoints[size(segPoints) - 1]) ~
+                                " count=" ~ toString(size(segPoints)));
                     }
 
                     opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
