@@ -763,6 +763,39 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
          annotation { "Name" : "Back out EI", "Default" : false }
          definition.backOutEI is boolean;
 
+         // Hidden flat CP storage — unconditional so Onshape always initializes to [] on passive regens
+         annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpX" }
+         definition.allCpX is array;
+         for (var cpX in definition.allCpX)
+         {
+             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+             isReal(cpX.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+         }
+
+         annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
+         definition.allCpZ is array;
+         for (var cpZ in definition.allCpZ)
+         {
+             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+             isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+         }
+
+         annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Sz" }
+         definition.cpRegionSizes is array;
+         for (var sz in definition.cpRegionSizes)
+         {
+             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+             isInteger(sz.v, { (unitless) : [0, 0, 500] } as IntegerBoundSpec);
+         }
+
+         annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Init" }
+         definition.cpIsInitialized is array;
+         for (var init in definition.cpIsInitialized)
+         {
+             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
+             init.v is boolean;
+         }
+
          if (definition.backOutEI)
          {
              annotation { "Group Name" : "EI Back-Out", "Driving Parameter" : "backOutEI",
@@ -802,39 +835,6 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
                          annotation { "Name" : "Tolerance" }
                          isLength(region.regionTolerance, ApproxToleranceBounds);
                      }
-                 }
-
-                 // Hidden flat CP storage (written by feature body, read by manipulator change fn)
-                 annotation { "Name" : "allCpX", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpX", "Default" : [] }
-                 definition.allCpX is array;
-                 for (var cpX in definition.allCpX)
-                 {
-                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
-                     isReal(cpX.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
-                 }
-
-                 annotation { "Name" : "allCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ", "Default" : [] }
-                 definition.allCpZ is array;
-                 for (var cpZ in definition.allCpZ)
-                 {
-                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
-                     isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
-                 }
-
-                 annotation { "Name" : "cpRegionSizes", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Sz", "Default" : [] }
-                 definition.cpRegionSizes is array;
-                 for (var sz in definition.cpRegionSizes)
-                 {
-                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
-                     isInteger(sz.v, { (unitless) : [0, 0, 500] } as IntegerBoundSpec);
-                 }
-
-                 annotation { "Name" : "cpIsInitialized", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Init", "Default" : [] }
-                 definition.cpIsInitialized is array;
-                 for (var init in definition.cpIsInitialized)
-                 {
-                     annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
-                     init.v is boolean;
                  }
 
                  annotation { "Name" : "storedScaleK", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 1e-3 }
