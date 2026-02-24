@@ -349,6 +349,41 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
         var crossSectionDetails = crossSectionData.details;
         var crossSections       = crossSectionDetails.crossSections;
 
+        // Always recompute alpha/beta from current data (do not rely on stale definition values)
+        var liveAlpha = definition.calcAlpha;  // fallback to stored
+        var liveBeta  = definition.calcBeta;
+
+        if (definition.solverType != SolverType.STD)
+        {
+            var sumX  = 0.0; var sumY  = 0.0;
+            var sumXX = 0.0; var sumXY = 0.0;
+            var n = 0;
+            for (var cs in crossSections)
+            {
+                var t_m = cs.boundingBox.width  / (1 * meter);
+                var b_m = cs.boundingBox.height / (1 * meter);
+                var EI  = cs.EI_eff / (1 * newton * meter * meter);
+                if (t_m > 0 && b_m > 0 && EI > 0)
+                {
+                    var lx = log(t_m);
+                    var ly = log(EI / b_m);
+                    sumX  += lx;  sumY  += ly;
+                    sumXX += lx * lx;  sumXY += lx * ly;
+                    n += 1;
+                }
+            }
+            if (n >= 2)
+            {
+                var denom = n * sumXX - sumX * sumX;
+                if (abs(denom) > 1e-12)
+                {
+                    liveBeta  = (n * sumXY - sumX * sumY) / denom;
+                    liveAlpha = exp((sumY - liveBeta * sumX) / n);
+                }
+            }
+            println("updateProfile: liveAlpha=" ~ liveAlpha ~ " liveBeta=" ~ liveBeta ~ " (n=" ~ n ~ ")");
+        }
+
         // Unit factor: 1 N·m²
         var EI_UNIT = 1 * newton * meter * meter;
 
@@ -422,12 +457,12 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                     scaleFactor = definition.applyDeltaPercentage;
                 }
                 var newEI = measEI + scaleFactor * (targEI - measEI);
-                if (newEI > 0 && definition.calcAlpha > 0 && abs(definition.calcBeta) > 1e-6)
+                if (newEI > 0 && liveAlpha > 0 && abs(liveBeta) > 1e-6)
                 {
-                    var eiPerB = newEI / (definition.calcAlpha * b_m);
+                    var eiPerB = newEI / (liveAlpha * b_m);
                     if (eiPerB > 0)
                     {
-                        t_new_m = eiPerB ^ (1.0 / definition.calcBeta);
+                        t_new_m = eiPerB ^ (1.0 / liveBeta);
                     }
                 }
             }
@@ -435,12 +470,21 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             {
                 // PERCENT: pctChange = targetEI / measuredEI
                 // t_new^beta = pctChange * t_old^beta  →  t_new = (pctChange * t_old^beta)^(1/beta)
-                if (measEI > 0 && t_old_m > 0 && abs(definition.calcBeta) > 1e-6)
+                if (measEI > 0 && t_old_m > 0 && abs(liveBeta) > 1e-6)
                 {
                     var pctChange = targEI / measEI;
-                    var betaInv   = 1.0 / definition.calcBeta;
-                    t_new_m = (pctChange * (t_old_m ^ definition.calcBeta)) ^ betaInv;
+                    var betaInv   = 1.0 / liveBeta;
+                    t_new_m = (pctChange * (t_old_m ^ liveBeta)) ^ betaInv;
                 }
+            }
+
+            // Guard: t_new must be physically plausible (0.1mm to 200mm)
+            var T_MIN_M = 0.0001;
+            var T_MAX_M = 0.200;
+            if (t_new_m < T_MIN_M || t_new_m > T_MAX_M)
+            {
+                println("WARNING [" ~ toString(xCoord / millimeter) ~ "mm]: t_new_m=" ~ t_new_m ~ " out of range, clamping to t_old_m=" ~ t_old_m);
+                t_new_m = t_old_m;
             }
 
             // Build 3D output point: world X = xCoord, Y = 0, Z = new thickness
