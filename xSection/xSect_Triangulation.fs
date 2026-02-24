@@ -1061,8 +1061,8 @@ export function computeSectionBoundingBox(points is array) returns map
         "maxX" : maxX,
         "minY" : minY,
         "maxY" : maxY,
-        "width" : (maxX - minX) * meter,
-        "height" : (maxY - minY) * meter
+        "width" : (maxX - minX),
+        "height" : (maxY - minY)
     };
 }
 
