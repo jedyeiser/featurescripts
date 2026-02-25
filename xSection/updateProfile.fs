@@ -503,6 +503,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
 
         // --- 2–7. Build output points, one per cross-section station ---
         var outputPoints = [];
+        var tableRows    = [];
 
         for (var cs in crossSections)
         {
@@ -543,7 +544,8 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             }
 
             // Compute new thickness based on solver type
-            var t_new_m = t_old_m;  // default: no change
+            var t_new_m  = t_old_m;  // default: no change
+            var solvedEI = measEI;   // default: unchanged
 
             if (definition.solverType == SolverType.STD)
             {
@@ -556,6 +558,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                     scaleFactor = definition.deltaScaleFactor;
                 }
                 var newEI = measEI + scaleFactor * (targEI - measEI);
+                solvedEI = newEI;
                 if (newEI > 0)
                 {
                     t_new_m = t_old_m * sqrt(newEI / measEI);
@@ -571,6 +574,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                     scaleFactor = definition.applyDeltaPercentage;
                 }
                 var newEI = measEI + scaleFactor * (targEI - measEI);
+                solvedEI = newEI;
                 if (newEI > 0 && liveAlpha > 0 && abs(liveBeta) > 1e-6)
                 {
                     var eiPerB = newEI / (liveAlpha * b_m);
@@ -584,6 +588,8 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             {
                 // PERCENT: pctChange = targetEI / measuredEI
                 // t_new^beta = pctChange * t_old^beta  →  t_new = (pctChange * t_old^beta)^(1/beta)
+                var newEI = targEI;  // pctChange * measEI = targEI algebraically
+                solvedEI = newEI;
                 if (measEI > 0 && t_old_m > 0 && abs(liveBeta) > 1e-6)
                 {
                     var pctChange = targEI / measEI;
@@ -600,6 +606,14 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                 println("WARNING [" ~ toString(xCoord / millimeter) ~ "mm]: t_new_m=" ~ t_new_m ~ " out of range, clamping to t_old_m=" ~ t_old_m);
                 t_new_m = t_old_m;
             }
+
+            tableRows = append(tableRows, {
+                "xMm"     : round(xCoord / (1 * millimeter) * 10) / 10,
+                "tMeasMm" : round(t_old_m * 1000 * 100) / 100,
+                "EIMeas"  : round(measEI * 100) / 100,
+                "tUpdMm"  : round(t_new_m * 1000 * 100) / 100,
+                "EIUpd"   : round(solvedEI * 100) / 100
+            });
 
             // Build 3D output point: world X = xCoord, Y = 0, Z = new thickness
             outputPoints = append(outputPoints, vector(xCoord, 0 * meter, t_new_m * meter));
@@ -651,4 +665,23 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                 }
             }
         }
+
+        // --- 9. Persist per-station results as profileUpdates attribute ---
+        var existingUpdates = getAttribute(context, {
+            "entity" : qOrigin(EntityType.BODY),
+            "name"   : "profileUpdates"
+        });
+        if (existingUpdates == undefined)
+            existingUpdates = {};
+
+        existingUpdates[toAttributeId(id)] = {
+            "updateName" : definition.outputCurveName,
+            "tableData"  : tableRows
+        };
+
+        setAttribute(context, {
+            "entity"    : qOrigin(EntityType.BODY),
+            "name"      : "profileUpdates",
+            "attribute" : existingUpdates
+        });
     });
