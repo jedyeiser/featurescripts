@@ -238,7 +238,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
         var xCoord = section.frame.origin[0] / millimeter;  // World X in mm
         var EI = section.mechanicalProperties.EI_eff / (newton * meter * meter);
         var GJ = section.mechanicalProperties.GJ_eff / (newton * meter * meter);
-        var naHeight = -section.mechanicalProperties.neutralAxisY / millimeter;  // Flip sign for display
+        var naHeight = section.mechanicalProperties.neutralAxisY / millimeter;
 
         // NOTE: boundingBox dimensions are in plane-local coordinates (2D cross-section).
         //       boundingBox.width = horizontal extent in plane = BEAM HEIGHT (vertical in world)
@@ -408,7 +408,7 @@ export function buildMaterialTableData(bodies is array) returns map
  * parallel-axis estimate alongside the CLT-based EI_calc for comparison.
  *
  * Parallel-axis formula per body k:
- *   naHeight_m = -(section.mechanicalProperties.neutralAxisY)  // positive = above base
+ *   naHeight_m = section.mechanicalProperties.neutralAxisY     // positive = above base
  *   d_k        = centroid2D[0] - naHeight_m                    // signed distance, centroid to NA
  *   I_k_NA     = Iyy_centroid + area * d_k²
  *   EI_body_k  = Q11_k * I_k_NA                               // Q11 in Pa, result in N·m²
@@ -440,9 +440,8 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
     {
         var mp = section.mechanicalProperties;
 
-        // NA height: neutralAxisY is negative when above base (by FeatureScript convention)
-        // naHeight_m = positive physical height above base
-        var naHeight_m = -(mp.neutralAxisY / meter);
+        // NA height: neutralAxisY is positive when above base
+        var naHeight_m = mp.neutralAxisY / meter;
 
         // Build lookup of bodyData by bodyIdx for this section
         var bodyDataByIdx = {};

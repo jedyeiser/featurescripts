@@ -130,8 +130,7 @@ export function createEICurve(context is Context, id is Id, crossSectionData is 
  *   NA_point = frame.origin + |neutralAxisY| * frame.xAxis
  *
  * The offset is along frame.xAxis (thickness direction, normal to base edge).
- * neutralAxisY is negative in our convention (NA above base = negative from
- * -B/A formula), so we negate it for a positive offset upward.
+ * neutralAxisY is positive when above base; offset directly upward along xAxis.
  *
  * @param context {Context}
  * @param id {Id}
@@ -149,8 +148,8 @@ export function createNeutralAxisCurve(context is Context, id is Id, crossSectio
         var xDir = section.frame.xAxis;
         var naHeight = section.mechanicalProperties.neutralAxisY;
 
-        // Negate: neutralAxisY is negative (above base), offset is positive upward
-        var naPoint = origin + (-naHeight) * xDir;
+        // neutralAxisY is positive above base; offset directly upward along xAxis
+        var naPoint = origin + naHeight * xDir;
 
         points = append(points, naPoint);
     }
