@@ -3,9 +3,9 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/table.fs", version : "2892.0");
 
 // xSectMaterials (for tryGetKey)
-import(path : "f8e590162884d45f56e0a05f", version : "3e555e4ae5c7fc9267f971fe");
+import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
 
-import(path : "17142132b20343b5f125e7e7", version : "050844b1699edc3d7d5cd7ac");
+import(path : "17142132b20343b5f125e7e7", version : "fe8ba7347fa3e73f881abb63");
 
 /**
  * Cross-Section Analysis Table

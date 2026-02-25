@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectBeamAnalysis (beam stiffness computations)
-import(path : "ebac109589e3bf405d3f3ae7", version : "ac8c3132c76d69fd74f330d7");
+import(path : "ebac109589e3bf405d3f3ae7", version : "f6756c9d11585cb98775aa96");
 
 // xSectReferencePoints
-import(path : "08fddb59786b6bfee020ee05", version : "8e39305a0b7508392ef7f14e");
+import(path : "08fddb59786b6bfee020ee05", version : "61f33606f9384a2757e0729b");
 
 /**
  * Takes a query for edges for an EI profile, a query for FCP and a query for ACP.

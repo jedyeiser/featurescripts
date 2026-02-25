@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "3e555e4ae5c7fc9267f971fe");
+import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
 
 // xSectLanguage (translation lookups)
-import(path : "a0fab52ee4d0b16ffbc1c603", version : "606006d4a22f6a2e649824db");
+import(path : "a0fab52ee4d0b16ffbc1c603", version : "946ae802f4abcbcd6592484c");
 
 // =============================================================================
 // DISPLAY ROUNDING CONSTANTS

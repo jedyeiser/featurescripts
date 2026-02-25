@@ -197,13 +197,16 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
                     var alpha = exp((sumY - beta * sumX) / n);
                     definition.calcBeta  = beta;
                     definition.calcAlpha = alpha;
+                    
+                    println('alpha -> ' ~ alpha);
+                    println('beta -> ' ~ beta);
                 }
             }
         }
         // try with no catch silently swallows errors (attribute not yet written, etc.)
     }
 
-    if (clickedButton == "recalculate" || (!oldDefinition.recalculate && definition.recalculate))
+    if (clickedButton == "recalculate")
     {
         println('buttonClicked');
     }
@@ -213,6 +216,8 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
 
 
 export const DeltaPercentBounds = {(unitless) : [0.001, 1, 1]} as RealBoundSpec;
+
+export const ALPHA_DISPLAY_BOUNDS = { (unitless) : [0, 1e15, 1e9] } as RealBoundSpec;
 
 annotation {
     "Feature Type Name" : "Update profile",
@@ -322,7 +327,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
            annotation { "Group Name" : "Width, thickness, stiffness data", "Collapsed By Default" : true }
            {
                annotation { "Name" : "Alpha", "Description" : "coefficent in EI/b = alpha * t ^ beta", "UIHint" : UIHint.READ_ONLY }
-               isReal(definition.calcAlpha, POSITIVE_REAL_BOUNDS);
+               isReal(definition.calcAlpha, ALPHA_DISPLAY_BOUNDS);
 
                annotation { "Name" : "Beta", "Description" : "exponent in EI/b = alpha * t ^ beta", "UIHint" : UIHint.READ_ONLY }
                isReal(definition.calcBeta, POSITIVE_REAL_BOUNDS);
