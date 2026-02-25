@@ -223,24 +223,30 @@ function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithU
 }
 
 /**
- * Compute area, Y-direction centroid, and second moment Iyy about centroid
- * for a single triangle. All inputs are plain numbers (m); outputs are plain
- * numbers (m², m, m⁴).
+ * Compute area, Y-direction centroid, and second moment Iyy about Y=0 (the
+ * section reference axis) for a single triangle. All inputs are plain numbers
+ * (m); outputs are plain numbers (m², m, m⁴).
  *
- * @param y1, y2, y3  Thickness-direction coordinates (m)
+ * Iyy_ref uses the GJ-style direct formula with all positive signs:
+ *   Iyy_ref = (area/6) * (y1²+y2²+y3² + y1·y2+y1·y3+y2·y3)
+ * This is the second moment about Y=0 — no separate parallel-axis step needed
+ * when accumulating D in the CLT sums.
+ *
+ * @param y1, y2, y3  Thickness-direction coordinates (m), already in reference frame
  * @param z1, z2, z3  Width-direction coordinates (m)
- * @returns {map} { area (m²), centroid_y (m), Iyy_centroid (m⁴) }
+ * @returns {map} { area (m²), centroid_y (m), Iyy_ref (m⁴) }
  */
 function computeTriangleProperties(y1, y2, y3, z1, z2, z3) returns map
 {
-    var cross        = (y2 - y1) * (z3 - z1) - (y3 - y1) * (z2 - z1);
-    var area         = abs(cross) / 2;
-    var centroid_y   = (y1 + y2 + y3) / 3;
-    var Iyy_centroid = (area / 18) * (y1*y1 + y2*y2 + y3*y3 - y1*y2 - y1*y3 - y2*y3);
+    var cross      = (y2 - y1) * (z3 - z1) - (y3 - y1) * (z2 - z1);
+    var area       = abs(cross) / 2;
+    var centroid_y = (y1 + y2 + y3) / 3;
+    // Second moment about Y=0 directly (all positive signs)
+    var Iyy_ref    = (area / 6) * (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
     return {
-        "area"         : area,
-        "centroid_y"   : centroid_y,
-        "Iyy_centroid" : Iyy_centroid
+        "area"      : area,
+        "centroid_y": centroid_y,
+        "Iyy_ref"   : Iyy_ref
     };
 }
 
@@ -295,10 +301,12 @@ function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT
 
         var Q11 = body.materialData.qMatrix[0][0] / pascal;  // plain N/m²
 
-        // Sum triangle contributions for this body
+        // Sum triangle contributions for this body.
+        // body_D accumulates Iyy_ref (about Y=0) directly — no body-level
+        // parallel-axis shift needed because Iyy_ref already measures about Y=0.
         var body_area   = 0.0;
         var body_area_y = 0.0;
-        var body_Iyy    = 0.0;
+        var body_D      = 0.0;
 
         if (entry.groups != undefined)
         {
@@ -316,7 +324,7 @@ function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT
                             shiftedZ[vi], shiftedZ[vj], shiftedZ[vk]);
                         body_area   += props.area;
                         body_area_y += props.area * props.centroid_y;
-                        body_Iyy    += props.Iyy_centroid;
+                        body_D      += props.Iyy_ref;
                     }
                 }
             }
@@ -330,7 +338,7 @@ function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT
         var body_centroid_y = body_area_y / body_area;
         A_sum += Q11 * body_area;
         B_sum += Q11 * body_area * body_centroid_y;
-        D_sum += Q11 * (body_Iyy + body_area * body_centroid_y * body_centroid_y);
+        D_sum += Q11 * body_D;
     }
 
     if (A_sum <= 0)
