@@ -2,7 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
+import(path : "08fddb59786b6bfee020ee05", version : "ef4a95bef1c88e594c76dedb");
 // IMPORT: xSectBeamAnalysis.fs
+import(path : "ebac109589e3bf405d3f3ae7", version : "8984e1ab14c99a11a8b53f23");
+
 
 /**
  * This function is used to make informed decisions about what a ski or
@@ -295,13 +298,13 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
     definition.stiffnessDataAvailable = false;
     try
     {
-        var fcpEntities = evaluateQuery(context, definition.fcpQiery);
-        var acpEntities = evaluateQuery(context, definition.acpQiery);
+        var fcpEntities = evaluateQuery(context, definition.fcpQuery);
+        var acpEntities = evaluateQuery(context, definition.acpQuery);
 
         if (size(fcpEntities) > 0 && size(acpEntities) > 0)
         {
-            var xFCP = resolveReferencePointX(context, definition.fcpQiery, definition.targetEIQuery);
-            var xACP = resolveReferencePointX(context, definition.acpQiery, definition.targetEIQuery);
+            var xFCP = resolveReferencePointX(context, definition.fcpQuery, definition.targetEIQuery);
+            var xACP = resolveReferencePointX(context, definition.acpQuery, definition.targetEIQuery);
 
             if (xFCP != undefined && xACP != undefined && xFCP < xACP)
             {
@@ -404,10 +407,10 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
        }
 
        annotation { "Name" : "FCP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || (EntityType.VERTEX) || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
-       definition.fcpQiery is Query;
+       definition.fcpQuery is Query;
 
        annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || (EntityType.VERTEX) || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
-       definition.acpQiery is Query;
+       definition.acpQuery is Query;
 
        annotation { "Name" : "stiffnessAvailable", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN, "Description" : "When true, show calculated stiffness data. gets triggered to true in editing logic when both definition.acpQuery and definition.fcpQuery are valid" }
        definition.stiffnessDataAvailable is boolean;
