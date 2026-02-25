@@ -62,7 +62,7 @@ const LOW_STIFFNESS_WARNING = 1e-6 * newton;
  * For a ski, this is typically on the selected edge — i.e., the bottom of the beam.
  *
  * Derived quantities:
- *   Neutral axis:  z_NA   = -B[0][0] / A[0][0]
+ *   Neutral axis:  z_NA   = B[0][0] / A[0][0]
  *   Effective EI:  EI_eff = D[0][0] - B[0][0]² / A[0][0]
  *
  * Units:
@@ -418,7 +418,7 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         // Neutral axis: the Y location where axial strain is zero under
         // pure bending. Derived from the condition B_eff = 0 when the
         // reference is shifted to the neutral axis.
-        neutralAxisY = -B[0][0] / A[0][0];
+        neutralAxisY = B[0][0] / A[0][0];
 
         // Effective bending stiffness: accounts for extension-bending
         // coupling that "steals" some apparent stiffness when the layup
