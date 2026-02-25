@@ -1,9 +1,12 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
+import(path : "onshape/std/table.fs", version : "2892.0");
 
 annotation { "Table Type Name" : "Profile Updates" }
-export const profileUpdatesTable = defineTable(function(context is Context, definition is map)
-    returns TableArray
+export const profileUpdatesTable = defineTable(function(context is Context, definition is map) returns TableArray
+precondition
+{
+}
 {
     var bodiesWithData = evaluateQuery(context, qHasAttribute("profileUpdates"));
     if (size(bodiesWithData) == 0)
