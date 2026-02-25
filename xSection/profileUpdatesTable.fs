@@ -25,7 +25,9 @@ precondition
         tableColumnDefinition("tMeas",  "Meas. Thickness (mm)",     TableTextAlignment.RIGHT),
         tableColumnDefinition("EIMeas", "Meas. Stiffness (N·m²)",   TableTextAlignment.RIGHT),
         tableColumnDefinition("tUpd",   "Updated Thickness (mm)",   TableTextAlignment.RIGHT),
-        tableColumnDefinition("EIUpd",  "Updated Stiffness (N·m²)", TableTextAlignment.RIGHT)
+        tableColumnDefinition("EIUpd",  "Updated Stiffness (N·m²)", TableTextAlignment.RIGHT),
+        tableColumnDefinition("dT",     "Δt (mm)",                  TableTextAlignment.RIGHT),
+        tableColumnDefinition("dEI",    "ΔEI (N·m²)",               TableTextAlignment.RIGHT)
     ];
 
     var tables = [];
@@ -42,7 +44,9 @@ precondition
                 "tMeas"  : toString(row.tMeasMm),
                 "EIMeas" : toString(row.EIMeas),
                 "tUpd"   : toString(row.tUpdMm),
-                "EIUpd"  : toString(row.EIUpd)
+                "EIUpd"  : toString(row.EIUpd),
+                "dT"     : toString(row.tUpdMm - row.tMeasMm),
+                "dEI"    : toString(row.EIUpd - row.EIMeas)
             }));
         }
 
