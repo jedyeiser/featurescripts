@@ -222,6 +222,131 @@ function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithU
     return points;
 }
 
+/**
+ * Compute area, Y-direction centroid, and second moment Iyy about centroid
+ * for a single triangle. All inputs are plain numbers (m); outputs are plain
+ * numbers (m², m, m⁴).
+ *
+ * @param y1, y2, y3  Thickness-direction coordinates (m)
+ * @param z1, z2, z3  Width-direction coordinates (m)
+ * @returns {map} { area (m²), centroid_y (m), Iyy_centroid (m⁴) }
+ */
+function computeTriangleProperties(y1, y2, y3, z1, z2, z3) returns map
+{
+    var cross        = (y2 - y1) * (z3 - z1) - (y3 - y1) * (z2 - z1);
+    var area         = abs(cross) / 2;
+    var centroid_y   = (y1 + y2 + y3) / 3;
+    var Iyy_centroid = (area / 18) * (y1*y1 + y2*y2 + y3*y3 - y1*y2 - y1*y3 - y2*y3);
+    return {
+        "area"         : area,
+        "centroid_y"   : centroid_y,
+        "Iyy_centroid" : Iyy_centroid
+    };
+}
+
+/**
+ * Recompute effective EI after shifting all section vertices above originalNA_m
+ * upward by deltaT_m. Performs full CLT accumulation on the shifted geometry.
+ *
+ * Point classification (above/below NA) is fixed at the original neutralAxisY
+ * throughout all bisection steps. The resulting NA is re-derived from CLT at
+ * each evaluation (from the shifted geometry).
+ *
+ * Formula: EI_eff = D11 - B11² / A11  (same as xSectCLT.fs)
+ *
+ * @param sectionPoints  Array of { point2D: [y_VWU, z_VWU], ... }
+ * @param originalNA_m   Original neutral axis height, plain number (m)
+ * @param deltaT_m       Upward shift for vertices above original NA (m)
+ * @param bodyData       Array of { bodyIdx, groups: [{ triangles: [[i,j,k],...] }] }
+ * @param bodies         Array of body material data indexed by bodyIdx
+ * @returns {map} { EI_Nm2 (plain N·m²), NA_m (plain m) } or undefined if degenerate
+ */
+function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT_m,
+                                    bodyData is array, bodies is array)
+{
+    // Build stripped + shifted coordinate arrays (plain numbers, meters)
+    var shiftedY = [];
+    var shiftedZ = [];
+    for (var pt in sectionPoints)
+    {
+        var y = pt.point2D[0] / meter;
+        var z = pt.point2D[1] / meter;
+        if (y > originalNA_m)
+        {
+            y = y + deltaT_m;
+        }
+        shiftedY = append(shiftedY, y);
+        shiftedZ = append(shiftedZ, z);
+    }
+
+    // Accumulate CLT A, B, D sums (plain numbers: N, N·m, N·m²)
+    var A_sum = 0.0;
+    var B_sum = 0.0;
+    var D_sum = 0.0;
+
+    for (var entry in bodyData)
+    {
+        var bodyIdx = entry.bodyIdx;
+        var body    = bodies[bodyIdx];
+        if (body.hasMaterialData != true)
+        {
+            continue;
+        }
+
+        var Q11 = body.materialData.qMatrix[0][0] / pascal;  // plain N/m²
+
+        // Sum triangle contributions for this body
+        var body_area   = 0.0;
+        var body_area_y = 0.0;
+        var body_Iyy    = 0.0;
+
+        if (entry.groups != undefined)
+        {
+            for (var group in entry.groups)
+            {
+                if (group.triangles != undefined)
+                {
+                    for (var tri in group.triangles)
+                    {
+                        var vi = tri[0];
+                        var vj = tri[1];
+                        var vk = tri[2];
+                        var props = computeTriangleProperties(
+                            shiftedY[vi], shiftedY[vj], shiftedY[vk],
+                            shiftedZ[vi], shiftedZ[vj], shiftedZ[vk]);
+                        body_area   += props.area;
+                        body_area_y += props.area * props.centroid_y;
+                        body_Iyy    += props.Iyy_centroid;
+                    }
+                }
+            }
+        }
+
+        if (body_area <= 0)
+        {
+            continue;
+        }
+
+        var body_centroid_y = body_area_y / body_area;
+        A_sum += Q11 * body_area;
+        B_sum += Q11 * body_area * body_centroid_y;
+        D_sum += Q11 * (body_Iyy + body_area * body_centroid_y * body_centroid_y);
+    }
+
+    if (A_sum <= 0)
+    {
+        return undefined;
+    }
+
+    var NA_m   = B_sum / A_sum;
+    var EI_Nm2 = D_sum - (B_sum * B_sum) / A_sum;
+
+    return {
+        "EI_Nm2" : EI_Nm2,
+        "NA_m"   : NA_m
+    };
+}
+
 export function updateProfileEditLogic(context is Context, id is Id, oldDefinition is map,
    definition is map, isCreating is boolean, specifiedParameters is map, clickedButton is string) returns map
 {
@@ -465,6 +590,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
         var crossSectionData    = allEIData[oldID];
         var crossSectionDetails = crossSectionData.details;
         var crossSections       = crossSectionDetails.crossSections;
+        var bodies              = crossSectionDetails.bodies;
 
         // Always recompute alpha/beta from current data (do not rely on stale definition values)
         var liveAlpha = definition.calcAlpha;  // fallback to stored
@@ -552,20 +678,99 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
 
             if (definition.solverType == SolverType.STD)
             {
-                // STD: newEI = measuredEI + scaleFactor * delta
-                // First-pass proportional thickness scaling: EI ∝ t² (approximate for solid section).
-                // A full CLT iterative solve is deferred for a future version.
+                // STD: full CLT bisection solve.
+                // Find deltaT such that shifting all mesh vertices above the original
+                // neutral axis by deltaT yields the target effective EI.
+                var STD_MIN_THICKNESS_M = 0.002;  // 2 mm physical lower bound
+                var STD_MAX_DELTA_M     = t_old_m; // allow up to doubling total thickness
+                var STD_BISECT_TOL      = 1e-4;    // N·m² convergence tolerance
+                var STD_MAX_ITER        = 60;
+
+                // scaleDelta: scale the EI target delta (same pattern as DELTA solver)
                 var scaleFactor = 1.0;
                 if (definition.scaleDelta == true)
                 {
                     scaleFactor = definition.deltaScaleFactor;
                 }
-                var newEI = measEI + scaleFactor * (targEI - measEI);
-                solvedEI = newEI;
-                if (newEI > 0)
+                var effectiveTargEI = measEI + scaleFactor * (targEI - measEI);
+
+                // Bisection bounds on deltaT (m): negative drives down to min thickness
+                var deltaT_min = STD_MIN_THICKNESS_M - t_old_m;
+                var deltaT_max = STD_MAX_DELTA_M;
+
+                // Extract section mesh data for CLT recompute
+                var originalNA_m    = cs.neutralAxisY / meter;
+                var csSectionPoints = cs.sectionPoints;
+                var csBodyData      = cs.bodyData;
+
+                // Evaluate EI at the two bisection bounds
+                var result_min = computeEIFromShiftedPoints(csSectionPoints, originalNA_m, deltaT_min, csBodyData, bodies);
+                var result_max = computeEIFromShiftedPoints(csSectionPoints, originalNA_m, deltaT_max, csBodyData, bodies);
+
+                var EI_min = measEI;
+                if (result_min != undefined)
                 {
-                    t_new_m = t_old_m * sqrt(newEI / measEI);
+                    EI_min = result_min.EI_Nm2;
                 }
+                var EI_max = measEI;
+                if (result_max != undefined)
+                {
+                    EI_max = result_max.EI_Nm2;
+                }
+
+                var deltaT_final = 0.0;
+
+                if (effectiveTargEI <= EI_min)
+                {
+                    // Target below minimum-thickness EI — clamp to lower bound
+                    deltaT_final = deltaT_min;
+                    solvedEI     = EI_min;
+                    println("WARNING STD [" ~ toString(xCoord / millimeter) ~ "mm]: target EI below min-thickness bound, clamping to EI=" ~ EI_min ~ " N·m²");
+                }
+                else if (effectiveTargEI >= EI_max)
+                {
+                    // Target above maximum-delta EI — clamp to upper bound
+                    deltaT_final = deltaT_max;
+                    solvedEI     = EI_max;
+                    println("WARNING STD [" ~ toString(xCoord / millimeter) ~ "mm]: target EI above max-delta bound, clamping to EI=" ~ EI_max ~ " N·m²");
+                }
+                else
+                {
+                    // Bisect to find the deltaT that yields effectiveTargEI
+                    var lo     = deltaT_min;
+                    var hi     = deltaT_max;
+                    var mid    = (lo + hi) / 2;
+                    var EI_mid = (EI_min + EI_max) / 2;  // initial estimate
+                    var iter   = 0;
+
+                    while (iter < STD_MAX_ITER)
+                    {
+                        mid = (lo + hi) / 2;
+                        var r_mid = computeEIFromShiftedPoints(csSectionPoints, originalNA_m, mid, csBodyData, bodies);
+                        if (r_mid != undefined)
+                        {
+                            EI_mid = r_mid.EI_Nm2;
+                        }
+                        if (abs(EI_mid - effectiveTargEI) < STD_BISECT_TOL || abs(hi - lo) < 1e-9)
+                        {
+                            break;
+                        }
+                        if (EI_mid < effectiveTargEI)
+                        {
+                            lo = mid;
+                        }
+                        else
+                        {
+                            hi = mid;
+                        }
+                        iter += 1;
+                    }
+
+                    deltaT_final = mid;
+                    solvedEI     = EI_mid;
+                }
+
+                t_new_m = t_old_m + deltaT_final;
             }
             else if (definition.solverType == SolverType.DELTA)
             {
