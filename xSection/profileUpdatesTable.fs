@@ -45,8 +45,8 @@ precondition
                 "EIMeas" : toString(row.EIMeas),
                 "tUpd"   : toString(row.tUpdMm),
                 "EIUpd"  : toString(row.EIUpd),
-                "dT"     : toString(row.tUpdMm - row.tMeasMm),
-                "dEI"    : toString(row.EIUpd - row.EIMeas)
+                "dT"     : toString(round((row.tUpdMm - row.tMeasMm) * 100) / 100),
+                "dEI"    : toString(round((row.EIUpd  - row.EIMeas)  * 100) / 100)
             }));
         }
 
