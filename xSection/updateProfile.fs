@@ -1,6 +1,9 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
+// IMPORT: xSectReferencePoints.fs
+// IMPORT: xSectBeamAnalysis.fs
+
 /**
  * This function is used to make informed decisions about what a ski or
  * snowboard thickness profile SHOULD be to achieve a provided ei proifle.
@@ -139,6 +142,83 @@ function sampleEIEdgesAtX(context is Context, edgeQuery is Query, xTarget)
     return (z0 + frac * (z1 - z0)) * (1 * newton * meter * meter);
 }
 
+/**
+ * Sample 100 parametric points per EI edge, decode EI from world Z (1 mm = 1 N·m²),
+ * sort by X, and linearly extrapolate to FCP/ACP boundaries if needed.
+ * Identical logic to getEIFromEdges in estimateStiffness.fs.
+ */
+function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithUnits, xACP is ValueWithUnits) returns array
+{
+    var edges = evaluateQuery(context, eiEdges);
+    var points = [];
+    var numSamples = 100;
+
+    for (var edge in edges)
+    {
+        for (var i = 0; i < numSamples; i += 1)
+        {
+            var t = i / (numSamples - 1);
+            try
+            {
+                var tangentLine = evEdgeTangentLine(context, { "edge" : edge, "parameter" : t });
+                var pt = tangentLine.origin;
+                var EI = (pt[2] / millimeter) * newton * meter * meter;
+                points = append(points, { "x" : pt[0], "EI" : EI });
+            }
+            // skip failed evaluations
+        }
+    }
+
+    if (size(points) < 2)
+        return points;
+
+    // Insertion sort by x
+    for (var i = 1; i < size(points); i += 1)
+    {
+        var key = points[i];
+        var j = i - 1;
+        while (j >= 0 && points[j].x > key.x)
+        {
+            points[j + 1] = points[j];
+            j -= 1;
+        }
+        points[j + 1] = key;
+    }
+
+    var n = size(points);
+
+    // Linear extrapolation at front boundary
+    if (points[0].x > xFCP && n >= 2)
+    {
+        var dx = points[1].x - points[0].x;
+        if (abs(dx) > 1e-10 * meter)
+        {
+            var slope = (points[1].EI - points[0].EI) / dx;
+            var extEI = points[0].EI + slope * (xFCP - points[0].x);
+            if (extEI < 0 * newton * meter * meter)
+                extEI = 0 * newton * meter * meter;
+            points = concatenateArrays([[{ "x" : xFCP, "EI" : extEI }], points]);
+            n = size(points);
+        }
+    }
+
+    // Linear extrapolation at rear boundary
+    if (points[n - 1].x < xACP && n >= 2)
+    {
+        var dx2 = points[n - 1].x - points[n - 2].x;
+        if (abs(dx2) > 1e-10 * meter)
+        {
+            var slope2 = (points[n - 1].EI - points[n - 2].EI) / dx2;
+            var extEI2 = points[n - 1].EI + slope2 * (xACP - points[n - 1].x);
+            if (extEI2 < 0 * newton * meter * meter)
+                extEI2 = 0 * newton * meter * meter;
+            points = append(points, { "x" : xACP, "EI" : extEI2 });
+        }
+    }
+
+    return points;
+}
+
 export function updateProfileEditLogic(context is Context, id is Id, oldDefinition is map,
    definition is map, isCreating is boolean, specifiedParameters is map, clickedButton is string) returns map
 {
@@ -211,13 +291,42 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
         println('buttonClicked');
     }
 
+    // Check FCP/ACP validity and compute stiffness estimates
+    definition.stiffnessDataAvailable = false;
+    try
+    {
+        var fcpEntities = evaluateQuery(context, definition.fcpQiery);
+        var acpEntities = evaluateQuery(context, definition.acpQiery);
+
+        if (size(fcpEntities) > 0 && size(acpEntities) > 0)
+        {
+            var xFCP = resolveReferencePointX(context, definition.fcpQiery, definition.targetEIQuery);
+            var xACP = resolveReferencePointX(context, definition.acpQiery, definition.targetEIQuery);
+
+            if (xFCP != undefined && xACP != undefined && xFCP < xACP)
+            {
+                var eiData = getEIFromEdges(context, definition.targetEIQuery, xFCP, xACP);
+                if (size(eiData) >= 2)
+                {
+                    var result = computeBeamStiffness(eiData, xFCP, xACP);
+                    definition.prismaticlb = result.prismaticStiffness_lbin;
+                    definition.prismaticmm = result.prismaticStiffness_mm * millimeter;
+                    definition.estimatedlb = result.estimatedStiffness_lbin;
+                    definition.estimatedmm = result.estimatedStiffness_mm * millimeter;
+                    definition.stiffnessDataAvailable = true;
+                }
+            }
+        }
+    }
+    // try with no catch: errors leave stiffnessDataAvailable = false
+
     return definition;
 }
 
 
 export const DeltaPercentBounds = {(unitless) : [0.001, 1, 1]} as RealBoundSpec;
 
-export const ALPHA_DISPLAY_BOUNDS = { (unitless) : [0, 1e15, 1e9] } as RealBoundSpec;
+export const ALPHA_DISPLAY_BOUNDS = { (unitless) : [0, 1e9, 1e15] } as RealBoundSpec;
 
 annotation {
     "Feature Type Name" : "Update profile",
