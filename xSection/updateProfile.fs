@@ -680,7 +680,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
         };
 
         setAttribute(context, {
-            "entity"    : qOrigin(EntityType.BODY),
+            "entities"  : qOrigin(EntityType.BODY),
             "name"      : "profileUpdates",
             "attribute" : existingUpdates
         });
