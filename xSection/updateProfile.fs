@@ -78,6 +78,12 @@ export enum SolverType
     PERCENT
 }
 
+export enum SplineOutputType
+{
+    FIT,
+    APPROXIMATE
+}
+
 /**
  * Sample EI from a set of edges at a given world-X coordinate.
  * Convention: 1 mm world Z = 1 N·m² EI (matches xSectVisualization.fs EI curve scale).
@@ -361,9 +367,10 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
     println("updateProfileEditLogic called");
 
     // Sync mode-visibility flags
-    definition.showCalcs     = (definition.solverType == SolverType.DELTA ||
-                                definition.solverType == SolverType.PERCENT);
-    definition.showStdOptions = (definition.solverType == SolverType.STD);
+    definition.showCalcs      = (definition.solverType == SolverType.DELTA ||
+                                 definition.solverType == SolverType.PERCENT);
+    definition.showStdOptions  = (definition.solverType == SolverType.STD);
+    definition.showApproxOptions = (definition.splineOutputType == SplineOutputType.APPROXIMATE);
 
     // Sync query-gate booleans
     definition.provideMeasuredEI        = (definition.measuredEIType        == DataInheretenceType.QUERY);
@@ -463,6 +470,10 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
 export const DeltaPercentBounds = {(unitless) : [0.001, 1, 1]} as RealBoundSpec;
 
 export const ALPHA_DISPLAY_BOUNDS = { (unitless) : [0, 1e9, 1e15] } as RealBoundSpec;
+
+export const ApproxToleranceBounds  = { (meter) : [1e-7, 1e-4, 1e-2] } as LengthBoundSpec;
+export const MaxControlPointsBounds = { (unitless) : [4, 50, 500] } as IntegerBoundSpec;
+export const ApproxDegreeBounds     = { (unitless) : [1, 3, 9] } as IntegerBoundSpec;
 
 annotation {
     "Feature Type Name" : "Update profile",
@@ -581,6 +592,30 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
 
        }
 
+
+       annotation { "Group Name" : "Spline Output", "Collapsed By Default" : false }
+       {
+           annotation { "Name" : "Spline type", "UIHint" : UIHint.HORIZONTAL_ENUM,
+                        "Default" : SplineOutputType.FIT }
+           definition.splineOutputType is SplineOutputType;
+
+           annotation { "Name" : "showApproxOptions", "UIHint" : UIHint.ALWAYS_HIDDEN,
+                        "Default" : false }
+           definition.showApproxOptions is boolean;
+
+           if (definition.showApproxOptions)
+           {
+               annotation { "Name" : "Approximation tolerance",
+                            "Description" : "Maximum deviation of approximated curve from solved points" }
+               isLength(definition.approxTolerance, ApproxToleranceBounds);
+
+               annotation { "Name" : "Maximum control points" }
+               isInteger(definition.maxControlPoints, MaxControlPointsBounds);
+
+               annotation { "Name" : "Curve degree" }
+               isInteger(definition.curveDegree, ApproxDegreeBounds);
+           }
+       }
 
        annotation { "Name" : "Recalculate" }
        isButton(definition.recalculate);
@@ -835,49 +870,99 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             outputPoints = append(outputPoints, vector(xCoord, 0 * meter, t_new_m * meter));
         }
 
-        // --- 8. Fit spline through output points and name the resulting body ---
+        // --- 8. Fit/approximate spline through output points and name the resulting body ---
         if (size(outputPoints) >= 2)
         {
-            try
+            if (definition.splineOutputType == SplineOutputType.APPROXIMATE)
             {
-                opFitSpline(context, id + "thicknessProfile", {
-                    "points" : outputPoints
-                });
-
-                var createdBodies = evaluateQuery(context, qCreatedBy(id + "thicknessProfile", EntityType.BODY));
-                if (size(createdBodies) > 0)
+                try
                 {
-                    setProperty(context, {
-                        "entities"     : createdBodies[0],
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : definition.outputCurveName
+                    var approxResult = approximateSpline(context, {
+                        "degree"           : definition.curveDegree,
+                        "tolerance"        : definition.approxTolerance,
+                        "isPeriodic"       : false,
+                        "targets"          : [{ "positions" : outputPoints }],
+                        "maxControlPoints" : definition.maxControlPoints
                     });
+                    opCreateBSplineCurve(context, id + "thicknessProfile", { "bSplineCurve" : approxResult[0] });
+
+                    var createdBodies = evaluateQuery(context, qCreatedBy(id + "thicknessProfile", EntityType.BODY));
+                    if (size(createdBodies) > 0)
+                    {
+                        setProperty(context, {
+                            "entities"     : createdBodies[0],
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : definition.outputCurveName
+                        });
+                    }
+                }
+                catch (e)
+                {
+                    println("ERROR: updateProfile approximateSpline INVALID_RESULT - " ~ e);
+                    println("  outputPoints count = " ~ size(outputPoints));
+
+                    for (var i = 0; i < size(outputPoints); i += 1)
+                    {
+                        var pt = outputPoints[i];
+                        var x_mm = toString(pt[0] / millimeter);
+                        var z_mm = toString(pt[2] / millimeter);
+                        println("  [" ~ i ~ "] X=" ~ x_mm ~ " mm  Z=" ~ z_mm ~ " mm");
+                    }
+
+                    for (var i = 0; i < size(outputPoints) - 1; i += 1)
+                    {
+                        addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
+                    }
+
+                    for (var i = 0; i < size(outputPoints); i += 1)
+                    {
+                        addDebugPoint(context, outputPoints[i], DebugColor.MAGENTA);
+                    }
                 }
             }
-            catch (e)
+            else // SplineOutputType.FIT (default)
             {
-                println("ERROR: updateProfile opFitSpline INVALID_RESULT - " ~ e);
-                println("  outputPoints count = " ~ size(outputPoints));
-
-                // Print each point (X in mm, Z in mm — Y is always 0)
-                for (var i = 0; i < size(outputPoints); i += 1)
+                try
                 {
-                    var pt = outputPoints[i];
-                    var x_mm = toString(pt[0] / millimeter);
-                    var z_mm = toString(pt[2] / millimeter);
-                    println("  [" ~ i ~ "] X=" ~ x_mm ~ " mm  Z=" ~ z_mm ~ " mm");
+                    opFitSpline(context, id + "thicknessProfile", {
+                        "points" : outputPoints
+                    });
+
+                    var createdBodies = evaluateQuery(context, qCreatedBy(id + "thicknessProfile", EntityType.BODY));
+                    if (size(createdBodies) > 0)
+                    {
+                        setProperty(context, {
+                            "entities"     : createdBodies[0],
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : definition.outputCurveName
+                        });
+                    }
                 }
-
-                // Draw debug polyline so we can see the point sequence in-canvas
-                for (var i = 0; i < size(outputPoints) - 1; i += 1)
+                catch (e)
                 {
-                    addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
-                }
+                    println("ERROR: updateProfile opFitSpline INVALID_RESULT - " ~ e);
+                    println("  outputPoints count = " ~ size(outputPoints));
 
-                // Draw a point at each candidate location
-                for (var i = 0; i < size(outputPoints); i += 1)
-                {
-                    addDebugPoint(context, outputPoints[i], DebugColor.MAGENTA);
+                    // Print each point (X in mm, Z in mm — Y is always 0)
+                    for (var i = 0; i < size(outputPoints); i += 1)
+                    {
+                        var pt = outputPoints[i];
+                        var x_mm = toString(pt[0] / millimeter);
+                        var z_mm = toString(pt[2] / millimeter);
+                        println("  [" ~ i ~ "] X=" ~ x_mm ~ " mm  Z=" ~ z_mm ~ " mm");
+                    }
+
+                    // Draw debug polyline so we can see the point sequence in-canvas
+                    for (var i = 0; i < size(outputPoints) - 1; i += 1)
+                    {
+                        addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
+                    }
+
+                    // Draw a point at each candidate location
+                    for (var i = 0; i < size(outputPoints); i += 1)
+                    {
+                        addDebugPoint(context, outputPoints[i], DebugColor.MAGENTA);
+                    }
                 }
             }
         }
