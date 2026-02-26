@@ -2,9 +2,9 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "ef4a95bef1c88e594c76dedb");
+import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "8984e1ab14c99a11a8b53f23");
+import(path : "ebac109589e3bf405d3f3ae7", version : "2101c3bf09f2c4da2845fca4");
 
 /**
  * GENERATE BASELINE
@@ -815,11 +815,11 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             isLength(definition.camberHeight, LENGTH_BOUNDS);
 
             annotation { "Name" : "Forebody rocker length",
-                         "Description" : "FCP → FRCP distance. 0 = no forebody rocker." }
+                         "Description" : "FCP -> FRCP distance. 0 = no forebody rocker." }
             isLength(definition.frcpl, LENGTH_BOUNDS);
 
             annotation { "Name" : "Aftbody rocker length",
-                         "Description" : "ARCP → ACP distance. 0 = no aftbody rocker." }
+                         "Description" : "ARCP -> ACP distance. 0 = no aftbody rocker." }
             isLength(definition.arcpl, LENGTH_BOUNDS);
 
             annotation { "Name" : "FCP tip height",
@@ -843,7 +843,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         {
             annotation { "Name" : "EI profile edges",
                          "Filter" : EntityType.EDGE,
-                         "Description" : "World Z in mm = EI in N·m²." }
+                         "Description" : "World Z in mm = EI in Nm^2." }
             definition.eiEdgesQuery is Query;
         }
 
