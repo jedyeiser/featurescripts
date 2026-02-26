@@ -236,24 +236,24 @@ function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits,
         corrected = append(corrected, defl[i] - yN * (i / N));
     }
 
-    // Find maximum deflection (should be positive for reasonable loading)
-    var yMax = 0.0;
+    // Find minimum (largest downward deflection; negative value)
+    var yMin = 0.0;
     for (var i = 0; i <= N; i += 1)
     {
-        if (corrected[i] > yMax)
+        if (corrected[i] < yMin)
         {
-            yMax = corrected[i];
+            yMin = corrected[i];
         }
     }
 
-    // Scale to H (plain meters) and build output
+    // Scale: corrected[i]/yMin is positive when corrected[i] is negative
     var result = [];
     for (var i = 0; i <= N; i += 1)
     {
         var zVal = 0.0;
-        if (yMax > 1e-15)
+        if (yMin < -1e-15)
         {
-            zVal = corrected[i] / yMax * H;
+            zVal = corrected[i] / yMin * H;
         }
         result = append(result, { "x" : xs[i], "z" : zVal * meter });
     }
@@ -373,7 +373,7 @@ function computeTipZ(xAnchor is ValueWithUnits, zAnchor is ValueWithUnits,
                      tipHeight is ValueWithUnits) returns ValueWithUnits
 {
     var normT = sqrt(1 + slope * slope);
-    return zAnchor + (xTip - xAnchor) * slope - tipHeight * normT;
+    return zAnchor + (xTip - xAnchor) * slope + tipHeight * normT;
 }
 
 
@@ -679,8 +679,8 @@ function innerSolve(context is Context,
         allPts[j + 1] = key;
     }
 
-    // Rotate + translate so tips are at Z = 0
-    allPts = rotateTranslate(allPts, xFCP, xACP);
+    // Rotate + translate so contact points are at Z = 0
+    allPts = rotateTranslate(allPts, xFRCP, xARCP);
 
     return allPts;
 }
@@ -930,41 +930,67 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 "camber=" ~ round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
 
         // ----------------------------------------------------------------
-        // 5. Build 3D output points (XZ plane, Y = 0)
+        // 5. Partition finalPts into three sections
+        //    Boundary points (xFRCP, xARCP) are included in both adjacent
+        //    sections to ensure G0 continuity where the curves meet.
         // ----------------------------------------------------------------
-        var outputPoints = [];
+        var forePoints   = [];
+        var camberPoints = [];
+        var aftPoints    = [];
+
         for (var pt in finalPts)
         {
-            outputPoints = append(outputPoints, vector(pt.x, 0 * meter, pt.z));
+            if (pt.x <= xFRCP)
+            {
+                forePoints = append(forePoints, pt);
+            }
+            if (pt.x >= xFRCP && pt.x <= xARCP)
+            {
+                camberPoints = append(camberPoints, pt);
+            }
+            if (pt.x >= xARCP)
+            {
+                aftPoints = append(aftPoints, pt);
+            }
         }
 
-        if (size(outputPoints) < 2)
+        // ----------------------------------------------------------------
+        // 6. Helper to build a 3D point array from a 2D section array
+        // ----------------------------------------------------------------
+        var hasForeRocker = definition.frcpl > 0 * meter;
+        var hasAftRocker  = definition.arcpl  > 0 * meter;
+
+        // --- Camber pocket (always created) ---
+        var camberPts3D = [];
+        for (var pt in camberPoints)
         {
-            throw regenError("Baseline solver produced insufficient points.");
+            camberPts3D = append(camberPts3D, vector(pt.x, 0 * meter, pt.z));
         }
 
-        // ----------------------------------------------------------------
-        // 6. Approximate spline + create named body
-        // ----------------------------------------------------------------
+        if (size(camberPts3D) < 2)
+        {
+            throw regenError("Baseline solver produced insufficient camber points.");
+        }
+
         try
         {
-            var approxResult = approximateSpline(context, {
+            var approxCamber = approximateSpline(context, {
                 "degree"           : definition.curveDegree,
                 "tolerance"        : definition.approxTolerance,
                 "isPeriodic"       : false,
-                "targets"          : [{ "positions" : outputPoints }],
+                "targets"          : [{ "positions" : camberPts3D }],
                 "maxControlPoints" : definition.maxControlPoints
             });
 
-            opCreateBSplineCurve(context, id + "baseline", {
-                "bSplineCurve" : approxResult[0]
+            opCreateBSplineCurve(context, id + "camber", {
+                "bSplineCurve" : approxCamber[0]
             });
 
-            var createdBodies = evaluateQuery(context, qCreatedBy(id + "baseline", EntityType.BODY));
-            if (size(createdBodies) > 0)
+            var camberBodies = evaluateQuery(context, qCreatedBy(id + "camber", EntityType.BODY));
+            if (size(camberBodies) > 0)
             {
                 setProperty(context, {
-                    "entities"     : createdBodies[0],
+                    "entities"     : camberBodies[0],
                     "propertyType" : PropertyType.NAME,
                     "value"        : definition.outputCurveName
                 });
@@ -972,22 +998,102 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
         catch (e)
         {
-            println("ERROR generateBaseline: approximateSpline failed — " ~ e);
-            println("  point count = " ~ size(outputPoints));
-            for (var i = 0; i < size(outputPoints); i += 1)
+            println("ERROR generateBaseline: camber spline failed — " ~ e);
+            println("  camber point count = " ~ size(camberPts3D));
+            for (var i = 0; i < size(camberPts3D) - 1; i += 1)
             {
-                var pt = outputPoints[i];
-                println("  [" ~ i ~ "] X=" ~ round(pt[0] / millimeter * 10) / 10 ~
-                        " mm  Z=" ~ round(pt[2] / millimeter * 100) / 100 ~ " mm");
+                addDebugLine(context, camberPts3D[i], camberPts3D[i + 1], DebugColor.RED);
             }
-            for (var i = 0; i < size(outputPoints) - 1; i += 1)
+            throw regenError("Camber spline fitting failed — see console output.");
+        }
+
+        // --- Forebody rocker (only when frcpl > 0) ---
+        if (hasForeRocker && size(forePoints) >= 2)
+        {
+            var forePts3D = [];
+            for (var pt in forePoints)
             {
-                addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
+                forePts3D = append(forePts3D, vector(pt.x, 0 * meter, pt.z));
             }
-            for (var i = 0; i < size(outputPoints); i += 1)
+
+            try
             {
-                addDebugPoint(context, outputPoints[i], DebugColor.MAGENTA);
+                var approxFore = approximateSpline(context, {
+                    "degree"           : definition.curveDegree,
+                    "tolerance"        : definition.approxTolerance,
+                    "isPeriodic"       : false,
+                    "targets"          : [{ "positions" : forePts3D }],
+                    "maxControlPoints" : definition.maxControlPoints
+                });
+
+                opCreateBSplineCurve(context, id + "forebody", {
+                    "bSplineCurve" : approxFore[0]
+                });
+
+                var foreBodies = evaluateQuery(context, qCreatedBy(id + "forebody", EntityType.BODY));
+                if (size(foreBodies) > 0)
+                {
+                    setProperty(context, {
+                        "entities"     : foreBodies[0],
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : definition.outputCurveName ~ " (forebody)"
+                    });
+                }
             }
-            throw regenError("Baseline spline fitting failed — see console output.");
+            catch (e)
+            {
+                println("ERROR generateBaseline: forebody spline failed — " ~ e);
+                println("  forebody point count = " ~ size(forePts3D));
+                for (var i = 0; i < size(forePts3D) - 1; i += 1)
+                {
+                    addDebugLine(context, forePts3D[i], forePts3D[i + 1], DebugColor.CYAN);
+                }
+                throw regenError("Forebody rocker spline fitting failed — see console output.");
+            }
+        }
+
+        // --- Aftbody rocker (only when arcpl > 0) ---
+        if (hasAftRocker && size(aftPoints) >= 2)
+        {
+            var aftPts3D = [];
+            for (var pt in aftPoints)
+            {
+                aftPts3D = append(aftPts3D, vector(pt.x, 0 * meter, pt.z));
+            }
+
+            try
+            {
+                var approxAft = approximateSpline(context, {
+                    "degree"           : definition.curveDegree,
+                    "tolerance"        : definition.approxTolerance,
+                    "isPeriodic"       : false,
+                    "targets"          : [{ "positions" : aftPts3D }],
+                    "maxControlPoints" : definition.maxControlPoints
+                });
+
+                opCreateBSplineCurve(context, id + "aftbody", {
+                    "bSplineCurve" : approxAft[0]
+                });
+
+                var aftBodies = evaluateQuery(context, qCreatedBy(id + "aftbody", EntityType.BODY));
+                if (size(aftBodies) > 0)
+                {
+                    setProperty(context, {
+                        "entities"     : aftBodies[0],
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : definition.outputCurveName ~ " (aftbody)"
+                    });
+                }
+            }
+            catch (e)
+            {
+                println("ERROR generateBaseline: aftbody spline failed — " ~ e);
+                println("  aftbody point count = " ~ size(aftPts3D));
+                for (var i = 0; i < size(aftPts3D) - 1; i += 1)
+                {
+                    addDebugLine(context, aftPts3D[i], aftPts3D[i + 1], DebugColor.YELLOW);
+                }
+                throw regenError("Aftbody rocker spline fitting failed — see console output.");
+            }
         }
     });

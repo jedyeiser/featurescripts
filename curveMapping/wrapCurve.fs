@@ -299,7 +299,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 if (segEndIdx + 1 < size(mappedData))
                 {
                     var nextEdgeIdx   = mappedData[segEndIdx + 1].edgeIndex;
-                    var s_to_boundary = toFrenetPath.edgeData[nextEdgeIdx].startArcLength;
+                    // Use the higher-index edge's startArcLength — works for both forward and backward transitions
+                    var boundaryEdgeIdx = max([currentEdge, nextEdgeIdx]);
+                    var s_to_boundary = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
 
                     // Invert arc-length mapping to get from-path position at boundary
                     var s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
@@ -355,8 +357,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 if (size(segPoints) >= degree + 1)
                 {
                     // Scale for derivative constraints: average inter-point spacing
-                    var approxScale = norm(segPoints[size(segPoints) - 1] - segPoints[0]) /
-                                      max([1, size(segPoints) - 1]);
+                    // Use cumulative chord length (sum of segment lengths) rather than
+                    // endpoint distance so curved spans get the correct scale magnitude.
+                    var totalChord = 0 * meter;
+                    for (var k = 0; k < size(segPoints) - 1; k += 1)
+                        totalChord += norm(segPoints[k + 1] - segPoints[k]);
+                    var approxScale = totalChord / max([1, size(segPoints) - 1]);
 
                     var targetDef = { "positions": segPoints };
                     if (carryOverTangent != undefined)
@@ -380,6 +386,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
                                          { "bSplineCurve": mappedCurve });
                     segCount += 1;
+                }
+                else if (definition.debugWrappedCurves)
+                {
+                    println("  [skipped span " ~ toString(i) ~ "." ~ toString(segCount) ~
+                            ": only " ~ toString(size(segPoints)) ~ " points, need " ~ toString(degree + 1) ~ "]");
                 }
 
                 segStartIdx = segEndIdx + 1;
