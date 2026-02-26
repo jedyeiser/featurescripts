@@ -6,6 +6,9 @@ import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
 // IMPORT: xSectBeamAnalysis.fs
 import(path : "ebac109589e3bf405d3f3ae7", version : "2101c3bf09f2c4da2845fca4");
 
+// IMPORT: tools/curve_operations.fs
+// IMPORT: tools/point_projection.fs
+
 /**
  * GENERATE BASELINE
  * =================
@@ -510,13 +513,16 @@ function slopeAt(pts is array, xTarget is ValueWithUnits)
 }
 
 /**
- * Max Z in [xFRCP, xARCP] of a sorted [{x, z}] array.
+ * Camber height above the contact-point elevation in [xFRCP, xARCP].
+ * Measures relative to z(xFRCP), so the result is shift-invariant.
  * Returns plain number (meters).
  */
 function measureCamberHeight(pts is array, xFRCP is ValueWithUnits,
                               xARCP is ValueWithUnits)
 {
-    var maxZ = 0.0;
+    // Measure height above the contact-point elevation (shift-invariant)
+    var contactZ = interpZ(pts, xFRCP) / meter;
+    var maxZ = contactZ;
     for (var pt in pts)
     {
         if (pt.x >= xFRCP && pt.x <= xARCP)
@@ -528,7 +534,7 @@ function measureCamberHeight(pts is array, xFRCP is ValueWithUnits,
             }
         }
     }
-    return maxZ;
+    return maxZ - contactZ;
 }
 
 
@@ -822,11 +828,11 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                          "Description" : "ARCP -> ACP distance. 0 = no aftbody rocker." }
             isLength(definition.arcpl, LENGTH_BOUNDS);
 
-            annotation { "Name" : "FCP tip height",
+            annotation { "Name" : "FCP height",
                          "Description" : "Normal-distance offset of FCP tip below camber tangent at FRCP." }
             isLength(definition.fcpHeight, LENGTH_BOUNDS);
 
-            annotation { "Name" : "ACP tip height",
+            annotation { "Name" : "ACP height",
                          "Description" : "Normal-distance offset of ACP tip below camber tangent at ARCP." }
             isLength(definition.acpHeight, LENGTH_BOUNDS);
         }
@@ -930,106 +936,93 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 "camber=" ~ round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
 
         // ----------------------------------------------------------------
-        // 5. Partition finalPts into three sections
-        //    Boundary points (xFRCP, xARCP) are included in both adjacent
-        //    sections to ensure G0 continuity where the curves meet.
+        // 5. Global shift: ensure no point is below snow (z = 0)
         // ----------------------------------------------------------------
-        var forePoints   = [];
-        var camberPoints = [];
-        var aftPoints    = [];
-
+        var zMinShift = 0.0;   // plain meters (≤ 0 when a dip exists)
         for (var pt in finalPts)
         {
-            if (pt.x <= xFRCP)
+            var z_m = pt.z / meter;
+            if (z_m < zMinShift)
             {
-                forePoints = append(forePoints, pt);
-            }
-            if (pt.x >= xFRCP && pt.x <= xARCP)
-            {
-                camberPoints = append(camberPoints, pt);
-            }
-            if (pt.x >= xARCP)
-            {
-                aftPoints = append(aftPoints, pt);
+                zMinShift = z_m;
             }
         }
+        if (zMinShift < -1e-10)
+        {
+            var shiftedPts = [];
+            for (var pt in finalPts)
+            {
+                shiftedPts = append(shiftedPts, {
+                    "x" : pt.x,
+                    "z" : pt.z - zMinShift * meter
+                });
+            }
+            finalPts = shiftedPts;
+        }
+
+        println("generateBaseline: zMinShift=" ~ round(zMinShift * 1e6) / 1e3 ~ " mm" ~
+                "  camber(post-shift)=" ~ round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
 
         // ----------------------------------------------------------------
-        // 6. Helper to build a 3D point array from a 2D section array
+        // 6. Fit one spline over the full span, split at rocker joints
+        //    so that camber/forebody/aftbody share exact endpoints (G1).
         // ----------------------------------------------------------------
         var hasForeRocker = definition.frcpl > 0 * meter;
         var hasAftRocker  = definition.arcpl  > 0 * meter;
 
-        // --- Camber pocket (always created) ---
-        var camberPts3D = [];
-        for (var pt in camberPoints)
+        var outputPoints = [];
+        for (var pt in finalPts)
         {
-            camberPts3D = append(camberPts3D, vector(pt.x, 0 * meter, pt.z));
+            outputPoints = append(outputPoints, vector(pt.x, 0 * meter, pt.z));
         }
 
-        if (size(camberPts3D) < 2)
+        if (size(outputPoints) < 2)
         {
-            throw regenError("Baseline solver produced insufficient camber points.");
+            throw regenError("Baseline solver produced insufficient points.");
         }
 
         try
         {
-            var approxCamber = approximateSpline(context, {
+            var approxFull = approximateSpline(context, {
                 "degree"           : definition.curveDegree,
                 "tolerance"        : definition.approxTolerance,
                 "isPeriodic"       : false,
-                "targets"          : [{ "positions" : camberPts3D }],
+                "targets"          : [{ "positions" : outputPoints }],
                 "maxControlPoints" : definition.maxControlPoints
             });
 
-            opCreateBSplineCurve(context, id + "camber", {
-                "bSplineCurve" : approxCamber[0]
-            });
+            var fullBSpline = approxFull[0];
 
-            var camberBodies = evaluateQuery(context, qCreatedBy(id + "camber", EntityType.BODY));
-            if (size(camberBodies) > 0)
+            // Project rocker contact points onto the fitted spline to get
+            // exact split parameters (guarantees G1 across all segment joins).
+            var splitParams = [];
+            if (hasForeRocker)
             {
-                setProperty(context, {
-                    "entities"     : camberBodies[0],
-                    "propertyType" : PropertyType.NAME,
-                    "value"        : definition.outputCurveName
-                });
+                var projFRCP = projectPointOnCurve(fullBSpline,
+                    vector(xFRCP, 0 * meter, interpZ(finalPts, xFRCP)), {});
+                splitParams = append(splitParams, projFRCP.parameter);
             }
-        }
-        catch (e)
-        {
-            println("ERROR generateBaseline: camber spline failed — " ~ e);
-            println("  camber point count = " ~ size(camberPts3D));
-            for (var i = 0; i < size(camberPts3D) - 1; i += 1)
+            if (hasAftRocker)
             {
-                addDebugLine(context, camberPts3D[i], camberPts3D[i + 1], DebugColor.RED);
-            }
-            throw regenError("Camber spline fitting failed — see console output.");
-        }
-
-        // --- Forebody rocker (only when frcpl > 0) ---
-        if (hasForeRocker && size(forePoints) >= 2)
-        {
-            var forePts3D = [];
-            for (var pt in forePoints)
-            {
-                forePts3D = append(forePts3D, vector(pt.x, 0 * meter, pt.z));
+                var projARCP = projectPointOnCurve(fullBSpline,
+                    vector(xARCP, 0 * meter, interpZ(finalPts, xARCP)), {});
+                splitParams = append(splitParams, projARCP.parameter);
             }
 
-            try
-            {
-                var approxFore = approximateSpline(context, {
-                    "degree"           : definition.curveDegree,
-                    "tolerance"        : definition.approxTolerance,
-                    "isPeriodic"       : false,
-                    "targets"          : [{ "positions" : forePts3D }],
-                    "maxControlPoints" : definition.maxControlPoints
-                });
+            // Split the full spline at joint parameters.
+            // splitCurveMultiple preserves tangency at all split points.
+            var segments = splitCurveMultiple(context, fullBSpline, splitParams);
 
+            // Assign segments to bodies and name them.
+            // Segment order: [fore?] [camber] [aft?]
+            var segIdx = 0;
+
+            if (hasForeRocker)
+            {
                 opCreateBSplineCurve(context, id + "forebody", {
-                    "bSplineCurve" : approxFore[0]
+                    "bSplineCurve" : segments[segIdx]
                 });
-
+                segIdx += 1;
                 var foreBodies = evaluateQuery(context, qCreatedBy(id + "forebody", EntityType.BODY));
                 if (size(foreBodies) > 0)
                 {
@@ -1040,41 +1033,26 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     });
                 }
             }
-            catch (e)
-            {
-                println("ERROR generateBaseline: forebody spline failed — " ~ e);
-                println("  forebody point count = " ~ size(forePts3D));
-                for (var i = 0; i < size(forePts3D) - 1; i += 1)
-                {
-                    addDebugLine(context, forePts3D[i], forePts3D[i + 1], DebugColor.CYAN);
-                }
-                throw regenError("Forebody rocker spline fitting failed — see console output.");
-            }
-        }
 
-        // --- Aftbody rocker (only when arcpl > 0) ---
-        if (hasAftRocker && size(aftPoints) >= 2)
-        {
-            var aftPts3D = [];
-            for (var pt in aftPoints)
+            opCreateBSplineCurve(context, id + "camber", {
+                "bSplineCurve" : segments[segIdx]
+            });
+            segIdx += 1;
+            var camberBodies = evaluateQuery(context, qCreatedBy(id + "camber", EntityType.BODY));
+            if (size(camberBodies) > 0)
             {
-                aftPts3D = append(aftPts3D, vector(pt.x, 0 * meter, pt.z));
-            }
-
-            try
-            {
-                var approxAft = approximateSpline(context, {
-                    "degree"           : definition.curveDegree,
-                    "tolerance"        : definition.approxTolerance,
-                    "isPeriodic"       : false,
-                    "targets"          : [{ "positions" : aftPts3D }],
-                    "maxControlPoints" : definition.maxControlPoints
+                setProperty(context, {
+                    "entities"     : camberBodies[0],
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : definition.outputCurveName
                 });
+            }
 
+            if (hasAftRocker)
+            {
                 opCreateBSplineCurve(context, id + "aftbody", {
-                    "bSplineCurve" : approxAft[0]
+                    "bSplineCurve" : segments[segIdx]
                 });
-
                 var aftBodies = evaluateQuery(context, qCreatedBy(id + "aftbody", EntityType.BODY));
                 if (size(aftBodies) > 0)
                 {
@@ -1085,15 +1063,15 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     });
                 }
             }
-            catch (e)
+        }
+        catch (e)
+        {
+            println("ERROR generateBaseline: spline fitting/splitting failed — " ~ e);
+            println("  output point count = " ~ size(outputPoints));
+            for (var i = 0; i < size(outputPoints) - 1; i += 1)
             {
-                println("ERROR generateBaseline: aftbody spline failed — " ~ e);
-                println("  aftbody point count = " ~ size(aftPts3D));
-                for (var i = 0; i < size(aftPts3D) - 1; i += 1)
-                {
-                    addDebugLine(context, aftPts3D[i], aftPts3D[i + 1], DebugColor.YELLOW);
-                }
-                throw regenError("Aftbody rocker spline fitting failed — see console output.");
+                addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
             }
+            throw regenError("Baseline spline fitting failed — see console output.");
         }
     });
