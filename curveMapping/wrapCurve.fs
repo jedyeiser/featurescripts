@@ -260,16 +260,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
                 }
 
-                var toPoint = frenetPointToWorld(localCoords, toFrameResult);
-                println("src=" ~ toString(pt)
-                    ~ " fromOrigin=" ~ toString(fromResult.frame.origin)
-                    ~ " offset=" ~ toString(pt - fromResult.frame.origin)
-                    ~ " toOrigin=" ~ toString(toFrameResult.frame.origin)
-                    ~ " toPoint=" ~ toString(toPoint));
-
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
-                    "point"    : toPoint,
+                    "point"    : frenetPointToWorld(localCoords, toFrameResult),
                     "sFrom"    : s_from
                 });
             }
@@ -363,13 +356,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 if (size(segPoints) >= degree + 1)
                 {
-                    // Scale for derivative constraints: average inter-point spacing
-                    // Use cumulative chord length (sum of segment lengths) rather than
-                    // endpoint distance so curved spans get the correct scale magnitude.
+                    // Scale for derivative constraints: total chord length of this segment.
+                    // approximateSpline uses [0,1] parameterization, so the natural derivative
+                    // magnitude at an endpoint is ~totalChord (velocity = length/param_range).
+                    // Dividing by (n-1) would give per-sample spacing (~218× too small for 218
+                    // points on a 0.3m arc), causing startDerivative to force near-zero velocity
+                    // and produce a visible bulge of ~0.45mm near the junction.
                     var totalChord = 0 * meter;
                     for (var k = 0; k < size(segPoints) - 1; k += 1)
                         totalChord += norm(segPoints[k + 1] - segPoints[k]);
-                    var approxScale = totalChord / max([1, size(segPoints) - 1]);
+                    var approxScale = totalChord;
 
                     var targetDef = { "positions": segPoints };
                     if (carryOverTangent != undefined)
