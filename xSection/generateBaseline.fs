@@ -375,12 +375,50 @@ function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnits,
  *   Normal distance from (xTip, zTip) to this line = tipHeight
  *   → zTip = zAnchor + slope*(xTip - xAnchor) - tipHeight * sqrt(1 + slope²)
  */
+/**
+ * Compute the pre-shift z of the rocker tip so that, after the global shift,
+ * the tip lands at exactly targetSnowHeight above snow (z = 0).
+ *
+ * Given the rocker quadratic anchored at (xAnchor, zAnchor=0) with slope `slope`
+ * at xAnchor and tip at xTip, the parabola has a vertex below z = 0.
+ * The global shift lifts the profile by |vertex_z|, so the tip ends up at
+ *   zTip_final = zTip_pre_shift - vertex_z  =  targetSnowHeight
+ *
+ * Closed-form solution (derived from the vertex condition):
+ *   k = slope * uB            where uB = (xTip - xAnchor) / meter  (< 0 fore, > 0 aft)
+ *   t = targetSnowHeight / meter
+ *   zTip_pre_shift = zAnchor + [(k + t) + sqrt(t * (t - 2*k))] / 2 * meter
+ *
+ * Both camber solvers guarantee zAnchor = 0 at xFRCP / xARCP, so the formula
+ * reduces to: T = [(k + t) + sqrt(t * (t - 2*k))] / 2 * meter.
+ *
+ * Special cases:
+ *   t = 0  →  zTip = vertex_z  (tip on snow; shift = 0)
+ *   uB = 0 →  degenerate; return zAnchor
+ */
 function computeTipZ(xAnchor is ValueWithUnits, zAnchor is ValueWithUnits,
                      slope, xTip is ValueWithUnits,
-                     tipHeight is ValueWithUnits) returns ValueWithUnits
+                     targetSnowHeight is ValueWithUnits) returns ValueWithUnits
 {
-    var normT = sqrt(1 + slope * slope);
-    return zAnchor + (xTip - xAnchor) * slope + tipHeight * normT;
+    var uB = (xTip - xAnchor) / meter;
+    if (abs(uB) < 1e-12)
+    {
+        return zAnchor;
+    }
+
+    var k = slope * uB;                             // < 0 for both fore and aft
+    var t = (targetSnowHeight - zAnchor) / meter;   // target height above anchor (plain m)
+
+    if (t <= 0)
+    {
+        // Zero or negative target: place tip at zAnchor + t (no dip involved)
+        return zAnchor + t * meter;
+    }
+
+    // T = [(k + t) + sqrt(t * (t - 2k))] / 2
+    // Discriminant = t*(t-2k) ≥ t² > 0 since k ≤ 0
+    var T = ((k + t) + sqrt(t * (t - 2 * k))) / 2;
+    return zAnchor + T * meter;
 }
 
 
@@ -925,6 +963,10 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             }
         }
 
+        // Needed by steps 4, 5, and 6
+        var hasForeRocker = definition.frcpl > 0 * meter;
+        var hasAftRocker  = definition.arcpl  > 0 * meter;
+
         // ----------------------------------------------------------------
         // 4. Solve — outer bisection on MCH_inner
         //
@@ -973,10 +1015,15 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                                      definition.frcpl, definition.arcpl,
                                      MCH_hi);
             zMinShift = 0.0;
-            for (var pt in finalPts)
+            if (hasForeRocker)
             {
-                var z_m = pt.z / meter;
-                if (z_m < zMinShift) { zMinShift = z_m; }
+                var vertForeHi = interpZ(finalPts, xFCP) / meter - definition.fcpHeight / meter;
+                if (vertForeHi < zMinShift) { zMinShift = vertForeHi; }
+            }
+            if (hasAftRocker)
+            {
+                var vertAftHi = interpZ(finalPts, xACP) / meter - definition.acpHeight / meter;
+                if (vertAftHi < zMinShift) { zMinShift = vertAftHi; }
             }
             var ac_hi = MCH_hi - zMinShift;
             println("generateBaseline bisect hi: MCH_inner=" ~ round(MCH_hi * 1e6) / 1e3 ~
@@ -993,10 +1040,15 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                                          definition.frcpl, definition.arcpl,
                                          MCH_lo);
                 zMinShift = 0.0;
-                for (var pt in finalPts)
+                if (hasForeRocker)
                 {
-                    var z_m = pt.z / meter;
-                    if (z_m < zMinShift) { zMinShift = z_m; }
+                    var vertForeLo = interpZ(finalPts, xFCP) / meter - definition.fcpHeight / meter;
+                    if (vertForeLo < zMinShift) { zMinShift = vertForeLo; }
+                }
+                if (hasAftRocker)
+                {
+                    var vertAftLo = interpZ(finalPts, xACP) / meter - definition.acpHeight / meter;
+                    if (vertAftLo < zMinShift) { zMinShift = vertAftLo; }
                 }
                 var ac_lo = MCH_lo - zMinShift;
                 println("generateBaseline bisect lo: MCH_inner=" ~ round(MCH_lo * 1e6) / 1e3 ~
@@ -1022,10 +1074,15 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                                                  definition.frcpl, definition.arcpl,
                                                  MCH_mid);
                         zMinShift = 0.0;
-                        for (var pt in finalPts)
+                        if (hasForeRocker)
                         {
-                            var z_m = pt.z / meter;
-                            if (z_m < zMinShift) { zMinShift = z_m; }
+                            var vertForeMid = interpZ(finalPts, xFCP) / meter - definition.fcpHeight / meter;
+                            if (vertForeMid < zMinShift) { zMinShift = vertForeMid; }
+                        }
+                        if (hasAftRocker)
+                        {
+                            var vertAftMid = interpZ(finalPts, xACP) / meter - definition.acpHeight / meter;
+                            if (vertAftMid < zMinShift) { zMinShift = vertAftMid; }
                         }
                         var ac_mid = MCH_mid - zMinShift;
 
@@ -1075,8 +1132,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         // 6. Fit one spline over the full span, split at rocker joints
         //    so that camber/forebody/aftbody share exact endpoints (G1).
         // ----------------------------------------------------------------
-        var hasForeRocker = definition.frcpl > 0 * meter;
-        var hasAftRocker  = definition.arcpl  > 0 * meter;
+        // hasForeRocker / hasAftRocker already declared before step 4
 
         var outputPoints = [];
         for (var pt in finalPts)
