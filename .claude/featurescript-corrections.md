@@ -6,6 +6,30 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ---
 
+## BSpline Splitting — Control Point Index Bug in `splitCurve`
+**Date**: 2026-02-26
+**File**: `tools/curve_operations.fs` — `splitCurve()`
+**Issue**: After `refineKnotVector` to multiplicity `degree+1` at `splitParam`, the CP extraction bounds for both halves were off-by-N, causing malformed BSplineCurves that pass knot count validation silently but fail `evaluateSpline` when used as input to a second `splitCurve` call.
+
+**Error triggered**:
+```
+@evaluateSpline: 18 (# control points + degree + 1) knots required, but 21 found.
+```
+Only appears on the 2nd+ call to `splitCurveMultiple` (first split's `curveB` is invalid; the error surfaces when that invalid curve is passed to the next `splitCurve`).
+
+**Root cause** (cubic, `splitStart=4`, `splitEnd=7`, 8 CPs after refinement):
+- CPs A: `i <= splitStart` → took 5 CPs instead of 4 (included duplicate junction CP)
+- CPs B: started at `splitEnd` → took 1 CP instead of 4 (skipped junction and intermediate CPs)
+- Knots A and B: were already correct
+
+**Fix**:
+- CPs A / weights A: change `i <= splitStart` → `i < splitStart`
+- CPs B / weights B: change starting index `splitEnd` → `splitEnd - degree`
+
+Knots are unchanged. The formula `splitEnd - degree = splitStart` holds for a full `degree+1` split.
+
+---
+
 ## Function Call Syntax
 
 ### evaluateSpline() and All Standard Library Functions

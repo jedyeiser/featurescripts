@@ -150,10 +150,11 @@ export function splitCurve(context is Context, curve is BSplineCurve, splitParam
     }
 
     // Extract first curve: from start to split
-    // Control points: [0 ... splitStart]
-    // Knots: [0 ... splitStart + degree]
+    // Control points: [0 ... splitStart - 1]  (splitStart is the first repeated knot index;
+    //   the last CP of curveA is at index splitEnd - degree - 1 = splitStart - 1 for full split)
+    // Knots: [0 ... splitEnd]  (= 0 ... splitStart + degree, provides degree+1 clamped end knots)
     var cpA = [];
-    for (var i = 0; i <= splitStart; i += 1)
+    for (var i = 0; i < splitStart; i += 1)
     {
         cpA = append(cpA, splitCurve.controlPoints[i]);
     }
@@ -167,17 +168,18 @@ export function splitCurve(context is Context, curve is BSplineCurve, splitParam
     var weightsA = [];
     if (curve.isRational && splitCurve.weights != undefined)
     {
-        for (var i = 0; i <= splitStart; i += 1)
+        for (var i = 0; i < splitStart; i += 1)
         {
             weightsA = append(weightsA, splitCurve.weights[i]);
         }
     }
 
     // Extract second curve: from split to end
-    // Control points: [splitEnd ... end]
-    // Knots: [splitEnd - degree ... end]
+    // Control points: [splitEnd - degree ... end]  (= splitStart for full split;
+    //   provides the degree+1 clamped start CPs including the shared junction point)
+    // Knots: [splitEnd - degree ... end]  (= splitStart ... end)
     var cpB = [];
-    for (var i = splitEnd; i < size(splitCurve.controlPoints); i += 1)
+    for (var i = splitEnd - degree; i < size(splitCurve.controlPoints); i += 1)
     {
         cpB = append(cpB, splitCurve.controlPoints[i]);
     }
@@ -191,7 +193,7 @@ export function splitCurve(context is Context, curve is BSplineCurve, splitParam
     var weightsB = [];
     if (curve.isRational && splitCurve.weights != undefined)
     {
-        for (var i = splitEnd; i < size(splitCurve.weights); i += 1)
+        for (var i = splitEnd - degree; i < size(splitCurve.weights); i += 1)
         {
             weightsB = append(weightsB, splitCurve.weights[i]);
         }
