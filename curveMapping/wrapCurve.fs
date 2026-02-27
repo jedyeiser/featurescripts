@@ -371,10 +371,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
 
                     var approxDef = {
-                        "targets"          : [approximationTarget(targetDef)],
-                        "tolerance"        : definition.approximationTolerance,
-                        "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : degree };
+                        "targets"            : [approximationTarget(targetDef)],
+                        "tolerance"          : definition.approximationTolerance,
+                        "maxControlPoints"   : definition.approximationMaxCPs,
+                        "degree"             : degree,
+                        "isPeriodic"         : false,
+                        "interpolateIndices" : [0, size(segPoints) - 1] };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
 
                     if (definition.debugWrappedCurves)

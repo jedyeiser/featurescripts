@@ -7,7 +7,11 @@ import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
 import(path : "ebac109589e3bf405d3f3ae7", version : "2101c3bf09f2c4da2845fca4");
 
 // IMPORT: tools/curve_operations.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
+
 // IMPORT: tools/point_projection.fs
+import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
+
 
 /**
  * GENERATE BASELINE
