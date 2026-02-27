@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "ad98c7f43a25a4c0e8a428e7", version : "0420f4e96d9a3fd9e600557a");
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "7a1b9b601f89110d1466453c");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-import(path : "683d867c35fdab9c98d47556", version : "851c0c6ec53551f9e1760bf6");
+import(path : "683d867c35fdab9c98d47556", version : "34e9f30703d3c49a1e0fab1b");
 
 
 
@@ -213,6 +213,19 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         if (definition.approximationDegree != undefined)
         {
             degree = definition.approximationDegree;
+        }
+
+        // Use explicit defaults when showAdvanced is false; undefined fields passed to
+        // approximateSpline cause the built-in to use its own (potentially loose) defaults.
+        var approxTolerance = definition.approximationTolerance;
+        if (approxTolerance == undefined)
+        {
+            approxTolerance = 0.01 * millimeter;
+        }
+        var approxMaxCPs = definition.approximationMaxCPs;
+        if (approxMaxCPs == undefined)
+        {
+            approxMaxCPs = 50;
         }
 
         // 4. For each source curve: sample, map, fit, create
@@ -421,6 +434,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var approxScale = totalChord;
 
                     var targetDef = { "positions": segPoints };
+                    /*
                     if (carryOverTangent != undefined)
                     {
                         targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
@@ -429,11 +443,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
                     }
+                    */
 
                     var approxDef = {
                         "targets"            : [approximationTarget(targetDef)],
-                        "tolerance"          : definition.approximationTolerance,
-                        "maxControlPoints"   : definition.approximationMaxCPs,
+                        "tolerance"          : approxTolerance,
+                        "maxControlPoints"   : approxMaxCPs,
                         "degree"             : degree,
                         "isPeriodic"         : false,
                         "interpolateIndices" : [0, size(segPoints) - 1] };
@@ -443,6 +458,17 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
+
+                        // Verify interpolateIndices forced exact endpoint pass-through
+                        var cps    = mappedCurve.controlPoints;
+                        var nCPs   = size(cps);
+                        var nSegs  = size(segPoints);
+                        var startErr = norm(cps[0]         - segPoints[0]);
+                        var endErr   = norm(cps[nCPs - 1]  - segPoints[nSegs - 1]);
+                        println("  [endpoint check] startErr=" ~ toString(startErr) ~
+                                " endErr=" ~ toString(endErr) ~
+                                " tolerance=" ~ toString(approxTolerance) ~
+                                " segPoints=" ~ toString(nSegs) ~ " CPs=" ~ toString(nCPs));
                     }
 
                     opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
