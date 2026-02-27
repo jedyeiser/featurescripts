@@ -219,16 +219,12 @@ export function splitCurve(context is Context, curve is BSplineCurve, splitParam
         "dimension" : curve.dimension
     } as BSplineCurve;
 
-    // Evaluate split point from curveA's endpoint.
-    // Using curveA instead of the original curve avoids evaluateSpline's knot-count
-    // validation failing on curves from approximateSpline, which may have extra
-    // repeated boundary knots.  curveA is always correctly-formed (built here from
-    // the refined knot vector), and its last knot is exactly splitParam.
-    var evalResult = evaluateSpline({
-        "spline" : curveA,
-        "parameters" : [knotsA[size(knotsA) - 1]]
-    });
-    var splitPoint = evalResult[0][0];
+    // Split point = last control point of curveA.
+    // After inserting splitParam with full multiplicity (degree+1), the knot
+    // insertion algorithm guarantees cpA[last] is the exact curve point at the
+    // split, so no evaluateSpline call is needed.  This also avoids evaluateSpline's
+    // knot-count validation, which rejects BSplineCurves from approximateSpline.
+    var splitPoint = cpA[size(cpA) - 1];
 
     return {
         "curveA" : curveA,
