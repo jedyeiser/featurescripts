@@ -7,10 +7,10 @@ import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
 import(path : "ebac109589e3bf405d3f3ae7", version : "2101c3bf09f2c4da2845fca4");
 
 // IMPORT: tools/curve_operations.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a7403d5f7f5a4fef8225b768", version : "e5b9e00c5a237415c89a66b7");
 
 // IMPORT: tools/point_projection.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
 
 /**
@@ -926,61 +926,129 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
 
         // ----------------------------------------------------------------
-        // 4. Solve — outer correction loop
+        // 4. Solve — outer bisection on MCH_inner
         //
         // The inner bisection converges peak_z − z(xFRCP) = MCH_inner.
         // After rotateTranslate, z(xFRCP) = 0, so peak_z = MCH_inner.
-        // The global shift then lifts everything by |zMinShift|, making
-        // the final snow-relative camber = MCH_inner + |zMinShift|.
-        // We iterate until that equals the user's MCH target (± 0.01 mm).
-        // Correction each step: MCH_inner_new = MCH_target − |zMinShift|.
+        // The global shift then lifts everything by |zMinShift(MCH_inner)|,
+        // making the final snow-relative camber:
+        //
+        //   actualCamber(MCH_inner) = MCH_inner + |zMinShift(MCH_inner)|
+        //
+        // This is monotone increasing in MCH_inner.  We bisect on
+        // [MCH_lo, MCH_hi] ⊆ [0, MCH_m] to find the MCH_inner that
+        // produces actualCamber = MCH_target (± 0.01 mm).
         // ----------------------------------------------------------------
-        var MCH_m     = definition.camberHeight / meter;   // user target (plain m)
-        var MCH_inner = MCH_m;                             // inner bisection target
-        var OUTER_TOL = 0.00001;                           // 0.01 mm in meters
-        var MAX_OUTER = 5;
+        var MCH_m    = definition.camberHeight / meter;   // user target (plain m)
+        var OUTER_TOL = 0.00001;                          // 0.01 mm in meters
 
         var finalPts  = [];
         var zMinShift = 0.0;   // plain meters (≤ 0)
 
-        for (var outerIter = 0; outerIter < MAX_OUTER; outerIter += 1)
+        // Inline macro: solve for mchi and compute actualCamber.
+        // Because FeatureScript does not support nested functions, this
+        // block is repeated via a local variable pattern each time we need
+        // to evaluate a candidate MCH_inner.
+        //
+        //   INPUT:  MCH_inner (number, plain meters)
+        //   OUTPUT: finalPts, zMinShift updated; ac_cur = actualCamber
+
+        if (MCH_m < 1e-9)
         {
+            // Flat camber — skip bisection entirely
             finalPts = solveBaseline(context, eiData, hasEI,
                                      xFCP, xACP, xFRCP, xARCP, xMount,
                                      definition.fcpHeight, definition.acpHeight,
                                      definition.frcpl, definition.arcpl,
-                                     MCH_inner);
-
-            // Scan for the deepest point (zMinShift ≤ 0)
+                                     0.0);
+            zMinShift = 0.0;
+        }
+        else
+        {
+            // ---- Evaluate hi bracket: MCH_inner = MCH_m ----
+            var MCH_hi = MCH_m;
+            finalPts = solveBaseline(context, eiData, hasEI,
+                                     xFCP, xACP, xFRCP, xARCP, xMount,
+                                     definition.fcpHeight, definition.acpHeight,
+                                     definition.frcpl, definition.arcpl,
+                                     MCH_hi);
             zMinShift = 0.0;
             for (var pt in finalPts)
             {
                 var z_m = pt.z / meter;
-                if (z_m < zMinShift)
+                if (z_m < zMinShift) { zMinShift = z_m; }
+            }
+            var ac_hi = MCH_hi - zMinShift;
+            println("generateBaseline bisect hi: MCH_inner=" ~ round(MCH_hi * 1e6) / 1e3 ~
+                    "  actual=" ~ round(ac_hi * 1e6) / 1e3 ~
+                    "  target=" ~ round(MCH_m  * 1e6) / 1e3 ~ " mm");
+
+            if (abs(ac_hi - MCH_m) >= OUTER_TOL)
+            {
+                // ---- Evaluate lo bracket: MCH_inner = 0 ----
+                var MCH_lo = 0.0;
+                finalPts = solveBaseline(context, eiData, hasEI,
+                                         xFCP, xACP, xFRCP, xARCP, xMount,
+                                         definition.fcpHeight, definition.acpHeight,
+                                         definition.frcpl, definition.arcpl,
+                                         MCH_lo);
+                zMinShift = 0.0;
+                for (var pt in finalPts)
                 {
-                    zMinShift = z_m;
+                    var z_m = pt.z / meter;
+                    if (z_m < zMinShift) { zMinShift = z_m; }
+                }
+                var ac_lo = MCH_lo - zMinShift;
+                println("generateBaseline bisect lo: MCH_inner=" ~ round(MCH_lo * 1e6) / 1e3 ~
+                        "  actual=" ~ round(ac_lo * 1e6) / 1e3 ~
+                        "  target=" ~ round(MCH_m  * 1e6) / 1e3 ~ " mm");
+
+                if (ac_lo >= MCH_m)
+                {
+                    // Tip height alone exceeds target — use MCH_inner = 0
+                    // (finalPts / zMinShift already set by lo solve above)
+                    println("generateBaseline: tip height exceeds target; using MCH_inner=0");
+                }
+                else
+                {
+                    // ---- Bisect [MCH_lo, MCH_hi] ----
+                    // Invariant: ac_lo < MCH_m ≤ ac_hi
+                    for (var outerIter = 0; outerIter < 15; outerIter += 1)
+                    {
+                        var MCH_mid = (MCH_lo + MCH_hi) * 0.5;
+                        finalPts = solveBaseline(context, eiData, hasEI,
+                                                 xFCP, xACP, xFRCP, xARCP, xMount,
+                                                 definition.fcpHeight, definition.acpHeight,
+                                                 definition.frcpl, definition.arcpl,
+                                                 MCH_mid);
+                        zMinShift = 0.0;
+                        for (var pt in finalPts)
+                        {
+                            var z_m = pt.z / meter;
+                            if (z_m < zMinShift) { zMinShift = z_m; }
+                        }
+                        var ac_mid = MCH_mid - zMinShift;
+
+                        println("generateBaseline bisect " ~ outerIter ~
+                                ": MCH_inner=" ~ round(MCH_mid * 1e6) / 1e3 ~
+                                "  actual="    ~ round(ac_mid  * 1e6) / 1e3 ~
+                                "  target="    ~ round(MCH_m   * 1e6) / 1e3 ~ " mm");
+
+                        if (abs(ac_mid - MCH_m) < OUTER_TOL) { break; }
+
+                        if (ac_mid < MCH_m)
+                        {
+                            MCH_lo = MCH_mid;
+                        }
+                        else
+                        {
+                            MCH_hi = MCH_mid;
+                        }
+                    }
+                    // finalPts and zMinShift left from the last bisect iteration
                 }
             }
-
-            // Actual snow-relative camber after the pending global shift
-            var actualCamber = MCH_inner - zMinShift;   // = MCH_inner + |shift|
-
-            println("generateBaseline outer=" ~ outerIter ~
-                    "  MCH_inner=" ~ round(MCH_inner   * 1e6) / 1e3 ~
-                    "  actual="    ~ round(actualCamber * 1e6) / 1e3 ~
-                    "  target="    ~ round(MCH_m        * 1e6) / 1e3 ~ " mm");
-
-            if (abs(actualCamber - MCH_m) < OUTER_TOL)
-            {
-                break;
-            }
-
-            // Correction: target the deficit on the next inner solve
-            MCH_inner = MCH_m + zMinShift;   // = MCH_target − |shift|
-            if (MCH_inner < 0.0)
-            {
-                MCH_inner = 0.0;
-            }
+            // else: hi bracket already within tolerance; finalPts / zMinShift set above
         }
 
         // ----------------------------------------------------------------
