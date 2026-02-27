@@ -260,9 +260,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
                 }
 
+                var toPoint = frenetPointToWorld(localCoords, toFrameResult);
+                println("src=" ~ toString(pt)
+                    ~ " fromOrigin=" ~ toString(fromResult.frame.origin)
+                    ~ " offset=" ~ toString(pt - fromResult.frame.origin)
+                    ~ " toOrigin=" ~ toString(toFrameResult.frame.origin)
+                    ~ " toPoint=" ~ toString(toPoint));
+
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
-                    "point"    : frenetPointToWorld(localCoords, toFrameResult),
+                    "point"    : toPoint,
                     "sFrom"    : s_from
                 });
             }
