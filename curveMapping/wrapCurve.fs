@@ -155,7 +155,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
 
         if (definition.debugShowToFrames)
+        {
             debugDrawFrames(context, toFrenetPath, 10);
+        }
 
         // 2. Resolve reference alignment arc-lengths
         var fromRefPt  = getRefPoint(context, definition.fromRef);
@@ -172,13 +174,17 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             var ed = fromEdgeData[i];
             if (!ed.isLine)
+            {
                 continue;
+            }
 
             // Skip lines that already received a curve-context xAxis in step 4.5
             var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
                               (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
             if (hasCurveCtx)
+            {
                 continue;
+            }
 
             // Map mid-arc of this from-edge to to-path position
             var midFromArc = ed.startArcLength + ed.length / 2;
@@ -198,12 +204,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
 
         if (definition.debugShowFromFrames)
+        {
             debugDrawFrames(context, fromFrenetPath, 10);
+        }
 
         // 3. Approximation options (with defaults for when showAdvanced is false)
         var degree = 3;
         if (definition.approximationDegree != undefined)
+        {
             degree = definition.approximationDegree;
+        }
 
         // 4. For each source curve: sample, map, fit, create
         var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
@@ -215,7 +225,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             var srcArcTable = buildArcLengthTable(srcBSpline, 200);
             var samplingDensity = 1 * millimeter;
             if (definition.samplingDensity != undefined)
+            {
                 samplingDensity = definition.samplingDensity;
+            }
             var numSamples = max([5, ceil(srcArcTable.totalLength / samplingDensity) + 1]);
 
             // Sample source curve uniformly by arc-length
@@ -253,7 +265,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 // Determine effective to-frame normal sign (apply flipToNormal toggle)
                 var toSign = toResult.sign;
                 if (definition.flipToNormal)
+                {
                     toSign = -1 * toSign;
+                }
 
                 // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
                 var toFrameResult = toResult;
@@ -267,6 +281,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 var toPoint = frenetPointToWorld(localCoords, toFrameResult);
                 if (definition.printWrapDetails)
+                {
                     println("src=" ~ toString(pt) ~ " s_from=" ~ toString(s_from) ~
                             " | from: orig=" ~ toString(fromResult.frame.origin) ~
                             " x=" ~ toString(fromResult.frame.xAxis) ~
@@ -276,6 +291,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                             " x=" ~ toString(toFrameResult.frame.xAxis) ~
                             " z=" ~ toString(toFrameResult.frame.zAxis) ~
                             " | out=" ~ toString(toPoint));
+                }
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
                     "point"    : toPoint,
@@ -295,7 +311,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var currentEdge = mappedData[segStartIdx].edgeIndex;
                 var segEndIdx   = segStartIdx;
                 while (segEndIdx + 1 < size(mappedData) && mappedData[segEndIdx + 1].edgeIndex == currentEdge)
+                {
                     segEndIdx += 1;
+                }
 
                 var segPoints = [];
 
@@ -305,11 +323,15 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 // Prepend exact junction point carried over from end of previous span
                 if (junctionPt != undefined)
+                {
                     segPoints = append(segPoints, junctionPt);
+                }
                 junctionPt = undefined;
 
                 for (var k = segStartIdx; k <= segEndIdx; k += 1)
+                {
                     segPoints = append(segPoints, mappedData[k].point);
+                }
 
                 // Inject exact boundary point at the junction to the next span
                 if (segEndIdx + 1 < size(mappedData))
@@ -322,16 +344,26 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // Invert arc-length mapping to get from-path position at boundary
                     var s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
                     if (s_from_junction < 0 * meter)
+                    {
                         s_from_junction = 0 * meter;
+                    }
                     if (s_from_junction > fromFrenetPath.totalLength)
+                    {
                         s_from_junction = fromFrenetPath.totalLength;
+                    }
 
                     // Interpolate source arc-length between bracketing samples
                     var sFrom_k   = mappedData[segEndIdx].sFrom;
                     var sFrom_kp1 = mappedData[segEndIdx + 1].sFrom;
                     var t = (s_from_junction - sFrom_k) / (sFrom_kp1 - sFrom_k);
-                    if (t < 0) t = 0;
-                    if (t > 1) t = 1;
+                    if (t < 0)
+                    {
+                        t = 0;
+                    }
+                    if (t > 1)
+                    {
+                        t = 1;
+                    }
                     var s_src_junction = samples.arcLengths[segEndIdx] +
                                          t * (samples.arcLengths[segEndIdx + 1] - samples.arcLengths[segEndIdx]);
 
@@ -346,7 +378,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var localCoords_j = worldPointToFrenet(pt_junction, fromResult_j);
                     var toResult_j    = getFrameAtArcLength(context, toFrenetPath, s_to_boundary);
                     var toSign_j      = toResult_j.sign;
-                    if (definition.flipToNormal) toSign_j = -1 * toSign_j;
+                    if (definition.flipToNormal)
+                    {
+                        toSign_j = -1 * toSign_j;
+                    }
                     var toFrameResult_j = toResult_j;
                     if (toSign_j != fromResult_j.sign)
                     {
@@ -380,14 +415,20 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // and produce a visible bulge of ~0.45mm near the junction.
                     var totalChord = 0 * meter;
                     for (var k = 0; k < size(segPoints) - 1; k += 1)
+                    {
                         totalChord += norm(segPoints[k + 1] - segPoints[k]);
+                    }
                     var approxScale = totalChord;
 
                     var targetDef = { "positions": segPoints };
                     if (carryOverTangent != undefined)
+                    {
                         targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
+                    }
                     if (junctionTangent != undefined)
+                    {
                         targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
+                    }
 
                     var approxDef = {
                         "targets"            : [approximationTarget(targetDef)],
