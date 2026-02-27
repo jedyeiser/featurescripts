@@ -113,6 +113,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Default" : false }
             definition.debugDetailedBSplines is boolean;
 
+            annotation { "Name" : "Print wrap detail",
+                        "Description" : "For each sample point print: source point, from-frame (origin/xAxis/zAxis), to-frame (origin/xAxis/zAxis), and mapped output point. Use to verify Frenet mapping vs. approximation error.",
+                        "Default" : false }
+            definition.printWrapDetails is boolean;
+
             annotation { "Name" : "Show from frames",
                         "Description" : "Draw Frenet frame axes along the from reference path",
                         "Default" : false }
@@ -260,9 +265,20 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
                 }
 
+                var toPoint = frenetPointToWorld(localCoords, toFrameResult);
+                if (definition.printWrapDetails)
+                    println("src=" ~ toString(pt) ~ " s_from=" ~ toString(s_from) ~
+                            " | from: orig=" ~ toString(fromResult.frame.origin) ~
+                            " x=" ~ toString(fromResult.frame.xAxis) ~
+                            " z=" ~ toString(fromResult.frame.zAxis) ~
+                            " | s_to=" ~ toString(s_to) ~
+                            " to: orig=" ~ toString(toFrameResult.frame.origin) ~
+                            " x=" ~ toString(toFrameResult.frame.xAxis) ~
+                            " z=" ~ toString(toFrameResult.frame.zAxis) ~
+                            " | out=" ~ toString(toPoint));
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
-                    "point"    : frenetPointToWorld(localCoords, toFrameResult),
+                    "point"    : toPoint,
                     "sFrom"    : s_from
                 });
             }
