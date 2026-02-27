@@ -52,40 +52,40 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         
         annotation { "Group Name" : "Calculated data", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "FB min", "Description" : "String of vector in mm for minimum fb point" }// string vector
+            annotation { "Name" : "FB min", "Description" : "String of vector in mm for minimum fb point", "UIHint" : UIHint.READ_ONLY }// string vector
             definition.fbMinString is string;
             
-            annotation { "Name" : "AB min", "Description" : "String of vector in mm for minimum ab point" }// string vector
+            annotation { "Name" : "AB min", "Description" : "String of vector in mm for minimum ab point", "UIHint" : UIHint.READ_ONLY  }// string vector
             definition.abMinString is string;
             
-            annotation { "Name" : "Max camber point", "Description" : "String of vector in mm for max camber point" }// string vector
+            annotation { "Name" : "Max camber point", "Description" : "String of vector in mm for max camber point", "UIHint" : UIHint.READ_ONLY  }// string vector
             definition.maxCamberHeightString is string;
             
             annotation { "Name" : "Camber height" }
             isLength(definition.camberHeight, LENGTH_BOUNDS);
             
-            annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point" } // string vector
+            annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point", "UIHint" : UIHint.READ_ONLY  } // string vector
             definition.frcp is string;
             
-            annotation { "Name" : "FRCPL", "Description" : "Forebody rocker contact point length. Distance between fcp and frcp" }
+            annotation { "Name" : "FRCPL", "Description" : "Forebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY  }
             isLength(definition.frcpl, LENGTH_BOUNDS);
             
-            annotation { "Name" : "FRCP tangent line", "Description" : "Forebody rocker tangent line" } // string description of line (origin on baseline, slope)
+            annotation { "Name" : "FRCP tangent line", "Description" : "Forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY  } // string description of line (origin on baseline, slope)
             definition.frcpLine is string;
             
-            annotation { "Name" : "FCPH", "Description" : "Height of FCP when baseline is weighted. Distance between FCP point and forebody rocker tangent line" }
+            annotation { "Name" : "FCPH", "Description" : "Height of FCP when baseline is weighted. Distance between FCP point and forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY  }
             isLength(definition.fcph, LENGTH_BOUNDS);
             
-            annotation { "Name" : "ARCP", "Description" : "Aftbody rocker contact point" } // string vector
+            annotation { "Name" : "ARCP", "Description" : "Aftbody rocker contact point", "UIHint" : UIHint.READ_ONLY  } // string vector
             definition.arcp is string;
             
-            annotation { "Name" : "ARCPL", "Description" : "Aftebody rocker contact point length. Distance between fcp and frcp" }
+            annotation { "Name" : "ARCPL", "Description" : "Aftebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY  }
             isLength(definition.arcpl, LENGTH_BOUNDS);
             
-            annotation { "Name" : "ARCP tangent line", "Description" : "Aftbody rocker tangent line" } // string description of line (origin on baseline, slope)
+            annotation { "Name" : "ARCP tangent line", "Description" : "Aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY  } // string description of line (origin on baseline, slope)
             definition.arcpLine is string;
             
-            annotation { "Name" : "ACPH", "Description" : "Height of ACP when baseline is weighted. Distance between ACP point and aftbody rocker tangent line" }
+            annotation { "Name" : "ACPH", "Description" : "Height of ACP when baseline is weighted. Distance between ACP point and aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY  }
             isLength(definition.acph, LENGTH_BOUNDS);
             
             
