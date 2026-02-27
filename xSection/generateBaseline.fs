@@ -926,31 +926,66 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
 
         // ----------------------------------------------------------------
-        // 4. Solve
+        // 4. Solve — outer correction loop
+        //
+        // The inner bisection converges peak_z − z(xFRCP) = MCH_inner.
+        // After rotateTranslate, z(xFRCP) = 0, so peak_z = MCH_inner.
+        // The global shift then lifts everything by |zMinShift|, making
+        // the final snow-relative camber = MCH_inner + |zMinShift|.
+        // We iterate until that equals the user's MCH target (± 0.01 mm).
+        // Correction each step: MCH_inner_new = MCH_target − |zMinShift|.
         // ----------------------------------------------------------------
-        var MCH_m = definition.camberHeight / meter;
+        var MCH_m     = definition.camberHeight / meter;   // user target (plain m)
+        var MCH_inner = MCH_m;                             // inner bisection target
+        var OUTER_TOL = 0.00001;                           // 0.01 mm in meters
+        var MAX_OUTER = 5;
 
-        var finalPts = solveBaseline(context, eiData, hasEI,
-                                      xFCP, xACP, xFRCP, xARCP, xMount,
-                                      definition.fcpHeight, definition.acpHeight,
-                                      definition.frcpl, definition.arcpl,
-                                      MCH_m);
+        var finalPts  = [];
+        var zMinShift = 0.0;   // plain meters (≤ 0)
 
-        println("generateBaseline: solved " ~ size(finalPts) ~ " points, " ~
-                "camber=" ~ round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
-
-        // ----------------------------------------------------------------
-        // 5. Global shift: ensure no point is below snow (z = 0)
-        // ----------------------------------------------------------------
-        var zMinShift = 0.0;   // plain meters (≤ 0 when a dip exists)
-        for (var pt in finalPts)
+        for (var outerIter = 0; outerIter < MAX_OUTER; outerIter += 1)
         {
-            var z_m = pt.z / meter;
-            if (z_m < zMinShift)
+            finalPts = solveBaseline(context, eiData, hasEI,
+                                     xFCP, xACP, xFRCP, xARCP, xMount,
+                                     definition.fcpHeight, definition.acpHeight,
+                                     definition.frcpl, definition.arcpl,
+                                     MCH_inner);
+
+            // Scan for the deepest point (zMinShift ≤ 0)
+            zMinShift = 0.0;
+            for (var pt in finalPts)
             {
-                zMinShift = z_m;
+                var z_m = pt.z / meter;
+                if (z_m < zMinShift)
+                {
+                    zMinShift = z_m;
+                }
+            }
+
+            // Actual snow-relative camber after the pending global shift
+            var actualCamber = MCH_inner - zMinShift;   // = MCH_inner + |shift|
+
+            println("generateBaseline outer=" ~ outerIter ~
+                    "  MCH_inner=" ~ round(MCH_inner   * 1e6) / 1e3 ~
+                    "  actual="    ~ round(actualCamber * 1e6) / 1e3 ~
+                    "  target="    ~ round(MCH_m        * 1e6) / 1e3 ~ " mm");
+
+            if (abs(actualCamber - MCH_m) < OUTER_TOL)
+            {
+                break;
+            }
+
+            // Correction: target the deficit on the next inner solve
+            MCH_inner = MCH_m + zMinShift;   // = MCH_target − |shift|
+            if (MCH_inner < 0.0)
+            {
+                MCH_inner = 0.0;
             }
         }
+
+        // ----------------------------------------------------------------
+        // 5. Global shift: lift profile so no point is below snow (z = 0)
+        // ----------------------------------------------------------------
         if (zMinShift < -1e-10)
         {
             var shiftedPts = [];
@@ -964,8 +999,9 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             finalPts = shiftedPts;
         }
 
-        println("generateBaseline: zMinShift=" ~ round(zMinShift * 1e6) / 1e3 ~ " mm" ~
-                "  camber(post-shift)=" ~ round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
+        println("generateBaseline: done  shift=" ~ round(zMinShift * 1e6) / 1e3 ~
+                " mm  camber(post-shift)=" ~
+                round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
 
         // ----------------------------------------------------------------
         // 6. Fit one spline over the full span, split at rocker joints
