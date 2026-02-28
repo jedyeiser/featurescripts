@@ -48,24 +48,10 @@ function round2(x is number) returns number
 }
 
 /**
- * Get the start and end 3D points of a BSpline curve.
- */
-function getBSplineEndpointsLocal(bspline is BSplineCurve) returns map
-{
-    var pRange = getBSplineParamRange(bspline);
-    var result = evaluateSpline({
-        "spline"     : bspline,
-        "parameters" : [pRange.uMin, pRange.uMax]
-    });
-    return {
-        "start" : result[0][0],
-        "end"   : result[0][1]
-    };
-}
-
-/**
  * Build an ordered chain of BSpline segments from a query of connected edges.
  * Returns [{bspline, reversed}, ...] in connected traversal order.
+ * Uses evEdgeCurvatures (parameters 0 and 1) for endpoint detection — avoids
+ * evaluateSpline at the knot boundary which can throw "outside knot vector".
  */
 function buildEdgeChain(context is Context, edgesQ is Query) returns array
 {
@@ -75,51 +61,57 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
         return [];
     }
 
-    var bsplines = [];
+    // Gather bspline + edge endpoints for each edge
+    var edgeData = [];
     for (var edge in edges)
     {
         var bspline = evApproximateBSplineCurve(context, {
             "edge"      : edge,
             "tolerance" : 1e-5
         });
-        bsplines = append(bsplines, bspline);
+        var curvStart = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [0.0] });
+        var curvEnd   = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [1.0] });
+        edgeData = append(edgeData, {
+            "bspline"  : bspline,
+            "startPt"  : curvStart[0].frame.origin,
+            "endPt"    : curvEnd[0].frame.origin
+        });
     }
 
-    if (size(bsplines) == 1)
+    if (size(edgeData) == 1)
     {
-        return [{ "bspline" : bsplines[0], "reversed" : false }];
+        return [{ "bspline" : edgeData[0].bspline, "reversed" : false }];
     }
 
-    // Greedy chain assembly
-    var used = makeArray(size(bsplines), false);
-    var chain = [{ "bspline" : bsplines[0], "reversed" : false }];
-    used[0] = true;
-    var chainEndPt = getBSplineEndpointsLocal(bsplines[0]).end;
+    // Greedy chain assembly using edge endpoints
+    var used      = makeArray(size(edgeData), false);
+    var chain     = [{ "bspline" : edgeData[0].bspline, "reversed" : false }];
+    used[0]       = true;
+    var chainEndPt = edgeData[0].endPt;
 
-    for (var iter = 0; iter < size(bsplines) - 1; iter += 1)
+    for (var iter = 0; iter < size(edgeData) - 1; iter += 1)
     {
         var found = false;
-        for (var j = 0; j < size(bsplines); j += 1)
+        for (var j = 0; j < size(edgeData); j += 1)
         {
             if (used[j])
             {
                 continue;
             }
 
-            var eps = getBSplineEndpointsLocal(bsplines[j]);
-            if (norm(eps.start - chainEndPt) < GEOM_TOL)
+            if (norm(edgeData[j].startPt - chainEndPt) < GEOM_TOL)
             {
-                chain      = append(chain, { "bspline" : bsplines[j], "reversed" : false });
+                chain      = append(chain, { "bspline" : edgeData[j].bspline, "reversed" : false });
                 used[j]    = true;
-                chainEndPt = eps.end;
+                chainEndPt = edgeData[j].endPt;
                 found      = true;
                 break;
             }
-            else if (norm(eps.end - chainEndPt) < GEOM_TOL)
+            else if (norm(edgeData[j].endPt - chainEndPt) < GEOM_TOL)
             {
-                chain      = append(chain, { "bspline" : bsplines[j], "reversed" : true });
+                chain      = append(chain, { "bspline" : edgeData[j].bspline, "reversed" : true });
                 used[j]    = true;
-                chainEndPt = eps.start;
+                chainEndPt = edgeData[j].startPt;
                 found      = true;
                 break;
             }
@@ -156,13 +148,12 @@ function sampleChain(chain is array, n is number) returns array
         var uMin     = pRange.uMin;
         var uMax     = pRange.uMax;
 
-        // Skip first parameter of non-first curves to avoid junction duplicates
-        var startI = (ci == 0) ? 0 : 1;
-
+        // Midpoint sampling: t = (i + 0.5) / samplesPerCurve → strictly inside (uMin, uMax).
+        // Avoids passing uMax to evaluateSpline (which throws "outside knot vector").
         var params = [];
-        for (var i = startI; i < samplesPerCurve; i += 1)
+        for (var i = 0; i < samplesPerCurve; i += 1)
         {
-            var t = i / (samplesPerCurve - 1);
+            var t = (i + 0.5) / samplesPerCurve;
             var u = reversed ? (uMax - t * (uMax - uMin)) : (uMin + t * (uMax - uMin));
             params = append(params, u);
         }
@@ -267,11 +258,11 @@ function findInflectionsOnCurve(bspline is BSplineCurve) returns array
     var numSpans = max(1, nCPs - bspline.degree);
     var nSamples = max(20, 15 * numSpans);
 
-    // Build sample parameters
+    // Midpoint sampling: t = (i + 0.5) / nSamples → strictly inside (uMin, uMax).
     var params = [];
     for (var i = 0; i < nSamples; i += 1)
     {
-        var t = i / (nSamples - 1);
+        var t = (i + 0.5) / nSamples;
         params = append(params, uMin + t * (uMax - uMin));
     }
 
