@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
+import(path : "08fddb59786b6bfee020ee05", version : "61f33606f9384a2757e0729b");
 
 // IMPORT: xSectUtils.fs
-import(path : "c2c3edd39b85fde5e6062533", version : "b761975bb8fa021f8c350cb0");
+import(path : "c2c3edd39b85fde5e6062533", version : "e28c1b2ccec93ed1e9fe271b");
 
 /**
  * This function takes a query of multiple edges (must be G1 continuous)
@@ -594,8 +594,14 @@ export function analyzeBaselineGeometry(context is Context,
 // ============================================================================
 
 export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefinition is map,
-   definition is map, isCreating is boolean, specifiedParameters is map, clickedButton is string) returns map
+   definition is map, isCreating is boolean, specifiedParameters is map,
+   hiddenBodies is Query, clickedButton is string) returns map
 {
+    if (clickedButton != "recalculate" && !(!oldDefinition.recalculate && definition.recalculate))
+    {
+        return definition;
+    }
+
     var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ);
     if (result == undefined)
     {
