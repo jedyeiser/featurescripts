@@ -200,22 +200,24 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
         if (i + 1 < size(edgeData) && !edgeData[i + 1].isLine)
         {
             var nextEd    = edgeData[i + 1];
-            var nextNK    = size(nextEd.bspline.knots);
-            var nextDeg   = nextEd.bspline.degree;
-            // Traversal start of next edge
-            var nextParam = nextEd.stdDir ? nextEd.bspline.knots[nextDeg]
-                                          : nextEd.bspline.knots[nextNK - nextDeg - 1];
-            contextXAxis = computeFrenetFrame(nextEd.bspline, nextParam).frame.xAxis;
+            // Traversal start of next edge: arcFrac=0 if stdDir, arcFrac=1 if reversed
+            var nextArcFrac = nextEd.stdDir ? 0 : 1;
+            contextXAxis = evEdgeCurvature(context, {
+                "edge"                      : nextEd.query,
+                "parameter"                 : nextArcFrac,
+                "arcLengthParameterization" : true
+            }).frame.xAxis;
         }
         else if (i - 1 >= 0 && !edgeData[i - 1].isLine)
         {
             var prevEd    = edgeData[i - 1];
-            var prevNK    = size(prevEd.bspline.knots);
-            var prevDeg   = prevEd.bspline.degree;
-            // Traversal end of prev edge
-            var prevParam = prevEd.stdDir ? prevEd.bspline.knots[prevNK - prevDeg - 1]
-                                          : prevEd.bspline.knots[prevDeg];
-            contextXAxis = computeFrenetFrame(prevEd.bspline, prevParam).frame.xAxis;
+            // Traversal end of prev edge: arcFrac=1 if stdDir, arcFrac=0 if reversed
+            var prevArcFrac = prevEd.stdDir ? 1 : 0;
+            contextXAxis = evEdgeCurvature(context, {
+                "edge"                      : prevEd.query,
+                "parameter"                 : prevArcFrac,
+                "arcLengthParameterization" : true
+            }).frame.xAxis;
         }
         // else: isolated line or line–line — keep world-axis heuristic
 
@@ -364,23 +366,21 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     }
     else
     {
-        // 6b. Curved: convert local arc-length to BSpline parameter
-        var u;
-        if (edgeDat.stdDir)
-        {
-            u = parameterAtArcLength(edgeDat.arcLengthTable, localArc);
-        }
-        else
-        {
-            // Traversal is param 1→0; localArc=0 corresponds to uMax
-            u = parameterAtArcLength(edgeDat.arcLengthTable, edgeDat.length - localArc);
-        }
+        // 6b. Curved: evaluate exact Frenet frame on actual edge geometry
+        // arcFrac maps local traversal arc-length → [0,1] arc-length fraction on edge
+        var arcFrac = localArc.value / edgeDat.length.value;
+        if (!edgeDat.stdDir)
+            arcFrac = 1 - arcFrac;  // traversal is reversed: start=1, end=0
 
-        var rawResult = computeFrenetFrame(edgeDat.bspline, u);
+        var rawResult = evEdgeCurvature(context, {
+            "edge"                      : edgeDat.query,
+            "parameter"                 : arcFrac,
+            "arcLengthParameterization" : true
+        });
 
         if (!edgeDat.stdDir)
         {
-            // Flip zAxis so it points in the traversal direction (param 1→0)
+            // Flip zAxis so it points in the traversal direction
             frame = coordSystem(rawResult.frame.origin,
                                 rawResult.frame.xAxis,
                                 -1 * rawResult.frame.zAxis);

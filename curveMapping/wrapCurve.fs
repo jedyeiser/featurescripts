@@ -210,38 +210,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
         // 3. Approximation options (with defaults for when showAdvanced is false)
         var degree = 3;
-        if (definition.approximationDegree != undefined)
-        {
-            degree = definition.approximationDegree;
-        }
-
-        // Use explicit defaults when showAdvanced is false; undefined fields passed to
-        // approximateSpline cause the built-in to use its own (potentially loose) defaults.
-        var approxTolerance = definition.approximationTolerance;
-        if (approxTolerance == undefined)
-        {
-            approxTolerance = 0.01 * millimeter;
-        }
-        var approxMaxCPs = definition.approximationMaxCPs;
-        if (approxMaxCPs == undefined)
-        {
-            approxMaxCPs = 50;
-        }
 
         // 4. For each source curve: sample, map, fit, create
         var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
+            var srcLen = evLength(context, {
+                    "entities" : sourceCurveArray[i]
+            });
+            
+            var numSamples = ceil(srcLen/definition.samplingDensity);
 
             // Determine number of sample points from sampling density
             var srcArcTable = buildArcLengthTable(srcBSpline, 200);
-            var samplingDensity = 1 * millimeter;
-            if (definition.samplingDensity != undefined)
-            {
-                samplingDensity = definition.samplingDensity;
-            }
-            var numSamples = max([5, ceil(srcArcTable.totalLength / samplingDensity) + 1]);
+            var samplingDensity = definition.samplingDensity;
 
             // Sample source curve uniformly by arc-length
             var samples   = uniformArcLengthSamples(srcBSpline, numSamples, {});
@@ -291,19 +274,25 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                                                    toResult.frame.zAxis);
                     toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
                 }
+                
+                var newToPoint = toFrameResult.frame.origin + toFrameResult.frame.xAxis * localCoords[1] + yAxis(toFrameResult.frame) * localCoords[2] + toFrameResult.frame.zAxis * localCoords[0];
+                var dist = norm(newToPoint - toFrameResult.frame.origin);
+                
+                
 
-                var toPoint = frenetPointToWorld(localCoords, toFrameResult);
+                var toPoint = newToPoint; //frenetPointToWorld(localCoords, toFrameResult); -> THIS IS OLD
                 if (definition.printWrapDetails)
                 {
-                    println("src=" ~ toString(pt) ~ " s_from=" ~ toString(s_from) ~
-                            " | from: orig=" ~ toString(fromResult.frame.origin) ~
-                            " x=" ~ toString(fromResult.frame.xAxis) ~
-                            " z=" ~ toString(fromResult.frame.zAxis) ~
-                            " | s_to=" ~ toString(s_to) ~
-                            " to: orig=" ~ toString(toFrameResult.frame.origin) ~
-                            " x=" ~ toString(toFrameResult.frame.xAxis) ~
-                            " z=" ~ toString(toFrameResult.frame.zAxis) ~
-                            " | out=" ~ toString(toPoint));
+                    println(
+                            " | ** FROM **: orig=" ~ toString(fromResult.frame.origin) ~
+                            " ** toXAxis ** " ~ toString(toFrameResult.frame.xAxis) ~
+
+                            " ** TO ** : orig=" ~ toString(toFrameResult.frame.origin) ~
+
+                            "  **  LOCALCOORDS  **  =" ~ toString(localCoords) ~
+                            '** OUT ** : ' ~ toString(toPoint) ~
+                            "** DIST ** " ~ toString(dist));
+                            
                 }
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
@@ -447,8 +436,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                     var approxDef = {
                         "targets"            : [approximationTarget(targetDef)],
-                        "tolerance"          : approxTolerance,
-                        "maxControlPoints"   : approxMaxCPs,
+                        "tolerance"          : definition.approximationTolerance,
+                        "maxControlPoints"   : definition.approximationMaxCPs,
                         "degree"             : degree,
                         "isPeriodic"         : false,
                         "interpolateIndices" : [0, size(segPoints) - 1] };
@@ -458,17 +447,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
-
-                        // Verify interpolateIndices forced exact endpoint pass-through
-                        var cps    = mappedCurve.controlPoints;
-                        var nCPs   = size(cps);
-                        var nSegs  = size(segPoints);
-                        var startErr = norm(cps[0]         - segPoints[0]);
-                        var endErr   = norm(cps[nCPs - 1]  - segPoints[nSegs - 1]);
-                        println("  [endpoint check] startErr=" ~ toString(startErr) ~
-                                " endErr=" ~ toString(endErr) ~
-                                " tolerance=" ~ toString(approxTolerance) ~
-                                " segPoints=" ~ toString(nSegs) ~ " CPs=" ~ toString(nCPs));
                     }
 
                     opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
