@@ -655,27 +655,28 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             abFoot = result.arcp_pt + dot(acpDiff, result.arcp_dir) * result.arcp_dir;
         }
 
-        // Create sketch on XZ plane (baseline lies in world XZ plane, Y≈0).
-        // Construct plane explicitly: normal = +Y, x-direction = +X, so
-        // sketch u = world X (ski length) and sketch v = world Z (ski height).
-        var sketchPl = plane(vector(0, 0, 0) * meter, vector(0, 1, 0), vector(1, 0, 0));
+        // Create sketch on world XZ plane.
+        // normal = -Y so that worldToPlane gives: sketch x = world X, sketch y = world Z.
+        // (worldToPlane computes planeY = cross(normal, x); with normal=-Y and x=+X,
+        //  planeY = cross((0,-1,0),(1,0,0)) = (0,0,1) = +world Z)
+        var sketchPl = plane(vector(0, 0, 0) * meter, vector(0, -1, 0), vector(1, 0, 0));
         var sketch = newSketchOnPlane(context, id + "baselineMeasurementSketch", {
             "sketchPlane" : sketchPl
         });
 
         // 1. Centerline: fb_min_pt → ab_min_pt
         skLineSegment(sketch, "minChord", {
-            "start"        : vector(result.fb_min_pt[0], result.fb_min_pt[2]),
-            "end"          : vector(result.ab_min_pt[0], result.ab_min_pt[2]),
+            "start"        : worldToPlane(sketchPl, result.fb_min_pt),
+            "end"          : worldToPlane(sketchPl, result.ab_min_pt),
             "construction" : true
         });
 
         // 2. Centerline: FRCP → ARCP (if both inflection points exist)
         if (result.frcp_pt != undefined && result.arcp_pt != undefined)
         {
-            skLineSegment(sketch,"inflChord", {
-                "start"        : vector(result.frcp_pt[0], result.frcp_pt[2]),
-                "end"          : vector(result.arcp_pt[0], result.arcp_pt[2]),
+            skLineSegment(sketch, "inflChord", {
+                "start"        : worldToPlane(sketchPl, result.frcp_pt),
+                "end"          : worldToPlane(sketchPl, result.arcp_pt),
                 "construction" : true
             });
         }
@@ -683,14 +684,14 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         // 3a. FB triangle legs: FRCP ↔ foot-of-perp, FCP ↔ foot-of-perp
         if (result.frcp_pt != undefined && fbFoot != undefined)
         {
-            skLineSegment(sketch,"fbTangentLeg", {
-                "start"        : vector(result.frcp_pt[0], result.frcp_pt[2]),
-                "end"          : vector(fbFoot[0], fbFoot[2]),
+            skLineSegment(sketch, "fbTangentLeg", {
+                "start"        : worldToPlane(sketchPl, result.frcp_pt),
+                "end"          : worldToPlane(sketchPl, fbFoot),
                 "construction" : true
             });
-            skLineSegment(sketch,"fbNormalLeg", {
-                "start"        : vector(result.fcp_pt[0], result.fcp_pt[2]),
-                "end"          : vector(fbFoot[0], fbFoot[2]),
+            skLineSegment(sketch, "fbNormalLeg", {
+                "start"        : worldToPlane(sketchPl, result.fcp_pt),
+                "end"          : worldToPlane(sketchPl, fbFoot),
                 "construction" : true
             });
         }
@@ -698,22 +699,22 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         // 3b. AB triangle legs: ARCP ↔ foot-of-perp, ACP ↔ foot-of-perp
         if (result.arcp_pt != undefined && abFoot != undefined)
         {
-            skLineSegment(sketch,"abTangentLeg", {
-                "start"        : vector(result.arcp_pt[0], result.arcp_pt[2]),
-                "end"          : vector(abFoot[0], abFoot[2]),
+            skLineSegment(sketch, "abTangentLeg", {
+                "start"        : worldToPlane(sketchPl, result.arcp_pt),
+                "end"          : worldToPlane(sketchPl, abFoot),
                 "construction" : true
             });
-            skLineSegment(sketch,"abNormalLeg", {
-                "start"        : vector(result.acp_pt[0], result.acp_pt[2]),
-                "end"          : vector(abFoot[0], abFoot[2]),
+            skLineSegment(sketch, "abNormalLeg", {
+                "start"        : worldToPlane(sketchPl, result.acp_pt),
+                "end"          : worldToPlane(sketchPl, abFoot),
                 "construction" : true
             });
         }
 
         // 4. Camber normal: max_camber_pt → camberFoot (perpendicular to min chord)
-        skLineSegment(sketch,"camberNormal", {
-            "start"        : vector(result.max_camber_pt[0], result.max_camber_pt[2]),
-            "end"          : vector(camberFoot[0], camberFoot[2]),
+        skLineSegment(sketch, "camberNormal", {
+            "start"        : worldToPlane(sketchPl, result.max_camber_pt),
+            "end"          : worldToPlane(sketchPl, camberFoot),
             "construction" : true
         });
 

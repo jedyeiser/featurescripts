@@ -392,11 +392,15 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         t = 1;
                     }
-                    // Interpolate source point position at junction using chord-based arc-lengths.
-                    // Linear interpolation between bracketing srcPoints is accurate to < (δs)²/8r,
-                    // which at 1mm spacing is negligible for any realistic curve radius.
-                    var pt_junction = srcPoints[segEndIdx] + t * (srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
-                    var srcTangent  = normalize(srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
+                    // Evaluate exact position and tangent on the source edge at the junction parameter.
+                    // Natural parameter for sample k is k/(numSamples-1); interpolate with t.
+                    var junctionParam  = (segEndIdx + t) / (numSamples - 1);
+                    var junctionLine   = evEdgeTangentLines(context, {
+                        "edge"       : sourceCurveArray[i],
+                        "parameters" : [junctionParam]
+                    })[0];
+                    var pt_junction = junctionLine.origin;
+                    var srcTangent  = junctionLine.direction;
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
@@ -427,7 +431,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // Append to current span; carry over to next span's start
                     segPoints       = append(segPoints, junctionWorldPt);
                     junctionPt      = junctionWorldPt;
-                    junctionTangent = junctionTangentDir;
+                    junctionTangent = normalize(junctionTangentDir);
                 }
 
                 if (size(segPoints) >= degree + 1)
@@ -446,7 +450,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var approxScale = totalChord;
 
                     var targetDef = { "positions": segPoints };
-                    /*
                     if (carryOverTangent != undefined)
                     {
                         targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
@@ -455,7 +458,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
                     }
-                    */
 
                     var approxDef = {
                         "targets"            : [approximationTarget(targetDef)],
