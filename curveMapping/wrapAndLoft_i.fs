@@ -370,8 +370,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // ===== Resolve reference alignment arc-lengths =====
         var fromRefPt  = getRefPoint(context, definition.fromRef);
         var toRefPt    = getRefPoint(context, definition.toRef);
-        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt);
-        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt);
+        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
+        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
         // ===== Isolated from-line xAxis fix =====
         // Lines adjacent to a curve got a curve-context xAxis in buildFrenetPath step 4.5;
@@ -469,19 +469,27 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var sourceCurveArray = evaluateQuery(context, definition.sourceEdges);
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
-            var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
+            var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
+            var numSamples = max([5, ceil(srcLen / samplingDensity) + 1]);
 
-            var srcArcTable = buildArcLengthTable(srcBSpline, 200);
-            var numSamples  = max([5, ceil(srcArcTable.totalLength / samplingDensity) + 1]);
+            var srcPoints = mapArray(evEdgeTangentLines(context, {
+                "edge"       : sourceCurveArray[i],
+                "parameters" : range(0, 1, numSamples)
+            }), function(x) { return x.origin; });
 
-            var samples   = uniformArcLengthSamples(srcBSpline, numSamples, {});
-            var srcPoints = samples.points;
+            // Build chord-based arc-length array
+            var srcArcLengths = [0 * meter];
+            for (var k = 1; k < size(srcPoints); k += 1)
+            {
+                srcArcLengths = append(srcArcLengths, srcArcLengths[k - 1] + norm(srcPoints[k] - srcPoints[k - 1]));
+            }
 
             if (definition.debugSourceBSplines)
             {
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
-                        " samples, length = " ~ toString(srcArcTable.totalLength));
+                        " samples, length = " ~ toString(srcLen));
+                var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
                 printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
@@ -493,7 +501,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var pt = srcPoints[sIdx];
 
                 // Project source point onto from-path; get Frenet frame there
-                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt, undefined).arcLength;
                 var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
 
                 // Express point in from-frame local coordinates
@@ -565,8 +573,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 // Inject exact boundary point at the junction to the next span
                 if (segEndIdx + 1 < size(mappedData))
                 {
-                    var nextEdgeIdx   = mappedData[segEndIdx + 1].edgeIndex;
-                    var s_to_boundary = toFrenetPath.edgeData[nextEdgeIdx].startArcLength;
+                    var nextEdgeIdx    = mappedData[segEndIdx + 1].edgeIndex;
+                    var boundaryEdgeIdx = max([currentEdge, nextEdgeIdx]);
+                    var s_to_boundary = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
 
                     // Invert arc-length mapping to get from-path position at boundary
                     var s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
@@ -591,14 +600,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     {
                         t = 1;
                     }
-                    var s_src_junction = samples.arcLengths[segEndIdx] +
-                                         t * (samples.arcLengths[segEndIdx + 1] - samples.arcLengths[segEndIdx]);
-
-                    // Evaluate source curve at junction arc-length
-                    var u_junction       = parameterAtArcLength(srcArcTable, s_src_junction);
-                    var srcJunctionFrame = computeFrenetFrame(srcBSpline, u_junction);
-                    var pt_junction      = srcJunctionFrame.frame.origin;
-                    var srcTangent       = srcJunctionFrame.frame.zAxis;
+                    var pt_junction = srcPoints[segEndIdx] + t * (srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
+                    var srcTangent  = normalize(srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
