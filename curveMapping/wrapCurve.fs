@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "ad98c7f43a25a4c0e8a428e7", version : "7a1b9b601f89110d1466453c");
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "a25895ffdbadbd517a2adedf");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-import(path : "683d867c35fdab9c98d47556", version : "34e9f30703d3c49a1e0fab1b");
+import(path : "683d867c35fdab9c98d47556", version : "6e9c17e822d02ed65d0711fa");
 
 
 
@@ -209,7 +209,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
 
         // 3. Approximation options (with defaults for when showAdvanced is false)
-        var degree = 3;
+        var degree = definition.approximationDegree;
 
         // 4. For each source curve: sample, map, fit, create
         var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
@@ -222,19 +222,26 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             
             var numSamples = ceil(srcLen/definition.samplingDensity);
 
-            // Determine number of sample points from sampling density
-            var srcArcTable = buildArcLengthTable(srcBSpline, 200);
-            var samplingDensity = definition.samplingDensity;
+            // Sample source curve via Onshape kernel (correct for any edge type including rational arcs)
+            var srcPoints = mapArray(evEdgeTangentLines(context, {
+                    "edge" : sourceCurveArray[i],
+                    "parameters" : range(0, 1, numSamples)
+            }), function(x) { return x.origin; });
 
-            // Sample source curve uniformly by arc-length
-            var samples   = uniformArcLengthSamples(srcBSpline, numSamples, {});
-            var srcPoints = samples.points;
+            // Build arc-length array from chord distances between sample points.
+            // Avoids evApproximateBSplineCurve + evaluateSpline derivative pipeline,
+            // which produces incorrect arc-lengths for rational arcs.
+            var srcArcLengths = [0 * meter];
+            for (var k = 1; k < size(srcPoints); k += 1)
+            {
+                srcArcLengths = append(srcArcLengths, srcArcLengths[k - 1] + norm(srcPoints[k] - srcPoints[k - 1]));
+            }
 
             if (definition.debugSourceBSplines)
             {
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
-                        " samples, length = " ~ toString(srcArcTable.totalLength));
+                        " samples, length = " ~ toString(srcArcLengths[size(srcArcLengths) - 1]));
                 printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
@@ -245,6 +252,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
                 var pt = srcPoints[sIdx];
+                addDebugPoint(context, pt, DebugColor.CYAN);
 
                 // Project source point onto from-path; get Frenet frame there
                 // Warm-start hint carries the previous point's edge/param for faster convergence
@@ -282,7 +290,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var newToPoint = toFrameResult.frame.origin + toFrameResult.frame.xAxis * localCoords[1] + yAxis(toFrameResult.frame) * localCoords[2] + toFrameResult.frame.zAxis * localCoords[0];
                 var dist = norm(newToPoint - toFrameResult.frame.origin);
                 
-                
+                addDebugPoint(context, newToPoint, DebugColor.MAGENTA);
 
                 var toPoint = newToPoint; //frenetPointToWorld(localCoords, toFrameResult); -> THIS IS OLD
                 if (definition.printWrapDetails)
@@ -370,14 +378,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         t = 1;
                     }
-                    var s_src_junction = samples.arcLengths[segEndIdx] +
-                                         t * (samples.arcLengths[segEndIdx + 1] - samples.arcLengths[segEndIdx]);
-
-                    // Evaluate source curve at junction arc-length
-                    var u_junction       = parameterAtArcLength(srcArcTable, s_src_junction);
-                    var srcJunctionFrame = computeFrenetFrame(srcBSpline, u_junction);
-                    var pt_junction      = srcJunctionFrame.frame.origin;
-                    var srcTangent       = srcJunctionFrame.frame.zAxis;  // unit tangent on source curve
+                    // Interpolate source point position at junction using chord-based arc-lengths.
+                    // Linear interpolation between bracketing srcPoints is accurate to < (δs)²/8r,
+                    // which at 1mm spacing is negligible for any realistic curve radius.
+                    var pt_junction = srcPoints[segEndIdx] + t * (srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
+                    var srcTangent  = normalize(srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);

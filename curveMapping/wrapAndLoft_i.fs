@@ -9,10 +9,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-import(path : "683d867c35fdab9c98d47556", version : "34e9f30703d3c49a1e0fab1b");
+import(path : "683d867c35fdab9c98d47556", version : "6e9c17e822d02ed65d0711fa");
 
 //import wrapCurve.fs
-import(path : "6863116065bf5063633f30ac", version : "61e0140e91ffdbafbd56195c");
+import(path : "6863116065bf5063633f30ac", version : "20b0f7ad6ed611471866a5cc");
 
 
 /**
