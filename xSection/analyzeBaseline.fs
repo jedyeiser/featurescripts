@@ -616,9 +616,103 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             isLength(definition.acph, LENGTH_BOUNDS);
         }
 
+        annotation { "Name" : "Output measurement sketch" }
+        definition.outputMeasurementSketch is boolean;
+
         annotation { "Name" : "Recalculate" }
         isButton(definition.recalculate);
     }
     {
-        // Feature body intentionally empty — all computation in editing logic
+        if (!definition.outputMeasurementSketch)
+        {
+            return;
+        }
+
+        var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ);
+        if (result == undefined)
+        {
+            return;
+        }
+
+        // Foot of perp from max_camber_pt to fb_min→ab_min chord
+        var chordDir   = normalize(result.ab_min_pt - result.fb_min_pt);
+        var camberDiff = result.max_camber_pt - result.fb_min_pt;
+        var camberFoot = result.fb_min_pt + dot(camberDiff, chordDir) * chordDir;
+
+        // Foot of perp from FCP to FRCP tangent line
+        var fbFoot = undefined;
+        if (result.frcp_pt != undefined)
+        {
+            var fcpDiff = result.fcp_pt - result.frcp_pt;
+            fbFoot = result.frcp_pt + dot(fcpDiff, result.frcp_dir) * result.frcp_dir;
+        }
+
+        // Foot of perp from ACP to ARCP tangent line
+        var abFoot = undefined;
+        if (result.arcp_pt != undefined)
+        {
+            var acpDiff = result.acp_pt - result.arcp_pt;
+            abFoot = result.arcp_pt + dot(acpDiff, result.arcp_dir) * result.arcp_dir;
+        }
+
+        // Create sketch on XZ plane (baseline lies in world XZ plane, Y≈0)
+        var sketch = newSketch(context, id + "baselineMeasurementSketch", {
+            "sketchPlane" : XZ_PLANE
+        });
+
+        // 1. Centerline: fb_min_pt → ab_min_pt
+        sketchLineSegment(sketch, "minChord", {
+            "start"        : vector(result.fb_min_pt[0], result.fb_min_pt[2]),
+            "end"          : vector(result.ab_min_pt[0], result.ab_min_pt[2]),
+            "construction" : true
+        });
+
+        // 2. Centerline: FRCP → ARCP (if both inflection points exist)
+        if (result.frcp_pt != undefined && result.arcp_pt != undefined)
+        {
+            sketchLineSegment(sketch, "inflChord", {
+                "start"        : vector(result.frcp_pt[0], result.frcp_pt[2]),
+                "end"          : vector(result.arcp_pt[0], result.arcp_pt[2]),
+                "construction" : true
+            });
+        }
+
+        // 3a. FB triangle legs: FRCP ↔ foot-of-perp, FCP ↔ foot-of-perp
+        if (result.frcp_pt != undefined && fbFoot != undefined)
+        {
+            sketchLineSegment(sketch, "fbTangentLeg", {
+                "start"        : vector(result.frcp_pt[0], result.frcp_pt[2]),
+                "end"          : vector(fbFoot[0], fbFoot[2]),
+                "construction" : true
+            });
+            sketchLineSegment(sketch, "fbNormalLeg", {
+                "start"        : vector(result.fcp_pt[0], result.fcp_pt[2]),
+                "end"          : vector(fbFoot[0], fbFoot[2]),
+                "construction" : true
+            });
+        }
+
+        // 3b. AB triangle legs: ARCP ↔ foot-of-perp, ACP ↔ foot-of-perp
+        if (result.arcp_pt != undefined && abFoot != undefined)
+        {
+            sketchLineSegment(sketch, "abTangentLeg", {
+                "start"        : vector(result.arcp_pt[0], result.arcp_pt[2]),
+                "end"          : vector(abFoot[0], abFoot[2]),
+                "construction" : true
+            });
+            sketchLineSegment(sketch, "abNormalLeg", {
+                "start"        : vector(result.acp_pt[0], result.acp_pt[2]),
+                "end"          : vector(abFoot[0], abFoot[2]),
+                "construction" : true
+            });
+        }
+
+        // 4. Camber normal: max_camber_pt → camberFoot (perpendicular to min chord)
+        sketchLineSegment(sketch, "camberNormal", {
+            "start"        : vector(result.max_camber_pt[0], result.max_camber_pt[2]),
+            "end"          : vector(camberFoot[0], camberFoot[2]),
+            "construction" : true
+        });
+
+        sketchSolve(sketch);
     });
