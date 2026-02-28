@@ -414,23 +414,49 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
  *
  * @param frenetPath {map}    - result from buildFrenetPath
  * @param point      {Vector} - query point with units
- * @returns {ValueWithUnits}  - arc-length along the path
+ * @param hint               - optional map { "edgeIndex", "param" } from previous call;
+ *                             when provided, only scans hint edge ± 1 neighbor (warm-start).
+ *                             Pass undefined for full scan.
+ * @returns {map} :
+ *   "arcLength" {ValueWithUnits} - arc-length along the path
+ *   "hint"      {map}            - { "edgeIndex", "param" } for next call
  */
-export function projectOntoFrenetPath(frenetPath is map, point is Vector)
+export function projectOntoFrenetPath(frenetPath is map, point is Vector, hint) returns map
 {
     var edgeData    = frenetPath.edgeData;
+    var nEdges      = size(edgeData);
     var bestDist    = inf * meter;
     var bestEdgeIdx = 0;
     var bestParam   = 0;
 
-    for (var i = 0; i < size(edgeData); i += 1)
+    if (hint != undefined && hint.edgeIndex >= 0 && hint.edgeIndex < nEdges)
     {
-        var result = projectPointOnCurve(edgeData[i].bspline, point, {});
-        if (result.distance < bestDist)
+        // Warm-start: only scan hinted edge ± 1 neighbor to handle edge crossings
+        var iMin = max([0, hint.edgeIndex - 1]);
+        var iMax = min([nEdges - 1, hint.edgeIndex + 1]);
+        for (var i = iMin; i <= iMax; i += 1)
         {
-            bestDist    = result.distance;
-            bestEdgeIdx = i;
-            bestParam   = result.parameter;
+            var result = projectPointOnCurve(edgeData[i].bspline, point, {});
+            if (result.distance < bestDist)
+            {
+                bestDist    = result.distance;
+                bestEdgeIdx = i;
+                bestParam   = result.parameter;
+            }
+        }
+    }
+    else
+    {
+        // Full scan across all edges
+        for (var i = 0; i < nEdges; i += 1)
+        {
+            var result = projectPointOnCurve(edgeData[i].bspline, point, {});
+            if (result.distance < bestDist)
+            {
+                bestDist    = result.distance;
+                bestEdgeIdx = i;
+                bestParam   = result.parameter;
+            }
         }
     }
 
@@ -443,7 +469,10 @@ export function projectOntoFrenetPath(frenetPath is map, point is Vector)
     // Convert to local arc from traversal start
     var localArc = edgeDat.stdDir ? physArcLength : (edgeDat.length - physArcLength);
 
-    return edgeDat.startArcLength + localArc;
+    return {
+        "arcLength" : edgeDat.startArcLength + localArc,
+        "hint"      : { "edgeIndex": bestEdgeIdx, "param": bestParam }
+    };
 }
 
 
@@ -506,7 +535,7 @@ export function mapWorldPoints(context is Context,
         var pt = points[i];
 
         // Project source point onto from-path; get Frenet frame there
-        var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+        var s_from     = projectOntoFrenetPath(fromFrenetPath, pt, undefined).arcLength;
         var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
 
         // Express point in from-frame local coordinates [tangent, normal, binormal]

@@ -168,13 +168,23 @@ export function projectPointOnCurve(curve is BSplineCurve, point is Vector, opti
         return ortho;
     };
 
-    // Sample to find sign change bracket
-    var samples = [];
+    // Sample to find sign change bracket — single batched evaluateSpline call
     var nBracketSamples = 11;
+    var bracketParams = [];
+    for (var i = 0; i < nBracketSamples; i += 1)
+        bracketParams = append(bracketParams, bracketLo + (bracketHi - bracketLo) * i / (nBracketSamples - 1));
+
+    var bracketEval = evaluateSpline({ "spline" : curve, "parameters" : bracketParams, "nDerivatives" : 1 });
+
+    var samples = [];
     for (var i = 0; i < nBracketSamples; i += 1)
     {
-        var u = bracketLo + (bracketHi - bracketLo) * i / (nBracketSamples - 1);
-        samples = append(samples, { "u" : u, "f" : orthoFunc(u) });
+        var curvePoint = bracketEval[0][i];
+        var tangent    = bracketEval[1][i];
+        var diff       = curvePoint - point;
+        var ortho      = dot(diff, tangent);
+        try silent { ortho = ortho / meter / meter; }
+        samples = append(samples, { "u" : bracketParams[i], "f" : ortho });
     }
 
     var bracket = bracketFromSamples(samples);
@@ -190,15 +200,16 @@ export function projectPointOnCurve(curve is BSplineCurve, point is Vector, opti
     }
     else
     {
-        // No sign change found - check endpoints and use best sample
-        var fLo = orthoFunc(bracketLo);
-        var fHi = orthoFunc(bracketHi);
+        // No sign change found - use pre-computed endpoint values; one orthoFunc call for bestU
+        var fLo   = samples[0].f;
+        var fHi   = samples[nBracketSamples - 1].f;
+        var fBest = orthoFunc(bestU);
 
-        if (abs(fLo) < abs(fHi) && abs(fLo) < abs(orthoFunc(bestU)))
+        if (abs(fLo) < abs(fHi) && abs(fLo) < abs(fBest))
         {
             refinedU = bracketLo;
         }
-        else if (abs(fHi) < abs(orthoFunc(bestU)))
+        else if (abs(fHi) < abs(fBest))
         {
             refinedU = bracketHi;
         }

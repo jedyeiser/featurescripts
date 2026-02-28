@@ -162,8 +162,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 2. Resolve reference alignment arc-lengths
         var fromRefPt  = getRefPoint(context, definition.fromRef);
         var toRefPt    = getRefPoint(context, definition.toRef);
-        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt);
-        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt);
+        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
+        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
         // Fix 1: Align isolated from-line xAxes with to-path normal.
         // Must run after fromRefArc/toRefArc are resolved.
@@ -241,12 +241,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             // Map each sampled point through Frenet frame transformation;
             // record which to-edge each mapped point lands on for span splitting
             var mappedData = [];
+            var projHint = undefined;
             for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
                 var pt = srcPoints[sIdx];
 
                 // Project source point onto from-path; get Frenet frame there
-                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt);
+                // Warm-start hint carries the previous point's edge/param for faster convergence
+                var projResult = projectOntoFrenetPath(fromFrenetPath, pt, projHint);
+                var s_from     = projResult.arcLength;
+                projHint       = projResult.hint;
                 var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
 
                 // Express point in from-frame local coordinates [tangent, normal, binormal]
