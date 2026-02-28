@@ -1177,7 +1177,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             // splitCurveMultiple preserves tangency at all split points.
             var segments = splitCurveMultiple(context, fullBSpline, splitParams);
 
-            // Assign segments to bodies and name them.
+            // Create one body per segment.
             // Segment order: [fore?] [camber] [aft?]
             var segIdx = 0;
 
@@ -1187,43 +1187,59 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     "bSplineCurve" : segments[segIdx]
                 });
                 segIdx += 1;
-                var foreBodies = evaluateQuery(context, qCreatedBy(id + "forebody", EntityType.BODY));
-                if (size(foreBodies) > 0)
-                {
-                    setProperty(context, {
-                        "entities"     : foreBodies[0],
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : definition.outputCurveName ~ " (forebody)"
-                    });
-                }
             }
 
             opCreateBSplineCurve(context, id + "camber", {
                 "bSplineCurve" : segments[segIdx]
             });
             segIdx += 1;
-            var camberBodies = evaluateQuery(context, qCreatedBy(id + "camber", EntityType.BODY));
-            if (size(camberBodies) > 0)
-            {
-                setProperty(context, {
-                    "entities"     : camberBodies[0],
-                    "propertyType" : PropertyType.NAME,
-                    "value"        : definition.outputCurveName
-                });
-            }
 
             if (hasAftRocker)
             {
                 opCreateBSplineCurve(context, id + "aftbody", {
                     "bSplineCurve" : segments[segIdx]
                 });
-                var aftBodies = evaluateQuery(context, qCreatedBy(id + "aftbody", EntityType.BODY));
-                if (size(aftBodies) > 0)
+            }
+
+            // Merge all segment edges into a single wire body.
+            var allEdgeQueries = [qCreatedBy(id + "camber", EntityType.EDGE)];
+            if (hasForeRocker)
+            {
+                allEdgeQueries = append(allEdgeQueries, qCreatedBy(id + "forebody", EntityType.EDGE));
+            }
+            if (hasAftRocker)
+            {
+                allEdgeQueries = append(allEdgeQueries, qCreatedBy(id + "aftbody", EntityType.EDGE));
+            }
+
+            opExtractWires(context, id + "baseline", {
+                "edges" : qUnion(allEdgeQueries)
+            });
+
+            // Delete the now-redundant segment bodies.
+            var segBodyQueries = [qCreatedBy(id + "camber", EntityType.BODY)];
+            if (hasForeRocker)
+            {
+                segBodyQueries = append(segBodyQueries, qCreatedBy(id + "forebody", EntityType.BODY));
+            }
+            if (hasAftRocker)
+            {
+                segBodyQueries = append(segBodyQueries, qCreatedBy(id + "aftbody", EntityType.BODY));
+            }
+            opDeleteBodies(context, id + "deleteSegments", {
+                "entities" : qUnion(segBodyQueries)
+            });
+
+            // Name the wire body if a name was provided.
+            if (definition.outputCurveName != "")
+            {
+                var wireBody = evaluateQuery(context, qCreatedBy(id + "baseline", EntityType.BODY));
+                if (size(wireBody) > 0)
                 {
                     setProperty(context, {
-                        "entities"     : aftBodies[0],
+                        "entities"     : wireBody[0],
                         "propertyType" : PropertyType.NAME,
-                        "value"        : definition.outputCurveName ~ " (aftbody)"
+                        "value"        : definition.outputCurveName
                     });
                 }
             }
