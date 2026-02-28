@@ -2,7 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
+import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
+
 // IMPORT: xSectUtils.fs
+import(path : "c2c3edd39b85fde5e6062533", version : "b761975bb8fa021f8c350cb0");
 
 /**
  * This function takes a query of multiple edges (must be G1 continuous)
@@ -479,11 +482,11 @@ export function analyzeBaselineGeometry(context is Context,
     for (var ci = 0; ci < size(chain); ci += 1)
     {
         var curveInfs = findInflectionsOnCurve(chain[ci].bspline);
-        for (var inf in curveInfs)
+        for (var i in curveInfs)
         {
             allInflections = append(allInflections, {
-                "pt"      : inf.pt,
-                "u"       : inf.u,
+                "pt"      : i.pt,
+                "u"       : i.u,
                 "bspline" : chain[ci].bspline
             });
         }
@@ -500,7 +503,7 @@ export function analyzeBaselineGeometry(context is Context,
     var arcpBspline = undefined;
     var arcpDist    = undefined;
 
-    for (var inf in allInflections)
+    for (var i in allInflections)
     {
         var px = inf.pt[0];
 
@@ -510,9 +513,9 @@ export function analyzeBaselineGeometry(context is Context,
             var fbD = abs(px - mrsX);
             if (frcpDist == undefined || fbD > frcpDist)
             {
-                frcpPt      = inf.pt;
-                frcpU       = inf.u;
-                frcpBspline = inf.bspline;
+                frcpPt      = i.pt;
+                frcpU       = i.u;
+                frcpBspline = i.bspline;
                 frcpDist    = fbD;
             }
         }
