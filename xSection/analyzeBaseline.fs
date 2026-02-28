@@ -148,19 +148,15 @@ function sampleChain(chain is array, n is number) returns array
         var uMin     = pRange.uMin;
         var uMax     = pRange.uMax;
 
-        // Midpoint sampling: t = (i + 0.5) / samplesPerCurve → strictly inside (uMin, uMax).
-        // Avoids passing uMax to evaluateSpline (which throws "outside knot vector").
+        // Always build params in ascending order — evaluateSpline requires ascending.
+        // For reversed curves, reverse the resulting points AFTER evaluation so samples
+        // follow chain direction (needed for correct chord-length arc length sums).
+        // Midpoint sampling (i + 0.5) / n keeps all params strictly inside (uMin, uMax).
         var params = [];
         for (var i = 0; i < samplesPerCurve; i += 1)
         {
             var t = (i + 0.5) / samplesPerCurve;
-            var u = reversed ? (uMax - t * (uMax - uMin)) : (uMin + t * (uMax - uMin));
-            params = append(params, u);
-        }
-
-        if (size(params) == 0)
-        {
-            continue;
+            params = append(params, uMin + t * (uMax - uMin));
         }
 
         var evalResult = evaluateSpline({
@@ -168,6 +164,20 @@ function sampleChain(chain is array, n is number) returns array
             "parameters" : params
         });
         var pts = evalResult[0];
+
+        // Reverse point/param arrays for reversed-traversal curves
+        if (reversed)
+        {
+            var revPts    = [];
+            var revParams = [];
+            for (var ri = size(pts) - 1; ri >= 0; ri -= 1)
+            {
+                revPts    = append(revPts,    pts[ri]);
+                revParams = append(revParams, params[ri]);
+            }
+            pts    = revPts;
+            params = revParams;
+        }
 
         for (var i = 0; i < size(pts); i += 1)
         {
