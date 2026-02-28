@@ -533,7 +533,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     "edgeIndex" : toResult.edgeIndex,
                     "point"     : frenetPointToWorld(localCoords, toFrameResult),
                     "sFrom"     : s_from,
-                    "offsetDir" : yAxis(toFrameResult.frame)  // to-frame binormal = loft width direction
+                    "offsetDir" : toFrameResult.frame.xAxis  // to-frame normal = loft thickness direction (~worldZ for XZ-curved to-paths)
                 });
             }
 
@@ -638,7 +638,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                             fNormal     * toFrameResult_j.frame.xAxis +
                                             fBinormal   * yAxis(toFrameResult_j.frame);
 
-                    var junctionOffDir = yAxis(toFrameResult_j.frame);
+                    var junctionOffDir = toFrameResult_j.frame.xAxis;
                     segPoints         = append(segPoints,     junctionWorldPt);
                     segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
                     junctionPt        = junctionWorldPt;
@@ -679,9 +679,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                 " count=" ~ toString(size(segPoints)));
                     }
 
-                    // Build offset point arrays using per-point to-frame yAxis (binormal) as offset direction.
+                    // Build offset point arrays using per-point to-frame xAxis (Frenet normal) as offset direction.
                     // Each segPoints[k] was placed by a specific to-frame; offsetting along that frame's
-                    // yAxis (perpendicular to the path tangent and Frenet normal) is the correct loft direction.
+                    // xAxis (perpendicular to the path tangent, in the plane of curvature) is the correct loft direction.
                     var primaryOffsetPoints   = [];
                     var secondaryOffsetPoints = [];
                     for (var k = 0; k < size(segPoints); k += 1)
