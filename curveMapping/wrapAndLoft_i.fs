@@ -678,20 +678,23 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
                     var spanXAxis = normalize(spanXAxisSum);
 
-                    // Build primary offset BSpline (shift all control points along spanXAxis)
-                    var primaryOffsetCurve = mergeMaps(mappedCurve, {
-                        "controlPoints": mapArray(mappedCurve.controlPoints,
-                            function(cp) { return cp + definition.primaryOffset * spanXAxis; })
-                    });
+                    // Build offset curves by re-approximating from offset sample points.
+                    // Offsetting control points is NOT equivalent to a geometric offset;
+                    // re-approximating from the actual curve sample positions (segPoints) is correct.
+                    // Junction tangent derivatives carry over unchanged (parallel offset preserves tangent direction).
+                    var primaryOffsetPoints    = mapArray(segPoints, function(pt) { return pt + definition.primaryOffset * spanXAxis; });
+                    var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
+                    var primaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
+                    var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
 
-                    // Build secondary offset BSpline (opposite direction) if requested
+                    // Secondary offset (opposite direction) if requested
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
-                        secondaryOffsetCurve = mergeMaps(mappedCurve, {
-                            "controlPoints": mapArray(mappedCurve.controlPoints,
-                                function(cp) { return cp - definition.secondOffset * spanXAxis; })
-                        });
+                        var secondaryOffsetPoints    = mapArray(segPoints, function(pt) { return pt - definition.secondOffset * spanXAxis; });
+                        var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
+                        var secondaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
+                        secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
                     }
 
                     try
