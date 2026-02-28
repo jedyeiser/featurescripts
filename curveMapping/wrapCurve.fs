@@ -212,6 +212,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var degree = definition.approximationDegree;
 
         // 4. For each source curve: sample, map, fit, create
+        var allSegEdges  = [];
+        var allSegBodies = [];
         var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
@@ -471,23 +473,20 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 segStartIdx = segEndIdx + 1;
             }
 
-            // Group all segments for this source curve into a single opExtractWires body.
-            // opCreateBSplineCurve emits one isolated wire body per segment; extracting wires
-            // here consolidates them (connected spans merge; disjoint spans remain separate
-            // bodies, but all are owned by the same operation id for clean querying).
-            if (segCount > 0)
+            // Accumulate segment edges/bodies across all source curves for a single extraction.
+            for (var k = 0; k < segCount; k += 1)
             {
-                var allSegEdges = [];
-                var allSegBodies = [];
-                for (var k = 0; k < segCount; k += 1)
-                {
-                    var segOpId = id + (toString(i) ~ "_" ~ toString(k) ~ "wrappedCurve");
-                    allSegEdges  = append(allSegEdges,  qCreatedBy(segOpId, EntityType.EDGE));
-                    allSegBodies = append(allSegBodies, qCreatedBy(segOpId, EntityType.BODY));
-                }
-                opExtractWires(context, id + (toString(i) ~ "wire"), { "edges": qUnion(allSegEdges) });
-                opDeleteBodies(context, id + (toString(i) ~ "deleteIntermediate"), { "entities": qUnion(allSegBodies) });
+                var segOpId = id + (toString(i) ~ "_" ~ toString(k) ~ "wrappedCurve");
+                allSegEdges  = append(allSegEdges,  qCreatedBy(segOpId, EntityType.EDGE));
+                allSegBodies = append(allSegBodies, qCreatedBy(segOpId, EntityType.BODY));
             }
+        }
+
+        // Single opExtractWires for all source curves — all output owned by id + "wire".
+        if (size(allSegEdges) > 0)
+        {
+            opExtractWires(context, id + "wire", { "edges": qUnion(allSegEdges) });
+            opDeleteBodies(context, id + "deleteIntermediate", { "entities": qUnion(allSegBodies) });
         }
     });
 
