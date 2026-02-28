@@ -656,7 +656,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         }
 
         // Create sketch on XZ plane (baseline lies in world XZ plane, Y≈0)
-        var sketch = newSketch(context, id + "baselineMeasurementSketch", {
+        var sketch = newSketchOnPlane(context, id + "baselineMeasurementSketch", {
             "sketchPlane" : XZ_PLANE
         });
 
