@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "61f33606f9384a2757e0729b");
+import(path : "08fddb59786b6bfee020ee05", version : "201c64079ee529cdd6609fe7");
 
 // IMPORT: xSectUtils.fs
-import(path : "c2c3edd39b85fde5e6062533", version : "e28c1b2ccec93ed1e9fe271b");
+import(path : "c2c3edd39b85fde5e6062533", version : "b0754fab353403d58cf2cc1c");
 
 /**
  * This function takes a query of multiple edges (must be G1 continuous)
@@ -18,20 +18,19 @@ import(path : "c2c3edd39b85fde5e6062533", version : "e28c1b2ccec93ed1e9fe271b");
  *
  * MRS = (FCP + ACP)/2
  *
- * Forebody minimum = point of minimum s of baseline curves starting at MRS and moving towards FCP. Record point(x, y, z)
+ * Forebody minimum = point of minimum z of baseline curves starting at MRS and moving towards FCP. Record point(x, y, z)
  * Aftbody minimum = minimum z point of baseline curves starting at MRS and moving towards ACP. Record point (x, y, z).
  *
  * baseline_bottom_line = line that connects forebody and aftbody minima.
  *
  * Camber height = maximum height of baseline from baseline_bottom_line between forebody and aftbody minima.
  *
- * Find rocker points - or the outermost inflection points along our baseline edges. Thes inflection points might be at junctions between edges.
+ * Find rocker points - or the outermost inflection points along our baseline edges.
  *
  * Find tangent lines to baseline at inflection points (FB/Aftbody). Measure minimum distance between these lines and the curve intersection point at FCP/ACP.
  * These are our FCP/ACP heights.
  *
- * Function just runs edting logic. Logic can be used elsewhere.
- *
+ * Function just runs editing logic. Logic can be used elsewhere.
  */
 
 
@@ -48,10 +47,9 @@ function round2(x is number) returns number
 }
 
 /**
- * Build an ordered chain of BSpline segments from a query of connected edges.
- * Returns [{bspline, reversed}, ...] in connected traversal order.
- * Uses evEdgeCurvatures (parameters 0 and 1) for endpoint detection — avoids
- * evaluateSpline at the knot boundary which can throw "outside knot vector".
+ * Build an ordered chain of edges from a query of connected edges.
+ * Returns [{edge, reversed}, ...] in connected traversal order.
+ * Uses evEdgeCurvatures (parameters 0 and 1) for endpoint detection.
  */
 function buildEdgeChain(context is Context, edgesQ is Query) returns array
 {
@@ -61,32 +59,28 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
         return [];
     }
 
-    // Gather bspline + edge endpoints for each edge
+    // Gather edge + endpoints for each edge
     var edgeData = [];
     for (var edge in edges)
     {
-        var bspline = evApproximateBSplineCurve(context, {
-            "edge"      : edge,
-            "tolerance" : 1e-5
-        });
         var curvStart = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [0.0] });
         var curvEnd   = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [1.0] });
         edgeData = append(edgeData, {
-            "bspline"  : bspline,
-            "startPt"  : curvStart[0].frame.origin,
-            "endPt"    : curvEnd[0].frame.origin
+            "edge"    : edge,
+            "startPt" : curvStart[0].frame.origin,
+            "endPt"   : curvEnd[0].frame.origin
         });
     }
 
     if (size(edgeData) == 1)
     {
-        return [{ "bspline" : edgeData[0].bspline, "reversed" : false }];
+        return [{ "edge" : edgeData[0].edge, "reversed" : false }];
     }
 
     // Greedy chain assembly using edge endpoints
-    var used      = makeArray(size(edgeData), false);
-    var chain     = [{ "bspline" : edgeData[0].bspline, "reversed" : false }];
-    used[0]       = true;
+    var used       = makeArray(size(edgeData), false);
+    var chain      = [{ "edge" : edgeData[0].edge, "reversed" : false }];
+    used[0]        = true;
     var chainEndPt = edgeData[0].endPt;
 
     for (var iter = 0; iter < size(edgeData) - 1; iter += 1)
@@ -101,7 +95,7 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
 
             if (norm(edgeData[j].startPt - chainEndPt) < GEOM_TOL)
             {
-                chain      = append(chain, { "bspline" : edgeData[j].bspline, "reversed" : false });
+                chain      = append(chain, { "edge" : edgeData[j].edge, "reversed" : false });
                 used[j]    = true;
                 chainEndPt = edgeData[j].endPt;
                 found      = true;
@@ -109,7 +103,7 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
             }
             else if (norm(edgeData[j].endPt - chainEndPt) < GEOM_TOL)
             {
-                chain      = append(chain, { "bspline" : edgeData[j].bspline, "reversed" : true });
+                chain      = append(chain, { "edge" : edgeData[j].edge, "reversed" : true });
                 used[j]    = true;
                 chainEndPt = edgeData[j].startPt;
                 found      = true;
@@ -127,9 +121,11 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
 
 /**
  * Uniformly sample n points distributed across the chain.
+ * Uses evEdgeCurvatures with native [0,1] edge parameterization — avoids
+ * B-spline knot range issues entirely.
  * Returns [{pt, curveIdx, u}, ...].
  */
-function sampleChain(chain is array, n is number) returns array
+function sampleChain(context is Context, chain is array, n is number) returns array
 {
     if (size(chain) == 0)
     {
@@ -142,30 +138,25 @@ function sampleChain(chain is array, n is number) returns array
 
     for (var ci = 0; ci < numCurves; ci += 1)
     {
-        var bspline  = chain[ci].bspline;
+        var edge     = chain[ci].edge;
         var reversed = chain[ci].reversed;
-        var pRange   = getBSplineParamRange(bspline);
-        var uMin     = pRange.uMin;
-        var uMax     = pRange.uMax;
 
-        // Always build params in ascending order — evaluateSpline requires ascending.
-        // For reversed curves, reverse the resulting points AFTER evaluation so samples
-        // follow chain direction (needed for correct chord-length arc length sums).
-        // Midpoint sampling (i + 0.5) / n keeps all params strictly inside (uMin, uMax).
+        // Midpoint sampling: strictly inside (0, 1)
         var params = [];
         for (var i = 0; i < samplesPerCurve; i += 1)
         {
-            var t = (i + 0.5) / samplesPerCurve;
-            params = append(params, uMin + t * (uMax - uMin));
+            params = append(params, (i + 0.5) / samplesPerCurve);
         }
 
-        var evalResult = evaluateSpline({
-            "spline"     : bspline,
-            "parameters" : params
-        });
-        var pts = evalResult[0];
+        var curvatures = evEdgeCurvatures(context, { "edge" : edge, "parameters" : params });
 
-        // Reverse point/param arrays for reversed-traversal curves
+        var pts = [];
+        for (var c in curvatures)
+        {
+            pts = append(pts, c.frame.origin);
+        }
+
+        // For reversed curves, reverse points so samples follow chain direction
         if (reversed)
         {
             var revPts    = [];
@@ -250,104 +241,62 @@ function findMinZInXRange(samples is array, xLow, xHigh) returns map
  */
 function perpDistToLine(pt is Vector, lineOrigin is Vector, lineDir is Vector) returns ValueWithUnits
 {
-    var diff    = pt - lineOrigin;
-    var proj    = dot(diff, lineDir) * lineDir;
+    var diff = pt - lineOrigin;
+    var proj = dot(diff, lineDir) * lineDir;
     return norm(diff - proj);
 }
 
 /**
- * Find inflection points (curvature sign changes) on a single BSpline.
- * Returns [{pt, u}, ...].
+ * Find inflection points (curvature sign changes) on a single edge.
+ * Uses evEdgeCurvatures with native [0,1] parameterization and finite
+ * differences for curvature sign — no B-spline evaluation required.
+ * Returns [{pt, u, edge}, ...].
  */
-function findInflectionsOnCurve(bspline is BSplineCurve) returns array
+function findInflectionsOnCurve(context is Context, edge is Query) returns array
 {
-    var pRange   = getBSplineParamRange(bspline);
-    var uMin     = pRange.uMin;
-    var uMax     = pRange.uMax;
-    var nCPs     = size(bspline.controlPoints);
-    var numSpans = max(1, nCPs - bspline.degree);
-    var nSamples = max(20, 15 * numSpans);
-
-    // Midpoint sampling: t = (i + 0.5) / nSamples → strictly inside (uMin, uMax).
-    var params = [];
+    var nSamples = 40;
+    var params   = [];
     for (var i = 0; i < nSamples; i += 1)
     {
-        var t = (i + 0.5) / nSamples;
-        params = append(params, uMin + t * (uMax - uMin));
+        params = append(params, (i + 0.5) / nSamples);
     }
 
-    // Batch evaluate 2nd derivatives
-    var derivsResult = evaluateSpline({
-        "spline"       : bspline,
-        "parameters"   : params,
-        "nDerivatives" : 2
-    });
-    var d1s = derivsResult[1];
-    var d2s = derivsResult[2];
+    var curvatures = evEdgeCurvatures(context, { "edge" : edge, "parameters" : params });
+
+    var pts = [];
+    for (var c in curvatures)
+    {
+        pts = append(pts, c.frame.origin);
+    }
+
+    // Curvature sign via finite differences.
+    // Y-component of d1 × d2 captures curvature sign for XZ-plane curves:
+    //   crossY = d1[0]*d2[2] - d1[2]*d2[0]
+    // d1 = central first difference, d2 = second difference (both in meters).
+    var signs = makeArray(nSamples, 0);
+    for (var i = 1; i < nSamples - 1; i += 1)
+    {
+        var d1     = pts[i + 1] - pts[i - 1];
+        var d2     = pts[i + 1] - 2 * pts[i] + pts[i - 1];
+        var crossY = d1[0] * d2[2] - d1[2] * d2[0];
+        signs[i]   = (crossY > 0 * meter * meter) ? 1 : ((crossY < 0 * meter * meter) ? -1 : 0);
+    }
+    signs[0]            = signs[1];
+    signs[nSamples - 1] = signs[nSamples - 2];
 
     var inflections = [];
-    var prevSign    = 0;
-    var prevU       = params[0];
-
-    for (var i = 0; i < nSamples; i += 1)
+    for (var i = 1; i < nSamples; i += 1)
     {
-        var d1 = d1s[i];
-        var d2 = d2s[i];
-        // Y-component of d1 × d2 captures curvature sign for XZ-plane curves
-        var crossY  = d1[0] * d2[2] - d1[2] * d2[0];
-        var signNow = (crossY > 0 * meter * meter) ? 1 : ((crossY < 0 * meter * meter) ? -1 : 0);
-
-        if (i > 0 && signNow != 0 && prevSign != 0 && signNow != prevSign)
+        if (signs[i] != 0 && signs[i - 1] != 0 && signs[i] != signs[i - 1])
         {
-            // Bisect to refine inflection parameter
-            var ua   = prevU;
-            var ub   = params[i];
-            var uInf = (ua + ub) / 2;
-
-            for (var bisIter = 0; bisIter < 30; bisIter += 1)
-            {
-                uInf = (ua + ub) / 2;
-                var bisResult = evaluateSpline({
-                    "spline"       : bspline,
-                    "parameters"   : [uInf],
-                    "nDerivatives" : 2
-                });
-                var bd1     = bisResult[1][0];
-                var bd2     = bisResult[2][0];
-                var bisCY   = bd1[0] * bd2[2] - bd1[2] * bd2[0];
-                var bisSign = (bisCY > 0 * meter * meter) ? 1 : -1;
-
-                if (bisSign == prevSign)
-                {
-                    ua = uInf;
-                }
-                else
-                {
-                    ub = uInf;
-                }
-
-                if (abs(ub - ua) < 1e-8)
-                {
-                    break;
-                }
-            }
-
-            var infEval = evaluateSpline({
-                "spline"     : bspline,
-                "parameters" : [uInf]
-            });
-
+            var uInf    = (params[i - 1] + params[i]) / 2;
+            var infCurv = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [uInf] });
             inflections = append(inflections, {
-                "pt" : infEval[0][0],
-                "u"  : uInf
+                "pt"   : infCurv[0].frame.origin,
+                "u"    : uInf,
+                "edge" : edge
             });
         }
-
-        if (signNow != 0)
-        {
-            prevSign = signNow;
-        }
-        prevU = params[i];
     }
 
     return inflections;
@@ -409,7 +358,7 @@ function formatLine(origin is Vector, dir is Vector) returns string
 export function analyzeBaselineGeometry(context is Context,
     baselineEdgesQ is Query, fcpQ is Query, acpQ is Query) returns map
 {
-    // Step 1: Build ordered BSpline chain from edge query
+    // Step 1: Build ordered edge chain
     var chain = buildEdgeChain(context, baselineEdgesQ);
     if (size(chain) == 0)
     {
@@ -417,7 +366,7 @@ export function analyzeBaselineGeometry(context is Context,
     }
 
     // Step 2: Uniform sample across entire chain (200 points)
-    var samples = sampleChain(chain, 200);
+    var samples = sampleChain(context, chain, 200);
     if (size(samples) == 0)
     {
         return undefined;
@@ -431,13 +380,13 @@ export function analyzeBaselineGeometry(context is Context,
         return undefined;
     }
 
-    var mrsX    = (fcpX + acpX) / 2;
-    var fcpIdx  = findSampleAtX(samples, fcpX);
-    var acpIdx  = findSampleAtX(samples, acpX);
-    var mrsIdx  = findSampleAtX(samples, mrsX);
-    var fcpPt   = samples[fcpIdx].pt;
-    var acpPt   = samples[acpIdx].pt;
-    var mrsPt   = samples[mrsIdx].pt;
+    var mrsX   = (fcpX + acpX) / 2;
+    var fcpIdx = findSampleAtX(samples, fcpX);
+    var acpIdx = findSampleAtX(samples, acpX);
+    var mrsIdx = findSampleAtX(samples, mrsX);
+    var fcpPt  = samples[fcpIdx].pt;
+    var acpPt  = samples[acpIdx].pt;
+    var mrsPt  = samples[mrsIdx].pt;
 
     // Step 4: FB / AB minimum-Z points in each half
     var fbXLow  = (fcpX < mrsX) ? fcpX : mrsX;
@@ -482,29 +431,25 @@ export function analyzeBaselineGeometry(context is Context,
     var allInflections = [];
     for (var ci = 0; ci < size(chain); ci += 1)
     {
-        var curveInfs = findInflectionsOnCurve(chain[ci].bspline);
-        for (var i in curveInfs)
+        var curveInfs = findInflectionsOnCurve(context, chain[ci].edge);
+        for (var inf in curveInfs)
         {
-            allInflections = append(allInflections, {
-                "pt"      : i.pt,
-                "u"       : i.u,
-                "bspline" : chain[ci].bspline
-            });
+            allInflections = append(allInflections, inf);
         }
     }
 
     // Step 7: Select outermost inflection in each half (FRCP / ARCP)
-    var frcpPt      = undefined;
-    var frcpU       = undefined;
-    var frcpBspline = undefined;
-    var frcpDist    = undefined;
+    var frcpPt   = undefined;
+    var frcpU    = undefined;
+    var frcpEdge = undefined;
+    var frcpDist = undefined;
 
-    var arcpPt      = undefined;
-    var arcpU       = undefined;
-    var arcpBspline = undefined;
-    var arcpDist    = undefined;
+    var arcpPt   = undefined;
+    var arcpU    = undefined;
+    var arcpEdge = undefined;
+    var arcpDist = undefined;
 
-    for (var i in allInflections)
+    for (var inf in allInflections)
     {
         var px = inf.pt[0];
 
@@ -514,10 +459,10 @@ export function analyzeBaselineGeometry(context is Context,
             var fbD = abs(px - mrsX);
             if (frcpDist == undefined || fbD > frcpDist)
             {
-                frcpPt      = i.pt;
-                frcpU       = i.u;
-                frcpBspline = i.bspline;
-                frcpDist    = fbD;
+                frcpPt   = inf.pt;
+                frcpU    = inf.u;
+                frcpEdge = inf.edge;
+                frcpDist = fbD;
             }
         }
 
@@ -527,10 +472,10 @@ export function analyzeBaselineGeometry(context is Context,
             var abD = abs(px - mrsX);
             if (arcpDist == undefined || abD > arcpDist)
             {
-                arcpPt      = inf.pt;
-                arcpU       = inf.u;
-                arcpBspline = inf.bspline;
-                arcpDist    = abD;
+                arcpPt   = inf.pt;
+                arcpU    = inf.u;
+                arcpEdge = inf.edge;
+                arcpDist = abD;
             }
         }
     }
@@ -546,44 +491,28 @@ export function analyzeBaselineGeometry(context is Context,
         "camber_height" : camberHeight
     };
 
-    // Steps 8–10: FRCP tangent, arc length, height
+    // Steps 8–10: FRCP tangent (from evEdgeCurvatures), arc length, height
     if (frcpPt != undefined)
     {
-        var frcpD1 = evaluateSpline({
-            "spline"       : frcpBspline,
-            "parameters"   : [frcpU],
-            "nDerivatives" : 1
-        });
-        var frcpTangent = frcpD1[1][0];
-        if (norm(frcpTangent) > 1e-10 * meter)
-        {
-            var frcpDir = normalize(frcpTangent);
-            var frcpIdx = findSampleAtX(samples, frcpPt[0]);
-            result.frcp_pt  = frcpPt;
-            result.frcp_dir = frcpDir;
-            result.frcpl    = approximateChainArcLength(samples, fcpIdx, frcpIdx);
-            result.fcph     = perpDistToLine(fcpPt, frcpPt, frcpDir);
-        }
+        var frcpCurv = evEdgeCurvatures(context, { "edge" : frcpEdge, "parameters" : [frcpU] });
+        var frcpDir  = frcpCurv[0].frame.zAxis;  // already normalized tangent
+        var frcpIdx  = findSampleAtX(samples, frcpPt[0]);
+        result.frcp_pt  = frcpPt;
+        result.frcp_dir = frcpDir;
+        result.frcpl    = approximateChainArcLength(samples, fcpIdx, frcpIdx);
+        result.fcph     = perpDistToLine(fcpPt, frcpPt, frcpDir);
     }
 
     // Steps 8–10: ARCP tangent, arc length, height
     if (arcpPt != undefined)
     {
-        var arcpD1 = evaluateSpline({
-            "spline"       : arcpBspline,
-            "parameters"   : [arcpU],
-            "nDerivatives" : 1
-        });
-        var arcpTangent = arcpD1[1][0];
-        if (norm(arcpTangent) > 1e-10 * meter)
-        {
-            var arcpDir = normalize(arcpTangent);
-            var arcpIdx = findSampleAtX(samples, arcpPt[0]);
-            result.arcp_pt  = arcpPt;
-            result.arcp_dir = arcpDir;
-            result.arcpl    = approximateChainArcLength(samples, acpIdx, arcpIdx);
-            result.acph     = perpDistToLine(acpPt, arcpPt, arcpDir);
-        }
+        var arcpCurv = evEdgeCurvatures(context, { "edge" : arcpEdge, "parameters" : [arcpU] });
+        var arcpDir  = arcpCurv[0].frame.zAxis;  // already normalized tangent
+        var arcpIdx  = findSampleAtX(samples, arcpPt[0]);
+        result.arcp_pt  = arcpPt;
+        result.arcp_dir = arcpDir;
+        result.arcpl    = approximateChainArcLength(samples, acpIdx, arcpIdx);
+        result.acph     = perpDistToLine(acpPt, arcpPt, arcpDir);
     }
 
     return result;
@@ -598,11 +527,6 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
    definition is map, isCreating is boolean, specifiedParameters is map,
    hiddenBodies is Query, clickedButton is string) returns map
 {
-    if (clickedButton != "recalculate" && !(!oldDefinition.recalculate && definition.recalculate))
-    {
-        return definition;
-    }
-
     var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ);
     if (result == undefined)
     {
@@ -655,49 +579,45 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
 
         annotation { "Group Name" : "Calculated data", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "FB min", "Description" : "String of vector in mm for minimum fb point", "UIHint" : UIHint.READ_ONLY }// string vector
+            annotation { "Name" : "FB min", "Description" : "String of vector in mm for minimum fb point", "UIHint" : UIHint.READ_ONLY }
             definition.fbMinString is string;
 
-            annotation { "Name" : "AB min", "Description" : "String of vector in mm for minimum ab point", "UIHint" : UIHint.READ_ONLY  }// string vector
+            annotation { "Name" : "AB min", "Description" : "String of vector in mm for minimum ab point", "UIHint" : UIHint.READ_ONLY }
             definition.abMinString is string;
 
-            annotation { "Name" : "Max camber point", "Description" : "String of vector in mm for max camber point", "UIHint" : UIHint.READ_ONLY  }// string vector
+            annotation { "Name" : "Max camber point", "Description" : "String of vector in mm for max camber point", "UIHint" : UIHint.READ_ONLY }
             definition.maxCamberHeightString is string;
 
             annotation { "Name" : "Camber height" }
             isLength(definition.camberHeight, LENGTH_BOUNDS);
 
-            annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point", "UIHint" : UIHint.READ_ONLY  } // string vector
+            annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point", "UIHint" : UIHint.READ_ONLY }
             definition.frcp is string;
 
-            annotation { "Name" : "FRCPL", "Description" : "Forebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY  }
+            annotation { "Name" : "FRCPL", "Description" : "Forebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.frcpl, LENGTH_BOUNDS);
 
-            annotation { "Name" : "FRCP tangent line", "Description" : "Forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY  } // string description of line (origin on baseline, slope)
+            annotation { "Name" : "FRCP tangent line", "Description" : "Forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY }
             definition.frcpLine is string;
 
-            annotation { "Name" : "FCPH", "Description" : "Height of FCP when baseline is weighted. Distance between FCP point and forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY  }
+            annotation { "Name" : "FCPH", "Description" : "Height of FCP when baseline is weighted. Distance between FCP point and forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.fcph, LENGTH_BOUNDS);
 
-            annotation { "Name" : "ARCP", "Description" : "Aftbody rocker contact point", "UIHint" : UIHint.READ_ONLY  } // string vector
+            annotation { "Name" : "ARCP", "Description" : "Aftbody rocker contact point", "UIHint" : UIHint.READ_ONLY }
             definition.arcp is string;
 
-            annotation { "Name" : "ARCPL", "Description" : "Aftebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY  }
+            annotation { "Name" : "ARCPL", "Description" : "Aftebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.arcpl, LENGTH_BOUNDS);
 
-            annotation { "Name" : "ARCP tangent line", "Description" : "Aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY  } // string description of line (origin on baseline, slope)
+            annotation { "Name" : "ARCP tangent line", "Description" : "Aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY }
             definition.arcpLine is string;
 
-            annotation { "Name" : "ACPH", "Description" : "Height of ACP when baseline is weighted. Distance between ACP point and aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY  }
+            annotation { "Name" : "ACPH", "Description" : "Height of ACP when baseline is weighted. Distance between ACP point and aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.acph, LENGTH_BOUNDS);
-
-
         }
 
         annotation { "Name" : "Recalculate" }
-       isButton(definition.recalculate);
-
-
+        isButton(definition.recalculate);
     }
     {
         // Feature body intentionally empty — all computation in editing logic
