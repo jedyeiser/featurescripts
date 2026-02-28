@@ -773,14 +773,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
                 try
                 {
-                    loft(context, id + (toString(i) ~ "loft"), {
-                        "bodyType"             : ToolBodyType.SURFACE,
-                        "operationType"        : NewBodyOperationType.NEW,
-                        "surfaceOperationType" : NewSurfaceOperationType.NEW,
-                        "wireProfilesArray"    : [
-                            { "wireProfileEntities" : loftProfile1 },
-                            { "wireProfileEntities" : loftProfile2 }
-                        ]
+                    opLoft(context, id + (toString(i) ~ "loft"), {
+                        "bodyType"        : ToolBodyType.SURFACE,
+                        "profileSubqueries" : [loftProfile1, loftProfile2]
                     });
                 }
                 catch (e)
