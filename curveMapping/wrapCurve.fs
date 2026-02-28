@@ -470,6 +470,24 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 segStartIdx = segEndIdx + 1;
             }
+
+            // Group all segments for this source curve into a single opExtractWires body.
+            // opCreateBSplineCurve emits one isolated wire body per segment; extracting wires
+            // here consolidates them (connected spans merge; disjoint spans remain separate
+            // bodies, but all are owned by the same operation id for clean querying).
+            if (segCount > 0)
+            {
+                var allSegEdges = [];
+                var allSegBodies = [];
+                for (var k = 0; k < segCount; k += 1)
+                {
+                    var segOpId = id + (toString(i) ~ "_" ~ toString(k) ~ "wrappedCurve");
+                    allSegEdges  = append(allSegEdges,  qCreatedBy(segOpId, EntityType.EDGE));
+                    allSegBodies = append(allSegBodies, qCreatedBy(segOpId, EntityType.BODY));
+                }
+                opExtractWires(context, id + (toString(i) ~ "wire"), { "edges": qUnion(allSegEdges) });
+                opDeleteBodies(context, id + (toString(i) ~ "deleteIntermediate"), { "entities": qUnion(allSegBodies) });
+            }
         }
     });
 
