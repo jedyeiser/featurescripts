@@ -12,6 +12,8 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a7403d5f7f5a4fe
 // IMPORT: tools/point_projection.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
+// IMPORT: analyzeBaseline.fs
+
 
 /**
  * GENERATE BASELINE
@@ -55,9 +57,44 @@ export const ApproxDegreeBounds     = { (unitless) : [1, 3, 9] }       as Intege
 export function generateBaselineEditLogic(context is Context, id is Id,
     oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map,
-    clickedButton is string) returns map
+    hiddenBodies is Query, clickedButton is string) returns map
 {
     definition.showEIQuery = definition.hasEIProfile;
+
+    // Populate measurement fields from the last-generated baseline
+    if (clickedButton == "recalculateMeasurements" ||
+        (!oldDefinition.recalculateMeasurements && definition.recalculateMeasurements))
+    {
+        var baselineEdges = qCreatedBy(id + "baseline", EntityType.EDGE);
+        if (size(evaluateQuery(context, baselineEdges)) > 0)
+        {
+            var result = analyzeBaselineGeometry(context, baselineEdges,
+                                                 definition.fcpQuery, definition.acpQuery);
+            if (result != undefined)
+            {
+                definition.meas_fbMinString           = formatVec(result.fb_min_pt);
+                definition.meas_abMinString           = formatVec(result.ab_min_pt);
+                definition.meas_maxCamberHeightString = formatVec(result.max_camber_pt);
+                definition.meas_camberHeight          = result.camber_height;
+
+                if (result.frcp_pt != undefined)
+                {
+                    definition.meas_frcp     = formatVec(result.frcp_pt);
+                    definition.meas_frcpl    = result.frcpl;
+                    definition.meas_frcpLine = formatLine(result.frcp_pt, result.frcp_dir);
+                    definition.meas_fcph     = result.fcph;
+                }
+                if (result.arcp_pt != undefined)
+                {
+                    definition.meas_arcp     = formatVec(result.arcp_pt);
+                    definition.meas_arcpl    = result.arcpl;
+                    definition.meas_arcpLine = formatLine(result.arcp_pt, result.arcp_dir);
+                    definition.meas_acph     = result.acph;
+                }
+            }
+        }
+    }
+
     return definition;
 }
 
@@ -906,6 +943,51 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             annotation { "Name" : "Curve degree" }
             isInteger(definition.curveDegree, ApproxDegreeBounds);
         }
+
+        annotation { "Name" : "Add baseline sketch" }
+        definition.addBaselineSketch is boolean;
+
+        annotation { "Group Name" : "Measured baseline data", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "FB min", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_fbMinString is string;
+
+            annotation { "Name" : "AB min", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_abMinString is string;
+
+            annotation { "Name" : "Max camber point", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_maxCamberHeightString is string;
+
+            annotation { "Name" : "Camber height" }
+            isLength(definition.meas_camberHeight, LENGTH_BOUNDS);
+
+            annotation { "Name" : "FRCP", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_frcp is string;
+
+            annotation { "Name" : "FRCPL", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.meas_frcpl, LENGTH_BOUNDS);
+
+            annotation { "Name" : "FRCP tangent line", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_frcpLine is string;
+
+            annotation { "Name" : "FCPH", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.meas_fcph, LENGTH_BOUNDS);
+
+            annotation { "Name" : "ARCP", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_arcp is string;
+
+            annotation { "Name" : "ARCPL", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.meas_arcpl, LENGTH_BOUNDS);
+
+            annotation { "Name" : "ARCP tangent line", "UIHint" : UIHint.READ_ONLY }
+            definition.meas_arcpLine is string;
+
+            annotation { "Name" : "ACPH", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.meas_acph, LENGTH_BOUNDS);
+        }
+
+        annotation { "Name" : "Recalculate measurements" }
+        isButton(definition.recalculateMeasurements);
     }
     {
         // ----------------------------------------------------------------
@@ -1241,6 +1323,90 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                         "propertyType" : PropertyType.NAME,
                         "value"        : definition.outputCurveName
                     });
+                }
+            }
+
+            // Baseline sketch — analyze the generated curve and output measurement geometry
+            if (definition.addBaselineSketch)
+            {
+                var baselineEdges = qCreatedBy(id + "baseline", EntityType.EDGE);
+                var result = analyzeBaselineGeometry(context, baselineEdges,
+                                                     definition.fcpQuery, definition.acpQuery);
+                if (result != undefined)
+                {
+                    var chordDir   = normalize(result.ab_min_pt - result.fb_min_pt);
+                    var camberDiff = result.max_camber_pt - result.fb_min_pt;
+                    var camberFoot = result.fb_min_pt + dot(camberDiff, chordDir) * chordDir;
+
+                    var fbFoot = undefined;
+                    if (result.frcp_pt != undefined)
+                    {
+                        var fcpDiff = result.fcp_pt - result.frcp_pt;
+                        fbFoot = result.frcp_pt + dot(fcpDiff, result.frcp_dir) * result.frcp_dir;
+                    }
+
+                    var abFoot = undefined;
+                    if (result.arcp_pt != undefined)
+                    {
+                        var acpDiff = result.acp_pt - result.arcp_pt;
+                        abFoot = result.arcp_pt + dot(acpDiff, result.arcp_dir) * result.arcp_dir;
+                    }
+
+                    var sketchPl = plane(vector(0, 0, 0) * meter, vector(0, -1, 0), vector(1, 0, 0));
+                    var sketch = newSketchOnPlane(context, id + "baselineMeasurementSketch", {
+                        "sketchPlane" : sketchPl
+                    });
+
+                    skLineSegment(sketch, "minChord", {
+                        "start"        : worldToPlane(sketchPl, result.fb_min_pt),
+                        "end"          : worldToPlane(sketchPl, result.ab_min_pt),
+                        "construction" : true
+                    });
+
+                    if (result.frcp_pt != undefined && result.arcp_pt != undefined)
+                    {
+                        skLineSegment(sketch, "inflChord", {
+                            "start"        : worldToPlane(sketchPl, result.frcp_pt),
+                            "end"          : worldToPlane(sketchPl, result.arcp_pt),
+                            "construction" : true
+                        });
+                    }
+
+                    if (result.frcp_pt != undefined && fbFoot != undefined)
+                    {
+                        skLineSegment(sketch, "fbTangentLeg", {
+                            "start"        : worldToPlane(sketchPl, result.frcp_pt),
+                            "end"          : worldToPlane(sketchPl, fbFoot),
+                            "construction" : true
+                        });
+                        skLineSegment(sketch, "fbNormalLeg", {
+                            "start"        : worldToPlane(sketchPl, result.fcp_pt),
+                            "end"          : worldToPlane(sketchPl, fbFoot),
+                            "construction" : true
+                        });
+                    }
+
+                    if (result.arcp_pt != undefined && abFoot != undefined)
+                    {
+                        skLineSegment(sketch, "abTangentLeg", {
+                            "start"        : worldToPlane(sketchPl, result.arcp_pt),
+                            "end"          : worldToPlane(sketchPl, abFoot),
+                            "construction" : true
+                        });
+                        skLineSegment(sketch, "abNormalLeg", {
+                            "start"        : worldToPlane(sketchPl, result.acp_pt),
+                            "end"          : worldToPlane(sketchPl, abFoot),
+                            "construction" : true
+                        });
+                    }
+
+                    skLineSegment(sketch, "camberNormal", {
+                        "start"        : worldToPlane(sketchPl, result.max_camber_pt),
+                        "end"          : worldToPlane(sketchPl, camberFoot),
+                        "construction" : true
+                    });
+
+                    skSolve(sketch);
                 }
             }
         }

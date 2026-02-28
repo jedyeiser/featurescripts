@@ -322,7 +322,7 @@ function approximateChainArcLength(samples is array, idxA is number, idxB is num
 /**
  * Format a 3D position vector as a millimeter string (2 decimal places).
  */
-function formatVec(v is Vector) returns string
+export function formatVec(v is Vector) returns string
 {
     var xMM = round2(v[0] / millimeter);
     var yMM = round2(v[1] / millimeter);
@@ -333,7 +333,7 @@ function formatVec(v is Vector) returns string
 /**
  * Format an infinite line (origin, unit direction) as a compact string.
  */
-function formatLine(origin is Vector, dir is Vector) returns string
+export function formatLine(origin is Vector, dir is Vector) returns string
 {
     return "org:" ~ formatVec(origin) ~ " dir:("
         ~ toString(round2(dir[0])) ~ ","
