@@ -324,24 +324,30 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     var edgeData    = frenetPath.edgeData;
     var totalLength = frenetPath.totalLength;
 
-    // 1. Clamp arc-length to valid range
-    var clampedArc = arcLength;
-    if (arcLength < 0 * meter)     { clampedArc = 0 * meter; }
-    else if (arcLength > totalLength) { clampedArc = totalLength; }
+    // 1. Out-of-bounds: extrapolate tangentially from the boundary frame
+    if (arcLength < 0 * meter || arcLength > totalLength)
+    {
+        var boundaryArc = (arcLength < 0 * meter) ? 0 * meter : totalLength;
+        var overflow    = arcLength - boundaryArc;   // negative at start, positive at end
+        var boundary    = getFrameAtArcLength(context, frenetPath, boundaryArc);
+        var extPos      = boundary.frame.origin + overflow * boundary.frame.zAxis;
+        var extFrame    = coordSystem(extPos, boundary.frame.xAxis, boundary.frame.zAxis);
+        return mergeMaps(boundary, { "frame": extFrame });
+    }
 
-    // 2. Find the edge whose span contains clampedArc
-    //    (last edge where startArcLength <= clampedArc)
+    // 2. Find the edge whose span contains arcLength
+    //    (last edge where startArcLength <= arcLength)
     var edgeIdx = 0;
     for (var i = 0; i < size(edgeData); i += 1)
     {
-        if (edgeData[i].startArcLength <= clampedArc)
+        if (edgeData[i].startArcLength <= arcLength)
             edgeIdx = i;
     }
 
     var edgeDat = edgeData[edgeIdx];
 
     // 3. Local arc-length within this edge (from its traversal start)
-    var localArc = clampedArc - edgeDat.startArcLength;
+    var localArc = arcLength - edgeDat.startArcLength;
 
     // 4. Count inflections we have passed (localInflectionArcs <= localArc)
     var inflectionsBefore = 0;
