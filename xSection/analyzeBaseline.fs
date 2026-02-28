@@ -432,9 +432,9 @@ export function analyzeBaselineGeometry(context is Context,
     for (var ci = 0; ci < size(chain); ci += 1)
     {
         var curveInfs = findInflectionsOnCurve(context, chain[ci].edge);
-        for (var inf in curveInfs)
+        for (var infl in curveInfs)
         {
-            allInflections = append(allInflections, inf);
+            allInflections = append(allInflections, infl);
         }
     }
 
@@ -449,9 +449,9 @@ export function analyzeBaselineGeometry(context is Context,
     var arcpEdge = undefined;
     var arcpDist = undefined;
 
-    for (var inf in allInflections)
+    for (var infl in allInflections)
     {
-        var px = inf.pt[0];
+        var px = infl.pt[0];
 
         // Forebody region: between FCP and MRS
         if (px >= fbXLow && px <= fbXHigh)
@@ -459,9 +459,9 @@ export function analyzeBaselineGeometry(context is Context,
             var fbD = abs(px - mrsX);
             if (frcpDist == undefined || fbD > frcpDist)
             {
-                frcpPt   = inf.pt;
-                frcpU    = inf.u;
-                frcpEdge = inf.edge;
+                frcpPt   = infl.pt;
+                frcpU    = infl.u;
+                frcpEdge = infl.edge;
                 frcpDist = fbD;
             }
         }
@@ -472,9 +472,9 @@ export function analyzeBaselineGeometry(context is Context,
             var abD = abs(px - mrsX);
             if (arcpDist == undefined || abD > arcpDist)
             {
-                arcpPt   = inf.pt;
-                arcpU    = inf.u;
-                arcpEdge = inf.edge;
+                arcpPt   = infl.pt;
+                arcpU    = infl.u;
+                arcpEdge = infl.edge;
                 arcpDist = abD;
             }
         }
