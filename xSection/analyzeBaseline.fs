@@ -661,7 +661,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         });
 
         // 1. Centerline: fb_min_pt → ab_min_pt
-        sketchLineSegment(sketch, "minChord", {
+        skLineSegment(sketch, "minChord", {
             "start"        : vector(result.fb_min_pt[0], result.fb_min_pt[2]),
             "end"          : vector(result.ab_min_pt[0], result.ab_min_pt[2]),
             "construction" : true
@@ -670,7 +670,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         // 2. Centerline: FRCP → ARCP (if both inflection points exist)
         if (result.frcp_pt != undefined && result.arcp_pt != undefined)
         {
-            sketchLineSegment(sketch, "inflChord", {
+            skLineSegment(sketch,"inflChord", {
                 "start"        : vector(result.frcp_pt[0], result.frcp_pt[2]),
                 "end"          : vector(result.arcp_pt[0], result.arcp_pt[2]),
                 "construction" : true
@@ -680,12 +680,12 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         // 3a. FB triangle legs: FRCP ↔ foot-of-perp, FCP ↔ foot-of-perp
         if (result.frcp_pt != undefined && fbFoot != undefined)
         {
-            sketchLineSegment(sketch, "fbTangentLeg", {
+            skLineSegment(sketch,"fbTangentLeg", {
                 "start"        : vector(result.frcp_pt[0], result.frcp_pt[2]),
                 "end"          : vector(fbFoot[0], fbFoot[2]),
                 "construction" : true
             });
-            sketchLineSegment(sketch, "fbNormalLeg", {
+            skLineSegment(sketch,"fbNormalLeg", {
                 "start"        : vector(result.fcp_pt[0], result.fcp_pt[2]),
                 "end"          : vector(fbFoot[0], fbFoot[2]),
                 "construction" : true
@@ -695,12 +695,12 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         // 3b. AB triangle legs: ARCP ↔ foot-of-perp, ACP ↔ foot-of-perp
         if (result.arcp_pt != undefined && abFoot != undefined)
         {
-            sketchLineSegment(sketch, "abTangentLeg", {
+            skLineSegment(sketch,"abTangentLeg", {
                 "start"        : vector(result.arcp_pt[0], result.arcp_pt[2]),
                 "end"          : vector(abFoot[0], abFoot[2]),
                 "construction" : true
             });
-            sketchLineSegment(sketch, "abNormalLeg", {
+            skLineSegment(sketch,"abNormalLeg", {
                 "start"        : vector(result.acp_pt[0], result.acp_pt[2]),
                 "end"          : vector(abFoot[0], abFoot[2]),
                 "construction" : true
@@ -708,11 +708,11 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
         }
 
         // 4. Camber normal: max_camber_pt → camberFoot (perpendicular to min chord)
-        sketchLineSegment(sketch, "camberNormal", {
+        skLineSegment(sketch,"camberNormal", {
             "start"        : vector(result.max_camber_pt[0], result.max_camber_pt[2]),
             "end"          : vector(camberFoot[0], camberFoot[2]),
             "construction" : true
         });
 
-        sketchSolve(sketch);
+        skSolve(sketch);
     });
