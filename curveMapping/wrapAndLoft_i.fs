@@ -532,15 +532,19 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 mappedData = append(mappedData, {
                     "edgeIndex": toResult.edgeIndex,
                     "point"    : frenetPointToWorld(localCoords, toFrameResult),
-                    "sFrom"    : s_from
+                    "sFrom"    : s_from,
+                    "xAxis"    : toFrameResult.frame.xAxis
                 });
             }
 
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
-            var segStartIdx     = 0;
-            var segCount        = 0;
-            var junctionPt      = undefined;
-            var junctionTangent = undefined;
+            var segStartIdx               = 0;
+            var segCount                  = 0;
+            var junctionPt                = undefined;
+            var junctionTangent           = undefined;
+            var wrappedSegQueries         = [];
+            var primaryOffsetSegQueries   = [];
+            var secondaryOffsetSegQueries = [];
 
             while (segStartIdx < size(mappedData))
             {
@@ -666,10 +670,47 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                 " count=" ~ toString(size(segPoints)));
                     }
 
+                    // Compute representative xAxis for this span (average of per-sample stored xAxes)
+                    var spanXAxisSum = vector(0, 0, 0);
+                    for (var k = segStartIdx; k <= segEndIdx; k += 1)
+                    {
+                        spanXAxisSum = spanXAxisSum + mappedData[k].xAxis;
+                    }
+                    var spanXAxis = normalize(spanXAxisSum);
+
+                    // Build primary offset BSpline (shift all control points along spanXAxis)
+                    var primaryOffsetCurve = mergeMaps(mappedCurve, {
+                        "controlPoints": mapArray(mappedCurve.controlPoints,
+                            function(cp) { return cp + definition.primaryOffset * spanXAxis; })
+                    });
+
+                    // Build secondary offset BSpline (opposite direction) if requested
+                    var secondaryOffsetCurve = undefined;
+                    if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
+                    {
+                        secondaryOffsetCurve = mergeMaps(mappedCurve, {
+                            "controlPoints": mapArray(mappedCurve.controlPoints,
+                                function(cp) { return cp - definition.secondOffset * spanXAxis; })
+                        });
+                    }
+
                     try
                     {
-                        opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
-                                             { "bSplineCurve": mappedCurve });
+                        var wrappedId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
+                        opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
+                        wrappedSegQueries = append(wrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
+
+                        var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "primaryOffset");
+                        opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
+                        primaryOffsetSegQueries = append(primaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
+
+                        if (secondaryOffsetCurve != undefined)
+                        {
+                            var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "secondaryOffset");
+                            opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
+                            secondaryOffsetSegQueries = append(secondaryOffsetSegQueries, qCreatedBy(secondaryOffsetId, EntityType.EDGE));
+                        }
+
                         segCount += 1;
                     }
                     catch (e)
@@ -704,6 +745,59 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
                 segStartIdx = segEndIdx + 1;
             }
+
+            // ===== Loft and curve cleanup for source edge i =====
+            if (size(wrappedSegQueries) > 0)
+            {
+                // Determine which two curves to loft between (the outermost pair)
+                var loftProfile1 = qUnion(wrappedSegQueries);
+                var loftProfile2 = qUnion(primaryOffsetSegQueries);
+                if (definition.secondDirection && size(secondaryOffsetSegQueries) > 0)
+                {
+                    loftProfile1 = qUnion(primaryOffsetSegQueries);
+                    loftProfile2 = qUnion(secondaryOffsetSegQueries);
+                }
+
+                try
+                {
+                    loft(context, id + (toString(i) ~ "loft"), {
+                        "bodyType"             : ToolBodyType.SURFACE,
+                        "operationType"        : NewBodyOperationType.NEW,
+                        "surfaceOperationType" : NewSurfaceOperationType.NEW,
+                        "wireProfilesArray"    : [
+                            { "wireProfileEntities" : loftProfile1 },
+                            { "wireProfileEntities" : loftProfile2 }
+                        ]
+                    });
+                }
+                catch (e)
+                {
+                    println("ERROR: wrapAndLoft loft failed for source edge " ~ toString(i) ~ " - " ~ toString(e));
+                }
+
+                // Collect all offset queries for this source edge
+                var allOffsetQueries = qUnion(primaryOffsetSegQueries);
+                if (size(secondaryOffsetSegQueries) > 0)
+                {
+                    allOffsetQueries = qUnion([allOffsetQueries, qUnion(secondaryOffsetSegQueries)]);
+                }
+
+                if (!definition.keepOutputCurves)
+                {
+                    // Delete all curve bodies — only the lofted surface is kept
+                    opDeleteBodies(context, id + (toString(i) ~ "deleteAllCurves"), {
+                        "entities" : qUnion([qUnion(wrappedSegQueries), allOffsetQueries])
+                    });
+                }
+                else if (definition.outputCurveMode == OutputCurveMode.KEEP_WRAPPED)
+                {
+                    // Delete offset curves; keep wrapped curve segments
+                    opDeleteBodies(context, id + (toString(i) ~ "deleteOffsets"), {
+                        "entities" : allOffsetQueries
+                    });
+                }
+                // OutputCurveMode.KEEP_ALL: keep everything, delete nothing
+            }
         }
 
         // ===== Cleanup planar projected from-curves =====
@@ -712,7 +806,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             opDeleteBodies(context, id + "cleanupProjected", { "entities" : projectedBodyQuery });
         }
 
-        // Out of scope this session: primaryOffset / secondOffset, lofting, keepOutputCurves / opExtractWires
+        // TODO (future): opExtractWires to join multi-span segments into single named wire bodies
      });
 
 
