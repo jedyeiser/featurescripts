@@ -127,6 +127,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Description" : "Draw Frenet frame axes along the to reference path",
                         "Default" : false }
             definition.debugShowToFrames is boolean;
+
+            annotation { "Name" : "Show source points",
+                        "Description" : "Draw cyan debug points at each sampled source curve position",
+                        "Default" : false }
+            definition.showSourcePoints is boolean;
+
+            annotation { "Name" : "Show wrapped points",
+                        "Description" : "Draw magenta debug points at each mapped output position",
+                        "Default" : false }
+            definition.showWrappedPoints is boolean;
         }
     }
 
@@ -254,7 +264,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
                 var pt = srcPoints[sIdx];
-                addDebugPoint(context, pt, DebugColor.CYAN);
+                if (definition.showSourcePoints)
+                    addDebugPoint(context, pt, DebugColor.CYAN);
 
                 // Project source point onto from-path; get Frenet frame there
                 // Warm-start hint carries the previous point's edge/param for faster convergence
@@ -292,7 +303,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var newToPoint = toFrameResult.frame.origin + toFrameResult.frame.xAxis * localCoords[1] + yAxis(toFrameResult.frame) * localCoords[2] + toFrameResult.frame.zAxis * localCoords[0];
                 var dist = norm(newToPoint - toFrameResult.frame.origin);
                 
-                addDebugPoint(context, newToPoint, DebugColor.MAGENTA);
+                if (definition.showWrappedPoints)
+                    addDebugPoint(context, newToPoint, DebugColor.MAGENTA);
 
                 var toPoint = newToPoint; //frenetPointToWorld(localCoords, toFrameResult); -> THIS IS OLD
                 if (definition.printWrapDetails)

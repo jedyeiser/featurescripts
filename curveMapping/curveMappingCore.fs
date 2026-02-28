@@ -374,7 +374,11 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     {
         // 6b. Curved: evaluate exact Frenet frame on actual edge geometry
         // arcFrac maps local traversal arc-length → [0,1] arc-length fraction on edge
+        // Clamp to [0,1] to guard against floating-point overshoot at the boundary
+        // (e.g. arcLength == totalLength but float subtraction gives localArc = length + eps).
         var arcFrac = localArc.value / edgeDat.length.value;
+        if (arcFrac < 0) { arcFrac = 0; }
+        if (arcFrac > 1) { arcFrac = 1; }
         if (!edgeDat.stdDir)
             arcFrac = 1 - arcFrac;  // traversal is reversed: start=1, end=0
 

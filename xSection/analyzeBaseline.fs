@@ -655,9 +655,12 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             abFoot = result.arcp_pt + dot(acpDiff, result.arcp_dir) * result.arcp_dir;
         }
 
-        // Create sketch on XZ plane (baseline lies in world XZ plane, Y≈0)
+        // Create sketch on XZ plane (baseline lies in world XZ plane, Y≈0).
+        // Construct plane explicitly: normal = +Y, x-direction = +X, so
+        // sketch u = world X (ski length) and sketch v = world Z (ski height).
+        var sketchPl = plane(vector(0, 0, 0) * meter, vector(0, 1, 0), vector(1, 0, 0));
         var sketch = newSketchOnPlane(context, id + "baselineMeasurementSketch", {
-            "sketchPlane" : XZ_PLANE
+            "sketchPlane" : sketchPl
         });
 
         // 1. Centerline: fb_min_pt → ab_min_pt
