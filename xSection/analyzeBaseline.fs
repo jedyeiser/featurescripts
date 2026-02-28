@@ -438,44 +438,43 @@ export function analyzeBaselineGeometry(context is Context,
         }
     }
 
-    // Step 7: Select outermost inflection in each half (FRCP / ARCP)
+    // Step 7: Select inflection with lowest Z in each half (FRCP / ARCP)
     var frcpPt   = undefined;
     var frcpU    = undefined;
     var frcpEdge = undefined;
-    var frcpDist = undefined;
+    var frcpZ    = undefined;
 
     var arcpPt   = undefined;
     var arcpU    = undefined;
     var arcpEdge = undefined;
-    var arcpDist = undefined;
+    var arcpZ    = undefined;
 
     for (var infl in allInflections)
     {
         var px = infl.pt[0];
+        var pz = infl.pt[2];
 
         // Forebody region: between FCP and MRS
         if (px >= fbXLow && px <= fbXHigh)
         {
-            var fbD = abs(px - mrsX);
-            if (frcpDist == undefined || fbD > frcpDist)
+            if (frcpZ == undefined || pz < frcpZ)
             {
                 frcpPt   = infl.pt;
                 frcpU    = infl.u;
                 frcpEdge = infl.edge;
-                frcpDist = fbD;
+                frcpZ    = pz;
             }
         }
 
         // Aftbody region: between MRS and ACP
         if (px >= abXLow && px <= abXHigh)
         {
-            var abD = abs(px - mrsX);
-            if (arcpDist == undefined || abD > arcpDist)
+            if (arcpZ == undefined || pz < arcpZ)
             {
                 arcpPt   = infl.pt;
                 arcpU    = infl.u;
                 arcpEdge = infl.edge;
-                arcpDist = abD;
+                arcpZ    = pz;
             }
         }
     }

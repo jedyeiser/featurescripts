@@ -530,10 +530,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
 
                 mappedData = append(mappedData, {
-                    "edgeIndex": toResult.edgeIndex,
-                    "point"    : frenetPointToWorld(localCoords, toFrameResult),
-                    "sFrom"    : s_from,
-                    "xAxis"    : toFrameResult.frame.xAxis
+                    "edgeIndex" : toResult.edgeIndex,
+                    "point"     : frenetPointToWorld(localCoords, toFrameResult),
+                    "sFrom"     : s_from,
+                    "offsetDir" : yAxis(toFrameResult.frame)  // to-frame binormal = loft width direction
                 });
             }
 
@@ -542,6 +542,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var segCount                  = 0;
             var junctionPt                = undefined;
             var junctionTangent           = undefined;
+            var junctionOffsetDir         = undefined;
             var wrappedSegQueries         = [];
             var primaryOffsetSegQueries   = [];
             var secondaryOffsetSegQueries = [];
@@ -556,22 +557,27 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     segEndIdx += 1;
                 }
 
-                var segPoints = [];
+                var segPoints     = [];
+                var segOffsetDirs = [];
 
-                // Capture carry-over tangent before clearing for this span
-                var carryOverTangent = junctionTangent;
-                junctionTangent = undefined;
+                // Capture carry-over junction data before clearing for this span
+                var carryOverTangent   = junctionTangent;
+                var carryOverOffsetDir = junctionOffsetDir;
+                junctionTangent  = undefined;
+                junctionOffsetDir = undefined;
 
                 // Prepend exact junction point carried from end of previous span
                 if (junctionPt != undefined)
                 {
-                    segPoints = append(segPoints, junctionPt);
+                    segPoints     = append(segPoints,     junctionPt);
+                    segOffsetDirs = append(segOffsetDirs, carryOverOffsetDir);
                 }
                 junctionPt = undefined;
 
                 for (var k = segStartIdx; k <= segEndIdx; k += 1)
                 {
-                    segPoints = append(segPoints, mappedData[k].point);
+                    segPoints     = append(segPoints,     mappedData[k].point);
+                    segOffsetDirs = append(segOffsetDirs, mappedData[k].offsetDir);
                 }
 
                 // Inject exact boundary point at the junction to the next span
@@ -632,9 +638,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                             fNormal     * toFrameResult_j.frame.xAxis +
                                             fBinormal   * yAxis(toFrameResult_j.frame);
 
-                    segPoints       = append(segPoints, junctionWorldPt);
-                    junctionPt      = junctionWorldPt;
-                    junctionTangent = junctionTangentDir;
+                    var junctionOffDir = yAxis(toFrameResult_j.frame);
+                    segPoints         = append(segPoints,     junctionWorldPt);
+                    segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
+                    junctionPt        = junctionWorldPt;
+                    junctionTangent   = junctionTangentDir;
+                    junctionOffsetDir = junctionOffDir;
                 }
 
                 if (size(segPoints) >= degree + 1)
@@ -670,28 +679,29 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                 " count=" ~ toString(size(segPoints)));
                     }
 
-                    // Compute representative xAxis for this span (average of per-sample stored xAxes)
-                    var spanXAxisSum = vector(0, 0, 0);
-                    for (var k = segStartIdx; k <= segEndIdx; k += 1)
+                    // Build offset point arrays using per-point to-frame yAxis (binormal) as offset direction.
+                    // Each segPoints[k] was placed by a specific to-frame; offsetting along that frame's
+                    // yAxis (perpendicular to the path tangent and Frenet normal) is the correct loft direction.
+                    var primaryOffsetPoints   = [];
+                    var secondaryOffsetPoints = [];
+                    for (var k = 0; k < size(segPoints); k += 1)
                     {
-                        spanXAxisSum = spanXAxisSum + mappedData[k].xAxis;
+                        primaryOffsetPoints = append(primaryOffsetPoints,
+                            segPoints[k] + definition.primaryOffset * segOffsetDirs[k]);
+                        if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
+                        {
+                            secondaryOffsetPoints = append(secondaryOffsetPoints,
+                                segPoints[k] - definition.secondOffset * segOffsetDirs[k]);
+                        }
                     }
-                    var spanXAxis = normalize(spanXAxisSum);
 
-                    // Build offset curves by re-approximating from offset sample points.
-                    // Offsetting control points is NOT equivalent to a geometric offset;
-                    // re-approximating from the actual curve sample positions (segPoints) is correct.
-                    // Junction tangent derivatives carry over unchanged (parallel offset preserves tangent direction).
-                    var primaryOffsetPoints    = mapArray(segPoints, function(pt) { return pt + definition.primaryOffset * spanXAxis; });
                     var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
                     var primaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
 
-                    // Secondary offset (opposite direction) if requested
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
-                        var secondaryOffsetPoints    = mapArray(segPoints, function(pt) { return pt - definition.secondOffset * spanXAxis; });
                         var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
                         var secondaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
