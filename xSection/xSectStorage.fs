@@ -165,7 +165,6 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
     }
     catch (e)
     {
-        println("WARNING: Failed to store analysis data on origin - " ~ e);
     }
 }
 

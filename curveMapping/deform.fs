@@ -6,7 +6,7 @@ import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 export import(path : "6863116065bf5063633f30ac", version : "25a83babd1b7dfe2a98a7bac");
 
 //import curveMappingCore
-import(path : "683d867c35fdab9c98d47556", version : "08b37b441f97df3b4893ad49");
+import(path : "683d867c35fdab9c98d47556", version : "");
 
 
 

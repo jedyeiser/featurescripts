@@ -78,8 +78,6 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
         // Validate section has required data
         if (!validateSectionData(section))
         {
-            println("WARNING: Section " ~ i ~ " (station " ~ stationNum ~
-                    ") missing mesh data - GJ = 0");
             skipCount += 1;
             updatedSections = append(updatedSections, section);
             continue;
@@ -97,8 +95,6 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
         }
         catch (e)
         {
-            println("WARNING: GJ computation failed for section " ~ i ~
-                    " (station " ~ stationNum ~ ") - " ~ e);
             failCount += 1;
             // Keep existing GJ value (don't overwrite with 0)
         }
@@ -220,7 +216,6 @@ function createGJCurve(context is Context, id is Id, sections is array, namePref
     // Validate sufficient points for spline (need at least 2)
     if (size(gjPoints) < 2)
     {
-        println("WARNING: Insufficient points for GJ curve (" ~ size(gjPoints) ~ " points) - need at least 2");
         return;
     }
 
@@ -242,15 +237,12 @@ function createGJCurve(context is Context, id is Id, sections is array, namePref
                 "value" : curveName
             });
 
-            println("Created GJ visualization curve: " ~ curveName);
         }
         else
         {
-            println("WARNING: opFitSpline succeeded but no body was created");
         }
     }
     catch (e)
     {
-        println("WARNING: Failed to create GJ curve - " ~ e);
     }
 }

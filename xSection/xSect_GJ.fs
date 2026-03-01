@@ -65,13 +65,11 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     // Handle edge cases
     if (size(triangles) == 0)
     {
-        println("WARNING: No triangles in mesh - GJ = 0");
         return 0 * newton * meter * meter;
     }
 
     if (numNodes > 2000)
     {
-        println("WARNING: Very large mesh (" ~ numNodes ~ " nodes) - check mesh quality");
     }
 
     // Extract shear modulus for each triangle from material Q matrices
@@ -100,7 +98,6 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     // Check if any structural material exists
     if (G_count == 0)
     {
-        println("WARNING: No structural material found - GJ = 0");
         return 0 * newton * meter * meter;
     }
 
@@ -135,7 +132,6 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
 
     if (GJ_val <= 0.0)
     {
-        println("WARNING: GJ = 0 (no valid elements?) - clamping to 0");
         return 0 * newton * meter * meter;
     }
 
@@ -403,8 +399,6 @@ function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is
     if (skippedDegenerateArea > size(triangles) * 0.1)
     {
         var pct = (skippedDegenerateArea * 100.0 / size(triangles));
-        println("  WARNING: " ~ skippedDegenerateArea ~ " triangles skipped due to tiny area (" ~
-                pct ~ "%) - check mesh quality");
     }
 
     return {
@@ -497,7 +491,6 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
 
     if (diagZeros > n / 2)
     {
-        println("  WARNING: More than 50% of diagonal is zero - matrix likely singular");
     }
 
     // Solve system using dense Gaussian elimination
@@ -505,7 +498,6 @@ function solveFEMSystem(K is array, f is array, n is number) returns array
 
     if (psi == undefined)
     {
-        println("ERROR: Linear solver failed - matrix is singular or ill-conditioned");
         return [];  // Return empty array instead of undefined
     }
 
@@ -540,7 +532,6 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
     // Defensive check: ensure psi array is valid
     if (size(psi) == 0)
     {
-        println("WARNING: Empty psi array in computeGJFromWarping - returning GJ = 0");
         return 0 * newton * meter * meter;
     }
 
@@ -617,16 +608,11 @@ function computeGJFromWarping(triangles is array, G_elem is array, psi is array,
 
     // Diagnostic: breakdown of Jp vs warping correction
     // After fix, warp_total should be strongly negative for flat/wide sections
-    println("    Jp total = " ~ Jp_total ~ " N·m²");
-    println("    Warp correction = " ~ warp_total ~ " N·m²");
-    println("    J_SV (Jp + warp) = " ~ GJ_sum ~ " N·m²");
 
     // Use thin-plate formula (GJ = 4*Iz) — analytically exact for b/t >> 1,
     // far more accurate than coarse FEM for ski cross-sections.
     // FEM result (J_SV) kept above as diagnostic to show warping solve comparison.
     var GJ_thin_plate = 4.0 * Iz_sum;
-    println("    GJ_thin_plate (4·Iz) = " ~ GJ_thin_plate ~ " N·m²");
-    println("    Ratio FEM/thin-plate = " ~ (GJ_sum / GJ_thin_plate));
     return GJ_thin_plate * newton * meter * meter;
 }
 

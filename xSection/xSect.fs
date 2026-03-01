@@ -303,7 +303,6 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
         catch (e)
         {
-            println("WARNING: GJ inline computation failed - " ~ e);
         }
 
         // -----------------------------------------------------------------
@@ -338,7 +337,6 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
         catch (e)
         {
-            println("WARNING: Could not read analysis name - " ~ e);
         }
 
         createVisualizationCurves(context, id, crossSectionData, namePrefix);
@@ -384,12 +382,10 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
 
             if (definition.debug)
             {
-                println("Analysis complete. Feature ID: " ~ toAttributeId(id));
             }
         }
         catch (e)
         {
-            println("WARNING: Failed to store analysis data on origin: " ~ e);
         }
 
         // -----------------------------------------------------------------

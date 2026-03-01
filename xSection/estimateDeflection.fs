@@ -76,7 +76,6 @@ export enum RegionType
 export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
-    println("estimateDeflectionEditLogic called");
 
     /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
     if (definition.backOutEI == undefined)      { definition.backOutEI = false; }
@@ -197,14 +196,12 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
                 var r0 = definition.regionParams[0];
                 r0.regionType = RegionType.APPROXIMATE;
                 definition.regionParams[0] = r0;
-                println("Warning: First region cannot be BRIDGING. Reverted to APPROXIMATE.");
             }
             if (nR > 1 && definition.regionParams[nR - 1].regionType == RegionType.BRIDGING)
             {
                 var rLast = definition.regionParams[nR - 1];
                 rLast.regionType = RegionType.APPROXIMATE;
                 definition.regionParams[nR - 1] = rLast;
-                println("Warning: Last region cannot be BRIDGING. Reverted to APPROXIMATE.");
             }
         }
 
@@ -1111,40 +1108,21 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         // --- 7b. Print load summary (debug) ---
         if (definition.printLoadSummary)
         {
-            println("=== Load Summary ===");
-            println("  xs1 = " ~ toString(xs1 / meter * 1000) ~ " mm");
-            println("  xs2 = " ~ toString(xs2 / meter * 1000) ~ " mm");
             if (definition.addThirdSupport)
             {
-                println("  xs3 = " ~ toString(xs3 / meter * 1000) ~ " mm");
             }
-            println("  R1 = " ~ toString(R1 / newton) ~ " N");
-            println("  R2 = " ~ toString(R2 / newton) ~ " N");
             if (definition.addThirdSupport)
             {
-                println("  R3 = " ~ toString(R3 / newton) ~ " N");
             }
-            println("  F1 = " ~ toString(F1 / newton) ~ " N  (applied)");
             if (definition.secondApplied)
             {
-                println("  F2 = " ~ toString(F2 / newton) ~ " N  (applied)");
             }
             var netForce = R1 + R2 + R3 - F1 - F2;
-            println("  Equilibrium net = " ~ toString(netForce / newton) ~ " N  (expect ~0)");
-            println("  Distributed loads (" ~ toString(size(distLoads)) ~ "):");
             for (var dl in distLoads)
             {
-                println("    " ~ dl.label ~ ":  center=" ~ toString(dl.center / meter * 1000) ~ " mm"
-                    ~ "  force=" ~ toString(dl.force / newton) ~ " N"
-                    ~ "  width=" ~ toString(dl.width / meter * 1000) ~ " mm"
-                    ~ "  shape=" ~ toString(dl.shape)
-                    ~ "  sign=" ~ toString(dl.sign));
             }
-            println("  Point loads (" ~ toString(size(pointLoads)) ~ "):");
             for (var pl in pointLoads)
             {
-                println("    " ~ pl.label ~ ":  x=" ~ toString(pl.x / meter * 1000) ~ " mm"
-                    ~ "  force=" ~ toString(pl.force / newton) ~ " N");
             }
         }
 
@@ -1219,11 +1197,6 @@ function findNearestIndex(x_eval is array, target is ValueWithUnits) returns num
         }
         if (definition.printLoadSummary)
         {
-            println("=== M Boundary Condition Check ===");
-            println("  M_raw(xs1)  = " ~ toString(M_raw1 / (newton * meter)) ~ " N·m  (before correction)");
-            println("  M_raw(xs2)  = " ~ toString(M_raw2 / (newton * meter)) ~ " N·m  (before correction)");
-            println("  M_corr(xs1) = " ~ toString(M_arr[i1] / (newton * meter)) ~ " N·m  (expect 0)");
-            println("  M_corr(xs2) = " ~ toString(M_arr[i2] / (newton * meter)) ~ " N·m  (expect 0)");
         }
 
         // Zero M and V outside the load-affected span (physically correct: V=0, M=0 beyond all loads)

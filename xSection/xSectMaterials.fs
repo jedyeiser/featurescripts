@@ -74,7 +74,6 @@ export function buildMaterialLookup(csvData) returns map
 {
     if (!(csvData is array))
     {
-        println("WARNING: Material CSV is not an array");
         return {};
     }
 
@@ -108,7 +107,6 @@ export function buildMaterialLookup(csvData) returns map
         // Validate Young's modulus is numeric
         if (!(row[4] is number))
         {
-            println("WARNING: Skipping material row with invalid Young's modulus: " ~ toString(name));
             skippedRows += 1;
             continue;
         }
@@ -204,7 +202,6 @@ export function findOldBodyEntry(context is Context, bodyQ is Query, oldDefiniti
             }
             catch (e)
             {
-                println("WARNING: Query comparison failed - " ~ e);
             }
         }
     }

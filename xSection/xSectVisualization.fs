@@ -82,7 +82,6 @@ function createGenericCurve(context is Context, id is Id, points is array,
     }
     catch (e)
     {
-        println("WARNING: Failed to create " ~ baseName ~ " - " ~ e);
     }
 }
 

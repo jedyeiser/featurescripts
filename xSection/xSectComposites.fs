@@ -45,7 +45,6 @@ export function createCompositeWires(context is Context, id is Id, data is map)
             }
             catch (e)
             {
-                println("WARNING: Failed to create B-spline curve at section " ~ i ~ ", curve " ~ s ~ " - " ~ e);
             }
         }
 
@@ -66,7 +65,6 @@ export function createCompositeWires(context is Context, id is Id, data is map)
             }
             catch (e)
             {
-                println("WARNING: Failed to create composite part at section " ~ i ~ " - " ~ e);
             }
         }
     }

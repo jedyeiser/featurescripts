@@ -364,7 +364,6 @@ function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT
 export function updateProfileEditLogic(context is Context, id is Id, oldDefinition is map,
    definition is map, isCreating is boolean, specifiedParameters is map, clickedButton is string) returns map
 {
-    println("updateProfileEditLogic called");
 
     // Sync mode-visibility flags
     definition.showCalcs      = (definition.solverType == SolverType.DELTA ||
@@ -421,8 +420,6 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
                     definition.calcBeta  = beta;
                     definition.calcAlpha = alpha;
                     
-                    println('alpha -> ' ~ alpha);
-                    println('beta -> ' ~ beta);
                 }
             }
         }
@@ -431,7 +428,6 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
 
     if (clickedButton == "recalculate")
     {
-        println('buttonClicked');
     }
 
     // Check FCP/ACP validity and compute stiffness estimates
@@ -667,7 +663,6 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                     liveAlpha = exp((sumY - liveBeta * sumX) / n);
                 }
             }
-            println("updateProfile: liveAlpha=" ~ liveAlpha ~ " liveBeta=" ~ liveBeta ~ " (n=" ~ n ~ ")");
         }
 
         // Unit factor: 1 N·m²
@@ -768,14 +763,12 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                     // Target below minimum-thickness EI — clamp to lower bound
                     deltaT_final = deltaT_min;
                     solvedEI     = EI_min;
-                    println("WARNING STD [" ~ toString(xCoord / millimeter) ~ "mm]: target EI below min-thickness bound, clamping to EI=" ~ EI_min ~ " N·m²");
                 }
                 else if (effectiveTargEI >= EI_max)
                 {
                     // Target above maximum-delta EI — clamp to upper bound
                     deltaT_final = deltaT_max;
                     solvedEI     = EI_max;
-                    println("WARNING STD [" ~ toString(xCoord / millimeter) ~ "mm]: target EI above max-delta bound, clamping to EI=" ~ EI_max ~ " N·m²");
                 }
                 else
                 {
@@ -854,7 +847,6 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
             var T_MAX_M = 0.200;
             if (t_new_m < T_MIN_M || t_new_m > T_MAX_M)
             {
-                println("WARNING [" ~ toString(xCoord / millimeter) ~ "mm]: t_new_m=" ~ t_new_m ~ " out of range, clamping to t_old_m=" ~ t_old_m);
                 t_new_m = t_old_m;
             }
 
@@ -898,15 +890,12 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                 }
                 catch (e)
                 {
-                    println("ERROR: updateProfile approximateSpline INVALID_RESULT - " ~ e);
-                    println("  outputPoints count = " ~ size(outputPoints));
 
                     for (var i = 0; i < size(outputPoints); i += 1)
                     {
                         var pt = outputPoints[i];
                         var x_mm = toString(pt[0] / millimeter);
                         var z_mm = toString(pt[2] / millimeter);
-                        println("  [" ~ i ~ "] X=" ~ x_mm ~ " mm  Z=" ~ z_mm ~ " mm");
                     }
 
                     for (var i = 0; i < size(outputPoints) - 1; i += 1)
@@ -940,8 +929,6 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                 }
                 catch (e)
                 {
-                    println("ERROR: updateProfile opFitSpline INVALID_RESULT - " ~ e);
-                    println("  outputPoints count = " ~ size(outputPoints));
 
                     // Print each point (X in mm, Z in mm — Y is always 0)
                     for (var i = 0; i < size(outputPoints); i += 1)
@@ -949,7 +936,6 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                         var pt = outputPoints[i];
                         var x_mm = toString(pt[0] / millimeter);
                         var z_mm = toString(pt[2] / millimeter);
-                        println("  [" ~ i ~ "] X=" ~ x_mm ~ " mm  Z=" ~ z_mm ~ " mm");
                     }
 
                     // Draw debug polyline so we can see the point sequence in-canvas

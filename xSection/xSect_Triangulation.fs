@@ -266,7 +266,6 @@ function groupCurvesIntoBoundaries(curves is array, tolerance is ValueWithUnits)
     /*
     for (var g = 0; g < size(groups); g += 1)
     {
-        println("Group " ~ g ~ ": " ~ size(groups[g]) ~ " curves");
     }
     */
     return groups;
@@ -346,8 +345,6 @@ function buildPerimeterFromCurveGroup(curveGroup is array, frame is CoordSystem,
         points2D = subArray(points2D, 0, size(points2D) - 1);
     }
     
-    //println("Perimeter: " ~ size(pointIndices) ~ " points from " ~ size(curveGroup) ~ " curves");
-
     return {
         "pointIndices" : pointIndices,
         "points2D" : points2D,
@@ -763,7 +760,6 @@ export function earClipTriangulate(points2D is array, pointIndices is array) ret
             }
             else
             {
-                println("ERROR: Stuck with " ~ numLocal ~ " non-collinear vertices");
                 break;
             }
         }
@@ -782,11 +778,9 @@ export function earClipTriangulate(points2D is array, pointIndices is array) ret
     // Debug output
     if (size(triangles) > 0)
     {
-        //println("Triangulated " ~ size(points2D) ~ " points into " ~ size(triangles) ~ " triangles");
         var expected = size(points2D) - 2;
         if (size(triangles) != expected)
         {
-            println("WARNING: Expected " ~ expected ~ " triangles, got " ~ size(triangles));
         }
     }
     

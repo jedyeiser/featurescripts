@@ -98,7 +98,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
     var featureId = try silent(evaluateQuery(context, xSectFeature)[0]);
     if (featureId == undefined)
     {
-        println("WARNING: Cannot update attribute - invalid xSect feature");
         return;
     }
 
@@ -112,7 +111,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
 
     if (attributeData == undefined)
     {
-        println("WARNING: Cannot update attribute - attribute not found");
         return;
     }
 
@@ -120,7 +118,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
     var featureData = attributeData[featureKey];
     if (featureData == undefined || featureData.details == undefined)
     {
-        println("WARNING: Cannot update attribute - feature data missing");
         return;
     }
 
@@ -128,8 +125,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
     var existingSections = featureData.details.crossSections;
     if (size(existingSections) != size(updatedCrossSections))
     {
-        println("WARNING: Section count mismatch - " ~ size(existingSections) ~
-                " existing vs " ~ size(updatedCrossSections) ~ " updated");
     }
 
     for (var i = 0; i < size(updatedCrossSections); i += 1)
@@ -175,7 +170,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
     }
     catch (e)
     {
-        println("WARNING: Failed to write updated attribute - " ~ e);
     }
 }
 
@@ -247,7 +241,6 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
 
     if (attributeData == undefined)
     {
-        println("WARNING: Cannot update attribute - attribute not found");
         return;
     }
 
@@ -255,7 +248,6 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
     var featureData = attributeData[featureKey];
     if (featureData == undefined || featureData.details == undefined)
     {
-        println("WARNING: Cannot update attribute - feature data missing");
         return;
     }
 
@@ -263,8 +255,6 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
     var existingSections = featureData.details.crossSections;
     if (size(existingSections) != size(updatedCrossSections))
     {
-        println("WARNING: Section count mismatch - " ~ size(existingSections) ~
-                " existing vs " ~ size(updatedCrossSections) ~ " updated");
     }
 
     for (var i = 0; i < size(updatedCrossSections); i += 1)
@@ -305,7 +295,6 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
     }
     catch (e)
     {
-        println("WARNING: Failed to write updated attribute - " ~ e);
     }
 }
 

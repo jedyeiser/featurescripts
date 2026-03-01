@@ -1088,11 +1088,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             throw regenError("Rocker lengths are too large — FRCP must be less than ARCP.");
         }
 
-        println("generateBaseline: xFCP="   ~ round(xFCP   / millimeter) ~
-                "  xFRCP=" ~ round(xFRCP  / millimeter) ~
-                "  xLoad=" ~ round(xMount / millimeter) ~
-                "  xARCP=" ~ round(xARCP  / millimeter) ~
-                "  xACP="  ~ round(xACP   / millimeter) ~ " mm");
 
         // ----------------------------------------------------------------
         // 3. Load EI data
@@ -1107,7 +1102,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             {
                 eiData = getEIFromEdges(context, definition.eiEdgesQuery, xFCP, xACP);
                 hasEI  = (size(eiData) >= 2);
-                println("generateBaseline: EI data loaded, " ~ size(eiData) ~ " points");
             }
         }
 
@@ -1242,10 +1236,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                         var vec_z  = (fTipPtLoop.z - splineStartPt[2]) / meter;
                         var fcph_m = abs(vec_x * frcp_dz - vec_z * frcp_dx);
                         fcph_err   = fcph_m - definition.fcpHeight / meter;
-                        println("rocIter=" ~ rocIter ~
-                                " FCPH=" ~ round(fcph_m * 1e6) / 1e3 ~
-                                " spec=" ~ round(definition.fcpHeight / millimeter * 1e3) / 1e3 ~
-                                " err="  ~ round(fcph_err * 1e6) / 1e3 ~ " mm");
                         if (abs(fcph_err) > FCH_TOL)
                         {
                             // Newton: d(FCPH)/d(Z_FCP) = frcp_dx  =>  step = err / frcp_dx
@@ -1268,10 +1258,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                         var vec_z2  = (aTipPtLoop.z - splineEndPt[2]) / meter;
                         var acph_m  = abs(vec_x2 * arcp_dz - vec_z2 * arcp_dx);
                         acph_err    = acph_m - definition.acpHeight / meter;
-                        println("rocIter=" ~ rocIter ~
-                                " ACPH=" ~ round(acph_m * 1e6) / 1e3 ~
-                                " spec=" ~ round(definition.acpHeight / millimeter * 1e3) / 1e3 ~
-                                " err="  ~ round(acph_err * 1e6) / 1e3 ~ " mm");
                         if (abs(acph_err) > FCH_TOL)
                         {
                             // Newton: d(ACPH)/d(Z_ACP) = arcp_dx  =>  step = err / arcp_dx
@@ -1284,7 +1270,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
             if (abs(fcph_err) < FCH_TOL && abs(acph_err) < FCH_TOL)
             {
-                println("generateBaseline: FCPH/ACPH converged at iter=" ~ rocIter);
                 break;
             }
 
@@ -1296,9 +1281,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             finalPts = mchResult.finalPts;
         }
 
-        println("generateBaseline: done  fcpHeff=" ~
-                round(fcpHeightEff / millimeter * 1000) / 1000 ~
-                " mm  acpHeff=" ~ round(acpHeightEff / millimeter * 1000) / 1000 ~ " mm");
 
         // ----------------------------------------------------------------
         // 6. Fit camber spline separately, then build exact G1 Bézier
@@ -1604,7 +1586,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
         catch (e)
         {
-            println("ERROR generateBaseline: spline fitting failed — " ~ e);
             throw regenError("Baseline spline fitting failed — see console output.");
         }
     });

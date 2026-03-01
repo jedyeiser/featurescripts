@@ -74,8 +74,6 @@ export function debugVisualization(context is Context, id is Id, data is map, de
 
         if (definition.printBodyData)
         {
-            println("=== Cross Section " ~ (idx + 1) ~ " ===");
-            println("Total section points: " ~ size(sectionPoints));
         }
 
         for (var bodyInfo in section.bodyData)
@@ -90,8 +88,6 @@ export function debugVisualization(context is Context, id is Id, data is map, de
 
             if (definition.printBodyData)
             {
-                println("--- Body " ~ bodyIdx ~ " ---");
-                println("  Groups: " ~ size(bodyInfo.groups));
                 printGroupData(bodyInfo.groups, sectionPoints, 1, definition.printTriangles);
             }
 
@@ -176,33 +172,21 @@ function printGroupData(groups is array, sectionPoints is array, depth is number
     for (var g = 0; g < size(groups); g += 1)
     {
         var group = groups[g];
-        println(indent ~ "Group " ~ g ~ ":");
-        println(indent ~ "  Perimeter points: " ~ size(group.perimeterPointIndices));
-        println(indent ~ "  Triangles: " ~ size(group.triangles));
-        println(indent ~ "  Area: " ~ group.sectionProperties.area);
-        println(indent ~ "  Subgroups: " ~ size(group.subgroups));
 
-        println(indent ~ "  Perimeter coordinates (2D):");
         for (var i = 0; i < size(group.perimeterPointIndices); i += 1)
         {
             var ptIdx = group.perimeterPointIndices[i];
             var pt2D = sectionPoints[ptIdx].point2D;
-            println(indent ~ "    [" ~ i ~ "] idx=" ~ ptIdx ~ " X=" ~ pt2D[0] ~ " Y=" ~ pt2D[1]);
         }
 
         if (printTriangles)
         {
-            println(indent ~ "  Triangle indices:");
             for (var t = 0; t < size(group.triangles); t += 1)
             {
                 var tri = group.triangles[t];
                 var p0 = sectionPoints[tri[0]].point2D;
                 var p1 = sectionPoints[tri[1]].point2D;
                 var p2 = sectionPoints[tri[2]].point2D;
-                println(indent ~ "    [" ~ t ~ "] " ~ tri[0] ~ " -> " ~ tri[1] ~ " -> " ~ tri[2]);
-                println(indent ~ "      (" ~ p0[0] ~ ", " ~ p0[1] ~ ")");
-                println(indent ~ "      (" ~ p1[0] ~ ", " ~ p1[1] ~ ")");
-                println(indent ~ "      (" ~ p2[0] ~ ", " ~ p2[1] ~ ")");
             }
         }
 

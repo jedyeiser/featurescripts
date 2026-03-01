@@ -432,12 +432,10 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         // Warn if stiffness is suspiciously low
         if (abs(A[0][0]) < LOW_STIFFNESS_WARNING)
         {
-            println("WARNING: Section has very low extensional stiffness (A11 = " ~ A[0][0] ~ ")");
         }
     }
     else
     {
-        println("WARNING: Zero extensional stiffness detected - all bodies may be set to IGNORE");
     }
 
     // =====================================================================

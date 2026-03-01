@@ -105,7 +105,6 @@ export function processCrossSections(context is Context, id is Id, definition is
     }
     catch (e)
     {
-        println("WARNING: Failed to parse material CSV - " ~ e);
     }
 
     // -----------------------------------------------------------------
@@ -155,7 +154,6 @@ export function processCrossSections(context is Context, id is Id, definition is
         }
         catch (e)
         {
-            println("WARNING: Could not compute body volume - " ~ e);
         }
         bodyEntry.volume = bodyVolume;
 
@@ -202,7 +200,6 @@ export function processCrossSections(context is Context, id is Id, definition is
             var bodyIdx = bodyIndexMap[toString(body)];
             if (bodyIdx == undefined)
             {
-                println("WARNING: Body not found in index map at section " ~ i);
                 continue;
             }
 
@@ -259,7 +256,6 @@ export function processCrossSections(context is Context, id is Id, definition is
             var bodyIdx = bodyIndexMap[toString(body)];
             if (bodyIdx == undefined)
             {
-                println("WARNING: Body not found in index map at section " ~ i);
                 continue;
             }
 
@@ -297,7 +293,6 @@ export function processCrossSections(context is Context, id is Id, definition is
         // Validate that we have valid bounding box data
         if (overallMinX == undefined || overallMaxX == undefined || overallMinY == undefined || overallMaxY == undefined)
         {
-            println("WARNING: Section " ~ i ~ " has no valid body data (no intersecting bodies)");
             // Create empty bounding box with zero dimensions
             var sectionBoundingBox = {
                 "minX" : 0 * meter,
@@ -333,14 +328,12 @@ export function processCrossSections(context is Context, id is Id, definition is
         try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
         catch (e)
         {
-            println("WARNING: Could not delete plane at section " ~ i ~ " - " ~ e);
         }
         if (size(wireQueries) > 0)
         {
             try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
             catch (e)
             {
-                println("WARNING: Could not delete wires at section " ~ i ~ " - " ~ e);
             }
         }
 
@@ -423,7 +416,6 @@ export function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) re
     }
     catch (e)
     {
-        println("WARNING: Failed to resolve override material data - " ~ e);
     }
     return updated;
 }

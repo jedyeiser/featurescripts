@@ -64,7 +64,6 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
 
             if (!validateSectionData(section))
             {
-                println("WARNING: Section " ~ i ~ " (station " ~ stationNum ~ ") missing mesh data - skipped");
                 skipCount += 1;
                 continue;
             }
@@ -88,8 +87,6 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
             }
             catch (e)
             {
-                println("WARNING: GJ computation failed for section " ~ i ~
-                        " (station " ~ stationNum ~ ") - " ~ e);
                 failCount += 1;
             }
         }

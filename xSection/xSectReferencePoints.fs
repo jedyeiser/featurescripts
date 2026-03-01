@@ -62,7 +62,6 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
     }
     catch (e)
     {
-        println("WARNING: Vertex resolution failed - " ~ e);
     }
 
     // --- Try as mate connector ---
@@ -77,7 +76,6 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
     }
     catch (e)
     {
-        println("WARNING: Mate connector resolution failed - " ~ e);
     }
 
     // --- Try as planar face ---
@@ -101,7 +99,6 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
     {
         if (e is map && tryGetKey(e, "message") != undefined)
             throw e;  // Re-throw our validation error
-        println("WARNING: Planar face resolution failed - " ~ e);
     }
 
     return undefined;

@@ -260,7 +260,6 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     if (fcpX < xMin - BOUND_TOL || fcpX > xMax + BOUND_TOL ||
         acpX < xMin - BOUND_TOL || acpX > xMax + BOUND_TOL)
     {
-        println("WARNING: FCP/ACP outside edge bounds - using uniform spacing");
         var uniformFrames = getCrossSectionFrames(context, edge, numSections);
         var result = [];
         for (var i = 0; i < size(uniformFrames); i += 1)
@@ -280,7 +279,6 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     // Check for degenerate span
     if (abs(acpXOrdered - fcpXOrdered) < 1e-6 * meter)
     {
-        println("WARNING: FCP = ACP - using uniform spacing");
         var uniformFrames = getCrossSectionFrames(context, edge, numSections);
         var result = [];
         for (var i = 0; i < size(uniformFrames); i += 1)
