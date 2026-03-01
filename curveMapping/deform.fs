@@ -488,13 +488,26 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
                 if (definition.keepWires)
                 {
-                    opExtractWires(context, id + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
-                    opDeleteBodies(context, id + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
-                    var wireBodies = evaluateQuery(context, qCreatedBy(id + "keepWires", EntityType.BODY));
-                    if (size(wireBodies) > 1)
+                    // Try to stitch all wrapped edges into clean wire bodies.
+                    // This will fail with NON_MANIFOLD whenever 3+ faces share a vertex
+                    // (which is normal for any solid) — fall back to a composite part
+                    // of the raw per-edge wire bodies in that case.
+                    try
+                    {
+                        opExtractWires(context, id + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
+                        opDeleteBodies(context, id + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
+                        var wireBodies = evaluateQuery(context, qCreatedBy(id + "keepWires", EntityType.BODY));
+                        if (size(wireBodies) > 1)
+                        {
+                            opCreateCompositePart(context, id + "compositePart", {
+                                "bodies": qCreatedBy(id + "keepWires", EntityType.BODY)
+                            });
+                        }
+                    }
+                    catch
                     {
                         opCreateCompositePart(context, id + "compositePart", {
-                            "bodies": qCreatedBy(id + "keepWires", EntityType.BODY)
+                            "bodies": qUnion(allWrappedBodyQueries)
                         });
                     }
                 }
