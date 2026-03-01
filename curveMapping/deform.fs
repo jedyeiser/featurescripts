@@ -22,7 +22,7 @@ import(path : "683d867c35fdab9c98d47556", version : "0c37d55f61989bbc2d78b7bd");
  *   3. createBodies — union faces into a single body, delete intermediate wire/vertex bodies
  */
 
-export const FaceControlMultiplierBounds = {(unitless) : [2, 5, 10]} as IntegerBoundSpec;
+export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
 
 // Local copy — mirrors debugDrawFrames in wrapCurve.fs.
 // Needed because deform imports wrapCurve at a pinned version that predates the export.
@@ -182,7 +182,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // Accumulators declared before conditional blocks so all steps share scope
         var edgeMapping                  = [];
         var reconstructedFaceBodyQueries = [];
-        var allGuideVertexQueries        = [];
 
         // Cumulative debug conditions: each step implies all prior steps ran
         var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
@@ -238,34 +237,18 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     }
                 }
 
-                // Get mapped interior guide points for this face
-                var guidePoints = transformFacepoints(context,
-                    id + ("faceGuides" ~ fIdx),
-                    face,
-                    definition.faceUsamplingMultiplier,
-                    definition.faceVsamplingMultiplier,
-                    fromFrenetPath, toFrenetPath, settings);
-
-                // Create a point body for each guide point
-                var faceGuideVertexQueries = [];
-                for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
-                {
-                    var vtxId = id + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
-                    opPoint(context, vtxId, { "point": guidePoints[gIdx] });
-                    faceGuideVertexQueries = append(faceGuideVertexQueries, qCreatedBy(vtxId, EntityType.BODY));
-                    allGuideVertexQueries  = append(allGuideVertexQueries,  qCreatedBy(vtxId, EntityType.BODY));
-                }
-
-                // Fill surface from wrapped boundary edges + interior guide vertices
+                // Fill surface from wrapped boundary edges.
+                // Guide vertices (opPoint) are skipped — each is a heavy kernel entity creation.
+                // The boundary edges alone constrain the surface; guide vertices can be
+                // re-introduced later via a lighter mechanism if shape fidelity requires it.
                 var fillId = id + ("fill" ~ fIdx);
-                var guideVtxQuery = size(faceGuideVertexQueries) > 0 ? qUnion(faceGuideVertexQueries) : qNothing();
                 try
                 {
                     opFillSurface(context, fillId, {
                         "edgesG0"      : qUnion(wrappedBoundaryEdgeQueries),
                         "edgesG1"      : qNothing(),
                         "edgesG2"      : qNothing(),
-                        "guideVertices": guideVtxQuery
+                        "guideVertices": qNothing()
                     });
                     reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
                         qCreatedBy(fillId, EntityType.BODY));
@@ -298,11 +281,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(allWrappedEdgeQueries) });
             }
 
-            // Delete all guide vertex bodies
-            if (size(allGuideVertexQueries) > 0)
-            {
-                opDeleteBodies(context, id + "deleteGuideVtx", { "entities": qUnion(allGuideVertexQueries) });
-            }
         }
     });
 
