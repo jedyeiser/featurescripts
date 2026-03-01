@@ -68,6 +68,14 @@ export const SIDECUT_RADIUS_BOUNDS = {
     (meter): [1, 21, 100]  // [min, default, max]
 } as LengthBoundSpec;
 
+export const APPROX_TOLERANCE_BOUNDS = {
+    (millimeter): [0.001, 0.001, 10]
+} as LengthBoundSpec;
+
+export const MAX_CONTROL_POINTS_BOUNDS = {
+    (unitless): [4, 30, 200]
+} as IntegerBoundSpec;
+
 export enum ScalePinLocation
 {
     annotation { "Name" : "Pin ACP width" }
@@ -125,12 +133,21 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             isLength(definition.targetRadius, SIDECUT_RADIUS_BOUNDS);
         }
 
-        annotation { "Name" : "Output curve degree", "Default" : 3 }
-        isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
+        annotation { "Group Name" : "Spline options", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "Output curve degree", "Default" : 3 }
+            isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
 
-        annotation { "Name" : "Strict arcs", "Default" : false }
-        definition.strictArcs is boolean;
-        
+            annotation { "Name" : "Strict arcs", "Default" : false }
+            definition.strictArcs is boolean;
+
+            annotation { "Name" : "Approximation tolerance" }
+            isLength(definition.approximationTolerance, APPROX_TOLERANCE_BOUNDS);
+
+            annotation { "Name" : "Max control points", "Default" : 30 }
+            isInteger(definition.maxControlPoints, MAX_CONTROL_POINTS_BOUNDS);
+        }
+
         annotation { "Name" : "Specify target width", "Default" : false }
         definition.specifyWidth is boolean;
         
@@ -158,12 +175,21 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                 isLength(definition.negTargetRadius, SIDECUT_RADIUS_BOUNDS);
             }
 
-            annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
-            isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
+            annotation { "Group Name" : "-Y Spline options", "Collapsed By Default" : false }
+            {
+                annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
+                isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
 
-            annotation { "Name" : "-Y Strict arcs", "Default" : false }
-            definition.negStrictArcs is boolean;
-            
+                annotation { "Name" : "-Y Strict arcs", "Default" : false }
+                definition.negStrictArcs is boolean;
+
+                annotation { "Name" : "-Y Approximation tolerance" }
+                isLength(definition.negApproximationTolerance, APPROX_TOLERANCE_BOUNDS);
+
+                annotation { "Name" : "-Y Max control points", "Default" : 30 }
+                isInteger(definition.negMaxControlPoints, MAX_CONTROL_POINTS_BOUNDS);
+            }
+
             annotation { "Name" : "-Y Specify target width", "Default" : false }
             definition.negSpecifyWidth is boolean;
             
@@ -232,6 +258,8 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // Output degree and strict arcs are now always available (not mode-dependent)
         var outputDegree = definition.outputDegree;
         var strictArcs = definition.strictArcs;
+        var approxTolerance = definition.approximationTolerance;
+        var maxControlPoints = definition.maxControlPoints;
 
         var scaledPos = scaleSidecut(context, id + "scaledPos", categorized.sidecutPos, refAnalysisPos,
             refFcp[0], refAcp[0], refMrs[0],
@@ -242,7 +270,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             definition.specifyWidth,
             definition.specifyWidth ? definition.targetWaistWidth : refAnalysisPos.waistWidth,
             tolerance,
-            outputDegree, strictArcs);
+            outputDegree, strictArcs, approxTolerance, maxControlPoints);
 
         // =====================================================================
         // STEP 6: Transform +Y tip/tail
@@ -291,13 +319,15 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             // Output degree and strict arcs are now always available (not mode-dependent)
             var negOutputDegree = definition.negOutputDegree;
             var negStrictArcs = definition.negStrictArcs;
+            var negApproximationTolerance = definition.negApproximationTolerance;
+            var negMaxControlPoints = definition.negMaxControlPoints;
 
             var scaledNegFlipped = scaleSidecut(context, id + "scaledNeg", negFlipped, refAnalysisNeg,
                 refFcp[0], refAcp[0], refMrs[0],
                 newFcp[0], newAcp[0], newMrs[0],
                 negScaleMode, negPinLocation, negTargetRadius,
                 negSpecifyWidth, negTargetWaistWidth, tolerance,
-                negOutputDegree, negStrictArcs);
+                negOutputDegree, negStrictArcs, negApproximationTolerance, negMaxControlPoints);
             
             // Flip back to -Y space
             scaledNegCurves = mirrorCurvesY(scaledNegFlipped.curves);
@@ -434,7 +464,8 @@ function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refA
     targetRadius is ValueWithUnits,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
     tolerance is ValueWithUnits,
-    outputDegree is number, strictArcs is boolean) returns map
+    outputDegree is number, strictArcs is boolean,
+    approxTolerance is ValueWithUnits, maxControlPoints is number) returns map
 {
     if (scaleMode == FootprintScaleMode.ACCORDION)
     {
@@ -456,7 +487,7 @@ function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refA
         return scaleRadius(context, id, sidecutCurves, refAnalysis,
             refFcpX, refAcpX, newFcpX, newAcpX,
             targetRadius, specifyWidth, targetWaistWidth, tolerance,
-            outputDegree, strictArcs);
+            outputDegree, strictArcs, approxTolerance, maxControlPoints);
     }
 }
 
@@ -1635,7 +1666,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     targetRadius is ValueWithUnits,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
     tolerance is ValueWithUnits,
-    outputDegree is number, strictArcs is boolean) returns map
+    outputDegree is number, strictArcs is boolean,
+    approxTolerance is ValueWithUnits, maxControlPoints is number) returns map
 {
     var refLength = abs(refAcpX - refFcpX);
     var newLength = abs(newAcpX - newFcpX);
@@ -1867,8 +1899,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
         {
             var segmentCurve = approximateSpline(context, {
                 "degree" : outputDegree,
-                "tolerance" : 0.001 * millimeter,  // Original value - tighter caused worse results
-                "maxControlPoints" : 30,  // Original value
+                "tolerance" : approxTolerance,
+                "maxControlPoints" : maxControlPoints,
                 "targets" : [approximationTarget({ "positions" : segmentPoints })],
                 "interpolateIndices" : [0, size(segmentPoints) - 1]
             })[0];
@@ -1893,8 +1925,8 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     {
         var segmentCurve = approximateSpline(context, {
             "degree" : outputDegree,
-            "tolerance" : 0.001 * millimeter,  // Original value - tighter caused worse results
-            "maxControlPoints" : 30,  // Original value
+            "tolerance" : approxTolerance,
+            "maxControlPoints" : maxControlPoints,
             "targets" : [approximationTarget({ "positions" : segmentPoints })],
             "interpolateIndices" : [0, size(segmentPoints) - 1]
         })[0];
