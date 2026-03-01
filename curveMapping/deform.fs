@@ -441,25 +441,34 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 3: Combine into one body, clean up intermediates ---
         if (runBodies)
         {
-            if (size(reconstructedFaceBodyQueries) > 0)
+            var nFaces = size(reconstructedFaceBodyQueries);
+            if (nFaces > 0)
             {
-                var boolTools = qUnion(reconstructedFaceBodyQueries);
-                try
+                // Use the first face as the accumulator target.
+                // Add remaining faces one at a time so failures can be isolated.
+                // opBoolean(target + tools) modifies the target in-place and consumes
+                // the tool, so targetQ continues to refer to the growing surface body.
+                var targetQ = reconstructedFaceBodyQueries[0];
+                for (var fIdx = 1; fIdx < nFaces; fIdx += 1)
                 {
-                    opBoolean(context, id + "unionFaces", {
-                        "tools"               : boolTools,
-                        "operationType"       : BooleanOperationType.UNION,
-                        "allowSheets"         : true,
-                        "makeSolid"           : false,
-                        "eraseImprintedEdges" : true
-                    });
-                }
-                catch (boolErr)
-                {
-                    println("ERROR: surface union failed: " ~ toString(boolErr));
-                    for (var fbq in reconstructedFaceBodyQueries)
-                        addDebugEntities(context, fbq, DebugColor.RED);
-                    opDeleteBodies(context, id + "deleteFailedFaces", { "entities": boolTools });
+                    var toolQ = reconstructedFaceBodyQueries[fIdx];
+                    try
+                    {
+                        opBoolean(context, id + ("incUnion" ~ fIdx), {
+                            "target"              : targetQ,
+                            "tools"               : toolQ,
+                            "operationType"       : BooleanOperationType.UNION,
+                            "allowSheets"         : true,
+                            "makeSolid"           : false,
+                            "eraseImprintedEdges" : true
+                        });
+                    }
+                    catch (boolErr)
+                    {
+                        println("face " ~ fIdx ~ " failed to union: " ~ toString(boolErr));
+                        addDebugEntities(context, toolQ, DebugColor.RED);
+                        opDeleteBodies(context, id + ("delFail" ~ fIdx), { "entities": toolQ });
+                    }
                 }
             }
 
