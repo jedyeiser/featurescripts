@@ -1,27 +1,27 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");   
-
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 // Import  math utilities
-export import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
+export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
 
 // Import solvers (for solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // Import geometry utilities
-export import(path : "67c190b80e8b74dcee72e7ff", version : "886e9b2544e85db7c3ceecb8");
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "b659f528da57625f6b33a849");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "735c5b3ecbb0a9846cd27b19");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "b28a4fdb05986742f733f189");
 
 // Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "d4a3f2ce0019e3c6cec0cb20");
+import(path : "66f4f03cf728e94b8f823585", version : "0e3da2c18129830ce6d043d4");
 
 // IMPORT: integrateFootprint.fs (for forceQuadraticNurbs)
 // TODO: Add document ID when syncing to Onshape
 // import(path : "DOCUMENT_ID", version : "");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "c5e3a4a2de84bcc6f4e2da21", version : "000000000000000000000000");
+import(path : "d3ad341f5b87924b36b5aba8", version : "f07dd03cf651ef79e07d74f9");
+
 
 
 
@@ -268,7 +268,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             definition.scaleMode == FootprintScaleMode.KEEP_TAPER ? definition.pinLocation : ScalePinLocation.PIN_ACP,
             definition.scaleMode == FootprintScaleMode.SCALE_RADIUS ? definition.targetRadius : refAnalysisPos.avgRadius,
             definition.specifyWidth,
-            definition.specifyWidth ? definition.targetWaistWidth : refAnalysisPos.waistWidth,
+            definition.specifyWidth ? definition.targetWaistWidth / 2 : refAnalysisPos.waistWidth,
             tolerance,
             outputDegree, strictArcs, approxTolerance, maxControlPoints);
 
@@ -314,7 +314,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                 definition.negTargetRadius : refAnalysisNeg.avgRadius;
             var negSpecifyWidth = definition.negSpecifyWidth;
             var negTargetWaistWidth = negSpecifyWidth ?
-                definition.negTargetWaistWidth : refAnalysisNeg.waistWidth;
+                definition.negTargetWaistWidth / 2 : refAnalysisNeg.waistWidth;
 
             // Output degree and strict arcs are now always available (not mode-dependent)
             var negOutputDegree = definition.negOutputDegree;

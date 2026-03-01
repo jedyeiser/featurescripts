@@ -1,9 +1,9 @@
-FeatureScript 2856;
+FeatureScript 2892;
 
-import(path : "onshape/std/common.fs", version : "2856.0");
-import(path : "onshape/std/math.fs", version : "2856.0");
-import(path : "onshape/std/vector.fs", version : "2856.0");
-export import(path : "onshape/std/nurbsUtils.fs", version : "2856.0");
+import(path : "onshape/std/common.fs", version : "2892.0");
+import(path : "onshape/std/math.fs", version : "2892.0");
+import(path : "onshape/std/vector.fs", version : "2892.0");
+export import(path : "onshape/std/nurbsUtils.fs", version : "2892.0");
 
 export const PositionTolBounds = {(millimeter) : [0.00001, 0.0001, 1]} as LengthBoundSpec;
 export const PlaneTolBounds = {(millimeter) : [0.00001, 0.00001, 1]} as LengthBoundSpec;
@@ -47,7 +47,7 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         });});
         
         var dotTol = cos(definition.tanTol);
-        var polyArcs = approximateSplinesWithPolyArcs(bSpLines, definition.posTol, definition.planeTol, dotTol, definition.minLength);
+        var polyArcs = approximateSplinesWithPolyArcs(bSplines, definition.posTol, definition.planeTol, dotTol, definition.minLength);
 
         var NURBS = primitivesToBSplines(polyArcs.segments);
         

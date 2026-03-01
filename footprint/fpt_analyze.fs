@@ -1,20 +1,20 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: tools/math_utils.fs (for safeSign)
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
 
 // IMPORT: tools/solvers.fs (for bracketFromSamples, solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // IMPORT: tools/bspline_data.fs (for getBSplineParamRange, getBSplineBounds)
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
 //import fpt_geometry
-import(path : "67c190b80e8b74dcee72e7ff", version : "886e9b2544e85db7c3ceecb8");
+import(path : "67c190b80e8b74dcee72e7ff", version : "735c5b3ecbb0a9846cd27b19");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "623bcdfbd6510a13c01044f9");
+import(path : "d3ad341f5b87924b36b5aba8", version : "f07dd03cf651ef79e07d74f9");
 
 
 

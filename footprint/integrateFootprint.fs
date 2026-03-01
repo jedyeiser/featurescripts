@@ -1,29 +1,29 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 //import fpt_geometrty (export/import)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "886e9b2544e85db7c3ceecb8");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "735c5b3ecbb0a9846cd27b19");
 
 
 // NOTE: fpt_math.fs has been deleted - all functions moved to tools/
 // IMPORT: tools/assertions.fs (for assertTrue)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
 
 // IMPORT: tools/math_utils.fs (for safeSign, clamp01)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
 
 // IMPORT: tools/numerical_integration.fs (for cumTrapz)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
 
 // IMPORT: tools/solvers.fs (for bracketFromSamples, solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/e13e99b75ba5ce6d6380ddd5/99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // evPathCurvatures() moved to fpt_geometry.fs
 //import predicates
-import(path : "a54a829744c4e15e8da55e0e", version : "e50f025b69f8b6619093d8d8");
+import(path : "a54a829744c4e15e8da55e0e", version : "e175e357bb44070e3c508589");
 
 //import arcFit
-import(path : "66f4f03cf728e94b8f823585", version : "d4a3f2ce0019e3c6cec0cb20");
+import(path : "66f4f03cf728e94b8f823585", version : "0e3da2c18129830ce6d043d4");
 
 
 
