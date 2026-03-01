@@ -5,6 +5,10 @@ import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 //export import wrapCurve
 export import(path : "6863116065bf5063633f30ac", version : "a2617201453235e14ae23dd7");
 
+//import curveMappingCore
+import(path : "683d867c35fdab9c98d47556", version : "0c37d55f61989bbc2d78b7bd");
+
+
 
 /**
  * This feature extends the concepts from wrapCurve to deform an entire solid or surface body.
@@ -91,6 +95,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Name" : "Create bodies", "Default" : false }
             definition.createBodies is boolean;
+
+            annotation { "Name" : "Dummy counter", "Description" : "Stop transforming at this edge index and highlight it magenta. -1 = process all edges." }
+            isInteger(definition.dummyCounter, { (unitless) : [-1, -1, 100] } as IntegerBoundSpec);
         }
     }
     {
@@ -108,7 +115,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             "samplingDensity"        : definition.samplingDensity,
             "approximationDegree"    : definition.approximationDegree,
             "approximationMaxCPs"    : definition.approximationMaxCPs,
-            "approximationTolerance" : definition.approximationTolerance
+            "approximationTolerance" : definition.approximationTolerance,
+            "dummyCounter"           : definition.dummyCounter
         };
 
         // Accumulators declared before conditional blocks so all steps share scope
@@ -116,10 +124,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         var reconstructedFaceBodyQueries = [];
         var allGuideVertexQueries        = [];
 
-        // Cumulative debug conditions: each step implies all prior steps ran
+        // Steps 2 and 3 (faces, bodies) are disabled while wire wrapping is being validated.
         var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
-        var runFaces  = !definition.debug || definition.createFaces  || definition.createBodies;
-        var runBodies = !definition.debug || definition.createBodies;
+        var runFaces  = false;
+        var runBodies = false;
 
         // --- Step 1: Transform edges ---
         if (runWires)
@@ -240,7 +248,15 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
     var result = [];
     for (var i = 0; i < size(edgeArray); i += 1)
     {
-        var edge       = edgeArray[i];
+        var edge = edgeArray[i];
+
+        // Dummy counter: highlight this edge and stop
+        if (settings.dummyCounter >= 0 && i >= settings.dummyCounter)
+        {
+            addDebugEntities(context, edge, DebugColor.MAGENTA);
+            break;
+        }
+
         var edgeLen    = evLength(context, { "entities": edge });
         var numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
 
