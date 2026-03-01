@@ -444,90 +444,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 3: Combine into one body, clean up intermediates ---
         if (runBodies)
         {
-            var nRecon = size(reconstructedFaceBodyQueries);
-            if (nRecon > 0)
-            {
-                // BFS union: start from face 0, expand outward through source-face adjacency.
-                // This ensures we always attempt neighbours of already-merged geometry,
-                // making failures easier to localise visually.
-
-                // Lookup: toString(sourceFace) → index in allFaces
-                var srcFaceIdxLookup = {};
-                for (var fi = 0; fi < size(allFaces); fi += 1)
-                    srcFaceIdxLookup[toString(allFaces[fi])] = fi;
-
-                // Lookup: toString(srcFaceIdx) → index in reconstructedFaceBodyQueries
-                var srcIdxToReconIdx = {};
-                for (var ri = 0; ri < nRecon; ri += 1)
-                    srcIdxToReconIdx[toString(reconstructedFaceSourceIndices[ri])] = ri;
-
-                // Track which recon indices have been visited (merged or failed)
-                var visited = {};
-                visited["0"] = true;
-
-                var targetQ  = reconstructedFaceBodyQueries[0];
-                var opCount  = 0;
-
-                // Seed frontier: neighbours of recon face 0
-                var frontier = [];
-                var seedAdj  = evaluateQuery(context,
-                    qAdjacent(allFaces[reconstructedFaceSourceIndices[0]], AdjacencyType.EDGE, EntityType.FACE));
-                for (var af in seedAdj)
-                {
-                    var adjSrcIdx = srcFaceIdxLookup[toString(af)];
-                    if (adjSrcIdx == undefined) { continue; }
-                    var adjReconIdx = srcIdxToReconIdx[toString(adjSrcIdx)];
-                    if (adjReconIdx == undefined) { continue; }
-                    var key = toString(adjReconIdx);
-                    if (visited[key] != undefined) { continue; }
-                    visited[key] = true;
-                    frontier = append(frontier, adjReconIdx);
-                }
-
-                while (size(frontier) > 0)
-                {
-                    var nextFrontier = [];
-                    for (var ri2 in frontier)
-                    {
-                        var toolQ   = reconstructedFaceBodyQueries[ri2];
-                        var srcIdx2 = reconstructedFaceSourceIndices[ri2];
-                        try
-                        {
-                            opBoolean(context, id + ("bfsUnion" ~ opCount), {
-                                "target"              : targetQ,
-                                "tools"               : toolQ,
-                                "operationType"       : BooleanOperationType.UNION,
-                                "allowSheets"         : true,
-                                "makeSolid"           : false,
-                                "eraseImprintedEdges" : true
-                            });
-                            // Merge succeeded — add this face's unvisited neighbours
-                            var adjFaces2 = evaluateQuery(context,
-                                qAdjacent(allFaces[srcIdx2], AdjacencyType.EDGE, EntityType.FACE));
-                            for (var af2 in adjFaces2)
-                            {
-                                var nSrcIdx = srcFaceIdxLookup[toString(af2)];
-                                if (nSrcIdx == undefined) { continue; }
-                                var nReconIdx = srcIdxToReconIdx[toString(nSrcIdx)];
-                                if (nReconIdx == undefined) { continue; }
-                                var nKey = toString(nReconIdx);
-                                if (visited[nKey] != undefined) { continue; }
-                                visited[nKey] = true;
-                                nextFrontier = append(nextFrontier, nReconIdx);
-                            }
-                        }
-                        catch (boolErr)
-                        {
-                            println("BFS: recon " ~ ri2 ~ " (src " ~ srcIdx2 ~ ") failed: " ~ toString(boolErr));
-                            addDebugEntities(context, toolQ, DebugColor.RED);
-                        }
-                        opCount += 1;
-                    }
-                    frontier = nextFrontier;
-                }
-            }
-
-            // Wire cleanup / keep
+            // Wire cleanup first — so qCreatedBy(id) only sees face surface bodies
+            // by the time we boolean.
             if (size(edgeMapping) > 0)
             {
                 var allWrappedEdgeQueries = mapArray(edgeMapping, function(m) { return m.wrappedEdge; });
@@ -535,11 +453,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
                 if (definition.keepWires)
                 {
-                    // Merge all wrapped edges into as few wire bodies as possible
                     opExtractWires(context, id + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
-                    // Delete the individual BSpline curve bodies now that wires are extracted
                     opDeleteBodies(context, id + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
-                    // If extraction produced multiple disconnected wire bodies, wrap in a composite part
                     var wireBodies = evaluateQuery(context, qCreatedBy(id + "keepWires", EntityType.BODY));
                     if (size(wireBodies) > 1)
                     {
@@ -554,6 +469,19 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 }
             }
 
+            // Boolean all face surface bodies remaining from this feature in one shot.
+            // Using qCreatedBy(id) mirrors what the user confirmed works manually.
+            var faceBodies = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET));
+            if (size(faceBodies) > 1)
+            {
+                opBoolean(context, id + "unionFaces", {
+                    "tools"               : qUnion(faceBodies),
+                    "operationType"       : BooleanOperationType.UNION,
+                    "allowSheets"         : true,
+                    "makeSolid"           : false,
+                    "eraseImprintedEdges" : true
+                });
+            }
         }
     });
 
