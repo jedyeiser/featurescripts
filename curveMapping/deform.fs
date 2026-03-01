@@ -33,25 +33,6 @@ export enum DeformMode
     FACES
 }
 
-// Local copy — mirrors debugDrawFrames in wrapCurve.fs.
-// Needed because deform imports wrapCurve at a pinned version that predates the export.
-function deformDebugDrawFrames(context is Context, frenetPath is map, numSamples is number)
-{
-    var totalLength = frenetPath.totalLength;
-    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
-    var arrowRadius = arrowLen * 0.05;
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var s      = totalLength * i / (numSamples - 1);
-        var result = getFrameAtArcLength(context, frenetPath, s);
-        var origin = result.frame.origin;
-
-        addDebugArrow(context, origin, origin + arrowLen * result.frame.xAxis,  arrowRadius,           DebugColor.RED);
-        addDebugArrow(context, origin, origin + arrowLen * yAxis(result.frame),  arrowRadius * (2 / 3), DebugColor.GREEN);
-        addDebugArrow(context, origin, origin + arrowLen * result.frame.zAxis,   arrowRadius * 0.5,     DebugColor.BLUE);
-    }
-}
 
 annotation { "Feature Type Name" : "Deform", "Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
 export const deform = defineFeature(function(context is Context, id is Id, definition is map)
@@ -194,9 +175,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
 
         if (definition.debugShowFromFrames)
-            deformDebugDrawFrames(context, fromFrenetPath, 10);
+            debugDrawFrames(context, fromFrenetPath, 10);
         if (definition.debugShowToFrames)
-            deformDebugDrawFrames(context, toFrenetPath, 10);
+            debugDrawFrames(context, toFrenetPath, 10);
 
         var isFacesMode = definition.deformMode == DeformMode.FACES;
 

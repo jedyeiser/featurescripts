@@ -176,42 +176,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
         // Fix 1: Align isolated from-line xAxes with to-path normal.
-        // Must run after fromRefArc/toRefArc are resolved.
         // Lines adjacent to a curve already got a curve-context xAxis in buildFrenetPath step 4.5;
         // this handles the isolated-line case (no curve neighbor) by borrowing the to-path normal.
-        var fromEdgeData = fromFrenetPath.edgeData;
-        for (var i = 0; i < size(fromEdgeData); i += 1)
-        {
-            var ed = fromEdgeData[i];
-            if (!ed.isLine)
-            {
-                continue;
-            }
-
-            // Skip lines that already received a curve-context xAxis in step 4.5
-            var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
-                              (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
-            if (hasCurveCtx)
-            {
-                continue;
-            }
-
-            // Map mid-arc of this from-edge to to-path position
-            var midFromArc = ed.startArcLength + ed.length / 2;
-            var midToArc   = toRefArc + (midFromArc - fromRefArc);
-            var toXAxis    = getFrameAtArcLength(context, toFrenetPath, midToArc).frame.xAxis;
-
-            // Project to-xAxis onto the plane perpendicular to the from-edge tangent
-            var tangent   = ed.lineFrame.zAxis;
-            var perpXAxis = toXAxis - dot(toXAxis, tangent) * tangent;
-            if (norm(perpXAxis) > 1e-6)
-            {
-                fromEdgeData[i] = mergeMaps(ed, {
-                    "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
-                });
-            }
-        }
-        fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc);
 
         if (definition.debugShowFromFrames)
         {
@@ -505,33 +472,3 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
     });
 
 
-// ============================================================================
-// debugDrawFrames  (internal helper)
-// ============================================================================
-
-/**
- * Draw Frenet frames at evenly-spaced arc-length positions along a FrenetPath.
- *
- * Uses addDebugArrow directly so arrow length scales with path geometry
- * (1/3 of inter-sample spacing) rather than using a hardcoded 5cm length.
- * Also avoids the console println that debug(context, CoordSystem) emits.
- *
- * Colors: xAxis (normal) = RED, yAxis (binormal) = GREEN, zAxis (tangent) = BLUE
- */
-export function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
-{
-    var totalLength = frenetPath.totalLength;
-    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
-    var arrowRadius = arrowLen * 0.05;
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var s      = totalLength * i / (numSamples - 1);
-        var result = getFrameAtArcLength(context, frenetPath, s);
-        var origin = result.frame.origin;
-
-        addDebugArrow(context, origin, origin + arrowLen * result.frame.xAxis,  arrowRadius,           DebugColor.RED);
-        addDebugArrow(context, origin, origin + arrowLen * yAxis(result.frame),  arrowRadius * (2 / 3), DebugColor.GREEN);
-        addDebugArrow(context, origin, origin + arrowLen * result.frame.zAxis,   arrowRadius * 0.5,     DebugColor.BLUE);
-    }
-}

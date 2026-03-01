@@ -817,27 +817,3 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
      });
 
 
-// ============================================================================
-// debugDrawFrames  (internal helper — mirrors the one in wrapCurve.fs)
-// ============================================================================
-/**
- * Draw Frenet frames at evenly-spaced arc-length positions along a FrenetPath.
- * Colors: xAxis (normal) = RED, yAxis (binormal) = GREEN, zAxis (tangent) = BLUE
- */
-function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
-{
-    var totalLength = frenetPath.totalLength;
-    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
-    var arrowRadius = arrowLen * 0.05;
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var s      = totalLength * i / (numSamples - 1);
-        var result = getFrameAtArcLength(context, frenetPath, s);
-        var origin = result.frame.origin;
-
-        addDebugArrow(context, origin, origin + arrowLen * result.frame.xAxis,  arrowRadius,           DebugColor.RED);
-        addDebugArrow(context, origin, origin + arrowLen * yAxis(result.frame),  arrowRadius * (2 / 3), DebugColor.GREEN);
-        addDebugArrow(context, origin, origin + arrowLen * result.frame.zAxis,   arrowRadius * 0.5,     DebugColor.BLUE);
-    }
-}

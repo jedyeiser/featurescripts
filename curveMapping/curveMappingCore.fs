@@ -1,6 +1,7 @@
 FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/path.fs", version : "2878.0");
+import(path : "onshape/std/approximationUtils.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
@@ -575,4 +576,266 @@ export function mapWorldPoints(context is Context,
         result = append(result, frenetPointToWorld(localCoords, toFrameResult));
     }
     return result;
+}
+
+
+// ============================================================================
+// alignIsolatedLineFrames
+// ============================================================================
+
+/**
+ * Post-process a FrenetPath: for any isolated line edge (no adjacent curve),
+ * borrow the to-path's normal at the corresponding arc position so the frame
+ * is aligned across the mapping.
+ *
+ * Lines adjacent to a curve already received a curve-context xAxis in
+ * buildFrenetPath step 4.5; this handles only the isolated-line case.
+ *
+ * @param context        {Context}
+ * @param fromFrenetPath {map} — result from buildFrenetPath (source)
+ * @param toFrenetPath   {map} — result from buildFrenetPath (target)
+ * @param fromRefArc     {ValueWithUnits}
+ * @param toRefArc       {ValueWithUnits}
+ * @returns {map} — updated fromFrenetPath with corrected lineFrames
+ */
+export function alignIsolatedLineFrames(context is Context,
+    fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits) returns map
+{
+    var fromEdgeData = fromFrenetPath.edgeData;
+    for (var i = 0; i < size(fromEdgeData); i += 1)
+    {
+        var ed = fromEdgeData[i];
+        if (!ed.isLine) { continue; }
+
+        var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
+                          (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
+        if (hasCurveCtx) { continue; }
+
+        var midFromArc = ed.startArcLength + ed.length / 2;
+        var midToArc   = toRefArc + (midFromArc - fromRefArc);
+        var toXAxis    = getFrameAtArcLength(context, toFrenetPath, midToArc).frame.xAxis;
+
+        var tangent   = ed.lineFrame.zAxis;
+        var perpXAxis = toXAxis - dot(toXAxis, tangent) * tangent;
+        if (norm(perpXAxis) > 1e-6)
+        {
+            fromEdgeData[i] = mergeMaps(ed, {
+                "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
+            });
+        }
+    }
+    return mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+}
+
+
+// ============================================================================
+// debugDrawFrames
+// ============================================================================
+
+/**
+ * Draw Frenet frames at evenly-spaced arc-length positions along a FrenetPath.
+ *
+ * Uses addDebugArrow directly so arrow length scales with path geometry
+ * (1/3 of inter-sample spacing) rather than using a hardcoded 5cm length.
+ * Also avoids the console println that debug(context, CoordSystem) emits.
+ *
+ * Colors: xAxis (normal) = RED, yAxis (binormal) = GREEN, zAxis (tangent) = BLUE
+ */
+export function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
+{
+    var totalLength = frenetPath.totalLength;
+    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
+    var arrowRadius = arrowLen * 0.05;
+
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var s      = totalLength * i / (numSamples - 1);
+        var result = getFrameAtArcLength(context, frenetPath, s);
+        var origin = result.frame.origin;
+
+        addDebugArrow(context, origin, origin + arrowLen * result.frame.xAxis,  arrowRadius,           DebugColor.RED);
+        addDebugArrow(context, origin, origin + arrowLen * yAxis(result.frame),  arrowRadius * (2 / 3), DebugColor.GREEN);
+        addDebugArrow(context, origin, origin + arrowLen * result.frame.zAxis,   arrowRadius * 0.5,     DebugColor.BLUE);
+    }
+}
+
+
+// ============================================================================
+// transformEdges
+// ============================================================================
+
+/**
+ * Transforms an array of edges from one Frenet path to another.
+ * Returns an array of maps { "sourceEdge": Query, "wrappedEdge": Query, "wrappedBody": Query }.
+ *
+ * @param context   {Context}
+ * @param id        {Id}
+ * @param edgeArray {array}  : array of edge Queries to transform
+ * @param fromMap   {map}    : result from buildFrenetPath (source reference)
+ * @param toMap     {map}    : result from buildFrenetPath (target reference)
+ * @param settings  {map}    : {
+ *   fromRefArc, toRefArc, flipToNormal,
+ *   samplingDensity, approximationDegree, approximationMaxCPs, approximationTolerance
+ * }
+ * @returns {array} : [{ "sourceEdge": Query, "wrappedEdge": Query, "wrappedBody": Query }, ...]
+ */
+export function transformEdges(context is Context, id is Id, edgeArray is array, fromMap is map, toMap is map, settings is map) returns array
+{
+    var result = [];
+    for (var i = 0; i < size(edgeArray); i += 1)
+    {
+        var edge    = edgeArray[i];
+        var edgeLen = evLength(context, { "entities": edge });
+        var numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
+
+        var srcPoints = mapArray(evEdgeTangentLines(context, {
+            "edge"       : edge,
+            "parameters" : range(0, 1, numSamples)
+        }), function(x) { return x.origin; });
+
+        var mappedPoints = mapWorldPoints(context, fromMap, toMap,
+            settings.fromRefArc, settings.toRefArc, settings.flipToNormal, srcPoints);
+
+        // Snap endpoints to pre-computed vertex-mapped positions so that all edges
+        // sharing a source vertex produce BSplines with bit-identical endpoints.
+        if (settings.vertexMap != undefined)
+        {
+            var edgeVerts = evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX));
+            var nv = size(edgeVerts);
+            if (nv == 2)
+            {
+                var vm0 = settings.vertexMap[toString(edgeVerts[0])];
+                var vm1 = settings.vertexMap[toString(edgeVerts[1])];
+                if (vm0 != undefined && vm1 != undefined)
+                {
+                    // Determine which pre-mapped vertex aligns with mappedPoints[0]
+                    if (norm(mappedPoints[0] - vm0) <= norm(mappedPoints[0] - vm1))
+                    {
+                        mappedPoints[0]                    = vm0;
+                        mappedPoints[size(mappedPoints) - 1] = vm1;
+                    }
+                    else
+                    {
+                        mappedPoints[0]                    = vm1;
+                        mappedPoints[size(mappedPoints) - 1] = vm0;
+                    }
+                }
+            }
+            else if (nv == 1)
+            {
+                // Closed edge (full circle etc.) — same vertex at both ends
+                var vm = settings.vertexMap[toString(edgeVerts[0])];
+                if (vm != undefined)
+                {
+                    mappedPoints[0]                    = vm;
+                    mappedPoints[size(mappedPoints) - 1] = vm;
+                }
+            }
+            // nv == 0: degenerate edge, leave endpoints as-is
+        }
+
+        var approxDef = {
+            "targets"            : [approximationTarget({ "positions": mappedPoints })],
+            "tolerance"          : settings.approximationTolerance,
+            "maxControlPoints"   : settings.approximationMaxCPs,
+            "degree"             : settings.approximationDegree,
+            "isPeriodic"         : false,
+            "interpolateIndices" : [0, size(mappedPoints) - 1]
+        };
+        var wrappedCurve = approximateSpline(context, approxDef)[0];
+
+        var wrappedId = id + (toString(i) ~ "edge");
+        try
+        {
+            opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": wrappedCurve });
+            result = append(result, {
+                "sourceEdge" : edge,
+                "wrappedEdge": qCreatedBy(wrappedId, EntityType.EDGE),
+                "wrappedBody": qCreatedBy(wrappedId, EntityType.BODY)
+            });
+        }
+        catch (e) { println("ERROR transformEdge " ~ i ~ ": " ~ toString(e)); }
+    }
+    return result;
+}
+
+
+// ============================================================================
+// transformFacepoints
+// ============================================================================
+
+/**
+ * Samples interior points from a face by creating isoparametric curves,
+ * maps them through the Frenet transform, and returns the mapped positions
+ * for use as guide vertices in opFillSurface.
+ *
+ * Interior-only sampling (parameters 0 and 1 excluded) avoids duplicating
+ * points that are already captured by the transformed boundary edges.
+ *
+ * @param context      {Context}
+ * @param id           {Id}
+ * @param face         {Query}  : source face
+ * @param uMultiplier  {number} : u iso curve count = uMultiplier * u control-point dimension
+ * @param vMultiplier  {number} : v iso curve count = vMultiplier * v control-point dimension
+ * @param fromMap      {map}    : result from buildFrenetPath (source reference)
+ * @param toMap        {map}    : result from buildFrenetPath (target reference)
+ * @param settings     {map}    : { fromRefArc, toRefArc, flipToNormal, samplingDensity, ... }
+ * @returns {array} : array of mapped Vector positions (interior guide points)
+ */
+export function transformFacepoints(context is Context, id is Id, face is Query, uMultiplier is number, vMultiplier is number, fromMap is map, toMap is map, settings is map) returns array
+{
+    // 1. Get BSpline surface dimensions from the face approximation
+    var surfData = evApproximateBSplineSurface(context, { "face": face });
+    var bspl     = surfData.bSplineSurface;
+    var uDim     = size(bspl.controlPoints);
+    var vDim     = size(bspl.controlPoints[0]);
+    var nU       = uMultiplier * uDim;
+    var nV       = vMultiplier * vDim;
+
+    // 2. Create isoparametric curves on the face
+    var isoId  = id + "isoCurves";
+    var uNames = [];
+    var vNames = [];
+    for (var k = 0; k < nU; k += 1) { uNames = append(uNames, "u" ~ k); }
+    for (var k = 0; k < nV; k += 1) { vNames = append(vNames, "v" ~ k); }
+
+    opCreateCurvesOnFace(context, isoId, {
+        "curveDefinition" : [
+            { "face": face, "creationType": FaceCurveCreationType.DIR1_AUTO_SPACED_ISO, "nCurves": nU, "names": uNames },
+            { "face": face, "creationType": FaceCurveCreationType.DIR2_AUTO_SPACED_ISO, "nCurves": nV, "names": vNames }
+        ]
+    });
+    var isoBodies = qCreatedBy(isoId, EntityType.BODY);
+
+    // 3. Sample each iso curve at interior parameters, skip boundary endpoints
+    var interiorPoints = [];
+    var isoEdges = evaluateQuery(context, qCreatedBy(isoId, EntityType.EDGE));
+    for (var e in isoEdges)
+    {
+        var elen  = evLength(context, { "entities": e });
+        var nSamp = max([3, ceil(elen / settings.samplingDensity) + 1]);
+
+        // Parameters strictly between 0 and 1 (endpoints lie on boundary edges)
+        var params = [];
+        for (var k = 1; k < nSamp - 1; k += 1)
+        {
+            params = append(params, k / (nSamp - 1));
+        }
+        if (size(params) == 0) { continue; }
+
+        var tangentLines = evEdgeTangentLines(context, { "edge": e, "parameters": params });
+        for (var tl in tangentLines)
+        {
+            interiorPoints = append(interiorPoints, tl.origin);
+        }
+    }
+
+    // 4. Delete iso curve bodies — they were only needed for sampling
+    opDeleteBodies(context, id + "deleteIso", { "entities": isoBodies });
+
+    // 5. Map all collected interior points through the Frenet transform
+    if (size(interiorPoints) == 0) { return []; }
+    return mapWorldPoints(context, fromMap, toMap,
+        settings.fromRefArc, settings.toRefArc, settings.flipToNormal, interiorPoints);
 }
