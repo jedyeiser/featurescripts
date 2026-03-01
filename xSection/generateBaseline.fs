@@ -720,10 +720,22 @@ function innerSolve(context is Context,
     var camberPts = [];
     if (hasEI && size(eiData) >= 2)
     {
+        var eiMin = eiData[0].EI / (newton * meter * meter);
+        var eiMax = eiMin;
+        for (var eid in eiData)
+        {
+            var v = eid.EI / (newton * meter * meter);
+            if (v < eiMin) { eiMin = v; }
+            if (v > eiMax) { eiMax = v; }
+        }
+        println("innerSolve: EI branch  eiPts=" ~ size(eiData) ~
+                "  EI_min=" ~ round(eiMin * 10) / 10 ~
+                "  EI_max=" ~ round(eiMax * 10) / 10 ~ " Nm2");
         camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H);
     }
     else
     {
+        println("innerSolve: CUBIC branch  hasEI=" ~ hasEI ~ "  eiPts=" ~ size(eiData));
         camberPts = solveCamberCubic(xFRCP, xARCP, xLoad, H);
     }
 
