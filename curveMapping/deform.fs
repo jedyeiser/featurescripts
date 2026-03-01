@@ -508,6 +508,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             // Use qCreatedBy(id) filtered to SHEET — this is equivalent to what
             // the user confirmed works in manual Onshape testing.  Wire bodies
             // have already been deleted above, so only fill surfaces remain.
+            var inputIsSolid  = !isQueryEmpty(context, qBodyType(definition.sourceBody, BodyType.SOLID));
             var surfaceBodies     = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
             var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
             if (size(surfaceBodiesList) > 1)
@@ -515,7 +516,24 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 opBoolean(context, id + "unionFaces", {
                     "tools"        : surfaceBodies,
                     "operationType": BooleanOperationType.UNION,
+                    "makeSolid"    : inputIsSolid,
                 });
+            }
+            else if (size(surfaceBodiesList) == 1 && inputIsSolid)
+            {
+                // Single surface body (all fills already merged) — attempt to close into solid.
+                try
+                {
+                    opBoolean(context, id + "closeSolid", {
+                        "tools"        : surfaceBodies,
+                        "operationType": BooleanOperationType.UNION,
+                        "makeSolid"    : true,
+                    });
+                }
+                catch (solidErr)
+                {
+                    println("WARNING: could not close surface into solid: " ~ toString(solidErr));
+                }
             }
         }
     });
