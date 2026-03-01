@@ -171,6 +171,22 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         if (definition.debugShowToFrames)
             deformDebugDrawFrames(context, toFrenetPath, 10);
 
+        // Pre-transform all body vertices in one batch so every edge uses the same
+        // canonical mapped position for each shared vertex.  This eliminates the
+        // floating-point gap that arises when two adjacent edges sample the same
+        // source vertex independently and get slightly different float values.
+        var allVerts        = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.VERTEX));
+        var vertSrcPositions = mapArray(allVerts, function(v) {
+            return evVertexPoint(context, { "vertex": v });
+        });
+        var vertMappedPositions = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+            fromRefArc, toRefArc, definition.flipToNormal, vertSrcPositions);
+        var vertexMap = {};
+        for (var vIdx = 0; vIdx < size(allVerts); vIdx += 1)
+        {
+            vertexMap[toString(allVerts[vIdx])] = vertMappedPositions[vIdx];
+        }
+
         var settings = {
             "fromRefArc"             : fromRefArc,
             "toRefArc"               : toRefArc,
@@ -179,7 +195,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             "approximationDegree"    : definition.approximationDegree,
             "approximationMaxCPs"    : definition.approximationMaxCPs,
             "approximationTolerance" : definition.approximationTolerance,
-            "dummyCounter"           : definition.dummyCounter
+            "dummyCounter"           : definition.dummyCounter,
+            "vertexMap"              : vertexMap
         };
 
         // Accumulators declared before conditional blocks so all steps share scope
@@ -511,6 +528,44 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
 
         var mappedPoints = mapWorldPoints(context, fromMap, toMap,
             settings.fromRefArc, settings.toRefArc, settings.flipToNormal, srcPoints);
+
+        // Snap endpoints to pre-computed vertex-mapped positions so that all edges
+        // sharing a source vertex produce BSplines with bit-identical endpoints.
+        if (settings.vertexMap != undefined)
+        {
+            var edgeVerts = evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX));
+            var nv = size(edgeVerts);
+            if (nv == 2)
+            {
+                var vm0 = settings.vertexMap[toString(edgeVerts[0])];
+                var vm1 = settings.vertexMap[toString(edgeVerts[1])];
+                if (vm0 != undefined && vm1 != undefined)
+                {
+                    // Determine which pre-mapped vertex aligns with mappedPoints[0]
+                    if (norm(mappedPoints[0] - vm0) <= norm(mappedPoints[0] - vm1))
+                    {
+                        mappedPoints[0]                    = vm0;
+                        mappedPoints[size(mappedPoints) - 1] = vm1;
+                    }
+                    else
+                    {
+                        mappedPoints[0]                    = vm1;
+                        mappedPoints[size(mappedPoints) - 1] = vm0;
+                    }
+                }
+            }
+            else if (nv == 1)
+            {
+                // Closed edge (full circle etc.) — same vertex at both ends
+                var vm = settings.vertexMap[toString(edgeVerts[0])];
+                if (vm != undefined)
+                {
+                    mappedPoints[0]                    = vm;
+                    mappedPoints[size(mappedPoints) - 1] = vm;
+                }
+            }
+            // nv == 0: degenerate edge, leave endpoints as-is
+        }
 
         var approxDef = {
             "targets"            : [approximationTarget({ "positions": mappedPoints })],
