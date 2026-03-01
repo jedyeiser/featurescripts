@@ -3,10 +3,10 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 
 //export import wrapCurve
-export import(path : "6863116065bf5063633f30ac", version : "a2617201453235e14ae23dd7");
+export import(path : "6863116065bf5063633f30ac", version : "48cd38549712d7938537660c");
 
 //import curveMappingCore
-import(path : "683d867c35fdab9c98d47556", version : "0c37d55f61989bbc2d78b7bd");
+import(path : "683d867c35fdab9c98d47556", version : "0568cce8159c66ba49aa00b3");
 
 
 
@@ -196,10 +196,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         };
 
         // Accumulators declared before conditional blocks so all steps share scope
-        var edgeMapping                    = [];
-        var allFaces                       = [];   // source faces — needed in Step 3 for adjacency
-        var reconstructedFaceBodyQueries   = [];
-        var reconstructedFaceSourceIndices = [];   // parallel: which allFaces[i] each body came from
+        var edgeMapping                  = [];
+        var reconstructedFaceBodyQueries = [];
 
         // Cumulative debug conditions: each step implies all prior steps ran
         var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
@@ -216,7 +214,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 2: Reconstruct faces ---
         if (runFaces)
         {
-            allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
+            var allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
 
             // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
             // toString on a transient query gives a stable unique string per entity,
@@ -385,9 +383,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     });
                     // Fill succeeded — boundary wire no longer needed
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
-                    reconstructedFaceBodyQueries   = append(reconstructedFaceBodyQueries,
+                    reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
                         qCreatedBy(fillId, EntityType.BODY));
-                    reconstructedFaceSourceIndices = append(reconstructedFaceSourceIndices, fIdx);
                 }
                 catch (fillErr)
                 {
@@ -469,17 +466,14 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 }
             }
 
-            // Boolean all face surface bodies remaining from this feature in one shot.
-            // Using qCreatedBy(id) mirrors what the user confirmed works manually.
-            var faceBodies = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET));
-            if (size(faceBodies) > 1)
+            // Boolean all reconstructed face surface bodies in one shot.
+            if (size(reconstructedFaceBodyQueries) > 1)
             {
                 opBoolean(context, id + "unionFaces", {
-                    "tools"               : qUnion(faceBodies),
-                    "operationType"       : BooleanOperationType.UNION,
-                    "allowSheets"         : true,
-                    "makeSolid"           : false,
-                    "eraseImprintedEdges" : true
+                    "tools"                       : qUnion(reconstructedFaceBodyQueries),
+                    "operationType"               : BooleanOperationType.UNION,
+                    "targetsAndToolsNeedGrouping" : true,
+                    "makeSolid"                   : false,
                 });
             }
         }

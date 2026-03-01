@@ -666,7 +666,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Max camber point", "Description" : "String of vector in mm for max camber point", "UIHint" : UIHint.READ_ONLY }
             definition.maxCamberHeightString is string;
 
-            annotation { "Name" : "Camber height" }
+            annotation { "Name" : "Camber height", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.camberHeight, LENGTH_BOUNDS);
 
             annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point", "UIHint" : UIHint.READ_ONLY }
