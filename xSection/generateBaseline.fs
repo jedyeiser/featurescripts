@@ -1197,7 +1197,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
             var fcph_err   = 0.0;
             var acph_err   = 0.0;
-            var camber_err = 0.0;
 
             if (size(camberPtsLoop) >= 2)
             {
@@ -1282,62 +1281,105 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     }
                 }
 
-                // --- Camber height measurement from fitted spline ---
-                // analyzeBaseline defines camber as the maximum perpendicular distance
-                // from the (splineStartPt → splineEndPt) chord to any point on the
-                // camber spline.  We measure the same quantity here so the iteration
-                // drives the fitted-spline camber to MCH_target, not the raw solver MCH.
-                var chord_vec_x = (splineEndPt[0] - splineStartPt[0]) / meter;
-                var chord_vec_z = (splineEndPt[2] - splineStartPt[2]) / meter;
-                var chord_len_m = sqrt(chord_vec_x * chord_vec_x + chord_vec_z * chord_vec_z);
-
-                if (chord_len_m > 1e-10)
-                {
-                    var chord_dx = chord_vec_x / chord_len_m;
-                    var chord_dz = chord_vec_z / chord_len_m;
-
-                    // Sample the spline at 50 points to find the peak perpendicular height.
-                    var nSamp    = 50;
-                    var sampPrms = [];
-                    for (var si = 0; si <= nSamp; si += 1)
-                    {
-                        sampPrms = append(sampPrms, uStart + (uEnd - uStart) * (si / nSamp));
-                    }
-                    var sampResult = evaluateSpline({
-                        "spline"       : loopSpline,
-                        "parameters"   : sampPrms,
-                        "nDerivatives" : 1
-                    });
-
-                    var maxCamber_m = 0.0;
-                    for (var si = 0; si <= nSamp; si += 1)
-                    {
-                        var sPt  = sampResult[0][si];
-                        var sv_x = (sPt[0] - splineStartPt[0]) / meter;
-                        var sv_z = (sPt[2] - splineStartPt[2]) / meter;
-                        var perp = abs(sv_x * chord_dz - sv_z * chord_dx);
-                        if (perp > maxCamber_m) { maxCamber_m = perp; }
-                    }
-
-                    camber_err = maxCamber_m - MCH_target;
-                    println("rocIter=" ~ rocIter ~
-                            "  camber=" ~ round(maxCamber_m * 1e6) / 1e3 ~
-                            " tgt=" ~ round(MCH_target * 1e6) / 1e3 ~
-                            " err=" ~ round(camber_err * 1e6) / 1e3 ~ " mm");
-                    if (abs(camber_err) > FCH_TOL)
-                    {
-                        // Linear correction: d(camber_height)/d(MCH_m) ≈ 1
-                        MCH_m = MCH_m - camber_err;
-                    }
-                }
             }
 
-            if (abs(fcph_err) < FCH_TOL && abs(acph_err) < FCH_TOL && abs(camber_err) < FCH_TOL)
+            if (abs(fcph_err) < FCH_TOL && abs(acph_err) < FCH_TOL)
             {
-                println("generateBaseline: FCPH/ACPH/camber converged at iter=" ~ rocIter);
+                println("generateBaseline: FCPH/ACPH converged at iter=" ~ rocIter);
                 break;
             }
 
+            mchResult = runMCHBisection(context, eiData, hasEI,
+                                         xFCP, xACP, xFRCP, xARCP, xMount,
+                                         fcpHeightEff, acpHeightEff,
+                                         definition.frcpl, definition.arcpl,
+                                         hasForeRocker, hasAftRocker, MCH_m);
+            finalPts = mchResult.finalPts;
+        }
+
+        // ----------------------------------------------------------------
+        // 4b. Camber height correction (separate from FCPH/ACPH loop)
+        //
+        // approximateSpline smooths discrete solver peaks, introducing a
+        // systematic offset between the raw solver MCH and the chord-based
+        // camber height that analyzeBaseline reports.  Correct by refitting
+        // the same camber spline and measuring the peak perp distance from
+        // the (splineStart → splineEnd) chord — exactly what analyzeBaseline
+        // measures.
+        //
+        // Kept separate from the FCPH/ACPH loop so the two corrections do
+        // not couple.  Typically converges in 1 pass.
+        // ----------------------------------------------------------------
+        for (var camIter = 0; camIter < 3; camIter += 1)
+        {
+            var camberPtsCam = [];
+            var GEOM_TOL_CAM = 1e-9 * meter;
+            for (var pt in finalPts)
+            {
+                var inFore = hasForeRocker && (pt.x < xFRCP - GEOM_TOL_CAM);
+                var inAft  = hasAftRocker  && (pt.x > xARCP + GEOM_TOL_CAM);
+                if (!inFore && !inAft)
+                {
+                    camberPtsCam = append(camberPtsCam, vector(pt.x, 0 * meter, pt.z));
+                }
+            }
+
+            if (size(camberPtsCam) < 2) { break; }
+
+            var approxCam = approximateSpline(context, {
+                "degree"           : definition.curveDegree,
+                "tolerance"        : definition.approxTolerance,
+                "isPeriodic"       : false,
+                "targets"          : [{ "positions" : camberPtsCam }],
+                "maxControlPoints" : definition.maxControlPoints
+            });
+
+            var camSpl  = approxCam[0];
+            var nKCam   = size(camSpl.knots);
+            var uStaCam = camSpl.knots[camSpl.degree];
+            var uEnCam  = camSpl.knots[nKCam - 1 - camSpl.degree];
+
+            var sStaRes = evaluateSpline({ "spline" : camSpl, "parameters" : [uStaCam], "nDerivatives" : 1 });
+            var sEnRes  = evaluateSpline({ "spline" : camSpl, "parameters" : [uEnCam],  "nDerivatives" : 1 });
+            var sStaPt  = sStaRes[0][0];
+            var sEnPt   = sEnRes[0][0];
+
+            var cVx  = (sEnPt[0] - sStaPt[0]) / meter;
+            var cVz  = (sEnPt[2] - sStaPt[2]) / meter;
+            var cLen = sqrt(cVx * cVx + cVz * cVz);
+            if (cLen < 1e-10) { break; }
+
+            var cDx = cVx / cLen;
+            var cDz = cVz / cLen;
+
+            // Sample 15 points to find the peak perpendicular height.
+            var camPrms = [];
+            var nSamCam = 15;
+            for (var ci = 0; ci <= nSamCam; ci += 1)
+            {
+                camPrms = append(camPrms, uStaCam + (uEnCam - uStaCam) * (ci / nSamCam));
+            }
+            var camSampRes = evaluateSpline({ "spline" : camSpl, "parameters" : camPrms, "nDerivatives" : 1 });
+
+            var maxCam = 0.0;
+            for (var ci = 0; ci <= nSamCam; ci += 1)
+            {
+                var sPt  = camSampRes[0][ci];
+                var svx  = (sPt[0] - sStaPt[0]) / meter;
+                var svz  = (sPt[2] - sStaPt[2]) / meter;
+                var perc = abs(svx * cDz - svz * cDx);
+                if (perc > maxCam) { maxCam = perc; }
+            }
+
+            var cErr = maxCam - MCH_target;
+            println("camIter=" ~ camIter ~
+                    " camber=" ~ round(maxCam * 1e6) / 1e3 ~
+                    " tgt=" ~ round(MCH_target * 1e6) / 1e3 ~
+                    " err=" ~ round(cErr * 1e6) / 1e3 ~ " mm");
+
+            if (abs(cErr) < FCH_TOL) { break; }
+
+            MCH_m = MCH_m - cErr;
             mchResult = runMCHBisection(context, eiData, hasEI,
                                          xFCP, xACP, xFRCP, xARCP, xMount,
                                          fcpHeightEff, acpHeightEff,

@@ -3,10 +3,10 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 
 //export import wrapCurve
-export import(path : "6863116065bf5063633f30ac", version : "48cd38549712d7938537660c");
+export import(path : "6863116065bf5063633f30ac", version : "25a83babd1b7dfe2a98a7bac");
 
 //import curveMappingCore
-import(path : "683d867c35fdab9c98d47556", version : "0568cce8159c66ba49aa00b3");
+import(path : "683d867c35fdab9c98d47556", version : "08b37b441f97df3b4893ad49");
 
 
 
@@ -23,6 +23,15 @@ import(path : "683d867c35fdab9c98d47556", version : "0568cce8159c66ba49aa00b3");
  */
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
+
+/** Whether to deform a whole body or a user-selected set of faces. */
+export enum DeformMode
+{
+    annotation { "Name" : "Bodies" }
+    BODIES,
+    annotation { "Name" : "Faces" }
+    FACES
+}
 
 // Local copy — mirrors debugDrawFrames in wrapCurve.fs.
 // Needed because deform imports wrapCurve at a pinned version that predates the export.
@@ -48,8 +57,19 @@ annotation { "Feature Type Name" : "Deform", "Feature Type Description" : "Takes
 export const deform = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Source body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1, "Description" : "Source body to deform" }
-        definition.sourceBody is Query;
+        annotation { "Name" : "Mode", "UIHint" : UIHint.HORIZONTAL_ENUM }
+        definition.deformMode is DeformMode;
+
+        if (definition.deformMode != DeformMode.FACES)
+        {
+            annotation { "Name" : "Source body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1, "Description" : "Source body to deform" }
+            definition.sourceBody is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Source faces", "Filter" : EntityType.FACE, "Description" : "Faces to deform. Adjacent selected faces will be recombined into sheet bodies." }
+            definition.sourceFaces is Query;
+        }
 
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
         {
@@ -97,12 +117,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on curved faces at the cost of extra computation." }
             definition.useFacePoints is boolean;
+            
+            if (definition.useFacePoints)
+            {
+                annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
+                isInteger(definition.faceUsamplingMultiplier, FaceControlMultiplierBounds);
 
-            annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
-            isInteger(definition.faceUsamplingMultiplier, FaceControlMultiplierBounds);
-
-            annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
-            isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
+                annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
+                isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
+            }
 
             annotation { "Name" : "Keep wires", "Default" : false, "Description" : "Retain wrapped edge bodies after reconstruction. Merged into one wire body if possible, otherwise a composite part." }
             definition.keepWires is boolean;
@@ -110,24 +133,28 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Name" : "Debug", "Default" : false }
         definition.debug is boolean;
-
-        annotation { "Group Name" : "Debug", "Collapsed By Default" : false, "Driving Parameter" : "debug" }
+        
+        if (definition.debug)
         {
-            annotation { "Name" : "Create wires", "Default" : false }
-            definition.createWires is boolean;
-
-            annotation { "Name" : "Create faces", "Default" : false }
-            definition.createFaces is boolean;
-
-            annotation { "Name" : "Create bodies", "Default" : false }
-            definition.createBodies is boolean;
-
-            annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
-            definition.debugShowFromFrames is boolean;
-
-            annotation { "Name" : "Show to frames", "Description" : "Draw Frenet frame axes along the to reference path", "Default" : false }
-            definition.debugShowToFrames is boolean;
+            annotation { "Group Name" : "Debug", "Collapsed By Default" : false, "Driving Parameter" : "debug" }
+            {
+                annotation { "Name" : "Create wires", "Default" : false }
+                definition.createWires is boolean;
+    
+                annotation { "Name" : "Create faces", "Default" : false }
+                definition.createFaces is boolean;
+    
+                annotation { "Name" : "Create bodies", "Default" : false }
+                definition.createBodies is boolean;
+    
+                annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
+                definition.debugShowFromFrames is boolean;
+    
+                annotation { "Name" : "Show to frames", "Description" : "Draw Frenet frame axes along the to reference path", "Default" : false }
+                definition.debugShowToFrames is boolean;
+            }
         }
+
     }
     {
         // --- Setup (always runs) ---
@@ -171,11 +198,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         if (definition.debugShowToFrames)
             deformDebugDrawFrames(context, toFrenetPath, 10);
 
+        var isFacesMode = definition.deformMode == DeformMode.FACES;
+
         // Pre-transform all body vertices in one batch so every edge uses the same
         // canonical mapped position for each shared vertex.  This eliminates the
         // floating-point gap that arises when two adjacent edges sample the same
         // source vertex independently and get slightly different float values.
-        var allVerts        = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.VERTEX));
+        var allVerts = evaluateQuery(context, isFacesMode
+            ? qAdjacent(definition.sourceFaces, AdjacencyType.VERTEX, EntityType.VERTEX)
+            : qOwnedByBody(definition.sourceBody, EntityType.VERTEX));
         var vertSrcPositions = mapArray(allVerts, function(v) {
             return evVertexPoint(context, { "vertex": v });
         });
@@ -209,14 +240,18 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 1: Transform edges ---
         if (runWires)
         {
-            var allEdges = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.EDGE));
+            var allEdges = evaluateQuery(context, isFacesMode
+                ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
+                : qOwnedByBody(definition.sourceBody, EntityType.EDGE));
             edgeMapping  = transformEdges(context, id + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
         }
 
         // --- Step 2: Reconstruct faces ---
         if (runFaces)
         {
-            var allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
+            var allFaces = evaluateQuery(context, isFacesMode
+                ? definition.sourceFaces
+                : qOwnedByBody(definition.sourceBody, EntityType.FACE));
 
             // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
             // toString on a transient query gives a stable unique string per entity,
@@ -519,11 +554,17 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             // Use qCreatedBy(id) filtered to SHEET — this is equivalent to what
             // the user confirmed works in manual Onshape testing.  Wire bodies
             // have already been deleted above, so only fill surfaces remain.
-            var inputIsSolid  = !isQueryEmpty(context, qBodyType(definition.sourceBody, BodyType.SOLID));
+            // In FACES mode the result is always one or more sheet bodies — no makeSolid.
+            // In BODIES mode we attempt to close a closed shell into a solid.
+            var inputIsSolid = !isFacesMode &&
+                !isQueryEmpty(context, qBodyType(definition.sourceBody, BodyType.SOLID));
+
             var surfaceBodies     = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
             var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
             if (size(surfaceBodiesList) > 1)
             {
+                // UNION merges only bodies with coincident edges — non-adjacent fills
+                // (e.g. unconnected selected faces in FACES mode) remain separate.
                 opBoolean(context, id + "unionFaces", {
                     "tools"        : surfaceBodies,
                     "operationType": BooleanOperationType.UNION,
@@ -532,7 +573,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             }
             else if (size(surfaceBodiesList) == 1 && inputIsSolid)
             {
-                // Single surface body (all fills already merged) — attempt to close into solid.
+                // Single closed surface shell in BODIES mode — attempt to close into solid.
                 try
                 {
                     opBoolean(context, id + "closeSolid", {
