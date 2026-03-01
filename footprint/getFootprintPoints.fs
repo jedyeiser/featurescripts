@@ -278,88 +278,92 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             acpORIGIN = cpLine1.origin;
         }
 
-        // Offset planes inward by a tiny epsilon so they always cut through an
-        // edge interior rather than touching a vertex.  When a footprint vertex
-        // lies exactly on the FCP/ACP plane, opSplitPart returns SPLIT_FAILED
-        // because it requires a strict interior intersection.
-        // eps = 1e-5 mm — negligible for any footprint geometry.
-        var splitEps = 1e-5 * millimeter;
         opPlane(context, id + "fcpPlane", {
-                    "plane" : plane(fcpORGIN + splitEps * vector(1, 0, 0), vector(1, 0, 0))
+                    "plane" : plane(fcpORGIN, vector(1, 0, 0))
                 });
 
         var fcpPlane = qCreatedBy(id + "fcpPlane", EntityType.FACE);
 
         opPlane(context, id + "acpPlane", {
-                    "plane" : plane(acpORIGIN - splitEps * vector(1, 0, 0), vector(1, 0, 0))
+                    "plane" : plane(acpORIGIN, vector(1, 0, 0))
                 });
 
         var acpPlane = qCreatedBy(id + "acpPlane", EntityType.FACE);
 
-        //fcpSplit
-        opSplitPart(context, id + "fcpSplit", {
-                    "targets" : qCreatedBy(id + "fptWires", EntityType.BODY),
-                    "tool" : fcpPlane
-                });
+        // Only split if the plane strictly intersects the wire interior.
+        // A vertex exactly on the plane is not an interior intersection and
+        // would cause opSplitPart to fail with SPLIT_FAILED.
+        var fcpX = fcpORGIN[0];
+        var acpX = acpORGIN[0];
+        var doFcpSplit = wireBox.minCorner[0] < fcpX && fcpX < wireBox.maxCorner[0];
+        var doAcpSplit = wireBox.minCorner[0] < acpX && acpX < wireBox.maxCorner[0];
 
-        //acpSplit
-        opSplitPart(context, id + "acpSplit", {
-                    "targets" : qSplitBy(id + "fcpSplit", EntityType.BODY, false),
-                    "tool" : acpPlane
-                });
+        if (doFcpSplit)
+        {
+            opSplitPart(context, id + "fcpSplit", {
+                        "targets" : qCreatedBy(id + "fptWires", EntityType.BODY),
+                        "tool" : fcpPlane
+                    });
+        }
 
-        // but which line is which?
-        // Tip Edge - > ONLY SPLIT BY FCP
-        // RSL Edge -> SPLIT BY BOTH FCP AND ACP
-        // Tail Edge -> SPLIT BY ONLY ACP
+        var acpTarget = doFcpSplit
+            ? qSplitBy(id + "fcpSplit", EntityType.BODY, false)
+            : qCreatedBy(id + "fptWires", EntityType.BODY);
 
-        var tipEdge = qSplitBy(id + "fcpSplit", EntityType.BODY, true);
-        setProperty(context, {
-                    "entities" : tipEdge,
-                    "propertyType" : PropertyType.NAME,
-                    "value" : "Tip Curve"
-                });
+        if (doAcpSplit)
+        {
+            opSplitPart(context, id + "acpSplit", {
+                        "targets" : acpTarget,
+                        "tool" : acpPlane
+                    });
+        }
 
-        var tailEdge = qSplitBy(id + "acpSplit", EntityType.BODY, false);
-        setProperty(context, {
-                    "entities" : tailEdge,
-                    "propertyType" : PropertyType.NAME,
-                    "value" : "Tail Curve"
-                });
+        var rslEdge = doAcpSplit
+            ? qSplitBy(id + "acpSplit", EntityType.BODY, true)
+            : acpTarget;
 
-        var rslEdge = qSplitBy(id + "acpSplit", EntityType.BODY, true);
         setProperty(context, {
                     "entities" : rslEdge,
                     "propertyType" : PropertyType.NAME,
                     "value" : "RSL Curve"
                 });
 
-
-        //println('Number of tip curves is: '~size(evaluateQuery(context, qOwnedByBody(tipEdge, EntityType.EDGE))));
-        //println('Nubmber of RSL curves is: '~size(evaluateQuery(context, qOwnedByBody(rslEdge, EntityType.EDGE))));
-        //println('Number of tail curves is: '~size(evaluateQuery(context, qOwnedByBody(tailEdge, EntityType.EDGE))));
-
-
-        /*println('RSL Curve Length: ' ~ evLength(context, {
-           "entities" : rslEdge
-           }));
-         */
-        var tipPoints = genPointArray(context, id, tipEdge, 'TIP', definition.tipCount, definition.includePoints, fcpORGIN, false, definition.sketchPoints, 'Tip_Sketch');
-        if (definition.flipTip)
+        var tipPoints = [];
+        if (doFcpSplit)
         {
-            tipPoints = reverse(tipPoints);
+            var tipEdge = qSplitBy(id + "fcpSplit", EntityType.BODY, true);
+            setProperty(context, {
+                        "entities" : tipEdge,
+                        "propertyType" : PropertyType.NAME,
+                        "value" : "Tip Curve"
+                    });
+            tipPoints = genPointArray(context, id, tipEdge, 'TIP', definition.tipCount, definition.includePoints, fcpORGIN, false, definition.sketchPoints, 'Tip_Sketch');
+            if (definition.flipTip)
+            {
+                tipPoints = reverse(tipPoints);
+            }
         }
-        //tipPoints = sort(tipPoints, function(a, b) {return (a[0] - b[0]);});
+
         var rslPoints = genPointArray(context, id, rslEdge, 'RSL', definition.rslCount, definition.includePoints, mrsORIGIN, false, definition.sketchPoints, 'RSL_Sketch');
         if (definition.flipRSL)
         {
             rslPoints = reverse(rslPoints);
         }
 
-        var tailPoints = genPointArray(context, id, tailEdge, 'TAIL', definition.tailCount, definition.includePoints, acpORIGIN, false, definition.sketchPoints, 'Tail_Sketch');
-        if (definition.flipTail)
+        var tailPoints = [];
+        if (doAcpSplit)
         {
-            tailPoints = reverse(tailPoints);
+            var tailEdge = qSplitBy(id + "acpSplit", EntityType.BODY, false);
+            setProperty(context, {
+                        "entities" : tailEdge,
+                        "propertyType" : PropertyType.NAME,
+                        "value" : "Tail Curve"
+                    });
+            tailPoints = genPointArray(context, id, tailEdge, 'TAIL', definition.tailCount, definition.includePoints, acpORIGIN, false, definition.sketchPoints, 'Tail_Sketch');
+            if (definition.flipTail)
+            {
+                tailPoints = reverse(tailPoints);
+            }
         }
 
         // add point arrays as attributes to the origin so we can access the data in a query for the table.
