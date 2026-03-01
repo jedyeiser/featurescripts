@@ -24,6 +24,15 @@ import(path : "683d867c35fdab9c98d47556", version : "08b37b441f97df3b4893ad49");
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
 
+/** Whether to deform a whole body or a user-selected set of faces. */
+export enum DeformMode
+{
+    annotation { "Name" : "Bodies" }
+    BODIES,
+    annotation { "Name" : "Faces" }
+    FACES
+}
+
 // Local copy — mirrors debugDrawFrames in wrapCurve.fs.
 // Needed because deform imports wrapCurve at a pinned version that predates the export.
 function deformDebugDrawFrames(context is Context, frenetPath is map, numSamples is number)
@@ -48,8 +57,19 @@ annotation { "Feature Type Name" : "Deform", "Feature Type Description" : "Takes
 export const deform = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Source body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1, "Description" : "Source body to deform" }
-        definition.sourceBody is Query;
+        annotation { "Name" : "Mode", "UIHint" : UIHint.HORIZONTAL_ENUM }
+        definition.deformMode is DeformMode;
+
+        if (definition.deformMode != DeformMode.FACES)
+        {
+            annotation { "Name" : "Source body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1, "Description" : "Source body to deform" }
+            definition.sourceBody is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Source faces", "Filter" : EntityType.FACE, "Description" : "Faces to deform. Adjacent selected faces will be recombined into sheet bodies." }
+            definition.sourceFaces is Query;
+        }
 
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
         {
@@ -178,11 +198,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         if (definition.debugShowToFrames)
             deformDebugDrawFrames(context, toFrenetPath, 10);
 
+        var isFacesMode = definition.deformMode == DeformMode.FACES;
+
         // Pre-transform all body vertices in one batch so every edge uses the same
         // canonical mapped position for each shared vertex.  This eliminates the
         // floating-point gap that arises when two adjacent edges sample the same
         // source vertex independently and get slightly different float values.
-        var allVerts        = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.VERTEX));
+        var allVerts = evaluateQuery(context, isFacesMode
+            ? qAdjacent(definition.sourceFaces, AdjacencyType.VERTEX, EntityType.VERTEX)
+            : qOwnedByBody(definition.sourceBody, EntityType.VERTEX));
         var vertSrcPositions = mapArray(allVerts, function(v) {
             return evVertexPoint(context, { "vertex": v });
         });
@@ -216,14 +240,18 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 1: Transform edges ---
         if (runWires)
         {
-            var allEdges = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.EDGE));
+            var allEdges = evaluateQuery(context, isFacesMode
+                ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
+                : qOwnedByBody(definition.sourceBody, EntityType.EDGE));
             edgeMapping  = transformEdges(context, id + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
         }
 
         // --- Step 2: Reconstruct faces ---
         if (runFaces)
         {
-            var allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
+            var allFaces = evaluateQuery(context, isFacesMode
+                ? definition.sourceFaces
+                : qOwnedByBody(definition.sourceBody, EntityType.FACE));
 
             // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
             // toString on a transient query gives a stable unique string per entity,
@@ -526,7 +554,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             // Use qCreatedBy(id) filtered to SHEET — this is equivalent to what
             // the user confirmed works in manual Onshape testing.  Wire bodies
             // have already been deleted above, so only fill surfaces remain.
-            var inputIsSolid  = !isQueryEmpty(context, qBodyType(definition.sourceBody, BodyType.SOLID));
+            // In FACES mode the result is always one or more sheet bodies — no makeSolid.
+            var inputIsSolid = !isFacesMode &&
+                !isQueryEmpty(context, qBodyType(definition.sourceBody, BodyType.SOLID));
             var surfaceBodies     = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
             var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
             if (size(surfaceBodiesList) > 1)
