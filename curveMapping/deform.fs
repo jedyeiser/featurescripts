@@ -95,10 +95,13 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Tolerance" }
             isLength(definition.approximationTolerance, TOLERANCE_BOUND);
 
-            annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count" }
+            annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on curved faces at the cost of extra computation." }
+            definition.useFacePoints is boolean;
+
+            annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
             isInteger(definition.faceUsamplingMultiplier, FaceControlMultiplierBounds);
 
-            annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count" }
+            annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
             isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
 
             annotation { "Name" : "Keep wires", "Default" : false, "Description" : "Retain wrapped edge bodies after reconstruction. Merged into one wire body if possible, otherwise a composite part." }
@@ -371,6 +374,40 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 var bdryEdges = qCreatedBy(extractId, EntityType.EDGE);
                 var bdryBody  = qCreatedBy(extractId, EntityType.BODY);
 
+                // Generate mapped interior guide points for this face.
+                // Wrapped boundary edges only constrain the perimeter; guide vertices
+                // pull the fill surface interior toward the correct deformed shape.
+                // Gated by definition.useFacePoints — skipped by default because
+                // opCreateCurvesOnFace adds significant computation per face.
+                var guideVerticesQuery = qNothing();
+                var guideVtxDeleteId   = undefined;
+                if (definition.useFacePoints) try
+                {
+                    var guidePoints = transformFacepoints(
+                        context, id + ("faceGuides" ~ fIdx), face,
+                        definition.faceUsamplingMultiplier, definition.faceVsamplingMultiplier,
+                        fromFrenetPath, toFrenetPath, settings);
+
+                    var faceGuideVtxQueries = [];
+                    for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
+                    {
+                        var vtxId = id + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
+                        opPoint(context, vtxId, { "point": guidePoints[gIdx] });
+                        faceGuideVtxQueries = append(faceGuideVtxQueries,
+                            qCreatedBy(vtxId, EntityType.BODY));
+                    }
+                    if (size(faceGuideVtxQueries) > 0)
+                    {
+                        guideVerticesQuery = qUnion(faceGuideVtxQueries);
+                        guideVtxDeleteId   = id + ("deleteGuideVtx" ~ fIdx);
+                    }
+                }
+                catch (guideErr)
+                {
+                    println("WARNING: guide point generation failed for face " ~ fIdx ~
+                            ": " ~ toString(guideErr));
+                }
+
                 var fillId = id + ("fill" ~ fIdx);
                 try
                 {
@@ -378,10 +415,12 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         "edgesG0"      : bdryEdges,
                         "edgesG1"      : qNothing(),
                         "edgesG2"      : qNothing(),
-                        "guideVertices": qNothing()
+                        "guideVertices": guideVerticesQuery
                     });
-                    // Fill succeeded — boundary wire no longer needed
+                    // Fill succeeded — cleanup intermediates
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                    if (guideVtxDeleteId != undefined)
+                        opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
                 }
                 catch (fillErr)
                 {
@@ -431,6 +470,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     }
 
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                    if (guideVtxDeleteId != undefined)
+                        opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
                 }
             }
         }
