@@ -9,18 +9,18 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // Import geometry utilities
-export import(path : "67c190b80e8b74dcee72e7ff", version : "735c5b3ecbb0a9846cd27b19");
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "b28a4fdb05986742f733f189");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "744aeeb44e5f29d0ed224e4d");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "c087474ee54d0f848bc1beaf");
 
 // Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "0e3da2c18129830ce6d043d4");
+import(path : "66f4f03cf728e94b8f823585", version : "bbc62220b7aaab0b5264db49");
 
 // IMPORT: integrateFootprint.fs (for forceQuadraticNurbs)
 // TODO: Add document ID when syncing to Onshape
 // import(path : "DOCUMENT_ID", version : "");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "f07dd03cf651ef79e07d74f9");
+import(path : "d3ad341f5b87924b36b5aba8", version : "7d4aa2f44a75c38b53726b4d");
 
 
 

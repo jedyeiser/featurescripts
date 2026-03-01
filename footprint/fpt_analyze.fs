@@ -11,10 +11,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e235
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
 //import fpt_geometry
-import(path : "67c190b80e8b74dcee72e7ff", version : "735c5b3ecbb0a9846cd27b19");
+import(path : "67c190b80e8b74dcee72e7ff", version : "744aeeb44e5f29d0ed224e4d");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "f07dd03cf651ef79e07d74f9");
+import(path : "d3ad341f5b87924b36b5aba8", version : "7d4aa2f44a75c38b53726b4d");
 
 
 
