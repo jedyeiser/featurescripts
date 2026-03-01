@@ -55,7 +55,7 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     //fbWidest
     var fbWidestSort = sort(fbPoints, function(a, b) {return b.point[1] - a.point[1];});
     var fbWidestStartParam = fbWidestSort[0].pathParam;
-    var fbWidest = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [fbWidestStartParam - 0.0025, fbWidestStartParam + 0.0025], 0.001);
+    var fbWidest = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [max(0, fbWidestStartParam - 0.0025), min(1, fbWidestStartParam + 0.0025)], 0.001);
     
     addDebugLine(context, fbWidest.point, vector(fbWidest.point[0], -1* fbWidest.point[1], fbWidest.point[2]), DebugColor.CYAN);
     
@@ -71,7 +71,7 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     //abWidest
     var abWidestSort = sort(abPoints, function(a, b) {return b.point[1] - a.point[1];});
     var abWidestStartParam = abWidestSort[0].pathParam;
-    var abWidest = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [abWidestStartParam - 0.0025, abWidestStartParam + 0.0025], 0.001);
+    var abWidest = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [max(0, abWidestStartParam - 0.0025), min(1, abWidestStartParam + 0.0025)], 0.001);
     
     addDebugLine(context, abWidest.point, vector(abWidest.point[0], -1* abWidest.point[1], abWidest.point[2]), DebugColor.CYAN);
     
@@ -94,7 +94,7 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     //println(waistSearchArray);
     var waistStartPoint = waistSearchArray[0].pathParam;
     //println('waistStartPoint = ' ~ waistSearchArray[0].point);
-    var waistPoint = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [waistStartPoint - 0.005, waistStartPoint + 0.005], 0.001);
+    var waistPoint = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [max(0, waistStartPoint - 0.005), min(1, waistStartPoint + 0.005)], 0.001);
     
     addDebugLine(context, waistPoint.point, vector(waistPoint.point[0], -1* waistPoint.point[1], waistPoint.point[2]), DebugColor.BLACK);
     

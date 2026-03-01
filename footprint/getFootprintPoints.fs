@@ -43,25 +43,25 @@ export function editingLogic(context is Context, id is Id, oldDefinition is map,
 
     if (!isQueryEmpty(context, updatedDef.fptEdges) && !isQueryEmpty(context, updatedDef.rslQuery))
     {
-        var fptPath = constructPath(context, qUnion([updatedDef.fptEdges]));
-        var analysisMap = analyzeFootprint(context, id + 'getFootprintDataEL', fptPath, definition.rslQuery, false);
-
-        var analysisMapKeys = keys(analysisMap);
-
-        var sharedKeys = filter(analysisMapKeys, function(x)
+        try
         {
-            return isIn(x, keys(updatedDef));
-        });
-        for (var sharedKey in sharedKeys)
-        {
-            updatedDef[(sharedKey)] = analysisMap[(sharedKey)];
+            var fptPath = constructPath(context, qUnion([updatedDef.fptEdges]));
+            var analysisMap = analyzeFootprint(context, id + 'getFootprintDataEL', fptPath, definition.rslQuery, false);
+
+            var analysisMapKeys = keys(analysisMap);
+
+            var sharedKeys = filter(analysisMapKeys, function(x)
+            {
+                return isIn(x, keys(updatedDef));
+            });
+            for (var sharedKey in sharedKeys)
+            {
+                updatedDef[(sharedKey)] = analysisMap[(sharedKey)];
+            }
         }
-        /*
-           for (var param in updatedDef)
-           {
-           println(param.key ~ ': ' ~ param.value);
-           }
-         */
+        catch
+        {
+        }
     }
 
     return updatedDef;
