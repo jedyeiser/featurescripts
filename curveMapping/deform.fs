@@ -196,8 +196,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         };
 
         // Accumulators declared before conditional blocks so all steps share scope
-        var edgeMapping                  = [];
-        var reconstructedFaceBodyQueries = [];
+        var edgeMapping                    = [];
+        var allFaces                       = [];   // source faces — needed in Step 3 for adjacency
+        var reconstructedFaceBodyQueries   = [];
+        var reconstructedFaceSourceIndices = [];   // parallel: which allFaces[i] each body came from
 
         // Cumulative debug conditions: each step implies all prior steps ran
         var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
@@ -214,7 +216,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 2: Reconstruct faces ---
         if (runFaces)
         {
-            var allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
+            allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
 
             // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
             // toString on a transient query gives a stable unique string per entity,
@@ -383,8 +385,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     });
                     // Fill succeeded — boundary wire no longer needed
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
-                    reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
+                    reconstructedFaceBodyQueries   = append(reconstructedFaceBodyQueries,
                         qCreatedBy(fillId, EntityType.BODY));
+                    reconstructedFaceSourceIndices = append(reconstructedFaceSourceIndices, fIdx);
                 }
                 catch (fillErr)
                 {
@@ -441,33 +444,86 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 3: Combine into one body, clean up intermediates ---
         if (runBodies)
         {
-            var nFaces = size(reconstructedFaceBodyQueries);
-            if (nFaces > 0)
+            var nRecon = size(reconstructedFaceBodyQueries);
+            if (nRecon > 0)
             {
-                // Use the first face as the accumulator target.
-                // Add remaining faces one at a time so failures can be isolated.
-                // opBoolean(target + tools) modifies the target in-place and consumes
-                // the tool, so targetQ continues to refer to the growing surface body.
-                var targetQ = reconstructedFaceBodyQueries[0];
-                for (var fIdx = 1; fIdx < nFaces; fIdx += 1)
+                // BFS union: start from face 0, expand outward through source-face adjacency.
+                // This ensures we always attempt neighbours of already-merged geometry,
+                // making failures easier to localise visually.
+
+                // Lookup: toString(sourceFace) → index in allFaces
+                var srcFaceIdxLookup = {};
+                for (var fi = 0; fi < size(allFaces); fi += 1)
+                    srcFaceIdxLookup[toString(allFaces[fi])] = fi;
+
+                // Lookup: toString(srcFaceIdx) → index in reconstructedFaceBodyQueries
+                var srcIdxToReconIdx = {};
+                for (var ri = 0; ri < nRecon; ri += 1)
+                    srcIdxToReconIdx[toString(reconstructedFaceSourceIndices[ri])] = ri;
+
+                // Track which recon indices have been visited (merged or failed)
+                var visited = {};
+                visited["0"] = true;
+
+                var targetQ  = reconstructedFaceBodyQueries[0];
+                var opCount  = 0;
+
+                // Seed frontier: neighbours of recon face 0
+                var frontier = [];
+                var seedAdj  = evaluateQuery(context,
+                    qAdjacent(allFaces[reconstructedFaceSourceIndices[0]], AdjacencyType.EDGE, EntityType.FACE));
+                for (var af in seedAdj)
                 {
-                    var toolQ = reconstructedFaceBodyQueries[fIdx];
-                    try
+                    var adjSrcIdx = srcFaceIdxLookup[toString(af)];
+                    if (adjSrcIdx == undefined) { continue; }
+                    var adjReconIdx = srcIdxToReconIdx[toString(adjSrcIdx)];
+                    if (adjReconIdx == undefined) { continue; }
+                    var key = toString(adjReconIdx);
+                    if (visited[key] != undefined) { continue; }
+                    visited[key] = true;
+                    frontier = append(frontier, adjReconIdx);
+                }
+
+                while (size(frontier) > 0)
+                {
+                    var nextFrontier = [];
+                    for (var ri2 in frontier)
                     {
-                        opBoolean(context, id + ("incUnion" ~ fIdx), {
-                            "target"              : targetQ,
-                            "tools"               : toolQ,
-                            "operationType"       : BooleanOperationType.UNION,
-                            "allowSheets"         : true,
-                            "makeSolid"           : false,
-                            "eraseImprintedEdges" : true
-                        });
+                        var toolQ   = reconstructedFaceBodyQueries[ri2];
+                        var srcIdx2 = reconstructedFaceSourceIndices[ri2];
+                        try
+                        {
+                            opBoolean(context, id + ("bfsUnion" ~ opCount), {
+                                "target"              : targetQ,
+                                "tools"               : toolQ,
+                                "operationType"       : BooleanOperationType.UNION,
+                                "allowSheets"         : true,
+                                "makeSolid"           : false,
+                                "eraseImprintedEdges" : true
+                            });
+                            // Merge succeeded — add this face's unvisited neighbours
+                            var adjFaces2 = evaluateQuery(context,
+                                qAdjacent(allFaces[srcIdx2], AdjacencyType.EDGE, EntityType.FACE));
+                            for (var af2 in adjFaces2)
+                            {
+                                var nSrcIdx = srcFaceIdxLookup[toString(af2)];
+                                if (nSrcIdx == undefined) { continue; }
+                                var nReconIdx = srcIdxToReconIdx[toString(nSrcIdx)];
+                                if (nReconIdx == undefined) { continue; }
+                                var nKey = toString(nReconIdx);
+                                if (visited[nKey] != undefined) { continue; }
+                                visited[nKey] = true;
+                                nextFrontier = append(nextFrontier, nReconIdx);
+                            }
+                        }
+                        catch (boolErr)
+                        {
+                            println("BFS: recon " ~ ri2 ~ " (src " ~ srcIdx2 ~ ") failed: " ~ toString(boolErr));
+                            addDebugEntities(context, toolQ, DebugColor.RED);
+                        }
+                        opCount += 1;
                     }
-                    catch (boolErr)
-                    {
-                        println("face " ~ fIdx ~ " failed to union: " ~ toString(boolErr));
-                        addDebugEntities(context, toolQ, DebugColor.RED);
-                    }
+                    frontier = nextFrontier;
                 }
             }
 
