@@ -438,6 +438,48 @@ export function analyzeBaselineGeometry(context is Context,
         }
     }
 
+    // Step 6b: Check for inflections at chain junctions (G1 joins).
+    // For multi-segment curves (e.g., generateBaseline output), inflections may
+    // occur exactly at the boundary between adjacent edges — no single edge
+    // contains the sign change, so the per-edge loop misses them.
+    // Strategy: sample the principal-normal Z-component 20% inside each edge on
+    // both sides of every junction. A sign change → inflection at the junction.
+    for (var ci = 0; ci < size(chain) - 1; ci += 1)
+    {
+        var edgeA    = chain[ci].edge;
+        var edgeB    = chain[ci + 1].edge;
+        var revA     = chain[ci].reversed;
+        var revB     = chain[ci + 1].reversed;
+
+        // 20% inside each edge from the shared junction end
+        var tNearEndA   = revA ? 0.2 : 0.8;
+        var tNearStartB = revB ? 0.8 : 0.2;
+
+        var curvNearA = evEdgeCurvatures(context, { "edge" : edgeA, "parameters" : [tNearEndA] });
+        var curvNearB = evEdgeCurvatures(context, { "edge" : edgeB, "parameters" : [tNearStartB] });
+
+        // xAxis is the principal normal; its Z-component indicates curvature direction
+        var xzA = curvNearA[0].frame.xAxis[2];
+        var xzB = curvNearB[0].frame.xAxis[2];
+
+        // Require a definite sign (ignore near-zero / flat sections)
+        var CURV_THRESH = 0.01;
+        var signA = (xzA > CURV_THRESH) ? 1 : ((xzA < -CURV_THRESH) ? -1 : 0);
+        var signB = (xzB > CURV_THRESH) ? 1 : ((xzB < -CURV_THRESH) ? -1 : 0);
+
+        if (signA != 0 && signB != 0 && signA != signB)
+        {
+            // Inflection is at the junction — evaluate edgeA at its chain-end boundary
+            var junctionParam = revA ? 0.0 : 1.0;
+            var junctionCurv  = evEdgeCurvatures(context, { "edge" : edgeA, "parameters" : [junctionParam] });
+            allInflections = append(allInflections, {
+                "pt"   : junctionCurv[0].frame.origin,
+                "u"    : junctionParam,
+                "edge" : edgeA
+            });
+        }
+    }
+
     // Step 7: Select inflection with lowest Z in each half (FRCP / ARCP)
     var frcpPt   = undefined;
     var frcpU    = undefined;
