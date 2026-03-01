@@ -98,6 +98,12 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Name" : "Dummy counter", "Description" : "Stop transforming at this edge index and highlight it magenta. -1 = process all edges." }
             isInteger(definition.dummyCounter, { (unitless) : [-1, -1, 100] } as IntegerBoundSpec);
+
+            annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
+            definition.debugShowFromFrames is boolean;
+
+            annotation { "Name" : "Show to frames", "Description" : "Draw Frenet frame axes along the to reference path", "Default" : false }
+            definition.debugShowToFrames is boolean;
         }
     }
     {
@@ -107,6 +113,40 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, getRefPoint(context, definition.fromRef), undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   getRefPoint(context, definition.toRef),   undefined).arcLength;
+
+        // Align isolated from-line xAxes with the to-path normal.
+        // Lines adjacent to a curve already received a curve-context xAxis in buildFrenetPath
+        // step 4.5; this handles the isolated-line case (no curve neighbour) by borrowing the
+        // to-path normal at the corresponding arc position.
+        var fromEdgeData = fromFrenetPath.edgeData;
+        for (var i = 0; i < size(fromEdgeData); i += 1)
+        {
+            var ed = fromEdgeData[i];
+            if (!ed.isLine) { continue; }
+
+            var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
+                              (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
+            if (hasCurveCtx) { continue; }
+
+            var midFromArc = ed.startArcLength + ed.length / 2;
+            var midToArc   = toRefArc + (midFromArc - fromRefArc);
+            var toXAxis    = getFrameAtArcLength(context, toFrenetPath, midToArc).frame.xAxis;
+
+            var tangent   = ed.lineFrame.zAxis;
+            var perpXAxis = toXAxis - dot(toXAxis, tangent) * tangent;
+            if (norm(perpXAxis) > 1e-6)
+            {
+                fromEdgeData[i] = mergeMaps(ed, {
+                    "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
+                });
+            }
+        }
+        fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+
+        if (definition.debugShowFromFrames)
+            debugDrawFrames(context, fromFrenetPath, 10);
+        if (definition.debugShowToFrames)
+            debugDrawFrames(context, toFrenetPath, 10);
 
         var settings = {
             "fromRefArc"             : fromRefArc,
@@ -124,10 +164,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         var reconstructedFaceBodyQueries = [];
         var allGuideVertexQueries        = [];
 
-        // Steps 2 and 3 (faces, bodies) are disabled while wire wrapping is being validated.
+        // Cumulative debug conditions: each step implies all prior steps ran
         var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
-        var runFaces  = false;
-        var runBodies = false;
+        var runFaces  = !definition.debug || definition.createFaces  || definition.createBodies;
+        var runBodies = !definition.debug || definition.createBodies;
 
         // --- Step 1: Transform edges ---
         if (runWires)

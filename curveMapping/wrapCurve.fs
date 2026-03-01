@@ -518,7 +518,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
  *
  * Colors: xAxis (normal) = RED, yAxis (binormal) = GREEN, zAxis (tangent) = BLUE
  */
-function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
+export function debugDrawFrames(context is Context, frenetPath is map, numSamples is number)
 {
     var totalLength = frenetPath.totalLength;
     var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
