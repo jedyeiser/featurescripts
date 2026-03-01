@@ -496,13 +496,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     {
                         opExtractWires(context, id + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
                         opDeleteBodies(context, id + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
-                        var wireBodies = evaluateQuery(context, qCreatedBy(id + "keepWires", EntityType.BODY));
-                        if (size(wireBodies) > 1)
-                        {
-                            opCreateCompositePart(context, id + "compositePart", {
-                                "bodies": qCreatedBy(id + "keepWires", EntityType.BODY)
-                            });
-                        }
+                        opCreateCompositePart(context, id + "compositePart", {
+                            "bodies": qCreatedBy(id + "keepWires", EntityType.BODY)
+                        });
                     }
                     catch
                     {

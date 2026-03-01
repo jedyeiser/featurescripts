@@ -1148,7 +1148,8 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         var FCH_TOL      = 5e-7;   // 0.5 µm in plain meters (< 0.001 mm)
         var fcpHeightEff = definition.fcpHeight;
         var acpHeightEff = definition.acpHeight;
-        var MCH_m        = definition.camberHeight / meter;
+        var MCH_m        = definition.camberHeight / meter;  // adjustable: loop corrects for spline approximation offset
+        var MCH_target   = definition.camberHeight / meter;  // constant spec value
 
         var mchResult = runMCHBisection(context, eiData, hasEI,
                                          xFCP, xACP, xFRCP, xARCP, xMount,
@@ -1194,8 +1195,9 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 }
             }
 
-            var fcph_err = 0.0;
-            var acph_err = 0.0;
+            var fcph_err   = 0.0;
+            var acph_err   = 0.0;
+            var camber_err = 0.0;
 
             if (size(camberPtsLoop) >= 2)
             {
@@ -1279,11 +1281,60 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                         }
                     }
                 }
+
+                // --- Camber height measurement from fitted spline ---
+                // analyzeBaseline defines camber as the maximum perpendicular distance
+                // from the (splineStartPt → splineEndPt) chord to any point on the
+                // camber spline.  We measure the same quantity here so the iteration
+                // drives the fitted-spline camber to MCH_target, not the raw solver MCH.
+                var chord_vec_x = (splineEndPt[0] - splineStartPt[0]) / meter;
+                var chord_vec_z = (splineEndPt[2] - splineStartPt[2]) / meter;
+                var chord_len_m = sqrt(chord_vec_x * chord_vec_x + chord_vec_z * chord_vec_z);
+
+                if (chord_len_m > 1e-10)
+                {
+                    var chord_dx = chord_vec_x / chord_len_m;
+                    var chord_dz = chord_vec_z / chord_len_m;
+
+                    // Sample the spline at 50 points to find the peak perpendicular height.
+                    var nSamp    = 50;
+                    var sampPrms = [];
+                    for (var si = 0; si <= nSamp; si += 1)
+                    {
+                        sampPrms = append(sampPrms, uStart + (uEnd - uStart) * (si / nSamp));
+                    }
+                    var sampResult = evaluateSpline({
+                        "spline"       : loopSpline,
+                        "parameters"   : sampPrms,
+                        "nDerivatives" : 1
+                    });
+
+                    var maxCamber_m = 0.0;
+                    for (var si = 0; si <= nSamp; si += 1)
+                    {
+                        var sPt  = sampResult[0][si];
+                        var sv_x = (sPt[0] - splineStartPt[0]) / meter;
+                        var sv_z = (sPt[2] - splineStartPt[2]) / meter;
+                        var perp = abs(sv_x * chord_dz - sv_z * chord_dx);
+                        if (perp > maxCamber_m) { maxCamber_m = perp; }
+                    }
+
+                    camber_err = maxCamber_m - MCH_target;
+                    println("rocIter=" ~ rocIter ~
+                            "  camber=" ~ round(maxCamber_m * 1e6) / 1e3 ~
+                            " tgt=" ~ round(MCH_target * 1e6) / 1e3 ~
+                            " err=" ~ round(camber_err * 1e6) / 1e3 ~ " mm");
+                    if (abs(camber_err) > FCH_TOL)
+                    {
+                        // Linear correction: d(camber_height)/d(MCH_m) ≈ 1
+                        MCH_m = MCH_m - camber_err;
+                    }
+                }
             }
 
-            if (abs(fcph_err) < FCH_TOL && abs(acph_err) < FCH_TOL)
+            if (abs(fcph_err) < FCH_TOL && abs(acph_err) < FCH_TOL && abs(camber_err) < FCH_TOL)
             {
-                println("generateBaseline: FCPH/ACPH converged at iter=" ~ rocIter);
+                println("generateBaseline: FCPH/ACPH/camber converged at iter=" ~ rocIter);
                 break;
             }
 
