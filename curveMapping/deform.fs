@@ -196,8 +196,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         };
 
         // Accumulators declared before conditional blocks so all steps share scope
-        var edgeMapping                  = [];
-        var reconstructedFaceBodyQueries = [];
+        var edgeMapping = [];
 
         // Cumulative debug conditions: each step implies all prior steps ran
         var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
@@ -383,8 +382,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     });
                     // Fill succeeded — boundary wire no longer needed
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
-                    reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
-                        qCreatedBy(fillId, EntityType.BODY));
                 }
                 catch (fillErr)
                 {
@@ -466,14 +463,20 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 }
             }
 
-            // Boolean all reconstructed face surface bodies in one shot.
-            if (size(reconstructedFaceBodyQueries) > 1)
+            // Boolean all reconstructed face surface bodies.
+            // Use qCreatedBy(id) filtered to SHEET — this is equivalent to what
+            // the user confirmed works in manual Onshape testing.  Wire bodies
+            // have already been deleted above, so only fill surfaces remain.
+            var surfaceBodies     = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
+            var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
+            if (size(surfaceBodiesList) > 1)
             {
                 opBoolean(context, id + "unionFaces", {
-                    "tools"                       : qUnion(reconstructedFaceBodyQueries),
+                    "tools"                       : surfaceBodies,
                     "operationType"               : BooleanOperationType.UNION,
+                    "allowSheets"                 : true,
                     "targetsAndToolsNeedGrouping" : true,
-                    "makeSolid"                   : false,
+                    "eraseImprintedEdges"         : true,
                 });
             }
         }

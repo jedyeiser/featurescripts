@@ -694,14 +694,10 @@ function innerSolve(context is Context,
             if (v < eiMin) { eiMin = v; }
             if (v > eiMax) { eiMax = v; }
         }
-        println("innerSolve: EI branch  eiPts=" ~ size(eiData) ~
-                "  EI_min=" ~ round(eiMin * 10) / 10 ~
-                "  EI_max=" ~ round(eiMax * 10) / 10 ~ " Nm2");
         camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H);
     }
     else
     {
-        println("innerSolve: CUBIC branch  hasEI=" ~ hasEI ~ "  eiPts=" ~ size(eiData));
         camberPts = solveCamberCubic(xFRCP, xARCP, xLoad, H);
     }
 
