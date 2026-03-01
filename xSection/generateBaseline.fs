@@ -62,40 +62,6 @@ export function generateBaselineEditLogic(context is Context, id is Id,
     hiddenBodies is Query, clickedButton is string) returns map
 {
     definition.showEIQuery = definition.hasEIProfile;
-
-    // Populate measurement fields from the last-generated baseline
-    if (clickedButton == "recalculateMeasurements")
-    {
-        var baselineEdges = qCreatedBy(id + "baseline", EntityType.EDGE);
-        if (size(evaluateQuery(context, baselineEdges)) > 0)
-        {
-            var result = analyzeBaselineGeometry(context, baselineEdges,
-                                                 definition.fcpQuery, definition.acpQuery);
-            if (result != undefined)
-            {
-                definition.meas_fbMinString           = formatVec(result.fb_min_pt);
-                definition.meas_abMinString           = formatVec(result.ab_min_pt);
-                definition.meas_maxCamberHeightString = formatVec(result.max_camber_pt);
-                definition.meas_camberHeight          = result.camber_height;
-
-                if (result.frcp_pt != undefined)
-                {
-                    definition.meas_frcp     = formatVec(result.frcp_pt);
-                    definition.meas_frcpl    = result.frcpl;
-                    definition.meas_frcpLine = formatLine(result.frcp_pt, result.frcp_dir);
-                    definition.meas_fcph     = result.fcph;
-                }
-                if (result.arcp_pt != undefined)
-                {
-                    definition.meas_arcp     = formatVec(result.arcp_pt);
-                    definition.meas_arcpl    = result.arcpl;
-                    definition.meas_arcpLine = formatLine(result.arcp_pt, result.arcp_dir);
-                    definition.meas_acph     = result.acph;
-                }
-            }
-        }
-    }
-
     return definition;
 }
 
@@ -972,47 +938,6 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         annotation { "Name" : "Add baseline sketch" }
         definition.addBaselineSketch is boolean;
 
-        annotation { "Group Name" : "Measured baseline data", "Collapsed By Default" : true }
-        {
-            annotation { "Name" : "FB min", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_fbMinString is string;
-
-            annotation { "Name" : "AB min", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_abMinString is string;
-
-            annotation { "Name" : "Max camber point", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_maxCamberHeightString is string;
-
-            annotation { "Name" : "Camber height" }
-            isLength(definition.meas_camberHeight, LENGTH_BOUNDS);
-
-            annotation { "Name" : "FRCP", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_frcp is string;
-
-            annotation { "Name" : "FRCPL", "UIHint" : UIHint.READ_ONLY }
-            isLength(definition.meas_frcpl, LENGTH_BOUNDS);
-
-            annotation { "Name" : "FRCP tangent line", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_frcpLine is string;
-
-            annotation { "Name" : "FCPH", "UIHint" : UIHint.READ_ONLY }
-            isLength(definition.meas_fcph, LENGTH_BOUNDS);
-
-            annotation { "Name" : "ARCP", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_arcp is string;
-
-            annotation { "Name" : "ARCPL", "UIHint" : UIHint.READ_ONLY }
-            isLength(definition.meas_arcpl, LENGTH_BOUNDS);
-
-            annotation { "Name" : "ARCP tangent line", "UIHint" : UIHint.READ_ONLY }
-            definition.meas_arcpLine is string;
-
-            annotation { "Name" : "ACPH", "UIHint" : UIHint.READ_ONLY }
-            isLength(definition.meas_acph, LENGTH_BOUNDS);
-        }
-
-        annotation { "Name" : "Recalculate measurements" }
-        isButton(definition.recalculateMeasurements);
     }
     {
         // ----------------------------------------------------------------
