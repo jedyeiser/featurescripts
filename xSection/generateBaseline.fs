@@ -148,6 +148,18 @@ function getEIFromEdges(context is Context, eiEdges is Query,
         points[j + 1] = key;
     }
 
+    // Clamp all sampled EI values to non-negative.
+    // opFitSpline can produce negative Z near steep endpoints (cubic overshoot),
+    // which decodes as negative EI — physically impossible and causes k=0 clamp
+    // spikes in solveCamberBeam that introduce spurious inflections.
+    for (var i = 0; i < size(points); i += 1)
+    {
+        if (points[i].EI < 0 * newton * meter * meter)
+        {
+            points[i] = { "x" : points[i].x, "EI" : 0 * newton * meter * meter };
+        }
+    }
+
     var n = size(points);
 
     // Linear extrapolation at front boundary
@@ -1211,85 +1223,187 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 round(measureCamberHeight(finalPts, xFRCP, xARCP) * 1e6) / 1e3 ~ " mm");
 
         // ----------------------------------------------------------------
-        // 6. Fit one spline over the full span, split at rocker joints
-        //    so that camber/forebody/aftbody share exact endpoints (G1).
+        // 6. Fit camber spline separately, then build exact G1 Bézier
+        //    rockers tangent to the fitted camber at the junction points.
+        //
+        //    Rationale: fitting one big spline over all ~300 points then
+        //    splitting near FRCP/ARCP shares the approximation budget across
+        //    the whole span and, when an EI profile is used, the k=0 clamp
+        //    near the EI profile endpoints causes a curvature kink that the
+        //    spline fitter absorbs by introducing a spurious inflection in
+        //    the camber pocket.  Fitting the camber alone dedicates the full
+        //    control-point budget to the camber shape.  The rockers become
+        //    exact degree-2 Béziers whose G1 tangent at the junction is
+        //    read directly from the fitted camber endpoint.
         // ----------------------------------------------------------------
-        // hasForeRocker / hasAftRocker already declared before step 4
-
-        var outputPoints = [];
-        for (var pt in finalPts)
-        {
-            outputPoints = append(outputPoints, vector(pt.x, 0 * meter, pt.z));
-        }
-
-        if (size(outputPoints) < 2)
-        {
-            throw regenError("Baseline solver produced insufficient points.");
-        }
 
         try
         {
-            var approxFull = approximateSpline(context, {
+            // Bucket finalPts into camber vs rocker regions.
+            // Camber:     xFRCP ≤ x ≤ xARCP  (includes both junction points)
+            // Fore rocker: x < xFRCP          (FCP tip side)
+            // Aft rocker:  x > xARCP          (ACP tip side)
+            var camberPts     = [];
+            var foreRockerPts = [];
+            var aftRockerPts  = [];
+            var GEOM_TOL_BKT  = 1e-9 * meter;
+
+            for (var pt in finalPts)
+            {
+                var inFore = hasForeRocker && (pt.x < xFRCP - GEOM_TOL_BKT);
+                var inAft  = hasAftRocker  && (pt.x > xARCP + GEOM_TOL_BKT);
+                if (inFore)
+                {
+                    foreRockerPts = append(foreRockerPts, vector(pt.x, 0 * meter, pt.z));
+                }
+                else if (inAft)
+                {
+                    aftRockerPts = append(aftRockerPts, vector(pt.x, 0 * meter, pt.z));
+                }
+                else
+                {
+                    camberPts = append(camberPts, vector(pt.x, 0 * meter, pt.z));
+                }
+            }
+
+            if (size(camberPts) < 2)
+            {
+                throw regenError("Baseline solver produced insufficient camber points.");
+            }
+
+            // --- Fit the camber spline (full approximation budget) ---
+            var approxCamber = approximateSpline(context, {
                 "degree"           : definition.curveDegree,
                 "tolerance"        : definition.approxTolerance,
                 "isPeriodic"       : false,
-                "targets"          : [{ "positions" : outputPoints }],
+                "targets"          : [{ "positions" : camberPts }],
                 "maxControlPoints" : definition.maxControlPoints
             });
 
-            var fullBSpline = approxFull[0];
-
-            // Project rocker contact points onto the fitted spline to get
-            // exact split parameters (guarantees G1 across all segment joins).
-            var splitParams = [];
-            if (hasForeRocker)
-            {
-                var projFRCP = projectPointOnCurve(fullBSpline,
-                    vector(xFRCP, 0 * meter, interpZ(finalPts, xFRCP)), {});
-                splitParams = append(splitParams, projFRCP.parameter);
-            }
-            if (hasAftRocker)
-            {
-                var projARCP = projectPointOnCurve(fullBSpline,
-                    vector(xARCP, 0 * meter, interpZ(finalPts, xARCP)), {});
-                splitParams = append(splitParams, projARCP.parameter);
-            }
-
-            // Split the full spline at joint parameters.
-            // splitCurveMultiple preserves tangency at all split points.
-            var segments = splitCurveMultiple(context, fullBSpline, splitParams);
-
-            // Create one body per segment.
-            // Segment order: [fore?] [camber] [aft?]
-            var segIdx = 0;
-
-            if (hasForeRocker)
-            {
-                opCreateBSplineCurve(context, id + "forebody", {
-                    "bSplineCurve" : segments[segIdx]
-                });
-                segIdx += 1;
-            }
-
             opCreateBSplineCurve(context, id + "camber", {
-                "bSplineCurve" : segments[segIdx]
+                "bSplineCurve" : approxCamber[0]
             });
-            segIdx += 1;
 
-            if (hasAftRocker)
+            var camberEdges = evaluateQuery(context, qCreatedBy(id + "camber", EntityType.EDGE));
+            if (size(camberEdges) == 0)
             {
-                opCreateBSplineCurve(context, id + "aftbody", {
-                    "bSplineCurve" : segments[segIdx]
-                });
+                throw regenError("Baseline: camber spline body produced no edges.");
+            }
+            var camberEdge = camberEdges[0];
+
+            // Track which rocker bodies were actually created.
+            var hasForeBody = false;
+            var hasAftBody  = false;
+
+            // --- Build G1 Bézier forebody rocker ---
+            // Degree-2 Bézier: P0 = FCP tip, P1 = G1 control, P2 = fitted camber start.
+            //
+            //   G1 at P2: Bézier tangent at t=1 = 2*(P2-P1) ∝ camberStartTan
+            //   => P1 = P2 - (α/2)*camberStartTan
+            //      α  = (P2.x - P0.x) / camberStartTan.x
+            //   => P1.x = midpoint(P0.x, P2.x)
+            if (hasForeRocker && size(foreRockerPts) >= 1)
+            {
+                var camberStartCurv = evEdgeCurvatures(context, { "edge" : camberEdge, "parameters" : [0.0] });
+                var camberStartPt   = camberStartCurv[0].frame.origin;
+                var camberStartTan  = camberStartCurv[0].frame.zAxis;  // normalized tangent, points FCP→ACP
+
+                var fTipPt = foreRockerPts[0];  // lowest-X point = FCP tip
+                var dxFore = camberStartPt[0] - fTipPt[0];
+
+                if (abs(camberStartTan[0]) > 0.01)
+                {
+                    var alphaFore = dxFore / camberStartTan[0];
+                    var P1fore = vector(
+                        camberStartPt[0] - (alphaFore / 2) * camberStartTan[0],
+                        0 * meter,
+                        camberStartPt[2] - (alphaFore / 2) * camberStartTan[2]
+                    );
+                    opCreateBSplineCurve(context, id + "forebody", {
+                        "bSplineCurve" : bSplineCurve({
+                            "degree"        : 2,
+                            "isPeriodic"    : false,
+                            "controlPoints" : [fTipPt, P1fore, camberStartPt]
+                        })
+                    });
+                    hasForeBody = true;
+                }
+                else
+                {
+                    // Near-vertical junction tangent: approximate through fore points.
+                    var forePoints = append(foreRockerPts, camberStartPt);
+                    var approxFore = approximateSpline(context, {
+                        "degree"           : definition.curveDegree,
+                        "tolerance"        : definition.approxTolerance,
+                        "isPeriodic"       : false,
+                        "targets"          : [{ "positions" : forePoints }],
+                        "maxControlPoints" : definition.maxControlPoints
+                    });
+                    opCreateBSplineCurve(context, id + "forebody", {
+                        "bSplineCurve" : approxFore[0]
+                    });
+                    hasForeBody = true;
+                }
             }
 
-            // Merge all segment edges into a single wire body.
+            // --- Build G1 Bézier aftbody rocker ---
+            // Degree-2 Bézier: P0 = fitted camber end, P1 = G1 control, P2 = ACP tip.
+            //
+            //   G1 at P0: Bézier tangent at t=0 = 2*(P1-P0) ∝ camberEndTan
+            //   => P1 = P0 + (β/2)*camberEndTan
+            //      β  = (P2.x - P0.x) / camberEndTan.x
+            //   => P1.x = midpoint(P0.x, P2.x)
+            if (hasAftRocker && size(aftRockerPts) >= 1)
+            {
+                var camberEndCurv = evEdgeCurvatures(context, { "edge" : camberEdge, "parameters" : [1.0] });
+                var camberEndPt   = camberEndCurv[0].frame.origin;
+                var camberEndTan  = camberEndCurv[0].frame.zAxis;  // normalized tangent, points FCP→ACP
+
+                var aTipPt = aftRockerPts[size(aftRockerPts) - 1];  // highest-X point = ACP tip
+                var dxAft  = aTipPt[0] - camberEndPt[0];
+
+                if (abs(camberEndTan[0]) > 0.01)
+                {
+                    var betaAft = dxAft / camberEndTan[0];
+                    var P1aft = vector(
+                        camberEndPt[0] + (betaAft / 2) * camberEndTan[0],
+                        0 * meter,
+                        camberEndPt[2] + (betaAft / 2) * camberEndTan[2]
+                    );
+                    opCreateBSplineCurve(context, id + "aftbody", {
+                        "bSplineCurve" : bSplineCurve({
+                            "degree"        : 2,
+                            "isPeriodic"    : false,
+                            "controlPoints" : [camberEndPt, P1aft, aTipPt]
+                        })
+                    });
+                    hasAftBody = true;
+                }
+                else
+                {
+                    // Near-vertical junction tangent: approximate through aft points.
+                    var aftPoints = concatenateArrays([[camberEndPt], aftRockerPts]);
+                    var approxAft = approximateSpline(context, {
+                        "degree"           : definition.curveDegree,
+                        "tolerance"        : definition.approxTolerance,
+                        "isPeriodic"       : false,
+                        "targets"          : [{ "positions" : aftPoints }],
+                        "maxControlPoints" : definition.maxControlPoints
+                    });
+                    opCreateBSplineCurve(context, id + "aftbody", {
+                        "bSplineCurve" : approxAft[0]
+                    });
+                    hasAftBody = true;
+                }
+            }
+
+            // --- Merge all segment edges into a single wire body ---
             var allEdgeQueries = [qCreatedBy(id + "camber", EntityType.EDGE)];
-            if (hasForeRocker)
+            if (hasForeBody)
             {
                 allEdgeQueries = append(allEdgeQueries, qCreatedBy(id + "forebody", EntityType.EDGE));
             }
-            if (hasAftRocker)
+            if (hasAftBody)
             {
                 allEdgeQueries = append(allEdgeQueries, qCreatedBy(id + "aftbody", EntityType.EDGE));
             }
@@ -1300,11 +1414,11 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
             // Delete the now-redundant segment bodies.
             var segBodyQueries = [qCreatedBy(id + "camber", EntityType.BODY)];
-            if (hasForeRocker)
+            if (hasForeBody)
             {
                 segBodyQueries = append(segBodyQueries, qCreatedBy(id + "forebody", EntityType.BODY));
             }
-            if (hasAftRocker)
+            if (hasAftBody)
             {
                 segBodyQueries = append(segBodyQueries, qCreatedBy(id + "aftbody", EntityType.BODY));
             }
@@ -1412,12 +1526,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
         catch (e)
         {
-            println("ERROR generateBaseline: spline fitting/splitting failed — " ~ e);
-            println("  output point count = " ~ size(outputPoints));
-            for (var i = 0; i < size(outputPoints) - 1; i += 1)
-            {
-                addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
-            }
+            println("ERROR generateBaseline: spline fitting failed — " ~ e);
             throw regenError("Baseline spline fitting failed — see console output.");
         }
     });
