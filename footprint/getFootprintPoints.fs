@@ -278,14 +278,20 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             acpORIGIN = cpLine1.origin;
         }
 
+        // Offset planes inward by a tiny epsilon so they always cut through an
+        // edge interior rather than touching a vertex.  When a footprint vertex
+        // lies exactly on the FCP/ACP plane, opSplitPart returns SPLIT_FAILED
+        // because it requires a strict interior intersection.
+        // eps = 1e-5 mm — negligible for any footprint geometry.
+        var splitEps = 1e-5 * millimeter;
         opPlane(context, id + "fcpPlane", {
-                    "plane" : plane(fcpORGIN, vector(1, 0, 0))
+                    "plane" : plane(fcpORGIN + splitEps * vector(1, 0, 0), vector(1, 0, 0))
                 });
 
         var fcpPlane = qCreatedBy(id + "fcpPlane", EntityType.FACE);
 
         opPlane(context, id + "acpPlane", {
-                    "plane" : plane(acpORIGIN, vector(1, 0, 0))
+                    "plane" : plane(acpORIGIN - splitEps * vector(1, 0, 0), vector(1, 0, 0))
                 });
 
         var acpPlane = qCreatedBy(id + "acpPlane", EntityType.FACE);
