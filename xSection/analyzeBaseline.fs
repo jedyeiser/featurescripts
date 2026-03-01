@@ -576,10 +576,9 @@ export function analyzeBaselineGeometry(context is Context,
     {
         var frcpCurv = evEdgeCurvatures(context, { "edge" : frcpEdge, "parameters" : [frcpU] });
         var frcpDir  = frcpCurv[0].frame.zAxis;  // already normalized tangent
-        var frcpIdx  = findSampleAtX(samples, frcpPt[0]);
         result.frcp_pt  = frcpPt;
         result.frcp_dir = frcpDir;
-        result.frcpl    = approximateChainArcLength(samples, fcpIdx, frcpIdx);
+        result.frcpl    = abs(frcpPt[0] - fcpPt[0]);
         result.fcph     = perpDistToLine(fcpPt, frcpPt, frcpDir);
     }
 
@@ -588,10 +587,9 @@ export function analyzeBaselineGeometry(context is Context,
     {
         var arcpCurv = evEdgeCurvatures(context, { "edge" : arcpEdge, "parameters" : [arcpU] });
         var arcpDir  = arcpCurv[0].frame.zAxis;  // already normalized tangent
-        var arcpIdx  = findSampleAtX(samples, arcpPt[0]);
         result.arcp_pt  = arcpPt;
         result.arcp_dir = arcpDir;
-        result.arcpl    = approximateChainArcLength(samples, acpIdx, arcpIdx);
+        result.arcpl    = abs(acpPt[0] - arcpPt[0]);
         result.acph     = perpDistToLine(acpPt, arcpPt, arcpDir);
     }
 

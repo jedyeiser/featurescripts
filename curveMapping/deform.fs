@@ -119,9 +119,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Create bodies", "Default" : false }
             definition.createBodies is boolean;
 
-            annotation { "Name" : "Dummy counter", "Description" : "Stop reconstructing at this face index and highlight it magenta. -1 = process all faces." }
-            isInteger(definition.dummyCounter, { (unitless) : [-1, 0, 100] } as IntegerBoundSpec);
-
             annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
             definition.debugShowFromFrames is boolean;
 
@@ -195,7 +192,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             "approximationDegree"    : definition.approximationDegree,
             "approximationMaxCPs"    : definition.approximationMaxCPs,
             "approximationTolerance" : definition.approximationTolerance,
-            "dummyCounter"           : definition.dummyCounter,
             "vertexMap"              : vertexMap
         };
 
@@ -242,13 +238,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             {
                 var face      = allFaces[fIdx];
                 var faceEdges = faceBoundaryEdgeSets[fIdx];
-
-                // Dummy counter: highlight this face and stop
-                if (settings.dummyCounter >= 0 && fIdx >= settings.dummyCounter)
-                {
-                    addDebugEntities(context, face, DebugColor.MAGENTA);
-                    break;
-                }
 
                 // Gather wrapped counterparts via O(1) map lookup.
                 // Deduplicate by toString(wrappedEdge) to guard against opExtractWires
@@ -457,13 +446,42 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
             if (size(reconstructedFaceBodyQueries) > 0)
             {
-                opBoolean(context, id + "unionFaces", {
-                    "tools"               : qUnion(reconstructedFaceBodyQueries),
-                    "operationType"       : BooleanOperationType.UNION,
-                    "allowSheets"         : true,
-                    "makeSolid"           : inputIsSolid,
-                    "eraseImprintedEdges" : true
-                });
+                var boolTools = qUnion(reconstructedFaceBodyQueries);
+                // If the source was solid, attempt a solid closure first.
+                // This requires every face to have been successfully reconstructed.
+                // If any face was skipped (open loop / overlapping edges), the shell
+                // won't be closed and the solid attempt will fail — fall back to a
+                // surface union so the user still gets the partial result.
+                var madeBody = false;
+                if (inputIsSolid)
+                {
+                    try
+                    {
+                        opBoolean(context, id + "unionFacesSolid", {
+                            "tools"               : boolTools,
+                            "operationType"       : BooleanOperationType.UNION,
+                            "allowSheets"         : true,
+                            "makeSolid"           : true,
+                            "eraseImprintedEdges" : true
+                        });
+                        madeBody = true;
+                    }
+                    catch (solidErr)
+                    {
+                        println("WARNING: solid union failed (" ~ toString(solidErr) ~
+                                ") — one or more faces likely failed reconstruction. Falling back to surface union.");
+                    }
+                }
+                if (!madeBody)
+                {
+                    opBoolean(context, id + "unionFacesSurface", {
+                        "tools"               : boolTools,
+                        "operationType"       : BooleanOperationType.UNION,
+                        "allowSheets"         : true,
+                        "makeSolid"           : false,
+                        "eraseImprintedEdges" : true
+                    });
+                }
             }
 
             // Wire cleanup / keep
