@@ -380,13 +380,52 @@ export function analyzeBaselineGeometry(context is Context,
         return undefined;
     }
 
+    // Evaluate exact chain endpoints (unaffected by midpoint-sampling offset).
+    // When FCP or ACP is an edge endpoint, the chain boundary parameter (0.0 or 1.0)
+    // gives the exact position; midpoint samples are always offset by ~half interval.
+    var lastCI         = size(chain) - 1;
+    var chainStartCurv = evEdgeCurvatures(context, {
+        "edge"       : chain[0].edge,
+        "parameters" : [chain[0].reversed ? 1.0 : 0.0]
+    });
+    var chainEndCurv = evEdgeCurvatures(context, {
+        "edge"       : chain[lastCI].edge,
+        "parameters" : [chain[lastCI].reversed ? 0.0 : 1.0]
+    });
+    var chainStartPt = chainStartCurv[0].frame.origin;
+    var chainEndPt   = chainEndCurv[0].frame.origin;
+
     var mrsX   = (fcpX + acpX) / 2;
     var fcpIdx = findSampleAtX(samples, fcpX);
     var acpIdx = findSampleAtX(samples, acpX);
     var mrsIdx = findSampleAtX(samples, mrsX);
-    var fcpPt  = samples[fcpIdx].pt;
-    var acpPt  = samples[acpIdx].pt;
-    var mrsPt  = samples[mrsIdx].pt;
+
+    // Use exact chain endpoint for fcp_pt / acp_pt if it is closer in X than the
+    // nearest midpoint sample (covers edge-endpoint FCP/ACP without regressing
+    // the case where FCP/ACP are mate connectors in the middle of a span).
+    var fcpPt         = samples[fcpIdx].pt;
+    var distFcpSample = abs(fcpPt[0] - fcpX);
+    if (abs(chainStartPt[0] - fcpX) < distFcpSample)
+    {
+        fcpPt = chainStartPt;
+    }
+    else if (abs(chainEndPt[0] - fcpX) < distFcpSample)
+    {
+        fcpPt = chainEndPt;
+    }
+
+    var acpPt         = samples[acpIdx].pt;
+    var distAcpSample = abs(acpPt[0] - acpX);
+    if (abs(chainStartPt[0] - acpX) < distAcpSample)
+    {
+        acpPt = chainStartPt;
+    }
+    else if (abs(chainEndPt[0] - acpX) < distAcpSample)
+    {
+        acpPt = chainEndPt;
+    }
+
+    var mrsPt = samples[mrsIdx].pt;
 
     // Step 4: FB / AB minimum-Z points in each half
     var fbXLow  = (fcpX < mrsX) ? fcpX : mrsX;
