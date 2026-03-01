@@ -467,6 +467,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
         // ===== Main wrapping loop =====
         var sourceCurveArray = evaluateQuery(context, definition.sourceEdges);
+        var loftBodyQueries  = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
@@ -774,9 +775,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 try
                 {
                     opLoft(context, id + (toString(i) ~ "loft"), {
-                        "bodyType"        : ToolBodyType.SURFACE,
+                        "bodyType"          : ToolBodyType.SURFACE,
                         "profileSubqueries" : [loftProfile1, loftProfile2]
                     });
+                    loftBodyQueries = append(loftBodyQueries, qCreatedBy(id + (toString(i) ~ "loft"), EntityType.BODY));
                 }
                 catch (e)
                 {
@@ -806,6 +808,15 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
                 // OutputCurveMode.KEEP_ALL: keep everything, delete nothing
             }
+        }
+
+        // ===== Merge all loft surface patches into one body =====
+        if (size(loftBodyQueries) > 1)
+        {
+            opBoolean(context, id + "unionLofts", {
+                "tools"         : qUnion(loftBodyQueries),
+                "operationType" : BooleanOperationType.UNION
+            });
         }
 
         // ===== Cleanup planar projected from-curves =====
