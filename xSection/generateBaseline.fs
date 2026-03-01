@@ -1159,42 +1159,125 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
         for (var rocIter = 0; rocIter < 8; rocIter += 1)
         {
-            var fcph_err = 0.0;
-            var acph_err = 0.0;
+            // Bucket finalPts exactly as step 6 does, capturing tip points and
+            // the camber subset.  Then fit the same approximateSpline so that the
+            // FCPH/ACPH measurement uses the exact camberStartPt / camberStartTan
+            // / camberEndPt / camberEndTan that the Bézier rockers will use.
+            // This eliminates the systematic offset that arises when measuring
+            // slope from the raw solver array vs. the fitted spline endpoint.
+            var camberPtsLoop = [];
+            var fTipPtLoop    = undefined;
+            var aTipPtLoop    = undefined;
+            var GEOM_TOL_BKT  = 1e-9 * meter;
 
-            if (hasForeRocker)
+            for (var pt in finalPts)
             {
-                var mFore   = slopeAt(finalPts, xFRCP);
-                var frcpl_m = (xFRCP - xFCP) / meter;
-                var zFRCP_m = interpZ(finalPts, xFRCP) / meter;
-                var zFCP_m  = interpZ(finalPts, xFCP)  / meter;
-                var fcph_m  = abs(frcpl_m * mFore + zFCP_m - zFRCP_m) / sqrt(1 + mFore * mFore);
-                fcph_err    = fcph_m - definition.fcpHeight / meter;
-                println("rocIter=" ~ rocIter ~
-                        " FCPH=" ~ round(fcph_m * 1e6) / 1e3 ~
-                        " spec=" ~ round(definition.fcpHeight / millimeter * 1e3) / 1e3 ~
-                        " err="  ~ round(fcph_err * 1e6) / 1e3 ~ " mm");
-                if (abs(fcph_err) > FCH_TOL)
+                var inFore = hasForeRocker && (pt.x < xFRCP - GEOM_TOL_BKT);
+                var inAft  = hasAftRocker  && (pt.x > xARCP + GEOM_TOL_BKT);
+                if (inFore)
                 {
-                    fcpHeightEff = fcpHeightEff - fcph_err * sqrt(1 + mFore * mFore) * meter;
+                    if (fTipPtLoop == undefined || pt.x < fTipPtLoop.x)
+                    {
+                        fTipPtLoop = pt;
+                    }
+                }
+                else if (inAft)
+                {
+                    if (aTipPtLoop == undefined || pt.x > aTipPtLoop.x)
+                    {
+                        aTipPtLoop = pt;
+                    }
+                }
+                else
+                {
+                    camberPtsLoop = append(camberPtsLoop, vector(pt.x, 0 * meter, pt.z));
                 }
             }
 
-            if (hasAftRocker)
+            var fcph_err = 0.0;
+            var acph_err = 0.0;
+
+            if (size(camberPtsLoop) >= 2)
             {
-                var mAft    = slopeAt(finalPts, xARCP);
-                var arcpl_m = (xACP - xARCP) / meter;
-                var zARCP_m = interpZ(finalPts, xARCP) / meter;
-                var zACP_m  = interpZ(finalPts, xACP)  / meter;
-                var acph_m  = abs(arcpl_m * mAft - (zACP_m - zARCP_m)) / sqrt(1 + mAft * mAft);
-                acph_err    = acph_m - definition.acpHeight / meter;
-                println("rocIter=" ~ rocIter ~
-                        " ACPH=" ~ round(acph_m * 1e6) / 1e3 ~
-                        " spec=" ~ round(definition.acpHeight / millimeter * 1e3) / 1e3 ~
-                        " err="  ~ round(acph_err * 1e6) / 1e3 ~ " mm");
-                if (abs(acph_err) > FCH_TOL)
+                var approxLoop = approximateSpline(context, {
+                    "degree"           : definition.curveDegree,
+                    "tolerance"        : definition.approxTolerance,
+                    "isPeriodic"       : false,
+                    "targets"          : [{ "positions" : camberPtsLoop }],
+                    "maxControlPoints" : definition.maxControlPoints
+                });
+
+                var loopSpline = approxLoop[0];
+                var nKnots     = size(loopSpline.knots);
+                var uStart     = loopSpline.knots[loopSpline.degree];
+                var uEnd       = loopSpline.knots[nKnots - 1 - loopSpline.degree];
+
+                var startDerivs = evaluateSpline({
+                    "spline"       : loopSpline,
+                    "parameters"   : [uStart],
+                    "nDerivatives" : 1
+                });
+                var endDerivs = evaluateSpline({
+                    "spline"       : loopSpline,
+                    "parameters"   : [uEnd],
+                    "nDerivatives" : 1
+                });
+
+                var splineStartPt = startDerivs[0][0];  // 3D position at spline start
+                var splineStartD1 = startDerivs[1][0];  // first derivative at start
+                var splineEndPt   = endDerivs[0][0];    // 3D position at spline end
+                var splineEndD1   = endDerivs[1][0];    // first derivative at end
+
+                if (hasForeRocker && fTipPtLoop != undefined)
                 {
-                    acpHeightEff = acpHeightEff - acph_err * sqrt(1 + mAft * mAft) * meter;
+                    var d1NormFore = norm(splineStartD1);
+                    if (d1NormFore > 1e-12 * meter)
+                    {
+                        // Unit tangent at camber start (same as camberStartTan in step 6)
+                        var frcp_dx = splineStartD1[0] / d1NormFore;  // unitless
+                        var frcp_dz = splineStartD1[2] / d1NormFore;  // unitless
+
+                        // Perpendicular distance from FCP tip to FRCP tangent line
+                        var vec_x  = (fTipPtLoop.x - splineStartPt[0]) / meter;
+                        var vec_z  = (fTipPtLoop.z - splineStartPt[2]) / meter;
+                        var fcph_m = abs(vec_x * frcp_dz - vec_z * frcp_dx);
+                        fcph_err   = fcph_m - definition.fcpHeight / meter;
+                        println("rocIter=" ~ rocIter ~
+                                " FCPH=" ~ round(fcph_m * 1e6) / 1e3 ~
+                                " spec=" ~ round(definition.fcpHeight / millimeter * 1e3) / 1e3 ~
+                                " err="  ~ round(fcph_err * 1e6) / 1e3 ~ " mm");
+                        if (abs(fcph_err) > FCH_TOL)
+                        {
+                            // Newton: d(FCPH)/d(Z_FCP) = frcp_dx  =>  step = err / frcp_dx
+                            fcpHeightEff = fcpHeightEff - (fcph_err / frcp_dx) * meter;
+                        }
+                    }
+                }
+
+                if (hasAftRocker && aTipPtLoop != undefined)
+                {
+                    var d1NormAft = norm(splineEndD1);
+                    if (d1NormAft > 1e-12 * meter)
+                    {
+                        // Unit tangent at camber end (same as camberEndTan in step 6)
+                        var arcp_dx = splineEndD1[0] / d1NormAft;  // unitless
+                        var arcp_dz = splineEndD1[2] / d1NormAft;  // unitless
+
+                        // Perpendicular distance from ACP tip to ARCP tangent line
+                        var vec_x2  = (aTipPtLoop.x - splineEndPt[0]) / meter;
+                        var vec_z2  = (aTipPtLoop.z - splineEndPt[2]) / meter;
+                        var acph_m  = abs(vec_x2 * arcp_dz - vec_z2 * arcp_dx);
+                        acph_err    = acph_m - definition.acpHeight / meter;
+                        println("rocIter=" ~ rocIter ~
+                                " ACPH=" ~ round(acph_m * 1e6) / 1e3 ~
+                                " spec=" ~ round(definition.acpHeight / millimeter * 1e3) / 1e3 ~
+                                " err="  ~ round(acph_err * 1e6) / 1e3 ~ " mm");
+                        if (abs(acph_err) > FCH_TOL)
+                        {
+                            // Newton: d(ACPH)/d(Z_ACP) = arcp_dx  =>  step = err / arcp_dx
+                            acpHeightEff = acpHeightEff - (acph_err / arcp_dx) * meter;
+                        }
+                    }
                 }
             }
 
