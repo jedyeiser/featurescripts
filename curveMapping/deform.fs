@@ -203,6 +203,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         {
             var allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
 
+            // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
+            // toString on a transient query gives a stable unique string per entity,
+            // which is more reliable than == comparison across different evaluateQuery call sites.
+            var edgeLookupMap = {};
+            for (var m in edgeMapping)
+            {
+                edgeLookupMap[toString(m.sourceEdge)] = m.wrappedEdge;
+            }
+
             // Pre-evaluate boundary edges for every face once — avoids repeated qAdjacent
             // kernel calls inside the loop.
             var faceBoundaryEdgeSets = [];
@@ -224,46 +233,70 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     break;
                 }
 
-                // Gather the wrapped counterpart for each boundary edge.
-                // Direct == comparison on transient queries avoids evaluateQuery(qIntersection(...))
-                // kernel calls — was O(faces × edgesPerFace × totalEdges) kernel round-trips.
+                // Gather wrapped counterparts via O(1) map lookup.
+                // Missing entries mean that edge failed in transformEdges — log a warning.
                 var wrappedBoundaryEdgeQueries = [];
                 for (var eIdx = 0; eIdx < size(faceEdges); eIdx += 1)
                 {
-                    for (var mIdx = 0; mIdx < size(edgeMapping); mIdx += 1)
+                    var wrappedEdge = edgeLookupMap[toString(faceEdges[eIdx])];
+                    if (wrappedEdge != undefined)
                     {
-                        if (edgeMapping[mIdx].sourceEdge == faceEdges[eIdx])
-                        {
-                            wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, edgeMapping[mIdx].wrappedEdge);
-                            break;
-                        }
+                        wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, wrappedEdge);
+                    }
+                    else
+                    {
+                        println("WARNING: face " ~ fIdx ~ " boundary edge " ~ eIdx ~
+                                " has no wrapped counterpart — it likely failed in transformEdges");
                     }
                 }
 
-                // Fill surface from wrapped boundary edges.
-                // Guide vertices (opPoint) are skipped — each is a heavy kernel entity creation.
-                // The boundary edges alone constrain the surface; guide vertices can be
-                // re-introduced later via a lighter mechanism if shape fidelity requires it.
-                var fillId = id + ("fill" ~ fIdx);
+                // Each wrapped edge lives in its own wire body — topologically disconnected
+                // from its neighbours even when endpoints are geometrically coincident.
+                // opFillSurface needs a closed, topologically-connected boundary, so we
+                // stitch the edges into a proper wire first with opExtractWires.
+                if (size(wrappedBoundaryEdgeQueries) == 0)
+                {
+                    println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges — skipping fill");
+                    continue;
+                }
+
+                var extractId = id + ("bdry" ~ fIdx);
                 try
                 {
-                    opFillSurface(context, fillId, {
-                        "edgesG0"      : qUnion(wrappedBoundaryEdgeQueries),
-                        "edgesG1"      : qNothing(),
-                        "edgesG2"      : qNothing(),
-                        "guideVertices": qNothing()
-                    });
-                    reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
-                        qCreatedBy(fillId, EntityType.BODY));
+                    opExtractWires(context, extractId, { "edges": qUnion(wrappedBoundaryEdgeQueries) });
                 }
-                catch (e)
+                catch (extractErr)
                 {
-                    println("ERROR fill face " ~ fIdx ~ ": " ~ toString(e));
-                    // Highlight the open/broken boundary edges in red so the problem is visible
+                    println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
                     for (var beq in wrappedBoundaryEdgeQueries)
                     {
                         addDebugEntities(context, beq, DebugColor.RED);
                     }
+                    continue;
+                }
+
+                var bdryEdges = qCreatedBy(extractId, EntityType.EDGE);
+                var bdryBody  = qCreatedBy(extractId, EntityType.BODY);
+
+                var fillId = id + ("fill" ~ fIdx);
+                try
+                {
+                    opFillSurface(context, fillId, {
+                        "edgesG0"      : bdryEdges,
+                        "edgesG1"      : qNothing(),
+                        "edgesG2"      : qNothing(),
+                        "guideVertices": qNothing()
+                    });
+                    // Fill succeeded — boundary wire no longer needed
+                    opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                    reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
+                        qCreatedBy(fillId, EntityType.BODY));
+                }
+                catch (fillErr)
+                {
+                    println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                    addDebugEntities(context, bdryEdges, DebugColor.RED);
+                    opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
                 }
             }
         }
