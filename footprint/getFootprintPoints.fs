@@ -283,35 +283,43 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
 
         var acpPlane = qCreatedBy(id + "acpPlane", EntityType.FACE);
 
-        // Only split if the plane strictly intersects the wire interior.
-        // A vertex exactly on the plane is not an interior intersection and
-        // would cause opSplitPart to fail with SPLIT_FAILED.
-        var fcpX = fcpORGIN[0];
-        var acpX = acpORIGIN[0];
-        var doFcpSplit = wireBox.minCorner[0] < fcpX && fcpX < wireBox.maxCorner[0];
-        var doAcpSplit = wireBox.minCorner[0] < acpX && acpX < wireBox.maxCorner[0];
-
-        if (doFcpSplit)
+        // Attempt FCP split. Use try/catch: opSplitPart fails (SPLIT_FAILED) when
+        // no target body has a strict interior intersection with the plane —
+        // e.g. a vertex lands exactly on the plane, or a body lies entirely on
+        // one side. In those cases the split simply didn't happen.
+        var fcpSplitDone = false;
+        if (wireBox.minCorner[0] < fcpORGIN[0] && fcpORGIN[0] < wireBox.maxCorner[0])
         {
-            opSplitPart(context, id + "fcpSplit", {
-                        "targets" : qCreatedBy(id + "fptWires", EntityType.BODY),
-                        "tool" : fcpPlane
-                    });
+            try
+            {
+                opSplitPart(context, id + "fcpSplit", {
+                            "targets" : qCreatedBy(id + "fptWires", EntityType.BODY),
+                            "tool" : fcpPlane
+                        });
+                fcpSplitDone = true;
+            }
+            catch { }
         }
 
-        var acpTarget = doFcpSplit
+        var acpTarget = fcpSplitDone
             ? qSplitBy(id + "fcpSplit", EntityType.BODY, false)
             : qCreatedBy(id + "fptWires", EntityType.BODY);
 
-        if (doAcpSplit)
+        var acpSplitDone = false;
+        if (wireBox.minCorner[0] < acpORIGIN[0] && acpORIGIN[0] < wireBox.maxCorner[0])
         {
-            opSplitPart(context, id + "acpSplit", {
-                        "targets" : acpTarget,
-                        "tool" : acpPlane
-                    });
+            try
+            {
+                opSplitPart(context, id + "acpSplit", {
+                            "targets" : acpTarget,
+                            "tool" : acpPlane
+                        });
+                acpSplitDone = true;
+            }
+            catch { }
         }
 
-        var rslEdge = doAcpSplit
+        var rslEdge = acpSplitDone
             ? qSplitBy(id + "acpSplit", EntityType.BODY, true)
             : acpTarget;
 
@@ -322,7 +330,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                 });
 
         var tipPoints = [];
-        if (doFcpSplit)
+        if (fcpSplitDone)
         {
             var tipEdge = qSplitBy(id + "fcpSplit", EntityType.BODY, true);
             setProperty(context, {
@@ -344,7 +352,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         }
 
         var tailPoints = [];
-        if (doAcpSplit)
+        if (acpSplitDone)
         {
             var tailEdge = qSplitBy(id + "acpSplit", EntityType.BODY, false);
             setProperty(context, {
