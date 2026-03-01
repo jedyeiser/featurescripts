@@ -100,6 +100,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count" }
             isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
+
+            annotation { "Name" : "Keep wires", "Default" : false, "Description" : "Retain wrapped edge bodies after reconstruction. Merged into one wire body if possible, otherwise a composite part." }
+            definition.keepWires is boolean;
         }
 
         annotation { "Name" : "Debug", "Default" : false }
@@ -253,7 +256,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     reconstructedFaceBodyQueries = append(reconstructedFaceBodyQueries,
                         qCreatedBy(fillId, EntityType.BODY));
                 }
-                catch (e) { println("ERROR fill face " ~ fIdx ~ ": " ~ toString(e)); }
+                catch (e)
+                {
+                    println("ERROR fill face " ~ fIdx ~ ": " ~ toString(e));
+                    // Highlight the open/broken boundary edges in red so the problem is visible
+                    for (var beq in wrappedBoundaryEdgeQueries)
+                    {
+                        addDebugEntities(context, beq, DebugColor.RED);
+                    }
+                }
             }
         }
 
@@ -274,11 +285,31 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 });
             }
 
-            // Delete all intermediate wire bodies (wrapped edges)
+            // Wire cleanup / keep
             if (size(edgeMapping) > 0)
             {
                 var allWrappedEdgeQueries = mapArray(edgeMapping, function(m) { return m.wrappedEdge; });
-                opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(allWrappedEdgeQueries) });
+                var allWrappedBodyQueries = mapArray(edgeMapping, function(m) { return m.wrappedBody; });
+
+                if (definition.keepWires)
+                {
+                    // Merge all wrapped edges into as few wire bodies as possible
+                    opExtractWires(context, id + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
+                    // Delete the individual BSpline curve bodies now that wires are extracted
+                    opDeleteBodies(context, id + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
+                    // If extraction produced multiple disconnected wire bodies, wrap in a composite part
+                    var wireBodies = evaluateQuery(context, qCreatedBy(id + "keepWires", EntityType.BODY));
+                    if (size(wireBodies) > 1)
+                    {
+                        opCreateCompositePart(context, id + "compositePart", {
+                            "bodies": qCreatedBy(id + "keepWires", EntityType.BODY)
+                        });
+                    }
+                }
+                else
+                {
+                    opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(allWrappedBodyQueries) });
+                }
             }
 
         }
@@ -333,7 +364,8 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": wrappedCurve });
             result = append(result, {
                 "sourceEdge" : edge,
-                "wrappedEdge": qCreatedBy(wrappedId, EntityType.EDGE)
+                "wrappedEdge": qCreatedBy(wrappedId, EntityType.EDGE),
+                "wrappedBody": qCreatedBy(wrappedId, EntityType.BODY)
             });
         }
         catch (e) { println("ERROR transformEdge " ~ i ~ ": " ~ toString(e)); }
