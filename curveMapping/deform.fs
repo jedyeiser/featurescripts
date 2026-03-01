@@ -234,14 +234,22 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 }
 
                 // Gather wrapped counterparts via O(1) map lookup.
-                // Missing entries mean that edge failed in transformEdges — log a warning.
+                // Deduplicate by toString(wrappedEdge) to guard against opExtractWires
+                // OVERLAPPING_EDGES when the same wrapped edge resolves for two source keys.
                 var wrappedBoundaryEdgeQueries = [];
+                var seenWrappedKeys = {};
                 for (var eIdx = 0; eIdx < size(faceEdges); eIdx += 1)
                 {
                     var wrappedEdge = edgeLookupMap[toString(faceEdges[eIdx])];
                     if (wrappedEdge != undefined)
                     {
-                        wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, wrappedEdge);
+                        var wk = toString(wrappedEdge);
+                        if (seenWrappedKeys[wk] == undefined)
+                        {
+                            seenWrappedKeys[wk] = true;
+                            wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, wrappedEdge);
+                        }
+                        // else: duplicate wrapped edge — skip to avoid OVERLAPPING_EDGES
                     }
                     else
                     {
@@ -276,24 +284,80 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     for (var beq in wrappedBoundaryEdgeQueries)
                         addDebugEntities(context, beq, DebugColor.RED);
 
-                    // Print first/last points of every wrapped edge and gap to its neighbour
-                    println("  face " ~ fIdx ~ " has " ~ size(wrappedBoundaryEdgeQueries) ~ " wrapped boundary edges:");
-                    var edgePts = [];
+                    // ── Source edges with expected mapped positions ──────────────────────
+                    println("  face " ~ fIdx ~ ": " ~ size(faceEdges) ~ " src edges / " ~
+                            size(wrappedBoundaryEdgeQueries) ~ " wrapped:");
+                    for (var dIdx = 0; dIdx < size(faceEdges); dIdx += 1)
+                    {
+                        var srcPts = evEdgeTangentLines(context, {
+                            "edge": faceEdges[dIdx], "parameters": [0, 1]
+                        });
+                        var expPts = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                            settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                            [srcPts[0].origin, srcPts[1].origin]);
+                        println("  src " ~ dIdx ~ ": " ~ toString(srcPts[0].origin) ~
+                                " → " ~ toString(srcPts[1].origin));
+                        println("  exp " ~ dIdx ~ ": " ~ toString(expPts[0]) ~
+                                " → " ~ toString(expPts[1]));
+                    }
+
+                    // ── Actual wrapped edge endpoints ────────────────────────────────────
+                    var wrappedPtPairs = [];
                     for (var wIdx = 0; wIdx < size(wrappedBoundaryEdgeQueries); wIdx += 1)
                     {
-                        var pts = evEdgeTangentLines(context, {
-                            "edge"       : wrappedBoundaryEdgeQueries[wIdx],
-                            "parameters" : [0, 1]
+                        var wPts = evEdgeTangentLines(context, {
+                            "edge": wrappedBoundaryEdgeQueries[wIdx], "parameters": [0, 1]
                         });
-                        edgePts = append(edgePts, pts);
-                        println("  edge " ~ wIdx ~ ": start=" ~ toString(pts[0].origin) ~
-                                           "  end=" ~ toString(pts[1].origin));
+                        wrappedPtPairs = append(wrappedPtPairs, wPts);
+                        // If counts match, also print the lookup error vs expected
+                        if (size(faceEdges) == size(wrappedBoundaryEdgeQueries))
+                        {
+                            var srcP = evEdgeTangentLines(context, {
+                                "edge": faceEdges[wIdx], "parameters": [0, 1]
+                            });
+                            var expP = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                                settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                                [srcP[0].origin, srcP[1].origin]);
+                            var errS = norm(expP[0] - wPts[0].origin);
+                            var errE = norm(expP[1] - wPts[1].origin);
+                            println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
+                                    " → " ~ toString(wPts[1].origin) ~
+                                    "  lookupErr start=" ~ toString(errS) ~
+                                    " end=" ~ toString(errE));
+                        }
+                        else
+                        {
+                            println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
+                                    " → " ~ toString(wPts[1].origin));
+                        }
                     }
-                    for (var wIdx = 0; wIdx < size(edgePts); wIdx += 1)
+
+                    // ── Open endpoint analysis ───────────────────────────────────────────
+                    // Report any wrapped endpoint that has no matching endpoint within 1e-5 m.
+                    var ETOL = 1e-5 * meter;
+                    for (var wIdx = 0; wIdx < size(wrappedPtPairs); wIdx += 1)
                     {
-                        var nextIdx = (wIdx + 1) % size(edgePts);
-                        var gap = norm(edgePts[wIdx][1].origin - edgePts[nextIdx][0].origin);
-                        println("  gap edge " ~ wIdx ~ " end → edge " ~ nextIdx ~ " start: " ~ toString(gap));
+                        for (var ep = 0; ep < 2; ep += 1)
+                        {
+                            var pos = wrappedPtPairs[wIdx][ep].origin;
+                            var bestGap = 1e10 * meter;
+                            var bestJ   = -1;
+                            for (var jIdx = 0; jIdx < size(wrappedPtPairs); jIdx += 1)
+                            {
+                                if (jIdx == wIdx) { continue; }
+                                for (var jp = 0; jp < 2; jp += 1)
+                                {
+                                    var d = norm(pos - wrappedPtPairs[jIdx][jp].origin);
+                                    if (d < bestGap) { bestGap = d; bestJ = jIdx; }
+                                }
+                            }
+                            if (bestGap > ETOL)
+                            {
+                                println("  OPEN END: wrapped[" ~ wIdx ~ "]" ~
+                                        (ep == 0 ? ".start" : ".end") ~
+                                        " nearest=wrapped[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
+                            }
+                        }
                     }
 
                     continue;
@@ -323,6 +387,46 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     for (var seq in faceEdges)
                         addDebugEntities(context, seq, DebugColor.CYAN);
                     addDebugEntities(context, bdryEdges, DebugColor.RED);
+
+                    // ── Stitched edge endpoints + open endpoint analysis ─────────────────
+                    var stitchedList = evaluateQuery(context, bdryEdges);
+                    println("  stitched boundary: " ~ size(stitchedList) ~ " edges");
+                    var stPtPairs = [];
+                    for (var sIdx = 0; sIdx < size(stitchedList); sIdx += 1)
+                    {
+                        var sPts = evEdgeTangentLines(context, {
+                            "edge": stitchedList[sIdx], "parameters": [0, 1]
+                        });
+                        stPtPairs = append(stPtPairs, sPts);
+                        println("  stitched[" ~ sIdx ~ "]: " ~ toString(sPts[0].origin) ~
+                                " → " ~ toString(sPts[1].origin));
+                    }
+                    var ETOL = 1e-5 * meter;
+                    for (var sIdx = 0; sIdx < size(stPtPairs); sIdx += 1)
+                    {
+                        for (var ep = 0; ep < 2; ep += 1)
+                        {
+                            var pos = stPtPairs[sIdx][ep].origin;
+                            var bestGap = 1e10 * meter;
+                            var bestJ   = -1;
+                            for (var jIdx = 0; jIdx < size(stPtPairs); jIdx += 1)
+                            {
+                                if (jIdx == sIdx) { continue; }
+                                for (var jp = 0; jp < 2; jp += 1)
+                                {
+                                    var d = norm(pos - stPtPairs[jIdx][jp].origin);
+                                    if (d < bestGap) { bestGap = d; bestJ = jIdx; }
+                                }
+                            }
+                            if (bestGap > ETOL)
+                            {
+                                println("  OPEN END: stitched[" ~ sIdx ~ "]" ~
+                                        (ep == 0 ? ".start" : ".end") ~
+                                        " nearest=stitched[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
+                            }
+                        }
+                    }
+
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
                 }
             }
