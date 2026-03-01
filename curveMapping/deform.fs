@@ -441,46 +441,25 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // --- Step 3: Combine into one body, clean up intermediates ---
         if (runBodies)
         {
-            var inputIsSolid = size(evaluateQuery(context,
-                qBodyType(definition.sourceBody, BodyType.SOLID))) > 0;
-
             if (size(reconstructedFaceBodyQueries) > 0)
             {
                 var boolTools = qUnion(reconstructedFaceBodyQueries);
-                // If the source was solid, attempt a solid closure first.
-                // This requires every face to have been successfully reconstructed.
-                // If any face was skipped (open loop / overlapping edges), the shell
-                // won't be closed and the solid attempt will fail — fall back to a
-                // surface union so the user still gets the partial result.
-                var madeBody = false;
-                if (inputIsSolid)
+                try
                 {
-                    try
-                    {
-                        opBoolean(context, id + "unionFacesSolid", {
-                            "tools"               : boolTools,
-                            "operationType"       : BooleanOperationType.UNION,
-                            "allowSheets"         : true,
-                            "makeSolid"           : true,
-                            "eraseImprintedEdges" : true
-                        });
-                        madeBody = true;
-                    }
-                    catch (solidErr)
-                    {
-                        println("WARNING: solid union failed (" ~ toString(solidErr) ~
-                                ") — one or more faces likely failed reconstruction. Falling back to surface union.");
-                    }
-                }
-                if (!madeBody)
-                {
-                    opBoolean(context, id + "unionFacesSurface", {
+                    opBoolean(context, id + "unionFaces", {
                         "tools"               : boolTools,
                         "operationType"       : BooleanOperationType.UNION,
                         "allowSheets"         : true,
                         "makeSolid"           : false,
                         "eraseImprintedEdges" : true
                     });
+                }
+                catch (boolErr)
+                {
+                    println("ERROR: surface union failed: " ~ toString(boolErr));
+                    for (var fbq in reconstructedFaceBodyQueries)
+                        addDebugEntities(context, fbq, DebugColor.RED);
+                    opDeleteBodies(context, id + "deleteFailedFaces", { "entities": boolTools });
                 }
             }
 
