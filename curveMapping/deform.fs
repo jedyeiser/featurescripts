@@ -467,7 +467,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     {
                         println("face " ~ fIdx ~ " failed to union: " ~ toString(boolErr));
                         addDebugEntities(context, toolQ, DebugColor.RED);
-                        opDeleteBodies(context, id + ("delFail" ~ fIdx), { "entities": toolQ });
                     }
                 }
             }
