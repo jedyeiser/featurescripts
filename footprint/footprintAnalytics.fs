@@ -34,10 +34,6 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     }
     
     
-    var rslLine = evLine(context, {
-                "edge" : rslQuery
-        });
-        
     var cpLine1 = evEdgeTangentLine(context, {
             "edge" : rslQuery,
             "parameter" : 0
@@ -48,11 +44,7 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
             "parameter" : 1
     });
     
-    var pathLength = evPathLength(context, fptPath);
-    
     var mrsX = (cpLine1.origin[0] + cpLine2.origin[0])/2;
-    var mrsDist = evDistancePath(context, {'side0' : fptPath, 'side1' : vector(mrsX, 0 * millimeter, 0 * millimeter)});
-    var mrsPathParam = mrsDist.pathParameter;
     
     //initialPoints = sort(initialPoints, function(a, b) {return a.point[0] - b.point[0];}); // order points in ascending order - more for convention than anything else. 
     initialPoints = filter(initialPoints, function(x) {return x.point[1] > 0 * millimeter;});
@@ -64,7 +56,6 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     var fbWidestSort = sort(fbPoints, function(a, b) {return b.point[1] - a.point[1];});
     var fbWidestStartParam = fbWidestSort[0].pathParam;
     var fbWidest = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [fbWidestStartParam - 0.0025, fbWidestStartParam + 0.0025], 0.001);
-    var fbWidestPathParam = fbWidest.pathParam;
     
     addDebugLine(context, fbWidest.point, vector(fbWidest.point[0], -1* fbWidest.point[1], fbWidest.point[2]), DebugColor.CYAN);
     
@@ -81,7 +72,6 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     var abWidestSort = sort(abPoints, function(a, b) {return b.point[1] - a.point[1];});
     var abWidestStartParam = abWidestSort[0].pathParam;
     var abWidest = newtonRhapsonPath(context, searchDerivative.FIRST, fptPath, [abWidestStartParam - 0.0025, abWidestStartParam + 0.0025], 0.001);
-    var abWidestPathParam = abWidest.pathParam;
     
     addDebugLine(context, abWidest.point, vector(abWidest.point[0], -1* abWidest.point[1], abWidest.point[2]), DebugColor.CYAN);
     
@@ -154,11 +144,11 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
         acpLine = cpLine1;
     }
     
-    var fcpPlane = opPlane(context, id + "planeFCP1", {
+    opPlane(context, id + "planeFCP1", {
             "plane" : plane(fcpLine.origin, vector(1, 0, 0))
     });
-    
-    var acpPlane = opPlane(context, id + "planeACP2", {
+
+    opPlane(context, id + "planeACP2", {
             "plane" : plane(acpLine.origin, vector(1, 0, 0))
     });
     

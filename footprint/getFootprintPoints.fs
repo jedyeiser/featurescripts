@@ -41,10 +41,9 @@ export function editingLogic(context is Context, id is Id, oldDefinition is map,
         updatedDef.fptEdges = qUnion([qAdjacent(updatedDef.footprintFace, AdjacencyType.EDGE, EntityType.EDGE)]);
     }
 
-    var fptPath = constructPath(context, qUnion([updatedDef.fptEdges]));
-
     if (!isQueryEmpty(context, updatedDef.fptEdges) && !isQueryEmpty(context, updatedDef.rslQuery))
     {
+        var fptPath = constructPath(context, qUnion([updatedDef.fptEdges]));
         var analysisMap = analyzeFootprint(context, id + 'getFootprintDataEL', fptPath, definition.rslQuery, false);
 
         var analysisMapKeys = keys(analysisMap);
@@ -53,11 +52,9 @@ export function editingLogic(context is Context, id is Id, oldDefinition is map,
         {
             return isIn(x, keys(updatedDef));
         });
-        println('sharedKeys = ' ~ sharedKeys);
         for (var sharedKey in sharedKeys)
         {
             updatedDef[(sharedKey)] = analysisMap[(sharedKey)];
-            println('THIS SHOULD UPDATE definition.' ~ sharedKey ~ ' to: ' ~ analysisMap[(sharedKey)]);
         }
         /*
            for (var param in updatedDef)
@@ -246,10 +243,6 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         //2. Create ACP, FCP Planes at the end of definition.rslQuery to split the composite curve
 
         // get fcp and acp points
-        var rslLine = evLine(context, {
-                "edge" : definition.rslQuery
-            });
-
         var cpLine1 = evEdgeTangentLine(context, {
                 "edge" : definition.rslQuery,
                 "parameter" : 0
@@ -294,7 +287,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         // A vertex exactly on the plane is not an interior intersection and
         // would cause opSplitPart to fail with SPLIT_FAILED.
         var fcpX = fcpORGIN[0];
-        var acpX = acpORGIN[0];
+        var acpX = acpORIGIN[0];
         var doFcpSplit = wireBox.minCorner[0] < fcpX && fcpX < wireBox.maxCorner[0];
         var doAcpSplit = wireBox.minCorner[0] < acpX && acpX < wireBox.maxCorner[0];
 
@@ -423,7 +416,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         try
         {
             var fptPath = constructPath(context, qUnion([definition.fptEdges]));
-            var analysisMap = analyzeFootprint(context, id + 'getFootprintDataBody', fptPath, definition.rslQuery, definition.showCurvature);
+            analyzeFootprint(context, id + 'getFootprintDataBody', fptPath, definition.rslQuery, definition.showCurvature);
             /*
                println('ANALYSIS MAP: ' );
                //println(analysisMap);
@@ -433,7 +426,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                }
              */
         }
-        catch (error)
+        catch
         {
             reportFeatureInfo(context, id, 'FOOTPRINT MUST BE CONTINUIOUS. NO FOOTPRINT DATA ANALYSIS. Cannot form a tangent path from selected edges');
         }
