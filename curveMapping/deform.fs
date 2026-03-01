@@ -268,10 +268,34 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 catch (extractErr)
                 {
                     println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
+
+                    // Cyan = undeformed source boundary edges
+                    for (var seq in faceEdges)
+                        addDebugEntities(context, seq, DebugColor.CYAN);
+                    // Red = wrapped edges that failed to stitch
                     for (var beq in wrappedBoundaryEdgeQueries)
-                    {
                         addDebugEntities(context, beq, DebugColor.RED);
+
+                    // Print first/last points of every wrapped edge and gap to its neighbour
+                    println("  face " ~ fIdx ~ " has " ~ size(wrappedBoundaryEdgeQueries) ~ " wrapped boundary edges:");
+                    var edgePts = [];
+                    for (var wIdx = 0; wIdx < size(wrappedBoundaryEdgeQueries); wIdx += 1)
+                    {
+                        var pts = evEdgeTangentLines(context, {
+                            "edge"       : wrappedBoundaryEdgeQueries[wIdx],
+                            "parameters" : [0, 1]
+                        });
+                        edgePts = append(edgePts, pts);
+                        println("  edge " ~ wIdx ~ ": start=" ~ toString(pts[0].origin) ~
+                                           "  end=" ~ toString(pts[1].origin));
                     }
+                    for (var wIdx = 0; wIdx < size(edgePts); wIdx += 1)
+                    {
+                        var nextIdx = (wIdx + 1) % size(edgePts);
+                        var gap = norm(edgePts[wIdx][1].origin - edgePts[nextIdx][0].origin);
+                        println("  gap edge " ~ wIdx ~ " end → edge " ~ nextIdx ~ " start: " ~ toString(gap));
+                    }
+
                     continue;
                 }
 
@@ -295,6 +319,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 catch (fillErr)
                 {
                     println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                    // Cyan = undeformed source boundary, Red = stitched wrapped boundary
+                    for (var seq in faceEdges)
+                        addDebugEntities(context, seq, DebugColor.CYAN);
                     addDebugEntities(context, bdryEdges, DebugColor.RED);
                     opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
                 }
