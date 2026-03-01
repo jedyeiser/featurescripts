@@ -2,9 +2,9 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "6505321b6c1234e60cb98341");
+import(path : "08fddb59786b6bfee020ee05", version : "201c64079ee529cdd6609fe7");
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "2101c3bf09f2c4da2845fca4");
+import(path : "ebac109589e3bf405d3f3ae7", version : "6ad04ba6be4ab10b452261ce");
 
 // IMPORT: tools/curve_operations.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a7403d5f7f5a4fef8225b768", version : "e5b9e00c5a237415c89a66b7");
@@ -13,6 +13,8 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a7403d5f7f5a4fe
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
 // IMPORT: analyzeBaseline.fs
+import(path : "f0717a1116fee7304957da5b", version : "ab5e058352be20fa5756231b");
+
 
 
 /**
@@ -62,8 +64,7 @@ export function generateBaselineEditLogic(context is Context, id is Id,
     definition.showEIQuery = definition.hasEIProfile;
 
     // Populate measurement fields from the last-generated baseline
-    if (clickedButton == "recalculateMeasurements" ||
-        (!oldDefinition.recalculateMeasurements && definition.recalculateMeasurements))
+    if (clickedButton == "recalculateMeasurements")
     {
         var baselineEdges = qCreatedBy(id + "baseline", EntityType.EDGE);
         if (size(evaluateQuery(context, baselineEdges)) > 0)
