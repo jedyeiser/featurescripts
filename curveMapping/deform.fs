@@ -513,11 +513,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             if (size(surfaceBodiesList) > 1)
             {
                 opBoolean(context, id + "unionFaces", {
-                    "tools"                       : surfaceBodies,
-                    "operationType"               : BooleanOperationType.UNION,
-                    "allowSheets"                 : true,
-                    "targetsAndToolsNeedGrouping" : true,
-                    "eraseImprintedEdges"         : true,
+                    "tools"              : surfaceBodies,
+                    "operationType"      : BooleanOperationType.UNION,
+                    "allowSheets"        : true,
+                    "makeSolid"          : false,
+                    "eraseImprintedEdges": true,
                 });
             }
         }
