@@ -24,6 +24,26 @@ import(path : "683d867c35fdab9c98d47556", version : "0c37d55f61989bbc2d78b7bd");
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 5, 10]} as IntegerBoundSpec;
 
+// Local copy — mirrors debugDrawFrames in wrapCurve.fs.
+// Needed because deform imports wrapCurve at a pinned version that predates the export.
+function deformDebugDrawFrames(context is Context, frenetPath is map, numSamples is number)
+{
+    var totalLength = frenetPath.totalLength;
+    var arrowLen    = totalLength / max([1, numSamples - 1]) / 3;
+    var arrowRadius = arrowLen * 0.05;
+
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var s      = totalLength * i / (numSamples - 1);
+        var result = getFrameAtArcLength(context, frenetPath, s);
+        var origin = result.frame.origin;
+
+        addDebugArrow(context, origin, origin + arrowLen * result.frame.xAxis,  arrowRadius,           DebugColor.RED);
+        addDebugArrow(context, origin, origin + arrowLen * yAxis(result.frame),  arrowRadius * (2 / 3), DebugColor.GREEN);
+        addDebugArrow(context, origin, origin + arrowLen * result.frame.zAxis,   arrowRadius * 0.5,     DebugColor.BLUE);
+    }
+}
+
 annotation { "Feature Type Name" : "Deform", "Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
 export const deform = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -96,8 +116,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Create bodies", "Default" : false }
             definition.createBodies is boolean;
 
-            annotation { "Name" : "Dummy counter", "Description" : "Stop transforming at this edge index and highlight it magenta. -1 = process all edges." }
-            isInteger(definition.dummyCounter, { (unitless) : [-1, -1, 100] } as IntegerBoundSpec);
+            annotation { "Name" : "Dummy counter", "Description" : "Stop reconstructing at this face index and highlight it magenta. -1 = process all faces." }
+            isInteger(definition.dummyCounter, { (unitless) : [-1, 0, 100] } as IntegerBoundSpec);
 
             annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
             definition.debugShowFromFrames is boolean;
@@ -144,9 +164,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
 
         if (definition.debugShowFromFrames)
-            debugDrawFrames(context, fromFrenetPath, 10);
+            deformDebugDrawFrames(context, fromFrenetPath, 10);
         if (definition.debugShowToFrames)
-            debugDrawFrames(context, toFrenetPath, 10);
+            deformDebugDrawFrames(context, toFrenetPath, 10);
 
         var settings = {
             "fromRefArc"             : fromRefArc,
@@ -180,18 +200,37 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         if (runFaces)
         {
             var allFaces = evaluateQuery(context, qOwnedByBody(definition.sourceBody, EntityType.FACE));
+
+            // Pre-evaluate boundary edges for every face once — avoids repeated qAdjacent
+            // kernel calls inside the loop.
+            var faceBoundaryEdgeSets = [];
+            for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+            {
+                faceBoundaryEdgeSets = append(faceBoundaryEdgeSets,
+                    evaluateQuery(context, qAdjacent(allFaces[fIdx], AdjacencyType.EDGE, EntityType.EDGE)));
+            }
+
             for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
             {
                 var face      = allFaces[fIdx];
-                var faceEdges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
+                var faceEdges = faceBoundaryEdgeSets[fIdx];
 
-                // Gather the wrapped counterpart for each boundary edge of this face
+                // Dummy counter: highlight this face and stop
+                if (settings.dummyCounter >= 0 && fIdx >= settings.dummyCounter)
+                {
+                    addDebugEntities(context, face, DebugColor.MAGENTA);
+                    break;
+                }
+
+                // Gather the wrapped counterpart for each boundary edge.
+                // Direct == comparison on transient queries avoids evaluateQuery(qIntersection(...))
+                // kernel calls — was O(faces × edgesPerFace × totalEdges) kernel round-trips.
                 var wrappedBoundaryEdgeQueries = [];
                 for (var eIdx = 0; eIdx < size(faceEdges); eIdx += 1)
                 {
                     for (var mIdx = 0; mIdx < size(edgeMapping); mIdx += 1)
                     {
-                        if (size(evaluateQuery(context, qIntersection(edgeMapping[mIdx].sourceEdge, faceEdges[eIdx]))) > 0)
+                        if (edgeMapping[mIdx].sourceEdge == faceEdges[eIdx])
                         {
                             wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, edgeMapping[mIdx].wrappedEdge);
                             break;
@@ -288,16 +327,8 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
     var result = [];
     for (var i = 0; i < size(edgeArray); i += 1)
     {
-        var edge = edgeArray[i];
-
-        // Dummy counter: highlight this edge and stop
-        if (settings.dummyCounter >= 0 && i >= settings.dummyCounter)
-        {
-            addDebugEntities(context, edge, DebugColor.MAGENTA);
-            break;
-        }
-
-        var edgeLen    = evLength(context, { "entities": edge });
+        var edge    = edgeArray[i];
+        var edgeLen = evLength(context, { "entities": edge });
         var numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
 
         var srcPoints = mapArray(evEdgeTangentLines(context, {
