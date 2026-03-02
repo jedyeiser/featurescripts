@@ -100,7 +100,19 @@ export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinit
         definition.continuityType != oldDefinition.continuityType ||
         definition.face != oldDefinition.face)
     {
-        definition.manipulatorOffsets = {};
+        // Zero out all stored offsets for the old grid dimensions
+        var oldU = oldDefinition.uCurveCount;
+        var oldV = oldDefinition.vCurveCount;
+        if (oldU != undefined && oldV != undefined)
+        {
+            for (var i = 0; i < oldU; i += 1)
+            {
+                for (var j = 0; j < oldV; j += 1)
+                {
+                    definition["mp_" ~ i ~ "_" ~ j] = 0 * meter;
+                }
+            }
+        }
     }
     return definition;
 }
@@ -116,7 +128,7 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
 {
     for (var key, manip in newManipulators)
     {
-        definition.manipulatorOffsets = insert(definition.manipulatorOffsets, key, manip.offset);
+        definition[key] = manip.offset;
     }
     return definition;
 }
@@ -157,10 +169,6 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
 
         annotation { "Name" : "Replace face", "Default" : false }
         definition.replaceFace is boolean;
-
-        // ── Hidden offset storage ─────────────────────────────────────────────
-        annotation { "Name" : "mp_offsets", "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.manipulatorOffsets is map;
 
         // ── Debug group ───────────────────────────────────────────────────────
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
@@ -244,14 +252,13 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 if (!isPointLocked(i, j, uCount, vCount, definition.continuityType))
                 {
                     var key = "mp_" ~ i ~ "_" ~ j;
-                    var storedOff = definition.manipulatorOffsets[key];
+                    var storedOff = definition[key];
                     var off = (storedOff != undefined) ? storedOff : (0 * meter);
-                    manipMap = insert(manipMap, key,
-                        linearManipulator({
-                            "base"      : basePts[i][j],
-                            "direction" : baseNormals[i][j],
-                            "offset"    : off
-                        }));
+                    manipMap[key] = linearManipulator({
+                        "base"      : basePts[i][j],
+                        "direction" : baseNormals[i][j],
+                        "offset"    : off
+                    });
                 }
             }
         }
@@ -268,7 +275,7 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 if (!isPointLocked(i, j, uCount, vCount, definition.continuityType))
                 {
                     var key = "mp_" ~ i ~ "_" ~ j;
-                    var off = definition.manipulatorOffsets[key];
+                    var off = definition[key];
                     if (off != undefined)
                     {
                         adjPts[i][j] = basePts[i][j] + off * baseNormals[i][j];
