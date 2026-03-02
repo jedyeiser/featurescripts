@@ -101,10 +101,10 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
 
         annotation { "Group Name" : "Contact points", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "FCP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Forebody contact point — defines which end of the footprint is the forebody for taper angle sign convention" }
+            annotation { "Name" : "FCP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Forebody contact point - defines which end of the footprint is the forebody for taper angle sign convention" }
             definition.fcpQuery is Query;
 
-            annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Aftbody contact point — defines which end of the footprint is the aftbody for taper angle sign convention" }
+            annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Aftbody contact point - defines which end of the footprint is the aftbody for taper angle sign convention" }
             definition.acpQuery is Query;
         }
 
