@@ -479,18 +479,23 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             var isoSamples = 24;
 
             // ── U manipulation curves ─────────────────────────────────────────
-            for (var i = 0; i < uCount; i += 1)
+            // Suppressed when showCPPolygons is also on — the CP polygon already
+            // traces the same rows, so drawing both would be redundant.
+            if (!definition.showCPPolygons)
             {
-                var curve  = adjCurves[i];
-                var tStart = curve.knots[0];
-                var tEnd   = curve.knots[size(curve.knots) - 1];
-                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0][0];
-                for (var k = 1; k < isoSamples; k += 1)
+                for (var i = 0; i < uCount; i += 1)
                 {
-                    var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
-                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
-                    addDebugLine(context, prev, curr, DebugColor.CYAN);
-                    prev = curr;
+                    var curve  = adjCurves[i];
+                    var tStart = curve.knots[0];
+                    var tEnd   = curve.knots[size(curve.knots) - 1];
+                    var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0][0];
+                    for (var k = 1; k < isoSamples; k += 1)
+                    {
+                        var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
+                        var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
+                        addDebugLine(context, prev, curr, DebugColor.CYAN);
+                        prev = curr;
+                    }
                 }
             }
 
@@ -524,18 +529,23 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
 
             // ── V manipulation curves ─────────────────────────────────────────
-            for (var j = 0; j < vCount; j += 1)
+            // Suppressed when showCPPolygons is also on — the CP polygon already
+            // traces the same columns, so drawing both would be redundant.
+            if (!definition.showCPPolygons)
             {
-                var curve  = vIsoCurves[j];
-                var tStart = curve.knots[0];
-                var tEnd   = curve.knots[size(curve.knots) - 1];
-                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0][0];
-                for (var k = 1; k < isoSamples; k += 1)
+                for (var j = 0; j < vCount; j += 1)
                 {
-                    var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
-                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
-                    addDebugLine(context, prev, curr, DebugColor.MAGENTA);
-                    prev = curr;
+                    var curve  = vIsoCurves[j];
+                    var tStart = curve.knots[0];
+                    var tEnd   = curve.knots[size(curve.knots) - 1];
+                    var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0][0];
+                    for (var k = 1; k < isoSamples; k += 1)
+                    {
+                        var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
+                        var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
+                        addDebugLine(context, prev, curr, DebugColor.MAGENTA);
+                        prev = curr;
+                    }
                 }
             }
 
