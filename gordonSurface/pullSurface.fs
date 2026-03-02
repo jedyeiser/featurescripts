@@ -291,10 +291,6 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             definition.g2Mode is G2Mode;
         }
 
-        // ── Output options ────────────────────────────────────────────────────
-        annotation { "Name" : "Replace face", "Default" : false }
-        definition.replaceFace is boolean;
-
         // ── Active offsets ────────────────────────────────────────────────────
         // Live list of non-zero grid point offsets. Populated automatically when
         // manipulators are dragged. U and V are the grid indices; Offset is the
@@ -634,30 +630,6 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         var surf = createSkinningSurface(context, id + "skin", compatCurves,
                                          definition.curveDegree, uParams);
         opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
-
-        // ── STAGE 5: Replace original face with the new surface ────────────────
-        // startTracking pins the body reference before we delete the face.
-        // After opDeleteFace the face query is gone, but trackedOwner still
-        // resolves to the (now open) body so opBoolean can stitch pullSurf in.
-        if (definition.replaceFace)
-        {
-            var newBody      = qCreatedBy(id + "pullSurf", EntityType.BODY);
-            var trackedOwner = startTracking(context, qOwnerBody(definition.face));
-
-            opDeleteFace(context, id + "deleteSourceFace", {
-                "deleteFaces"   : definition.face,
-                "includeFillet" : false,
-                "capVoid"       : false,
-                "leaveOpen"     : true
-            });
-
-            opBoolean(context, id + "replaceBool", {
-                "operationType"       : BooleanOperationType.UNION,
-                "tools"               : qUnion([trackedOwner, newBody]),
-                "eraseImprintedEdges" : true,
-                "recomputeMatches"    : true
-            });
-        }
 
         // ── Grid points cleanup ────────────────────────────────────────────────
         // Delete the opPoint bodies unless the user wants them to persist.
