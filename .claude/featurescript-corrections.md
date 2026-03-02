@@ -260,6 +260,25 @@ export function isClamped(curve is BSplineCurve, tolerance is number) returns bo
 
 ## API Usage
 
+### `evaluateSpline` — Return Type is Nested Array, Not Array of Vectors
+**Date**: 2026-03-01
+**Issue**: `evaluateSpline` returns a nested array indexed as `[derivativeOrder][parameterIndex]`, not a flat array of Vectors. Accessing `[0]` returns an `array` (all positions), not a `Vector`.
+
+**Incorrect Pattern**:
+```featurescript
+var pt = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0];
+// Error: addDebugLine(Context, array, array, ...) does not match (..., Vector, Vector, ...)
+```
+**Correct Pattern**:
+```featurescript
+// [0] = positions (0th derivative order), [0] = first parameter's result
+var pt = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
+// pt is a Vector (3D position with units)
+```
+**Lesson Learned**: `evaluateSpline` return structure is `result[derivOrder][paramIdx]`. For a single parameter, position is always at `[0][0]`. For multiple parameters, `[0][i]` gives the position at the i-th input parameter.
+
+---
+
 ### Template Entry
 **Date**: YYYY-MM-DD
 **Issue**: [Misuse of Onshape operation or function]

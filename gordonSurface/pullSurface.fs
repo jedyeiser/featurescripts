@@ -481,11 +481,11 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 var curve  = adjCurves[i];
                 var tStart = curve.knots[0];
                 var tEnd   = curve.knots[size(curve.knots) - 1];
-                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0];
+                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0][0];
                 for (var k = 1; k < isoSamples; k += 1)
                 {
                     var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
-                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0];
+                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
                     addDebugLine(context, prev, curr, DebugColor.CYAN);
                     prev = curr;
                 }
@@ -495,11 +495,11 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 var curve  = vIsoCurves[j];
                 var tStart = curve.knots[0];
                 var tEnd   = curve.knots[size(curve.knots) - 1];
-                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0];
+                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0][0];
                 for (var k = 1; k < isoSamples; k += 1)
                 {
                     var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
-                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0];
+                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
                     addDebugLine(context, prev, curr, DebugColor.MAGENTA);
                     prev = curr;
                 }
