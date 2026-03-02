@@ -949,20 +949,17 @@ export function footprintStatsFromDiscrete(x is array, y is array, slope is arra
 
     if (fcpX != undefined)
     {
-        // Find approximate waist (global minimum Y) to use as the split point.
-        var approxWaistIdx = 0;
-        var approxWaistMin = y[0].value;
-        for (var i = 1; i < size(y); i += 1)
-        {
-            if (y[i].value < approxWaistMin) { approxWaistMin = y[i].value; approxWaistIdx = i; }
-        }
-        var approxWaistX = x[approxWaistIdx];
+        // Split at the midpoint of the x-range. The waist is always near the center of
+        // the ski, so this ensures both halves are non-empty.
+        // Do NOT use the global Y minimum: the integration always starts at y=0 so the
+        // global minimum is always at x[0], which would collapse one side to a single point.
+        var xMid = (x[0] + x[size(x) - 1]) / 2;
 
-        // FB = the side of the waist that FCP is on; AB = the other side.
-        var fcpIsBelowWaist = fcpX < approxWaistX;
+        // FB = the side of the midpoint that FCP is on; AB = the other side.
+        var fcpIsBelowMid = fcpX <= xMid;
         for (var i = 0; i < size(x); i += 1)
         {
-            var isOnFcpSide = fcpIsBelowWaist ? (x[i] <= approxWaistX) : (x[i] >= approxWaistX);
+            var isOnFcpSide = fcpIsBelowMid ? (x[i] <= xMid) : (x[i] >= xMid);
             if (isOnFcpSide)
             {
                 if (y[i].value > fbMax) { fbMax = y[i].value; fbIdx = i; }
