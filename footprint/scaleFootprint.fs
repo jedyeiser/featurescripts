@@ -1,24 +1,28 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
-// Import  math utilities
+// IMPORT: tools/math_utils.fs (safeSign)
 export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+
+// IMPORT: tools/numerical_integration.fs (cumTrapz)
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
 
-// Import solvers (for solveRootHybrid)
+// IMPORT: tools/solvers.fs (solveRootHybrid)
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
-// Import geometry utilities
+// IMPORT: fpt_geometry.fs (prepareFootprintCurves, filterAndTrimBSplines, etc.)
 export import(path : "67c190b80e8b74dcee72e7ff", version : "513e7245b3d0bbde72fdd7c1");
+
+// IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
 export import(path : "71d853c0fd2f10ca3bb20a4b", version : "04b14c75c0ac9cf3de1e6acd");
 
-// Import arcFit (for approximateSplinesWithPolyArcs, primitivesToBSplines)
+// IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
 import(path : "66f4f03cf728e94b8f823585", version : "2397dea14b4c7c8d1013c82a");
 
-// IMPORT: integrateFootprint.fs (for forceQuadraticNurbs)
+// IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
 import(path : "5d198387b3966ae60a549555", version : "a3aa09351b1d5b5db386a7d9");
 
-// IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
+// IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
 import(path : "d3ad341f5b87924b36b5aba8", version : "f95ad68b73bfb5c55d44fff8");
 
 
@@ -42,7 +46,7 @@ import(path : "d3ad341f5b87924b36b5aba8", version : "f95ad68b73bfb5c55d44fff8");
  *   - KEEP_TAPER / SCALE_RADIUS: shifts Y to hit target waist width
  *
  * Tip/tail curves are translated and Y-scaled to match new contact widths.
- * Optional G1 continuity repair at contact points using tangent bisector method.
+ * Optional G1 continuity repair at contact points (minimum-change control-point method).
  * =============================================================================
  */
 
@@ -106,14 +110,17 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Reference footprint edges", "Filter" : EntityType.EDGE }
         definition.refEdges is Query;
         
-        annotation { "Name" : "Reference RSL line", "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Reference RSL line", "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1,
+                     "Description" : "Reference ski length line (RSL). Defines the FCP and ACP of the original ski." }
         definition.refRslEdge is Query;
         
-        annotation { "Name" : "New RSL line", "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "New RSL line", "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1,
+                     "Description" : "New RSL line to scale toward. FCP/ACP positions determine the output ski length." }
         definition.newRslEdge is Query;
         
         // --- Symmetry mode (Phase 1) ---
-        annotation { "Name" : "Symmetry mode" }
+        annotation { "Name" : "Symmetry mode",
+                     "Description" : "Symmetric mirrors the +Y sidecut to -Y. Asymmetric scales each edge independently." }
         definition.symmetryMode is SymmetryMode;
         
         // =================== +Y SIDE SETTINGS ===================
@@ -122,28 +129,33 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         
         if (definition.scaleMode == FootprintScaleMode.KEEP_TAPER)
         {
-            annotation { "Name" : "Pin location" }
+            annotation { "Name" : "Pin location",
+                         "Description" : "Which width to hold fixed during taper rotation. ACP pins the tail width; MRS pins the mid-stance width." }
             definition.pinLocation is ScalePinLocation;
         }
 
         if (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS)
         {
-            annotation { "Name" : "Target average radius" }
+            annotation { "Name" : "Target average radius",
+                         "Description" : "Target average sidecut radius. Only used in Scale Radius mode." }
             isLength(definition.targetRadius, SIDECUT_RADIUS_BOUNDS);
         }
 
-        annotation { "Group Name" : "Spline options", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Spline options", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Output curve degree", "Default" : 3 }
             isInteger(definition.outputDegree, POSITIVE_COUNT_BOUNDS);
 
-            annotation { "Name" : "Strict arcs", "Default" : false }
+            annotation { "Name" : "Strict arcs", "Default" : false,
+                         "Description" : "When enabled, forces output curve segments to be exact circular arcs." }
             definition.strictArcs is boolean;
 
-            annotation { "Name" : "Approximation tolerance" }
+            annotation { "Name" : "Approximation tolerance",
+                         "Description" : "Maximum deviation between the approximated output B-spline and the target curve. Lower values produce more control points." }
             isLength(definition.approximationTolerance, APPROX_TOLERANCE_BOUNDS);
 
-            annotation { "Name" : "Max control points", "Default" : 30 }
+            annotation { "Name" : "Max control points", "Default" : 30,
+                         "Description" : "Upper limit on the number of control points in the approximated output curve." }
             isInteger(definition.maxControlPoints, MAX_CONTROL_POINTS_BOUNDS);
         }
 
@@ -152,7 +164,8 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         
         if (definition.specifyWidth)
         {
-            annotation { "Name" : "Target waist width" }
+            annotation { "Name" : "Target waist width",
+                         "Description" : "Desired total waist width. The sidecut is shifted in Y to match this value." }
             isLength(definition.targetWaistWidth, LENGTH_BOUNDS);
         }
         
@@ -164,28 +177,33 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             
             if (definition.negScaleMode == FootprintScaleMode.KEEP_TAPER)
             {
-                annotation { "Name" : "-Y Pin location" }
+                annotation { "Name" : "-Y Pin location",
+                             "Description" : "Which width to hold fixed during taper rotation. ACP pins the tail width; MRS pins the mid-stance width." }
                 definition.negPinLocation is ScalePinLocation;
             }
 
             if (definition.negScaleMode == FootprintScaleMode.SCALE_RADIUS)
             {
-                annotation { "Name" : "-Y Target average radius" }
+                annotation { "Name" : "-Y Target average radius",
+                             "Description" : "Target average sidecut radius. Only used in Scale Radius mode." }
                 isLength(definition.negTargetRadius, SIDECUT_RADIUS_BOUNDS);
             }
 
-            annotation { "Group Name" : "-Y Spline options", "Collapsed By Default" : false }
+            annotation { "Group Name" : "-Y Spline options", "Collapsed By Default" : true }
             {
                 annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
                 isInteger(definition.negOutputDegree, POSITIVE_COUNT_BOUNDS);
 
-                annotation { "Name" : "-Y Strict arcs", "Default" : false }
+                annotation { "Name" : "-Y Strict arcs", "Default" : false,
+                             "Description" : "When enabled, forces output curve segments to be exact circular arcs." }
                 definition.negStrictArcs is boolean;
 
-                annotation { "Name" : "-Y Approximation tolerance" }
+                annotation { "Name" : "-Y Approximation tolerance",
+                             "Description" : "Maximum deviation between the approximated output B-spline and the target curve. Lower values produce more control points." }
                 isLength(definition.negApproximationTolerance, APPROX_TOLERANCE_BOUNDS);
 
-                annotation { "Name" : "-Y Max control points", "Default" : 30 }
+                annotation { "Name" : "-Y Max control points", "Default" : 30,
+                             "Description" : "Upper limit on the number of control points in the approximated output curve." }
                 isInteger(definition.negMaxControlPoints, MAX_CONTROL_POINTS_BOUNDS);
             }
 
@@ -194,16 +212,19 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             
             if (definition.negSpecifyWidth)
             {
-                annotation { "Name" : "-Y Target waist width" }
+                annotation { "Name" : "-Y Target waist width",
+                             "Description" : "Desired total waist width. The sidecut is shifted in Y to match this value." }
                 isLength(definition.negTargetWaistWidth, LENGTH_BOUNDS);
             }
         }
         
         // =================== CONTINUITY (Phase 2) ===================
-        annotation { "Name" : "Enforce tangency at tip (FCP)", "Default" : false }
+        annotation { "Name" : "Enforce tangency at tip (FCP)", "Default" : false,
+                     "Description" : "Adjusts the tip curve control point at FCP so the tip is tangent to the sidecut (G1 continuity)." }
         definition.enforceTipTangency is boolean;
-        
-        annotation { "Name" : "Enforce tangency at tail (ACP)", "Default" : false }
+
+        annotation { "Name" : "Enforce tangency at tail (ACP)", "Default" : false,
+                     "Description" : "Adjusts the tail curve control point at ACP so the tail is tangent to the sidecut (G1 continuity)." }
         definition.enforceTailTangency is boolean;
         
         // =================== OUTPUT ===================
@@ -1415,48 +1436,6 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
 // =============================================================================
 // SCALE RADIUS HELPERS
 // =============================================================================
-
-/**
- * Evaluate the average radius of a BSpline curve within X bounds.
- * Samples curvature at multiple points and returns R = 1/κ average.
- *
- * @param curve : BSplineCurve - The curve to evaluate
- * @param xMin, xMax : ValueWithUnits - X bounds for evaluation
- * @returns ValueWithUnits - Average radius
- */
-function evaluateCurveRadius(curve is BSplineCurve, xMin is ValueWithUnits,
-    xMax is ValueWithUnits) returns ValueWithUnits
-{
-    var numSamples = 50;
-    var radiusSum = 0 * meter;
-    var count = 0;
-
-    var range = getBSplineParamRange(curve);
-    var uMin = range.uMin;
-    var uMax = range.uMax;
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var u = uMin + (uMax - uMin) * i / (numSamples - 1);
-        var curv = getBSplineCurvatureAtParam(curve, u);
-
-        // Check if point is within X bounds
-        if (curv.point[0] < xMin || curv.point[0] > xMax)
-            continue;
-
-        // Only accumulate positive curvature (concave sections)
-        if (curv.curvatureMag > 1e-9 / meter)
-        {
-            radiusSum += 1 / curv.curvatureMag;
-            count += 1;
-        }
-    }
-
-    if (count == 0)
-        return inf * meter;  // No curvature found
-
-    return radiusSum / count;
-}
 
 /**
  * Build a single approximated BSpline from X, Y arrays.
