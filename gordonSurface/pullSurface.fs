@@ -336,6 +336,9 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Show control point polygons" }
             definition.showCPPolygons is boolean;
 
+            annotation { "Name" : "Show offset vectors" }
+            definition.showOffsetVectors is boolean;
+
             annotation { "Name" : "Print curve data" }
             definition.printCurveData is boolean;
         }
@@ -595,6 +598,29 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 for (var i = 0; i < uCount - 1; i += 1)
                 {
                     addDebugLine(context, adjPts[i][j], adjPts[i + 1][j], DebugColor.MAGENTA);
+                }
+            }
+        }
+
+        // Offset vectors — draw a line from each base point to its adjusted position.
+        // Green for positive displacement (pulled outward), red for negative (pushed inward).
+        // Only drawn for free (unlocked) points with a non-zero offset.
+        if (definition.showOffsetVectors)
+        {
+            for (var i = 0; i < uCount; i += 1)
+            {
+                for (var j = 0; j < vCount; j += 1)
+                {
+                    if (!isPointLocked(i, j, uCount, vCount, definition.continuityType))
+                    {
+                        var flatIdx = i * vCount + j;
+                        var off = (offsets != undefined && size(offsets) == total) ? offsets[flatIdx].off : (0 * meter);
+                        if (off != 0 * meter)
+                        {
+                            var color = (off > 0 * meter) ? DebugColor.GREEN : DebugColor.RED;
+                            addDebugLine(context, basePts[i][j], adjPts[i][j], color);
+                        }
+                    }
                 }
             }
         }
