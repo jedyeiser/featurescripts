@@ -608,6 +608,15 @@ export function cleanupSurface(context is Context, id is Id,
             rawUKnots[ki] = sourceSurface.uKnots[ki];
         }
 
+        // DEBUG: log source surface dimensions
+        println("SRC: uDeg=" ~ toString(sourceSurface.uDegree)
+            ~ " vDeg=" ~ toString(sourceSurface.vDegree)
+            ~ " numUKnots=" ~ toString(numUKnots)
+            ~ " numVKnots=" ~ toString(size(sourceSurface.vKnots))
+            ~ " numRows=" ~ toString(numRows)
+            ~ " isUPer=" ~ toString(sourceSurface.isUPeriodic)
+            ~ " isVPer=" ~ toString(sourceSurface.isVPeriodic));
+
         // Step 1: Extract v-direction row curves (one per u control point index)
         // and simplify each by removing interior v-knots within tolerance.
         var rowCurves = [];
@@ -620,6 +629,11 @@ export function cleanupSurface(context is Context, id is Id,
 
         // Step 2: Unify v-direction degree and knots across all row curves.
         rowCurves = makeCurvesCompatible(context, id + "rowCompat", rowCurves);
+
+        // DEBUG: log row curve state after compat
+        println("ROW-COMPAT: deg=" ~ toString(rowCurves[0].degree)
+            ~ " numCPs=" ~ toString(size(rowCurves[0].controlPoints))
+            ~ " numKnots=" ~ toString(size(rowCurves[0].knots)));
 
         // Step 3: Build the CP grid from the simplified compatible rows.
         var numCPsV = size(rowCurves[0].controlPoints);
@@ -646,6 +660,12 @@ export function cleanupSurface(context is Context, id is Id,
 
         // Step 5: Unify u-direction degree and knots across all column curves.
         colCurves = makeCurvesCompatible(context, id + "colCompat", colCurves);
+
+        // DEBUG: log column curve state after compat
+        println("COL-COMPAT: deg=" ~ toString(colCurves[0].degree)
+            ~ " numCPs=" ~ toString(size(colCurves[0].controlPoints))
+            ~ " numKnots=" ~ toString(size(colCurves[0].knots))
+            ~ " numCols=" ~ toString(size(colCurves)));
 
         // Step 6: Assemble the final CP grid: finalCPs[u][v] = colCurves[v].controlPoints[u]
         var numCPsU = size(colCurves[0].controlPoints);
@@ -676,6 +696,20 @@ export function cleanupSurface(context is Context, id is Id,
             vKnotsOut[ki] = rowCurves[0].knots[ki];
         }
 
+        // DEBUG: spot-check a few control points for NaN/validity
+        println("CP[0][0]=" ~ toString(finalCPs[0][0]));
+        println("CP[last][last]=" ~ toString(finalCPs[numCPsU - 1][numCPsVFinal - 1]));
+
+        // DEBUG: log final surface dimensions before construction
+        println("FINAL: uDeg=" ~ toString(colCurves[0].degree)
+            ~ " vDeg=" ~ toString(rowCurves[0].degree)
+            ~ " numCPsU=" ~ toString(numCPsU)
+            ~ " numCPsVFinal=" ~ toString(numCPsVFinal)
+            ~ " uKnotsLen=" ~ toString(numUKnotsOut)
+            ~ " vKnotsLen=" ~ toString(numVKnotsOut));
+        println("FINAL: expectedUKnots=" ~ toString(colCurves[0].degree + numCPsU + 1)
+            ~ " expectedVKnots=" ~ toString(rowCurves[0].degree + numCPsVFinal + 1));
+
         var surfaceDef = {
             "uDegree" : colCurves[0].degree,
             "vDegree" : rowCurves[0].degree,
@@ -688,6 +722,7 @@ export function cleanupSurface(context is Context, id is Id,
         };
 
         surfaceDef = normalizeSurfaceDef(surfaceDef);
+        println("normalizeSurfaceDef passed");
         return bSplineSurface(surfaceDef);
     }
     else // MANUAL mode
