@@ -2,15 +2,15 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "b463eaf5c39ae77152ed2484");
+export import(path : "050a4670bd42b2ca8da04540", version : "048699fcdedbc5b8c1a8c019");
 //import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "1f36dbe055928048afcc6fe0");
+import(path : "b9e1608a507a242d87720d9b", version : "de0c265720fa4a74ba410db5");
 //import gordonSurface
-import(path : "b3c74a9035256a2ff6bd0004", version : "d43b8d12f8c9732a31d21430");
+import(path : "b3c74a9035256a2ff6bd0004", version : "95a03660a82a200bfbf910fb");
 //import continuityTools
-import(path : "6db2a56b5418f71818d7a607", version : "f5e90edbacec0ec0ff42136f");
+import(path : "6db2a56b5418f71818d7a607", version : "f9c777561ced8b1862bc2a5f");
 //import debugTools
-import(path : "3f40c735a406f3df927e0b13", version : "ca97f371da515817e2e1c16b");
+import(path : "3f40c735a406f3df927e0b13", version : "29fe93b04cbcf5cd947fab5a");
 
 /**
  * Allows users to push and pull surface around using manipulator functions.
@@ -636,13 +636,25 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
         // ── STAGE 5: Replace original face with the new surface ────────────────
-        // Union the original body with pullSurf directly — no face deletion needed.
-        // The kernel merges coincident/adjacent surface regions via recomputeMatches.
+        // Delete the original face (leaving the void open), then union the owner
+        // body with pullSurf so the kernel stitches the new face in.
         if (definition.replaceFace)
         {
             var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
             var ownerBody = qOwnerBody(definition.face);
 
+            // leaveOpen: true — remove the face without trying to heal/extend
+            // the surrounding faces (healing fails for BSpline faces).
+            opDeleteFace(context, id + "deleteSourceFace", {
+                "deleteFaces"   : definition.face,
+                "includeFillet" : false,
+                "capVoid"       : false,
+                "leaveOpen"     : true
+            });
+
+            // Stitch pullSurf into the open void. eraseImprintedEdges +
+            // recomputeMatches match the params Onshape's own surface boolean
+            // uses for near-coincident boundary stitching.
             opBoolean(context, id + "replaceBool", {
                 "operationType"       : BooleanOperationType.UNION,
                 "tools"               : qUnion([ownerBody, newBody]),
