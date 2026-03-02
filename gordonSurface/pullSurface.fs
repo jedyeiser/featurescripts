@@ -301,24 +301,23 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         }
         addManipulators(context, id, manipMap);
 
-        // ── STAGE 3: Apply offsets and re-fit adjusted iso-U curves ───────────
-        // Build adjPts by applying any stored manipulator offsets to basePts.
+        // ── STAGE 3: Apply offsets to produce adjusted grid points ────────────
+        // Build adjPts row-by-row using makeArray so each inner array is freshly
+        // allocated. Avoid adjPts[i] = basePts[i] then adjPts[i][j] = ... because
+        // FeatureScript arrays are value types — modifying a copied inner array
+        // does not write back to adjPts[i].
         var adjPts = makeArray(uCount);
         for (var i = 0; i < uCount; i += 1)
         {
-            adjPts[i] = basePts[i];
+            var row = makeArray(vCount);
             for (var j = 0; j < vCount; j += 1)
             {
-                if (!isPointLocked(i, j, uCount, vCount, definition.continuityType))
-                {
-                    var key = "mp_" ~ i ~ "_" ~ j;
-                    var off = definition[key];
-                    if (off != undefined)
-                    {
-                        adjPts[i][j] = basePts[i][j] + off * baseNormals[i][j];
-                    }
-                }
+                var off = definition["mp_" ~ i ~ "_" ~ j];
+                row[j] = (!isPointLocked(i, j, uCount, vCount, definition.continuityType) && off != undefined)
+                    ? basePts[i][j] + off * baseNormals[i][j]
+                    : basePts[i][j];
             }
+            adjPts[i] = row;
         }
 
         // Fit iso-U curves through the adjusted points.
