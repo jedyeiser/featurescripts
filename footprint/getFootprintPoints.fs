@@ -256,34 +256,44 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                     "plane" : plane(acpORIGIN, vector(1, 0, 0))
                 });
 
-        //4. Categorize individual edges into tip / RSL / tail.
-        //   - Y=0 centerline closing edges are skipped (they form a closed loop).
-        //   - Edges that span a contact plane are extracted into a single-edge wire
-        //     and split at that plane; opSplitPart succeeds because each temp wire
-        //     is an open path (not a closed loop).
-        const spanTol = 1e-6 * meter;
+        //4. Categorize each edge into tip / RSL / tail.
+        //   For each plane (Y=0, FCP, ACP): an edge crosses a plane if its bounding
+        //   box straddles the plane AND neither endpoint is within splitTol of it.
+        //   Crossing edges are extracted into a single-edge temp wire and split;
+        //   opSplitPart succeeds because a single extracted edge is an open path.
+        //   Y=0 crossing: keep only positive-Y portion, discard negative-Y.
+        //   FCP / ACP crossing: categorize both pieces into their regions.
+        const splitTol = 1e-5 * meter;
 
         var allEdges = evaluateQuery(context, definition.fptEdges);
-        var tipEdgesArr = [];   // non-spanning edges routed to tip zone
+        var tipEdgesArr = [];
         var rslEdgesArr = [];
         var tailEdgesArr = [];
-        var tipSpanBodies = [];   // wire-body Queries from spanning-edge splits
+        var tipSpanBodies = [];
         var rslSpanBodies = [];
         var tailSpanBodies = [];
+        var discardBodies = [];
         var spanIdx = 0;
 
         for (var edge in allEdges)
         {
+            var pt0 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0 }).origin;
+            var pt1 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1 }).origin;
             var edgeBox = evBox3d(context, { "topology" : edge, "tight" : true });
 
-            // Skip Y=0 centerline closing edges
-            if (edgeBox.maxCorner[1] < spanTol)
+            // Skip edges entirely at or below Y=0 (centerline closing edges)
+            if (edgeBox.maxCorner[1] < splitTol)
                 continue;
 
-            var crossesFcp = edgeBox.minCorner[0] + spanTol < fcpX && fcpX < edgeBox.maxCorner[0] - spanTol;
-            var crossesAcp = edgeBox.minCorner[0] + spanTol < acpX && acpX < edgeBox.maxCorner[0] - spanTol;
+            // Crossing test: bounding box straddles the plane AND no endpoint is near it
+            var crossesY0 = edgeBox.minCorner[1] < 0 * meter
+                && abs(pt0[1]) >= splitTol && abs(pt1[1]) >= splitTol;
+            var crossesFcp = edgeBox.minCorner[0] < fcpX && edgeBox.maxCorner[0] > fcpX
+                && abs(pt0[0] - fcpX) >= splitTol && abs(pt1[0] - fcpX) >= splitTol;
+            var crossesAcp = edgeBox.minCorner[0] < acpX && edgeBox.maxCorner[0] > acpX
+                && abs(pt0[0] - acpX) >= splitTol && abs(pt1[0] - acpX) >= splitTol;
 
-            if (!crossesFcp && !crossesAcp)
+            if (!crossesY0 && !crossesFcp && !crossesAcp)
             {
                 // Non-spanning: route by bounding-box midpoint
                 var edgeMidX = (edgeBox.minCorner[0] + edgeBox.maxCorner[0]) / 2;
@@ -296,70 +306,76 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             }
             else
             {
-                // Spanning edge: extract into a temp single-edge wire, then split.
+                // Spanning edge: extract into a temp wire and split at each crossed plane
                 var tempId = id + ("spanWire" ~ spanIdx);
                 spanIdx += 1;
                 opExtractWires(context, tempId, { "edges" : edge });
+                var currentBodyQ = qCreatedBy(tempId, EntityType.BODY);
+                var didAcpSplit = false;
 
+                // Y=0 — keep positive-Y side, discard negative-Y side
+                if (crossesY0)
+                {
+                    opSplitPart(context, tempId + "Y", {
+                                "targets" : currentBodyQ,
+                                "tool" : plane(vector(0, 0, 0) * meter, vector(0, 1, 0))
+                            });
+                    var y0True = qSplitBy(tempId + "Y", EntityType.BODY, true);
+                    var y0TrueBox = evBox3d(context, { "topology" : y0True, "tight" : true });
+                    var posYQ = y0TrueBox.minCorner[1] >= 0 * meter
+                        ? y0True : qSplitBy(tempId + "Y", EntityType.BODY, false);
+                    var negYQ = y0TrueBox.minCorner[1] >= 0 * meter
+                        ? qSplitBy(tempId + "Y", EntityType.BODY, false) : y0True;
+                    discardBodies = append(discardBodies, negYQ);
+                    currentBodyQ = posYQ;
+                }
+
+                // FCP — tip side goes to tipSpanBodies; RSL+tail side carries forward
                 if (crossesFcp)
                 {
                     opSplitPart(context, tempId + "F", {
-                                "targets" : qCreatedBy(tempId, EntityType.BODY),
+                                "targets" : currentBodyQ,
                                 "tool" : qCreatedBy(id + "fcpPlane", EntityType.FACE)
                             });
-
-                    // Identify tip piece (maxX ≈ fcpX) vs RSL/tail piece (minX ≈ fcpX)
-                    // by evaluating the bounding box of one side.
-                    var fcpSideTrue = qSplitBy(tempId + "F", EntityType.BODY, true);
-                    var fcpSideTrueBox = evBox3d(context, { "topology" : fcpSideTrue, "tight" : true });
-                    var tipPieceQ = fcpSideTrueBox.maxCorner[0] < fcpX + spanTol
-                        ? fcpSideTrue
-                        : qSplitBy(tempId + "F", EntityType.BODY, false);
-                    var rslTailPieceQ = fcpSideTrueBox.maxCorner[0] < fcpX + spanTol
-                        ? qSplitBy(tempId + "F", EntityType.BODY, false)
-                        : fcpSideTrue;
+                    var fcpTrue = qSplitBy(tempId + "F", EntityType.BODY, true);
+                    var fcpTrueBox = evBox3d(context, { "topology" : fcpTrue, "tight" : true });
+                    var tipPieceQ = fcpTrueBox.maxCorner[0] < fcpX + splitTol
+                        ? fcpTrue : qSplitBy(tempId + "F", EntityType.BODY, false);
+                    var rslTailPieceQ = fcpTrueBox.maxCorner[0] < fcpX + splitTol
+                        ? qSplitBy(tempId + "F", EntityType.BODY, false) : fcpTrue;
                     tipSpanBodies = append(tipSpanBodies, tipPieceQ);
-
-                    if (crossesAcp)
-                    {
-                        // Edge also spans ACP: split the RSL+tail piece further.
-                        opSplitPart(context, tempId + "A", {
-                                    "targets" : rslTailPieceQ,
-                                    "tool" : qCreatedBy(id + "acpPlane", EntityType.FACE)
-                                });
-                        var acpSideTrueFA = qSplitBy(tempId + "A", EntityType.BODY, true);
-                        var acpSideTrueBoxFA = evBox3d(context, { "topology" : acpSideTrueFA, "tight" : true });
-                        var rslPieceQ = acpSideTrueBoxFA.maxCorner[0] < acpX + spanTol
-                            ? acpSideTrueFA
-                            : qSplitBy(tempId + "A", EntityType.BODY, false);
-                        var tailPieceQ = acpSideTrueBoxFA.maxCorner[0] < acpX + spanTol
-                            ? qSplitBy(tempId + "A", EntityType.BODY, false)
-                            : acpSideTrueFA;
-                        rslSpanBodies = append(rslSpanBodies, rslPieceQ);
-                        tailSpanBodies = append(tailSpanBodies, tailPieceQ);
-                    }
-                    else
-                    {
-                        rslSpanBodies = append(rslSpanBodies, rslTailPieceQ);
-                    }
+                    currentBodyQ = rslTailPieceQ;
                 }
-                else
+
+                // ACP — RSL and tail sides both explicitly placed
+                if (crossesAcp)
                 {
-                    // Spans ACP only
                     opSplitPart(context, tempId + "A", {
-                                "targets" : qCreatedBy(tempId, EntityType.BODY),
+                                "targets" : currentBodyQ,
                                 "tool" : qCreatedBy(id + "acpPlane", EntityType.FACE)
                             });
-                    var acpSideTrueA = qSplitBy(tempId + "A", EntityType.BODY, true);
-                    var acpSideTrueBoxA = evBox3d(context, { "topology" : acpSideTrueA, "tight" : true });
-                    var rslPieceQ = acpSideTrueBoxA.maxCorner[0] < acpX + spanTol
-                        ? acpSideTrueA
-                        : qSplitBy(tempId + "A", EntityType.BODY, false);
-                    var tailPieceQ = acpSideTrueBoxA.maxCorner[0] < acpX + spanTol
-                        ? qSplitBy(tempId + "A", EntityType.BODY, false)
-                        : acpSideTrueA;
+                    var acpTrue = qSplitBy(tempId + "A", EntityType.BODY, true);
+                    var acpTrueBox = evBox3d(context, { "topology" : acpTrue, "tight" : true });
+                    var rslPieceQ = acpTrueBox.maxCorner[0] < acpX + splitTol
+                        ? acpTrue : qSplitBy(tempId + "A", EntityType.BODY, false);
+                    var tailPieceQ = acpTrueBox.maxCorner[0] < acpX + splitTol
+                        ? qSplitBy(tempId + "A", EntityType.BODY, false) : acpTrue;
                     rslSpanBodies = append(rslSpanBodies, rslPieceQ);
                     tailSpanBodies = append(tailSpanBodies, tailPieceQ);
+                    didAcpSplit = true;
+                }
+
+                // If ACP was not split, route the remaining body by midpoint
+                if (!didAcpSplit)
+                {
+                    var remainBox = evBox3d(context, { "topology" : currentBodyQ, "tight" : true });
+                    var remainMidX = (remainBox.minCorner[0] + remainBox.maxCorner[0]) / 2;
+                    if (remainMidX < fcpX)
+                        tipSpanBodies = append(tipSpanBodies, currentBodyQ);
+                    else if (remainMidX > acpX)
+                        tailSpanBodies = append(tailSpanBodies, currentBodyQ);
+                    else
+                        rslSpanBodies = append(rslSpanBodies, currentBodyQ);
                 }
             }
         }
@@ -488,7 +504,10 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             reportFeatureInfo(context, id, 'FOOTPRINT MUST BE CONTINUIOUS. NO FOOTPRINT DATA ANALYSIS. Cannot form a tangent path from selected edges');
         }
 
-        //10. Optionally retain or delete extracted wire curves
+        //10. Always delete sub-zero discard pieces; optionally delete the rest
+        if (size(discardBodies) > 0)
+            opDeleteBodies(context, id + "deleteDiscarded", { "entities" : qUnion(discardBodies) });
+
         if (!definition.retainCurves)
         {
             var deleteBodyParts = concatenateArrays([tipBodyParts, rslBodyParts, tailBodyParts]);

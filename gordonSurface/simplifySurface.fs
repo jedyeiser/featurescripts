@@ -538,10 +538,16 @@ function simplifyByKnotRemoval(context is Context, curve is BSplineCurve, tolera
         }
         if (mult > 0)
         {
-            var result = removeKnot(context, curve, knotVal, mult, tolerance);
-            if (result.success)
+            // try silent: removeKnotOnce can produce NaN for certain degenerate
+            // knot configurations (alpha denominator = 0). Skip those knots safely.
+            var remResult;
+            try silent
             {
-                curve = result.curve;
+                remResult = removeKnot(context, curve, knotVal, mult, tolerance);
+            }
+            if (remResult != undefined && remResult.success)
+            {
+                curve = remResult.curve;
             }
         }
     }
@@ -654,6 +660,22 @@ export function cleanupSurface(context is Context, id is Id,
             }
         }
 
+        // Copy knot vectors as plain number arrays before wrapping with knotArray().
+        // colCurves[0].knots and rowCurves[0].knots may already be typed KnotArrays
+        // (from makeCurvesCompatible), and knotArray() requires a plain number array.
+        var numUKnotsOut = size(colCurves[0].knots);
+        var uKnotsOut = makeArray(numUKnotsOut);
+        for (var ki = 0; ki < numUKnotsOut; ki += 1)
+        {
+            uKnotsOut[ki] = colCurves[0].knots[ki];
+        }
+        var numVKnotsOut = size(rowCurves[0].knots);
+        var vKnotsOut = makeArray(numVKnotsOut);
+        for (var ki = 0; ki < numVKnotsOut; ki += 1)
+        {
+            vKnotsOut[ki] = rowCurves[0].knots[ki];
+        }
+
         var surfaceDef = {
             "uDegree" : colCurves[0].degree,
             "vDegree" : rowCurves[0].degree,
@@ -661,8 +683,8 @@ export function cleanupSurface(context is Context, id is Id,
             "isVPeriodic" : sourceSurface.isVPeriodic,
             "isRational" : false,
             "controlPoints" : controlPointMatrix(finalCPs),
-            "uKnots" : knotArray(colCurves[0].knots),
-            "vKnots" : knotArray(rowCurves[0].knots)
+            "uKnots" : knotArray(uKnotsOut),
+            "vKnots" : knotArray(vKnotsOut)
         };
 
         surfaceDef = normalizeSurfaceDef(surfaceDef);
