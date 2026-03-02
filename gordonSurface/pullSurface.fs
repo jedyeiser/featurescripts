@@ -145,13 +145,47 @@ function fitVIsoCurve(context is Context, definition is map, colPts is array, v 
  */
 export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
+    var uCount = definition.uCurveCount;
+    var vCount = definition.vCurveCount;
+
     if (definition.uCurveCount != oldDefinition.uCurveCount ||
         definition.vCurveCount != oldDefinition.vCurveCount ||
         definition.continuityType != oldDefinition.continuityType)
     {
-        // Reset the offset array to match the new grid dimensions.
-        definition.mpOffsets = makeArray(definition.uCurveCount * definition.vCurveCount, { "value" : 0 * meter });
+        // Grid or continuity changed — all previous offsets are invalid.
+        definition.mpOffsets     = makeArray(uCount * vCount, { "value" : 0 * meter });
+        definition.activeOffsets = [];
+        return definition;
     }
+
+    // Remove zero-value entries and entries for locked points from activeOffsets.
+    // (Locked points cannot be offset regardless of continuity setting.)
+    var clean  = [];
+    var active = definition.activeOffsets;
+    if (active != undefined)
+    {
+        for (var item in active)
+        {
+            if (item.value != 0 * meter &&
+                !isPointLocked(item.u, item.v, uCount, vCount, definition.continuityType))
+            {
+                clean = append(clean, item);
+            }
+        }
+    }
+    definition.activeOffsets = clean;
+
+    // Rebuild mpOffsets flat cache from the cleaned active list.
+    var total   = uCount * vCount;
+    var offsets = makeArray(total, { "value" : 0 * meter });
+    for (var item in clean)
+    {
+        var flatIdx = item.u * vCount + item.v;
+        if (flatIdx < total)
+            offsets[flatIdx] = { "value" : item.value };
+    }
+    definition.mpOffsets = offsets;
+
     return definition;
 }
 
@@ -172,21 +206,8 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
     var vCount = definition.vCurveCount;
     var total  = uCount * vCount;
 
-    // Initialise or resize the offset array. Each item is {"value": length}
-    // to match the declared array item schema in the precondition.
-    var oldOffsets = definition.mpOffsets;
-    var offsets    = makeArray(total, { "value" : 0 * meter });
-    if (oldOffsets != undefined)
-    {
-        var copyLen = size(oldOffsets);
-        for (var k = 0; k < total && k < copyLen; k += 1)
-        {
-            offsets[k] = oldOffsets[k];
-        }
-    }
-
-    // Update entries for each dragged manipulator.
-    // Manipulator keys are "mp_i_j"; scan the grid to find the matching (i, j).
+    // For each dragged manipulator, update activeOffsets (the user-visible list).
+    // Manipulator keys are "mp_i_j"; scan the grid to find matching (i, j).
     for (var key, manip in newManipulators)
     {
         for (var i = 0; i < uCount; i += 1)
@@ -195,13 +216,48 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
             {
                 if (("mp_" ~ i ~ "_" ~ j) == key)
                 {
-                    offsets[i * vCount + j] = { "value" : manip.offset };
+                    // Rebuild activeOffsets: update existing item or add a new one.
+                    // Drop the item if the offset dragged back to zero.
+                    var active = definition.activeOffsets;
+                    if (active == undefined) active = [];
+                    var found     = false;
+                    var newActive = [];
+                    for (var item in active)
+                    {
+                        if (item.u == i && item.v == j)
+                        {
+                            found = true;
+                            if (manip.offset != 0 * meter)
+                                newActive = append(newActive, { "u" : i, "v" : j, "value" : manip.offset });
+                            // offset == 0: omit the item (removes it from the list)
+                        }
+                        else
+                        {
+                            newActive = append(newActive, item);
+                        }
+                    }
+                    if (!found && manip.offset != 0 * meter)
+                        newActive = append(newActive, { "u" : i, "v" : j, "value" : manip.offset });
+                    definition.activeOffsets = newActive;
                 }
             }
         }
     }
 
+    // Rebuild mpOffsets flat cache from the updated activeOffsets.
+    var offsets = makeArray(total, { "value" : 0 * meter });
+    var active  = definition.activeOffsets;
+    if (active != undefined)
+    {
+        for (var item in active)
+        {
+            var flatIdx = item.u * vCount + item.v;
+            if (flatIdx < total)
+                offsets[flatIdx] = { "value" : item.value };
+        }
+    }
     definition.mpOffsets = offsets;
+
     return definition;
 }
 
@@ -241,6 +297,26 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
 
         annotation { "Name" : "Replace face", "Default" : false }
         definition.replaceFace is boolean;
+
+        // ── Active offsets ────────────────────────────────────────────────────
+        // Live list of non-zero grid point offsets. Populated automatically when
+        // manipulators are dragged. U and V are the grid indices; Offset is the
+        // scalar displacement along the face normal at that point.
+        // Setting Offset to 0 removes the entry. Deleting an item zeros that point.
+        // U and V can be edited to relocate an offset to a different grid position.
+        annotation { "Name" : "Active offsets", "Item name" : "Offset" }
+        definition.activeOffsets is array;
+        for (var activeOffset in definition.activeOffsets)
+        {
+            annotation { "Name" : "U" }
+            isInteger(activeOffset.u, { (unitless) : [0, 0, 19] } as IntegerBoundSpec);
+
+            annotation { "Name" : "V" }
+            isInteger(activeOffset.v, { (unitless) : [0, 0, 19] } as IntegerBoundSpec);
+
+            annotation { "Name" : "Offset" }
+            isLength(activeOffset.value, { (millimeter) : [-10000, 0, 10000] } as LengthBoundSpec);
+        }
 
         // ── Debug group ───────────────────────────────────────────────────────
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
