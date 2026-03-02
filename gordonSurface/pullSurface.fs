@@ -641,25 +641,38 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
             // ── STAGE 5: Replace original face with the new surface ────────────
-            // opReplaceFace fails for freeform surfaces because the kernel cannot
-            // reliably trim an approximated BSpline surface against adjacent faces.
-            // Reliable approach: delete the original face to open the boundary,
-            // then boolean-union the owner body with the new surface to stitch it in.
+            // Two cases:
+            //   Multi-face body: opDeleteFace opens the boundary; opBoolean stitches
+            //     the new surface in.
+            //   Single-face sheet body: opDeleteFace fails (empty body would result);
+            //     fall back to deleting the whole source body — new surface replaces it.
             if (definition.replaceFace)
             {
                 var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
                 var ownerBody = qOwnerBody(definition.face);
 
-                opDeleteFace(context, id + "deleteFace", {
-                    "deleteFaces"   : definition.face,
-                    "includeFillet" : false,
-                    "capVoid"       : false
-                });
+                var faceDeleted = false;
+                try silent
+                {
+                    opDeleteFace(context, id + "deleteFace", {
+                        "deleteFaces" : definition.face,
+                        "capVoid"     : false
+                    });
+                    faceDeleted = true;
+                }
 
-                opBoolean(context, id + "replaceBool", {
-                    "tools"         : qUnion([ownerBody, newBody]),
-                    "operationType" : BooleanType.UNION
-                });
+                if (faceDeleted)
+                {
+                    opBoolean(context, id + "replaceBool", {
+                        "tools"         : qUnion([ownerBody, newBody]),
+                        "operationType" : BooleanType.UNION
+                    });
+                }
+                else
+                {
+                    // Single-face body — remove the source entirely.
+                    opDeleteBodies(context, id + "deleteOrig", { "entities" : ownerBody });
+                }
             }
         }
 
