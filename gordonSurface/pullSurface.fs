@@ -641,12 +641,24 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
             // ── STAGE 5: Replace original face with the new surface ────────────
+            // opReplaceFace fails for freeform surfaces because the kernel cannot
+            // reliably trim an approximated BSpline surface against adjacent faces.
+            // Reliable approach: delete the original face to open the boundary,
+            // then boolean-union the owner body with the new surface to stitch it in.
             if (definition.replaceFace)
             {
-                var newFace = qCreatedBy(id + "pullSurf", EntityType.FACE);
-                opReplaceFace(context, id + "replace", {
-                    "replaceFaces" : definition.face,
-                    "templateFace" : newFace
+                var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
+                var ownerBody = qOwnerBody(definition.face);
+
+                opDeleteFace(context, id + "deleteFace", {
+                    "deleteFaces"   : definition.face,
+                    "includeFillet" : false,
+                    "capVoid"       : false
+                });
+
+                opBoolean(context, id + "replaceBool", {
+                    "tools"         : qUnion([ownerBody, newBody]),
+                    "operationType" : BooleanType.UNION
                 });
             }
         }
