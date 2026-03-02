@@ -246,43 +246,8 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         var fcpX = fcpORGIN[0];
         var acpX = acpORIGIN[0];
 
-        //3. Categorize individual edges by X midpoint into tip / RSL / tail.
-        //   Edges whose bounding box lies entirely on the Y = 0 centerline are
-        //   closing segments that form a closed loop; skip them so that each
-        //   extracted wire is an open path.
-        var allEdges = evaluateQuery(context, definition.fptEdges);
-        var tipEdgesArr = [];
-        var rslEdgesArr = [];
-        var tailEdgesArr = [];
-
-        for (var edge in allEdges)
-        {
-            var edgeBox = evBox3d(context, { "topology" : edge, "tight" : true });
-            if (edgeBox.maxCorner[1] < 1e-6 * meter)
-                continue;
-            var edgeMidX = (edgeBox.minCorner[0] + edgeBox.maxCorner[0]) / 2;
-            if (edgeMidX < fcpX)
-                tipEdgesArr = append(tipEdgesArr, edge);
-            else if (edgeMidX > acpX)
-                tailEdgesArr = append(tailEdgesArr, edge);
-            else
-                rslEdgesArr = append(rslEdgesArr, edge);
-        }
-
-        //4. Extract a separate wire body for each non-empty region.
-        //   No opSplitPart needed — avoids SPLIT_FAILED on closed-loop wires.
-        var hasTip = size(tipEdgesArr) > 0;
-        var hasRSL = size(rslEdgesArr) > 0;
-        var hasTail = size(tailEdgesArr) > 0;
-
-        if (hasTip)
-            opExtractWires(context, id + "tipWire", { "edges" : qUnion(tipEdgesArr) });
-        if (hasRSL)
-            opExtractWires(context, id + "rslWire", { "edges" : qUnion(rslEdgesArr) });
-        if (hasTail)
-            opExtractWires(context, id + "tailWire", { "edges" : qUnion(tailEdgesArr) });
-
-        //5. Create FCP and ACP planes (for retainPlanes option and visualization)
+        //3. Create FCP and ACP planes now — needed as split tools for spanning edges
+        //   before wire extraction happens.
         opPlane(context, id + "fcpPlane", {
                     "plane" : plane(fcpORGIN, vector(1, 0, 0))
                 });
@@ -291,11 +256,144 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                     "plane" : plane(acpORIGIN, vector(1, 0, 0))
                 });
 
-        //6. Label and sample each region
+        //4. Categorize individual edges into tip / RSL / tail.
+        //   - Y=0 centerline closing edges are skipped (they form a closed loop).
+        //   - Edges that span a contact plane are extracted into a single-edge wire
+        //     and split at that plane; opSplitPart succeeds because each temp wire
+        //     is an open path (not a closed loop).
+        const spanTol = 1e-6 * meter;
+
+        var allEdges = evaluateQuery(context, definition.fptEdges);
+        var tipEdgesArr = [];   // non-spanning edges routed to tip zone
+        var rslEdgesArr = [];
+        var tailEdgesArr = [];
+        var tipSpanBodies = [];   // wire-body Queries from spanning-edge splits
+        var rslSpanBodies = [];
+        var tailSpanBodies = [];
+        var spanIdx = 0;
+
+        for (var edge in allEdges)
+        {
+            var edgeBox = evBox3d(context, { "topology" : edge, "tight" : true });
+
+            // Skip Y=0 centerline closing edges
+            if (edgeBox.maxCorner[1] < spanTol)
+                continue;
+
+            var crossesFcp = edgeBox.minCorner[0] + spanTol < fcpX && fcpX < edgeBox.maxCorner[0] - spanTol;
+            var crossesAcp = edgeBox.minCorner[0] + spanTol < acpX && acpX < edgeBox.maxCorner[0] - spanTol;
+
+            if (!crossesFcp && !crossesAcp)
+            {
+                // Non-spanning: route by bounding-box midpoint
+                var edgeMidX = (edgeBox.minCorner[0] + edgeBox.maxCorner[0]) / 2;
+                if (edgeMidX < fcpX)
+                    tipEdgesArr = append(tipEdgesArr, edge);
+                else if (edgeMidX > acpX)
+                    tailEdgesArr = append(tailEdgesArr, edge);
+                else
+                    rslEdgesArr = append(rslEdgesArr, edge);
+            }
+            else
+            {
+                // Spanning edge: extract into a temp single-edge wire, then split.
+                var tempId = id + ("spanWire" ~ spanIdx);
+                spanIdx += 1;
+                opExtractWires(context, tempId, { "edges" : edge });
+
+                if (crossesFcp)
+                {
+                    opSplitPart(context, tempId + "F", {
+                                "targets" : qCreatedBy(tempId, EntityType.BODY),
+                                "tool" : qCreatedBy(id + "fcpPlane", EntityType.FACE)
+                            });
+
+                    // Identify tip piece (maxX ≈ fcpX) vs RSL/tail piece (minX ≈ fcpX)
+                    // by evaluating the bounding box of one side.
+                    var fcpSideTrue = qSplitBy(tempId + "F", EntityType.BODY, true);
+                    var fcpSideTrueBox = evBox3d(context, { "topology" : fcpSideTrue, "tight" : true });
+                    var tipPieceQ = fcpSideTrueBox.maxCorner[0] < fcpX + spanTol
+                        ? fcpSideTrue
+                        : qSplitBy(tempId + "F", EntityType.BODY, false);
+                    var rslTailPieceQ = fcpSideTrueBox.maxCorner[0] < fcpX + spanTol
+                        ? qSplitBy(tempId + "F", EntityType.BODY, false)
+                        : fcpSideTrue;
+                    tipSpanBodies = append(tipSpanBodies, tipPieceQ);
+
+                    if (crossesAcp)
+                    {
+                        // Edge also spans ACP: split the RSL+tail piece further.
+                        opSplitPart(context, tempId + "A", {
+                                    "targets" : rslTailPieceQ,
+                                    "tool" : qCreatedBy(id + "acpPlane", EntityType.FACE)
+                                });
+                        var acpSideTrueFA = qSplitBy(tempId + "A", EntityType.BODY, true);
+                        var acpSideTrueBoxFA = evBox3d(context, { "topology" : acpSideTrueFA, "tight" : true });
+                        var rslPieceQ = acpSideTrueBoxFA.maxCorner[0] < acpX + spanTol
+                            ? acpSideTrueFA
+                            : qSplitBy(tempId + "A", EntityType.BODY, false);
+                        var tailPieceQ = acpSideTrueBoxFA.maxCorner[0] < acpX + spanTol
+                            ? qSplitBy(tempId + "A", EntityType.BODY, false)
+                            : acpSideTrueFA;
+                        rslSpanBodies = append(rslSpanBodies, rslPieceQ);
+                        tailSpanBodies = append(tailSpanBodies, tailPieceQ);
+                    }
+                    else
+                    {
+                        rslSpanBodies = append(rslSpanBodies, rslTailPieceQ);
+                    }
+                }
+                else
+                {
+                    // Spans ACP only
+                    opSplitPart(context, tempId + "A", {
+                                "targets" : qCreatedBy(tempId, EntityType.BODY),
+                                "tool" : qCreatedBy(id + "acpPlane", EntityType.FACE)
+                            });
+                    var acpSideTrueA = qSplitBy(tempId + "A", EntityType.BODY, true);
+                    var acpSideTrueBoxA = evBox3d(context, { "topology" : acpSideTrueA, "tight" : true });
+                    var rslPieceQ = acpSideTrueBoxA.maxCorner[0] < acpX + spanTol
+                        ? acpSideTrueA
+                        : qSplitBy(tempId + "A", EntityType.BODY, false);
+                    var tailPieceQ = acpSideTrueBoxA.maxCorner[0] < acpX + spanTol
+                        ? qSplitBy(tempId + "A", EntityType.BODY, false)
+                        : acpSideTrueA;
+                    rslSpanBodies = append(rslSpanBodies, rslPieceQ);
+                    tailSpanBodies = append(tailSpanBodies, tailPieceQ);
+                }
+            }
+        }
+
+        //5. Extract wires for each batch of non-spanning edges
+        if (size(tipEdgesArr) > 0)
+            opExtractWires(context, id + "tipWire", { "edges" : qUnion(tipEdgesArr) });
+        if (size(rslEdgesArr) > 0)
+            opExtractWires(context, id + "rslWire", { "edges" : qUnion(rslEdgesArr) });
+        if (size(tailEdgesArr) > 0)
+            opExtractWires(context, id + "tailWire", { "edges" : qUnion(tailEdgesArr) });
+
+        //6. Build combined body query arrays per region
+        var tipBodyParts = tipSpanBodies;
+        if (size(tipEdgesArr) > 0)
+            tipBodyParts = append(tipBodyParts, qCreatedBy(id + "tipWire", EntityType.BODY));
+
+        var rslBodyParts = rslSpanBodies;
+        if (size(rslEdgesArr) > 0)
+            rslBodyParts = append(rslBodyParts, qCreatedBy(id + "rslWire", EntityType.BODY));
+
+        var tailBodyParts = tailSpanBodies;
+        if (size(tailEdgesArr) > 0)
+            tailBodyParts = append(tailBodyParts, qCreatedBy(id + "tailWire", EntityType.BODY));
+
+        var hasTip = size(tipBodyParts) > 0;
+        var hasRSL = size(rslBodyParts) > 0;
+        var hasTail = size(tailBodyParts) > 0;
+
+        //7. Label and sample each region
         var tipPoints = [];
         if (hasTip)
         {
-            var tipWireQ = qCreatedBy(id + "tipWire", EntityType.BODY);
+            var tipWireQ = qUnion(tipBodyParts);
             setProperty(context, {
                         "entities" : tipWireQ,
                         "propertyType" : PropertyType.NAME,
@@ -309,7 +407,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         var rslPoints = [];
         if (hasRSL)
         {
-            var rslWireQ = qCreatedBy(id + "rslWire", EntityType.BODY);
+            var rslWireQ = qUnion(rslBodyParts);
             setProperty(context, {
                         "entities" : rslWireQ,
                         "propertyType" : PropertyType.NAME,
@@ -323,7 +421,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         var tailPoints = [];
         if (hasTail)
         {
-            var tailWireQ = qCreatedBy(id + "tailWire", EntityType.BODY);
+            var tailWireQ = qUnion(tailBodyParts);
             setProperty(context, {
                         "entities" : tailWireQ,
                         "propertyType" : PropertyType.NAME,
@@ -334,7 +432,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                 tailPoints = reverse(tailPoints);
         }
 
-        //7. Store point arrays as attributes and visualize
+        //8. Store point arrays as attributes and visualize
         setAttribute(context, {
                     "entities" : qOrigin(EntityType.BODY),
                     "name" : "tipEdgePoints",
@@ -375,14 +473,14 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                     "attribute" : { 'tableUnits' : definition.tableUnits, 'cleanUnits' : definition.cleanUnits, 'sigFigs' : definition.sigFigs }
                 });
 
-        //8. Footprint analysis on the combined sidecut path
+        //9. Footprint analysis on the combined sidecut path
         try
         {
-            var wireEdgeParts = [];
-            if (hasTip) wireEdgeParts = append(wireEdgeParts, qCreatedBy(id + "tipWire", EntityType.EDGE));
-            if (hasRSL) wireEdgeParts = append(wireEdgeParts, qCreatedBy(id + "rslWire", EntityType.EDGE));
-            if (hasTail) wireEdgeParts = append(wireEdgeParts, qCreatedBy(id + "tailWire", EntityType.EDGE));
-            var fptPath = constructPath(context, qUnion(wireEdgeParts));
+            var allBodyParts = concatenateArrays([tipBodyParts, rslBodyParts, tailBodyParts]);
+            var allWireEdges = [];
+            for (var bodyQ in allBodyParts)
+                allWireEdges = append(allWireEdges, qOwnedByBody(bodyQ, EntityType.EDGE));
+            var fptPath = constructPath(context, qUnion(allWireEdges));
             analyzeFootprint(context, id + 'getFootprintDataBody', fptPath, definition.rslQuery, definition.showCurvature);
         }
         catch
@@ -390,15 +488,12 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             reportFeatureInfo(context, id, 'FOOTPRINT MUST BE CONTINUIOUS. NO FOOTPRINT DATA ANALYSIS. Cannot form a tangent path from selected edges');
         }
 
-        //9. Optionally retain or delete extracted wire curves
+        //10. Optionally retain or delete extracted wire curves
         if (!definition.retainCurves)
         {
-            var wiresToDelete = [];
-            if (hasTip) wiresToDelete = append(wiresToDelete, qCreatedBy(id + "tipWire", EntityType.BODY));
-            if (hasRSL) wiresToDelete = append(wiresToDelete, qCreatedBy(id + "rslWire", EntityType.BODY));
-            if (hasTail) wiresToDelete = append(wiresToDelete, qCreatedBy(id + "tailWire", EntityType.BODY));
-            if (size(wiresToDelete) > 0)
-                opDeleteBodies(context, id + "deleteCurves", { "entities" : qUnion(wiresToDelete) });
+            var deleteBodyParts = concatenateArrays([tipBodyParts, rslBodyParts, tailBodyParts]);
+            if (size(deleteBodyParts) > 0)
+                opDeleteBodies(context, id + "deleteCurves", { "entities" : qUnion(deleteBodyParts) });
         }
 
     });

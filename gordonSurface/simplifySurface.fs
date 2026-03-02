@@ -431,18 +431,34 @@ export function buildClampedKnotVector(params is array, degree is number) return
 
 /**
  * Extract a v-direction curve (row) from a BSplineSurface at a given u control point index.
- * The resulting BSplineCurve runs in the v direction using vDegree and vKnots.
- *
- * NOTE: Relies on BSplineSurface field access: surface.controlPoints[uIdx],
- * surface.vDegree, surface.vKnots, surface.isVPeriodic. Verify on first test.
+ * Explicitly copies knots and control points as plain arrays to avoid KnotArray /
+ * ControlPointMatrix type issues that cause NaN in removeKnotOnce's alpha arithmetic.
  */
 function extractRowCurve(surface is BSplineSurface, uIdx is number) returns BSplineCurve
 {
+    // Copy vKnots as plain numbers (surface.vKnots may be a typed KnotArray)
+    var numVKnots = size(surface.vKnots);
+    var vKnots = makeArray(numVKnots);
+    for (var ki = 0; ki < numVKnots; ki += 1)
+    {
+        vKnots[ki] = surface.vKnots[ki];
+    }
+
+    // Copy control points via double indexing (surface.controlPoints[uIdx] may be a
+    // typed ControlPointMatrix row, not a plain Vector array — double indexing gives
+    // individual Vectors which bSplineCurve and removeKnotOnce handle correctly)
+    var numCPsV = numVKnots - surface.vDegree - 1;
+    var cpRow = makeArray(numCPsV);
+    for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
+    {
+        cpRow[vIdx] = surface.controlPoints[uIdx][vIdx];
+    }
+
     return bSplineCurve({
         "degree" : surface.vDegree,
         "isPeriodic" : surface.isVPeriodic,
-        "knots" : surface.vKnots,
-        "controlPoints" : surface.controlPoints[uIdx]
+        "knots" : vKnots,
+        "controlPoints" : cpRow
     });
 }
 
@@ -573,9 +589,21 @@ export function cleanupSurface(context is Context, id is Id,
         });
         var sourceSurface = sourceData.bSplineSurface;
 
+        // Derive numRows and rawUKnots from the u-knot vector rather than from
+        // sourceSurface.controlPoints directly (whose size() may misbehave for
+        // ControlPointMatrix types).
+        var numUKnots = size(sourceSurface.uKnots);
+        var numRows = numUKnots - sourceSurface.uDegree - 1;
+
+        // Copy uKnots as a plain number array for use in extractColumnCurve.
+        var rawUKnots = makeArray(numUKnots);
+        for (var ki = 0; ki < numUKnots; ki += 1)
+        {
+            rawUKnots[ki] = sourceSurface.uKnots[ki];
+        }
+
         // Step 1: Extract v-direction row curves (one per u control point index)
         // and simplify each by removing interior v-knots within tolerance.
-        var numRows = size(sourceSurface.controlPoints);
         var rowCurves = [];
         for (var uIdx = 0; uIdx < numRows; uIdx += 1)
         {
@@ -601,11 +629,11 @@ export function cleanupSurface(context is Context, id is Id,
 
         // Step 4: Extract u-direction column curves (one per v control point index)
         // and simplify each by removing interior u-knots within tolerance.
-        // Column curves use the source surface's u-knots (numRows CPs, uDegree).
+        // rawUKnots is a plain number array (copied above) safe for bSplineCurve().
         var colCurves = [];
         for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
         {
-            var colCurve = extractColumnCurve(cpGrid, vIdx, sourceSurface.uKnots, sourceSurface.uDegree);
+            var colCurve = extractColumnCurve(cpGrid, vIdx, rawUKnots, sourceSurface.uDegree);
             colCurve = simplifyByKnotRemoval(context, colCurve, tolerance);
             colCurves = append(colCurves, colCurve);
         }
