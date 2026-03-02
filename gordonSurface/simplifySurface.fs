@@ -475,22 +475,58 @@ function extractColumnCurve(cpGrid is array, vIdx is number, uKnots, uDegree is 
  * Progressively remove interior knots from a BSplineCurve until no more can be
  * removed within the given tolerance. Implements the P&T A5.8 knot removal loop.
  *
- * Tries each unique interior knot (at its full multiplicity) once. If removal
- * succeeds within tolerance, the simplified curve is used for subsequent removals.
+ * Inlines the unique-interior-knots and multiplicity queries (bspline_data.fs
+ * functions are not re-exported by bspline_knots.fs).
  *
  * @param tolerance : Geometric error bound — passed directly to removeKnot(),
  *                    which accepts ValueWithUnits or number.
  */
 function simplifyByKnotRemoval(context is Context, curve is BSplineCurve, tolerance) returns BSplineCurve
 {
-    var interiorKnots = getUniqueInteriorKnots(curve, SIMPLIFY_KNOT_TOL);
-    for (var knot in interiorKnots)
+    var degree = curve.degree;
+    var knots = curve.knots;
+    var numKnots = size(knots);
+    // Interior knot index range for a clamped curve: [degree+1 .. numKnots-degree-2]
+    var interiorStart = degree + 1;
+    var interiorEnd = numKnots - degree - 2;
+
+    // Collect unique interior knot values from the ORIGINAL curve once.
+    // (After each successful removal the curve changes, but we iterate the original
+    // list; removeKnot returns success:false gracefully if a knot is gone.)
+    var uniqueKnots = [];
+    if (interiorStart <= interiorEnd)
     {
-        var mult = getKnotMultiplicity(curve, knot, SIMPLIFY_KNOT_TOL);
-        var result = removeKnot(context, curve, knot, mult, tolerance);
-        if (result.success)
+        var prevVal = knots[interiorStart] - 1.0;  // sentinel below any real knot value
+        for (var ki = interiorStart; ki <= interiorEnd; ki += 1)
         {
-            curve = result.curve;
+            if (abs(knots[ki] - prevVal) > SIMPLIFY_KNOT_TOL)
+            {
+                uniqueKnots = append(uniqueKnots, knots[ki]);
+                prevVal = knots[ki];
+            }
+        }
+    }
+
+    // Try to remove each unique interior knot.
+    for (var knotVal in uniqueKnots)
+    {
+        // Recompute multiplicity from the current curve (may have changed after prior removals).
+        var curKnots = curve.knots;
+        var mult = 0;
+        for (var ki = 0; ki < size(curKnots); ki += 1)
+        {
+            if (abs(curKnots[ki] - knotVal) <= SIMPLIFY_KNOT_TOL)
+            {
+                mult += 1;
+            }
+        }
+        if (mult > 0)
+        {
+            var result = removeKnot(context, curve, knotVal, mult, tolerance);
+            if (result.success)
+            {
+                curve = result.curve;
+            }
         }
     }
     return curve;
