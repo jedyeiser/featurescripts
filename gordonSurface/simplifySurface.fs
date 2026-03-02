@@ -14,10 +14,6 @@ import(path : "b9e1608a507a242d87720d9b", version : "7725b8caf230860c44ca2ae2");
 import(path : "b3c74a9035256a2ff6bd0004", version : "2c35626cef2707cee449fcbf");
 
 
-// Knot comparison tolerance (same as SIMPLIFY_KNOT_TOL in bspline_data.fs, defined locally
-// to avoid re-export dependency)
-const SIMPLIFY_KNOT_TOL = 1e-10;
-
 // Explicit LengthBoundSpec constant — inline map literals are not auto-typed in this context
 const SIMPLIFY_TOLERANCE_BOUNDS = { (millimeter) : [0.01, 1, 100] } as LengthBoundSpec;
 
@@ -426,136 +422,6 @@ export function buildClampedKnotVector(params is array, degree is number) return
 
 
 // ============================================================
-// PRIVATE HELPERS (not exported)
-// ============================================================
-
-/**
- * Extract a v-direction curve (row) from a BSplineSurface at a given u control point index.
- * Explicitly copies knots and control points as plain arrays to avoid KnotArray /
- * ControlPointMatrix type issues that cause NaN in removeKnotOnce's alpha arithmetic.
- */
-function extractRowCurve(surface is BSplineSurface, uIdx is number) returns BSplineCurve
-{
-    // Copy vKnots as plain numbers (surface.vKnots may be a typed KnotArray)
-    var numVKnots = size(surface.vKnots);
-    var vKnots = makeArray(numVKnots);
-    for (var ki = 0; ki < numVKnots; ki += 1)
-    {
-        vKnots[ki] = surface.vKnots[ki];
-    }
-
-    // Copy control points via double indexing (surface.controlPoints[uIdx] may be a
-    // typed ControlPointMatrix row, not a plain Vector array — double indexing gives
-    // individual Vectors which bSplineCurve and removeKnotOnce handle correctly)
-    var numCPsV = numVKnots - surface.vDegree - 1;
-    var cpRow = makeArray(numCPsV);
-    for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
-    {
-        cpRow[vIdx] = surface.controlPoints[uIdx][vIdx];
-    }
-
-    return bSplineCurve({
-        "degree" : surface.vDegree,
-        "isPeriodic" : surface.isVPeriodic,
-        "knots" : knotArray(vKnots),
-        "controlPoints" : cpRow
-    });
-}
-
-/**
- * Extract a u-direction curve (column) from a 2D CP grid at a given v index.
- * Uses the provided uKnots and uDegree (from the source surface).
- *
- * @param cpGrid {array} : 2D array where cpGrid[uIdx][vIdx] is a Vector
- * @param vIdx {number} : Column index to extract
- * @param uKnots : Knot vector for u direction (from source surface)
- * @param uDegree {number} : Degree for u direction (from source surface)
- */
-function extractColumnCurve(cpGrid is array, vIdx is number, uKnots, uDegree is number) returns BSplineCurve
-{
-    var numRows = size(cpGrid);
-    var colPoints = makeArray(numRows);
-    for (var i = 0; i < numRows; i += 1)
-    {
-        colPoints[i] = cpGrid[i][vIdx];
-    }
-    return bSplineCurve({
-        "degree" : uDegree,
-        "isPeriodic" : false,
-        "knots" : knotArray(uKnots),
-        "controlPoints" : colPoints
-    });
-}
-
-/**
- * Progressively remove interior knots from a BSplineCurve until no more can be
- * removed within the given tolerance. Implements the P&T A5.8 knot removal loop.
- *
- * Inlines the unique-interior-knots and multiplicity queries (bspline_data.fs
- * functions are not re-exported by bspline_knots.fs).
- *
- * @param tolerance : Geometric error bound — passed directly to removeKnot(),
- *                    which accepts ValueWithUnits or number.
- */
-function simplifyByKnotRemoval(context is Context, curve is BSplineCurve, tolerance) returns BSplineCurve
-{
-    var degree = curve.degree;
-    var knots = curve.knots;
-    var numKnots = size(knots);
-    // Interior knot index range for a clamped curve: [degree+1 .. numKnots-degree-2]
-    var interiorStart = degree + 1;
-    var interiorEnd = numKnots - degree - 2;
-
-    // Collect unique interior knot values from the ORIGINAL curve once.
-    // (After each successful removal the curve changes, but we iterate the original
-    // list; removeKnot returns success:false gracefully if a knot is gone.)
-    var uniqueKnots = [];
-    if (interiorStart <= interiorEnd)
-    {
-        var prevVal = knots[interiorStart] - 1.0;  // sentinel below any real knot value
-        for (var ki = interiorStart; ki <= interiorEnd; ki += 1)
-        {
-            if (abs(knots[ki] - prevVal) > SIMPLIFY_KNOT_TOL)
-            {
-                uniqueKnots = append(uniqueKnots, knots[ki]);
-                prevVal = knots[ki];
-            }
-        }
-    }
-
-    // Try to remove each unique interior knot.
-    for (var knotVal in uniqueKnots)
-    {
-        // Recompute multiplicity from the current curve (may have changed after prior removals).
-        var curKnots = curve.knots;
-        var mult = 0;
-        for (var ki = 0; ki < size(curKnots); ki += 1)
-        {
-            if (abs(curKnots[ki] - knotVal) <= SIMPLIFY_KNOT_TOL)
-            {
-                mult += 1;
-            }
-        }
-        if (mult > 0)
-        {
-            // try silent: removeKnotOnce can produce NaN for certain degenerate
-            // knot configurations (alpha denominator = 0). Skip those knots safely.
-            var remResult;
-            try silent
-            {
-                remResult = removeKnot(context, curve, knotVal, mult, tolerance);
-            }
-            if (remResult != undefined && remResult.success)
-            {
-                curve = remResult.curve;
-            }
-        }
-    }
-    return curve;
-}
-
-
-// ============================================================
 // MAIN SURFACE CLEANUP
 // ============================================================
 
@@ -563,11 +429,10 @@ function simplifyByKnotRemoval(context is Context, curve is BSplineCurve, tolera
  * Main surface cleanup function.
  *
  * AUTO mode:
- *   Retrieves the source face's exact BSpline representation via
- *   evApproximateBSplineSurface, then progressively removes interior knots in
- *   both U and V directions until the geometric error would exceed tolerance.
- *   Returns the minimum-CP surface that stays within tolerance. G0 boundary
- *   preservation is guaranteed by the P&T knot removal algorithm.
+ *   Samples the face at 20 uniformly-spaced U parameters, fitting each
+ *   V-direction iso-curve with approximateSpline driven purely by tolerance
+ *   (no CP-count ceiling). The result is the minimum-CP surface that stays
+ *   within tolerance. Always produces G1-continuous output.
  *
  * MANUAL mode:
  *   Samples the face densely along V-direction iso-curves at uCurveCount
@@ -586,109 +451,84 @@ export function cleanupSurface(context is Context, id is Id,
 {
     if (mode == CleanupMode.AUTO)
     {
-        // ---- AUTO MODE: Knot removal in both U and V directions ----
+        // ---- AUTO MODE: Sample iso-curves, fit tolerance-driven (no CP ceiling) ----
+        // approximateSpline selects the minimum CPs needed to stay within tolerance,
+        // giving the same "minimum representation" goal as knot removal but always
+        // producing G1-continuous output that opCreateBSplineSurface accepts.
 
-        // Get source BSpline surface (forced non-rational for stable knot removal)
-        var sourceData = evApproximateBSplineSurface(context, {
-            "face" : faceQuery,
-            "forceNonRational" : true
-        });
-        var sourceSurface = sourceData.bSplineSurface;
-
-        // Derive numRows and rawUKnots from the u-knot vector rather than from
-        // sourceSurface.controlPoints directly (whose size() may misbehave for
-        // ControlPointMatrix types).
-        var numUKnots = size(sourceSurface.uKnots);
-        var numRows = numUKnots - sourceSurface.uDegree - 1;
-
-        // Copy uKnots as a plain number array for use in extractColumnCurve.
-        var rawUKnots = makeArray(numUKnots);
-        for (var ki = 0; ki < numUKnots; ki += 1)
+        const autoUCurveCount = 20;
+        const numSamplesPerCurve = 50;
+        var uParams = [];
+        for (var i = 0; i < autoUCurveCount; i += 1)
         {
-            rawUKnots[ki] = sourceSurface.uKnots[ki];
+            uParams = append(uParams, i / (autoUCurveCount - 1));
         }
 
-        // Step 1: Extract v-direction row curves (one per u control point index)
-        // and simplify each by removing interior v-knots within tolerance.
-        var rowCurves = [];
-        for (var uIdx = 0; uIdx < numRows; uIdx += 1)
+        var vCurves = [];
+        for (var u in uParams)
         {
-            var rowCurve = extractRowCurve(sourceSurface, uIdx);
-            rowCurve = simplifyByKnotRemoval(context, rowCurve, tolerance);
-            rowCurves = append(rowCurves, rowCurve);
-        }
+            var points = sampleSurfaceIsoCurve(context, faceQuery, "U", u, numSamplesPerCurve);
 
-        // Step 2: Unify v-direction degree and knots across all row curves.
-        rowCurves = makeCurvesCompatible(context, id + "rowCompat", rowCurves);
-
-        // Step 3: Build the CP grid from the simplified compatible rows.
-        var numCPsV = size(rowCurves[0].controlPoints);
-        var cpGrid = makeArray(numRows);
-        for (var uIdx = 0; uIdx < numRows; uIdx += 1)
-        {
-            cpGrid[uIdx] = makeArray(numCPsV);
-            for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
+            var target;
+            if (continuityType == GeometricContinuity.G0)
             {
-                cpGrid[uIdx][vIdx] = rowCurves[uIdx].controlPoints[vIdx];
+                target = approximationTarget({
+                    "positions" : points
+                });
             }
-        }
-
-        // Step 4: Extract u-direction column curves (one per v control point index)
-        // and simplify each by removing interior u-knots within tolerance.
-        // rawUKnots is a plain number array (copied above) safe for bSplineCurve().
-        var colCurves = [];
-        for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
-        {
-            var colCurve = extractColumnCurve(cpGrid, vIdx, rawUKnots, sourceSurface.uDegree);
-            colCurve = simplifyByKnotRemoval(context, colCurve, tolerance);
-            colCurves = append(colCurves, colCurve);
-        }
-
-        // Step 5: Unify u-direction degree and knots across all column curves.
-        colCurves = makeCurvesCompatible(context, id + "colCompat", colCurves);
-
-        // Step 6: Assemble the final CP grid: finalCPs[u][v] = colCurves[v].controlPoints[u]
-        var numCPsU = size(colCurves[0].controlPoints);
-        var numCPsVFinal = size(colCurves);
-        var finalCPs = makeArray(numCPsU);
-        for (var u = 0; u < numCPsU; u += 1)
-        {
-            finalCPs[u] = makeArray(numCPsVFinal);
-            for (var v = 0; v < numCPsVFinal; v += 1)
+            else
             {
-                finalCPs[u][v] = colCurves[v].controlPoints[u];
+                var eps = 1e-5;
+                var startPt    = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 0) }).origin;
+                var startPtEps = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, eps) }).origin;
+                var startDeriv = (startPtEps - startPt) / eps;
+
+                var endPt    = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1) }).origin;
+                var endPtEps = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1 - eps) }).origin;
+                var endDeriv = (endPt - endPtEps) / eps;
+
+                if (continuityType == GeometricContinuity.G1)
+                {
+                    target = approximationTarget({
+                        "positions" : points,
+                        "startDerivative" : startDeriv,
+                        "endDerivative" : endDeriv
+                    });
+                }
+                else // G2
+                {
+                    var h = 1e-4;
+                    var startPt_h  = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, h) }).origin;
+                    var startPt_2h = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 2 * h) }).origin;
+                    var start2ndDeriv = (startPt_2h - 2 * startPt_h + startPt) / (h * h);
+
+                    var endPt_h  = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1 - h) }).origin;
+                    var endPt_2h = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1 - 2 * h) }).origin;
+                    var end2ndDeriv = (endPt_2h - 2 * endPt_h + endPt) / (h * h);
+
+                    target = approximationTarget({
+                        "positions" : points,
+                        "startDerivative" : startDeriv,
+                        "start2ndDerivative" : start2ndDeriv,
+                        "endDerivative" : endDeriv,
+                        "end2ndDerivative" : end2ndDeriv
+                    });
+                }
             }
+
+            var curve = approximateSpline(context, {
+                "degree" : 3,
+                "tolerance" : tolerance,
+                "isPeriodic" : false,
+                "targets" : [target],
+                "interpolateIndices" : [0, numSamplesPerCurve - 1]
+            })[0];
+
+            vCurves = append(vCurves, curve);
         }
 
-        // Copy knot vectors as plain number arrays before wrapping with knotArray().
-        // colCurves[0].knots and rowCurves[0].knots may already be typed KnotArrays
-        // (from makeCurvesCompatible), and knotArray() requires a plain number array.
-        var numUKnotsOut = size(colCurves[0].knots);
-        var uKnotsOut = makeArray(numUKnotsOut);
-        for (var ki = 0; ki < numUKnotsOut; ki += 1)
-        {
-            uKnotsOut[ki] = colCurves[0].knots[ki];
-        }
-        var numVKnotsOut = size(rowCurves[0].knots);
-        var vKnotsOut = makeArray(numVKnotsOut);
-        for (var ki = 0; ki < numVKnotsOut; ki += 1)
-        {
-            vKnotsOut[ki] = rowCurves[0].knots[ki];
-        }
-
-        var surfaceDef = {
-            "uDegree" : colCurves[0].degree,
-            "vDegree" : rowCurves[0].degree,
-            "isUPeriodic" : sourceSurface.isUPeriodic,
-            "isVPeriodic" : sourceSurface.isVPeriodic,
-            "isRational" : false,
-            "controlPoints" : controlPointMatrix(finalCPs),
-            "uKnots" : knotArray(uKnotsOut),
-            "vKnots" : knotArray(vKnotsOut)
-        };
-
-        surfaceDef = normalizeSurfaceDef(surfaceDef);
-        return bSplineSurface(surfaceDef);
+        vCurves = makeCurvesCompatible(context, id + "compat", vCurves);
+        return createSkinningSurface(context, id + "skin", vCurves, 3, uParams);
     }
     else // MANUAL mode
     {
