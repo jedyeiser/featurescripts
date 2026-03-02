@@ -1,14 +1,14 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 //import tools/transition_functions (for TransitionType)
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a656fa0d17723f0dafaf8638", version : "56689ead56dff6bcc596641b");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a656fa0d17723f0dafaf8638", version : "56689ead56dff6bcc596641b");
 
 //import tools/printing (for PrintFormat)
-export import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // NOTE: GeometricContinuity is NOT imported from tools because tools uses C0/C1/C2 (parametric)
 // but Gordon Surface needs G0/G1/G2 (geometric) - defined below
-export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2856.0");
+export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2892.0");
 
 
 export const paramBounds = {(unitless) : [0, 0.5, 1]} as RealBoundSpec;

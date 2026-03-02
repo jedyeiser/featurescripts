@@ -1,18 +1,18 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 //import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "12d448b531f4133be59a1a61");
+export import(path : "050a4670bd42b2ca8da04540", version : "b463eaf5c39ae77152ed2484");
 //import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "7725b8caf230860c44ca2ae2");
+import(path : "b9e1608a507a242d87720d9b", version : "1f36dbe055928048afcc6fe0");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "4ba8e037c53d816ed5b2eb6c");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "c685211f07cd7af59f25cb37");
 //import modifyCurveEnd
-import(path : "c6dca62049572faaa07ddd10", version : "08f67685092465b852f9e65e");
+import(path : "c6dca62049572faaa07ddd10", version : "176af3d533ec42fabc30d0b6");
 //import debugTools
-import(path : "3f40c735a406f3df927e0b13", version : "1caa5cad7331a1055424b5cd");
+import(path : "3f40c735a406f3df927e0b13", version : "ca97f371da515817e2e1c16b");
 
 
 IconNamespace::import(path : "909b727cd95720b1666cbb41/4b9520a15e1873da9d46f579/583e87bcdf8f05533d82507e", version : "0e19bbdbe54691e6038ca94e");

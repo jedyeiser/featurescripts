@@ -1290,7 +1290,12 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
     
     var currentTaper = computeSignedTaper(accFbPoint, accAbPoint);
     var refTaper = refAnalysis.taperAngle;  // already signed, between widest points
-    var rotationAngle = refTaper - currentTaper;
+    // Rotation about ACP pivot: positive R (CCW) moves the FCP-side of the
+    // sidecut DOWN, reducing taper; negative R (CW) raises it, increasing taper.
+    // To restore refTaper from currentTaper we therefore need:
+    //   R = currentTaper - refTaper
+    // (not refTaper - currentTaper, which is the opposite direction)
+    var rotationAngle = currentTaper - refTaper;
 
     // Step 3: Determine pivot point
     var pivotX;

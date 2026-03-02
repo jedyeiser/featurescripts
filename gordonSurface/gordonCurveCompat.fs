@@ -12,16 +12,16 @@
 // P&T Eq. 5.15: α_i = (u_bar - u_i) / (u_{i+p} - u_i)
 // where u_bar is the new knot, p is degree
 
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 //import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 //import tools/bspline_data (for getInteriorKnots)
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
 //import curve_operations
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a7403d5f7f5a4fef8225b768", version : "e5b9e00c5a237415c89a66b7");
 //import gordon_knot_ops
 
 const COMPAT_DEBUG = false;

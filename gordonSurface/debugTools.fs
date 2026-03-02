@@ -1,14 +1,14 @@
-FeatureScript 2856;
-import(path : "onshape/std/common.fs", version : "2856.0");
+FeatureScript 2892;
+import(path : "onshape/std/common.fs", version : "2892.0");
 
 // ============================================================================
 // DEBUG PRINTING UTILITIES
 // ============================================================================
 
 // import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
 // import tools/printing
-export import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
 
 /**
@@ -255,126 +255,5 @@ export function knotVectorToString(knots is array) returns string
     
     result ~= "]";
     return result;
-
-}
-
-// ============================================================================
-// CURVE DEBUG PRINTING  (moved from scaledCurve.fs)
-// ============================================================================
-
-/**
- * Pretty-print a BSplineCurve for debugging.
- *
- * @param curve {BSplineCurve} : The curve to print
- * @param format {PrintFormat} : METADATA for summary, DETAILS for full data
- * @param tags {array} : Optional [startTag] strings to wrap output
- */
-export function printBSpline(curve is BSplineCurve, format is PrintFormat, tags is array)
-{
-    if (size(tags) >= 1 && tags[0] != undefined && tags[0] != "")
-    {
-        println(tags[0]);
-    }
-
-    println("  Degree: " ~ curve.degree);
-    println("  Control Points: " ~ size(curve.controlPoints));
-    println("  Knots: " ~ size(curve.knots));
-    println("  Rational: " ~ curve.isRational);
-    println("  Periodic: " ~ curve.isPeriodic);
-
-    if (curve.dimension != undefined)
-    {
-        println("  Dimension: " ~ curve.dimension);
-    }
-
-    var numSpans = size(curve.knots) - 2 * curve.degree - 1;
-    println("  Spans: " ~ numSpans);
-
-    if (format == PrintFormat.DETAILS)
-    {
-        println("");
-        println("  --- Control Points ---");
-        for (var i = 0; i < size(curve.controlPoints); i += 1)
-        {
-            var pt = curve.controlPoints[i];
-            println("    [" ~ i ~ "]: " ~ formatVector(pt));
-        }
-
-        println("");
-        println("  --- Knot Vector ---");
-        var knotStr = "    [";
-        for (var i = 0; i < size(curve.knots); i += 1)
-        {
-            knotStr = knotStr ~ roundDecimal(curve.knots[i], 6);
-            if (i < size(curve.knots) - 1)
-            {
-                knotStr = knotStr ~ ", ";
-            }
-            if ((i + 1) % 8 == 0 && i < size(curve.knots) - 1)
-            {
-                knotStr = knotStr ~ "\n     ";
-            }
-        }
-        knotStr = knotStr ~ "]";
-        println(knotStr);
-
-        if (curve.isRational && curve.weights != undefined)
-        {
-            println("");
-            println("  --- Weights ---");
-            var weightStr = "    [";
-            for (var i = 0; i < size(curve.weights); i += 1)
-            {
-                weightStr = weightStr ~ roundDecimal(curve.weights[i], 6);
-                if (i < size(curve.weights) - 1)
-                {
-                    weightStr = weightStr ~ ", ";
-                }
-                if ((i + 1) % 8 == 0 && i < size(curve.weights) - 1)
-                {
-                    weightStr = weightStr ~ "\n     ";
-                }
-            }
-            weightStr = weightStr ~ "]";
-            println(weightStr);
-        }
-    }
-
-    if (size(tags) >= 2 && tags[1] != undefined && tags[1] != "")
-    {
-        println(tags[1]);
-    }
-}
-
-/**
- * Format a 3D vector with units for debug output.
- */
-export function formatVector(v is Vector) returns string
-{
-    var x = v[0];
-    var y = v[1];
-    var z = v[2];
-
-    try silent
-    {
-        x = x / meter;
-        y = y / meter;
-        z = z / meter;
-        return "(" ~ roundDecimal(x, 6) ~ ", " ~ roundDecimal(y, 6) ~ ", " ~ roundDecimal(z, 6) ~ ") m";
-    }
-
-    return "(" ~ roundDecimal(x, 6) ~ ", " ~ roundDecimal(y, 6) ~ ", " ~ roundDecimal(z, 6) ~ ")";
-}
-
-/**
- * Round a number to specified decimal places.
- */
-export function roundDecimal(value is number, places is number) returns number
-{
-    var factor = 1;
-    for (var i = 0; i < places; i += 1)
-    {
-        factor = factor * 10;
-    }
-    return round(value * factor) / factor;
+    
 }
