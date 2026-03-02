@@ -2102,30 +2102,32 @@ function repairJunction(sidecutCurves is array, endCurves is array,
     }
 
     // --- Find sidecut tangent at junction, oriented INTO the sidecut interior ---
+    // Evaluate directly at uMin/uMax to avoid findParamAtX failure at endpoints.
     var scTan = undefined;
     for (var bspline in sidecutCurves)
     {
-        var bounds = getBSplineBounds(bspline);
+        var range = getBSplineParamRange(bspline);
+        var ptMin = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
+        var ptMax = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
 
-        if (abs(bounds.xMin - contactX) < tolerance || abs(bounds.xMax - contactX) < tolerance)
-        {
-            var param = findParamAtX(bspline, contactX, tolerance);
-            var result = evaluateSpline({ "spline" : bspline, "parameters" : [param], "nDerivatives" : 1 });
-            scTan = normalize(result[1][0]);
+        var junctionParam = undefined;
+        if (abs(ptMin[0] - contactX) < tolerance)
+            junctionParam = range.uMin;
+        else if (abs(ptMax[0] - contactX) < tolerance)
+            junctionParam = range.uMax;
 
-            // Orient toward the sidecut interior
-            //   FCP (tip junction): sidecut interior is +X
-            //   ACP (tail junction): sidecut interior is -X
-            if (isTip)
-            {
-                if (scTan[0] < 0) scTan = -scTan;
-            }
-            else
-            {
-                if (scTan[0] > 0) scTan = -scTan;
-            }
-            break;
-        }
+        if (junctionParam == undefined)
+            continue;
+
+        var result = evaluateSpline({ "spline" : bspline, "parameters" : [junctionParam], "nDerivatives" : 1 });
+        scTan = normalize(result[1][0]);
+
+        // Orient toward the sidecut interior
+        //   FCP (tip junction): sidecut interior is +X
+        //   ACP (tail junction): sidecut interior is -X
+        if (isTip) { if (scTan[0] < 0) scTan = -scTan; }
+        else       { if (scTan[0] > 0) scTan = -scTan; }
+        break;
     }
 
     if (scTan == undefined)
@@ -2139,39 +2141,19 @@ function repairJunction(sidecutCurves is array, endCurves is array,
 
     for (var bspline in endCurves)
     {
-        var bounds = getBSplineBounds(bspline);
+        // Identify which endpoint (uMin or uMax) is at the junction.
+        var range = getBSplineParamRange(bspline);
+        var ptMin = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
+        var ptMax = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
 
-        // Determine if this curve connects at the contact X
-        var connectsAtContact = false;
-        var connectAtStart = false;
-
-        if (isTip)
-        {
-            // Tip curves have their max-X end at the contact
-            if (abs(bounds.xMax - contactX) < tolerance)
-            {
-                connectsAtContact = true;
-                var range = getBSplineParamRange(bspline);
-                var startPt = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-                var endPt   = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
-                connectAtStart = (abs(startPt[0] - contactX) < abs(endPt[0] - contactX));
-            }
-        }
+        var connectAtStart;
+        if (abs(ptMin[0] - contactX) < tolerance)
+            connectAtStart = true;
+        else if (abs(ptMax[0] - contactX) < tolerance)
+            connectAtStart = false;
         else
         {
-            // Tail curves have their min-X end at the contact
-            if (abs(bounds.xMin - contactX) < tolerance)
-            {
-                connectsAtContact = true;
-                var range = getBSplineParamRange(bspline);
-                var startPt = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-                var endPt   = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
-                connectAtStart = (abs(startPt[0] - contactX) < abs(endPt[0] - contactX));
-            }
-        }
-
-        if (!connectsAtContact)
-        {
+            // This curve does not connect at the junction — pass through unchanged.
             repairedCurves = append(repairedCurves, bspline);
             continue;
         }
