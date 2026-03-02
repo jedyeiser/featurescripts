@@ -957,7 +957,7 @@ function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX i
             continue;
         }
         
-        // Curve spans boundaries — split (Phase 0b: uses approximateSpline)
+        // Curve spans boundaries — split at contact points
         var splits = splitCurveAtContacts(context, bspline, fcpX, acpX, tolerance);
         
         if (splits.tipPortion != undefined)
@@ -989,7 +989,7 @@ function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX i
 
 /**
  * Split a BSpline at FCP and/or ACP X coordinates.
- * Phase 0b: Now takes context and uses approximateSpline for accurate subcurves.
+ * Uses approximateSpline for accurate subcurves.
  */
 function splitCurveAtContacts(context is Context, bspline is BSplineCurve, fcpX is ValueWithUnits,
     acpX is ValueWithUnits, tolerance is ValueWithUnits) returns map
@@ -1992,7 +1992,7 @@ function transformTipTail(curves is array, refContactX is ValueWithUnits, newCon
 }
 
 // =============================================================================
-// MIRRORING UTILITY  (Phase 1)
+// MIRRORING UTILITY
 // =============================================================================
 
 /**

@@ -57,6 +57,19 @@ function faceTangentAtVBoundary(context is Context, face is Query, u is number, 
 }
 
 /**
+ * Finite-difference tangent in the u-direction at a v-isoparameter on the face.
+ * uEdge = 0 → start boundary (u=0), uEdge = 1 → end boundary (u=1).
+ */
+function faceTangentAtUBoundary(context is Context, face is Query, v is number, uEdge is number) returns Vector
+{
+    const eps = 1e-5;
+    var u0 = (uEdge == 0) ? 0 : (1 - eps);
+    var u1 = (uEdge == 0) ? eps : 1;
+    return (evFaceTangentPlane(context, { "face" : face, "parameter" : vector(u1, v) }).origin
+          - evFaceTangentPlane(context, { "face" : face, "parameter" : vector(u0, v) }).origin) / eps;
+}
+
+/**
  * Fit a BSplineCurve through rowPts using the definition's degree/tolerance.
  * If G1 or G2 continuity is requested, boundary tangents are passed to the
  * spline fitter so the iso-curve respects the face tangent at v=0 and v=1.
@@ -84,6 +97,36 @@ function fitIsoCurve(context is Context, definition is map, rowPts is array, u i
         "isPeriodic"         : false,
         "targets"            : [target],
         "interpolateIndices" : [0, size(rowPts) - 1]
+    })[0];
+}
+
+/**
+ * Fit a BSplineCurve through colPts (constant V, varying U) using the
+ * definition's degree/tolerance. Mirrors fitIsoCurve but for the U direction.
+ */
+function fitVIsoCurve(context is Context, definition is map, colPts is array, v is number) returns BSplineCurve
+{
+    var useG1 = (definition.continuityType == GeometricContinuity.G1 ||
+                 definition.continuityType == GeometricContinuity.G2);
+    var target;
+    if (useG1)
+    {
+        target = approximationTarget({
+            "positions"       : colPts,
+            "startDerivative" : faceTangentAtUBoundary(context, definition.face, v, 0),
+            "endDerivative"   : faceTangentAtUBoundary(context, definition.face, v, 1)
+        });
+    }
+    else
+    {
+        target = approximationTarget({ "positions" : colPts });
+    }
+    return approximateSpline(context, {
+        "degree"             : definition.curveDegree,
+        "tolerance"          : definition.fitTolerance,
+        "isPeriodic"         : false,
+        "targets"            : [target],
+        "interpolateIndices" : [0, size(colPts) - 1]
     })[0];
 }
 
@@ -179,6 +222,12 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Show iso-curves" }
             definition.showIsoCurves is boolean;
 
+            annotation { "Name" : "Keep U curves" }
+            definition.keepUCurves is boolean;
+
+            annotation { "Name" : "Keep V curves" }
+            definition.keepVCurves is boolean;
+
             annotation { "Name" : "Show control point polygons" }
             definition.showCPPolygons is boolean;
 
@@ -225,18 +274,6 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 {
                     addDebugPoint(context, basePts[i][j], DebugColor.BLUE);
                 }
-            }
-        }
-
-        // Fit initial iso-U curves through base points (no offsets yet).
-        // Used for the showIsoCurves diagnostic only; adjCurves are used for
-        // the surface build.
-        if (definition.showIsoCurves)
-        {
-            for (var i = 0; i < uCount; i += 1)
-            {
-                var baseCurve = fitIsoCurve(context, definition, basePts[i], uParams[i]);
-                opCreateBSplineCurve(context, id + ("isoU_base_" ~ i), { "bSplineCurve" : baseCurve });
             }
         }
 
@@ -288,22 +325,58 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         var adjCurves = [];
         for (var i = 0; i < uCount; i += 1)
         {
-            var curve = fitIsoCurve(context, definition, adjPts[i], uParams[i]);
-            adjCurves = append(adjCurves, curve);
+            adjCurves = append(adjCurves, fitIsoCurve(context, definition, adjPts[i], uParams[i]));
+        }
 
-            if (definition.showCPPolygons)
+        // Fit iso-V curves (constant V, varying U) for debug visualization.
+        // Collected into vIsoCurves regardless of flags — cost is low and they
+        // are needed for both showIsoCurves and showCPPolygons.
+        var vIsoCurves = [];
+        for (var j = 0; j < vCount; j += 1)
+        {
+            var colPts = makeArray(uCount);
+            for (var i = 0; i < uCount; i += 1) colPts[i] = adjPts[i][j];
+            vIsoCurves = append(vIsoCurves, fitVIsoCurve(context, definition, colPts, vParams[j]));
+        }
+
+        // Create iso-curve bodies (deleted below unless keep flags are set).
+        if (definition.showIsoCurves)
+        {
+            for (var i = 0; i < uCount; i += 1)
             {
-                var cps = curve.controlPoints;
-                for (var k = 0; k < size(cps) - 1; k += 1)
+                opCreateBSplineCurve(context, id + ("isoU_" ~ i), { "bSplineCurve" : adjCurves[i] });
+            }
+            for (var j = 0; j < vCount; j += 1)
+            {
+                opCreateBSplineCurve(context, id + ("isoV_" ~ j), { "bSplineCurve" : vIsoCurves[j] });
+            }
+        }
+
+        // CP polygon lines for both families (debug lines, no persistent geometry).
+        if (definition.showCPPolygons)
+        {
+            for (var i = 0; i < uCount; i += 1)
+            {
+                var ucps = adjCurves[i].controlPoints;
+                for (var k = 0; k < size(ucps) - 1; k += 1)
                 {
-                    addDebugLine(context, cps[k], cps[k + 1], DebugColor.CYAN);
+                    addDebugLine(context, ucps[k], ucps[k + 1], DebugColor.CYAN);
                 }
             }
-
-            if (definition.printCurveData)
+            for (var j = 0; j < vCount; j += 1)
             {
-                printCurve(curve, "Iso-U " ~ i, PrintFormat.METADATA);
+                var vcps = vIsoCurves[j].controlPoints;
+                for (var k = 0; k < size(vcps) - 1; k += 1)
+                {
+                    addDebugLine(context, vcps[k], vcps[k + 1], DebugColor.GREEN);
+                }
             }
+        }
+
+        if (definition.printCurveData)
+        {
+            for (var i = 0; i < uCount; i += 1) printCurve(adjCurves[i], "Iso-U " ~ i, PrintFormat.METADATA);
+            for (var j = 0; j < vCount; j += 1) printCurve(vIsoCurves[j], "Iso-V " ~ j, PrintFormat.METADATA);
         }
 
         // ── STAGE 4: Build skinning surface ────────────────────────────────────
@@ -322,6 +395,29 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                     "replaceFaces" : definition.face,
                     "templateFace" : newFace
                 });
+            }
+        }
+
+        // ── Cleanup: delete iso-curve bodies unless keep flags are set ─────────
+        if (definition.showIsoCurves)
+        {
+            if (!definition.keepUCurves)
+            {
+                var uCurveEntities = [];
+                for (var i = 0; i < uCount; i += 1)
+                {
+                    uCurveEntities = append(uCurveEntities, qCreatedBy(id + ("isoU_" ~ i)));
+                }
+                opDeleteBodies(context, id + "deleteU", { "entities" : qUnion(uCurveEntities) });
+            }
+            if (!definition.keepVCurves)
+            {
+                var vCurveEntities = [];
+                for (var j = 0; j < vCount; j += 1)
+                {
+                    vCurveEntities = append(vCurveEntities, qCreatedBy(id + ("isoV_" ~ j)));
+                }
+                opDeleteBodies(context, id + "deleteV", { "entities" : qUnion(vCurveEntities) });
             }
         }
     });
