@@ -636,21 +636,12 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
         // ── STAGE 5: Replace original face with the new surface ────────────────
-        // Mirrors the Onshape surface boolean workflow:
-        //   1. opDeleteFace removes the selected face, leaving the boundary open.
-        //   2. opBoolean UNION stitches pullSurf into the gap.
-        //      eraseImprintedEdges + recomputeMatches are required for sheet body
-        //      stitching (pattern from std/boolean.fs surface union path).
+        // Union the original body with pullSurf directly — no face deletion needed.
+        // The kernel merges coincident/adjacent surface regions via recomputeMatches.
         if (definition.replaceFace)
         {
             var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
             var ownerBody = qOwnerBody(definition.face);
-
-            opDeleteFace(context, id + "deleteFace", {
-                "deleteFaces"   : definition.face,
-                "includeFillet" : false,
-                "capVoid"       : false
-            });
 
             opBoolean(context, id + "replaceBool", {
                 "operationType"       : BooleanOperationType.UNION,
