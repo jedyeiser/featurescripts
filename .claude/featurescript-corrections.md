@@ -562,6 +562,31 @@ if (x < 0)
 - When reviewing code, check every control flow statement for missing braces
 - Real bug example: `fpt_geometry.fs:512-519` - solver always returned on first iteration due to missing braces around `println(); return;` blocks
 
+### Function Parameters Must Always Have Type Annotations
+**Date**: 2026-03-01
+**Issue**: FeatureScript function parameters without type annotations silently compile but lose type checking. Missing types on `context`, `id`, `face`, etc. produce untyped parameters that bypass FS's precondition system and can cause cryptic runtime errors.
+**Incorrect Pattern**:
+```featurescript
+function isPointLocked(i, j, uCount, vCount, continuity) returns boolean
+function faceTangentAtVBoundary(context, face, u, vEdge) returns Vector
+function fitIsoCurve(context, definition, rowPts, u) returns BSplineCurve
+export function myEditingLogic(context, id, oldDefinition, definition, isCreating, specifiedParameters) returns map
+```
+**Correct Pattern**:
+```featurescript
+function isPointLocked(i is number, j is number, uCount is number, vCount is number, continuity is GeometricContinuity) returns boolean
+function faceTangentAtVBoundary(context is Context, face is Query, u is number, vEdge is number) returns Vector
+function fitIsoCurve(context is Context, definition is map, rowPts is array, u is number) returns BSplineCurve
+export function myEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map
+```
+**Lesson Learned**:
+- **Always annotate every parameter** — `context is Context`, `id is Id`, `face is Query`, numbers as `is number`, arrays as `is array`, feature definitions as `is map`
+- The editing logic function signature is: `(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map`
+- This is a systematic error that LLMs produce when writing helper functions. Treat unannotated parameters as a bug, not a style issue.
+- Review ALL function signatures (not just exported ones) before finalizing any file.
+
+**Files Fixed**: gordonSurface/pullSurface.fs — isPointLocked, faceTangentAtVBoundary, fitIsoCurve, pullSurfaceEditingLogic (2026-03-01)
+
 ### Export Functions by Default
 **Date**: 2026-01-30
 **Issue**: Functions not marked with `export` cannot be used by other files that import them
@@ -755,11 +780,11 @@ var magnitude = 10 ^ exponent;  // ✅ Use ^ operator for exponentiation
 
 ## Statistics
 
-- **Total Corrections**: 12
-- **Last Updated**: 2026-02-18
-- **Most Common Category**: FeatureScript Syntax (7), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
+- **Total Corrections**: 13
+- **Last Updated**: 2026-03-01
+- **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: No pow() function (use ^ operator)
+- **Latest Additions**: Function parameters must always have type annotations
 
 ---
 

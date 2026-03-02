@@ -33,7 +33,7 @@ import(path : "3f40c735a406f3df927e0b13", version : "ca97f371da515817e2e1c16b");
  * Returns true if grid point (i, j) must remain fixed to preserve the
  * requested boundary continuity.
  */
-function isPointLocked(i, j, uCount, vCount, continuity) returns boolean
+function isPointLocked(i is number, j is number, uCount is number, vCount is number, continuity is GeometricContinuity) returns boolean
 {
     var boundary = (i == 0 || i == uCount - 1 || j == 0 || j == vCount - 1);
     if (continuity == GeometricContinuity.G0) return boundary;
@@ -47,7 +47,7 @@ function isPointLocked(i, j, uCount, vCount, continuity) returns boolean
  * Finite-difference tangent in the v-direction at a u-isoparameter on the face.
  * vEdge = 0 → start boundary (v=0), vEdge = 1 → end boundary (v=1).
  */
-function faceTangentAtVBoundary(context, face, u, vEdge) returns Vector
+function faceTangentAtVBoundary(context is Context, face is Query, u is number, vEdge is number) returns Vector
 {
     const eps = 1e-5;
     var v0 = (vEdge == 0) ? 0 : (1 - eps);
@@ -61,7 +61,7 @@ function faceTangentAtVBoundary(context, face, u, vEdge) returns Vector
  * If G1 or G2 continuity is requested, boundary tangents are passed to the
  * spline fitter so the iso-curve respects the face tangent at v=0 and v=1.
  */
-function fitIsoCurve(context, definition, rowPts, u) returns BSplineCurve
+function fitIsoCurve(context is Context, definition is map, rowPts is array, u is number) returns BSplineCurve
 {
     var useG1 = (definition.continuityType == GeometricContinuity.G1 ||
                  definition.continuityType == GeometricContinuity.G2);
@@ -93,7 +93,7 @@ function fitIsoCurve(context, definition, rowPts, u) returns BSplineCurve
  * Reset stored manipulator offsets whenever the grid layout or face changes,
  * since previous offsets correspond to a different point distribution.
  */
-export function pullSurfaceEditingLogic(context, id, oldDefinition, definition, isCreating, specifiedParameters) returns map
+export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
     if (definition.uCurveCount != oldDefinition.uCurveCount ||
         definition.vCurveCount != oldDefinition.vCurveCount ||
