@@ -425,6 +425,46 @@ export function buildClampedKnotVector(params is array, degree is number) return
 
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+/**
+ * Compute maximum deviation between a fitted BSplineCurve and the face iso-curve
+ * at a fixed U parameter, sampled over V in [0, 1].
+ *
+ * Uses evaluateSpline to batch-evaluate the fitted curve, then compares each
+ * point to the corresponding face point via evFaceTangentPlane.
+ */
+function computeCurveError(context is Context, curve is BSplineCurve,
+                            faceQuery is Query, u is number,
+                            numCheck is number) returns ValueWithUnits
+{
+    var checkParams = makeArray(numCheck);
+    for (var i = 0; i < numCheck; i += 1)
+    {
+        checkParams[i] = i / (numCheck - 1);
+    }
+
+    // Batch-evaluate the fitted curve: result[0][i] = Vector at checkParams[i]
+    var curvePositions = evaluateSpline({ "spline" : curve, "parameters" : checkParams })[0];
+
+    var maxErr = 0 * meter;
+    for (var i = 0; i < numCheck; i += 1)
+    {
+        var facePoint = evFaceTangentPlane(context, {
+            "face" : faceQuery,
+            "parameter" : vector(u, checkParams[i])
+        }).origin;
+        var err = norm(facePoint - curvePositions[i]);
+        if (err > maxErr)
+        {
+            maxErr = err;
+        }
+    }
+    return maxErr;
+}
+
+// ============================================================
 // MAIN SURFACE CLEANUP
 // ============================================================
 
@@ -455,14 +495,13 @@ export function cleanupSurface(context is Context, id is Id,
 {
     if (mode == CleanupMode.AUTO)
     {
-        // ---- AUTO MODE: Sample iso-curves, fit tolerance-driven (no CP ceiling) ----
-        // approximateSpline selects the minimum CPs needed to stay within tolerance,
-        // giving the same "minimum representation" goal as knot removal but always
-        // producing G1-continuous output that opCreateBSplineSurface accepts.
+        // ---- AUTO MODE: Binary search for minimum-CP representation ----
+        // For each v-direction iso-curve, binary-search the CP count from minVCPs up
+        // to srcNumVCPs.  Each candidate is evaluated against the face (not just the
+        // sample points), so we find the true minimum CPs that stays within tolerance.
         //
-        // U sampling: use the source surface's Greville abscissae so the number of
-        // iso-curves matches the source's u-CP count. Hardcoding 20 would overshoot
-        // a simple source (e.g. 9 u-CPs) and produce MORE CPs in u, not fewer.
+        // U sampling: Greville abscissae of the source surface so the u-curve count
+        // matches the source's u-CP count exactly (avoids inflating in u-direction).
 
         const numSamplesPerCurve = 50;
 
@@ -472,6 +511,7 @@ export function cleanupSurface(context is Context, id is Id,
         var srcUDeg = srcSurf.uDegree;
         var srcNumUKnots = size(srcSurf.uKnots);
         var srcNumUCPs = srcNumUKnots - srcUDeg - 1;   // n + 1 control points
+        var srcNumVCPs = size(srcSurf.vKnots) - srcSurf.vDegree - 1;
 
         // Greville abscissae: g[i] = average of knots U[i+1..i+p] for i = 0..n
         var uParams = makeArray(srcNumUCPs);
@@ -485,12 +525,19 @@ export function cleanupSurface(context is Context, id is Id,
             uParams[i] = sum / srcUDeg;
         }
 
+        // Minimum CPs for cubic given continuity: G0=4 (degree+1), G1=5, G2=6
+        // Endpoint derivative constraints occupy 2 extra CPs (second and second-to-last).
+        var minVCPs = 4;
+        if (continuityType == GeometricContinuity.G1)
+            minVCPs = 5;
+        else if (continuityType == GeometricContinuity.G2)
+            minVCPs = 6;
+
         if (debugPrint)
         {
-            var srcNumVCPs = size(srcSurf.vKnots) - srcSurf.vDegree - 1;
             println("[simplify] AUTO source: deg=" ~ srcUDeg ~ "×" ~ srcSurf.vDegree ~
                     "  CPs=" ~ srcNumUCPs ~ "×" ~ srcNumVCPs);
-            println("[simplify] AUTO iso-curves: " ~ srcNumUCPs ~ " (from Greville abscissae)");
+            println("[simplify] AUTO binary search: " ~ minVCPs ~ " to " ~ srcNumVCPs ~ " v-CPs per curve");
         }
 
         var vCurves = [];
@@ -545,15 +592,45 @@ export function cleanupSurface(context is Context, id is Id,
                 }
             }
 
-            var curve = approximateSpline(context, {
+            // Binary search for minimum v-CPs that keeps error within tolerance.
+            // Baseline: fit at srcNumVCPs (matches source complexity).
+            // Then halve the search range until we find the fewest CPs that still pass.
+            var lo = minVCPs;
+            var hi = srcNumVCPs;
+
+            var bestCurve = approximateSpline(context, {
                 "degree" : 3,
                 "tolerance" : tolerance,
                 "isPeriodic" : false,
+                "maxControlPoints" : hi,
                 "targets" : [target],
                 "interpolateIndices" : [0, numSamplesPerCurve - 1]
             })[0];
 
-            vCurves = append(vCurves, curve);
+            while (lo < hi)
+            {
+                var mid = floor((lo + hi) / 2);
+                var candidate = approximateSpline(context, {
+                    "degree" : 3,
+                    "tolerance" : tolerance,
+                    "isPeriodic" : false,
+                    "maxControlPoints" : mid,
+                    "targets" : [target],
+                    "interpolateIndices" : [0, numSamplesPerCurve - 1]
+                })[0];
+
+                if (computeCurveError(context, candidate, faceQuery, u, 50) <= tolerance)
+                {
+                    bestCurve = candidate;
+                    hi = mid;
+                }
+                else
+                {
+                    lo = mid + 1;
+                }
+            }
+
+            vCurves = append(vCurves, bestCurve);
         }
 
         vCurves = makeCurvesCompatible(context, id + "compat", vCurves);
