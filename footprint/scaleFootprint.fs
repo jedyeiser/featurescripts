@@ -348,7 +348,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         }
         
         // =====================================================================
-        // STEP 8: Continuity repair (Phase 2 — bisector method)
+        // STEP 8: Continuity repair (Phase 2 — minimum-change G1 method)
         // =====================================================================
         if (definition.enforceTipTangency)
         {
@@ -2118,11 +2118,11 @@ function repairJunction(sidecutCurves is array, endCurves is array,
             //   ACP (tail junction): sidecut interior is -X
             if (isTip)
             {
-                if (scTan[0] < 0 * meter) scTan = -scTan;
+                if (scTan[0] < 0) scTan = -scTan;
             }
             else
             {
-                if (scTan[0] > 0 * meter) scTan = -scTan;
+                if (scTan[0] > 0) scTan = -scTan;
             }
             break;
         }
