@@ -149,19 +149,8 @@ export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinit
         definition.vCurveCount != oldDefinition.vCurveCount ||
         definition.continuityType != oldDefinition.continuityType)
     {
-        // Zero out all stored offsets for the old grid dimensions
-        var oldU = oldDefinition.uCurveCount;
-        var oldV = oldDefinition.vCurveCount;
-        if (oldU != undefined && oldV != undefined)
-        {
-            for (var i = 0; i < oldU; i += 1)
-            {
-                for (var j = 0; j < oldV; j += 1)
-                {
-                    definition["mp_" ~ i ~ "_" ~ j] = 0 * meter;
-                }
-            }
-        }
+        // Reset the offset array to match the new grid dimensions.
+        definition.mpOffsets = makeArray(definition.uCurveCount * definition.vCurveCount, 0 * meter);
     }
     return definition;
 }
@@ -170,15 +159,48 @@ export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinit
 
 /**
  * Called by Onshape when the user drags a manipulator arrow.
- * Stores the new offset into definition.manipulatorOffsets keyed by
- * the manipulator name ("mp_i_j").
+ * Stores the new scalar offset into definition.mpOffsets (flat array) at the
+ * index corresponding to grid position (i, j): index = i * vCurveCount + j.
+ *
+ * Dynamic definition keys (e.g. definition["mp_3_2"]) are rejected by Onshape's
+ * validator with "Unknown parameter". Only declared precondition fields survive
+ * the round-trip, so all offsets are packed into the single declared mpOffsets array.
  */
 export function pullSurfaceManipulator(context is Context, definition is map, newManipulators is map) returns map
 {
+    var uCount = definition.uCurveCount;
+    var vCount = definition.vCurveCount;
+    var total  = uCount * vCount;
+
+    // Initialise or resize the offset array (value-type copy from definition).
+    var oldOffsets = definition.mpOffsets;
+    var offsets    = makeArray(total, 0 * meter);
+    if (oldOffsets != undefined)
+    {
+        var copyLen = size(oldOffsets);
+        for (var k = 0; k < total && k < copyLen; k += 1)
+        {
+            offsets[k] = oldOffsets[k];
+        }
+    }
+
+    // Update entries for each dragged manipulator.
+    // Manipulator keys are "mp_i_j"; scan the grid to find the matching (i, j).
     for (var key, manip in newManipulators)
     {
-        definition[key] = manip.offset;
+        for (var i = 0; i < uCount; i += 1)
+        {
+            for (var j = 0; j < vCount; j += 1)
+            {
+                if (("mp_" ~ i ~ "_" ~ j) == key)
+                {
+                    offsets[i * vCount + j] = manip.offset;
+                }
+            }
+        }
     }
+
+    definition.mpOffsets = offsets;
     return definition;
 }
 
@@ -250,6 +272,13 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Tolerance" }
             isLength(definition.fitTolerance, FitToleranceBounds);
         }
+
+        // ── Hidden offset storage ─────────────────────────────────────────────
+        // Flat array of scalar length offsets, indexed by i * vCurveCount + j.
+        // Must be declared here so Onshape's definition validator accepts writes
+        // from pullSurfaceManipulator. Dynamic definition keys are rejected.
+        annotation { "Name" : "Manipulator offsets", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.mpOffsets is array;
     }
     {
         var uCount = definition.uCurveCount;
@@ -287,6 +316,8 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         // Each free point gets a linearManipulator constrained to the face normal,
         // so the user can only push/pull perpendicular to the surface.
         // offset is a scalar length along that normal direction.
+        var offsets  = definition.mpOffsets;
+        var total    = uCount * vCount;
         var manipMap = {};
         for (var i = 0; i < uCount; i += 1)
         {
@@ -294,10 +325,11 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             {
                 if (!isPointLocked(i, j, uCount, vCount, definition.continuityType))
                 {
-                    var key = "mp_" ~ i ~ "_" ~ j;
-                    var storedOff = definition[key];
-                    var off = (storedOff != undefined) ? storedOff : (0 * meter);
-                    manipMap[key] = linearManipulator({
+                    var flatIdx = i * vCount + j;
+                    var off = (offsets != undefined && size(offsets) == total)
+                        ? offsets[flatIdx]
+                        : (0 * meter);
+                    manipMap["mp_" ~ i ~ "_" ~ j] = linearManipulator({
                         "base"      : basePts[i][j],
                         "direction" : baseNormals[i][j],
                         "offset"    : off
@@ -318,8 +350,9 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             var row = makeArray(vCount);
             for (var j = 0; j < vCount; j += 1)
             {
-                var off = definition["mp_" ~ i ~ "_" ~ j];
-                row[j] = (!isPointLocked(i, j, uCount, vCount, definition.continuityType) && off != undefined)
+                var flatIdx = i * vCount + j;
+                var off     = (offsets != undefined && size(offsets) == total) ? offsets[flatIdx] : (0 * meter);
+                row[j] = (!isPointLocked(i, j, uCount, vCount, definition.continuityType) && off != 0 * meter)
                     ? basePts[i][j] + off * baseNormals[i][j]
                     : basePts[i][j];
             }
