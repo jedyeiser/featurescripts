@@ -153,7 +153,7 @@ export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinit
         definition.continuityType != oldDefinition.continuityType)
     {
         // Grid or continuity changed — all previous offsets are invalid.
-        definition.mpOffsets     = makeArray(uCount * vCount, { "value" : 0 * meter });
+        definition.mpOffsets     = makeArray(uCount * vCount, { "off" : 0 * meter });
         definition.activeOffsets = [];
         return definition;
     }
@@ -177,12 +177,12 @@ export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinit
 
     // Rebuild mpOffsets flat cache from the cleaned active list.
     var total   = uCount * vCount;
-    var offsets = makeArray(total, { "value" : 0 * meter });
+    var offsets = makeArray(total, { "off" : 0 * meter });
     for (var item in clean)
     {
         var flatIdx = item.u * vCount + item.v;
         if (flatIdx < total)
-            offsets[flatIdx] = { "value" : item.value };
+            offsets[flatIdx] = { "off" : item.value };
     }
     definition.mpOffsets = offsets;
 
@@ -245,7 +245,7 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
     }
 
     // Rebuild mpOffsets flat cache from the updated activeOffsets.
-    var offsets = makeArray(total, { "value" : 0 * meter });
+    var offsets = makeArray(total, { "off" : 0 * meter });
     var active  = definition.activeOffsets;
     if (active != undefined)
     {
@@ -253,7 +253,7 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
         {
             var flatIdx = item.u * vCount + item.v;
             if (flatIdx < total)
-                offsets[flatIdx] = { "value" : item.value };
+                offsets[flatIdx] = { "off" : item.value };
         }
     }
     definition.mpOffsets = offsets;
@@ -360,8 +360,9 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         definition.mpOffsets is array;
         for (var mpOffset in definition.mpOffsets)
         {
-            annotation { "Name" : "Value", "UIHint" : UIHint.ALWAYS_HIDDEN }
-            isLength(mpOffset.value, { (meter) : [-10, 0, 10] } as LengthBoundSpec);
+            // Field named "off" (not "value") to avoid duplicate parameter name with activeOffsets.
+            annotation { "Name" : "Off", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isLength(mpOffset.off, { (meter) : [-10, 0, 10] } as LengthBoundSpec);
         }
     }
     {
@@ -411,7 +412,7 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 {
                     var flatIdx = i * vCount + j;
                     var off = (offsets != undefined && size(offsets) == total)
-                        ? offsets[flatIdx].value
+                        ? offsets[flatIdx].off
                         : (0 * meter);
                     manipMap["mp_" ~ i ~ "_" ~ j] = linearManipulator({
                         "base"      : basePts[i][j],
@@ -435,7 +436,7 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             for (var j = 0; j < vCount; j += 1)
             {
                 var flatIdx = i * vCount + j;
-                var off     = (offsets != undefined && size(offsets) == total) ? offsets[flatIdx].value : (0 * meter);
+                var off     = (offsets != undefined && size(offsets) == total) ? offsets[flatIdx].off : (0 * meter);
                 row[j] = (!isPointLocked(i, j, uCount, vCount, definition.continuityType) && off != 0 * meter)
                     ? basePts[i][j] + off * baseNormals[i][j]
                     : basePts[i][j];
