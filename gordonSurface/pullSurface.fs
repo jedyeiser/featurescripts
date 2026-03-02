@@ -443,13 +443,14 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             adjPts[i] = row;
         }
 
-        // Create opPoint geometry at every adjusted grid position.
-        // These are proper construction points (not ephemeral debug overlays).
-        // Deleted at the end of the feature unless definition.keepPoints is true.
+        // Create opPoint geometry at every adjusted grid position, and draw an
+        // ephemeral debug overlay so points are always visible during editing.
+        // The geometry bodies are deleted at the end unless keepPoints is true.
         for (var i = 0; i < uCount; i += 1)
         {
             for (var j = 0; j < vCount; j += 1)
             {
+                addDebugPoint(context, adjPts[i][j], DebugColor.BLUE);
                 opPoint(context, id + ("pt_" ~ i ~ "_" ~ j), { "point" : adjPts[i][j] });
             }
         }
@@ -650,6 +651,21 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
         }
 
+        // ── Grid points cleanup ────────────────────────────────────────────────
+        // Delete the opPoint bodies unless the user wants them to persist.
+        if (!definition.keepPoints)
+        {
+            var ptQueries = [];
+            for (var i = 0; i < uCount; i += 1)
+            {
+                for (var j = 0; j < vCount; j += 1)
+                {
+                    ptQueries = append(ptQueries, qCreatedBy(id + ("pt_" ~ i ~ "_" ~ j), EntityType.BODY));
+                }
+            }
+            opDeleteBodies(context, id + "deletePts", { "entities" : qUnion(ptQueries) });
+        }
+
         // ── Optional persistent wire bodies ────────────────────────────────────
         // keepUCurves / keepVCurves create actual geometry bodies for downstream
         // use. Independent of showIsoCurves (which only draws debug lines).
@@ -664,18 +680,4 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 opCreateBSplineCurve(context, id + ("keepV_" ~ j), { "bSplineCurve" : vIsoCurves[j] });
         }
 
-        // ── Grid points cleanup ────────────────────────────────────────────────
-        // Delete the opPoint bodies unless the user explicitly wants to keep them.
-        if (!definition.keepPoints)
-        {
-            var ptQueries = [];
-            for (var i = 0; i < uCount; i += 1)
-            {
-                for (var j = 0; j < vCount; j += 1)
-                {
-                    ptQueries = append(ptQueries, qCreatedBy(id + ("pt_" ~ i ~ "_" ~ j), EntityType.BODY));
-                }
-            }
-            opDeleteBodies(context, id + "deletePts", { "entities" : qUnion(ptQueries) });
-        }
     });
