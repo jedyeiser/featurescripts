@@ -636,36 +636,24 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
         // ── STAGE 5: Replace original face with the new surface ────────────────
-        // Determine up-front whether the selected face is the only face on its body.
-        // Single-face body: deleting the face would leave an empty body (invalid);
-        //   instead delete the whole source body — the new surface is the replacement.
-        // Multi-face body: delete just the target face (opening the boundary), then
-        //   boolean-union the owner body with the new surface to stitch the gap.
+        // Use opReplaceFace with auto-detected oppositeSense (pattern from std/replaceFace.fs):
+        // dot the normals of the original face and the template face — if they point
+        // opposite, flip the sense so the kernel aligns them correctly.
         if (definition.replaceFace)
         {
-            var newBody       = qCreatedBy(id + "pullSurf", EntityType.BODY);
-            var ownerBody     = qOwnerBody(definition.face);
-            var adjacentFaces = qAdjacent(definition.face, AdjacencyType.EDGE, EntityType.FACE);
-            var isOnlyFace    = (size(evaluateQuery(context, adjacentFaces)) == 0);
+            var newFaceQ  = qCreatedBy(id + "pullSurf", EntityType.FACE);
+            var origPlane = try(evFaceTangentPlane(context, { "face" : definition.face, "parameter" : vector(0.5, 0.5) }));
+            var newPlane  = try(evFaceTangentPlane(context, { "face" : newFaceQ,         "parameter" : vector(0.5, 0.5) }));
 
-            if (isOnlyFace)
-            {
-                // Single-face body — remove source; new surface stands as the replacement.
-                opDeleteBodies(context, id + "deleteOrig", { "entities" : ownerBody });
-            }
-            else
-            {
-                // Multi-face body — open the boundary and stitch the new surface in.
-                opDeleteFace(context, id + "deleteFace", {
-                    "deleteFaces"   : definition.face,
-                    "includeFillet" : false,
-                    "capVoid"       : false
-                });
-                opBoolean(context, id + "replaceBool", {
-                    "tools"         : qUnion([ownerBody, newBody]),
-                    "operationType" : BooleanType.UNION
-                });
-            }
+            var oppositeSense = false;
+            if (origPlane != undefined && newPlane != undefined)
+                oppositeSense = dot(origPlane.normal, newPlane.normal) < 0;
+
+            opReplaceFace(context, id + "replace", {
+                "replaceFaces"  : definition.face,
+                "templateFace"  : newFaceQ,
+                "oppositeSense" : oppositeSense
+            });
         }
 
         // ── Grid points cleanup ────────────────────────────────────────────────

@@ -6,6 +6,34 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ---
 
+## Boolean Operation Type Enum — Wrong Name
+**Date**: 2026-03-02
+**Issue**: Used `BooleanType.UNION` — this enum does not exist.
+**Fix**: Use `BooleanOperationType.UNION` (and `.SUBTRACT`, `.INTERSECT`).
+```featurescript
+// WRONG
+opBoolean(context, id, { "tools": q, "operationType": BooleanType.UNION });
+// CORRECT
+opBoolean(context, id, { "tools": q, "operationType": BooleanOperationType.UNION });
+```
+
+## opReplaceFace — oppositeSense Must Be Auto-Detected
+**Date**: 2026-03-02
+**Issue**: Calling `opReplaceFace` without `oppositeSense` causes `DIRECT_EDIT_REPLACE_FACE_FAILED` when the template surface normal is opposite to the original face normal.
+**Fix**: Dot the normals at face center (UV=0.5,0.5) and set `oppositeSense = dot(origNormal, templateNormal) < 0`. Pattern from `std/replaceFace.fs`.
+```featurescript
+var origPlane = try(evFaceTangentPlane(context, { "face": definition.face, "parameter": vector(0.5, 0.5) }));
+var newPlane  = try(evFaceTangentPlane(context, { "face": newFaceQ, "parameter": vector(0.5, 0.5) }));
+var oppositeSense = (origPlane != undefined && newPlane != undefined)
+    ? dot(origPlane.normal, newPlane.normal) < 0
+    : false;
+opReplaceFace(context, id + "replace", {
+    "replaceFaces": definition.face, "templateFace": newFaceQ, "oppositeSense": oppositeSense
+});
+```
+
+---
+
 ## BSpline Splitting — Control Point Index Bug in `splitCurve`
 **Date**: 2026-02-26
 **File**: `tools/curve_operations.fs` — `splitCurve()`
