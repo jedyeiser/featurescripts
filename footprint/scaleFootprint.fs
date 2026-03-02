@@ -2061,22 +2061,29 @@ function mirrorCurvesY(curves is array) returns array
 }
 
 // =============================================================================
-// CONTINUITY REPAIR  (Phase 2: tangent bisector method)
+// CONTINUITY REPAIR  (Phase 2: minimum-change G1 method)
 // =============================================================================
 
 /**
  * Repair G1 continuity at a junction (FCP or ACP) between sidecut curves
- * and tip/tail curves using the minimum-move tangent bisector method.
+ * and tip/tail curves using the minimum-change method.
  *
  * Algorithm:
- *   1. Find the sidecut curve with an endpoint nearest the junction X
- *   2. Find the tip/tail curve with an endpoint nearest the junction X
- *   3. Compute angular bisector of both tangents at the junction
- *   4. Adjust the "next-to-endpoint" control point of the end curve to
- *      align with the bisector, preserving distance from endpoint (G1)
+ *   1. Find the sidecut curve with an endpoint at the junction X and
+ *      evaluate its tangent there (oriented into the sidecut interior).
+ *   2. For each tip/tail curve that connects at the junction, move only
+ *      the single "next-to-endpoint" control point so that the curve's
+ *      tangent at the junction exactly matches the sidecut tangent.
+ *      The distance from the endpoint to that control point is preserved
+ *      (only its direction changes) — the minimum possible modification.
  *
- * Only adjusts the tip/tail curve, leaving sidecut untouched (it's the
- * "driver" geometry). This is the minimum-move approach.
+ * The sidecut is never touched.  The formula is the same for both the
+ * curve-starts-at-junction and curve-ends-at-junction cases:
+ *
+ *   cp_adjacent = cp_endpoint - scTan * dist
+ *
+ * where scTan is the sidecut unit tangent oriented INTO the sidecut, and
+ * dist = original distance between the endpoint and its adjacent CP.
  *
  * @param sidecutCurves - sidecut BSpline curves (already scaled)
  * @param endCurves     - tip or tail BSpline curves (already transformed)
@@ -2093,39 +2100,51 @@ function repairJunction(sidecutCurves is array, endCurves is array,
     {
         return { "endCurves" : endCurves };
     }
-    
-    // --- Find sidecut tangent at junction ---
-    var sidecutTangent = undefined;
+
+    // --- Find sidecut tangent at junction, oriented INTO the sidecut interior ---
+    var scTan = undefined;
     for (var bspline in sidecutCurves)
     {
         var bounds = getBSplineBounds(bspline);
-        
+
         if (abs(bounds.xMin - contactX) < tolerance || abs(bounds.xMax - contactX) < tolerance)
         {
             var param = findParamAtX(bspline, contactX, tolerance);
             var result = evaluateSpline({ "spline" : bspline, "parameters" : [param], "nDerivatives" : 1 });
-            sidecutTangent = normalize(result[1][0]);
+            scTan = normalize(result[1][0]);
+
+            // Orient toward the sidecut interior
+            //   FCP (tip junction): sidecut interior is +X
+            //   ACP (tail junction): sidecut interior is -X
+            if (isTip)
+            {
+                if (scTan[0] < 0 * meter) scTan = -scTan;
+            }
+            else
+            {
+                if (scTan[0] > 0 * meter) scTan = -scTan;
+            }
             break;
         }
     }
-    
-    if (sidecutTangent == undefined)
+
+    if (scTan == undefined)
     {
         // No sidecut curve touches this junction — skip repair
         return { "endCurves" : endCurves };
     }
-    
+
     // --- Repair each end curve that connects at this junction ---
     var repairedCurves = [];
-    
+
     for (var bspline in endCurves)
     {
         var bounds = getBSplineBounds(bspline);
-        
+
         // Determine if this curve connects at the contact X
         var connectsAtContact = false;
         var connectAtStart = false;
-        
+
         if (isTip)
         {
             // Tip curves have their max-X end at the contact
@@ -2134,7 +2153,7 @@ function repairJunction(sidecutCurves is array, endCurves is array,
                 connectsAtContact = true;
                 var range = getBSplineParamRange(bspline);
                 var startPt = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-                var endPt = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
+                var endPt   = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
                 connectAtStart = (abs(startPt[0] - contactX) < abs(endPt[0] - contactX));
             }
         }
@@ -2146,84 +2165,56 @@ function repairJunction(sidecutCurves is array, endCurves is array,
                 connectsAtContact = true;
                 var range = getBSplineParamRange(bspline);
                 var startPt = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-                var endPt = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
+                var endPt   = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
                 connectAtStart = (abs(startPt[0] - contactX) < abs(endPt[0] - contactX));
             }
         }
-        
+
         if (!connectsAtContact)
         {
             repairedCurves = append(repairedCurves, bspline);
             continue;
         }
-        
-        // Get end curve tangent at junction
-        var range = getBSplineParamRange(bspline);
-        var junctionParam = connectAtStart ? range.uMin : range.uMax;
-        var endResult = evaluateSpline({ "spline" : bspline, "parameters" : [junctionParam], "nDerivatives" : 1 });
-        var endTangent = normalize(endResult[1][0]);
-        
-        // Orient both tangents to point "away from junction into their curve"
-        // then compute bisector in the shared outgoing direction.
+
+        // Adjust the single next-to-endpoint control point for G1.
         //
-        // Sidecut tangent should point into sidecut interior:
-        //   At FCP (tip junction): sidecut interior is +X direction
-        //   At ACP (tail junction): sidecut interior is -X direction
+        // For the end curve tangent at the junction to match scTan:
         //
-        // End tangent should point into end curve interior:
-        //   At FCP (tip junction): tip interior is -X direction
-        //   At ACP (tail junction): tail interior is +X direction
-        
-        var scTan = sidecutTangent;
-        var endTan = endTangent;
-        
-        if (isTip)
-        {
-            // FCP junction
-            if (scTan[0] < 0 * meter) scTan = -scTan;     // sidecut toward +X
-            if (endTan[0] > 0 * meter) endTan = -endTan;   // tip toward -X
-        }
-        else
-        {
-            // ACP junction
-            if (scTan[0] > 0 * meter) scTan = -scTan;      // sidecut toward -X
-            if (endTan[0] < 0 * meter) endTan = -endTan;    // tail toward +X
-        }
-        
-        // Bisector in the "end curve outgoing" direction:
-        // Flip sidecut tangent to match end tangent's general direction,
-        // then average to get bisector.
-        var bisector = normalize(-scTan + endTan);
-        
-        // Adjust next-to-endpoint control point to align with bisector
+        //   curve ends   at junction (connectAtStart = false):
+        //     tangent = cpLast - cp[n-2]  →  cp[n-2] = cpLast - scTan * dist
+        //
+        //   curve starts at junction (connectAtStart = true):
+        //     tangent = cp1 - cp0  →  cp1 = cp0 - scTan * dist
+        //     (curve departs INTO the tip/tail = -scTan direction)
+        //
+        // Both cases: cp_adjacent = cp_endpoint - scTan * dist
         if (bspline.degree >= 2 && size(bspline.controlPoints) >= 3)
         {
             var controlPoints = bspline.controlPoints;
             var newControlPoints = [];
             for (var cp in controlPoints)
-            {
                 newControlPoints = append(newControlPoints, cp);
-            }
-            
+
             if (connectAtStart)
             {
-                var cp0 = controlPoints[0];
-                var cp1 = controlPoints[1];
+                var cp0  = controlPoints[0];
+                var cp1  = controlPoints[1];
                 var dist = norm(cp1 - cp0);
-                newControlPoints[1] = cp0 + bisector * dist;
+                newControlPoints[1] = cp0 - scTan * dist;
             }
             else
             {
-                var n = size(controlPoints);
+                var n      = size(controlPoints);
                 var cpLast = controlPoints[n - 1];
                 var cpPrev = controlPoints[n - 2];
-                var dist = norm(cpLast - cpPrev);
-                newControlPoints[n - 2] = cpLast - bisector * dist;
+                var dist   = norm(cpLast - cpPrev);
+                newControlPoints[n - 2] = cpLast - scTan * dist;
             }
-            
+
             var params = {
-                "degree" : bspline.degree,
-                "controlPoints" : newControlPoints
+                "degree"         : bspline.degree,
+                "controlPoints"  : newControlPoints,
+                "knots"          : bspline.knots
             };
 
             if (bspline.weights != undefined)
@@ -2237,10 +2228,10 @@ function repairJunction(sidecutCurves is array, endCurves is array,
 
             bspline = bSplineCurve(params);
         }
-        
+
         repairedCurves = append(repairedCurves, bspline);
     }
-    
+
     return { "endCurves" : repairedCurves };
 }
 
