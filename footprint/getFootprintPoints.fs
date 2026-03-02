@@ -283,11 +283,12 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
 
         var acpPlane = qCreatedBy(id + "acpPlane", EntityType.FACE);
 
-        // Only attempt a split if at least one wire body strictly straddles the
-        // plane (minX < planeX < maxX per body).  The combined wireBox can span
-        // the plane even when every individual body only touches it at a vertex,
-        // which causes SPLIT_FAILED.  Checking per-body avoids the attempt —
-        // and the resulting logged warning — entirely.
+        // Only attempt a split if at least one wire body has the plane strictly
+        // in its interior.  Use a small tolerance so that a wire endpoint that
+        // is microscopically off from the contact plane (floating-point drift
+        // between kernel evaluations) is treated as "on the boundary" and the
+        // split is skipped — avoiding SPLIT_FAILED.
+        var splitTol = 1e-5 * meter;
         var wireBodies = evaluateQuery(context, qCreatedBy(id + "fptWires", EntityType.BODY));
 
         var fcpSplitDone = false;
@@ -295,7 +296,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         for (var body in wireBodies)
         {
             var bodyBox = evBox3d(context, { "topology" : body, "tight" : true });
-            if (bodyBox.minCorner[0] < fcpORGIN[0] && fcpORGIN[0] < bodyBox.maxCorner[0])
+            if (bodyBox.minCorner[0] + splitTol < fcpORGIN[0] && fcpORGIN[0] < bodyBox.maxCorner[0] - splitTol)
             {
                 anyBodyCrossesFcp = true;
                 break;
@@ -320,7 +321,7 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         for (var body in acpBodies)
         {
             var bodyBox = evBox3d(context, { "topology" : body, "tight" : true });
-            if (bodyBox.minCorner[0] < acpORIGIN[0] && acpORIGIN[0] < bodyBox.maxCorner[0])
+            if (bodyBox.minCorner[0] + splitTol < acpORIGIN[0] && acpORIGIN[0] < bodyBox.maxCorner[0] - splitTol)
             {
                 anyBodyCrossesAcp = true;
                 break;
