@@ -133,15 +133,21 @@ function fitVIsoCurve(context is Context, definition is map, colPts is array, v 
 // ── Editing Logic ─────────────────────────────────────────────────────────────
 
 /**
- * Reset stored manipulator offsets whenever the grid layout or face changes,
- * since previous offsets correspond to a different point distribution.
+ * Reset stored manipulator offsets when grid dimensions or continuity type change,
+ * since existing offsets correspond to a different point layout.
+ *
+ * NOTE: Face change is intentionally NOT compared here. Query comparison with !=
+ * is unreliable in FeatureScript — it may evaluate true during manipulator drag
+ * (when the manipulator change function updates definition[key]), causing Onshape
+ * to zero all stored offsets before the feature body runs, producing snap-back.
+ * If the user changes the face they should also change grid counts to force a reset,
+ * or toggle the continuity type and back.
  */
 export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
     if (definition.uCurveCount != oldDefinition.uCurveCount ||
         definition.vCurveCount != oldDefinition.vCurveCount ||
-        definition.continuityType != oldDefinition.continuityType ||
-        definition.face != oldDefinition.face)
+        definition.continuityType != oldDefinition.continuityType)
     {
         // Zero out all stored offsets for the old grid dimensions
         var oldU = oldDefinition.uCurveCount;
