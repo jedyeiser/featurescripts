@@ -12,8 +12,6 @@ import(path : "2dfee1d44e9bde0daba9d73e", version : "c685211f07cd7af59f25cb37");
 
 //import curveOps
 import(path : "73de71e75b755f0042e0e6d8", version : "17f13062b9e754fa7ad0d5bf");
-//import debugTools (for printBSpline)
-import(path : "3f40c735a406f3df927e0b13", version : "ca97f371da515817e2e1c16b");
 
 
 
