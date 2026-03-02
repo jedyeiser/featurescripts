@@ -457,7 +457,7 @@ function extractRowCurve(surface is BSplineSurface, uIdx is number) returns BSpl
     return bSplineCurve({
         "degree" : surface.vDegree,
         "isPeriodic" : surface.isVPeriodic,
-        "knots" : vKnots,
+        "knots" : knotArray(vKnots),
         "controlPoints" : cpRow
     });
 }
@@ -482,7 +482,7 @@ function extractColumnCurve(cpGrid is array, vIdx is number, uKnots, uDegree is 
     return bSplineCurve({
         "degree" : uDegree,
         "isPeriodic" : false,
-        "knots" : uKnots,
+        "knots" : knotArray(uKnots),
         "controlPoints" : colPoints
     });
 }
