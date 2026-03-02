@@ -348,32 +348,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         }
         
         // =====================================================================
-        // STEP 8: Continuity repair (Phase 2 — minimum-change G1 method)
-        // =====================================================================
-        if (definition.enforceTipTangency)
-        {
-            var repairResultPos = repairJunction(scaledPos.curves, transformedTipPos,
-                newFcp[0], true, tolerance);
-            transformedTipPos = repairResultPos.endCurves;
-            
-            var repairResultNeg = repairJunction(scaledNegCurves, transformedTipNeg,
-                newFcp[0], true, tolerance);
-            transformedTipNeg = repairResultNeg.endCurves;
-        }
-        
-        if (definition.enforceTailTangency)
-        {
-            var repairResultPos = repairJunction(scaledPos.curves, transformedTailPos,
-                newAcp[0], false, tolerance);
-            transformedTailPos = repairResultPos.endCurves;
-            
-            var repairResultNeg = repairJunction(scaledNegCurves, transformedTailNeg,
-                newAcp[0], false, tolerance);
-            transformedTailNeg = repairResultNeg.endCurves;
-        }
-        
-        // =====================================================================
-        // STEP 9: Output assembly (Phase 3)
+        // STEP 8: Output assembly (Phase 3)
         //
         // Create individual BSpline curves, then stitch into wire bodies.
         // CRITICAL: We do SEPARATE opExtractWires for +Y and -Y to prevent
@@ -388,6 +363,28 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var negCurves = concatenateArrays([
             transformedTipNeg, scaledNegCurves, transformedTailNeg
         ]);
+
+        // =====================================================================
+        // STEP 9: G1 continuity repair at FCP / ACP
+        //
+        // Operates on the fully assembled curve arrays.  Uses only control
+        // point positions — no evaluateSpline calls.  For each junction:
+        //   • finds the sidecut curve (its non-junction end is on the interior
+        //     side) and reads the tangent from its endpoint control points
+        //   • for every tip/tail curve at the same junction, moves the single
+        //     adjacent CP to align with the sidecut tangent (minimum change:
+        //     only direction changes, distance is preserved)
+        // =====================================================================
+        if (definition.enforceTipTangency)
+        {
+            posCurves = fixG1(posCurves, newFcp[0], true,  tolerance);
+            negCurves = fixG1(negCurves, newFcp[0], true,  tolerance);
+        }
+        if (definition.enforceTailTangency)
+        {
+            posCurves = fixG1(posCurves, newAcp[0], false, tolerance);
+            negCurves = fixG1(negCurves, newAcp[0], false, tolerance);
+        }
 
         // --- Create +Y curves and stitch into wire(s) ---
         var posEdgeQueries = [];
@@ -2061,166 +2058,149 @@ function mirrorCurvesY(curves is array) returns array
 }
 
 // =============================================================================
-// CONTINUITY REPAIR  (Phase 2: minimum-change G1 method)
+// G1 CONTINUITY REPAIR  (minimum-change, control-point only)
 // =============================================================================
 
 /**
- * Repair G1 continuity at a junction (FCP or ACP) between sidecut curves
- * and tip/tail curves using the minimum-change method.
+ * Enforce G1 continuity at a contact-point junction (FCP or ACP) across
+ * a fully assembled curve array (tip + sidecut + tail).
  *
- * Algorithm:
- *   1. Find the sidecut curve with an endpoint at the junction X and
- *      evaluate its tangent there (oriented into the sidecut interior).
- *   2. For each tip/tail curve that connects at the junction, move only
- *      the single "next-to-endpoint" control point so that the curve's
- *      tangent at the junction exactly matches the sidecut tangent.
- *      The distance from the endpoint to that control point is preserved
- *      (only its direction changes) — the minimum possible modification.
+ * Identification uses only control point X positions:
+ *   - A curve touching the junction whose OTHER endpoint is on the interior
+ *     side (X > contactX for FCP, X < contactX for ACP) is the sidecut.
+ *   - All other curves touching the junction are tip/tail and get repaired.
  *
- * The sidecut is never touched.  The formula is the same for both the
- * curve-starts-at-junction and curve-ends-at-junction cases:
+ * Repair: for each tip/tail curve, the single adjacent CP is moved so that
+ *   cp_adjacent = cp_junction - scDir * dist
+ * where scDir is the sidecut unit tangent INTO the interior and dist is the
+ * original distance.  Only direction changes — minimum possible modification.
  *
- *   cp_adjacent = cp_endpoint - scTan * dist
- *
- * where scTan is the sidecut unit tangent oriented INTO the sidecut, and
- * dist = original distance between the endpoint and its adjacent CP.
- *
- * @param sidecutCurves - sidecut BSpline curves (already scaled)
- * @param endCurves     - tip or tail BSpline curves (already transformed)
- * @param contactX      - X coordinate of the junction (FCP or ACP)
- * @param isTip         - true if endCurves are tip curves, false for tail
- * @param tolerance     - matching tolerance
- *
- * @returns map with "endCurves" (repaired tip/tail curves)
+ * @param curves   - assembled BSplineCurve array
+ * @param contactX - X coordinate of the junction (newFcp[0] or newAcp[0])
+ * @param isTip    - true for FCP junction, false for ACP junction
+ * @param tol      - position tolerance for endpoint matching
  */
-function repairJunction(sidecutCurves is array, endCurves is array,
-    contactX is ValueWithUnits, isTip is boolean, tolerance is ValueWithUnits) returns map
+function fixG1(curves is array, contactX is ValueWithUnits,
+    isTip is boolean, tol is ValueWithUnits) returns array
 {
-    if (size(endCurves) == 0)
+    // ---- Pass 1: find sidecut tangent ----
+    var scDir = undefined;
+
+    for (var idx = 0; idx < size(curves); idx += 1)
     {
-        return { "endCurves" : endCurves };
-    }
+        var cps = curves[idx].controlPoints;
+        var n   = size(cps);
 
-    // --- Find sidecut tangent at junction, oriented INTO the sidecut interior ---
-    // Evaluate directly at uMin/uMax to avoid findParamAtX failure at endpoints.
-    var scTan = undefined;
-    for (var bspline in sidecutCurves)
-    {
-        var range = getBSplineParamRange(bspline);
-        var ptMin = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-        var ptMax = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
+        // Which end of this curve is at the junction?
+        var jIdx = -1;
+        var aIdx = -1;
+        if (abs(cps[0][0] - contactX) < tol)
+        {
+            jIdx = 0;
+            aIdx = 1;
+        }
+        else if (abs(cps[n - 1][0] - contactX) < tol)
+        {
+            jIdx = n - 1;
+            aIdx = n - 2;
+        }
+        if (jIdx < 0) continue;
 
-        var junctionParam = undefined;
-        if (abs(ptMin[0] - contactX) < tolerance)
-            junctionParam = range.uMin;
-        else if (abs(ptMax[0] - contactX) < tolerance)
-            junctionParam = range.uMax;
+        // The other endpoint tells us which side this curve lives on.
+        var otherX = cps[(jIdx == 0) ? n - 1 : 0][0];
 
-        if (junctionParam == undefined)
-            continue;
+        // Sidecut: its other end is on the interior side of the junction.
+        //   FCP (isTip=true):  interior is +X  →  otherX > contactX
+        //   ACP (isTip=false): interior is -X  →  otherX < contactX
+        var isSidecut;
+        if (isTip)
+            isSidecut = (otherX > contactX);
+        else
+            isSidecut = (otherX < contactX);
 
-        var result = evaluateSpline({ "spline" : bspline, "parameters" : [junctionParam], "nDerivatives" : 1 });
-        scTan = normalize(result[1][0]);
+        if (!isSidecut) continue;
 
-        // Orient toward the sidecut interior
-        //   FCP (tip junction): sidecut interior is +X
-        //   ACP (tail junction): sidecut interior is -X
-        if (isTip) { if (scTan[0] < 0) scTan = -scTan; }
-        else       { if (scTan[0] > 0) scTan = -scTan; }
+        // Tangent = neighbor – junction.  Normalize, then verify orientation.
+        var delta = cps[aIdx] - cps[jIdx];
+        var dLen  = norm(delta);
+        if (dLen < tol) continue;
+
+        scDir = normalize(delta);
+        if (isTip  && scDir[0] < 0) scDir = -scDir;
+        if (!isTip && scDir[0] > 0) scDir = -scDir;
         break;
     }
 
-    if (scTan == undefined)
+    if (scDir == undefined) return curves;
+
+    // ---- Pass 2: repair tip/tail curves ----
+    var result = [];
+
+    for (var idx = 0; idx < size(curves); idx += 1)
     {
-        // No sidecut curve touches this junction — skip repair
-        return { "endCurves" : endCurves };
-    }
+        var ec  = curves[idx];
+        var cps = ec.controlPoints;
+        var n   = size(cps);
 
-    // --- Repair each end curve that connects at this junction ---
-    var repairedCurves = [];
-
-    for (var bspline in endCurves)
-    {
-        // Identify which endpoint (uMin or uMax) is at the junction.
-        var range = getBSplineParamRange(bspline);
-        var ptMin = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMin] })[0][0];
-        var ptMax = evaluateSpline({ "spline" : bspline, "parameters" : [range.uMax] })[0][0];
-
-        var connectAtStart;
-        if (abs(ptMin[0] - contactX) < tolerance)
-            connectAtStart = true;
-        else if (abs(ptMax[0] - contactX) < tolerance)
-            connectAtStart = false;
-        else
+        // Find junction endpoint index
+        var jIdx = -1;
+        var aIdx = -1;
+        if (abs(cps[0][0] - contactX) < tol)
         {
-            // This curve does not connect at the junction — pass through unchanged.
-            repairedCurves = append(repairedCurves, bspline);
+            jIdx = 0;
+            aIdx = 1;
+        }
+        else if (abs(cps[n - 1][0] - contactX) < tol)
+        {
+            jIdx = n - 1;
+            aIdx = n - 2;
+        }
+
+        // Only repair tip/tail (not sidecut, not unrelated curves)
+        var needsRepair = false;
+        if (jIdx >= 0 && ec.degree >= 2 && n >= 3)
+        {
+            var otherX = cps[(jIdx == 0) ? n - 1 : 0][0];
+            if (isTip)
+                needsRepair = (otherX < contactX);   // tip: other end in tip region
+            else
+                needsRepair = (otherX > contactX);   // tail: other end in tail region
+        }
+
+        if (!needsRepair)
+        {
+            result = append(result, ec);
             continue;
         }
 
-        // Adjust the single next-to-endpoint control point for G1.
-        //
-        // For the end curve tangent at the junction to match scTan:
-        //
-        //   curve ends   at junction (connectAtStart = false):
-        //     tangent = cpLast - cp[n-2]  →  cp[n-2] = cpLast - scTan * dist
-        //
-        //   curve starts at junction (connectAtStart = true):
-        //     tangent = cp1 - cp0  →  cp1 = cp0 - scTan * dist
-        //     (curve departs INTO the tip/tail = -scTan direction)
-        //
-        // Both cases: cp_adjacent = cp_endpoint - scTan * dist
-        if (bspline.degree >= 2 && size(bspline.controlPoints) >= 3)
+        // Move adjacent CP: cp_adj_new = cp_junction - scDir * dist
+        var jPt    = cps[jIdx];
+        var aPt    = cps[aIdx];
+        var dist   = norm(aPt - jPt);
+        var newAPt = jPt - scDir * dist;
+
+        var newCPs = [];
+        for (var i = 0; i < n; i += 1)
         {
-            var controlPoints = bspline.controlPoints;
-            var n = size(controlPoints);
-            var newControlPoints = [];
-
-            if (connectAtStart)
-            {
-                var cp0  = controlPoints[0];
-                var cp1  = controlPoints[1];
-                var dist = norm(cp1 - cp0);
-                var newCp1 = cp0 - scTan * dist;
-
-                for (var i = 0; i < n; i += 1)
-                    newControlPoints = append(newControlPoints,
-                        i == 1 ? newCp1 : controlPoints[i]);
-            }
+            if (i == aIdx)
+                newCPs = append(newCPs, newAPt);
             else
-            {
-                var cpLast = controlPoints[n - 1];
-                var cpPrev = controlPoints[n - 2];
-                var dist   = norm(cpLast - cpPrev);
-                var newCpPrev = cpLast - scTan * dist;
-
-                for (var i = 0; i < n; i += 1)
-                    newControlPoints = append(newControlPoints,
-                        i == n - 2 ? newCpPrev : controlPoints[i]);
-            }
-
-            var params = {
-                "degree"         : bspline.degree,
-                "controlPoints"  : newControlPoints,
-                "knots"          : bspline.knots
-            };
-
-            if (bspline.weights != undefined)
-                params.weights = bspline.weights;
-
-            if (bspline.isRational != undefined)
-                params.isRational = bspline.isRational;
-
-            if (bspline.isPeriodic != undefined)
-                params.isPeriodic = bspline.isPeriodic;
-
-            bspline = bSplineCurve(params);
+                newCPs = append(newCPs, cps[i]);
         }
 
-        repairedCurves = append(repairedCurves, bspline);
+        var p = {
+            "degree"        : ec.degree,
+            "controlPoints" : newCPs,
+            "knots"         : ec.knots
+        };
+        if (ec.weights    != undefined) p.weights    = ec.weights;
+        if (ec.isRational != undefined) p.isRational = ec.isRational;
+        if (ec.isPeriodic != undefined) p.isPeriodic = ec.isPeriodic;
+
+        result = append(result, bSplineCurve(p));
     }
 
-    return { "endCurves" : repairedCurves };
+    return result;
 }
 
 // =============================================================================
