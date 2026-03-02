@@ -37,20 +37,31 @@ export const simplifySurface = defineFeature(function(context is Context, id is 
         annotation { "Name" : "Mode" }
         definition.mode is CleanupMode;
 
-        annotation { "Name" : "U curve count" }
-        isInteger(definition.uCurveCount, { (unitless) : [2, 5, 20] });
-
-        annotation { "Name" : "V curve count" }
-        isInteger(definition.vCurveCount, { (unitless) : [2, 5, 20] });
+        if (definition.mode == CleanupMode.MANUAL)
+        {
+            annotation { "Name" : "U curve count" }
+            isInteger(definition.uCurveCount, { (unitless) : [2, 5, 20] });
+            annotation { "Name" : "V curve count" }
+            isInteger(definition.vCurveCount, { (unitless) : [2, 5, 20] });
+        }
 
         annotation { "Name" : "Replace face" }
         definition.replaceFace is boolean;
     }
     {
+        // uCurveCount and vCurveCount are only defined in MANUAL mode
+        var uCount = 0;
+        var vCount = 0;
+        if (definition.mode == CleanupMode.MANUAL)
+        {
+            uCount = definition.uCurveCount;
+            vCount = definition.vCurveCount;
+        }
+
         var newSurface = cleanupSurface(context, id, definition.face, definition.tolerance,
             definition.continuityType,
             definition.continuityType == GeometricContinuity.G2 ? definition.g2Mode : G2Mode.BEST_EFFORT,
-            definition.mode, definition.uCurveCount, definition.vCurveCount);
+            definition.mode, uCount, vCount);
 
         opCreateBSplineSurface(context, id + "simplified", { "bSplineSurface" : newSurface });
 
@@ -70,14 +81,14 @@ export const simplifySurface = defineFeature(function(context is Context, id is 
 
 /**
  * Sample points along an iso-curve on a face.
- * 
+ *
  * @param direction {"U" or "V"} : Which parameter to hold fixed
  * @param fixedParam {number} : The fixed parameter value (0-1)
  * @param numSamples {number} : Number of points to sample
  * @returns {array} : Array of 3D points (Vectors with length units)
  */
-export function sampleSurfaceIsoCurve(context is Context, faceQuery is Query, 
-                                       direction is string, fixedParam is number, 
+export function sampleSurfaceIsoCurve(context is Context, faceQuery is Query,
+                                       direction is string, fixedParam is number,
                                        numSamples is number) returns array
 {
     var uvParams = [];
@@ -95,7 +106,7 @@ export function sampleSurfaceIsoCurve(context is Context, faceQuery is Query,
             uvParams = append(uvParams, vector(t, fixedParam));
         }
     }
-    
+
     var points = [];
     for (var uv in uvParams)
     {
@@ -105,7 +116,7 @@ export function sampleSurfaceIsoCurve(context is Context, faceQuery is Query,
         });
         points = append(points, tangentPlane.origin);
     }
-    
+
     return points;
 }
 
@@ -122,7 +133,7 @@ export function getCrossTangent(context is Context, faceQuery is Query,
     const epsilon = 1e-6;
     var uv0;
     var uvEps;
-    
+
     if (boundaryEdge == "V0")
     {
         // At v=0, cross-tangent is ∂S/∂v direction
@@ -147,10 +158,10 @@ export function getCrossTangent(context is Context, faceQuery is Query,
         uv0 = vector(1, param);
         uvEps = vector(1 - epsilon, param);
     }
-    
+
     var p0 = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : uv0 }).origin;
     var pEps = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : uvEps }).origin;
-    
+
     return normalize(pEps - p0);
 }
 
@@ -162,10 +173,10 @@ export function getCrossCurvature(context is Context, faceQuery is Query,
                                    boundaryEdge is string, param is number) returns ValueWithUnits
 {
     const epsilon = 1e-5;
-    var uv0; 
-    var uvNeg; 
+    var uv0;
+    var uvNeg;
     var uvPos;
-    
+
     if (boundaryEdge == "V0")
     {
         uv0 = vector(param, 0);
@@ -190,18 +201,18 @@ export function getCrossCurvature(context is Context, faceQuery is Query,
         uvNeg = vector(1 - 2 * epsilon, param);
         uvPos = vector(1, param);
     }
-    
+
     // Use central difference where possible, one-sided at boundaries
     var p0 = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : uv0 }).origin;
     var pNeg = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : uvNeg }).origin;
     var pPos = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : uvPos }).origin;
-    
+
     // Second derivative approximation: (f(x+h) - 2f(x) + f(x-h)) / h²
     // At boundary, use one-sided: (f(x+2h) - 2f(x+h) + f(x)) / h²
     var d2;
     if (boundaryEdge == "V0" || boundaryEdge == "U0")
     {
-        var pMid = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : 
+        var pMid = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" :
             (boundaryEdge == "V0") ? vector(param, epsilon) : vector(epsilon, param) }).origin;
         d2 = (pPos - 2 * pMid + p0);
     }
@@ -211,25 +222,24 @@ export function getCrossCurvature(context is Context, faceQuery is Query,
             (boundaryEdge == "V1") ? vector(param, 1 - epsilon) : vector(1 - epsilon, param) }).origin;
         d2 = (p0 - 2 * pMid + pNeg);
     }
-    
+
     // Curvature ≈ |d²S/dt²| / |dS/dt|² for arc-length parameterized curve
     // This is approximate since we're not arc-length parameterized
     var d1 = pPos - pNeg;
     var d1Mag = norm(d1);
-    
+
     if (d1Mag < 1e-12 * meter)
     {
         return 0 / meter;
     }
-    
+
     var d2Mag = norm(d2);
     return d2Mag / (d1Mag * d1Mag) * (epsilon * epsilon);
 }
 
 /**
  * Simplify a curve with boundary continuity constraints.
- * Approximates points as a lower-complexity spline, then adjusts
- * endpoint control points to enforce G1/G2 continuity.
+ * Kept for external compatibility; not used by the main cleanupSurface pipeline.
  *
  * @param points {array} : Sampled points along the iso-curve
  * @param tolerance {ValueWithUnits} : Approximation tolerance
@@ -240,7 +250,7 @@ export function getCrossCurvature(context is Context, faceQuery is Query,
  * @param continuityType {GeometricContinuity} : G0, G1, or G2
  * @param g2Mode {G2Mode} : EXACT or BEST_EFFORT
  */
-export function simplifyCurveWithConstraints(context is Context, 
+export function simplifyCurveWithConstraints(context is Context,
                                               points is array,
                                               tolerance is ValueWithUnits,
                                               startTangent is Vector,
@@ -258,27 +268,27 @@ export function simplifyCurveWithConstraints(context is Context,
         "targets" : [approximationTarget({ "positions" : points })],
         "interpolateIndices" : [0, numPoints - 1]
     });
-    
+
     var curve = approxResult[0];
-    
+
     if (continuityType == GeometricContinuity.G0)
     {
         return curve;
     }
-    
+
     // Enforce G1 at both ends
     curve = enforceG1AtEnd(curve, 0, startTangent);
     curve = enforceG1AtEnd(curve, 1, endTangent);
-    
+
     if (continuityType == GeometricContinuity.G1)
     {
         return curve;
     }
-    
+
     // Enforce G2 at both ends
     curve = enforceG2AtEnd(curve, 0, startCurvature, g2Mode);
     curve = enforceG2AtEnd(curve, 1, endCurvature, g2Mode);
-    
+
     return curve;
 }
 
@@ -304,15 +314,15 @@ export function buildSurfaceFromCurves(context is Context, id is Id,
     {
         throw regenError("curves and uParams must have same length");
     }
-    
+
     var numCurves = size(curves);
     var numCPsV = size(curves[0].controlPoints);
     var vDegree = curves[0].degree;
     var vKnots = curves[0].knots;
-    
+
     // U-direction degree (clamped to what's achievable)
     var uDegree = min(3, numCurves - 1);
-    
+
     // For each control point index along the curve (v-direction),
     // gather the corresponding CP from each curve and interpolate
     // through them in the u-direction at the known uParams
@@ -324,7 +334,7 @@ export function buildSurfaceFromCurves(context is Context, id is Id,
         {
             columnPoints[i] = curves[i].controlPoints[j];
         }
-        
+
         var columnCurve = approximateSpline(context, {
             "degree" : uDegree,
             "tolerance" : 1e-6 * meter,
@@ -333,16 +343,16 @@ export function buildSurfaceFromCurves(context is Context, id is Id,
             "parameters" : uParams,
             "interpolateIndices" : range(0, numCurves - 1)
         })[0];
-        
+
         columnCurves = append(columnCurves, columnCurve);
     }
-    
+
     // Make column curves compatible (same u-knots and u-CP count)
     columnCurves = makeCurvesCompatible(context, id + "uCompat", columnCurves);
-    
+
     var uKnots = columnCurves[0].knots;
     var numCPsU = size(columnCurves[0].controlPoints);
-    
+
     // Assemble control point grid: surfaceCPs[u][v]
     var surfaceCPs = makeArray(numCPsU);
     for (var ui = 0; ui < numCPsU; ui += 1)
@@ -353,7 +363,7 @@ export function buildSurfaceFromCurves(context is Context, id is Id,
             surfaceCPs[ui][vi] = columnCurves[vi].controlPoints[ui];
         }
     }
-    
+
     var surfaceDef = {
         "uDegree" : columnCurves[0].degree,
         "vDegree" : vDegree,
@@ -364,9 +374,9 @@ export function buildSurfaceFromCurves(context is Context, id is Id,
         "uKnots" : knotArray(uKnots),
         "vKnots" : knotArray(vKnots)
     };
-    
+
     surfaceDef = normalizeSurfaceDef(surfaceDef);
-    
+
     return bSplineSurface(surfaceDef);
 }
 
@@ -378,21 +388,21 @@ export function buildClampedKnotVector(params is array, degree is number) return
 {
     var n = size(params) - 1;  // n+1 points → n+1 control points for interpolation
     var m = n + degree + 1;    // m+1 knots
-    
+
     var knots = makeArray(m + 1);
-    
+
     // Clamped start: degree+1 copies of first param
     for (var i = 0; i <= degree; i += 1)
     {
         knots[i] = params[0];
     }
-    
+
     // Clamped end: degree+1 copies of last param
     for (var i = m - degree; i <= m; i += 1)
     {
         knots[i] = params[n];
     }
-    
+
     // Interior knots via averaging (P&T eq. 9.8)
     for (var j = 1; j <= n - degree; j += 1)
     {
@@ -403,14 +413,104 @@ export function buildClampedKnotVector(params is array, degree is number) return
         }
         knots[j + degree] = sum / degree;
     }
-    
+
     return knots;
 }
 
+
+// ============================================================
+// PRIVATE HELPERS (not exported)
+// ============================================================
+
+/**
+ * Extract a v-direction curve (row) from a BSplineSurface at a given u control point index.
+ * The resulting BSplineCurve runs in the v direction using vDegree and vKnots.
+ *
+ * NOTE: Relies on BSplineSurface field access: surface.controlPoints[uIdx],
+ * surface.vDegree, surface.vKnots, surface.isVPeriodic. Verify on first test.
+ */
+function extractRowCurve(surface is BSplineSurface, uIdx is number) returns BSplineCurve
+{
+    return bSplineCurve({
+        "degree" : surface.vDegree,
+        "isPeriodic" : surface.isVPeriodic,
+        "knots" : surface.vKnots,
+        "controlPoints" : surface.controlPoints[uIdx]
+    });
+}
+
+/**
+ * Extract a u-direction curve (column) from a 2D CP grid at a given v index.
+ * Uses the provided uKnots and uDegree (from the source surface).
+ *
+ * @param cpGrid {array} : 2D array where cpGrid[uIdx][vIdx] is a Vector
+ * @param vIdx {number} : Column index to extract
+ * @param uKnots : Knot vector for u direction (from source surface)
+ * @param uDegree {number} : Degree for u direction (from source surface)
+ */
+function extractColumnCurve(cpGrid is array, vIdx is number, uKnots, uDegree is number) returns BSplineCurve
+{
+    var numRows = size(cpGrid);
+    var colPoints = makeArray(numRows);
+    for (var i = 0; i < numRows; i += 1)
+    {
+        colPoints[i] = cpGrid[i][vIdx];
+    }
+    return bSplineCurve({
+        "degree" : uDegree,
+        "isPeriodic" : false,
+        "knots" : uKnots,
+        "controlPoints" : colPoints
+    });
+}
+
+/**
+ * Progressively remove interior knots from a BSplineCurve until no more can be
+ * removed within the given tolerance. Implements the P&T A5.8 knot removal loop.
+ *
+ * Tries each unique interior knot (at its full multiplicity) once. If removal
+ * succeeds within tolerance, the simplified curve is used for subsequent removals.
+ *
+ * @param tolerance : Geometric error bound — passed directly to removeKnot(),
+ *                    which accepts ValueWithUnits or number.
+ */
+function simplifyByKnotRemoval(context is Context, curve is BSplineCurve, tolerance) returns BSplineCurve
+{
+    var interiorKnots = getUniqueInteriorKnots(curve, KNOT_TOLERANCE);
+    for (var knot in interiorKnots)
+    {
+        var mult = getKnotMultiplicity(curve, knot, KNOT_TOLERANCE);
+        var result = removeKnot(context, curve, knot, mult, tolerance);
+        if (result.success)
+        {
+            curve = result.curve;
+        }
+    }
+    return curve;
+}
+
+
+// ============================================================
+// MAIN SURFACE CLEANUP
+// ============================================================
+
 /**
  * Main surface cleanup function.
+ *
+ * AUTO mode:
+ *   Retrieves the source face's exact BSpline representation via
+ *   evApproximateBSplineSurface, then progressively removes interior knots in
+ *   both U and V directions until the geometric error would exceed tolerance.
+ *   Returns the minimum-CP surface that stays within tolerance. G0 boundary
+ *   preservation is guaranteed by the P&T knot removal algorithm.
+ *
+ * MANUAL mode:
+ *   Samples the face densely along V-direction iso-curves at uCurveCount
+ *   evenly-spaced U parameters. Fits each curve with approximateSpline using
+ *   maxControlPoints = vCurveCount and derivative constraints for G1/G2.
+ *   Skins the compatible curves into a surface.
  */
-export function cleanupSurface(context is Context, id is Id, 
+export function cleanupSurface(context is Context, id is Id,
                                 faceQuery is Query,
                                 tolerance is ValueWithUnits,
                                 continuityType is GeometricContinuity,
@@ -419,66 +519,169 @@ export function cleanupSurface(context is Context, id is Id,
                                 uCurveCount is number,
                                 vCurveCount is number) returns BSplineSurface
 {
-    // Step 1: Determine iso-parameters to sample
-    var uParams;
-    var vParams;
-    
     if (mode == CleanupMode.AUTO)
     {
-        // Use uniform spacing based on curve counts
-        uParams = [];
+        // ---- AUTO MODE: Knot removal in both U and V directions ----
+
+        // Get source BSpline surface (forced non-rational for stable knot removal)
+        var sourceData = evApproximateBSplineSurface(context, {
+            "face" : faceQuery,
+            "forceNonRational" : true
+        });
+        var sourceSurface = sourceData.bSplineSurface;
+
+        // Step 1: Extract v-direction row curves (one per u control point index)
+        // and simplify each by removing interior v-knots within tolerance.
+        var numRows = size(sourceSurface.controlPoints);
+        var rowCurves = [];
+        for (var uIdx = 0; uIdx < numRows; uIdx += 1)
+        {
+            var rowCurve = extractRowCurve(sourceSurface, uIdx);
+            rowCurve = simplifyByKnotRemoval(context, rowCurve, tolerance);
+            rowCurves = append(rowCurves, rowCurve);
+        }
+
+        // Step 2: Unify v-direction degree and knots across all row curves.
+        rowCurves = makeCurvesCompatible(context, id + "rowCompat", rowCurves);
+
+        // Step 3: Build the CP grid from the simplified compatible rows.
+        var numCPsV = size(rowCurves[0].controlPoints);
+        var cpGrid = makeArray(numRows);
+        for (var uIdx = 0; uIdx < numRows; uIdx += 1)
+        {
+            cpGrid[uIdx] = makeArray(numCPsV);
+            for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
+            {
+                cpGrid[uIdx][vIdx] = rowCurves[uIdx].controlPoints[vIdx];
+            }
+        }
+
+        // Step 4: Extract u-direction column curves (one per v control point index)
+        // and simplify each by removing interior u-knots within tolerance.
+        // Column curves use the source surface's u-knots (numRows CPs, uDegree).
+        var colCurves = [];
+        for (var vIdx = 0; vIdx < numCPsV; vIdx += 1)
+        {
+            var colCurve = extractColumnCurve(cpGrid, vIdx, sourceSurface.uKnots, sourceSurface.uDegree);
+            colCurve = simplifyByKnotRemoval(context, colCurve, tolerance);
+            colCurves = append(colCurves, colCurve);
+        }
+
+        // Step 5: Unify u-direction degree and knots across all column curves.
+        colCurves = makeCurvesCompatible(context, id + "colCompat", colCurves);
+
+        // Step 6: Assemble the final CP grid: finalCPs[u][v] = colCurves[v].controlPoints[u]
+        var numCPsU = size(colCurves[0].controlPoints);
+        var numCPsVFinal = size(colCurves);
+        var finalCPs = makeArray(numCPsU);
+        for (var u = 0; u < numCPsU; u += 1)
+        {
+            finalCPs[u] = makeArray(numCPsVFinal);
+            for (var v = 0; v < numCPsVFinal; v += 1)
+            {
+                finalCPs[u][v] = colCurves[v].controlPoints[u];
+            }
+        }
+
+        var surfaceDef = {
+            "uDegree" : colCurves[0].degree,
+            "vDegree" : rowCurves[0].degree,
+            "isUPeriodic" : sourceSurface.isUPeriodic,
+            "isVPeriodic" : sourceSurface.isVPeriodic,
+            "isRational" : false,
+            "controlPoints" : controlPointMatrix(finalCPs),
+            "uKnots" : knotArray(colCurves[0].knots),
+            "vKnots" : knotArray(rowCurves[0].knots)
+        };
+
+        surfaceDef = normalizeSurfaceDef(surfaceDef);
+        return bSplineSurface(surfaceDef);
+    }
+    else // MANUAL mode
+    {
+        // ---- MANUAL MODE: Sample iso-curves, fit with CP count constraint ----
+
+        const numSamplesPerCurve = 50;
+        var uParams = [];
         for (var i = 0; i < uCurveCount; i += 1)
         {
             uParams = append(uParams, i / (uCurveCount - 1));
         }
-        vParams = [];
-        for (var i = 0; i < vCurveCount; i += 1)
+
+        var vCurves = [];
+        for (var u in uParams)
         {
-            vParams = append(vParams, i / (vCurveCount - 1));
+            // Sample 50 points along this v-direction iso-curve
+            var points = sampleSurfaceIsoCurve(context, faceQuery, "U", u, numSamplesPerCurve);
+
+            var target;
+            if (continuityType == GeometricContinuity.G0)
+            {
+                target = approximationTarget({
+                    "positions" : points
+                });
+            }
+            else
+            {
+                // G1 or G2: compute 1st-order boundary derivatives via finite difference.
+                // startDeriv ≈ dS/dv at v=0 (pointing in +v direction)
+                // endDeriv   ≈ dS/dv at v=1 (pointing in +v direction)
+                var eps = 1e-5;
+                var startPt    = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 0) }).origin;
+                var startPtEps = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, eps) }).origin;
+                var startDeriv = (startPtEps - startPt) / eps;
+
+                var endPt    = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1) }).origin;
+                var endPtEps = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1 - eps) }).origin;
+                var endDeriv = (endPt - endPtEps) / eps;
+
+                if (continuityType == GeometricContinuity.G1)
+                {
+                    target = approximationTarget({
+                        "positions" : points,
+                        "startDerivative" : startDeriv,
+                        "endDerivative" : endDeriv
+                    });
+                }
+                else // G2
+                {
+                    // 2nd-order boundary derivatives via one-sided finite difference.
+                    // start2ndDeriv ≈ d²S/dv² at v=0 (forward difference)
+                    // end2ndDeriv   ≈ d²S/dv² at v=1 (backward difference)
+                    var h = 1e-4;
+                    var startPt_h  = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, h) }).origin;
+                    var startPt_2h = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 2 * h) }).origin;
+                    var start2ndDeriv = (startPt_2h - 2 * startPt_h + startPt) / (h * h);
+
+                    var endPt_h  = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1 - h) }).origin;
+                    var endPt_2h = evFaceTangentPlane(context, { "face" : faceQuery, "parameter" : vector(u, 1 - 2 * h) }).origin;
+                    var end2ndDeriv = (endPt_2h - 2 * endPt_h + endPt) / (h * h);
+
+                    target = approximationTarget({
+                        "positions" : points,
+                        "startDerivative" : startDeriv,
+                        "start2ndDerivative" : start2ndDeriv,
+                        "endDerivative" : endDeriv,
+                        "end2ndDerivative" : end2ndDeriv
+                    });
+                }
+            }
+
+            var curve = approximateSpline(context, {
+                "degree" : 3,
+                "tolerance" : tolerance,
+                "isPeriodic" : false,
+                "maxControlPoints" : vCurveCount,
+                "targets" : [target],
+                "interpolateIndices" : [0, numSamplesPerCurve - 1]
+            })[0];
+
+            vCurves = append(vCurves, curve);
         }
+
+        // Make all v-direction curves compatible (same degree and knots),
+        // then skin them into a surface in the u-direction with cubic degree.
+        vCurves = makeCurvesCompatible(context, id + "compat", vCurves);
+        return createSkinningSurface(context, id + "skin", vCurves, 3, uParams);
     }
-    else // MANUAL - could extend to take explicit arrays
-    {
-        uParams = [];
-        for (var i = 0; i < uCurveCount; i += 1)
-        {
-            uParams = append(uParams, i / (uCurveCount - 1));
-        }
-        vParams = [];
-        for (var i = 0; i < vCurveCount; i += 1)
-        {
-            vParams = append(vParams, i / (vCurveCount - 1));
-        }
-    }
-    
-    const numSamplesPerCurve = 50;  // Points to sample along each iso-curve
-    
-    // Step 2: Extract and simplify V-direction iso-curves (one for each U)
-    var vCurves = [];
-    for (var u in uParams)
-    {
-        // Sample points along this iso-curve
-        var points = sampleSurfaceIsoCurve(context, faceQuery, "U", u, numSamplesPerCurve);
-        
-        // Get boundary constraints at v=0 and v=1
-        var startTangent = getCrossTangent(context, faceQuery, "V0", u);
-        var endTangent = getCrossTangent(context, faceQuery, "V1", u);
-        var startCurvature = getCrossCurvature(context, faceQuery, "V0", u);
-        var endCurvature = getCrossCurvature(context, faceQuery, "V1", u);
-        
-        // Simplify with constraints
-        var curve = simplifyCurveWithConstraints(context, points, tolerance,
-            startTangent, endTangent, startCurvature, endCurvature,
-            continuityType, g2Mode);
-        
-        vCurves = append(vCurves, curve);
-    }
-    
-    // Step 3: Make all curves compatible
-    var compatibleCurves = makeCurvesCompatible(context, id + "compat", vCurves);
-    
-    // Step 4: Build surface from compatible curves
-    var newSurface = buildSurfaceFromCurves(context, id + "buildSurf", compatibleCurves, uParams);
-    
-    return newSurface;
 }
