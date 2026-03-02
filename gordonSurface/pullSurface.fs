@@ -390,10 +390,6 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                     { "face" : definition.face, "parameter" : vector(uParams[i], vParams[j]) });
                 basePts[i][j]     = plane.origin;
                 baseNormals[i][j] = plane.normal;
-                if (definition.showIntersections)
-                {
-                    addDebugPoint(context, basePts[i][j], DebugColor.BLUE);
-                }
             }
         }
 
@@ -444,6 +440,18 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             adjPts[i] = row;
         }
 
+        // Show the adjusted grid positions (blue dots) after offsets are applied.
+        if (definition.showIntersections)
+        {
+            for (var i = 0; i < uCount; i += 1)
+            {
+                for (var j = 0; j < vCount; j += 1)
+                {
+                    addDebugPoint(context, adjPts[i][j], DebugColor.BLUE);
+                }
+            }
+        }
+
         // Fit iso-U curves through the adjusted points.
         var adjCurves = [];
         for (var i = 0; i < uCount; i += 1)
@@ -462,36 +470,58 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             vIsoCurves = append(vIsoCurves, fitVIsoCurve(context, definition, colPts, vParams[j]));
         }
 
-        // Create iso-curve bodies (deleted below unless keep flags are set).
+        // Show iso-curves as debug lines — U in cyan, V in magenta.
+        // Samples each BSplineCurve at ISO_SAMPLES points over its knot range.
+        // Uses addDebugLine so no geometry bodies are created or need cleanup.
         if (definition.showIsoCurves)
         {
+            var isoSamples = 24;
             for (var i = 0; i < uCount; i += 1)
             {
-                opCreateBSplineCurve(context, id + ("isoU_" ~ i), { "bSplineCurve" : adjCurves[i] });
-            }
-            for (var j = 0; j < vCount; j += 1)
-            {
-                opCreateBSplineCurve(context, id + ("isoV_" ~ j), { "bSplineCurve" : vIsoCurves[j] });
-            }
-        }
-
-        // CP polygon lines for both families (debug lines, no persistent geometry).
-        if (definition.showCPPolygons)
-        {
-            for (var i = 0; i < uCount; i += 1)
-            {
-                var ucps = adjCurves[i].controlPoints;
-                for (var k = 0; k < size(ucps) - 1; k += 1)
+                var curve  = adjCurves[i];
+                var tStart = curve.knots[0];
+                var tEnd   = curve.knots[size(curve.knots) - 1];
+                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0];
+                for (var k = 1; k < isoSamples; k += 1)
                 {
-                    addDebugLine(context, ucps[k], ucps[k + 1], DebugColor.CYAN);
+                    var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
+                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0];
+                    addDebugLine(context, prev, curr, DebugColor.CYAN);
+                    prev = curr;
                 }
             }
             for (var j = 0; j < vCount; j += 1)
             {
-                var vcps = vIsoCurves[j].controlPoints;
-                for (var k = 0; k < size(vcps) - 1; k += 1)
+                var curve  = vIsoCurves[j];
+                var tStart = curve.knots[0];
+                var tEnd   = curve.knots[size(curve.knots) - 1];
+                var prev   = evaluateSpline({ "spline" : curve, "parameters" : [tStart] })[0];
+                for (var k = 1; k < isoSamples; k += 1)
                 {
-                    addDebugLine(context, vcps[k], vcps[k + 1], DebugColor.GREEN);
+                    var t    = tStart + (tEnd - tStart) * k / (isoSamples - 1);
+                    var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0];
+                    addDebugLine(context, prev, curr, DebugColor.MAGENTA);
+                    prev = curr;
+                }
+            }
+        }
+
+        // Control point polygon — connects the adjPts manipulator grid nodes,
+        // not BSpline control points. U rows in cyan, V columns in magenta.
+        if (definition.showCPPolygons)
+        {
+            for (var i = 0; i < uCount; i += 1)
+            {
+                for (var j = 0; j < vCount - 1; j += 1)
+                {
+                    addDebugLine(context, adjPts[i][j], adjPts[i][j + 1], DebugColor.CYAN);
+                }
+            }
+            for (var j = 0; j < vCount; j += 1)
+            {
+                for (var i = 0; i < uCount - 1; i += 1)
+                {
+                    addDebugLine(context, adjPts[i][j], adjPts[i + 1][j], DebugColor.MAGENTA);
                 }
             }
         }
@@ -521,26 +551,17 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
         }
 
-        // ── Cleanup: delete iso-curve bodies unless keep flags are set ─────────
-        if (definition.showIsoCurves)
+        // ── Optional persistent wire bodies ────────────────────────────────────
+        // keepUCurves / keepVCurves create actual geometry bodies for downstream
+        // use. Independent of showIsoCurves (which only draws debug lines).
+        if (definition.keepUCurves)
         {
-            if (!definition.keepUCurves)
-            {
-                var uCurveEntities = [];
-                for (var i = 0; i < uCount; i += 1)
-                {
-                    uCurveEntities = append(uCurveEntities, qCreatedBy(id + ("isoU_" ~ i)));
-                }
-                opDeleteBodies(context, id + "deleteU", { "entities" : qUnion(uCurveEntities) });
-            }
-            if (!definition.keepVCurves)
-            {
-                var vCurveEntities = [];
-                for (var j = 0; j < vCount; j += 1)
-                {
-                    vCurveEntities = append(vCurveEntities, qCreatedBy(id + ("isoV_" ~ j)));
-                }
-                opDeleteBodies(context, id + "deleteV", { "entities" : qUnion(vCurveEntities) });
-            }
+            for (var i = 0; i < uCount; i += 1)
+                opCreateBSplineCurve(context, id + ("keepU_" ~ i), { "bSplineCurve" : adjCurves[i] });
+        }
+        if (definition.keepVCurves)
+        {
+            for (var j = 0; j < vCount; j += 1)
+                opCreateBSplineCurve(context, id + ("keepV_" ~ j), { "bSplineCurve" : vIsoCurves[j] });
         }
     });
