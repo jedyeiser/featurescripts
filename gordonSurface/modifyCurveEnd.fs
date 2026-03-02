@@ -11,6 +11,8 @@ export import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a656fa0d
 export import(path : "050a4670bd42b2ca8da04540", version : "12d448b531f4133be59a1a61");
 //import scaledCurve
 import(path : "2dfee1d44e9bde0daba9d73e", version : "4ba8e037c53d816ed5b2eb6c");
+//import debugTools (for printBSpline)
+import(path : "PLACEHOLDER_debugTools", version : "");
 
 
 IconNamespace::import(path : "e96867c52539556a75762725", version : "58044f708ff560e305b72aec");
@@ -606,33 +608,7 @@ export function enforceG2AtEnd(curve is BSplineCurve, endParam is number, target
     }
     else  // EXACT
     {
-        // Iterative refinement - adjust cp[2] or cp[n-3] until curvature matches
-        var maxIterations = 10;
-        var curvatureTolerance = 0.01 / meter;  // 1% tolerance
-        
-        for (var iter = 0; iter < maxIterations; iter += 1)
-        {
-            var testCurve = bSplineCurve({
-                "degree" : curve.degree,
-                "isPeriodic" : curve.isPeriodic,
-                "isRational" : curve.isRational,
-                "controlPoints" : newCPs,
-                "knots" : curve.knots,
-                "weights" : curve.weights
-            });
-            
-            var testFrame = computeFrenetFrame(testCurve, endParam);
-            var testCurvature = testFrame.curvature;
-            
-            var error = abs(testCurvature - targetCurvature);
-            if (error < curvatureTolerance)
-            {
-                break;
-            }
-            
-            // Adjust using same logic as BEST_EFFORT but with current state
-            // ... (similar adjustment code, operating on newCPs)
-        }
+        throw regenError("G2 EXACT mode is not yet implemented");
     }
     
     return bSplineCurve({
