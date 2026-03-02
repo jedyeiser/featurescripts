@@ -321,9 +321,6 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         // ── Debug group ───────────────────────────────────────────────────────
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Show intersection points" }
-            definition.showIntersections is boolean;
-
             annotation { "Name" : "Show iso-curves" }
             definition.showIsoCurves is boolean;
 
@@ -332,6 +329,9 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
 
             annotation { "Name" : "Keep V curves" }
             definition.keepVCurves is boolean;
+
+            annotation { "Name" : "Keep grid points" }
+            definition.keepPoints is boolean;
 
             annotation { "Name" : "Show control point polygons" }
             definition.showCPPolygons is boolean;
@@ -440,15 +440,14 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             adjPts[i] = row;
         }
 
-        // Show the adjusted grid positions (blue dots) after offsets are applied.
-        if (definition.showIntersections)
+        // Create opPoint geometry at every adjusted grid position.
+        // These are proper construction points (not ephemeral debug overlays).
+        // Deleted at the end of the feature unless definition.keepPoints is true.
+        for (var i = 0; i < uCount; i += 1)
         {
-            for (var i = 0; i < uCount; i += 1)
+            for (var j = 0; j < vCount; j += 1)
             {
-                for (var j = 0; j < vCount; j += 1)
-                {
-                    addDebugPoint(context, adjPts[i][j], DebugColor.BLUE);
-                }
+                opPoint(context, id + ("pt_" ~ i ~ "_" ~ j), { "point" : adjPts[i][j] });
             }
         }
 
@@ -471,11 +470,15 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         }
 
         // Show iso-curves as debug lines — U in cyan, V in magenta.
-        // Samples each BSplineCurve at ISO_SAMPLES points over its knot range.
-        // Uses addDebugLine so no geometry bodies are created or need cleanup.
+        // Manipulation curves are BSpline-sampled at 24 points.
+        // Between each adjacent pair of manipulation curves, 2 intermediate
+        // display curves are added (at 1/3 and 2/3 of the parameter interval),
+        // linearly interpolated from adjPts then fitted without G1 constraints.
         if (definition.showIsoCurves)
         {
             var isoSamples = 24;
+
+            // ── U manipulation curves ─────────────────────────────────────────
             for (var i = 0; i < uCount; i += 1)
             {
                 var curve  = adjCurves[i];
@@ -490,6 +493,37 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                     prev = curr;
                 }
             }
+
+            // ── U intermediate display curves (2 per gap) ────────────────────
+            for (var i = 0; i < uCount - 1; i += 1)
+            {
+                for (var m = 1; m <= 2; m += 1)
+                {
+                    var alpha = m / 3.0;
+                    var row   = makeArray(vCount);
+                    for (var j = 0; j < vCount; j += 1)
+                        row[j] = (1 - alpha) * adjPts[i][j] + alpha * adjPts[i + 1][j];
+                    var interCurve = approximateSpline(context, {
+                        "degree"             : definition.curveDegree,
+                        "tolerance"          : definition.fitTolerance,
+                        "isPeriodic"         : false,
+                        "targets"            : [approximationTarget({ "positions" : row })],
+                        "interpolateIndices" : [0, size(row) - 1]
+                    })[0];
+                    var iStart = interCurve.knots[0];
+                    var iEnd   = interCurve.knots[size(interCurve.knots) - 1];
+                    var iPrev  = evaluateSpline({ "spline" : interCurve, "parameters" : [iStart] })[0][0];
+                    for (var k = 1; k < isoSamples; k += 1)
+                    {
+                        var t     = iStart + (iEnd - iStart) * k / (isoSamples - 1);
+                        var iCurr = evaluateSpline({ "spline" : interCurve, "parameters" : [t] })[0][0];
+                        addDebugLine(context, iPrev, iCurr, DebugColor.CYAN);
+                        iPrev = iCurr;
+                    }
+                }
+            }
+
+            // ── V manipulation curves ─────────────────────────────────────────
             for (var j = 0; j < vCount; j += 1)
             {
                 var curve  = vIsoCurves[j];
@@ -502,6 +536,35 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                     var curr = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
                     addDebugLine(context, prev, curr, DebugColor.MAGENTA);
                     prev = curr;
+                }
+            }
+
+            // ── V intermediate display curves (2 per gap) ────────────────────
+            for (var j = 0; j < vCount - 1; j += 1)
+            {
+                for (var m = 1; m <= 2; m += 1)
+                {
+                    var alpha = m / 3.0;
+                    var col   = makeArray(uCount);
+                    for (var i = 0; i < uCount; i += 1)
+                        col[i] = (1 - alpha) * adjPts[i][j] + alpha * adjPts[i][j + 1];
+                    var interCurve = approximateSpline(context, {
+                        "degree"             : definition.curveDegree,
+                        "tolerance"          : definition.fitTolerance,
+                        "isPeriodic"         : false,
+                        "targets"            : [approximationTarget({ "positions" : col })],
+                        "interpolateIndices" : [0, size(col) - 1]
+                    })[0];
+                    var iStart = interCurve.knots[0];
+                    var iEnd   = interCurve.knots[size(interCurve.knots) - 1];
+                    var iPrev  = evaluateSpline({ "spline" : interCurve, "parameters" : [iStart] })[0][0];
+                    for (var k = 1; k < isoSamples; k += 1)
+                    {
+                        var t     = iStart + (iEnd - iStart) * k / (isoSamples - 1);
+                        var iCurr = evaluateSpline({ "spline" : interCurve, "parameters" : [t] })[0][0];
+                        addDebugLine(context, iPrev, iCurr, DebugColor.MAGENTA);
+                        iPrev = iCurr;
+                    }
                 }
             }
         }
@@ -563,5 +626,20 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         {
             for (var j = 0; j < vCount; j += 1)
                 opCreateBSplineCurve(context, id + ("keepV_" ~ j), { "bSplineCurve" : vIsoCurves[j] });
+        }
+
+        // ── Grid points cleanup ────────────────────────────────────────────────
+        // Delete the opPoint bodies unless the user explicitly wants to keep them.
+        if (!definition.keepPoints)
+        {
+            var ptQueries = [];
+            for (var i = 0; i < uCount; i += 1)
+            {
+                for (var j = 0; j < vCount; j += 1)
+                {
+                    ptQueries = append(ptQueries, qCreatedBy(id + ("pt_" ~ i ~ "_" ~ j), EntityType.BODY));
+                }
+            }
+            opDeleteBodies(context, id + "deletePts", { "entities" : qUnion(ptQueries) });
         }
     });
