@@ -88,6 +88,15 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
 
         }
         
+        annotation { "Name" : "Project onto surface?" }
+        definition.curveOnSurface is boolean;
+
+        if (definition.curveOnSurface)
+        {
+            annotation { "Name" : "Projection face", "Filter" : EntityType.FACE, "MaxNumberOfPicks" : 1 }
+            definition.projectionFace is Query;
+        }
+
         annotation { "Group Name" : "Debug, Details", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Spline degree" }
@@ -144,7 +153,12 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         var useContinuity = size(evaluateQuery(context, definition.modContinuityRef)) > 0 ? definition.modEndContinuity : GeometricContinuity.G0;
         
         var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, definition.modEndContinuity, numSamples, definition.splineDegree, definition.splineTol);
-        
+
+        if (definition.curveOnSurface)
+        {
+            modifiedCurve = projectCurveOnSurface(context, modifiedCurve, definition.projectionFace, numSamples, definition.splineTol);
+        }
+
         if (definition.printInput || definition.printOutput)
         {
             println(" - - - - - - - - Modified Endpoint Spline data - - - - - - - - ");

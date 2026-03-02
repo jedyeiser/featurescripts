@@ -2083,7 +2083,43 @@ function mirrorCurvesY(curves is array) returns array
 function fixG1(curves is array, contactX is ValueWithUnits,
     isTip is boolean, tol is ValueWithUnits) returns array
 {
-    // ---- Pass 1: find sidecut tangent ----
+    // Tip/tail endpoints are always at contactX (they come from transformTipTail,
+    // which is a pure X-translation + Y-scale).  Sidecut endpoints may have moved
+    // off contactX after scaleKeepTaper's rotation step, so we locate the junction
+    // position from a tip/tail endpoint first, then find the sidecut by 3D proximity.
+
+    // ---- Pass 0: find junction position from a tip/tail curve endpoint ----
+    // Tip/tail:   endpoint X == contactX  AND  other endpoint X is on exterior side
+    //   FCP (isTip=true):  tip other end has X < contactX
+    //   ACP (isTip=false): tail other end has X > contactX
+    var junctionPos = undefined;
+
+    for (var idx = 0; idx < size(curves); idx += 1)
+    {
+        var cps = curves[idx].controlPoints;
+        var n   = size(cps);
+
+        var jIdx = -1;
+        if (abs(cps[0][0] - contactX) < tol)         jIdx = 0;
+        else if (abs(cps[n - 1][0] - contactX) < tol) jIdx = n - 1;
+        if (jIdx < 0) continue;
+
+        var otherX = cps[(jIdx == 0) ? n - 1 : 0][0];
+        var isEndCurve;
+        if (isTip)  isEndCurve = (otherX < contactX);
+        else        isEndCurve = (otherX > contactX);
+        if (!isEndCurve) continue;
+
+        junctionPos = cps[jIdx];
+        break;
+    }
+
+    if (junctionPos == undefined) return curves;
+
+    // ---- Pass 1: find sidecut tangent by 3D proximity to junctionPos ----
+    // Use a generous spatial tolerance (1 mm) — the sidecut endpoint may have
+    // moved after rotation but should still be near the tip/tail endpoint.
+    var proximityTol = 1 * millimeter;
     var scDir = undefined;
 
     for (var idx = 0; idx < size(curves); idx += 1)
@@ -2091,36 +2127,37 @@ function fixG1(curves is array, contactX is ValueWithUnits,
         var cps = curves[idx].controlPoints;
         var n   = size(cps);
 
-        // Which end of this curve is at the junction?
         var jIdx = -1;
         var aIdx = -1;
-        if (abs(cps[0][0] - contactX) < tol)
+        if (norm(cps[0] - junctionPos) < proximityTol)
         {
             jIdx = 0;
             aIdx = 1;
         }
-        else if (abs(cps[n - 1][0] - contactX) < tol)
+        else if (norm(cps[n - 1] - junctionPos) < proximityTol)
         {
             jIdx = n - 1;
             aIdx = n - 2;
         }
         if (jIdx < 0) continue;
 
-        // The other endpoint tells us which side this curve lives on.
+        // Sidecut: other endpoint is on the interior side of the junction.
+        // Compare against the actual (possibly rotated) junction endpoint X,
+        // not contactX, so this works even after scaleKeepTaper's rotation.
+        //   FCP (isTip=true):  sidecut interior → otherX > junction X
+        //   ACP (isTip=false): sidecut interior → otherX < junction X
         var otherX = cps[(jIdx == 0) ? n - 1 : 0][0];
-
-        // Sidecut: its other end is on the interior side of the junction.
-        //   FCP (isTip=true):  interior is +X  →  otherX > contactX
-        //   ACP (isTip=false): interior is -X  →  otherX < contactX
         var isSidecut;
-        if (isTip)
-            isSidecut = (otherX > contactX);
-        else
-            isSidecut = (otherX < contactX);
+        if (isTip)  isSidecut = (otherX > cps[jIdx][0]);
+        else        isSidecut = (otherX < cps[jIdx][0]);
 
         if (!isSidecut) continue;
 
-        // Tangent = neighbor – junction.  Normalize, then verify orientation.
+        // Also verify this curve's junction end is NOT at the tip/tail side
+        // (exclude curves whose other end is also near contactX — degenerate case)
+        var otherNearContact = abs(cps[(jIdx == 0) ? n - 1 : 0][0] - contactX) < tol;
+        if (otherNearContact) continue;
+
         var delta = cps[aIdx] - cps[jIdx];
         var dLen  = norm(delta);
         if (dLen < tol) continue;
@@ -2133,7 +2170,7 @@ function fixG1(curves is array, contactX is ValueWithUnits,
 
     if (scDir == undefined) return curves;
 
-    // ---- Pass 2: repair tip/tail curves ----
+    // ---- Pass 2: repair tip/tail curves at the junction ----
     var result = [];
 
     for (var idx = 0; idx < size(curves); idx += 1)
@@ -2142,7 +2179,6 @@ function fixG1(curves is array, contactX is ValueWithUnits,
         var cps = ec.controlPoints;
         var n   = size(cps);
 
-        // Find junction endpoint index
         var jIdx = -1;
         var aIdx = -1;
         if (abs(cps[0][0] - contactX) < tol)
@@ -2156,15 +2192,12 @@ function fixG1(curves is array, contactX is ValueWithUnits,
             aIdx = n - 2;
         }
 
-        // Only repair tip/tail (not sidecut, not unrelated curves)
         var needsRepair = false;
         if (jIdx >= 0 && ec.degree >= 2 && n >= 3)
         {
             var otherX = cps[(jIdx == 0) ? n - 1 : 0][0];
-            if (isTip)
-                needsRepair = (otherX < contactX);   // tip: other end in tip region
-            else
-                needsRepair = (otherX > contactX);   // tail: other end in tail region
+            if (isTip)  needsRepair = (otherX < contactX);
+            else        needsRepair = (otherX > contactX);
         }
 
         if (!needsRepair)
@@ -2173,7 +2206,6 @@ function fixG1(curves is array, contactX is ValueWithUnits,
             continue;
         }
 
-        // Move adjacent CP: cp_adj_new = cp_junction - scDir * dist
         var jPt    = cps[jIdx];
         var aPt    = cps[aIdx];
         var dist   = norm(aPt - jPt);

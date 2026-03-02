@@ -44,6 +44,15 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
             
         }
         
+        annotation { "Name" : "Project onto surface?" }
+        definition.curveOnSurface is boolean;
+
+        if (definition.curveOnSurface)
+        {
+            annotation { "Name" : "Projection face", "Filter" : EntityType.FACE, "MaxNumberOfPicks" : 1 }
+            definition.projectionFace is Query;
+        }
+
         annotation { "Group Name" : "Debug & Details", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Show endpoints", "Description": "When true, shows spline startpoints in GREEN and endpoints in RED", "Default": false }
@@ -134,7 +143,12 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
         }
         
         var retCurve = scaledCurve(context, curve0, curve1, definition.flip, shiftedScalefactors[0], shiftedScalefactors[1], definition.transitionType, definition.numScaledSamples, definition.scaledDegree, definition.scaledTol);
-        
+
+        if (definition.curveOnSurface)
+        {
+            retCurve = projectCurveOnSurface(context, retCurve, definition.projectionFace, definition.numScaledSamples, definition.scaledTol);
+        }
+
         if (definition.printBsplines)
         {
             println("---------------- BSPLINE DATA ----------------");
@@ -172,6 +186,40 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
     });
 
 
+
+/**
+ * Project a BSplineCurve onto a face by finding the closest point on the face
+ * for each sampled position. For smooth faces this is equivalent to projecting
+ * along the face normal (orthogonal projection).
+ *
+ * @param context {Context}
+ * @param curve {BSplineCurve} : Curve to project
+ * @param face {Query} : Target face
+ * @param numSamples {number} : Sample count along the curve for re-fitting
+ * @param tolerance {ValueWithUnits} : Fitting tolerance for approximateSpline
+ * @returns {BSplineCurve} : Projected curve lying on the face
+ */
+export function projectCurveOnSurface(context is Context, curve is BSplineCurve,
+                                       face is Query, numSamples is number,
+                                       tolerance is ValueWithUnits) returns BSplineCurve
+{
+    var projectedPoints = [];
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        var t = i / (numSamples - 1);
+        var pt = evaluateSpline({ "spline" : curve, "parameters" : [t] })[0][0];
+        var distResult = evDistance(context, { "side0" : face, "side1" : pt });
+        projectedPoints = append(projectedPoints, distResult.sides[0].point);
+    }
+
+    return approximateSpline(context, {
+        "degree" : curve.degree,
+        "tolerance" : tolerance,
+        "isPeriodic" : false,
+        "targets" : [approximationTarget({ "positions" : projectedPoints })],
+        "interpolateIndices" : [0, numSamples - 1]
+    })[0];
+}
 
 // Transition functions now handled by tools/transition_functions.fs
 // Available functions:
