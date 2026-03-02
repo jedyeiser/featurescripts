@@ -556,6 +556,23 @@ class SyncOperations:
             )
 
         try:
+            # Read file content early so we can hash-check before any API calls
+            local_content = filepath.read_text(encoding="utf-8")
+
+            # Skip if unchanged since last sync (unless forcing)
+            if not force:
+                file_state = self.state.get_file_state(relative_path)
+                if file_state:
+                    current_hash = SyncState.compute_hash(local_content)
+                    if current_hash == file_state.local_hash:
+                        return SyncResult(
+                            success=True,
+                            filepath=relative_path,
+                            operation="push",
+                            message=f"Skipped {filepath.name} (unchanged)",
+                            skipped=True,
+                        )
+
             # Get current remote microversion for conflict check (optional)
             remote_microversion = ""
             try:
@@ -579,9 +596,6 @@ class SyncOperations:
                         message=conflict.message,
                         conflict=True,
                     )
-
-            # Read file with UTF-8 encoding (FeatureScript may contain unicode)
-            local_content = filepath.read_text(encoding="utf-8")
 
             # Push to Onshape
             response = self.client.update_featurestudio_contents(

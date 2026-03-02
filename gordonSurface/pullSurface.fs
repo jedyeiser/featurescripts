@@ -148,10 +148,10 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
 
         // ── Grid dimensions ───────────────────────────────────────────────────
         annotation { "Name" : "U curve count" }
-        isInteger(definition.uCurveCount, { (unitless) : [2, 4, 20] });
+        isInteger(definition.uCurveCount, { (unitless) : [2, 4, 20] } as IntegerBoundSpec);
 
         annotation { "Name" : "V curve count" }
-        isInteger(definition.vCurveCount, { (unitless) : [2, 4, 20] });
+        isInteger(definition.vCurveCount, { (unitless) : [2, 4, 20] } as IntegerBoundSpec);
 
         // ── Continuity ────────────────────────────────────────────────────────
         annotation { "Name" : "Continuity" }

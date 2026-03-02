@@ -88,8 +88,7 @@ export enum ScalePinLocation
     PIN_MRS
 }
 
-// Phase 1: Symmetry mode enum — always visible so user can choose
-// even if the input data happens to be +Y only.
+// Always visible so user can choose even if the input data happens to be +Y only.
 export enum SymmetryMode
 {
     annotation { "Name" : "Symmetric (mirror +Y)" }
@@ -118,7 +117,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                      "Description" : "New RSL line to scale toward. FCP/ACP positions determine the output ski length." }
         definition.newRslEdge is Query;
         
-        // --- Symmetry mode (Phase 1) ---
+        // --- Symmetry mode ---
         annotation { "Name" : "Symmetry mode",
                      "Description" : "Symmetric mirrors the +Y sidecut to -Y. Asymmetric scales each edge independently." }
         definition.symmetryMode is SymmetryMode;
@@ -218,7 +217,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             }
         }
         
-        // =================== CONTINUITY (Phase 2) ===================
+        // =================== CONTINUITY ===================
         annotation { "Name" : "Enforce tangency at tip (FCP)", "Default" : false,
                      "Description" : "Adjusts the tip curve control point at FCP so the tip is tangent to the sidecut (G1 continuity)." }
         definition.enforceTipTangency is boolean;
@@ -233,7 +232,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
     }
     {
         // =====================================================================
-        // STEP 1: Extract RSL data (Phase 0d: proper MRS detection)
+        // STEP 1: Extract RSL data
         // =====================================================================
         var refRslData = extractRslData(context, definition.refRslEdge);
         var refFcp = refRslData.fcp;
@@ -254,7 +253,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var bsplines = edgesToBSplines(context, definition.refEdges, tolerance);
         
         // =====================================================================
-        // STEP 3: Categorize curves (+Y / -Y aware) (Phase 1)
+        // STEP 3: Categorize curves (+Y / -Y aware)
         // =====================================================================
         var categorized = categorizeCurvesWithSides(context, bsplines, refFcp[0], refAcp[0], tolerance);
 
@@ -306,7 +305,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             refAcp[0], newAcp[0], tailYScale, false);
 
         // =====================================================================
-        // STEP 7: Build -Y side (Phase 1)
+        // STEP 7: Build -Y side
         // =====================================================================
         var scaledNegCurves = [];
         var transformedTipNeg = [];
@@ -369,7 +368,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         }
         
         // =====================================================================
-        // STEP 8: Output assembly (Phase 3)
+        // STEP 8: Output assembly
         //
         // Create individual BSpline curves, then stitch into wire bodies.
         // CRITICAL: We do SEPARATE opExtractWires for +Y and -Y to prevent
@@ -509,7 +508,7 @@ function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refA
 }
 
 // =============================================================================
-// RSL DATA EXTRACTION  (Phase 0d: proper geometric midpoint)
+// RSL DATA EXTRACTION
 // =============================================================================
 
 /**
@@ -885,13 +884,13 @@ function getCurvatureAtX(curveData is array, targetX is ValueWithUnits, toleranc
 }
 
 // =============================================================================
-// CURVE CATEGORIZATION  (Phase 1: +Y / -Y split)
+// CURVE CATEGORIZATION  (+Y / -Y split)
 // =============================================================================
 
 /**
  * Categorize BSpline curves into tip/sidecut/tail AND +Y/-Y sides.
- * Phase 0b: Threads context for approximateSpline in splitting.
- * Phase 1: Returns separate arrays for each Y side.
+ * Curves spanning contact points are split using approximateSpline.
+ * Returns separate arrays for each Y side.
  *
  * @returns map with keys: tipPos, sidecutPos, tailPos, tipNeg, sidecutNeg, tailNeg
  */
@@ -1950,7 +1949,7 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
  * Transform tip or tail curves: translate X, scale Y.
  */
 function transformTipTail(curves is array, refContactX is ValueWithUnits, newContactX is ValueWithUnits,
-    yScale, isTip is boolean) returns array
+    yScale is number, isTip is boolean) returns array
 {
     var xTranslation = newContactX - refContactX;
     var transformedCurves = [];
