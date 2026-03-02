@@ -525,13 +525,10 @@ export function cleanupSurface(context is Context, id is Id,
             uParams[i] = sum / srcUDeg;
         }
 
-        // Minimum CPs for cubic given continuity: G0=4 (degree+1), G1=5, G2=6
-        // Endpoint derivative constraints occupy 2 extra CPs (second and second-to-last).
+        // Minimum CPs: conservative lower bound. The binary search uses try silent to
+        // catch Onshape's "maxControlPoints too small" error, so the actual floor is
+        // determined at runtime regardless of what we estimate here.
         var minVCPs = 4;
-        if (continuityType == GeometricContinuity.G1)
-            minVCPs = 5;
-        else if (continuityType == GeometricContinuity.G2)
-            minVCPs = 6;
 
         if (debugPrint)
         {
@@ -610,22 +607,40 @@ export function cleanupSurface(context is Context, id is Id,
             while (lo < hi)
             {
                 var mid = floor((lo + hi) / 2);
-                var candidate = approximateSpline(context, {
-                    "degree" : 3,
-                    "tolerance" : tolerance,
-                    "isPeriodic" : false,
-                    "maxControlPoints" : mid,
-                    "targets" : [target],
-                    "interpolateIndices" : [0, numSamplesPerCurve - 1]
-                })[0];
 
-                if (computeCurveError(context, candidate, faceQuery, u, 50) <= tolerance)
+                // try silent catches Onshape's "maxControlPoints too small" error,
+                // treating it the same as a tolerance failure: increase lo.
+                var candidateOk = false;
+                var candidate;
+                try silent
                 {
-                    bestCurve = candidate;
-                    hi = mid;
+                    candidate = approximateSpline(context, {
+                        "degree" : 3,
+                        "tolerance" : tolerance,
+                        "isPeriodic" : false,
+                        "maxControlPoints" : mid,
+                        "targets" : [target],
+                        "interpolateIndices" : [0, numSamplesPerCurve - 1]
+                    })[0];
+                    candidateOk = true;
+                }
+
+                if (candidateOk)
+                {
+                    if (computeCurveError(context, candidate, faceQuery, u, 50) <= tolerance)
+                    {
+                        bestCurve = candidate;
+                        hi = mid;
+                    }
+                    else
+                    {
+                        lo = mid + 1;
+                    }
                 }
                 else
                 {
+                    // approximateSpline rejected mid as too small — it's below Onshape's
+                    // internal minimum for this target. Raise lo past mid.
                     lo = mid + 1;
                 }
             }
