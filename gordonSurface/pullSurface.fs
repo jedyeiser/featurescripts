@@ -633,7 +633,9 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         }
 
         // ── STAGE 4: Build skinning surface ────────────────────────────────────
-        if (definition.createSurface)
+        // Surface is built whenever createSurface OR replaceFace is requested.
+        // replaceFace needs the surface body even if createSurface is off.
+        if (definition.createSurface || definition.replaceFace)
         {
             var compatCurves = makeCurvesCompatible(context, id + "compat", adjCurves);
             var surf = createSkinningSurface(context, id + "skin", compatCurves,
@@ -643,9 +645,10 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             // ── STAGE 5: Replace original face with the new surface ────────────
             // Two cases:
             //   Multi-face body: opDeleteFace opens the boundary; opBoolean stitches
-            //     the new surface in.
+            //     the new surface in and consumes the pullSurf body.
             //   Single-face sheet body: opDeleteFace fails (empty body would result);
-            //     fall back to deleting the whole source body — new surface replaces it.
+            //     fall back to deleting the whole source body — pullSurf stays as
+            //     the replacement.
             if (definition.replaceFace)
             {
                 var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
