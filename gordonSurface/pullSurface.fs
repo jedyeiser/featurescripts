@@ -636,15 +636,14 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
         // ── STAGE 5: Replace original face with the new surface ────────────────
-        // Delete the original face (leaving the void open), then union the owner
-        // body with pullSurf so the kernel stitches the new face in.
+        // startTracking pins the body reference before we delete the face.
+        // After opDeleteFace the face query is gone, but trackedOwner still
+        // resolves to the (now open) body so opBoolean can stitch pullSurf in.
         if (definition.replaceFace)
         {
-            var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
-            var ownerBody = qOwnerBody(definition.face);
+            var newBody      = qCreatedBy(id + "pullSurf", EntityType.BODY);
+            var trackedOwner = startTracking(context, qOwnerBody(definition.face));
 
-            // leaveOpen: true — remove the face without trying to heal/extend
-            // the surrounding faces (healing fails for BSpline faces).
             opDeleteFace(context, id + "deleteSourceFace", {
                 "deleteFaces"   : definition.face,
                 "includeFillet" : false,
@@ -652,12 +651,9 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 "leaveOpen"     : true
             });
 
-            // Stitch pullSurf into the open void. eraseImprintedEdges +
-            // recomputeMatches match the params Onshape's own surface boolean
-            // uses for near-coincident boundary stitching.
             opBoolean(context, id + "replaceBool", {
                 "operationType"       : BooleanOperationType.UNION,
-                "tools"               : qUnion([ownerBody, newBody]),
+                "tools"               : qUnion([trackedOwner, newBody]),
                 "eraseImprintedEdges" : true,
                 "recomputeMatches"    : true
             });
