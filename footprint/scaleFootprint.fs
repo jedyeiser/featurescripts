@@ -2191,24 +2191,30 @@ function repairJunction(sidecutCurves is array, endCurves is array,
         if (bspline.degree >= 2 && size(bspline.controlPoints) >= 3)
         {
             var controlPoints = bspline.controlPoints;
+            var n = size(controlPoints);
             var newControlPoints = [];
-            for (var cp in controlPoints)
-                newControlPoints = append(newControlPoints, cp);
 
             if (connectAtStart)
             {
                 var cp0  = controlPoints[0];
                 var cp1  = controlPoints[1];
                 var dist = norm(cp1 - cp0);
-                newControlPoints[1] = cp0 - scTan * dist;
+                var newCp1 = cp0 - scTan * dist;
+
+                for (var i = 0; i < n; i += 1)
+                    newControlPoints = append(newControlPoints,
+                        i == 1 ? newCp1 : controlPoints[i]);
             }
             else
             {
-                var n      = size(controlPoints);
                 var cpLast = controlPoints[n - 1];
                 var cpPrev = controlPoints[n - 2];
                 var dist   = norm(cpLast - cpPrev);
-                newControlPoints[n - 2] = cpLast - scTan * dist;
+                var newCpPrev = cpLast - scTan * dist;
+
+                for (var i = 0; i < n; i += 1)
+                    newControlPoints = append(newControlPoints,
+                        i == n - 2 ? newCpPrev : controlPoints[i]);
             }
 
             var params = {

@@ -50,6 +50,9 @@ export const simplifySurface = defineFeature(function(context is Context, id is 
 
         annotation { "Name" : "Replace face" }
         definition.replaceFace is boolean;
+
+        annotation { "Name" : "Debug print" }
+        definition.debugPrint is boolean;
     }
     {
         // uCurveCount and vCurveCount are only defined in MANUAL mode
@@ -64,7 +67,7 @@ export const simplifySurface = defineFeature(function(context is Context, id is 
         var newSurface = cleanupSurface(context, id, definition.face, definition.tolerance,
             definition.continuityType,
             definition.continuityType == GeometricContinuity.G2 ? definition.g2Mode : G2Mode.BEST_EFFORT,
-            definition.mode, uCount, vCount);
+            definition.mode, uCount, vCount, definition.debugPrint);
 
         opCreateBSplineSurface(context, id + "simplified", { "bSplineSurface" : newSurface });
 
@@ -447,7 +450,8 @@ export function cleanupSurface(context is Context, id is Id,
                                 g2Mode is G2Mode,
                                 mode is CleanupMode,
                                 uCurveCount is number,
-                                vCurveCount is number) returns BSplineSurface
+                                vCurveCount is number,
+                                debugPrint is boolean) returns BSplineSurface
 {
     if (mode == CleanupMode.AUTO)
     {
@@ -455,13 +459,38 @@ export function cleanupSurface(context is Context, id is Id,
         // approximateSpline selects the minimum CPs needed to stay within tolerance,
         // giving the same "minimum representation" goal as knot removal but always
         // producing G1-continuous output that opCreateBSplineSurface accepts.
+        //
+        // U sampling: use the source surface's Greville abscissae so the number of
+        // iso-curves matches the source's u-CP count. Hardcoding 20 would overshoot
+        // a simple source (e.g. 9 u-CPs) and produce MORE CPs in u, not fewer.
 
-        const autoUCurveCount = 20;
         const numSamplesPerCurve = 50;
-        var uParams = [];
-        for (var i = 0; i < autoUCurveCount; i += 1)
+
+        // Read the source surface's u-knot structure to compute Greville abscissae.
+        var sourceData = evApproximateBSplineSurface(context, { "face" : faceQuery });
+        var srcSurf = sourceData.bSplineSurface;
+        var srcUDeg = srcSurf.uDegree;
+        var srcNumUKnots = size(srcSurf.uKnots);
+        var srcNumUCPs = srcNumUKnots - srcUDeg - 1;   // n + 1 control points
+
+        // Greville abscissae: g[i] = average of knots U[i+1..i+p] for i = 0..n
+        var uParams = makeArray(srcNumUCPs);
+        for (var i = 0; i < srcNumUCPs; i += 1)
         {
-            uParams = append(uParams, i / (autoUCurveCount - 1));
+            var sum = 0;
+            for (var k = 1; k <= srcUDeg; k += 1)
+            {
+                sum += srcSurf.uKnots[i + k];
+            }
+            uParams[i] = sum / srcUDeg;
+        }
+
+        if (debugPrint)
+        {
+            var srcNumVCPs = size(srcSurf.vKnots) - srcSurf.vDegree - 1;
+            println("[simplify] AUTO source: deg=" ~ srcUDeg ~ "×" ~ srcSurf.vDegree ~
+                    "  CPs=" ~ srcNumUCPs ~ "×" ~ srcNumVCPs);
+            println("[simplify] AUTO iso-curves: " ~ srcNumUCPs ~ " (from Greville abscissae)");
         }
 
         var vCurves = [];
@@ -528,7 +557,13 @@ export function cleanupSurface(context is Context, id is Id,
         }
 
         vCurves = makeCurvesCompatible(context, id + "compat", vCurves);
-        return createSkinningSurface(context, id + "skin", vCurves, 3, uParams);
+        var autoResult = createSkinningSurface(context, id + "skin", vCurves, 3, uParams);
+        if (debugPrint)
+        {
+            println("[simplify] AUTO output: deg=" ~ autoResult.uDegree ~ "×" ~ autoResult.vDegree ~
+                    "  CPs=" ~ size(autoResult.controlPoints) ~ "×" ~ size(autoResult.controlPoints[0]));
+        }
+        return autoResult;
     }
     else // MANUAL mode
     {
@@ -539,6 +574,11 @@ export function cleanupSurface(context is Context, id is Id,
         for (var i = 0; i < uCurveCount; i += 1)
         {
             uParams = append(uParams, i / (uCurveCount - 1));
+        }
+
+        if (debugPrint)
+        {
+            println("[simplify] MANUAL iso-curves=" ~ uCurveCount ~ "  maxCPs/curve=" ~ vCurveCount);
         }
 
         var vCurves = [];
@@ -615,6 +655,12 @@ export function cleanupSurface(context is Context, id is Id,
         // Make all v-direction curves compatible (same degree and knots),
         // then skin them into a surface in the u-direction with cubic degree.
         vCurves = makeCurvesCompatible(context, id + "compat", vCurves);
-        return createSkinningSurface(context, id + "skin", vCurves, 3, uParams);
+        var manualResult = createSkinningSurface(context, id + "skin", vCurves, 3, uParams);
+        if (debugPrint)
+        {
+            println("[simplify] MANUAL output: deg=" ~ manualResult.uDegree ~ "×" ~ manualResult.vDegree ~
+                    "  CPs=" ~ size(manualResult.controlPoints) ~ "×" ~ size(manualResult.controlPoints[0]));
+        }
+        return manualResult;
     }
 }

@@ -107,9 +107,6 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
         var bSpline0_arr = mapArray(group0_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x } ); });
         var bSpline1_arr = mapArray(group1_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x } ); });
         
-        println("len bSpline0_arr -> " ~ size(bSpline0_arr));
-        println("len bSpline1_arr -> " ~ size(bSpline1_arr));
-        
         const curve0 = joinCurveSegments(context, bSpline0_arr, definition.group0SampleCount, definition.group0Tol);
         const curve1 = joinCurveSegments(context, bSpline1_arr, definition.group0SampleCount, definition.group0Tol);
         

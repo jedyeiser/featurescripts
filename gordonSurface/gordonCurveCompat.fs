@@ -24,8 +24,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
 //import gordon_knot_ops
 
-// TEMPORARY: set false after debugging complete
-const COMPAT_DEBUG = true;
+const COMPAT_DEBUG = false;
 
 annotation { "Feature Type Name" : "makeCurvesCompitable", "Feature Type Description" : "" }
 export const makeCompatableCurves = defineFeature(function(context is Context, id is Id, definition is map)
