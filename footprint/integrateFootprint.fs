@@ -98,7 +98,16 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
           
         annotation { "Name" : "Radius Profile(s)", "Filter" : EntityType.EDGE && ConstructionObject.NO}
         definition.radiusProfiles is Query;
-        
+
+        annotation { "Group Name" : "Contact points", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "FCP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Forebody contact point — defines which end of the footprint is the forebody for taper angle sign convention" }
+            definition.fcpQuery is Query;
+
+            annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Aftbody contact point — defines which end of the footprint is the aftbody for taper angle sign convention" }
+            definition.acpQuery is Query;
+        }
+
         annotation { "Group Name" : "Integration definition", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Y-Axis Scaling", "Defualt" : curvatureScaleFactors.TEN, "UIHint" : UIHint.SHOW_LABEL }
@@ -159,6 +168,14 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
         var cScalefactor = convertRadiusScalefactor(definition);
         
         var integrationDef = {'waistWidth': definition.waistWidth, 'angleDriver': definition.angleDriver, 'solveTol': definition.approximationTolerance, 'curvatureScaleFactor': cScalefactor, 'maxIter': 20};
+
+        // If FCP is provided, extract its X coordinate so the solver can correctly label
+        // forebody/aftbody regardless of which direction the radius profiles run along X.
+        if (!isQueryEmpty(context, definition.fcpQuery))
+        {
+            var fcpBox = evBox3d(context, { "topology" : definition.fcpQuery, "tight" : true });
+            integrationDef['fcpX'] = (fcpBox.minCorner[0] + fcpBox.maxCorner[0]) / 2;
+        }
         if (definition.angleDriver == AngleDriver.WAIST)
         {
             integrationDef['waistLocation'] = definition.waistLocation;                                                                                                                                                               

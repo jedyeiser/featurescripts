@@ -123,11 +123,12 @@ export function analyzeFootprint(context is Context, id is Id, fptPath is Path, 
     //println('waistPoint = ' ~ waistPoint.point);
     
     
-    //taperWide
-    var taperWideAngle = atan((fbWidest.point[1] - abWidest.point[1])/(fbWidest.point[0] - abWidest.point[0]));
-    
+    //taperWide — positive = lower-X side (fb) wider. abs(deltaX) so sign comes only from width difference.
+    // Note: full FCP-side convention requires FCP/ACP queries; this function uses mrsX-split only.
+    var taperWideAngle = atan((fbWidest.point[1] - abWidest.point[1]) / abs(fbWidest.point[0] - abWidest.point[0]));
+
     //taperInflection
-    var taperInflectionAngle = atan((fbInflection.point[1] - abInflection.point[1])/(fbInflection.point[0] - abInflection.point[0]));
+    var taperInflectionAngle = atan((fbInflection.point[1] - abInflection.point[1]) / abs(fbInflection.point[0] - abInflection.point[0]));
     
     //naturalWide
     var naturalWide = arcThroughPoints(context, fbWidest.point, waistPoint.point, abWidest.point);

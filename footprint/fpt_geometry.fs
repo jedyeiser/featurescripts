@@ -409,7 +409,7 @@ export function solveFootprintConstraints(samples is array, integrationDef is ma
 
     }
 
-    var stats = footprintStatsFromDiscrete(base.integral.x, yFinal, evalTheta(base.integral, theta0));
+    var stats = footprintStatsFromDiscrete(base.integral.x, yFinal, evalTheta(base.integral, theta0), integrationDef.fcpX);
 
     return {
         "theta0" : theta0,
@@ -457,12 +457,12 @@ export function buildBaseIntegrals(samples is array, cScale is number) returns m
 }
 
 
-function residual (theta0 is number, base is map, angleDriver is AngleDriver, targetVal is ValueWithUnits)
+function residual (theta0 is number, base is map, angleDriver is AngleDriver, targetVal is ValueWithUnits, fcpX)
 returns ValueWithUnits
 {
     var y = evalY(base, theta0, 0 * meter);           // y0 irrelevant for waist/taper
     var theta = evalTheta(base, theta0);
-    var stats = footprintStatsFromDiscrete(base.x, y, theta);
+    var stats = footprintStatsFromDiscrete(base.x, y, theta, fcpX);
 
     if (angleDriver == AngleDriver.WAIST)
     {
@@ -488,13 +488,14 @@ returns ValueWithUnits
 export function solveTheta0ForDriver(base is map, integrationDef is map, tol is ValueWithUnits, maxIter is
 number) returns number
 {
+    var fcpX = integrationDef.fcpX;  // may be undefined if no FCP query provided
     if (integrationDef.angleDriver == AngleDriver.WAIST)
     {
         return solveWaistViaOuterSecant(base, integrationDef, tol, maxIter);
     }
     else
     {
-        return solveTheta0ForTaperAngle(base, integrationDef.taperAngle, tol, maxIter);
+        return solveTheta0ForTaperAngle(base, integrationDef.taperAngle, tol, maxIter, fcpX);
     }
 }
 
@@ -514,23 +515,23 @@ number) returns number
  * @returns theta0 (unitless number) that produces the target taper angle
  */
 function solveTheta0ForTaperAngle(base is map, targetTaperAngle is ValueWithUnits, tol is ValueWithUnits,
-maxIter is number) returns number
+maxIter is number, fcpX) returns number
 {
     // Seed 1: theta0 = 0 (symmetric footprint)
     var t0 = 0;
-    var f0 = residual(t0, base, AngleDriver.TAPER_ANGLE, targetTaperAngle);
+    var f0 = residual(t0, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
 
     // Seed 2: use average curvature as a scale for a reasonable perturbation.
     // -average(k) is a natural scale for theta0 because it roughly centers the
     // slope profile, giving a non-trivial taper angle to compare against.
     var t1 = -average(base['k']);
-    var f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle);
+    var f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
 
     // If initial seeds give same residual, try a larger perturbation
     if (abs(f1 - f0) < tol && abs(f0) > tol)
     {
         t1 = (f0 > 0 * f0) ? -0.5 : 0.5;
-        f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle);
+        f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
     }
 
     for (var it = 0; it < maxIter; it += 1)
@@ -550,7 +551,7 @@ maxIter is number) returns number
                 t0 = t1;
                 f0 = f1;
                 t1 = t1 + jumpDir * 0.5;
-                f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle);
+                f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
                 continue;
             }
             return t1;
@@ -562,7 +563,7 @@ maxIter is number) returns number
         t0 = t1;
         f0 = f1;
         t1 = t2;
-        f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle);
+        f1 = residual(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
     }
 
     return t1;
@@ -599,24 +600,25 @@ function solveWaistViaOuterSecant(base is map, integrationDef is map, waistTol i
 maxOuterIter is number) returns number
 {
     var targetWaist = integrationDef.waistLocation;
+    var fcpX = integrationDef.fcpX;  // may be undefined if no FCP query provided
     var innerTol = 1e-3 * degree;
     var innerMaxIter = 20;
 
     // --- Seed 1: taper angle = 0 degrees (symmetric footprint) ---
     var taper0 = 0 * degree;
-    var theta0_a = solveTheta0ForTaperAngle(base, taper0, innerTol, innerMaxIter);
+    var theta0_a = solveTheta0ForTaperAngle(base, taper0, innerTol, innerMaxIter, fcpX);
     var y_a = evalY(base, theta0_a, 0 * meter);
     var slope_a = evalTheta(base, theta0_a);
-    var stats_a = footprintStatsFromDiscrete(base.x, y_a, slope_a);
+    var stats_a = footprintStatsFromDiscrete(base.x, y_a, slope_a, fcpX);
     var w0 = stats_a.waistLocation;
     var f0 = w0 - targetWaist;
 
     // --- Seed 2: taper angle = 0.35 degrees (typical ski range, creates real asymmetry) ---
     var taper1 = 0.35 * degree;
-    var theta0_b = solveTheta0ForTaperAngle(base, taper1, innerTol, innerMaxIter);
+    var theta0_b = solveTheta0ForTaperAngle(base, taper1, innerTol, innerMaxIter, fcpX);
     var y_b = evalY(base, theta0_b, 0 * meter);
     var slope_b = evalTheta(base, theta0_b);
-    var stats_b = footprintStatsFromDiscrete(base.x, y_b, slope_b);
+    var stats_b = footprintStatsFromDiscrete(base.x, y_b, slope_b, fcpX);
     var w1 = stats_b.waistLocation;
     var f1 = w1 - targetWaist;
 
@@ -651,10 +653,10 @@ maxOuterIter is number) returns number
         var taper2 = taper1 - f1 * (taper1 - taper0) / denom;
 
         // Solve inner problem at the new taper angle
-        var theta0_c = solveTheta0ForTaperAngle(base, taper2, innerTol, innerMaxIter);
+        var theta0_c = solveTheta0ForTaperAngle(base, taper2, innerTol, innerMaxIter, fcpX);
         var y_c = evalY(base, theta0_c, 0 * meter);
         var slope_c = evalTheta(base, theta0_c);
-        var stats_c = footprintStatsFromDiscrete(base.x, y_c, slope_c);
+        var stats_c = footprintStatsFromDiscrete(base.x, y_c, slope_c, fcpX);
         var w2 = stats_c.waistLocation;
         var f2 = w2 - targetWaist;
 
@@ -726,7 +728,7 @@ export function refineFootprintBSplines(bSplineResults is array, integrationDef 
     {
         // 1. Densely sample all BSplines and measure actual geometry
         var measured = sampleBSplinesForStats(workingSplines, numEvalPoints);
-        var stats = footprintStatsFromDiscrete(measured.x, measured.y, measured.slope);
+        var stats = footprintStatsFromDiscrete(measured.x, measured.y, measured.slope, integrationDef.fcpX);
 
         // 2. Compute errors against targets
         var primaryError;
@@ -766,7 +768,7 @@ export function refineFootprintBSplines(bSplineResults is array, integrationDef 
                 var probedSplines = adjustBSplineControlPoints(workingSplines, probeTheta, 0 * meter);
                 var probeMeasured = sampleBSplinesForStats(probedSplines, numEvalPoints);
                 var probeStats = footprintStatsFromDiscrete(probeMeasured.x, probeMeasured.y,
-                    probeMeasured.slope);
+                    probeMeasured.slope, integrationDef.fcpX);
 
                 var dWaist_dTheta = (probeStats.waistLocation - stats.waistLocation) / probeTheta;
 
@@ -782,7 +784,7 @@ export function refineFootprintBSplines(bSplineResults is array, integrationDef 
 
         // 5. Re-measure after rotation to get fresh waist width error
         var afterRotation = sampleBSplinesForStats(workingSplines, numEvalPoints);
-        var afterStats = footprintStatsFromDiscrete(afterRotation.x, afterRotation.y, afterRotation.slope);
+        var afterStats = footprintStatsFromDiscrete(afterRotation.x, afterRotation.y, afterRotation.slope, integrationDef.fcpX);
         var newWidthError = afterStats.waist.y - waistHalf;
 
         // 6. Apply vertical shift to correct waist width
@@ -935,22 +937,55 @@ export function evalY(base is map, theta0 is number, y0 is ValueWithUnits) retur
     return y;
 }
 
-export function footprintStatsFromDiscrete(x is array, y is array, slope is array) returns map
+// fcpX is an optional untyped parameter. When provided (ValueWithUnits), FB/AB are assigned
+// by proximity to FCP relative to the waist, making the convention correct for any X orientation.
+// When undefined (legacy / no FCP query), falls back to x < 0 = FB, x >= 0 = AB.
+export function footprintStatsFromDiscrete(x is array, y is array, slope is array, fcpX) returns map
 {
     var fbIdx = -1;
     var fbMax = -inf;
     var abIdx = -1;
     var abMax = -inf;
 
-    for (var i = 0; i < size(x); i += 1)
+    if (fcpX != undefined)
     {
-        if (x[i] < 0 * meter)
+        // Find approximate waist (global minimum Y) to use as the split point.
+        var approxWaistIdx = 0;
+        var approxWaistMin = y[0].value;
+        for (var i = 1; i < size(y); i += 1)
         {
-            if (y[i].value > fbMax) { fbMax = y[i].value; fbIdx = i; }
+            if (y[i].value < approxWaistMin) { approxWaistMin = y[i].value; approxWaistIdx = i; }
         }
-        else
+        var approxWaistX = x[approxWaistIdx];
+
+        // FB = the side of the waist that FCP is on; AB = the other side.
+        var fcpIsBelowWaist = fcpX < approxWaistX;
+        for (var i = 0; i < size(x); i += 1)
         {
-            if (y[i].value > abMax) { abMax = y[i].value; abIdx = i; }
+            var isOnFcpSide = fcpIsBelowWaist ? (x[i] <= approxWaistX) : (x[i] >= approxWaistX);
+            if (isOnFcpSide)
+            {
+                if (y[i].value > fbMax) { fbMax = y[i].value; fbIdx = i; }
+            }
+            else
+            {
+                if (y[i].value > abMax) { abMax = y[i].value; abIdx = i; }
+            }
+        }
+    }
+    else
+    {
+        // Legacy fallback: negative X = forebody, positive X = aftbody.
+        for (var i = 0; i < size(x); i += 1)
+        {
+            if (x[i] < 0 * meter)
+            {
+                if (y[i].value > fbMax) { fbMax = y[i].value; fbIdx = i; }
+            }
+            else
+            {
+                if (y[i].value > abMax) { abMax = y[i].value; abIdx = i; }
+            }
         }
     }
 
@@ -992,12 +1027,13 @@ export function footprintStatsFromDiscrete(x is array, y is array, slope is arra
     // Use parabolic interpolation to refine the minimum location
     var waist = refineExtremum(x, y, wIdx);
 
-    // Taper angle from refined points
+    // Taper angle: positive = FB (FCP side) wider than AB (ACP side).
+    // deltaX is always the absolute X distance so the sign comes only from deltaY.
     var taperAngle = 0 * degree;
     if (fbIdx != abIdx)
     {
         var deltaY = maxFB.y - maxAB.y;
-        var deltaX = maxAB.x - maxFB.x;
+        var deltaX = abs(maxAB.x - maxFB.x);
         taperAngle = atan2(deltaY, deltaX);
     }
 

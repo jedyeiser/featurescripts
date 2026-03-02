@@ -874,24 +874,19 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
 
 /**
  * Compute taper angle between two points.
- * Returns the acute angle (0 to 90 degrees).
+ * p1 should be the FB (FCP-side) widest point; p2 the AB (ACP-side) widest point.
+ * Returns a signed angle: positive = p1 (FB) wider, negative = p2 (AB) wider.
+ * deltaX uses abs() so the sign comes only from the width difference (deltaY).
  */
 export function computeTaperAngle(p1 is Vector, p2 is Vector) returns ValueWithUnits
 {
     var deltaY = p1[1] - p2[1];
-    var deltaX = p1[0] - p2[0];
+    var deltaX = abs(p1[0] - p2[0]);
 
-    if (abs(deltaX.value) < 1e-12)
+    if (deltaX / meter < 1e-12)
         return 0 * degree;
 
-    // Use absolute values to get angle in 0-90 range
-    var angle = atan2(abs(deltaY), abs(deltaX));
-
-    // Ensure we have the minimum angle (acute angle)
-    if (angle > 90 * degree)
-        angle = 180 * degree - angle;
-
-    return angle;
+    return atan2(deltaY, deltaX);
 }
 
 // =============================================================================
