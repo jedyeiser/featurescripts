@@ -14,6 +14,13 @@ import(path : "b9e1608a507a242d87720d9b", version : "7725b8caf230860c44ca2ae2");
 import(path : "b3c74a9035256a2ff6bd0004", version : "2c35626cef2707cee449fcbf");
 
 
+// Knot comparison tolerance (same as SIMPLIFY_KNOT_TOL in bspline_data.fs, defined locally
+// to avoid re-export dependency)
+const SIMPLIFY_KNOT_TOL = 1e-10;
+
+// Explicit LengthBoundSpec constant — inline map literals are not auto-typed in this context
+const SIMPLIFY_TOLERANCE_BOUNDS = { (meter) : [1e-5, 0.001, 0.1], (inch) : [1e-4, 0.001, 0.05] } as LengthBoundSpec;
+
 
 annotation { "Feature Type Name" : "Simplify surface", "Feature Type Description" : "Takes a face and approximation parameters as input and returns a simplified 'cleaned' face" }
 export const simplifySurface = defineFeature(function(context is Context, id is Id, definition is map)
@@ -23,7 +30,7 @@ export const simplifySurface = defineFeature(function(context is Context, id is 
         definition.face is Query;
 
         annotation { "Name" : "Tolerance" }
-        isLength(definition.tolerance, { (meter) : [1e-5, 0.001, 0.1], (inch) : [1e-4, 0.001, 0.05] });
+        isLength(definition.tolerance, SIMPLIFY_TOLERANCE_BOUNDS);
 
         annotation { "Name" : "Continuity" }
         definition.continuityType is GeometricContinuity;
@@ -476,10 +483,10 @@ function extractColumnCurve(cpGrid is array, vIdx is number, uKnots, uDegree is 
  */
 function simplifyByKnotRemoval(context is Context, curve is BSplineCurve, tolerance) returns BSplineCurve
 {
-    var interiorKnots = getUniqueInteriorKnots(curve, KNOT_TOLERANCE);
+    var interiorKnots = getUniqueInteriorKnots(curve, SIMPLIFY_KNOT_TOL);
     for (var knot in interiorKnots)
     {
-        var mult = getKnotMultiplicity(curve, knot, KNOT_TOLERANCE);
+        var mult = getKnotMultiplicity(curve, knot, SIMPLIFY_KNOT_TOL);
         var result = removeKnot(context, curve, knot, mult, tolerance);
         if (result.success)
         {
