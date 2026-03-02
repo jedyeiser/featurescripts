@@ -283,22 +283,31 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
 
         var acpPlane = qCreatedBy(id + "acpPlane", EntityType.FACE);
 
-        // Attempt FCP split. Use try/catch: opSplitPart fails (SPLIT_FAILED) when
-        // no target body has a strict interior intersection with the plane —
-        // e.g. a vertex lands exactly on the plane, or a body lies entirely on
-        // one side. In those cases the split simply didn't happen.
+        // Only attempt a split if at least one wire body strictly straddles the
+        // plane (minX < planeX < maxX per body).  The combined wireBox can span
+        // the plane even when every individual body only touches it at a vertex,
+        // which causes SPLIT_FAILED.  Checking per-body avoids the attempt —
+        // and the resulting logged warning — entirely.
+        var wireBodies = evaluateQuery(context, qCreatedBy(id + "fptWires", EntityType.BODY));
+
         var fcpSplitDone = false;
-        if (wireBox.minCorner[0] < fcpORGIN[0] && fcpORGIN[0] < wireBox.maxCorner[0])
+        var anyBodyCrossesFcp = false;
+        for (var body in wireBodies)
         {
-            try
+            var bodyBox = evBox3d(context, { "topology" : body, "tight" : true });
+            if (bodyBox.minCorner[0] < fcpORGIN[0] && fcpORGIN[0] < bodyBox.maxCorner[0])
             {
-                opSplitPart(context, id + "fcpSplit", {
-                            "targets" : qCreatedBy(id + "fptWires", EntityType.BODY),
-                            "tool" : fcpPlane
-                        });
-                fcpSplitDone = true;
+                anyBodyCrossesFcp = true;
+                break;
             }
-            catch { }
+        }
+        if (anyBodyCrossesFcp)
+        {
+            opSplitPart(context, id + "fcpSplit", {
+                        "targets" : qCreatedBy(id + "fptWires", EntityType.BODY),
+                        "tool" : fcpPlane
+                    });
+            fcpSplitDone = true;
         }
 
         var acpTarget = fcpSplitDone
@@ -306,17 +315,24 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             : qCreatedBy(id + "fptWires", EntityType.BODY);
 
         var acpSplitDone = false;
-        if (wireBox.minCorner[0] < acpORIGIN[0] && acpORIGIN[0] < wireBox.maxCorner[0])
+        var anyBodyCrossesAcp = false;
+        var acpBodies = evaluateQuery(context, acpTarget);
+        for (var body in acpBodies)
         {
-            try
+            var bodyBox = evBox3d(context, { "topology" : body, "tight" : true });
+            if (bodyBox.minCorner[0] < acpORIGIN[0] && acpORIGIN[0] < bodyBox.maxCorner[0])
             {
-                opSplitPart(context, id + "acpSplit", {
-                            "targets" : acpTarget,
-                            "tool" : acpPlane
-                        });
-                acpSplitDone = true;
+                anyBodyCrossesAcp = true;
+                break;
             }
-            catch { }
+        }
+        if (anyBodyCrossesAcp)
+        {
+            opSplitPart(context, id + "acpSplit", {
+                        "targets" : acpTarget,
+                        "tool" : acpPlane
+                    });
+            acpSplitDone = true;
         }
 
         var rslEdge = acpSplitDone
