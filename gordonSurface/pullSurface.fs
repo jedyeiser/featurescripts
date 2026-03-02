@@ -636,23 +636,27 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         opCreateBSplineSurface(context, id + "pullSurf", { "bSplineSurface" : surf });
 
         // ── STAGE 5: Replace original face with the new surface ────────────────
-        // Use opReplaceFace with auto-detected oppositeSense (pattern from std/replaceFace.fs):
-        // dot the normals of the original face and the template face — if they point
-        // opposite, flip the sense so the kernel aligns them correctly.
+        // Mirrors the Onshape surface boolean workflow:
+        //   1. opDeleteFace removes the selected face, leaving the boundary open.
+        //   2. opBoolean UNION stitches pullSurf into the gap.
+        //      eraseImprintedEdges + recomputeMatches are required for sheet body
+        //      stitching (pattern from std/boolean.fs surface union path).
         if (definition.replaceFace)
         {
-            var newFaceQ  = qCreatedBy(id + "pullSurf", EntityType.FACE);
-            var origPlane = try(evFaceTangentPlane(context, { "face" : definition.face, "parameter" : vector(0.5, 0.5) }));
-            var newPlane  = try(evFaceTangentPlane(context, { "face" : newFaceQ,         "parameter" : vector(0.5, 0.5) }));
+            var newBody   = qCreatedBy(id + "pullSurf", EntityType.BODY);
+            var ownerBody = qOwnerBody(definition.face);
 
-            var oppositeSense = false;
-            if (origPlane != undefined && newPlane != undefined)
-                oppositeSense = dot(origPlane.normal, newPlane.normal) < 0;
+            opDeleteFace(context, id + "deleteFace", {
+                "deleteFaces"   : definition.face,
+                "includeFillet" : false,
+                "capVoid"       : false
+            });
 
-            opReplaceFace(context, id + "replace", {
-                "replaceFaces"  : definition.face,
-                "templateFace"  : newFaceQ,
-                "oppositeSense" : oppositeSense
+            opBoolean(context, id + "replaceBool", {
+                "operationType"       : BooleanOperationType.UNION,
+                "tools"               : qUnion([ownerBody, newBody]),
+                "eraseImprintedEdges" : true,
+                "recomputeMatches"    : true
             });
         }
 
