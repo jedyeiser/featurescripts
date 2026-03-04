@@ -650,7 +650,7 @@ export function debugDrawFrames(context is Context, frenetPath is map, numSample
 
     for (var i = 0; i < numSamples; i += 1)
     {
-        var s      = totalLength * i / (numSamples - 1);
+        var s      = totalLength * i / max([1, numSamples - 1]);
         var result = getFrameAtArcLength(context, frenetPath, s);
         var origin = result.frame.origin;
 

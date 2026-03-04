@@ -3,16 +3,20 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
 // IMPORT: tools/printing.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-import(path : "683d867c35fdab9c98d47556", version : "");
+import(path : "08e8748f2ef24eea16072b75/558ac7d8d514ac0cb9e52229/683d867c35fdab9c98d47556", version : "d46356725d937bcb4e5825a6");
+
 
 //import wrapCurve.fs
-import(path : "6863116065bf5063633f30ac", version : "25a83babd1b7dfe2a98a7bac");
+import(path : "0e53e9b1145a1bd7bbfa0193", version : "525b5fac4f6359853889b1cd");
+
+IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
+
 
 
 /**
@@ -71,7 +75,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
     // 2. Update definition.sourceEdgesArePlanar accordingly
     try
     {
-        var edgeArray = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
+        var edgeArray = evaluateQuery(context, definition.sourceEdges);
         if (size(edgeArray) > 0)
         {
             // Collect sample points from all source edges
@@ -124,13 +128,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
     return definition;
 }
 
- annotation { "Feature Type Name" : "Wrap and Loft", "Feature Type Description" : "Takes source edges and a wrapping definition to 'loft a surface' from wrapped versions of the source curves.", "Editing Logic Function" : "wrapAndLoftEditingLogic" }
+ annotation { "Feature Type Name" : "Wrap and Loft", "Feature Type Description" : "Takes source edges and a wrapping definition to 'loft a surface' from wrapped versions of the source curves.", "Editing Logic Function" : "wrapAndLoftEditingLogic", "Icon" : IconNamespace::BLOB_DATA }
  export const wrapAndLoft = defineFeature(function(context is Context, id is Id, definition is map)
      precondition
      {
-         annotation { "Name" : "Wrap edges",
-                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
-                    "Description" : "Edges to wrap and create a loft through. Accepts edges, wire bodies, or composite parts containing wire bodies." }
+         annotation { "Name" : "Wrap edges", "Filter" : EntityType.EDGE, "Decription" : "Edges that we will wrap and create a loft through"}
          definition.sourceEdges is Query;
 
          annotation { "Name" : "areSourceEdgesPlanar", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -141,9 +143,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             if (!definition.sourceEdgesArePlanar)
             {
                 annotation { "Name" : "From edge(s)",
-                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                    "Filter" : EntityType.EDGE,
                     "MaxNumberOfPicks" : 10,
-                    "Description" : "Reference edge(s) to map from (source reference). Accepts edges, wire bodies, or composite parts containing wire bodies." }
+                    "Description" : "Reference edge(s) to map from (source reference)" }
                 definition.fromEdges is Query;
             }
 
@@ -154,9 +156,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "To edge(s)",
-                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                    "Filter" : EntityType.EDGE,
                     "MaxNumberOfPicks" : 10,
-                    "Description" : "Reference edge(s) to map to (target reference). Accepts edges, wire bodies, or composite parts containing wire bodies." }
+                    "Description" : "Reference edge(s) to map to (target reference)" }
             definition.toEdges is Query;
 
             annotation { "Name" : "Flip", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
@@ -194,22 +196,27 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         }
 
         annotation { "Name" : "Advanced options",
-                    "Default" : false }
+                    "Default" : true,
+                    "UIHint" : UIHint.ALWAYS_HIDDEN}
         definition.showAdvanced is boolean;
 
         if (definition.showAdvanced)
         {
-            annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-            isLength(definition.samplingDensity, samplingDensityBounds);
-
-            annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
-            isInteger(definition.approximationDegree, DEGREE_BOUND);
-
-            annotation { "Name" : "Maximum control points" }
-            isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
-
-            annotation { "Name" : "Tolerance" }
-            isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+            annotation { "Group Name" : "Details", "Collapsed By Default" : true }
+            {
+                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                isLength(definition.samplingDensity, samplingDensityBounds);
+    
+                annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
+                isInteger(definition.approximationDegree, DEGREE_BOUND);
+    
+                annotation { "Name" : "Maximum control points" }
+                isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
+    
+                annotation { "Name" : "Tolerance" }
+                isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+            }
+            
         }
 
         annotation { "Group Name" : "Debug Options",
@@ -268,7 +275,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         }
 
         // ===== Build to-path =====
-        var toFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges), definition.flipTo);
+        var toFrenetPath = buildFrenetPath(context, id, definition.toEdges, definition.flipTo);
 
         if (definition.debugToBSplines)
         {
@@ -294,7 +301,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         if (definition.sourceEdgesArePlanar)
         {
             // 1. Fit plane to sourceEdges (same sample-point approach as editing logic)
-            var srcEdgeArray = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
+            var srcEdgeArray = evaluateQuery(context, definition.sourceEdges);
             var allSrcPts    = [];
             for (var i = 0; i < size(srcEdgeArray); i += 1)
             {
@@ -316,7 +323,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             ));
 
             // 2. For each toEdge, sample uniformly, project onto source plane, fit a spline
-            var toEdgeArray          = evaluateQuery(context, expandEdgeQuery(definition.toEdges));
+            var toEdgeArray          = evaluateQuery(context, definition.toEdges);
             var projectedEdgeQueries = [];
             var projectedBodies      = [];
 
@@ -360,7 +367,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         else
         {
             // Non-planar: user provides fromEdges explicitly
-            fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
+            fromFrenetPath = buildFrenetPath(context, id, definition.fromEdges, false);
         }
 
         if (definition.debugFromBSplines)
@@ -472,7 +479,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         }
 
         // ===== Main wrapping loop =====
-        var sourceCurveArray              = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
+        var sourceCurveArray              = evaluateQuery(context, definition.sourceEdges);
         var allWrappedSegQueries          = [];
         var allPrimaryOffsetSegQueries    = [];
         var allSecondaryOffsetSegQueries  = [];
