@@ -24,6 +24,27 @@ export import(path : "683d867c35fdab9c98d47556", version : "");
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
 
+/**
+ * Expands a mixed edge/wire-body/composite selection into a flat edge query.
+ * - Direct edges pass through unchanged.
+ * - Wire bodies contribute all of their owned edges.
+ * - Composite parts contribute edges owned by any wire body they contain.
+ */
+function expandEdgeQuery(q is Query) returns Query
+{
+    var directEdges = qEntityFilter(q, EntityType.EDGE);
+
+    var wireBodies = qBodyType(qEntityFilter(q, EntityType.BODY), BodyType.WIRE);
+    var wireEdges = qOwnedByBody(wireBodies, EntityType.EDGE);
+
+    var composites = qBodyType(qEntityFilter(q, EntityType.BODY), BodyType.COMPOSITE);
+    var compositeWireEdges = qOwnedByBody(
+        qBodyType(qContainedInCompositeParts(composites), BodyType.WIRE),
+        EntityType.EDGE);
+
+    return qUnion([directEdges, wireEdges, compositeWireEdges]);
+}
+
 annotation { "Feature Type Name" : "Wrap Curve",
              "Feature Type Description" : "Map curves from one reference edge to another using Frenet frame transformations",
              "Filter Selector" : "allparts"
@@ -34,9 +55,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "From edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
-                    "Description" : "Reference edge(s) to map from (source reference)" }
+                    "Description" : "Reference edge(s) to map from (source reference). Accepts edges, wire bodies, or composite parts containing wire bodies." }
             definition.fromEdges is Query;
 
             annotation { "Name" : "From reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on from curve" }
@@ -46,9 +67,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "To edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
-                    "Description" : "Reference edge(s) to map to (target reference)" }
+                    "Description" : "Reference edge(s) to map to (target reference). Accepts edges, wire bodies, or composite parts containing wire bodies." }
             definition.toEdges is Query;
 
             annotation { "Name" : "Flip", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
@@ -62,8 +83,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
 
         annotation { "Name" : "Source curves",
-                    "Filter" : EntityType.EDGE,
-                    "Description" : "Curves to map from fromEdge to toEdge" }
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                    "Description" : "Curves to map from fromEdge to toEdge. Accepts edges, wire bodies, or composite parts containing wire bodies." }
         definition.sourceCurves is Query;
 
         annotation { "Name" : "Advanced options",
@@ -142,8 +163,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
     {
         // 1. Build FrenetPaths for from/to references
-        var fromFrenetPath = buildFrenetPath(context, id, definition.fromEdges, false);
-        var toFrenetPath   = buildFrenetPath(context, id, definition.toEdges,   definition.flipTo);
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo);
 
         if (definition.debugFromBSplines)
         {
@@ -191,7 +212,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 4. For each source curve: sample, map, fit, create
         var allSegEdges  = [];
         var allSegBodies = [];
-        var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
+        var sourceCurveArray = evaluateQuery(context, expandEdgeQuery(definition.sourceCurves));
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
