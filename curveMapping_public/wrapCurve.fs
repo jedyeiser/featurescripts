@@ -215,12 +215,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var sourceCurveArray = evaluateQuery(context, expandEdgeQuery(definition.sourceCurves));
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
-            var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
-            var srcLen = evLength(context, {
-                    "entities" : sourceCurveArray[i]
-            });
+            var srcLen = evLength(context, { "entities" : sourceCurveArray[i] });
             
-            var numSamples = ceil(srcLen/definition.samplingDensity);
+            var numSamples = max([5, ceil(srcLen / definition.samplingDensity) + 1]);
 
             // Sample source curve via Onshape kernel (correct for any edge type including rational arcs)
             var srcPoints = mapArray(evEdgeTangentLines(context, {
@@ -242,6 +239,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
                         " samples, length = " ~ toString(srcArcLengths[size(srcArcLengths) - 1]));
+                var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
                 printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 

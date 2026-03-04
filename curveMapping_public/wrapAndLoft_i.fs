@@ -320,24 +320,28 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             for (var tei = 0; tei < size(toEdgeArray); tei += 1)
             {
-                var toBSpline  = evApproximateBSplineCurve(context, { "edge": toEdgeArray[tei] });
-                var toArcTable = buildArcLengthTable(toBSpline, 200);
-                var nProj      = max([5, ceil(toArcTable.totalLength / samplingDensity) + 1]);
-                var toSamples  = uniformArcLengthSamples(toBSpline, nProj, {});
+                var toLen  = evLength(context, { "entities": toEdgeArray[tei] });
+                var nProj  = max([5, ceil(toLen / samplingDensity) + 1]);
+                var toTangentLines = evEdgeTangentLines(context, {
+                    "edge"       : toEdgeArray[tei],
+                    "parameters" : range(0, 1, nProj)
+                });
 
                 var projPoints = [];
-                for (var k = 0; k < size(toSamples.points); k += 1)
+                for (var k = 0; k < size(toTangentLines); k += 1)
                 {
-                    var pt   = toSamples.points[k];
+                    var pt   = toTangentLines[k].origin;
                     var dist = dot(pt - planeOrigin, planeNormal);
                     projPoints = append(projPoints, pt - dist * planeNormal);
                 }
 
                 var projApproxDef = {
-                    "targets"          : [approximationTarget({ "positions": projPoints })],
-                    "tolerance"        : definition.approximationTolerance,
-                    "maxControlPoints" : definition.approximationMaxCPs,
-                    "degree"           : degree
+                    "targets"            : [approximationTarget({ "positions": projPoints })],
+                    "tolerance"          : definition.approximationTolerance,
+                    "maxControlPoints"   : definition.approximationMaxCPs,
+                    "degree"             : degree,
+                    "isPeriodic"         : false,
+                    "interpolateIndices" : [0, size(projPoints) - 1]
                 };
                 var projCurve = approximateSpline(context, projApproxDef)[0];
 
@@ -470,6 +474,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var allWrappedSegQueries          = [];
         var allPrimaryOffsetSegQueries    = [];
         var allSecondaryOffsetSegQueries  = [];
+        var allWrappedSegBodies           = [];
+        var allPrimaryOffsetSegBodies     = [];
+        var allSecondaryOffsetSegBodies   = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
@@ -534,7 +541,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
                 mappedData = append(mappedData, {
                     "edgeIndex" : toResult.edgeIndex,
-                    "point"     : frenetPointToWorld(localCoords, toFrameResult),
+                    "point"     : toFrameResult.frame.origin
+                                  + toFrameResult.frame.xAxis    * localCoords[1]
+                                  + yAxis(toFrameResult.frame)   * localCoords[2]
+                                  + toFrameResult.frame.zAxis    * localCoords[0],
                     "sFrom"     : s_from,
                     "offsetDir" : toFrameResult.frame.xAxis  // to-frame normal = loft thickness direction (~worldZ for XZ-curved to-paths)
                 });
@@ -642,15 +652,19 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     segPoints         = append(segPoints,     junctionWorldPt);
                     segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
                     junctionPt        = junctionWorldPt;
-                    junctionTangent   = junctionTangentDir;
+                    junctionTangent   = normalize(junctionTangentDir);
                     junctionOffsetDir = junctionOffDir;
                 }
 
                 if (size(segPoints) >= degree + 1)
                 {
-                    // Scale for derivative constraints: average inter-point spacing
-                    var approxScale = norm(segPoints[size(segPoints) - 1] - segPoints[0]) /
-                                      max([1, size(segPoints) - 1]);
+                    // Scale for derivative constraints: total chord length of this segment.
+                    // approximateSpline uses [0,1] parameterization, so the natural derivative
+                    // magnitude at an endpoint is ~totalChord (velocity = length / param_range).
+                    var totalChord = 0 * meter;
+                    for (var k = 0; k < size(segPoints) - 1; k += 1)
+                        totalChord += norm(segPoints[k + 1] - segPoints[k]);
+                    var approxScale = totalChord;
 
                     var targetDef = { "positions": segPoints };
                     if (carryOverTangent != undefined)
@@ -663,10 +677,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
 
                     var approxDef = {
-                        "targets"          : [approximationTarget(targetDef)],
-                        "tolerance"        : definition.approximationTolerance,
-                        "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : degree
+                        "targets"            : [approximationTarget(targetDef)],
+                        "tolerance"          : definition.approximationTolerance,
+                        "maxControlPoints"   : definition.approximationMaxCPs,
+                        "degree"             : degree,
+                        "isPeriodic"         : false,
+                        "interpolateIndices" : [0, size(segPoints) - 1]
                     };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
 
@@ -712,16 +728,19 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         var wrappedId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
                         allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
+                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
 
                         var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "primaryOffset");
                         opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
+                        allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(primaryOffsetId, EntityType.BODY));
 
                         if (secondaryOffsetCurve != undefined)
                         {
                             var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "secondaryOffset");
                             opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
                             allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(secondaryOffsetId, EntityType.EDGE));
+                            allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(secondaryOffsetId, EntityType.BODY));
                         }
 
                         segCount += 1;
@@ -786,22 +805,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             }
 
             // Curve cleanup
-            var allOffsetQueries = qUnion(allPrimaryOffsetSegQueries);
-            if (size(allSecondaryOffsetSegQueries) > 0)
+            var allOffsetBodies = qUnion(allPrimaryOffsetSegBodies);
+            if (size(allSecondaryOffsetSegBodies) > 0)
             {
-                allOffsetQueries = qUnion([allOffsetQueries, qUnion(allSecondaryOffsetSegQueries)]);
+                allOffsetBodies = qUnion([allOffsetBodies, qUnion(allSecondaryOffsetSegBodies)]);
             }
 
             if (!definition.keepOutputCurves)
             {
                 opDeleteBodies(context, id + "deleteAllCurves", {
-                    "entities" : qUnion([qUnion(allWrappedSegQueries), allOffsetQueries])
+                    "entities" : qUnion([qUnion(allWrappedSegBodies), allOffsetBodies])
                 });
             }
             else if (definition.outputCurveMode == OutputCurveMode.KEEP_WRAPPED)
             {
                 opDeleteBodies(context, id + "deleteOffsets", {
-                    "entities" : allOffsetQueries
+                    "entities" : allOffsetBodies
                 });
             }
             // OutputCurveMode.KEEP_ALL: keep everything, delete nothing
