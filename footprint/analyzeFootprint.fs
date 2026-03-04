@@ -202,7 +202,12 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
             }
             
             skSolve(footprintSketch);
-            
+
+            setProperty(context, {
+                "entities" : qCreatedBy(id + "footprintAnalysisSketch", EntityType.BODY),
+                "propertyType" : PropertyType.NAME,
+                "value" : "Footprint Analysis Sketch"
+            });
 
         }
     });
