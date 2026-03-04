@@ -30,7 +30,7 @@ export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBound
  * - Wire bodies contribute all of their owned edges.
  * - Composite parts contribute edges owned by any wire body they contain.
  */
-function expandEdgeQuery(q is Query) returns Query
+export function expandEdgeQuery(q is Query) returns Query
 {
     var directEdges = qEntityFilter(q, EntityType.EDGE);
 
