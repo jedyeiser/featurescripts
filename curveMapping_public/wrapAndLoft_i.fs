@@ -292,7 +292,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         if (definition.sourceEdgesArePlanar)
         {
             // 1. Fit plane to sourceEdges (same sample-point approach as editing logic)
-            var srcEdgeArray = evaluateQuery(context, definition.sourceEdges);
+            var srcEdgeArray = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
             var allSrcPts    = [];
             for (var i = 0; i < size(srcEdgeArray); i += 1)
             {
