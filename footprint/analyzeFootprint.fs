@@ -146,7 +146,7 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
 
         if (definition.outputSketch)
         {
-            var footprintSketch = newSketchOnPlane(context, id + "footprintSketch", {
+            var footprintSketch = newSketchOnPlane(context, id + "footprintAnalysisSketch", {
                     "sketchPlane" : plane(vector(0, 0, 0) * millimeter, vector(0, 0, 1))
             });
 

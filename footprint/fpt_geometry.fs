@@ -752,12 +752,15 @@ export function refineFootprintBSplines(bSplineResults is array, integrationDef 
         {
             if (integrationDef.angleDriver == AngleDriver.TAPER_ANGLE)
             {
-                // Semi-analytical: for small taper angles, the relationship
-                // new_taper ≈ old_taper - deltaTheta is nearly exact.
-                // So deltaTheta = measured - target = primaryError in radians.
-                // .value converts the angle ValueWithUnits to a unitless number
-                // (FeatureScript stores angles in radians internally).
-                deltaTheta = primaryError.value;
+                // Semi-analytical: adjustBSplineControlPoints applies y += deltaTheta * x,
+                // which changes taper by ≈ deltaTheta * sign(maxFB.x - maxAB.x).
+                // To zero the error: deltaTheta = primaryError.value * sign(maxAB.x - maxFB.x).
+                // Normal orientation (FB at lower X): sign = +1, same behavior as before.
+                // Reversed orientation (FB at higher X): sign = -1, corrects the flip.
+                var fbX = stats.maxFB.x;
+                var abX = stats.maxAB.x;
+                var orientSign = (abX.value > fbX.value) ? 1 : -1;
+                deltaTheta = primaryError.value * orientSign;
             }
             else
             {
