@@ -193,14 +193,35 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             definition.outputCurveMode is OutputCurveMode;
         }
 
-        annotation { "Name" : "Advanced options",
-                    "Default" : false }
-        definition.showAdvanced is boolean;
-
-        if (definition.showAdvanced)
+        annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-            isLength(definition.samplingDensity, samplingDensityBounds);
+            annotation { "Name" : "Source sampling mode" }
+            definition.sourceSamplingMode is SamplingMode;
+
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point (minimum 10)" }
+                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+            }
+            else
+            {
+                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                isLength(definition.samplingDensity, samplingDensityBounds);
+            }
+
+            annotation { "Name" : "Reference sampling mode" }
+            definition.referenceSamplingMode is SamplingMode;
+
+            if (definition.referenceSamplingMode == SamplingMode.CP_BASED)
+            {
+                annotation { "Name" : "Reference CP multiplier", "Description" : "Samples per reference edge control point (minimum 10)" }
+                isInteger(definition.referenceCPMultiplier, cpMultiplierBounds);
+            }
+            else
+            {
+                annotation { "Name" : "Reference sampling density", "Description" : "Distance between sample points along reference edges" }
+                isLength(definition.referenceSamplingDensity, samplingDensityBounds);
+            }
 
             annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
             isInteger(definition.approximationDegree, DEGREE_BOUND);
@@ -254,18 +275,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
      }
      {
-        // ===== Approximation / sampling options (defaults when showAdvanced is off) =====
-        var degree = 3;
-        if (definition.approximationDegree != undefined)
-        {
-            degree = definition.approximationDegree;
-        }
-
-        var samplingDensity = 1 * millimeter;
-        if (definition.samplingDensity != undefined)
-        {
-            samplingDensity = definition.samplingDensity;
-        }
+        // ===== Approximation / sampling options =====
+        var degree = definition.approximationDegree;
+        var samplingDensity = definition.samplingDensity;
+        var referenceSamplingDensity = definition.referenceSamplingDensity;
 
         // ===== Build to-path =====
         var toFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges), definition.flipTo);
@@ -322,8 +335,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             for (var tei = 0; tei < size(toEdgeArray); tei += 1)
             {
-                var edgeLen = evLength(context, { "entities": toEdgeArray[tei] });
-                var nProj   = max([5, ceil(edgeLen / samplingDensity) + 1]);
+                var nProj;
+                if (definition.referenceSamplingMode == SamplingMode.CP_BASED)
+                {
+                    var refBSpline = evApproximateBSplineCurve(context, { "edge": toEdgeArray[tei] });
+                    nProj = max([10, definition.referenceCPMultiplier * size(refBSpline.controlPoints)]);
+                }
+                else
+                {
+                    var edgeLen = evLength(context, { "entities": toEdgeArray[tei] });
+                    nProj = max([10, ceil(edgeLen / referenceSamplingDensity) + 1]);
+                }
                 var toSamples_origins = mapArray(evEdgeTangentLines(context, {
                     "edge"       : toEdgeArray[tei],
                     "parameters" : range(0, 1, nProj)
@@ -482,7 +504,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
-            var numSamples = max([5, ceil(srcLen / samplingDensity) + 1]);
+            var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
+
+            var numSamples;
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                numSamples = max([10, definition.sourceCPMultiplier * size(srcBSpline.controlPoints)]);
+            }
+            else
+            {
+                numSamples = max([10, ceil(srcLen / samplingDensity) + 1]);
+            }
 
             var srcPoints = mapArray(evEdgeTangentLines(context, {
                 "edge"       : sourceCurveArray[i],
@@ -501,7 +533,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
                         " samples, length = " ~ toString(srcLen));
-                var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
                 printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
@@ -710,15 +741,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         }
                     }
 
+                    // Offset curves don't need exact endpoint interpolation — use unconstrained fit
+                    var offsetApproxBase = {
+                        "tolerance"        : definition.approximationTolerance,
+                        "maxControlPoints" : definition.approximationMaxCPs,
+                        "degree"           : degree
+                    };
+
                     var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
-                    var primaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
+                    var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
 
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
                         var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
-                        var secondaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
+                        var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
                     }
 

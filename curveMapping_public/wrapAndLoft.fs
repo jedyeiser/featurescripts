@@ -717,15 +717,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         }
                     }
 
+                    // Offset curves don't need exact endpoint interpolation — use unconstrained fit
+                    var offsetApproxBase = {
+                        "tolerance"        : definition.approximationTolerance,
+                        "maxControlPoints" : definition.approximationMaxCPs,
+                        "degree"           : degree
+                    };
+
                     var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
-                    var primaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
+                    var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
 
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
                         var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
-                        var secondaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
+                        var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
                     }
 

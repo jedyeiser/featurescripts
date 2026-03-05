@@ -24,6 +24,14 @@ export import(path : "683d867c35fdab9c98d47556", version : "");
 
 export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
 
+export enum SamplingMode
+{
+    annotation { "Name" : "Length-based" } LENGTH_BASED,
+    annotation { "Name" : "Control point-based" } CP_BASED
+}
+
+export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpec;
+
 /**
  * Expands a mixed edge/wire-body/composite selection into a flat edge query.
  * - Direct edges pass through unchanged.
@@ -87,14 +95,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Curves to map from fromEdge to toEdge. Accepts edges, wire bodies, or composite parts containing wire bodies." }
         definition.sourceCurves is Query;
 
-        annotation { "Name" : "Advanced options",
-                    "Default" : false }
-        definition.showAdvanced is boolean;
-
-        if (definition.showAdvanced)
+        annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-            isLength(definition.samplingDensity, samplingDensityBounds);
+            annotation { "Name" : "Source sampling mode" }
+            definition.sourceSamplingMode is SamplingMode;
+
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                annotation { "Name" : "CP multiplier", "Description" : "Samples per source curve control point (minimum 10)" }
+                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+            }
+            else
+            {
+                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source curves" }
+                isLength(definition.samplingDensity, samplingDensityBounds);
+            }
 
             annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
             isInteger(definition.approximationDegree, DEGREE_BOUND);
@@ -220,7 +235,15 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "entities" : sourceCurveArray[i]
             });
             
-            var numSamples = ceil(srcLen/definition.samplingDensity);
+            var numSamples;
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                numSamples = max([10, definition.sourceCPMultiplier * size(srcBSpline.controlPoints)]);
+            }
+            else
+            {
+                numSamples = max([10, ceil(srcLen / definition.samplingDensity) + 1]);
+            }
 
             // Sample source curve via Onshape kernel (correct for any edge type including rational arcs)
             var srcPoints = mapArray(evEdgeTangentLines(context, {
