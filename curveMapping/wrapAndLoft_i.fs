@@ -196,11 +196,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
         annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the source edge control points" }
-            definition.sourceSamplingMode is SamplingMode;
             
             annotation { "Group Name" : "Sampling options", "Collapsed By Default" : true }
             {
+                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the source edge control points" }
+                definition.sourceSamplingMode is SamplingMode;
+                
                 if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
                 {
                     annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point" }
@@ -237,7 +238,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
     
                 annotation { "Name" : "Tolerance" }
                 isLength(definition.approximationTolerance, TOLERANCE_BOUND);
-                }
+            }
             
         }
 
@@ -849,26 +850,51 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 println("ERROR: wrapAndLoft loft failed - " ~ toString(e));
             }
 
-            // Curve cleanup
-            var allOffsetBodies = qUnion(allPrimaryOffsetSegBodies);
-            if (size(allSecondaryOffsetSegBodies) > 0)
+            // Collect multi-span segments into wire bodies (one wire per connected run)
+            var wrappedWireId = id + "wrappedWires";
+            opExtractWires(context, wrappedWireId, { "edges": qUnion(allWrappedSegQueries) });
+            var wrappedWireBodies = qCreatedBy(wrappedWireId, EntityType.BODY);
+
+            var primaryWireId = id + "primaryOffsetWires";
+            opExtractWires(context, primaryWireId, { "edges": qUnion(allPrimaryOffsetSegQueries) });
+            var primaryWireBodies = qCreatedBy(primaryWireId, EntityType.BODY);
+
+            var secondaryWireBodies = undefined;
+            if (size(allSecondaryOffsetSegQueries) > 0)
             {
-                allOffsetBodies = qUnion([allOffsetBodies, qUnion(allSecondaryOffsetSegBodies)]);
+                var secondaryWireId = id + "secondaryOffsetWires";
+                opExtractWires(context, secondaryWireId, { "edges": qUnion(allSecondaryOffsetSegQueries) });
+                secondaryWireBodies = qCreatedBy(secondaryWireId, EntityType.BODY);
             }
 
+            // Delete original segment bodies — wire bodies are the output
+            var allSegBodies = qUnion([qUnion(allWrappedSegBodies), qUnion(allPrimaryOffsetSegBodies)]);
+            if (size(allSecondaryOffsetSegBodies) > 0)
+            {
+                allSegBodies = qUnion([allSegBodies, qUnion(allSecondaryOffsetSegBodies)]);
+            }
+            opDeleteBodies(context, id + "deleteSegBodies", { "entities": allSegBodies });
+
+            // Curve output cleanup
             if (!definition.keepOutputCurves)
             {
-                opDeleteBodies(context, id + "deleteAllCurves", {
-                    "entities" : qUnion([qUnion(allWrappedSegBodies), allOffsetBodies])
-                });
+                var wiresToDelete = [wrappedWireBodies, primaryWireBodies];
+                if (secondaryWireBodies != undefined)
+                {
+                    wiresToDelete = append(wiresToDelete, secondaryWireBodies);
+                }
+                opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(wiresToDelete) });
             }
             else if (definition.outputCurveMode == OutputCurveMode.KEEP_WRAPPED)
             {
-                opDeleteBodies(context, id + "deleteOffsets", {
-                    "entities" : allOffsetBodies
-                });
+                var offsetWiresToDelete = [primaryWireBodies];
+                if (secondaryWireBodies != undefined)
+                {
+                    offsetWiresToDelete = append(offsetWiresToDelete, secondaryWireBodies);
+                }
+                opDeleteBodies(context, id + "deleteOffsetWires", { "entities": qUnion(offsetWiresToDelete) });
             }
-            // OutputCurveMode.KEEP_ALL: keep everything, delete nothing
+            // OutputCurveMode.KEEP_ALL: keep all wire bodies
         }
 
         // ===== Cleanup planar projected from-curves =====
@@ -876,8 +902,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             opDeleteBodies(context, id + "cleanupProjected", { "entities" : projectedBodyQuery });
         }
-
-        // TODO (future): opExtractWires to join multi-span segments into single named wire bodies
      });
 
 
