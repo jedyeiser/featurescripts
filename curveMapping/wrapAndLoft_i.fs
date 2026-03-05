@@ -60,8 +60,9 @@ const ZERO_INCLUSIVE_OFFSET_BOUND = { (millimeter) : [0, 0, 100] } as LengthBoun
 
 export enum OutputCurveMode
 {
-    annotation { "Name" : "Keep all" } KEEP_ALL,
-    annotation { "Name" : "Keep wrapped only" } KEEP_WRAPPED
+    annotation { "Name" : "None" } NONE,
+    annotation { "Name" : "Keep wrapped only" } KEEP_WRAPPED,
+    annotation { "Name" : "Keep all" } KEEP_ALL
 }
 
 
@@ -185,14 +186,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             }
         }
 
-        annotation { "Name" : "Keep output curves", "Default" : false }
-        definition.keepOutputCurves is boolean;
-
-        if (definition.keepOutputCurves)
-        {
-            annotation { "Name" : "Output curve mode" }
-            definition.outputCurveMode is OutputCurveMode;
-        }
+        annotation { "Name" : "Output curves", "Default" : OutputCurveMode.NONE }
+        definition.outputCurveMode is OutputCurveMode;
 
         annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
@@ -925,7 +920,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             opDeleteBodies(context, id + "deleteSegBodies", { "entities": allSegBodies });
 
             // Curve output cleanup
-            if (!definition.keepOutputCurves)
+            if (definition.outputCurveMode == OutputCurveMode.NONE)
             {
                 var wiresToDelete = [wrappedWireBodies, primaryWireBodies];
                 if (secondaryWireBodies != undefined)
