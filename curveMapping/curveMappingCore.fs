@@ -13,6 +13,38 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 // IMPORT: tools/point_projection.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
+export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
+
+export enum SamplingMode
+{
+    annotation { "Name" : "Length-based" } LENGTH_BASED,
+    annotation { "Name" : "Control point-based" } CP_BASED
+}
+
+export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpec;
+
+/**
+ * Expands a mixed edge/wire-body/composite selection into a flat edge query.
+ * - Direct edges pass through unchanged.
+ * - Wire bodies contribute all of their owned edges.
+ * - Composite parts contribute edges owned by any wire body they contain.
+ */
+export function expandEdgeQuery(q is Query) returns Query
+{
+    var directEdges = qEntityFilter(q, EntityType.EDGE);
+
+    var wireBodies = qBodyType(qEntityFilter(q, EntityType.BODY), BodyType.WIRE);
+    var wireEdges = qOwnedByBody(wireBodies, EntityType.EDGE);
+
+    var composites = qBodyType(qEntityFilter(q, EntityType.BODY), BodyType.COMPOSITE);
+    var compositeWireEdges = qOwnedByBody(
+        qBodyType(qContainedInCompositeParts(composites), BodyType.WIRE),
+        EntityType.EDGE);
+
+    return qUnion([directEdges, wireEdges, compositeWireEdges]);
+}
+
+
 
 // ============================================================================
 // buildFrenetPath

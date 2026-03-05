@@ -17,41 +17,9 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "1769c3604d8294bdda19c60e");
+export import(path : "683d867c35fdab9c98d47556", version : "7010180c5e3be2311ad5359e");
 
 
-
-
-export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
-
-export enum SamplingMode
-{
-    annotation { "Name" : "Length-based" } LENGTH_BASED,
-    annotation { "Name" : "Control point-based" } CP_BASED
-}
-
-export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpec;
-
-/**
- * Expands a mixed edge/wire-body/composite selection into a flat edge query.
- * - Direct edges pass through unchanged.
- * - Wire bodies contribute all of their owned edges.
- * - Composite parts contribute edges owned by any wire body they contain.
- */
-export function expandEdgeQuery(q is Query) returns Query
-{
-    var directEdges = qEntityFilter(q, EntityType.EDGE);
-
-    var wireBodies = qBodyType(qEntityFilter(q, EntityType.BODY), BodyType.WIRE);
-    var wireEdges = qOwnedByBody(wireBodies, EntityType.EDGE);
-
-    var composites = qBodyType(qEntityFilter(q, EntityType.BODY), BodyType.COMPOSITE);
-    var compositeWireEdges = qOwnedByBody(
-        qBodyType(qContainedInCompositeParts(composites), BodyType.WIRE),
-        EntityType.EDGE);
-
-    return qUnion([directEdges, wireEdges, compositeWireEdges]);
-}
 
 annotation { "Feature Type Name" : "Wrap Curve",
              "Feature Type Description" : "Map curves from one reference edge to another using Frenet frame transformations",

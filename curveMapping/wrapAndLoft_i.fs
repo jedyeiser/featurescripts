@@ -9,10 +9,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "1769c3604d8294bdda19c60e");
+export import(path : "683d867c35fdab9c98d47556", version : "7010180c5e3be2311ad5359e");
 
 //import wrapCurve.fs
-export import(path : "6863116065bf5063633f30ac", version : "ed76cc5d3d7eae04e9d88a93");
+import(path : "6863116065bf5063633f30ac", version : "e692ba3166b7cd2cbc1a7da2");
 
 
 
@@ -198,40 +198,47 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the source edge control points" }
             definition.sourceSamplingMode is SamplingMode;
-
-            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            
+            annotation { "Group Name" : "Sampling options", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point" }
-                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+                if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+                {
+                    annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point" }
+                    isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+                }
+                else
+                {
+                    annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                    isLength(definition.samplingDensity, samplingDensityBounds);
+                }
+    
+                annotation { "Name" : "Reference sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if reference edges  (to/from curves) should be sampled based on length between sampling points, or as an integer multiple of the source edge control points"  }
+                definition.referenceSamplingMode is SamplingMode;
+    
+                if (definition.referenceSamplingMode == SamplingMode.CP_BASED)
+                {
+                    annotation { "Name" : "Reference CP multiplier", "Description" : "Samples per reference edge control point" }
+                    isInteger(definition.referenceCPMultiplier, cpMultiplierBounds);
+                }
+                else
+                {
+                    annotation { "Name" : "Reference sampling density", "Description" : "Distance between sample points along reference edges" }
+                    isLength(definition.referenceSamplingDensity, samplingDensityBounds);
+                }
             }
-            else
+            
+            annotation { "Group Name" : "Spline approximation options", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-                isLength(definition.samplingDensity, samplingDensityBounds);
-            }
-
-            annotation { "Name" : "Reference sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if reference edges  (to/from curves) should be sampled based on length between sampling points, or as an integer multiple of the source edge control points"  }
-            definition.referenceSamplingMode is SamplingMode;
-
-            if (definition.referenceSamplingMode == SamplingMode.CP_BASED)
-            {
-                annotation { "Name" : "Reference CP multiplier", "Description" : "Samples per reference edge control point" }
-                isInteger(definition.referenceCPMultiplier, cpMultiplierBounds);
-            }
-            else
-            {
-                annotation { "Name" : "Reference sampling density", "Description" : "Distance between sample points along reference edges" }
-                isLength(definition.referenceSamplingDensity, samplingDensityBounds);
-            }
-
-            annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
-            isInteger(definition.approximationDegree, DEGREE_BOUND);
-
-            annotation { "Name" : "Maximum control points" }
-            isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
-
-            annotation { "Name" : "Tolerance" }
-            isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+                annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
+                isInteger(definition.approximationDegree, DEGREE_BOUND);
+    
+                annotation { "Name" : "Maximum control points" }
+                isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
+    
+                annotation { "Name" : "Tolerance" }
+                isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+                }
+            
         }
 
         annotation { "Group Name" : "Debug Options",
