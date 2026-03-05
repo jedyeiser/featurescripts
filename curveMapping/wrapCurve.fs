@@ -65,28 +65,37 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED }
+            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source curves should be sampled based on length between sampling points, or as an integer multiple of source curve control points" }
             definition.sourceSamplingMode is SamplingMode;
 
-            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            annotation { "Group Name" : "Sampling options", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "CP multiplier", "Description" : "Samples per source curve control point (minimum 10)" }
-                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+                if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+                {
+                    annotation { "Name" : "CP multiplier", "Description" : "Samples per source curve control point" }
+                    isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+                }
+                else
+                {
+                    annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source curves" }
+                    isLength(definition.samplingDensity, samplingDensityBounds);
+                }
             }
-            else
+
+            annotation { "Group Name" : "Spline approximation options", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source curves" }
-                isLength(definition.samplingDensity, samplingDensityBounds);
+                annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
+                isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+                annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source curve degree and the target degree" }
+                definition.keepDegree is boolean;
+
+                annotation { "Name" : "Maximum control points" }
+                isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
+
+                annotation { "Name" : "Tolerance" }
+                isLength(definition.approximationTolerance, TOLERANCE_BOUND);
             }
-
-            annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
-            isInteger(definition.approximationDegree, DEGREE_BOUND);
-
-            annotation { "Name" : "Maximum control points" }
-            isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
-
-            annotation { "Name" : "Tolerance" }
-            isLength(definition.approximationTolerance, TOLERANCE_BOUND);
         }
 
         annotation { "Group Name" : "Debug Options",
@@ -189,9 +198,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             debugDrawFrames(context, fromFrenetPath, 10);
         }
 
-        // 3. Approximation options (with defaults for when showAdvanced is false)
-        var degree = definition.approximationDegree;
-
         // 4. For each source curve: sample, map, fit, create
         var allSegEdges  = [];
         var allSegBodies = [];
@@ -202,6 +208,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             var srcLen = evLength(context, {
                     "entities" : sourceCurveArray[i]
             });
+            var degree = definition.keepDegree
+                ? max([definition.approximationDegree, srcBSpline.degree])
+                : definition.approximationDegree;
             
             var numSamples;
             if (definition.sourceSamplingMode == SamplingMode.CP_BASED)

@@ -708,7 +708,8 @@ export function debugDrawFrames(context is Context, frenetPath is map, numSample
  * @param toMap     {map}    : result from buildFrenetPath (target reference)
  * @param settings  {map}    : {
  *   fromRefArc, toRefArc, flipToNormal,
- *   samplingDensity, approximationDegree, approximationMaxCPs, approximationTolerance
+ *   samplingMode (SamplingMode), samplingDensity (LENGTH_BASED), sourceCPMultiplier (CP_BASED),
+ *   approximationDegree, approximationMaxCPs, approximationTolerance
  * }
  * @returns {array} : [{ "sourceEdge": Query, "wrappedEdge": Query, "wrappedBody": Query }, ...]
  */
@@ -719,7 +720,21 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
     {
         var edge    = edgeArray[i];
         var edgeLen = evLength(context, { "entities": edge });
-        var numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
+        var edgeBSpline;
+        if (settings.samplingMode == SamplingMode.CP_BASED || settings.keepDegree)
+        {
+            edgeBSpline = evApproximateBSplineCurve(context, { "edge": edge });
+        }
+
+        var numSamples;
+        if (settings.samplingMode == SamplingMode.CP_BASED)
+        {
+            numSamples = max([10, settings.sourceCPMultiplier * size(edgeBSpline.controlPoints)]);
+        }
+        else
+        {
+            numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
+        }
 
         var srcPoints = mapArray(evEdgeTangentLines(context, {
             "edge"       : edge,
@@ -767,11 +782,15 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             // nv == 0: degenerate edge, leave endpoints as-is
         }
 
+        var degree = (settings.keepDegree && edgeBSpline != undefined)
+            ? max([settings.approximationDegree, edgeBSpline.degree])
+            : settings.approximationDegree;
+
         var approxDef = {
             "targets"            : [approximationTarget({ "positions": mappedPoints })],
             "tolerance"          : settings.approximationTolerance,
             "maxControlPoints"   : settings.approximationMaxCPs,
-            "degree"             : settings.approximationDegree,
+            "degree"             : degree,
             "isPeriodic"         : false,
             "interpolateIndices" : [0, size(mappedPoints) - 1]
         };

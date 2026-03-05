@@ -84,11 +84,25 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Setup", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-            isLength(definition.samplingDensity, samplingDensityBounds);
+            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the edge control points" }
+            definition.sourceSamplingMode is SamplingMode;
+
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point" }
+                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+            }
+            else
+            {
+                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                isLength(definition.samplingDensity, samplingDensityBounds);
+            }
 
             annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
             isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+            annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source edge degree and the target degree" }
+            definition.keepDegree is boolean;
 
             annotation { "Name" : "Maximum control points" }
             isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
@@ -177,7 +191,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             "fromRefArc"             : fromRefArc,
             "toRefArc"               : toRefArc,
             "flipToNormal"           : definition.flipToNormal,
+            "samplingMode"           : definition.sourceSamplingMode,
             "samplingDensity"        : definition.samplingDensity,
+            "sourceCPMultiplier"     : definition.sourceCPMultiplier,
+            "keepDegree"             : definition.keepDegree,
             "approximationDegree"    : definition.approximationDegree,
             "approximationMaxCPs"    : definition.approximationMaxCPs,
             "approximationTolerance" : definition.approximationTolerance,

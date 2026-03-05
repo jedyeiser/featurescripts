@@ -232,14 +232,16 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             {
                 annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
                 isInteger(definition.approximationDegree, DEGREE_BOUND);
-    
+
+                annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source curve degree and the target degree" }
+                definition.keepDegree is boolean;
+
                 annotation { "Name" : "Maximum control points" }
                 isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
-    
+
                 annotation { "Name" : "Tolerance" }
                 isLength(definition.approximationTolerance, TOLERANCE_BOUND);
             }
-            
         }
 
         annotation { "Group Name" : "Debug Options",
@@ -285,7 +287,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
      }
      {
         // ===== Approximation / sampling options =====
-        var degree = definition.approximationDegree;
         var samplingDensity = definition.samplingDensity;
         var referenceSamplingDensity = definition.referenceSamplingDensity;
 
@@ -514,6 +515,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
+            var degree = definition.keepDegree
+                ? max([definition.approximationDegree, srcBSpline.degree])
+                : definition.approximationDegree;
 
             var numSamples;
             if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
