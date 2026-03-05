@@ -603,6 +603,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var junctionPt                = undefined;
             var junctionTangent           = undefined;
             var junctionOffsetDir         = undefined;
+            var junction2ndDeriv          = undefined;
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
@@ -620,6 +621,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                       dot(startSrcTangent, fromResult_0.frame.xAxis) * toFrameResult_0.frame.xAxis +
                                       dot(startSrcTangent, yAxis(fromResult_0.frame)) * yAxis(toFrameResult_0.frame);
                 junctionTangent = normalize(startTangentDir);
+                var srcCurvStart = evEdgeCurvature(context, { "edge": sourceCurveArray[i], "parameter": 0 });
+                var srcCurvVec0  = srcCurvStart.curvature * curvatureFrameNormal(srcCurvStart);
+                junction2ndDeriv = dot(srcCurvVec0, fromResult_0.frame.zAxis) * toFrameResult_0.frame.zAxis +
+                                   dot(srcCurvVec0, fromResult_0.frame.xAxis) * toFrameResult_0.frame.xAxis +
+                                   dot(srcCurvVec0, yAxis(fromResult_0.frame)) * yAxis(toFrameResult_0.frame);
             }
 
             while (segStartIdx < size(mappedData))
@@ -638,8 +644,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 // Capture carry-over junction data before clearing for this span
                 var carryOverTangent   = junctionTangent;
                 var carryOverOffsetDir = junctionOffsetDir;
+                var carryOver2ndDeriv  = junction2ndDeriv;
                 junctionTangent  = undefined;
                 junctionOffsetDir = undefined;
+                junction2ndDeriv = undefined;
 
                 // Prepend exact junction point carried from end of previous span
                 if (junctionPt != undefined)
@@ -719,6 +727,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     junctionPt        = junctionWorldPt;
                     junctionTangent   = normalize(junctionTangentDir);
                     junctionOffsetDir = junctionOffDir;
+                    var srcParamJ    = mappedData[segEndIdx].srcParam + t * (mappedData[segEndIdx + 1].srcParam - mappedData[segEndIdx].srcParam);
+                    var srcCurvJ     = evEdgeCurvature(context, { "edge": sourceCurveArray[i], "parameter": srcParamJ });
+                    var srcCurvVecJ  = srcCurvJ.curvature * curvatureFrameNormal(srcCurvJ);
+                    junction2ndDeriv = dot(srcCurvVecJ, fromResult_j.frame.zAxis) * toFrameResult_j.frame.zAxis +
+                                       dot(srcCurvVecJ, fromResult_j.frame.xAxis) * toFrameResult_j.frame.xAxis +
+                                       dot(srcCurvVecJ, yAxis(fromResult_j.frame)) * yAxis(toFrameResult_j.frame);
                 }
                 else
                 {
@@ -737,6 +751,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                         dot(endSrcTangent, fromResult_end.frame.xAxis) * toFrameResult_end.frame.xAxis +
                                         dot(endSrcTangent, yAxis(fromResult_end.frame)) * yAxis(toFrameResult_end.frame);
                     junctionTangent = normalize(endTangentDir);
+                    var srcCurvEnd    = evEdgeCurvature(context, { "edge": sourceCurveArray[i], "parameter": 1 });
+                    var srcCurvVecEnd = srcCurvEnd.curvature * curvatureFrameNormal(srcCurvEnd);
+                    junction2ndDeriv  = dot(srcCurvVecEnd, fromResult_end.frame.zAxis) * toFrameResult_end.frame.zAxis +
+                                        dot(srcCurvVecEnd, fromResult_end.frame.xAxis) * toFrameResult_end.frame.xAxis +
+                                        dot(srcCurvVecEnd, yAxis(fromResult_end.frame)) * yAxis(toFrameResult_end.frame);
                 }
 
                 if (size(segPoints) >= approxDegree + 1)
@@ -757,6 +776,14 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     if (junctionTangent != undefined)
                     {
                         targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
+                    }
+                    if (carryOverTangent != undefined && carryOver2ndDeriv != undefined)
+                    {
+                        targetDef = mergeMaps(targetDef, { "start2ndDerivative": carryOver2ndDeriv });
+                    }
+                    if (junctionTangent != undefined && junction2ndDeriv != undefined)
+                    {
+                        targetDef = mergeMaps(targetDef, { "end2ndDerivative": junction2ndDeriv });
                     }
 
                     var approxDef = {
