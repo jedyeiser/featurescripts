@@ -208,7 +208,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             var srcLen = evLength(context, {
                     "entities" : sourceCurveArray[i]
             });
-            var degree = definition.keepDegree
+            var approxDegree = definition.keepDegree
                 ? max([definition.approximationDegree, srcBSpline.degree])
                 : definition.approximationDegree;
             
@@ -451,7 +451,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "targets"            : [approximationTarget(targetDef)],
                         "tolerance"          : definition.approximationTolerance,
                         "maxControlPoints"   : definition.approximationMaxCPs,
-                        "degree"             : degree,
+                        "degree"             : approxDegree,
                         "isPeriodic"         : false,
                         "interpolateIndices" : [0, size(segPoints) - 1] };
                     var mappedCurve = approximateSpline(context, approxDef)[0];

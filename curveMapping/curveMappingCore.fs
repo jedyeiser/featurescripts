@@ -782,7 +782,7 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             // nv == 0: degenerate edge, leave endpoints as-is
         }
 
-        var degree = (settings.keepDegree && edgeBSpline != undefined)
+        var approxDegree = (settings.keepDegree && edgeBSpline != undefined)
             ? max([settings.approximationDegree, edgeBSpline.degree])
             : settings.approximationDegree;
 
@@ -790,7 +790,7 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             "targets"            : [approximationTarget({ "positions": mappedPoints })],
             "tolerance"          : settings.approximationTolerance,
             "maxControlPoints"   : settings.approximationMaxCPs,
-            "degree"             : degree,
+            "degree"             : approxDegree,
             "isPeriodic"         : false,
             "interpolateIndices" : [0, size(mappedPoints) - 1]
         };

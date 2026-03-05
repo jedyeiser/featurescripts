@@ -345,10 +345,15 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             for (var tei = 0; tei < size(toEdgeArray); tei += 1)
             {
+                var refBSpline;
+                if (definition.referenceSamplingMode == SamplingMode.CP_BASED || definition.keepDegree)
+                {
+                    refBSpline = evApproximateBSplineCurve(context, { "edge": toEdgeArray[tei] });
+                }
+
                 var nProj;
                 if (definition.referenceSamplingMode == SamplingMode.CP_BASED)
                 {
-                    var refBSpline = evApproximateBSplineCurve(context, { "edge": toEdgeArray[tei] });
                     nProj = max([10, definition.referenceCPMultiplier * size(refBSpline.controlPoints)]);
                 }
                 else
@@ -369,11 +374,15 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     projPoints = append(projPoints, pt - dist * planeNormal);
                 }
 
+                var projApproxDegree = (definition.keepDegree && refBSpline != undefined)
+                    ? max([definition.approximationDegree, refBSpline.degree])
+                    : definition.approximationDegree;
+
                 var projApproxDef = {
                     "targets"            : [approximationTarget({ "positions": projPoints })],
                     "tolerance"          : definition.approximationTolerance,
                     "maxControlPoints"   : definition.approximationMaxCPs,
-                    "degree"             : degree,
+                    "degree"             : projApproxDegree,
                     "isPeriodic"         : false,
                     "interpolateIndices" : [0, size(projPoints) - 1]
                 };
@@ -515,7 +524,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
-            var degree = definition.keepDegree
+            var approxDegree = definition.keepDegree
                 ? max([definition.approximationDegree, srcBSpline.degree])
                 : definition.approximationDegree;
 
@@ -723,7 +732,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         "targets"            : [approximationTarget(targetDef)],
                         "tolerance"          : definition.approximationTolerance,
                         "maxControlPoints"   : definition.approximationMaxCPs,
-                        "degree"             : degree,
+                        "degree"             : approxDegree,
                         "isPeriodic"         : false,
                         "interpolateIndices" : [0, size(segPoints) - 1]
                     };
@@ -758,7 +767,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var offsetApproxBase = {
                         "tolerance"        : definition.approximationTolerance,
                         "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : degree
+                        "degree"           : approxDegree
                     };
 
                     var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
