@@ -708,7 +708,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     junctionOffsetDir = junctionOffDir;
                 }
 
-                if (size(segPoints) >= degree + 1)
+                if (size(segPoints) >= approxDegree + 1)
                 {
                     // Scale for derivative constraints: total chord length of this segment.
                     var totalChord = 0 * meter;

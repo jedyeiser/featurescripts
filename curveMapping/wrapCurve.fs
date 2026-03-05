@@ -422,7 +422,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     junctionTangent = normalize(junctionTangentDir);
                 }
 
-                if (size(segPoints) >= degree + 1)
+                if (size(segPoints) >= approxDegree + 1)
                 {
                     // Scale for derivative constraints: total chord length of this segment.
                     // approximateSpline uses [0,1] parameterization, so the natural derivative
@@ -469,7 +469,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 else if (definition.debugWrappedCurves)
                 {
                     println("  [skipped span " ~ toString(i) ~ "." ~ toString(segCount) ~
-                            ": only " ~ toString(size(segPoints)) ~ " points, need " ~ toString(degree + 1) ~ "]");
+                            ": only " ~ toString(size(segPoints)) ~ " points, need " ~ toString(approxDegree + 1) ~ "]");
                 }
 
                 segStartIdx = segEndIdx + 1;
