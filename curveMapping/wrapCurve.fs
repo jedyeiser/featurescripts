@@ -321,6 +321,24 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             var junctionPt      = undefined;  // carry-over exact junction point between spans
             var junctionTangent = undefined;  // carry-over junction tangent direction in to-space
 
+            // Pre-constrain first span's start tangent from source edge at parameter 0
+            {
+                var startLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0];
+                var startSrcTangent = startLine.direction;
+                var s_from_0        = mappedData[0].sFrom;
+                var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
+                var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
+                var toResult_0      = getFrameAtArcLength(context, toFrenetPath, s_to_0);
+                var toSign_0        = definition.flipToNormal ? -1 * toResult_0.sign : toResult_0.sign;
+                var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
+                    ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
+                    : toResult_0;
+                var startTangentDir = dot(startSrcTangent, fromResult_0.frame.zAxis) * toFrameResult_0.frame.zAxis +
+                                      dot(startSrcTangent, fromResult_0.frame.xAxis) * toFrameResult_0.frame.xAxis +
+                                      dot(startSrcTangent, yAxis(fromResult_0.frame)) * yAxis(toFrameResult_0.frame);
+                junctionTangent = normalize(startTangentDir);
+            }
+
             while (segStartIdx < size(mappedData))
             {
                 // Collect the run of consecutive points on the same to-edge
@@ -420,6 +438,24 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     segPoints       = append(segPoints, junctionWorldPt);
                     junctionPt      = junctionWorldPt;
                     junctionTangent = normalize(junctionTangentDir);
+                }
+                else
+                {
+                    // Last span — constrain end tangent from source edge at parameter 1
+                    var endLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0];
+                    var endSrcTangent = endLine.direction;
+                    var s_from_end    = mappedData[size(mappedData) - 1].sFrom;
+                    var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
+                    var s_to_end          = toRefArc + (s_from_end - fromRefArc);
+                    var toResult_end      = getFrameAtArcLength(context, toFrenetPath, s_to_end);
+                    var toSign_end        = definition.flipToNormal ? -1 * toResult_end.sign : toResult_end.sign;
+                    var toFrameResult_end = (toSign_end != fromResult_end.sign)
+                        ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
+                        : toResult_end;
+                    var endTangentDir = dot(endSrcTangent, fromResult_end.frame.zAxis) * toFrameResult_end.frame.zAxis +
+                                        dot(endSrcTangent, fromResult_end.frame.xAxis) * toFrameResult_end.frame.xAxis +
+                                        dot(endSrcTangent, yAxis(fromResult_end.frame)) * yAxis(toFrameResult_end.frame);
+                    junctionTangent = normalize(endTangentDir);
                 }
 
                 if (size(segPoints) >= approxDegree + 1)
