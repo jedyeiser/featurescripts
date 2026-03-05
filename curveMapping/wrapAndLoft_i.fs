@@ -195,7 +195,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
         annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Source sampling mode" }
+            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED }
             definition.sourceSamplingMode is SamplingMode;
 
             if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
@@ -209,7 +209,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 isLength(definition.samplingDensity, samplingDensityBounds);
             }
 
-            annotation { "Name" : "Reference sampling mode" }
+            annotation { "Name" : "Reference sampling mode", "Default" : SamplingMode.LENGTH_BASED }
             definition.referenceSamplingMode is SamplingMode;
 
             if (definition.referenceSamplingMode == SamplingMode.CP_BASED)
