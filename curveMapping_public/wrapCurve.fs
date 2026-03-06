@@ -78,11 +78,25 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             annotation { "Group Name" : "Details", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-                isLength(definition.samplingDensity, samplingDensityBounds);
+                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
+                definition.sourceSamplingMode is SamplingMode;
+
+                if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+                {
+                    annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "sourceSamplingMode" }
+                    isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+                }
+                else
+                {
+                    annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                    isLength(definition.samplingDensity, samplingDensityBounds);
+                }
 
                 annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
                 isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+                annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source edge degree and the target degree" }
+                definition.keepDegree is boolean;
 
                 annotation { "Name" : "Maximum control points" }
                 isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
@@ -185,7 +199,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // Fix 1: Align isolated from-line xAxes with to-path normal.
         // Lines adjacent to a curve already got a curve-context xAxis in buildFrenetPath step 4.5;
         // this handles the isolated-line case (no curve neighbor) by borrowing the to-path normal.
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc);
+        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
 
         if (definition.debugShowFromFrames)
         {

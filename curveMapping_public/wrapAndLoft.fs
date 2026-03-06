@@ -13,7 +13,7 @@ import(path : "08e8748f2ef24eea16072b75/558ac7d8d514ac0cb9e52229/683d867c35fdab9
 
 
 //import wrapCurve.fs
-import(path : "0e53e9b1145a1bd7bbfa0193", version : "525b5fac4f6359853889b1cd");
+import(path : "0e53e9b1145a1bd7bbfa0193", version : "2f635cee0855f70a7b51693d");
 
 IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
 
@@ -204,19 +204,33 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             annotation { "Group Name" : "Details", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-                isLength(definition.samplingDensity, samplingDensityBounds);
-    
+                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
+                definition.sourceSamplingMode is SamplingMode;
+
+                if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+                {
+                    annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "sourceSamplingMode" }
+                    isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+                }
+                else
+                {
+                    annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                    isLength(definition.samplingDensity, samplingDensityBounds);
+                }
+
                 annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
                 isInteger(definition.approximationDegree, DEGREE_BOUND);
-    
+
+                annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source edge degree and the target degree" }
+                definition.keepDegree is boolean;
+
                 annotation { "Name" : "Maximum control points" }
                 isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
-    
+
                 annotation { "Name" : "Tolerance" }
                 isLength(definition.approximationTolerance, TOLERANCE_BOUND);
             }
-            
+
         }
 
         annotation { "Group Name" : "Debug Options",
@@ -387,91 +401,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
         // ===== Isolated from-line xAxis fix =====
-        // Lines adjacent to a curve got a curve-context xAxis in buildFrenetPath step 4.5;
-        // isolated lines (no curve neighbor) borrow the to-path normal at the mapped arc-length.
-        //
-        // In the planar case, near-linear to-paths produce near-linear projected BSplines that
-        // buildFrenetPath classifies as BSplines (not CurveType.LINE), giving arbitrary xAxes.
-        // Pass 1 promotes such effectively-linear BSplines to line mode so pass 2 can fix them.
-        var fromEdgeData = fromFrenetPath.edgeData;
-
-        // Pass 1 — promote effectively-linear BSplines to line mode
-        for (var i = 0; i < size(fromEdgeData); i += 1)
-        {
-            var ed = fromEdgeData[i];
-            if (ed.isLine)  continue;  // already exact line, skip
-
-            var cps     = ed.bspline.controlPoints;
-            var n       = size(cps);
-            var p0      = cps[0];
-            var p1      = cps[n - 1];
-            var chord    = p1 - p0;
-            var chordLen = norm(chord);
-
-            if (chordLen.value < 1e-10)  continue;  // degenerate edge, leave alone
-
-            var chordDir = normalize(chord);
-            var maxDev   = 0 * meter;
-            for (var j = 1; j < n - 1; j += 1)
-            {
-                var diff    = cps[j] - p0;
-                var lateral = norm(diff - dot(diff, chordDir) * chordDir);
-                if (lateral > maxDev)  maxDev = lateral;
-            }
-
-            if (maxDev >= 0.001 * ed.length)  continue;  // well-curved, leave alone
-
-            // Promote to line mode
-            var traversalStartPt = ed.stdDir ? cps[0]     : cps[n - 1];
-            var traversalEndPt   = ed.stdDir ? cps[n - 1] : cps[0];
-            var tangent          = normalize(traversalEndPt - traversalStartPt);
-
-            // Placeholder xAxis — perpendicular to tangent, overwritten in pass 2
-            var refVec    = (abs(dot(tangent, vector(1, 0, 0))) < 0.9) ? vector(1, 0, 0) : vector(0, 1, 0);
-            var tempXAxis = normalize(refVec - dot(refVec, tangent) * tangent);
-
-            fromEdgeData[i] = mergeMaps(ed, {
-                "isLine"              : true,
-                "lineStartPt"         : traversalStartPt,
-                "lineFrame"           : coordSystem(traversalStartPt, tempXAxis, tangent),
-                "localInflectionArcs" : []   // clear spurious inflections from near-linear BSpline
-            });
-
-            if (definition.debugFromBSplines)
-            {
-                println("  Pass1: promoted edge " ~ toString(i) ~
-                        " length=" ~ toString(ed.length) ~
-                        " maxDev=" ~ toString(maxDev) ~
-                        " tangent=" ~ toString(tangent));
-            }
-        }
-
-        // Pass 2 — borrow xAxis from to-path for all isolated lines
-        // (exact lines from buildFrenetPath + newly-promoted lines from pass 1)
-        for (var i = 0; i < size(fromEdgeData); i += 1)
-        {
-            var ed = fromEdgeData[i];
-            if (!ed.isLine)  continue;
-
-            var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
-                              (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
-            if (hasCurveCtx)  continue;
-
-            var midFromArc = ed.startArcLength + ed.length / 2;
-            var midToArc   = toRefArc + (midFromArc - fromRefArc);
-            var toXAxis    = getFrameAtArcLength(context, toFrenetPath, midToArc).frame.xAxis;
-
-            var tangent   = ed.lineFrame.zAxis;
-            var perpXAxis = toXAxis - dot(toXAxis, tangent) * tangent;
-            if (norm(perpXAxis) > 1e-6)
-            {
-                fromEdgeData[i] = mergeMaps(ed, {
-                    "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
-                });
-            }
-        }
-
-        fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
 
         if (definition.debugShowFromFrames)
         {
@@ -717,22 +647,15 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         }
                     }
 
-                    // Offset curves don't need exact endpoint interpolation — use unconstrained fit
-                    var offsetApproxBase = {
-                        "tolerance"        : definition.approximationTolerance,
-                        "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : degree
-                    };
-
                     var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
-                    var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
+                    var primaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
 
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
                         var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
-                        var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
+                        var secondaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
                     }
 

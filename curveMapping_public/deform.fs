@@ -3,7 +3,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 
 //export import wrapCurve
-export import(path : "0e53e9b1145a1bd7bbfa0193", version : "525b5fac4f6359853889b1cd");
+export import(path : "0e53e9b1145a1bd7bbfa0193", version : "2f635cee0855f70a7b51693d");
 
 //import curveMappingCore
 import(path : "08e8748f2ef24eea16072b75/558ac7d8d514ac0cb9e52229/683d867c35fdab9c98d47556", version : "d46356725d937bcb4e5825a6");
@@ -87,11 +87,25 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Setup", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
-            isLength(definition.samplingDensity, samplingDensityBounds);
+            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
+            definition.sourceSamplingMode is SamplingMode;
+
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point" }
+                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+            }
+            else
+            {
+                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                isLength(definition.samplingDensity, samplingDensityBounds);
+            }
 
             annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
             isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+            annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source edge degree and the target degree" }
+            definition.keepDegree is boolean;
 
             annotation { "Name" : "Maximum control points" }
             isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
@@ -149,7 +163,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   getRefPoint(context, definition.toRef),   undefined).arcLength;
 
         // Align isolated from-line xAxes with the to-path normal.
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc);
+        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
 
         if (definition.debugShowFromFrames)
             debugDrawFrames(context, fromFrenetPath, 10);
@@ -180,7 +194,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             "fromRefArc"             : fromRefArc,
             "toRefArc"               : toRefArc,
             "flipToNormal"           : definition.flipToNormal,
+            "samplingMode"           : definition.sourceSamplingMode,
             "samplingDensity"        : definition.samplingDensity,
+            "sourceCPMultiplier"     : definition.sourceCPMultiplier,
+            "keepDegree"             : definition.keepDegree,
             "approximationDegree"    : definition.approximationDegree,
             "approximationMaxCPs"    : definition.approximationMaxCPs,
             "approximationTolerance" : definition.approximationTolerance,
