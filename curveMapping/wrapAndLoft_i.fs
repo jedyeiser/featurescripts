@@ -952,7 +952,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                     var P2An = P1A + (dl1 + dl2) * (d2tA * (dl1 / (dA * (dA - 1))) + (P1A - P0A) / dl1);
                                     var shA  = norm(P2An - P2Ac);
                                     var scA  = norm(P1A - P0A) * dA;
-                                    if (scA > 0 * meter && shA > TOLERANCE.zeroLength && shA < 0.2 * scA)
+                                    if (scA > 0 * meter && shA > 0 * meter && shA < 0.2 * scA)
                                     {
                                         var ncA = [];
                                         for (var ci = 0; ci < size(CPA); ci += 1)
@@ -999,7 +999,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                     var PSn = (ae * PL + be2 * PT - Ke) / (ae + be2);
                                     var shB = norm(PSn - PS);
                                     var scB = norm(PL - PS) * dB;
-                                    if (scB > 0 * meter && shB > TOLERANCE.zeroLength && shB < 0.2 * scB)
+                                    if (scB > 0 * meter && shB > 0 * meter && shB < 0.2 * scB)
                                     {
                                         var ncB = [];
                                         for (var ci = 0; ci < mB; ci += 1)
