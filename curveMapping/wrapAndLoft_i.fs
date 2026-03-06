@@ -963,13 +963,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                             nbA = append(nbA, bi == sjNext ? adjA : wrappedBSplines[bi]);
                                         wrappedBSplines = nbA;
                                         var cidA = wrappedCurrIds[sjNext];
-                                        opDeleteBodies(context, cidA ~ "g2ADel", { "entities": qCreatedBy(cidA, EntityType.BODY) });
-                                        opCreateBSplineCurve(context, cidA ~ "g2A", { "bSplineCurve": adjA });
-                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(cidA ~ "g2A", EntityType.EDGE));
-                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(cidA ~ "g2A", EntityType.BODY));
+                                        opDeleteBodies(context, cidA + "g2ADel", { "entities": qCreatedBy(cidA, EntityType.BODY) });
+                                        opCreateBSplineCurve(context, cidA + "g2A", { "bSplineCurve": adjA });
+                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(cidA + "g2A", EntityType.EDGE));
+                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(cidA + "g2A", EntityType.BODY));
                                         var nciA = [];
                                         for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
-                                            nciA = append(nciA, ci2 == sjNext ? cidA ~ "g2A" : wrappedCurrIds[ci2]);
+                                            nciA = append(nciA, ci2 == sjNext ? cidA + "g2A" : wrappedCurrIds[ci2]);
                                         wrappedCurrIds = nciA;
                                     }
                                 }
@@ -1010,13 +1010,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                             nbB = append(nbB, bi == sj ? adjB : wrappedBSplines[bi]);
                                         wrappedBSplines = nbB;
                                         var cidB = wrappedCurrIds[sj];
-                                        opDeleteBodies(context, cidB ~ "g2BDel", { "entities": qCreatedBy(cidB, EntityType.BODY) });
-                                        opCreateBSplineCurve(context, cidB ~ "g2B", { "bSplineCurve": adjB });
-                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(cidB ~ "g2B", EntityType.EDGE));
-                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(cidB ~ "g2B", EntityType.BODY));
+                                        opDeleteBodies(context, cidB + "g2BDel", { "entities": qCreatedBy(cidB, EntityType.BODY) });
+                                        opCreateBSplineCurve(context, cidB + "g2B", { "bSplineCurve": adjB });
+                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(cidB + "g2B", EntityType.EDGE));
+                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(cidB + "g2B", EntityType.BODY));
                                         var nciB = [];
                                         for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
-                                            nciB = append(nciB, ci2 == sj ? cidB ~ "g2B" : wrappedCurrIds[ci2]);
+                                            nciB = append(nciB, ci2 == sj ? cidB + "g2B" : wrappedCurrIds[ci2]);
                                         wrappedCurrIds = nciB;
                                     }
                                 }
