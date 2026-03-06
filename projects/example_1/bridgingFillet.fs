@@ -638,12 +638,12 @@ export function bridgingFilletEditingLogic(context is Context, id is Id, oldDefi
         (specifiedParameters.side1Face || specifiedParameters.side2Face) &&
         !specifiedParameters.side1Edge && !specifiedParameters.side2Edge)
     {
-        // TODO: var sharedEdge = tryFindSharedEdge(context, definition.side1Face, definition.side2Face);
-        // if (!isQueryEmpty(context, sharedEdge))
-        // {
-        //     definition.side1Edge = sharedEdge;
-        //     definition.side2Edge = sharedEdge;
-        // }
+        var sharedEdge = tryFindSharedEdge(context, definition.side1Face, definition.side2Face);
+        if (!isQueryEmpty(context, sharedEdge))
+        {
+            definition.side1Edge = sharedEdge;
+            definition.side2Edge = sharedEdge;
+        }
     }
 
     // 5. inputType change — clear opposing selectors to avoid stale selections
