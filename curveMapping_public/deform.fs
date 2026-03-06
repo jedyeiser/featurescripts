@@ -58,7 +58,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "From edge(s)",
-                "Filter" : EntityType.EDGE,
+                "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                 "MaxNumberOfPicks" : 10,
                 "Description" : "Reference edge(s) to map from (source reference)" }
             definition.fromEdges is Query;
@@ -70,7 +70,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "To edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map to (target reference)" }
             definition.toEdges is Query;
@@ -156,8 +156,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
     }
     {
         // --- Setup (always runs) ---
-        var toFrenetPath   = buildFrenetPath(context, id, definition.toEdges,   definition.flipTo);
-        var fromFrenetPath = buildFrenetPath(context, id, definition.fromEdges, false);
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo);
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
 
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, getRefPoint(context, definition.fromRef), undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   getRefPoint(context, definition.toRef),   undefined).arcLength;

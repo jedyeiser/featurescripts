@@ -75,7 +75,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
     // 2. Update definition.sourceEdgesArePlanar accordingly
     try
     {
-        var edgeArray = evaluateQuery(context, definition.sourceEdges);
+        var edgeArray = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
         if (size(edgeArray) > 0)
         {
             // Collect sample points from all source edges
@@ -132,7 +132,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
  export const wrapAndLoft = defineFeature(function(context is Context, id is Id, definition is map)
      precondition
      {
-         annotation { "Name" : "Wrap edges", "Filter" : EntityType.EDGE, "Decription" : "Edges that we will wrap and create a loft through"}
+         annotation { "Name" : "Wrap edges",
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                    "Description" : "Edges to wrap and create a loft through. Accepts edges, wire bodies, or composite parts containing wire bodies." }
          definition.sourceEdges is Query;
 
          annotation { "Name" : "areSourceEdgesPlanar", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -143,7 +145,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             if (!definition.sourceEdgesArePlanar)
             {
                 annotation { "Name" : "From edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map from (source reference)" }
                 definition.fromEdges is Query;
@@ -156,7 +158,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "To edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map to (target reference)" }
             definition.toEdges is Query;
@@ -289,7 +291,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         }
 
         // ===== Build to-path =====
-        var toFrenetPath = buildFrenetPath(context, id, definition.toEdges, definition.flipTo);
+        var toFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges), definition.flipTo);
 
         if (definition.debugToBSplines)
         {
@@ -315,7 +317,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         if (definition.sourceEdgesArePlanar)
         {
             // 1. Fit plane to sourceEdges (same sample-point approach as editing logic)
-            var srcEdgeArray = evaluateQuery(context, definition.sourceEdges);
+            var srcEdgeArray = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
             var allSrcPts    = [];
             for (var i = 0; i < size(srcEdgeArray); i += 1)
             {
@@ -375,13 +377,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             }
 
             // 3. Build fromFrenetPath from the projected edges
-            fromFrenetPath     = buildFrenetPath(context, id, qUnion(projectedEdgeQueries), false);
+            fromFrenetPath     = buildFrenetPath(context, id, expandEdgeQuery(qUnion(projectedEdgeQueries)), false);
             projectedBodyQuery = qUnion(projectedBodies);
         }
         else
         {
             // Non-planar: user provides fromEdges explicitly
-            fromFrenetPath = buildFrenetPath(context, id, definition.fromEdges, false);
+            fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
         }
 
         if (definition.debugFromBSplines)
@@ -409,7 +411,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         }
 
         // ===== Main wrapping loop =====
-        var sourceCurveArray              = evaluateQuery(context, definition.sourceEdges);
+        var sourceCurveArray              = evaluateQuery(context, expandEdgeQuery(definition.sourceEdges));
         var allWrappedSegQueries          = [];
         var allPrimaryOffsetSegQueries    = [];
         var allSecondaryOffsetSegQueries  = [];

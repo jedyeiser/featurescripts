@@ -37,7 +37,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "From edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map from (source reference)" }
             definition.fromEdges is Query;
@@ -49,7 +49,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         annotation { "Group Name" : "To data", "Collapsed By Default" : true }
         {
             annotation { "Name" : "To edge(s)",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "MaxNumberOfPicks" : 10,
                     "Description" : "Reference edge(s) to map to (target reference)" }
             definition.toEdges is Query;
@@ -65,7 +65,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
 
         annotation { "Name" : "Source curves",
-                    "Filter" : EntityType.EDGE,
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
                     "Description" : "Curves to map from fromEdge to toEdge" }
         definition.sourceCurves is Query;
 
@@ -163,8 +163,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
     {
         // 1. Build FrenetPaths for from/to references
-        var fromFrenetPath = buildFrenetPath(context, id, definition.fromEdges, false);
-        var toFrenetPath   = buildFrenetPath(context, id, definition.toEdges,   definition.flipTo);
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo);
 
         if (definition.debugFromBSplines)
         {
@@ -212,7 +212,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 4. For each source curve: sample, map, fit, create
         var allSegEdges  = [];
         var allSegBodies = [];
-        var sourceCurveArray = evaluateQuery(context, definition.sourceCurves);
+        var sourceCurveArray = evaluateQuery(context, expandEdgeQuery(definition.sourceCurves));
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
