@@ -83,8 +83,12 @@ export enum OverlapType
  * from the CSV and user overrides here (not in editing logic) because
  * ValueWithUnits maps don't survive definition serialization.
  *
- * @param fcpX : FCP world X coordinate (or undefined for uniform spacing)
- * @param acpX : ACP world X coordinate (or undefined for uniform spacing)
+ * @param fcpX : FCP world X coordinate (ValueWithUnits), or `undefined` meaning "no reference boundary".
+ *               `undefined` is NOT the same as zero — it means the section range has no defined front
+ *               contact point, so uniform spacing is used across the full edge. Pass a real coordinate
+ *               only when an FCP vertex/mate-connector has been selected and resolved.
+ * @param acpX : ACP world X coordinate (ValueWithUnits), or `undefined` — same semantics as fcpX.
+ *               Both must be non-undefined for adaptive (FCP-to-ACP reference region) spacing to activate.
  */
 export function processCrossSections(context is Context, id is Id, definition is map, fcpX, acpX) returns map
 {

@@ -39,7 +39,11 @@ import(path : "c2c3edd39b85fde5e6062533", version : "b0754fab353403d58cf2cc1c");
 // ============================================================================
 
 /**
- * Round a plain number to 2 decimal places.
+ * Round a plain (unitless) number to 2 decimal places.
+ * Used for display formatting in editing-logic output fields.
+ *
+ * @param x {number} : Value to round
+ * @returns {number} : Value rounded to nearest 0.01
  */
 function round2(x is number) returns number
 {
@@ -47,9 +51,16 @@ function round2(x is number) returns number
 }
 
 /**
- * Build an ordered chain of edges from a query of connected edges.
- * Returns [{edge, reversed}, ...] in connected traversal order.
- * Uses evEdgeCurvatures (parameters 0 and 1) for endpoint detection.
+ * Build an ordered, direction-consistent chain from a set of G1-connected edges.
+ *
+ * Performs greedy traversal: starts from the first edge, then at each step finds the
+ * unused edge whose endpoint matches the current chain tip (within GEOM_TOL). Edges
+ * are marked as reversed if they must be traversed end→start to maintain chain direction.
+ *
+ * @param context {Context}
+ * @param edgesQ {Query} : Query returning a set of connected (G1 continuous) edges
+ * @returns {array} : Array of { edge: Query, reversed: boolean } in traversal order.
+ *                    Returns [] if no edges match the query.
  */
 function buildEdgeChain(context is Context, edgesQ is Query) returns array
 {
@@ -120,10 +131,17 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
 }
 
 /**
- * Uniformly sample n points distributed across the chain.
- * Uses evEdgeCurvatures with native [0,1] edge parameterization — avoids
- * B-spline knot range issues entirely.
- * Returns [{pt, curveIdx, u}, ...].
+ * Sample n points uniformly distributed across a multi-edge chain.
+ *
+ * Uses midpoint sampling within each edge's native [0,1] parameterization
+ * (avoids B-spline knot-range issues). Each edge gets `ceil(n / numCurves)` samples.
+ * Reversed edges have their sample order flipped to maintain chain direction.
+ *
+ * @param context {Context}
+ * @param chain {array} : Edge chain from buildEdgeChain — [{ edge, reversed }, ...]
+ * @param n {number} : Approximate total number of samples (actual may be slightly higher)
+ * @returns {array} : Array of { pt: Vector, curveIdx: number, u: number }
+ *                    where curveIdx is the edge index in chain and u is the native parameter.
  */
 function sampleChain(context is Context, chain is array, n is number) returns array
 {

@@ -415,6 +415,25 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_project_new(args: argparse.Namespace, work_manager: WorkingDirectoryManager) -> int:
+    """Create a new working project interactively."""
+    refs = args.references.split(",") if getattr(args, "references", None) else None
+
+    try:
+        work_manager.interactive_add_project(
+            url=args.url,
+            name=args.name,
+            description=getattr(args, "description", None),
+            local_path=getattr(args, "path", None),
+            references=refs,
+            non_interactive=getattr(args, "non_interactive", False),
+        )
+        return 0
+    except Exception as e:
+        console.print(f"[red]Error: {e}")
+        return 1
+
+
 def cmd_project(args: argparse.Namespace) -> int:
     """Manage working projects (bidirectional sync)."""
     base_dir = get_base_dir()
@@ -446,6 +465,9 @@ def cmd_project(args: argparse.Namespace) -> int:
         except Exception as e:
             console.print(f"[red]Error: {e}")
             return 1
+
+    elif args.project_command == "new":
+        return cmd_project_new(args, work_manager)
 
     elif args.project_command == "list":
         projects = work_manager.list_projects()
@@ -735,6 +757,15 @@ def main() -> int:
     project_add.add_argument("--description", help="Project description")
     project_add.add_argument("--path", help="Local path (default: ./projects/{name})")
     project_add.add_argument("--references", help="Comma-separated list of reference names")
+
+    # project new (interactive)
+    project_new = project_subparsers.add_parser("new", help="Create a new project interactively with health checks")
+    project_new.add_argument("url", help="Onshape URL (document or folder)")
+    project_new.add_argument("name", help="Human-readable name for the project")
+    project_new.add_argument("--description", help="Project description (skips prompt)")
+    project_new.add_argument("--path", help="Local path (skips prompt)")
+    project_new.add_argument("--references", help="Comma-separated reference names (skips suggestion flow)")
+    project_new.add_argument("--non-interactive", action="store_true", help="Skip all prompts; behave like 'add' with health checks")
 
     # project list
     project_subparsers.add_parser("list", help="List all configured projects")

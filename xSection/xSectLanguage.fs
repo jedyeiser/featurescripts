@@ -1,6 +1,27 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
+/**
+ * XSECTION LANGUAGE / TRANSLATION MODULE
+ * =========================================
+ *
+ * Provides localized label lookup tables for xSection analysis output.
+ *
+ * Supported languages: ENG (English), GER (Deutsch)
+ *
+ * Usage pattern:
+ *   var label = overallAnalysisTranslationLookup[LANGUAGE.ENG]["Prismatic stiffness (lb/in)"];
+ *   var header = mainTableHeaderTranslationLookup[LANGUAGE.GER]["Station"];
+ *
+ * Lookup tables:
+ *   - `overallAnalysisTranslationLookup` : summary-row labels (stiffness metrics, weight)
+ *   - `mainTableHeaderTranslationLookup` : cross-section table column headers
+ *
+ * Key conventions:
+ *   - Keys are the canonical English strings (same as LANGUAGE.ENG values)
+ *   - Missing keys fall through to the English key; callers should guard with `tryGetKey`
+ *     if adding new keys without a full translation.
+ */
 export enum LANGUAGE
 {
     annotation { "Name" : "Deutsch"}

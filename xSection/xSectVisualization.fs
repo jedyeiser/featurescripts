@@ -13,14 +13,22 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  */
 
 /**
- * Create visualization curves for cross-section analysis.
+ * Create all visualization curves for cross-section analysis results.
  *
- * Wrapper function that creates both EI and neutral axis curves.
+ * Creates 5 spline curves in world space (one per mechanical property):
+ *   1. EI curve          — bending stiffness in XZ plane (1 N·m² = 1 mm Z height)
+ *   2. Neutral axis curve— NA height offset along frame xAxis from the base edge
+ *   3. Lineal density curve — mass per unit length (1 kg/m = 100 mm Z height)
+ *   4. GJ curve          — torsional stiffness in XZ plane (1 N·m² = 1 mm Z height)
+ *   5. Profile height curve — beam thickness at each station (1:1 actual meters → Z)
+ *
+ * Curves are named with `namePrefix_<type>` if namePrefix is non-empty, otherwise
+ * default names (EI_curve, neutral_axis, linealDensity_curve, GJ_curve, profileHeight_curve).
  *
  * @param context {Context}
- * @param id {Id} : Base feature ID
- * @param crossSectionData {map} : Full analysis data with mechanicalProperties
- * @param namePrefix {string} : Optional prefix for curve names (from analysisName)
+ * @param id {Id} : Base feature ID; sub-IDs are derived per curve
+ * @param crossSectionData {map} : Full analysis data with `crossSections[i].mechanicalProperties`
+ * @param namePrefix {string} : Optional prefix from analysisName (empty string = no prefix)
  */
 export function createVisualizationCurves(context is Context, id is Id,
                                           crossSectionData is map, namePrefix is string)

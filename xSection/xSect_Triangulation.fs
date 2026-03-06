@@ -513,7 +513,14 @@ function classifyNesting(perimeterData is array, sectionPoints is array, frame i
 }
 
 /**
- * Build nested hierarchy from parent relationships.
+ * Build nested hierarchy from flat parent-index array (recursive).
+ *
+ * @param perimeterData {array} : Flat array of { pointIndices, points2D }
+ * @param parents {array} : For each perimeter i, parents[i] = index of its immediate parent (-1 = top-level)
+ * @param parentIdx {number} : Current parent to collect children for (-1 on initial call)
+ * @returns {array} : Array of nodes at this nesting depth, each:
+ *   { pointIndices: [int,...], points2D: [[x,y],...], subgroupData: [...recursive...] }
+ *   Top-level call returns only the root perimeters; children are in subgroupData.
  */
 function buildNestedHierarchy(perimeterData is array, parents is array, parentIdx is number) returns array
 {
@@ -538,7 +545,14 @@ function buildNestedHierarchy(perimeterData is array, parents is array, parentId
 }
 
 /**
- * Compute centroid of 2D polygon.
+ * Compute centroid of a 2D polygon as the arithmetic mean of vertex coordinates.
+ *
+ * NOTE: This is NOT area-weighted (not the true centroid of the polygon area).
+ * It is used only for containment testing (is point A inside polygon B?), where
+ * approximate centroid location is sufficient. Do not use for section property calculations.
+ *
+ * @param points2D {array} : Array of [x, y] vertices
+ * @returns {array} : [cx, cy] arithmetic mean of vertices
  */
 function computePolygonCentroid2D(points2D is array) returns array
 {
@@ -680,6 +694,16 @@ export function earClipTriangulate(points2D is array, pointIndices is array) ret
     
     var triangles = [];
     
+    // Ear-clipping algorithm:
+    // Each iteration scans the remaining polygon for a valid "ear" — a convex vertex
+    // whose triangle contains no other vertices and whose diagonal lies inside the polygon.
+    // Once found, the ear triangle is emitted and the ear tip is removed, reducing the
+    // polygon by one vertex. Repeat until 3 vertices remain (the last triangle).
+    //
+    // Termination: if no ear is found in a full scan, the polygon is either degenerate
+    // (all remaining vertices collinear) or numerically ill-conditioned. The collinear
+    // case is handled below by fan-triangulating the remaining vertices. Non-collinear
+    // failure simply breaks out to avoid an infinite loop.
     while (size(localIndices) > 3)
     {
         var earFound = false;
@@ -789,7 +813,17 @@ export function earClipTriangulate(points2D is array, pointIndices is array) ret
 
 
 /**
- * Check if vertex forms convex angle (CCW winding).
+ * Check if vertex pB forms a convex (non-reflex) angle in a CCW-wound polygon.
+ *
+ * Uses the 2D cross product of (pB-pA) × (pC-pB). For a CCW polygon:
+ *   cross > 0  → left turn → convex vertex (valid ear candidate)
+ *   cross < 0  → right turn → reflex vertex (not an ear)
+ *   cross ≈ 0  → collinear (treated as convex; collinear ears are valid degenerate cases)
+ *
+ * @param pA {array} : [x,y] previous vertex
+ * @param pB {array} : [x,y] current vertex (candidate ear tip)
+ * @param pC {array} : [x,y] next vertex
+ * @returns {boolean} : true if convex (cross >= -epsilon)
  */
 function isConvexVertex2D(pA is array, pB is array, pC is array) returns boolean
 {
@@ -799,9 +833,19 @@ function isConvexVertex2D(pA is array, pB is array, pC is array) returns boolean
 }
 
 /**
- * Check if triangle contains any other vertex from the working set.
+ * Check if the candidate ear triangle (pA, pB, pC) contains any other polygon vertex.
+ *
+ * @param pA {array} : Previous vertex [x,y]
+ * @param pB {array} : Current (ear tip) vertex [x,y]
+ * @param pC {array} : Next vertex [x,y]
+ * @param points2D {array} : Full 2D points array for the working polygon
+ * @param localIndices {array} : Current working index list (indices into points2D)
+ * @param skipLocalIdx {number} : Position of the ear tip in localIndices; its neighbors (iPrev, iNext)
+ *                                are automatically skipped so the ear's own triangle vertices
+ *                                do not self-reject.
+ * @returns {boolean} : true if any other vertex lies strictly inside the triangle
  */
-function triangleContainsAnyVertex(pA is array, pB is array, pC is array, 
+function triangleContainsAnyVertex(pA is array, pB is array, pC is array,
                                     points2D is array, localIndices is array, skipLocalIdx is number) returns boolean
 {
     var numLocal = size(localIndices);
@@ -823,7 +867,17 @@ function triangleContainsAnyVertex(pA is array, pB is array, pC is array,
 }
 
 /**
- * Point in triangle test using barycentric coordinates.
+ * Point-in-triangle test using barycentric coordinates.
+ *
+ * Computes barycentric coordinates (u, v) for point p relative to triangle (a, b, c).
+ * Returns true iff p is strictly inside the triangle (u > tol, v > tol, u+v < 1-tol).
+ * Degenerate triangles (zero denominator) return false.
+ *
+ * @param p {array} : Query point [x, y]
+ * @param a {array} : Vertex A [x, y]
+ * @param b {array} : Vertex B [x, y]
+ * @param c {array} : Vertex C [x, y]
+ * @returns {boolean} : true if p is strictly inside triangle abc
  */
 function pointInTriangle2D(p is array, a is array, b is array, c is array) returns boolean
 {

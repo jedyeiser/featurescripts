@@ -25,6 +25,70 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "b840272d29f360c74ebcaadc");
  */
 
 /**
+ * Compute GJ for all sections of an xSect feature and write results back to the attribute.
+ *
+ * Absorbs the read → loop → compute → write pattern from the Solve GJ feature body so
+ * that the feature definition itself stays thin and this logic is reusable by other callers.
+ *
+ * @param context {Context}
+ * @param id {Id} : Feature ID (used as base for visualization curve sub-ID)
+ * @param featureKey {string} : Attribute key for the target xSect feature
+ *                              (from `keys(definition.xSectFeature)[0][0]`)
+ * @param createVisualization {boolean} : If true, create a GJ visualization spline curve
+ * @param curvePrefix {string} : Name prefix for the visualization curve (empty = default name)
+ */
+export function computeAndStoreGJByFeatureKey(context is Context, id is Id,
+                                               featureKey is string,
+                                               createVisualization is boolean,
+                                               curvePrefix is string)
+{
+    var xSectData;
+    try
+    {
+        xSectData = readXSectAnalysisDataByKey(context, featureKey);
+    }
+    catch (e)
+    {
+        throw regenError("Solve GJ: failed to read xSect data — " ~ e);
+    }
+
+    var bodies = xSectData.bodies;
+    var crossSections = xSectData.crossSections;
+    var numSections = size(crossSections);
+
+    var updatedSections = [];
+    for (var i = 0; i < numSections; i += 1)
+    {
+        var section = crossSections[i];
+
+        if (!validateSectionData(section))
+        {
+            updatedSections = append(updatedSections, section);
+            continue;
+        }
+
+        try
+        {
+            var GJ_eff = computeTorsionalStiffness(section, bodies);
+            section.GJ_eff = GJ_eff;
+        }
+        catch (e)
+        {
+            // Keep existing GJ value on failure
+        }
+
+        updatedSections = append(updatedSections, section);
+    }
+
+    updateXSectGJDataByKey(context, featureKey, updatedSections);
+
+    if (createVisualization)
+    {
+        createGJCurve(context, id + "gjCurve", updatedSections, curvePrefix);
+    }
+}
+
+/**
  * Main entry point for GJ Analysis feature.
  * Called from gjPredicates.fs feature definition.
  *

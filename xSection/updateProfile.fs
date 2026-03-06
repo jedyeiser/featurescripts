@@ -65,7 +65,7 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "8984e1ab14c99a11a8b53f23");
  *
  */
 
-export enum DataInheretenceType
+export enum DataInheritanceType
 {
     INHERIT,
     QUERY
@@ -85,9 +85,19 @@ export enum SplineOutputType
 }
 
 /**
- * Sample EI from a set of edges at a given world-X coordinate.
+ * Sample EI from a set of EI-visualization edges at a given world-X coordinate.
+ *
+ * Linearly interpolates between the nearest bracketing sample points on the edges.
  * Convention: 1 mm world Z = 1 N·m² EI (matches xSectVisualization.fs EI curve scale).
- * Returns undefined if xTarget is outside the range of the sampled edges.
+ *
+ * Uses coarse sampling (11 evenly spaced parametric points per edge) for fast
+ * interpolation. Sufficient for editing-logic display; use `getEIFromEdges` for
+ * full-resolution analysis.
+ *
+ * @param context {Context}
+ * @param edgeQuery {Query} : Edge(s) of the EI visualization curve
+ * @param xTarget : World X coordinate to sample at (ValueWithUnits or plain number in meters)
+ * @returns {ValueWithUnits} : Interpolated EI (N·m²), or undefined if xTarget is out of range
  */
 function sampleEIEdgesAtX(context is Context, edgeQuery is Query, xTarget)
 {
@@ -151,82 +161,7 @@ function sampleEIEdgesAtX(context is Context, edgeQuery is Query, xTarget)
     return (z0 + frac * (z1 - z0)) * (1 * newton * meter * meter);
 }
 
-/**
- * Sample 100 parametric points per EI edge, decode EI from world Z (1 mm = 1 N·m²),
- * sort by X, and linearly extrapolate to FCP/ACP boundaries if needed.
- * Identical logic to getEIFromEdges in estimateStiffness.fs.
- */
-function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithUnits, xACP is ValueWithUnits) returns array
-{
-    var edges = evaluateQuery(context, eiEdges);
-    var points = [];
-    var numSamples = 100;
-
-    for (var edge in edges)
-    {
-        for (var i = 0; i < numSamples; i += 1)
-        {
-            var t = i / (numSamples - 1);
-            try
-            {
-                var tangentLine = evEdgeTangentLine(context, { "edge" : edge, "parameter" : t });
-                var pt = tangentLine.origin;
-                var EI = (pt[2] / millimeter) * newton * meter * meter;
-                points = append(points, { "x" : pt[0], "EI" : EI });
-            }
-            // skip failed evaluations
-        }
-    }
-
-    if (size(points) < 2)
-        return points;
-
-    // Insertion sort by x
-    for (var i = 1; i < size(points); i += 1)
-    {
-        var key = points[i];
-        var j = i - 1;
-        while (j >= 0 && points[j].x > key.x)
-        {
-            points[j + 1] = points[j];
-            j -= 1;
-        }
-        points[j + 1] = key;
-    }
-
-    var n = size(points);
-
-    // Linear extrapolation at front boundary
-    if (points[0].x > xFCP && n >= 2)
-    {
-        var dx = points[1].x - points[0].x;
-        if (abs(dx) > 1e-10 * meter)
-        {
-            var slope = (points[1].EI - points[0].EI) / dx;
-            var extEI = points[0].EI + slope * (xFCP - points[0].x);
-            if (extEI < 0 * newton * meter * meter)
-                extEI = 0 * newton * meter * meter;
-            points = concatenateArrays([[{ "x" : xFCP, "EI" : extEI }], points]);
-            n = size(points);
-        }
-    }
-
-    // Linear extrapolation at rear boundary
-    if (points[n - 1].x < xACP && n >= 2)
-    {
-        var dx2 = points[n - 1].x - points[n - 2].x;
-        if (abs(dx2) > 1e-10 * meter)
-        {
-            var slope2 = (points[n - 1].EI - points[n - 2].EI) / dx2;
-            var extEI2 = points[n - 1].EI + slope2 * (xACP - points[n - 1].x);
-            if (extEI2 < 0 * newton * meter * meter)
-                extEI2 = 0 * newton * meter * meter;
-            points = append(points, { "x" : xACP, "EI" : extEI2 });
-        }
-    }
-
-    return points;
-}
+// getEIFromEdges is imported from xSectBeamAnalysis (canonical definition there)
 
 /**
  * Compute area, Y-direction centroid, and second moment Iyy about Y=0 (the
@@ -372,8 +307,8 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
     definition.showApproxOptions = (definition.splineOutputType == SplineOutputType.APPROXIMATE);
 
     // Sync query-gate booleans
-    definition.provideMeasuredEI        = (definition.measuredEIType        == DataInheretenceType.QUERY);
-    definition.provideMeasuredThickness = (definition.measuredThicknessType == DataInheretenceType.QUERY);
+    definition.provideMeasuredEI        = (definition.measuredEIType        == DataInheritanceType.QUERY);
+    definition.provideMeasuredThickness = (definition.measuredThicknessType == DataInheritanceType.QUERY);
 
     // Compute alpha/beta when DELTA or PERCENT and a feature has been selected
     if (definition.showCalcs && size(keys(definition.xSectFeature)) > 0)
@@ -491,8 +426,8 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
        annotation { "Name" : "Target EI profile", "Filter" : EntityType.EDGE, "Description" : "Edges representing the target EI profile. World Z in mm = EI in N*m^2" }
        definition.targetEIQuery is Query;
 
-       annotation { "Name" : "Measured EI from", "Default" : DataInheretenceType.INHERIT, "Decription" : "Specifies if we should treat our modeled EI as our measured EI" , "UIHint" : UIHint.SHOW_LABEL }
-       definition.measuredEIType is DataInheretenceType;
+       annotation { "Name" : "Measured EI from", "Default" : DataInheritanceType.INHERIT, "Decription" : "Specifies if we should treat our modeled EI as our measured EI" , "UIHint" : UIHint.SHOW_LABEL }
+       definition.measuredEIType is DataInheritanceType;
 
        annotation { "Name" : "provideMeasuredEI", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
        definition.provideMeasuredEI is boolean;
@@ -503,8 +438,8 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
            definition.measuredEIQuery is Query;
        }
 
-       annotation { "Name" : "Measured thickness from", "Default" : DataInheretenceType.INHERIT, "UIHint" : UIHint.SHOW_LABEL, "Decription" : "Specifies if we should assume the measured ski had the correct (theoretical) profile, or if we're going to provide a measured profile" }
-       definition.measuredThicknessType is DataInheretenceType;
+       annotation { "Name" : "Measured thickness from", "Default" : DataInheritanceType.INHERIT, "UIHint" : UIHint.SHOW_LABEL, "Decription" : "Specifies if we should assume the measured ski had the correct (theoretical) profile, or if we're going to provide a measured profile" }
+       definition.measuredThicknessType is DataInheritanceType;
 
        annotation { "Name" : "provideMeasuredThickness", "UIHint" : UIHint.ALWAYS_HIDDEN }
        definition.provideMeasuredThickness is boolean;
@@ -685,7 +620,7 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
 
             // Get measured EI: inherit from cross-section or sample from query
             var measuredEI = cs.EI_eff;  // ValueWithUnits N·m²
-            if (definition.measuredEIType == DataInheretenceType.QUERY)
+            if (definition.measuredEIType == DataInheritanceType.QUERY)
             {
                 var sampledMeasured = sampleEIEdgesAtX(context, definition.measuredEIQuery, xCoord);
                 if (sampledMeasured != undefined)

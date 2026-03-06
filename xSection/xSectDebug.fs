@@ -114,7 +114,7 @@ export function debugVisualization(context is Context, id is Id, data is map, de
 }
 
 /**
- * Recursively draw perimeter points from groups and subgroups.
+ * Recursively draw perimeter points for all groups and their subgroups as debug dots.
  */
 function debugGroupPoints(context is Context, groups is array, sectionPoints is array, color is DebugColor)
 {
@@ -129,7 +129,7 @@ function debugGroupPoints(context is Context, groups is array, sectionPoints is 
 }
 
 /**
- * Recursively draw triangle mesh from groups and subgroups.
+ * Recursively draw triangle mesh edges for all groups and their subgroups as debug lines.
  */
 function debugGroupMesh(context is Context, groups is array, sectionPoints is array, color is DebugColor)
 {
@@ -161,7 +161,7 @@ function debugGroupMesh(context is Context, groups is array, sectionPoints is ar
 }
 
 /**
- * Recursively print group data for debugging.
+ * Recursively print group perimeter point coordinates and (optionally) triangle vertex coordinates to the debug console.
  */
 function printGroupData(groups is array, sectionPoints is array, depth is number, printTriangles is boolean)
 {
@@ -197,6 +197,9 @@ function printGroupData(groups is array, sectionPoints is array, depth is number
     }
 }
 
+/**
+ * Draw a single B-spline control polygon as debug lines. Debug-only; no production effect.
+ */
 export function debugControlPolygon(context is Context, bSplineCurve is BSplineCurve, color is DebugColor)
 {
     for (var i = 1; i < size(bSplineCurve.controlPoints); i += 1)

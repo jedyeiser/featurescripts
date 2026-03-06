@@ -459,12 +459,19 @@ function applyBoundaryCondition(K is array, f is array, n is number) returns map
 }
 
 /**
- * Solve FEM system K·ψ = f for warping function
+ * Solve FEM system K·ψ = f for the Saint-Venant warping function.
  *
- * @param K : Stiffness matrix (n×n) with units
- * @param f : Load vector (n×1) with units
- * @param n : Number of nodes
- * @returns : ψ array (dimensionless) or undefined if solver fails
+ * @param K {array} : Stiffness matrix (n×n), plain numbers (implicit N/m²)
+ * @param f {array} : Load vector (n×1), plain numbers (implicit N)
+ * @param n {number} : Number of nodes
+ * @returns {array} : ψ at each node (dimensionless plain numbers), or empty array [] on failure.
+ *
+ * Failure conditions (returns []):
+ *   - K is singular or near-singular (more than n/2 zero diagonal entries)
+ *   - `solveLinearSystem` returns undefined (Gaussian elimination fails, e.g. rank-deficient after BC)
+ *
+ * NOTE: This function does NOT throw; callers must check `size(psi) == 0` and fall back
+ * to the thin-plate formula (`computeGJThinPlate`) which is used in practice.
  */
 function solveFEMSystem(K is array, f is array, n is number) returns array
 {

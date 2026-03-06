@@ -2,6 +2,22 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/table.fs", version : "2892.0");
 
+/**
+ * PROFILE UPDATES TABLE MODULE
+ * ==============================
+ *
+ * Renders profile update results stored by the updateProfile feature as Onshape tables.
+ *
+ * Data source: `profileUpdates` attribute on the document origin body.
+ * The attribute is a map keyed by feature ID string; each entry contains:
+ *   - `updateName`  : display name for this update run (may be empty)
+ *   - `tableData`   : array of row maps, each with:
+ *       { xMm, tMeasMm, EIMeas, tUpdMm, EIUpd }
+ *       where tMeas/tUpd are profile thicknesses (mm) and EIMeas/EIUpd are stiffness (N·m²)
+ *
+ * Generates one table per updateProfile feature instance showing:
+ *   X (mm) | Meas. Thickness | Meas. Stiffness | Updated Thickness | Updated Stiffness | Δt | ΔEI
+ */
 annotation { "Table Type Name" : "Profile Updates" }
 export const profileUpdatesTable = defineTable(function(context is Context, definition is map) returns TableArray
 precondition

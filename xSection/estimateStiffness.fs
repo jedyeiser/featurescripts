@@ -39,8 +39,8 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
             return definition;
 
         // Resolve FCP and ACP to world X
-        var xFCP = resolveReferencePointX(context, definition.fcpQiery, definition.eiEdges);
-        var xACP = resolveReferencePointX(context, definition.acpQiery, definition.eiEdges);
+        var xFCP = resolveReferencePointX(context, definition.fcpQuery, definition.eiEdges);
+        var xACP = resolveReferencePointX(context, definition.acpQuery, definition.eiEdges);
 
         if (xFCP == undefined || xACP == undefined)
             return definition;
@@ -68,99 +68,7 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
 }
 
 
-/**
- * Sample EI values from EI visualization edge geometry.
- *
- * The EI curve produced by xSectVisualization.fs encodes EI as:
- *   point = vector(worldX, 0, EI_in_Nm2 * millimeter)
- * so Z / millimeter = EI in N·m².
- *
- * Samples 100 evenly spaced parametric points per edge, decodes EI from Z,
- * sorts by X, and linearly extrapolates to FCP/ACP if the curve is short.
- *
- * @param context {Context}
- * @param eiEdges {Query} : Edge(s) of the EI visualization curve
- * @param xFCP {ValueWithUnits} : Front contact point world X
- * @param xACP {ValueWithUnits} : Aft contact point world X
- * @returns {array} : Sorted array of { x: ValueWithUnits, EI: ValueWithUnits }
- */
-function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithUnits, xACP is ValueWithUnits) returns array
-{
-    var edges = evaluateQuery(context, eiEdges);
-    var points = [];
-    var numSamples = 100;
-
-    for (var edge in edges)
-    {
-        for (var i = 0; i < numSamples; i += 1)
-        {
-            var t = i / (numSamples - 1);
-            try
-            {
-                var tangentLine = evEdgeTangentLine(context, { "edge" : edge, "parameter" : t });
-                var pt = tangentLine.origin;
-                var x = pt[0];
-                var EI = (pt[2] / millimeter) * newton * meter * meter;
-                points = append(points, { "x" : x, "EI" : EI });
-            }
-            catch (e)
-            {
-                // Skip failed evaluations
-            }
-        }
-    }
-
-    if (size(points) < 2)
-        return points;
-
-    // Insertion sort by x
-    for (var i = 1; i < size(points); i += 1)
-    {
-        var key = points[i];
-        var j = i - 1;
-        while (j >= 0 && points[j].x > key.x)
-        {
-            points[j + 1] = points[j];
-            j -= 1;
-        }
-        points[j + 1] = key;
-    }
-
-    var n = size(points);
-
-    // Linear extrapolation at front boundary
-    if (points[0].x > xFCP && n >= 2)
-    {
-        var dx = points[1].x - points[0].x;
-        if (abs(dx) > 1e-10 * meter)
-        {
-            var slope = (points[1].EI - points[0].EI) / dx;
-            var extEI = points[0].EI + slope * (xFCP - points[0].x);
-            if (extEI < 0 * newton * meter * meter)
-                extEI = 0 * newton * meter * meter;
-            points = concatenateArrays([[{ "x" : xFCP, "EI" : extEI }], points]);
-            n = size(points);
-        }
-    }
-
-    // Linear extrapolation at rear boundary
-    if (points[n - 1].x < xACP && n >= 2)
-    {
-        var dx2 = points[n - 1].x - points[n - 2].x;
-        if (abs(dx2) > 1e-10 * meter)
-        {
-            var slope2 = (points[n - 1].EI - points[n - 2].EI) / dx2;
-            var extEI2 = points[n - 1].EI + slope2 * (xACP - points[n - 1].x);
-            if (extEI2 < 0 * newton * meter * meter)
-                extEI2 = 0 * newton * meter * meter;
-            points = append(points, { "x" : xACP, "EI" : extEI2 });
-        }
-    }
-
-    return points;
-}
-
-
+// getEIFromEdges is imported from xSectBeamAnalysis (canonical definition there)
 
 annotation {
     "Feature Type Name" : "Estimate Stiffness",
@@ -174,10 +82,10 @@ export const estimateStiffness = defineFeature(function(context is Context, id i
         definition.eiEdges is Query;
 
         annotation { "Name" : "FCP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || (EntityType.VERTEX) || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
-        definition.fcpQiery is Query;
+        definition.fcpQuery is Query;
 
         annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || (EntityType.VERTEX) || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
-        definition.acpQiery is Query;
+        definition.acpQuery is Query;
 
         annotation { "Group Name" : "Stiffness estimates", "Collapsed By Default" : true }
         {

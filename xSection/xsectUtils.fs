@@ -679,7 +679,14 @@ export function removeArrayIndex(arr is array, index is number) returns array
 }
 
 /**
- * Approximate curve length using control polygon.
+ * Approximate arc length of a B-spline by summing control polygon segment lengths.
+ *
+ * The control polygon length is an upper bound on the actual arc length and
+ * converges to it for well-distributed control points. Useful for mesh sizing
+ * estimates when an exact arc-length computation is not required.
+ *
+ * @param curve {BSplineCurve}
+ * @returns {ValueWithUnits} : Sum of consecutive control-point distances (same units as control points)
  */
 export function approximateControlPolygonLength(curve is BSplineCurve) returns ValueWithUnits
 {
@@ -692,6 +699,13 @@ export function approximateControlPolygonLength(curve is BSplineCurve) returns V
     return length;
 }
 
+/**
+ * Draw B-spline control polygon as debug lines. Debug-only; has no effect in production builds.
+ *
+ * @param context {Context}
+ * @param curve {BSplineCurve} : Curve whose control polygon to visualize
+ * @param color {DebugColor} : Debug line color
+ */
 export function debugControlPolygon(context is Context, curve is BSplineCurve, color is DebugColor)
 {
     var cps = curve.controlPoints;

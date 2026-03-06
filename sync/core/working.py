@@ -4,6 +4,7 @@ This module handles syncing of working projects (active development) with
 bidirectional sync support - both pull from and push to Onshape.
 """
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,11 +14,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .client import OnshapeClient, OnshapeAPIError
 from .git_backup import GitBackup, GitBackupError
+from .health_check import HealthChecker, should_run_health_check
 from .operations import SyncOperations, SyncResult
 from .state import SyncState
 from .url_parser import parse_url, OnshapeUrlParseError
 from ..models.config import SyncConfig, FolderConfig, DocumentConfig, sanitize_filename
-from ..models.project_config import FeatureScriptSettings, ProjectConfig
+from ..models.project_config import FeatureScriptSettings, ProjectConfig, ReferenceConfig
 
 
 console = Console()
@@ -74,8 +76,8 @@ class WorkingDirectoryManager:
         parsed = parse_url(url)
         url_type = parsed["type"]
 
-        if url_type not in ("document", "folder"):
-            raise OnshapeUrlParseError(f"Project must be a document or folder, got: {url_type}")
+        if url_type not in ("document", "folder", "element"):
+            raise OnshapeUrlParseError(f"Project must be a document or folder URL, got: {url_type}")
 
         # Determine local path
         if local_path is None:
@@ -142,6 +144,22 @@ class WorkingDirectoryManager:
             raise ValueError(f"Project not found: {project_name}")
 
         console.print(f"\n[bold blue]Pulling project:[/bold blue] {proj.name}")
+
+        # Periodic health check
+        if should_run_health_check(proj.last_pull, proj.last_push):
+            checker = HealthChecker(self.settings, self.base_dir, self.client)
+            issues = checker.run_global_checks()
+            if issues:
+                checker.format_issues(issues)
+                if checker.has_blocking_issues(issues):
+                    console.print("[red]Health check found blocking issues. Resolve before syncing.[/red]")
+                    return {
+                        "success": False,
+                        "files_updated": 0,
+                        "files_skipped": 0,
+                        "conflicts": [],
+                        "results": [],
+                    }
 
         # Create Git backup before pulling (unless dry-run or disabled)
         if not dry_run and auto_backup:
@@ -274,6 +292,22 @@ class WorkingDirectoryManager:
             raise ValueError(str(e)) from e
 
         console.print(f"\n[bold blue]Pushing project:[/bold blue] {proj.name}")
+
+        # Periodic health check
+        if should_run_health_check(proj.last_pull, proj.last_push):
+            checker = HealthChecker(self.settings, self.base_dir, self.client)
+            issues = checker.run_global_checks()
+            if issues:
+                checker.format_issues(issues)
+                if checker.has_blocking_issues(issues):
+                    console.print("[red]Health check found blocking issues. Resolve before syncing.[/red]")
+                    return {
+                        "success": False,
+                        "files_pushed": 0,
+                        "files_skipped": 0,
+                        "conflicts": [],
+                        "results": [],
+                    }
 
         # Create Git backup before pushing (unless dry-run or disabled)
         if not dry_run and auto_backup:
@@ -607,3 +641,224 @@ class WorkingDirectoryManager:
         # and comparing with cached values
 
         return conflicts
+
+    def interactive_add_project(
+        self,
+        url: str,
+        name: str,
+        description: str | None = None,
+        local_path: str | None = None,
+        references: list[str] | None = None,
+        non_interactive: bool = False,
+        verify_exists: bool = True,
+    ) -> ProjectConfig:
+        """Interactively guide the user through adding a new working project.
+
+        Args:
+            url: Onshape URL (document or folder)
+            name: Proposed project name
+            description: Optional pre-filled description
+            local_path: Optional pre-filled local path
+            references: Optional pre-filled list of reference names (skips suggestion flow)
+            non_interactive: If True, skip all prompts and behave like add_project with checks
+            verify_exists: If True, attempt to verify the document exists via API
+
+        Returns:
+            Created ProjectConfig
+
+        Raises:
+            ValueError: On unresolvable blocking issues in non-interactive mode
+            OnshapeUrlParseError: If URL is invalid
+        """
+        from rich.prompt import Confirm, Prompt
+        from rich.panel import Panel
+        from .health_check import HealthChecker, IssueSeverity
+
+        # Step 1: Parse URL
+        parsed = parse_url(url)
+        url_type = parsed["type"]
+        if url_type not in ("document", "folder", "element"):
+            raise OnshapeUrlParseError(f"Project must be a document or folder URL, got: {url_type}")
+
+        checker = HealthChecker(self.settings, self.base_dir, self.client)
+
+        # Step 2: Resolve name (interactive loop if needed)
+        current_name = name
+        while True:
+            # Build a minimal candidate just to check name
+            candidate = ProjectConfig(
+                name=current_name,
+                description="",
+                working_directory=local_path or f"./projects/{sanitize_filename(current_name)}",
+                onshape_url=url,
+                document_id=parsed["document_id"],
+                workspace_id=parsed["workspace_id"],
+                folder_id=parsed["folder_id"],
+            )
+            name_issues = [
+                i for i in checker.run_new_project_checks(candidate)
+                if i.check_type == "duplicate_name"
+            ]
+            if not name_issues:
+                break
+
+            checker.format_issues(name_issues)
+            if non_interactive:
+                raise ValueError(f"Project name '{current_name}' conflicts with an existing project or reference.")
+
+            current_name = Prompt.ask(
+                "Enter a different name",
+                default=current_name + "_2",
+            )
+
+        resolved_name = current_name
+
+        # Step 3: Resolve local path
+        default_path = f"./projects/{sanitize_filename(resolved_name)}"
+        if local_path is None:
+            if non_interactive:
+                resolved_path = default_path
+            else:
+                resolved_path = Prompt.ask("Local directory", default=default_path)
+        else:
+            resolved_path = local_path
+
+        # Step 4: Full candidate health check
+        candidate = ProjectConfig(
+            name=resolved_name,
+            description=description or f"Working project: {resolved_name}",
+            working_directory=resolved_path,
+            onshape_url=url,
+            document_id=parsed["document_id"],
+            workspace_id=parsed["workspace_id"],
+            folder_id=parsed["folder_id"],
+        )
+        all_issues = checker.run_new_project_checks(candidate)
+        if all_issues:
+            checker.format_issues(all_issues)
+            if checker.has_blocking_issues(all_issues):
+                if non_interactive:
+                    raise ValueError("Blocking health check issues found. Resolve before adding project.")
+                if not Confirm.ask("Blocking issues found. Continue anyway?", default=False):
+                    raise ValueError("Project creation aborted by user.")
+
+        # Step 5: Reference suggestions (interactive only, skip if --references provided)
+        if references is not None:
+            approved_references = references
+        elif non_interactive:
+            approved_references = []
+        else:
+            context = Prompt.ask(
+                "Describe what this project does (optional, for reference suggestions)",
+                default="",
+            )
+            if context.strip():
+                suggestions = _suggest_references(context, self.settings, self.base_dir)
+                approved_references = []
+                for ref in suggestions:
+                    if Confirm.ask(f"Include reference '{ref.name}'?", default=True):
+                        approved_references.append(ref.name)
+            else:
+                raw = Prompt.ask("Reference names (comma-separated, or blank)", default="")
+                approved_references = [r.strip() for r in raw.split(",") if r.strip()]
+
+        # Step 6: Description
+        if description is None and not non_interactive:
+            description = Prompt.ask(
+                "Description (optional)",
+                default=f"Working project: {resolved_name}",
+            )
+        resolved_description = description or f"Working project: {resolved_name}"
+
+        # Step 7: Confirm & create
+        if not non_interactive:
+            console.print(Panel(
+                f"[bold]Name:[/bold] {resolved_name}\n"
+                f"[bold]URL:[/bold] {url}\n"
+                f"[bold]Local path:[/bold] {resolved_path}\n"
+                f"[bold]References:[/bold] {', '.join(approved_references) or '(none)'}\n"
+                f"[bold]Description:[/bold] {resolved_description}",
+                title="New Project Summary",
+                expand=False,
+            ))
+            if not Confirm.ask("Create this project?", default=True):
+                raise ValueError("Project creation aborted by user.")
+
+        # Validate that all named references actually exist in configuration
+        if approved_references:
+            missing = [r for r in approved_references if not self.settings.get_reference(r)]
+            if missing:
+                msg = f"References not found in configuration: {', '.join(missing)}"
+                if non_interactive:
+                    raise ValueError(msg)
+                console.print(f"[yellow]WARNING:[/yellow] {msg}")
+                if not Confirm.ask("Continue with unresolved references?", default=False):
+                    raise ValueError("Project creation aborted by user.")
+
+        # Step 8: Create
+        return self.add_project(
+            url=url,
+            name=resolved_name,
+            description=resolved_description,
+            local_path=resolved_path,
+            references=approved_references,
+        )
+
+
+def _suggest_references(
+    context: str,
+    settings: FeatureScriptSettings,
+    base_dir: Path,
+    max_suggestions: int = 5,
+) -> list[ReferenceConfig]:
+    """Suggest references based on a plain-text description of the project.
+
+    Scores references by name token overlap and filesystem file-name overlap
+    with the context string, returns top matches (score > 0).
+    """
+    STOPWORDS = {"the", "a", "an", "is", "for", "of", "with", "and", "or", "to", "in"}
+
+    def tokenize(text: str) -> set[str]:
+        tokens = re.split(r'[\s\W]+', text.lower())
+        return {t for t in tokens if t and t not in STOPWORDS}
+
+    context_tokens = tokenize(context)
+
+    def camel_split(name: str) -> list[str]:
+        expanded = re.sub(r'([A-Z])', r' \1', name)
+        return [t.lower() for t in expanded.split() if t]
+
+    scored: list[tuple[int, ReferenceConfig]] = []
+    for ref in settings.references:
+        score = 0
+
+        # Name match: +2 per name token that appears in context (bidirectional substring)
+        name_tokens = set(camel_split(ref.name))
+        name_tokens |= {t.lower() for t in ref.name.replace("_", " ").replace("-", " ").split()}
+        for nt in name_tokens:
+            for ct in context_tokens:
+                if nt in ct or ct in nt:
+                    score += 2
+                    break
+
+        # File scan: +1 per filename token that matches a context token
+        ref_dir = base_dir / ref.local_path
+        try:
+            fs_files = list(ref_dir.glob("*.fs"))
+        except OSError:
+            fs_files = []
+
+        for fs_file in fs_files:
+            file_tokens = tokenize(fs_file.stem)
+            for ft in file_tokens:
+                for ct in context_tokens:
+                    if ft in ct or ct in ft:
+                        score += 1
+                        break
+
+        score = min(score, 10)
+        if score > 0:
+            scored.append((score, ref))
+
+    scored.sort(key=lambda x: -x[0])
+    return [ref for _, ref in scored[:max_suggestions]]

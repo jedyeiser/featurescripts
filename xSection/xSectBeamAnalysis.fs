@@ -343,6 +343,123 @@ export function interpolateEI(eiData is array, x is ValueWithUnits) returns Valu
 
 
 // =============================================================================
+// EI EXTRACTION FROM VISUALIZATION EDGES
+// =============================================================================
+
+/**
+ * Number of evenly spaced parametric samples taken per EI edge.
+ * 100 samples gives sub-millimeter resolution on typical 2 m ski spans
+ * while keeping editing-logic runtime negligible.
+ */
+const EI_SAMPLE_COUNT = 100;
+
+/**
+ * Sample EI values from EI visualization edge geometry.
+ *
+ * The EI curve produced by xSectVisualization.fs encodes EI as:
+ *   point = vector(worldX, 0, EI_in_Nm2 * millimeter)
+ * so Z / millimeter = EI in N·m².
+ *
+ * Samples EI_SAMPLE_COUNT evenly spaced parametric points per edge, decodes EI from Z,
+ * sorts by X, and linearly extrapolates to FCP/ACP if the curve doesn't reach those bounds
+ * (extrapolated values are clamped to zero if negative).
+ *
+ * @param context {Context}
+ * @param eiEdges {Query} : Edge(s) of the EI visualization curve
+ * @param xFCP {ValueWithUnits} : Front contact point world X (extrapolation front boundary)
+ * @param xACP {ValueWithUnits} : Aft contact point world X (extrapolation rear boundary)
+ * @returns {array} : Sorted array of { x: ValueWithUnits, EI: ValueWithUnits }
+ */
+export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithUnits, xACP is ValueWithUnits) returns array
+{
+    var edges = evaluateQuery(context, eiEdges);
+    var points = [];
+    var numSamples = EI_SAMPLE_COUNT;
+
+    for (var edge in edges)
+    {
+        for (var i = 0; i < numSamples; i += 1)
+        {
+            var t = i / (numSamples - 1);
+            try
+            {
+                var tangentLine = evEdgeTangentLine(context, { "edge" : edge, "parameter" : t });
+                var pt = tangentLine.origin;
+                var x = pt[0];
+                var EI = (pt[2] / millimeter) * newton * meter * meter;
+                points = append(points, { "x" : x, "EI" : EI });
+            }
+            catch (e)
+            {
+                // Skip failed evaluations
+            }
+        }
+    }
+
+    if (size(points) < 2)
+        return points;
+
+    // Insertion sort by x
+    for (var i = 1; i < size(points); i += 1)
+    {
+        var key = points[i];
+        var j = i - 1;
+        while (j >= 0 && points[j].x > key.x)
+        {
+            points[j + 1] = points[j];
+            j -= 1;
+        }
+        points[j + 1] = key;
+    }
+
+    // Clamp all sampled EI values to non-negative.
+    // opFitSpline can produce negative Z near steep endpoints (cubic overshoot),
+    // which decodes as negative EI — physically impossible and can cause k=0 spikes
+    // in downstream solvers (e.g. solveCamberBeam) that introduce spurious inflections.
+    for (var i = 0; i < size(points); i += 1)
+    {
+        if (points[i].EI < 0 * newton * meter * meter)
+        {
+            points[i] = { "x" : points[i].x, "EI" : 0 * newton * meter * meter };
+        }
+    }
+
+    var n = size(points);
+
+    // Linear extrapolation at front boundary
+    if (points[0].x > xFCP && n >= 2)
+    {
+        var dx = points[1].x - points[0].x;
+        if (abs(dx) > 1e-10 * meter)
+        {
+            var slope = (points[1].EI - points[0].EI) / dx;
+            var extEI = points[0].EI + slope * (xFCP - points[0].x);
+            if (extEI < 0 * newton * meter * meter)
+                extEI = 0 * newton * meter * meter;
+            points = concatenateArrays([[{ "x" : xFCP, "EI" : extEI }], points]);
+            n = size(points);
+        }
+    }
+
+    // Linear extrapolation at rear boundary
+    if (points[n - 1].x < xACP && n >= 2)
+    {
+        var dx2 = points[n - 1].x - points[n - 2].x;
+        if (abs(dx2) > 1e-10 * meter)
+        {
+            var slope2 = (points[n - 1].EI - points[n - 2].EI) / dx2;
+            var extEI2 = points[n - 1].EI + slope2 * (xACP - points[n - 1].x);
+            if (extEI2 < 0 * newton * meter * meter)
+                extEI2 = 0 * newton * meter * meter;
+            points = append(points, { "x" : xACP, "EI" : extEI2 });
+        }
+    }
+
+    return points;
+}
+
+
+// =============================================================================
 // EI DATA EXTRACTION FROM CROSS-SECTION RESULTS
 // =============================================================================
 
@@ -397,7 +514,13 @@ export function extractNAData(crossSectionData is map) returns array
 // =============================================================================
 
 /**
- * Sort array of maps by x field. Insertion sort — efficient for < 200 elements.
+ * Sort array of maps by their `x` field using insertion sort.
+ *
+ * O(n²) worst case, but for typical cross-section counts (n < 200) this is faster
+ * than a recursive sort due to low overhead and good cache behavior on small arrays.
+ *
+ * @param data {array} : Array of maps each with an `x: ValueWithUnits` field
+ * @returns {array} : New array sorted ascending by x
  */
 function sortByX(data is array) returns array
 {

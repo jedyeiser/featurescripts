@@ -92,21 +92,30 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "b840272d29f360c74ebcaadc");
 // =============================================================================
 
 /**
- * Editing logic function.
+ * Editing logic for the xSection (EI and Cross Section) feature.
  *
- * Responsibilities:
- * 1. Parse materialCSV into a lookup map (for name matching only)
- * 2. Evaluate selBodies -> populate bodyArray (one entry per solid body)
- * 3. For each body:
- *    a. Read Onshape part name -> bodyName
- *    b. Read Onshape material name -> materialName
- *    c. Match materialName against CSV lookup -> set hasMaterialData
- * 4. Preserve user-entered override values across edits
+ * Runs on every UI interaction to rebuild the `bodyArray` and update material-match status.
+ * Only predicate-declared fields are stored on bodyArray entries — complex maps with
+ * ValueWithUnits (Q matrices, density) are NOT serialized here; they are resolved at
+ * regen time inside the feature body via `processCrossSections`.
  *
- * NOTE: Only predicate-declared fields are stored on bodyArray entries.
- * Material data (Q matrices, density with units, etc.) is resolved in the
- * feature body via processCrossSections, because complex ValueWithUnits
- * maps don't survive definition serialization.
+ * @param context {Context}
+ * @param id {Id}
+ * @param oldDefinition {map} : Previous definition snapshot (used to preserve user overrides)
+ * @param definition {map} : Current definition map. Relevant fields read/written:
+ *   - `definition.selBodies` {Query} : User-selected solid bodies to analyze
+ *   - `definition.materialCSV` {map} : CSV blob with `.csvData` array (material database)
+ *   - `definition.bodyArray` {array} : Rebuilt each call — array of per-body entries:
+ *       { bodyQuery, bodyName, bodyNum, hasMaterialData, materialName,
+ *         materialBehavior, materialType, overrideName, overrideDensity,
+ *         youngsModulus, E1, E2, G12, nu12 }
+ *   - `definition.csvRefreshToken` {number} : Bumped when "Refresh CSV" button is clicked
+ *   - `definition.debugBodies` {Query} : Filtered to only include bodies still in selBodies
+ * @param isCreating {boolean} : True on first creation (unused currently)
+ * @param specifiedParameters {map} : Fields explicitly set by the user this interaction
+ * @param hiddenBodies {Query} : Bodies hidden by the feature (unused currently)
+ * @param clickedButton {string} : ID of clicked button, e.g. "refreshCSV"
+ * @returns {map} : Updated definition map
  */
 export function elFunc(context is Context, id is Id, oldDefinition is map, definition is map,
                        isCreating is boolean, specifiedParameters is map, hiddenBodies is Query,

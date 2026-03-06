@@ -8,14 +8,23 @@ import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
 import(path : "17142132b20343b5f125e7e7", version : "fe8ba7347fa3e73f881abb63");
 
 /**
- * Cross-Section Analysis Table
+ * CROSS-SECTION ANALYSIS TABLE MODULE
+ * =====================================
  *
- * Displays beam analysis results stored by xSection feature.
- * Reads CrossSectionAnalysis attribute from origin point.
+ * Renders beam analysis results stored by the xSection feature as Onshape tables.
  *
- * Shows two tables:
- * 1. Summary - Overall beam stiffness metrics
- * 2. Cross-Section Details - Per-section geometric and mechanical properties
+ * Data source: `CrossSectionAnalysis` attribute on the document origin body.
+ * The attribute is a map keyed by feature ID string; each entry contains:
+ *   - `tableData.summary`        : array of [label, value] summary rows
+ *   - `tableData.crossSections`  : 2D array (header + data rows)
+ *   - `tableData.materialTable`  : (optional) material Q-matrix rows
+ *   - `tableData.bodyTable`      : (optional) per-body section breakdown
+ *
+ * Generates up to 4 tables per xSection feature instance:
+ *   1. Beam Analysis Summary      — overall stiffness metrics (EI_bar, deflection, etc.)
+ *   2. Cross-Section Details      — per-station EI, GJ, NA height, dimensions, density
+ *   3. Materials                  — unique material Q-matrix data (if material CSV provided)
+ *   4. Body Detail                — per-body geometric/stiffness breakdown (configurable type)
  */
 
 annotation { "Table Type Name" : "Cross-Section Analysis" }

@@ -10,8 +10,19 @@ import(path : "12c9e75dc2139eb927245033", version : "9ac6c3b7c431a4120610201f");
 //import gjPredicates
 
 /**
- * Editing logic for GJ Analysis feature.
- * Controls UI element visibility based on user selections.
+ * Editing logic for the Solve GJ feature.
+ *
+ * Hides the `curvePrefix` name field when `createGJCurve` is false (no curve to name).
+ *
+ * @param context {Context}
+ * @param id {Id}
+ * @param oldDefinition {map} : Previous definition snapshot
+ * @param definition {map} : Current definition. Relevant fields:
+ *   - `definition.createGJCurve` {boolean} : Whether to create a GJ visualization curve
+ *   - `definition.curvePrefix` {string} : Name prefix for the curve (cleared when curve disabled)
+ * @param isCreating {boolean}
+ * @param specifiedParameters {map}
+ * @returns {map} : Updated definition
  */
 export function gjAnalysisEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
                                      isCreating is boolean, specifiedParameters is map) returns map
@@ -26,6 +37,27 @@ export function gjAnalysisEditLogic(context is Context, id is Id, oldDefinition 
 }
 
 
+/**
+ * Solve GJ feature.
+ *
+ * Computes torsional stiffness GJ for each cross-section stored by a selected xSection feature,
+ * then writes the results back to the `CrossSectionAnalysis` attribute.
+ *
+ * Inputs (definition fields):
+ *   - `xSectFeature` {FeatureList} : Single xSection feature whose cross-sections to process.
+ *     The first key from `keys(definition.xSectFeature)` is used as the attribute lookup key.
+ *
+ * Preconditions:
+ *   - A `CrossSectionAnalysis` attribute must exist on the document origin (written by xSection).
+ *   - The referenced feature key must exist in that attribute.
+ *
+ * Side effects:
+ *   - Mutates `CrossSectionAnalysis[featureKey].details.crossSections[i].GJ_eff` for each section.
+ *   - Mutates `CrossSectionAnalysis[featureKey].tableData.crossSections[row][3]` (GJ column).
+ *   - Re-writes the full attribute to the origin body.
+ *
+ * Does not create geometry unless `createGJCurve` is true (handled by gjAnalysisEditLogic).
+ */
 annotation { "Feature Type Name" : "Solve GJ", "Editing Logic Function" : "gjAnalysisEditLogic", "Feature Type Description" : "Takes a cross section/ei feature as input and calculates the torsional stiffness profile of the cross sections. Adds GJ data to the appropriate map on the origin to add the GJ data into the existing EI data" }
 export const solveGJ = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -35,73 +67,6 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
 
     }
     {
-        var oldID = keys(definition.xSectFeature)[0][0];
-
-        var allEIData = getAttribute(context, {
-                "entity" : qOrigin(EntityType.BODY),
-                "name" : "CrossSectionAnalysis"
-        });
-
-        var crossSectionData = allEIData[(oldID)];
-        var crossSectionDetails = crossSectionData.details;
-        var crossSectionTableData = crossSectionData.tableData;
-
-        var bodies = crossSectionDetails.bodies;
-        var crossSections = crossSectionDetails.crossSections;
-        var numSections = size(crossSections);
-
-        var successCount = 0;
-        var failCount = 0;
-        var skipCount = 0;
-
-        // Extract table rows once for mutation
-        var tableRows = crossSectionTableData.crossSections;
-
-        for (var i = 0; i < numSections; i += 1)
-        {
-            var section = crossSections[i];
-            var stationNum = section.stationNumber;
-
-            if (!validateSectionData(section))
-            {
-                skipCount += 1;
-                continue;
-            }
-
-            try
-            {
-                var GJ_eff = computeTorsionalStiffness(section, bodies);
-                var GJ_val = GJ_eff / (newton * meter * meter);
-
-                // Update section GJ_eff
-                crossSections[i].GJ_eff = GJ_eff;
-
-                // Update table: row i+1 (skip header), column 3 (GJ)
-                var tableRow = i + 1;
-                if (tableRow < size(tableRows))
-                {
-                    tableRows[tableRow][3] = round(GJ_val * 10.0) / 10.0;
-                }
-
-                successCount += 1;
-            }
-            catch (e)
-            {
-                failCount += 1;
-            }
-        }
-
-        // Explicit reassignment chain for FeatureScript value-copy semantics
-        crossSectionTableData["crossSections"] = tableRows;
-        crossSectionDetails["crossSections"] = crossSections;
-        crossSectionData["details"] = crossSectionDetails;
-        crossSectionData["tableData"] = crossSectionTableData;
-        allEIData[oldID] = crossSectionData;
-
-        setAttribute(context, {
-            "entities" : qOrigin(EntityType.BODY),
-            "name" : "CrossSectionAnalysis",
-            "attribute" : allEIData
-        });
-
+        var featureKey = keys(definition.xSectFeature)[0][0];
+        computeAndStoreGJByFeatureKey(context, id, featureKey, false, "");
     });
