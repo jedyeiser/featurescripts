@@ -338,6 +338,12 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Show offsets" }
             definition.showOffsets is boolean;
 
+            if (definition.inputType == BridgingFilletInputType.CURVES)
+            {
+                annotation { "Name" : "Show junction frame" }
+                definition.showJunctionFrame is boolean;
+            }
+
             if (definition.inputType == BridgingFilletInputType.FACES)
             {
                 annotation { "Name" : "Show isocurves" }
@@ -505,6 +511,40 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                 println("  continuity1=" ~ toString(definition.continuity1));
                 println("  continuity2=" ~ toString(definition.continuity2));
                 println("  flip1=" ~ toString(definition.flip1) ~ "  flip2=" ~ toString(definition.flip2));
+                if (definition.debugIntersectionLevel == BridgingFilletDebugPrintLevel.DETAILS)
+                {
+                    var detEdge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
+                                           qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
+                    var detEdge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
+                                           qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
+                    var dtl1 = try(evEdgeTangentLines(context, { "edge" : detEdge1, "parameters" : [0.0, 1.0],
+                                                                  "arcLengthParameterization" : false }));
+                    var dtl2 = try(evEdgeTangentLines(context, { "edge" : detEdge2, "parameters" : [0.0, 1.0],
+                                                                  "arcLengthParameterization" : false }));
+                    if (dtl1 != undefined)
+                    {
+                        println("  edge1 start: pos=" ~ toString(dtl1[0].origin) ~ "  tan=" ~ toString(dtl1[0].direction));
+                        println("  edge1 end:   pos=" ~ toString(dtl1[1].origin) ~ "  tan=" ~ toString(dtl1[1].direction));
+                    }
+                    if (dtl2 != undefined)
+                    {
+                        println("  edge2 start: pos=" ~ toString(dtl2[0].origin) ~ "  tan=" ~ toString(dtl2[0].direction));
+                        println("  edge2 end:   pos=" ~ toString(dtl2[1].origin) ~ "  tan=" ~ toString(dtl2[1].direction));
+                    }
+                    // Check for shared vertex
+                    var dverts1 = qAdjacent(detEdge1, AdjacencyType.VERTEX, EntityType.VERTEX);
+                    var dverts2 = qAdjacent(detEdge2, AdjacencyType.VERTEX, EntityType.VERTEX);
+                    var sharedV = qIntersection([dverts1, dverts2]);
+                    if (isQueryEmpty(context, sharedV))
+                    {
+                        println("  junction: no shared vertex — edges are non-adjacent (closest-endpoint fallback will be used)");
+                    }
+                    else
+                    {
+                        var sharedPt = evVertexPoint(context, { "vertex" : sharedV });
+                        println("  junction: shared vertex found at pos=" ~ toString(sharedPt));
+                    }
+                }
             }
             else
             {
@@ -528,8 +568,12 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             {
                 addDebugEntities(context, definition.side1Curves, DebugColor.CYAN);
                 addDebugEntities(context, definition.side2Curves, DebugColor.MAGENTA);
-                var tl1 = try(evEdgeTangentLines(context, { "edge" : definition.side1Curves, "parameters" : [0.0, 1.0] }));
-                var tl2 = try(evEdgeTangentLines(context, { "edge" : definition.side2Curves, "parameters" : [0.0, 1.0] }));
+                var edge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
+                                    qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
+                var edge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
+                                    qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
+                var tl1 = try(evEdgeTangentLines(context, { "edge" : edge1, "parameters" : [0.0, 1.0] }));
+                var tl2 = try(evEdgeTangentLines(context, { "edge" : edge2, "parameters" : [0.0, 1.0] }));
                 if (tl1 != undefined)
                 {
                     addDebugPoint(context, tl1[0].origin, DebugColor.CYAN);
@@ -546,6 +590,68 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                 addDebugEntities(context, definition.side1Face, DebugColor.CYAN);
                 addDebugEntities(context, definition.side2Face, DebugColor.MAGENTA);
             }
+        }
+        if (definition.inputType == BridgingFilletInputType.CURVES && definition.showJunctionFrame)
+        {
+            var jEdge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
+                                 qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
+            var jEdge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
+                                 qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
+
+            // Find shared vertex (junction) between the two edges
+            var verts1 = qAdjacent(jEdge1, AdjacencyType.VERTEX, EntityType.VERTEX);
+            var verts2 = qAdjacent(jEdge2, AdjacencyType.VERTEX, EntityType.VERTEX);
+            var junctionVertexQ = qIntersection([verts1, verts2]);
+
+            var junctionPt;
+            if (isQueryEmpty(context, junctionVertexQ))
+            {
+                // Fallback: find closest endpoint pair across the two edges
+                var v1List = evaluateQuery(context, verts1);
+                var v2List = evaluateQuery(context, verts2);
+                var bestDist = undefined;
+                var bestV1 = v1List[0];
+                for (var v1 in v1List)
+                {
+                    var p1 = evVertexPoint(context, { "vertex" : v1 });
+                    for (var v2 in v2List)
+                    {
+                        var p2 = evVertexPoint(context, { "vertex" : v2 });
+                        var d = norm(p1 - p2);
+                        if (bestDist == undefined || d < bestDist)
+                        {
+                            bestDist = d;
+                            bestV1 = v1;
+                            junctionPt = p1;
+                        }
+                    }
+                }
+                println("bridgingFillet [junction]: no shared vertex — using closest endpoint pair (dist=" ~ toString(bestDist) ~ ")");
+            }
+            else
+            {
+                junctionPt = evVertexPoint(context, { "vertex" : junctionVertexQ });
+            }
+
+            // Determine which parameter on edge1 corresponds to the junction point
+            var jtl = evEdgeTangentLines(context, { "edge" : jEdge1, "parameters" : [0.0, 1.0],
+                                                     "arcLengthParameterization" : false });
+            var param1 = tolerantEquals(jtl[0].origin, junctionPt) ? 0.0 : 1.0;
+
+            // Evaluate curvature frame at junction
+            var curv1 = evEdgeCurvature(context, { "edge" : jEdge1, "parameter" : param1,
+                                                    "arcLengthParameterization" : false });
+
+            // Visualize: triad (xAxis=normal CYAN, yAxis=binormal MAGENTA, zAxis=tangent YELLOW) + point
+            debug(context, curv1.frame, DebugColor.CYAN, DebugColor.MAGENTA, DebugColor.YELLOW);
+            addDebugPoint(context, junctionPt, DebugColor.WHITE);
+
+            println("bridgingFillet [junction]:");
+            println("  position=" ~ toString(junctionPt));
+            println("  tangent=" ~ toString(curvatureFrameTangent(curv1)));
+            println("  normal=" ~ toString(curvatureFrameNormal(curv1)));
+            println("  curvature=" ~ toString(curv1.curvature));
+            println("  edge1 junction param=" ~ toString(param1));
         }
         if (definition.inputType == BridgingFilletInputType.FACES && definition.showIsocurves)
         {
@@ -575,6 +681,7 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         "debugBridge" : false,
         "showBridgingCurves" : false,
         "showOffsets" : false,
+        "showJunctionFrame" : false,
         "showIsocurves" : false,
         "isocurveCount" : 5
     });
