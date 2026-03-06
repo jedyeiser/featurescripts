@@ -303,6 +303,39 @@ class OnshapeClient:
         # Each item has: id, name, resourceType (document/folder), etc.
         return response
 
+    def get_document_folder_path(
+        self,
+        document_id: str,
+        max_depth: int = 5,
+    ) -> str | None:
+        """Walk the parentId chain from a document up to the root folder.
+
+        Returns slash-joined path of folder names (e.g. "FeatureScripts/Active"),
+        or None if document is at root or parentId is missing.
+        """
+        try:
+            doc_info = self.get_document_info(document_id)
+            parent_id = doc_info.get("parentId")
+            if not parent_id:
+                return None
+
+            path_parts: list[str] = []
+            current_id = parent_id
+            for _ in range(max_depth):
+                folder_data = self.get_folder_contents(current_id)
+                folder_name = folder_data.get("name", "")
+                if folder_name:
+                    path_parts.append(folder_name)
+                grandparent_id = folder_data.get("parentId")
+                if not grandparent_id:
+                    break
+                current_id = grandparent_id
+
+            path_parts.reverse()
+            return "/".join(path_parts) if path_parts else None
+        except Exception:
+            return None
+
     def list_folder_documents(
         self,
         folder_id: str,

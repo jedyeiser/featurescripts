@@ -86,6 +86,9 @@ class ProjectConfig:
     folder_id: str | None = None
     recursive: bool = True
 
+    # Onshape folder hierarchy path (e.g. "FeatureScripts/Active")
+    onshape_folder_path: str | None = None
+
     # Element mappings for document-level projects
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -110,6 +113,8 @@ class ProjectConfig:
             result["folder_id"] = self.folder_id
         if not self.recursive:
             result["recursive"] = self.recursive
+        if self.onshape_folder_path is not None:
+            result["onshape_folder_path"] = self.onshape_folder_path
         if self.metadata:
             result["metadata"] = self.metadata
 
@@ -130,6 +135,7 @@ class ProjectConfig:
             workspace_id=data.get("workspace_id"),
             folder_id=data.get("folder_id"),
             recursive=data.get("recursive", True),
+            onshape_folder_path=data.get("onshape_folder_path"),
             metadata=data.get("metadata", {}),
         )
 

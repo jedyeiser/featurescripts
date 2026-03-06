@@ -539,6 +539,7 @@ def cmd_get(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             auto_backup=not args.no_backup,
             auto_push_backup=args.auto_push,
+            tab_folder=args.folder if hasattr(args, "folder") else None,
         )
         return 0 if result["success"] else 1
     except Exception as e:
@@ -570,6 +571,7 @@ def cmd_push_new(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             auto_backup=not args.no_backup,
             auto_push_backup=args.auto_push,
+            tab_folder=args.folder if hasattr(args, "folder") else None,
         )
         return 0 if result["success"] else 1
     except Exception as e:
@@ -809,6 +811,7 @@ def main() -> int:
     get_parser = subparsers.add_parser("get", help="Pull a working project from Onshape")
     get_parser.add_argument("project_name", help="Project name")
     get_parser.add_argument("--files", nargs="+", help="Specific files to pull")
+    get_parser.add_argument("--folder", help="Only pull files from this tab folder (by name)")
     get_parser.add_argument("--force", action="store_true", help="Overwrite local changes")
     get_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     get_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before pull")
@@ -818,6 +821,7 @@ def main() -> int:
     push_new_parser = subparsers.add_parser("pushproject", help="Push a working project to Onshape")
     push_new_parser.add_argument("project_name", help="Project name")
     push_new_parser.add_argument("--files", nargs="+", help="Specific files to push")
+    push_new_parser.add_argument("--folder", help="Only push files from this tab folder (by name)")
     push_new_parser.add_argument("--force", action="store_true", help="Overwrite remote changes")
     push_new_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     push_new_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before push")

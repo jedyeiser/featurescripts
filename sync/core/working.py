@@ -4,7 +4,10 @@ This module handles syncing of working projects (active development) with
 bidirectional sync support - both pull from and push to Onshape.
 """
 
+import json
+import os
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -118,6 +121,7 @@ class WorkingDirectoryManager:
         dry_run: bool = False,
         auto_backup: bool = True,
         auto_push_backup: bool = False,
+        tab_folder: str | None = None,
     ) -> dict[str, Any]:
         """Pull a working project from Onshape.
 
@@ -144,6 +148,12 @@ class WorkingDirectoryManager:
             raise ValueError(f"Project not found: {project_name}")
 
         console.print(f"\n[bold blue]Pulling project:[/bold blue] {proj.name}")
+
+        # Sync folder location from Onshape (non-fatal)
+        try:
+            _sync_folder_location(proj, self.client, self.settings, self.settings_path, self.base_dir)
+        except Exception as e:
+            console.print(f"[yellow]Warning: folder sync skipped for {proj.name}: {e}[/yellow]")
 
         # Periodic health check
         if should_run_health_check(proj.last_pull, proj.last_push):
@@ -227,7 +237,7 @@ class WorkingDirectoryManager:
         # Don't use spinner on Windows to avoid unicode issues
         if not dry_run:
             console.print(f"[blue]Downloading files from {proj.name}...[/blue]")
-        results = ops.pull_all(dry_run=dry_run, force=force, files=files)
+        results = ops.pull_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder)
 
         # Process results
         files_updated = sum(1 for r in results if r.success and not r.skipped)
@@ -302,6 +312,7 @@ class WorkingDirectoryManager:
         dry_run: bool = False,
         auto_backup: bool = True,
         auto_push_backup: bool = False,
+        tab_folder: str | None = None,
     ) -> dict[str, Any]:
         """Push a working project to Onshape.
 
@@ -336,6 +347,12 @@ class WorkingDirectoryManager:
             raise ValueError(str(e)) from e
 
         console.print(f"\n[bold blue]Pushing project:[/bold blue] {proj.name}")
+
+        # Sync folder location from Onshape (non-fatal)
+        try:
+            _sync_folder_location(proj, self.client, self.settings, self.settings_path, self.base_dir)
+        except Exception as e:
+            console.print(f"[yellow]Warning: folder sync skipped for {proj.name}: {e}[/yellow]")
 
         # Periodic health check
         if should_run_health_check(proj.last_pull, proj.last_push):
@@ -409,7 +426,7 @@ class WorkingDirectoryManager:
         # Don't use spinner on Windows to avoid unicode issues
         if not dry_run:
             console.print(f"[blue]Uploading files to {proj.name}...[/blue]")
-        results = ops.push_all(dry_run=dry_run, force=force, files=files)
+        results = ops.push_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder)
 
         # Process results
         files_pushed = sum(1 for r in results if r.success and not r.skipped)
@@ -584,7 +601,6 @@ class WorkingDirectoryManager:
             if delete_files:
                 local_path = self.base_dir / proj.working_directory
                 if local_path.exists():
-                    import shutil
                     shutil.rmtree(local_path)
                     console.print(f"[yellow]Deleted local files:[/yellow] {local_path}")
 
@@ -966,6 +982,103 @@ class WorkingDirectoryManager:
             local_path=resolved_path,
             references=approved_references,
         )
+
+
+def _sync_folder_location(
+    proj: "ProjectConfig",
+    client: "OnshapeClient",
+    settings: "FeatureScriptSettings",
+    settings_path: Path,
+    base_dir: Path,
+) -> None:
+    """Fetch current Onshape folder path and update config if it has changed.
+
+    - First time (onshape_folder_path is None): store path, no local dir change.
+    - Changed: update stored path and relocate local .fs files if path is derivable.
+    """
+    if not proj.document_id:
+        return
+
+    current_path = client.get_document_folder_path(proj.document_id)
+    old_path = proj.onshape_folder_path
+
+    if current_path == old_path:
+        return  # No change
+
+    if old_path is None:
+        # First-time mapping: record path without moving local files
+        proj.onshape_folder_path = current_path
+        settings.save(settings_path)
+        if current_path:
+            console.print(f"[dim]Folder location recorded: {current_path}[/dim]")
+    else:
+        # Document moved between Onshape folders
+        console.print(
+            f"[yellow]Onshape folder changed:[/yellow] {old_path} → {current_path or '(root)'}"
+        )
+        state_file = base_dir / ".sync-state.json"
+        _relocate_project_directory(proj, old_path, current_path, state_file, settings, base_dir)
+        settings.save(settings_path)
+
+
+def _relocate_project_directory(
+    proj: "ProjectConfig",
+    old_folder_path: str,
+    new_folder_path: str | None,
+    state_file: Path,
+    settings: "FeatureScriptSettings",
+    base_dir: Path,
+) -> None:
+    """Move local .fs files when the Onshape folder path changes.
+
+    Only relocates if the old folder path appears as a component of
+    working_directory. Otherwise just updates onshape_folder_path metadata.
+    """
+    old_rel = proj.working_directory.replace("\\", "/")
+    old_folder_norm = old_folder_path.replace("\\", "/")
+    new_folder_norm = (new_folder_path or "").replace("\\", "/")
+
+    # Only relocate if the folder path is embedded in the working directory
+    if old_folder_norm and old_folder_norm in old_rel:
+        new_rel = old_rel.replace(old_folder_norm, new_folder_norm, 1)
+        old_dir = base_dir / proj.working_directory
+        new_dir = base_dir / new_rel
+
+        if old_dir != new_dir and old_dir.exists():
+            new_dir.mkdir(parents=True, exist_ok=True)
+            for fs_file in old_dir.glob("*.fs"):
+                shutil.move(str(fs_file), str(new_dir / fs_file.name))
+                console.print(f"[dim]Moved: {fs_file.name}[/dim]")
+
+            old_prefix = str(old_dir.relative_to(base_dir))
+            new_prefix = str(new_dir.relative_to(base_dir))
+            _migrate_sync_state_keys(state_file, old_prefix, new_prefix)
+
+            proj.working_directory = new_rel
+            console.print(f"[green]Relocated:[/green] {old_prefix} → {new_prefix}")
+
+    proj.onshape_folder_path = new_folder_path
+
+
+def _migrate_sync_state_keys(state_file: Path, old_prefix: str, new_prefix: str) -> None:
+    """Rewrite .sync-state.json keys from the old working dir prefix to the new one."""
+    if not state_file.exists():
+        return
+    try:
+        with open(state_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        files: dict = data.get("files", {})
+        new_files: dict = {}
+        for key, value in files.items():
+            if key.startswith(old_prefix):
+                new_files[new_prefix + key[len(old_prefix):]] = value
+            else:
+                new_files[key] = value
+        data["files"] = new_files
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        console.print(f"[yellow]Warning: could not migrate sync state keys: {e}[/yellow]")
 
 
 def _detect_fs_version(working_dir: Path, default: int = 2892) -> int:

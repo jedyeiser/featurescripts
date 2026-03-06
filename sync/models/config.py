@@ -98,6 +98,7 @@ class DocumentMetadata:
     onshape_url: str  # Direct URL to document
     last_sync: str
     feature_studios: dict[str, str] = field(default_factory=dict)  # name -> element_id
+    tab_folders: dict[str, str] = field(default_factory=dict)  # folder_id -> local_folder_name
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -109,6 +110,7 @@ class DocumentMetadata:
             "onshape_url": self.onshape_url,
             "last_sync": self.last_sync,
             "feature_studios": self.feature_studios,
+            "tab_folders": self.tab_folders,
         }
 
     @classmethod
@@ -122,6 +124,7 @@ class DocumentMetadata:
             onshape_url=data.get("onshape_url", ""),
             last_sync=data.get("last_sync", ""),
             feature_studios=data.get("feature_studios", {}),
+            tab_folders=data.get("tab_folders", {}),
         )
 
     def update_timestamp(self) -> None:

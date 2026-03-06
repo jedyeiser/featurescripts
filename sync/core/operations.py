@@ -99,6 +99,7 @@ class SyncOperations:
         document_name: str,
         folder_path: str,
         feature_studios: dict[str, str],
+        tab_folders: dict[str, str] | None = None,
     ) -> None:
         """Save .document.json metadata file."""
         metadata = DocumentMetadata(
@@ -109,6 +110,7 @@ class SyncOperations:
             onshape_url=self._build_onshape_url(document_id, workspace_id),
             last_sync=datetime.now(timezone.utc).isoformat(),
             feature_studios=feature_studios,
+            tab_folders=tab_folders or {},
         )
 
         metadata_path = local_dir / self.METADATA_FILENAME
@@ -136,6 +138,7 @@ class SyncOperations:
         dry_run: bool = False,
         force: bool = False,
         files: list[str] | None = None,
+        tab_folder: str | None = None,
     ) -> list[SyncResult]:
         """Pull all documents from an Onshape folder.
 
@@ -205,6 +208,7 @@ class SyncOperations:
                     dry_run=dry_run,
                     force=force,
                     files=files,
+                    tab_folder=tab_folder,
                 )
                 results.extend(doc_results)
 
@@ -227,6 +231,7 @@ class SyncOperations:
         dry_run: bool = False,
         force: bool = False,
         files: list[str] | None = None,
+        tab_folder: str | None = None,
     ) -> list[SyncResult]:
         """Pull a single document's Feature Studios to a local folder.
 
@@ -237,6 +242,7 @@ class SyncOperations:
             local_dir: Local directory for this document
             dry_run: If True, show what would happen
             force: If True, overwrite local changes
+            tab_folder: If set, only pull files from this tab folder (by name)
 
         Returns:
             List of SyncResults
@@ -247,17 +253,43 @@ class SyncOperations:
             # Get default workspace for this document
             workspace_id = self.client.get_default_workspace(document_id)
             if not workspace_id:
-                # Fallback to configured default
                 workspace_id = self.config.settings.default_workspace
 
-            # List Feature Studios in this document
-            elements = self.client.list_elements(
+            # Fetch all elements so we can detect tab folders
+            all_elements = self.client.list_elements(
                 document_id=document_id,
                 workspace_id=workspace_id,
-                element_type="FEATURESTUDIO",
             )
 
-            if not elements:
+            # Build folder_map from structural detection
+            all_fids = {e.get("folderId") for e in all_elements if e.get("folderId")}
+            folder_map: dict[str, str] = {
+                e["id"]: sanitize_filename(e.get("name") or e["id"])
+                for e in all_elements
+                if e.get("id") in all_fids
+            }
+
+            fs_elements = [e for e in all_elements if e.get("type") == "FEATURESTUDIO"]
+
+            # Apply tab_folder filter
+            if tab_folder:
+                sanitized_target = sanitize_filename(tab_folder).lower()
+                matched_id = next(
+                    (fid for fid, fname in folder_map.items() if fname.lower() == sanitized_target),
+                    None,
+                )
+                if matched_id is None:
+                    available = ", ".join(sorted(folder_map.values())) or "none"
+                    results.append(SyncResult(
+                        success=False,
+                        filepath=str(local_dir.relative_to(self.base_dir)),
+                        operation="pull",
+                        message=f"Tab folder '{tab_folder}' not found in '{document_name}'. Available folders: {available}",
+                    ))
+                    return results
+                fs_elements = [e for e in fs_elements if e.get("folderId") == matched_id]
+
+            if not fs_elements:
                 results.append(SyncResult(
                     success=True,
                     filepath=str(local_dir.relative_to(self.base_dir)),
@@ -270,9 +302,8 @@ class SyncOperations:
             # Filter elements if specific files requested
             if files:
                 files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
-                available_fs = {f"{e.get('name', '')}.fs" for e in elements if e.get("name", "")}
-                elements = [e for e in elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
-                # Report files that were explicitly requested but not found in Onshape
+                available_fs = {f"{e.get('name', '')}.fs" for e in fs_elements if e.get("name", "")}
+                fs_elements = [e for e in fs_elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
                 for req in sorted(files_set):
                     if req not in available_fs:
                         available_str = ", ".join(sorted(available_fs)) or "none"
@@ -284,11 +315,13 @@ class SyncOperations:
                         ))
 
             if dry_run:
-                for element in elements:
+                for element in fs_elements:
                     elem_name = element.get("name", "unnamed")
+                    folder_id = element.get("folderId")
+                    subdir = f"/{folder_map[folder_id]}" if folder_id in folder_map else ""
                     results.append(SyncResult(
                         success=True,
-                        filepath=f"{local_dir.relative_to(self.base_dir)}/{elem_name}.fs",
+                        filepath=f"{local_dir.relative_to(self.base_dir)}{subdir}/{elem_name}.fs",
                         operation="pull",
                         message=f"[DRY RUN] Would pull {elem_name}.fs",
                         skipped=True,
@@ -298,19 +331,22 @@ class SyncOperations:
             # Create local directory
             local_dir.mkdir(parents=True, exist_ok=True)
 
-            # Track feature studios for metadata
             feature_studios: dict[str, str] = {}
 
-            for element in elements:
+            for element in fs_elements:
                 element_id = element.get("id", "")
                 element_name = element.get("name", "unnamed")
+
+                # Determine target subdirectory based on tab folder
+                folder_id = element.get("folderId")
+                element_dir = local_dir / folder_map[folder_id] if folder_id in folder_map else local_dir
 
                 result = self._pull_feature_studio(
                     document_id=document_id,
                     workspace_id=workspace_id,
                     element_id=element_id,
                     element_name=element_name,
-                    local_dir=local_dir,
+                    local_dir=element_dir,
                     force=force,
                 )
                 results.append(result)
@@ -326,6 +362,7 @@ class SyncOperations:
                 document_name=document_name,
                 folder_path=folder_path,
                 feature_studios=feature_studios,
+                tab_folders=folder_map,
             )
 
         except Exception as e:
@@ -662,6 +699,7 @@ class SyncOperations:
         dry_run: bool = False,
         force: bool = False,
         files: list[str] | None = None,
+        tab_folder: str | None = None,
     ) -> list[SyncResult]:
         """Pull all Feature Studios from a document (legacy method).
 
@@ -670,24 +708,52 @@ class SyncOperations:
             dry_run: Show what would happen without making changes
             force: Force pull even if there are local changes
             files: Optional list of specific files to pull (basenames like "file.fs")
+            tab_folder: If set, only pull files from this tab folder (by name)
         """
         results: list[SyncResult] = []
         local_dir = self.base_dir / doc_config.local_path
 
         try:
-            elements = self.client.list_elements(
+            # Fetch all elements (no type filter) so we can detect tab folders
+            all_elements = self.client.list_elements(
                 document_id=doc_config.document_id,
                 workspace_id=doc_config.workspace_id,
-                element_type="FEATURESTUDIO",
             )
+
+            # Build folder_map: any element whose id appears as a folderId on another element is a tab folder
+            all_fids = {e.get("folderId") for e in all_elements if e.get("folderId")}
+            folder_map: dict[str, str] = {
+                e["id"]: sanitize_filename(e.get("name") or e["id"])
+                for e in all_elements
+                if e.get("id") in all_fids
+            }
+
+            # Extract Feature Studios only
+            fs_elements = [e for e in all_elements if e.get("type") == "FEATURESTUDIO"]
+
+            # Apply tab_folder filter
+            if tab_folder:
+                sanitized_target = sanitize_filename(tab_folder).lower()
+                matched_id = next(
+                    (fid for fid, fname in folder_map.items() if fname.lower() == sanitized_target),
+                    None,
+                )
+                if matched_id is None:
+                    available = ", ".join(sorted(folder_map.values())) or "none"
+                    results.append(SyncResult(
+                        success=False,
+                        filepath=doc_config.local_path,
+                        operation="pull",
+                        message=f"Tab folder '{tab_folder}' not found in '{doc_config.name}'. Available folders: {available}",
+                    ))
+                    return results
+                fs_elements = [e for e in fs_elements if e.get("folderId") == matched_id]
 
             # Filter elements if specific files requested
             if files:
-                # Normalize file list (ensure .fs extension)
                 files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
-                available_fs = {f"{e.get('name', '')}.fs" for e in elements if e.get("name", "")}
-                elements = [e for e in elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
-                # Report files that were explicitly requested but not found in Onshape
+                available_fs = {f"{e.get('name', '')}.fs" for e in fs_elements if e.get("name", "")}
+                fs_elements = [e for e in fs_elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
                 for req in sorted(files_set):
                     if req not in available_fs:
                         available_str = ", ".join(sorted(available_fs)) or "none"
@@ -699,24 +765,26 @@ class SyncOperations:
                         ))
 
             if dry_run:
-                # Dry run mode - show what would be pulled without making changes
-                for element in elements:
+                for element in fs_elements:
                     element_name = element.get("name", "unnamed")
                     filename = element_name if element_name.endswith(".fs") else f"{element_name}.fs"
+                    folder_id = element.get("folderId")
+                    subdir = f"/{folder_map[folder_id]}" if folder_id in folder_map else ""
                     results.append(SyncResult(
                         success=True,
-                        filepath=f"{doc_config.local_path}/{filename}",
+                        filepath=f"{doc_config.local_path}{subdir}/{filename}",
                         operation="pull",
                         message=f"[DRY RUN] Would pull {filename}",
                         skipped=True,
                     ))
                 return results
 
-            # Create local directory if it doesn't exist (only when not dry-run)
+            # Create local directory if it doesn't exist
             local_dir.mkdir(parents=True, exist_ok=True)
 
             n_attempted = 0
-            for element in elements:
+            feature_studios: dict[str, str] = {}
+            for element in fs_elements:
                 element_id = element.get("id", "")
                 element_name = element.get("name", "")
 
@@ -729,30 +797,45 @@ class SyncOperations:
                     ))
                     continue
 
+                # Determine target subdirectory based on tab folder
+                folder_id = element.get("folderId")
+                element_dir = local_dir / folder_map[folder_id] if folder_id in folder_map else local_dir
+
                 n_attempted += 1
                 result = self._pull_feature_studio(
                     document_id=doc_config.document_id,
                     workspace_id=doc_config.workspace_id,
                     element_id=element_id,
                     element_name=element_name,
-                    local_dir=local_dir,
+                    local_dir=element_dir,
                     force=force,
                 )
                 results.append(result)
 
+                if result.success:
+                    feature_studios[element_name] = element_id
+
             # If we got here with no results at all, explain why
             if not results:
-                if files:
-                    # All requested files were already reported as not-found above
-                    pass
-                else:
+                if not files:
                     results.append(SyncResult(
                         success=True,
                         filepath=doc_config.local_path,
                         operation="pull",
-                        message=f"No Feature Studios found in Onshape document '{doc_config.name}' (list_elements returned 0 results for elementType=FEATURESTUDIO)",
+                        message=f"No Feature Studios found in Onshape document '{doc_config.name}'",
                         skipped=True,
                     ))
+
+            # Save document metadata (including tab folder map for traceability)
+            self._save_document_metadata(
+                local_dir=local_dir,
+                document_id=doc_config.document_id,
+                workspace_id=doc_config.workspace_id,
+                document_name=doc_config.name,
+                folder_path="",
+                feature_studios=feature_studios,
+                tab_folders=folder_map,
+            )
 
         except Exception as e:
             results.append(SyncResult(
@@ -770,6 +853,7 @@ class SyncOperations:
         dry_run: bool = False,
         force: bool = False,
         files: list[str] | None = None,
+        tab_folder: str | None = None,
     ) -> list[SyncResult]:
         """Push all local Feature Studios to a document (legacy method).
 
@@ -778,6 +862,7 @@ class SyncOperations:
             dry_run: Show what would happen without making changes
             force: Force push even if there are remote changes
             files: Optional list of specific files to push (basenames like "file.fs")
+            tab_folder: If set, only push files from this tab folder (by local dir name)
         """
         results: list[SyncResult] = []
         local_dir = self.base_dir / doc_config.local_path
@@ -801,7 +886,12 @@ class SyncOperations:
             name_to_id = {e.get("name", ""): e.get("id", "") for e in elements}
 
             extension = self.config.settings.file_extension
-            local_files = list(local_dir.glob(f"*{extension}"))
+            local_files = list(local_dir.rglob(f"*{extension}"))
+
+            # Filter to a single tab folder if requested
+            if tab_folder:
+                target_dir = sanitize_filename(tab_folder).lower()
+                local_files = [f for f in local_files if f.parent.name.lower() == target_dir]
 
             # Filter files if specific files requested
             if files:
@@ -853,6 +943,7 @@ class SyncOperations:
         dry_run: bool = False,
         force: bool = False,
         files: list[str] | None = None,
+        tab_folder: str | None = None,
     ) -> list[SyncResult]:
         """Pull all configured folders and documents.
 
@@ -860,17 +951,18 @@ class SyncOperations:
             dry_run: Show what would happen without making changes
             force: Force pull even if there are local changes
             files: Optional list of specific files to pull (basenames like "file.fs")
+            tab_folder: If set, only pull files from this tab folder (by name)
         """
         results: list[SyncResult] = []
 
         # Pull folders (new style)
         for folder_config in self.config.folders:
-            folder_results = self.pull_folder(folder_config, dry_run, force, files)
+            folder_results = self.pull_folder(folder_config, dry_run, force, files, tab_folder)
             results.extend(folder_results)
 
         # Pull documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.pull_document(doc_config, dry_run, force, files)
+            doc_results = self.pull_document(doc_config, dry_run, force, files, tab_folder)
             results.extend(doc_results)
 
         return results
@@ -880,6 +972,7 @@ class SyncOperations:
         dry_run: bool = False,
         force: bool = False,
         files: list[str] | None = None,
+        tab_folder: str | None = None,
     ) -> list[SyncResult]:
         """Push all configured folders and documents.
 
@@ -887,6 +980,7 @@ class SyncOperations:
             dry_run: Show what would happen without making changes
             force: Force push even if there are remote changes
             files: Optional list of specific files to push (basenames like "file.fs")
+            tab_folder: If set, only push files from this tab folder (by local dir name)
         """
         results: list[SyncResult] = []
 
@@ -897,7 +991,7 @@ class SyncOperations:
 
         # Push documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.push_document(doc_config, dry_run, force, files)
+            doc_results = self.push_document(doc_config, dry_run, force, files, tab_folder)
             results.extend(doc_results)
 
         return results
