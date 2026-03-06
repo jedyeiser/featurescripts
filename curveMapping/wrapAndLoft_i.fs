@@ -603,6 +603,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var junctionPt                = undefined;
             var junctionTangent           = undefined;
             var junctionOffsetDir         = undefined;
+            var wrappedBSplines           = [];
+            var wrappedIds                = [];
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
@@ -818,6 +820,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
                         allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
                         allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
+                        wrappedBSplines      = append(wrappedBSplines,      mappedCurve);
+                        wrappedIds           = append(wrappedIds,           wrappedId);
 
                         var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "primaryOffset");
                         opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
@@ -865,6 +869,89 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
 
                 segStartIdx = segEndIdx + 1;
+            }
+
+            // G2 junction smoothing: correct slight curvature mismatches at span junctions.
+            // For each junction (consecutive pairs + wrap-around), check if the curvature from
+            // the end of the previous span matches the start of the next.  If the required
+            // control-point jostle is small, apply it and recreate only the affected edge.
+            if (size(wrappedBSplines) >= 2)
+            {
+                var numSpans = size(wrappedBSplines);
+                for (var sj = 0; sj < numSpans; sj += 1)
+                {
+                    var sjNext = sj + 1 < numSpans ? sj + 1 : 0;
+
+                    var splineBefore = wrappedBSplines[sj];
+                    var splineAfter  = wrappedBSplines[sjNext];
+                    var kB = splineBefore.knots;
+                    var kA = splineAfter.knots;
+
+                    var evalB = evaluateSpline({ "spline": splineBefore, "parameters": [kB[size(kB) - 1]], "nDerivatives": 2 });
+                    var evalA = evaluateSpline({ "spline": splineAfter,  "parameters": [kA[0]],             "nDerivatives": 2 });
+
+                    var d1B    = evalB[1][0];
+                    var d2B    = evalB[2][0];
+                    var d1A    = evalA[1][0];
+                    var d2A    = evalA[2][0];
+                    var d1B_sq = dot(d1B, d1B);
+                    var d1A_sq = dot(d1A, d1A);
+
+                    if (d1B_sq > 0 && d1A_sq > 0)
+                    {
+                        var T_B     = d1B / sqrt(d1B_sq);
+                        var T_A     = d1A / sqrt(d1A_sq);
+                        var kappa_B = (d2B - dot(d2B, T_B) * T_B) / d1B_sq;
+                        var kappa_A = (d2A - dot(d2A, T_A) * T_A) / d1A_sq;
+
+                        if (norm(kappa_A - kappa_B) > TOLERANCE.zeroLength)
+                        {
+                            var kappa_target = 0.5 * (kappa_B + kappa_A);
+                            var d2_target    = kappa_target * d1A_sq + dot(d2A, T_A) * T_A;
+
+                            var d_    = splineAfter.degree;
+                            var knots = splineAfter.knots;
+                            var CPs   = splineAfter.controlPoints;
+
+                            if (size(CPs) >= 3 && d_ >= 2)
+                            {
+                                var delta1 = knots[d_ + 1] - knots[d_];
+                                var delta2 = knots[d_ + 2] - knots[d_ + 1];
+
+                                if (delta1 > 0 && delta2 > 0)
+                                {
+                                    var P0  = CPs[0];
+                                    var P1  = CPs[1];
+                                    var P2c = CPs[2];
+                                    var P2n = P1 + delta2 * (d2_target * (delta1 / (d_ * (d_ - 1))) + (P1 - P0) / delta1);
+
+                                    var shift     = norm(P2n - P2c);
+                                    var spanScale = norm(P1 - P0) * d_;
+
+                                    if (spanScale > 0 && shift < 0.2 * spanScale)
+                                    {
+                                        var newCPs = [];
+                                        for (var ci = 0; ci < size(CPs); ci += 1)
+                                            newCPs = append(newCPs, ci == 2 ? P2n : CPs[ci]);
+
+                                        var adjSpline = mergeMaps(splineAfter, { "controlPoints": newCPs });
+
+                                        var newBSplines = [];
+                                        for (var bi = 0; bi < numSpans; bi += 1)
+                                            newBSplines = append(newBSplines, bi == sjNext ? adjSpline : wrappedBSplines[bi]);
+                                        wrappedBSplines = newBSplines;
+
+                                        var oldId = wrappedIds[sjNext];
+                                        opDeleteBodies(context, oldId ~ "g2Del", { "entities": qCreatedBy(oldId, EntityType.BODY) });
+                                        opCreateBSplineCurve(context, oldId ~ "g2", { "bSplineCurve": adjSpline });
+                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(oldId ~ "g2", EntityType.EDGE));
+                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(oldId ~ "g2", EntityType.BODY));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
         }
