@@ -949,7 +949,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                     var P0A  = CPA[0];
                                     var P1A  = CPA[1];
                                     var P2Ac = CPA[2];
-                                    var P2An = P1A + (dl1 + dl2) * (d2tA * (dl1 / (dA * (dA - 1))) + (P1A - P0A) / dl1);
+                                    var P2An = P1A + dl2 * (d2tA * (dl1 + dl2) / (dA * (dA - 1)) + (P1A - P0A) / dl1);
                                     var shA  = norm(P2An - P2Ac);
                                     var scA  = norm(P1A - P0A) * dA;
                                     if (scA > 0 * meter && shA > 0 * meter && shA < 0.2 * scA)
@@ -993,8 +993,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                 if (de1 > 0 && de2 > 0)
                                 {
                                     var ae  = 1 / de1;
-                                    var be2 = 1 / (de1 + de2);
-                                    var Ke  = d2tB * de1 / (dB * (dB - 1));
+                                    var be2 = 1 / de2;
+                                    var Ke  = d2tB * (de1 + de2) / (dB * (dB - 1));
                                     var PL  = CPB[mB - 1];
                                     var PS  = CPB[mB - 2];
                                     var PT  = CPB[mB - 3];
