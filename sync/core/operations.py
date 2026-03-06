@@ -269,7 +269,7 @@ class SyncOperations:
                 if e.get("id") in all_fids
             }
 
-            fs_elements = [e for e in all_elements if e.get("type") == "FEATURESTUDIO"]
+            fs_elements = [e for e in all_elements if e.get("elementType") == "FEATURESTUDIO"]
 
             # Apply tab_folder filter
             if tab_folder:
@@ -729,7 +729,7 @@ class SyncOperations:
             }
 
             # Extract Feature Studios only
-            fs_elements = [e for e in all_elements if e.get("type") == "FEATURESTUDIO"]
+            fs_elements = [e for e in all_elements if e.get("elementType") == "FEATURESTUDIO"]
 
             # Apply tab_folder filter
             if tab_folder:
