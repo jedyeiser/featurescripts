@@ -2,6 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: estimateDeflectionSolver.fs
+import(path : "b94e66e5f6d027e5be938121", version : "");
 
 /**
  * ESTIMATE DEFLECTION

@@ -281,12 +281,7 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         }
 
         // --- Approximation ---
-        if (definition.inputType == BridgingFilletInputType.CURVES)
-        {
-            annotation { "Name" : "Approximate inputs" }
-            definition.approximateInputs is boolean;
-        }
-        // Always shown — used for offset curve approximation on both paths
+        // Always shown — controls approximation of input curves (always applied) and offset curves
         curveApproximationPredicate(definition);
 
         // --- Output options (FACES path) ---
@@ -389,10 +384,7 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         }
         else // CURVES
         {
-            if (definition.approximateInputs)
-            {
-                // TODO: opApproximateCurve on side1Curves and side2Curves using curveApproximation params
-            }
+            // TODO: opApproximateCurve on side1Curves and side2Curves using curveApproximation params
             // TODO: buildArcLengthTable(context, side1Edge) -> arcTable1
             // TODO: buildArcLengthTable(context, side2Edge) -> arcTable2
             // TODO: parameterAtArcLength(arcTable1, offset1) -> param1
@@ -502,18 +494,58 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         // 7. DEBUG OUTPUT
         if (definition.debugIntersection)
         {
-            // TODO: println("Junction: " ~ toString(junctionData))
-            //   if definition.debugIntersectionLevel == BridgingFilletDebugPrintLevel.DETAILS: include full knot + CPs
+            if (definition.inputType == BridgingFilletInputType.CURVES)
+            {
+                var edges1 = evaluateQuery(context, definition.side1Curves);
+                var edges2 = evaluateQuery(context, definition.side2Curves);
+                println("bridgingFillet [intersection]: inputType=CURVES");
+                println("  side1Curves count=" ~ toString(size(edges1)));
+                println("  side2Curves count=" ~ toString(size(edges2)));
+                println("  offset=" ~ toString(definition.offset));
+                println("  continuity1=" ~ toString(definition.continuity1));
+                println("  continuity2=" ~ toString(definition.continuity2));
+                println("  flip1=" ~ toString(definition.flip1) ~ "  flip2=" ~ toString(definition.flip2));
+            }
+            else
+            {
+                var faces1 = evaluateQuery(context, definition.side1Face);
+                var faces2 = evaluateQuery(context, definition.side2Face);
+                println("bridgingFillet [intersection]: inputType=FACES");
+                println("  side1Face count=" ~ toString(size(faces1)));
+                println("  side2Face count=" ~ toString(size(faces2)));
+                println("  offset=" ~ toString(definition.offset));
+                println("  surfaceMode=" ~ toString(definition.surfaceMode));
+            }
         }
         if (definition.debugBridge)
         {
-            // TODO: println("Bridge: " ~ toString(bridgeCurveData))
-            //   if definition.debugBridgeLevel == BridgingFilletDebugPrintLevel.DETAILS: include full knot + CPs
+            println("bridgingFillet [bridge]: geometry not yet implemented (all paths are TODO)");
         }
         if (definition.showOffsets)
         {
-            // TODO: debugPoint/debugLine for offset positions
-            //   side1: DebugColor.CYAN, side2: DebugColor.MAGENTA
+            // Highlight selected input entities and show their endpoints
+            if (definition.inputType == BridgingFilletInputType.CURVES)
+            {
+                addDebugEntities(context, definition.side1Curves, DebugColor.CYAN);
+                addDebugEntities(context, definition.side2Curves, DebugColor.MAGENTA);
+                var tl1 = try(evEdgeTangentLines(context, { "edge" : definition.side1Curves, "parameters" : [0.0, 1.0] }));
+                var tl2 = try(evEdgeTangentLines(context, { "edge" : definition.side2Curves, "parameters" : [0.0, 1.0] }));
+                if (tl1 != undefined)
+                {
+                    addDebugPoint(context, tl1[0].origin, DebugColor.CYAN);
+                    addDebugPoint(context, tl1[1].origin, DebugColor.CYAN);
+                }
+                if (tl2 != undefined)
+                {
+                    addDebugPoint(context, tl2[0].origin, DebugColor.MAGENTA);
+                    addDebugPoint(context, tl2[1].origin, DebugColor.MAGENTA);
+                }
+            }
+            else
+            {
+                addDebugEntities(context, definition.side1Face, DebugColor.CYAN);
+                addDebugEntities(context, definition.side2Face, DebugColor.MAGENTA);
+            }
         }
         if (definition.inputType == BridgingFilletInputType.FACES && definition.showIsocurves)
         {
@@ -533,7 +565,6 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         "rho" : 0.5,
         "numBridges" : 3,
         "useOffsetsAsGuides" : false,
-        "approximateInputs" : false,
         "outputType" : BridgingFilletOutputType.BRIDGE_ONLY,
         "keepJunctionWire" : false,
         "keepOffsetWires" : false,
@@ -640,7 +671,10 @@ export function bridgingFilletEditingLogic(context is Context, id is Id, oldDefi
         (specifiedParameters.side1Face || specifiedParameters.side2Face) &&
         !specifiedParameters.side1Edge && !specifiedParameters.side2Edge)
     {
-        var sharedEdge = tryFindSharedEdge(context, definition.side1Face, definition.side2Face);
+        var sharedEdge = qIntersection([
+            qAdjacent(definition.side1Face, AdjacencyType.EDGE, EntityType.EDGE),
+            qAdjacent(definition.side2Face, AdjacencyType.EDGE, EntityType.EDGE)
+        ]);
         if (!isQueryEmpty(context, sharedEdge))
         {
             definition.side1Edge = sharedEdge;

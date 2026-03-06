@@ -176,10 +176,9 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
             (definition.measurementType == BMMeasurementType.ANGLE ||
              definition.measurementType == BMMeasurementType.VECTOR))
         {
-            annotation { "Name" : "Element 1 axis",
-                         "UIHint" : UIHint.MATE_CONNECTOR_AXIS_TYPE,
-                         "Default" : MateConnectorAxisType.PLUS_Z }
-            definition.entity1MCAxis is MateConnectorAxisType;
+            annotation { "Name" : "Element 1 axis", "UIHint" : UIHint.SHOW_LABEL,
+                         "Default" : BMMCAxis.Z_AXIS }
+            definition.entity1MCAxis is BMMCAxis;
         }
 
         // ── Element 2 (hidden for LENGTH — no second entity needed) ───────────
@@ -211,10 +210,9 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
                 (definition.measurementType == BMMeasurementType.ANGLE ||
                  definition.measurementType == BMMeasurementType.VECTOR))
             {
-                annotation { "Name" : "Element 2 axis",
-                             "UIHint" : UIHint.MATE_CONNECTOR_AXIS_TYPE,
-                             "Default" : MateConnectorAxisType.PLUS_Z }
-                definition.entity2MCAxis is MateConnectorAxisType;
+                annotation { "Name" : "Element 2 axis", "UIHint" : UIHint.SHOW_LABEL,
+                             "Default" : BMMCAxis.Z_AXIS }
+                definition.entity2MCAxis is BMMCAxis;
             }
         }
 
@@ -563,13 +561,13 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         "entity1Type"         : BMEntityType.NONE,
         "entity1SolidRef"     : BMSolidRef.COM,
         "entity1SheetRef"     : BMSheetRef.COA,
-        "entity1MCAxis"       : MateConnectorAxisType.PLUS_Z,
+        "entity1MCAxis"       : BMMCAxis.Z_AXIS,
 
         "entity2"             : qNothing(),
         "entity2Type"         : BMEntityType.NONE,
         "entity2SolidRef"     : BMSolidRef.COM,
         "entity2SheetRef"     : BMSheetRef.COA,
-        "entity2MCAxis"       : MateConnectorAxisType.PLUS_Z,
+        "entity2MCAxis"       : BMMCAxis.Z_AXIS,
 
         "useAlong"            : false,
         "alongQuery"          : qNothing(),

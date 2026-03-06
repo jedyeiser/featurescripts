@@ -64,6 +64,18 @@ export enum BMSheetRef
     annotation { "Name" : "Nearest vertex" } NEAREST_VERTEX
 }
 
+/**
+ * Axis of a mate connector to use for direction extraction in ANGLE / VECTOR modes.
+ * Replaces MateConnectorAxisType, which only defines in-plane (X/Y) axes and has
+ * no PLUS_Z member — using it with Z_AXIS defaults causes a silent compile failure.
+ */
+export enum BMMCAxis
+{
+    annotation { "Name" : "X axis" } X_AXIS,
+    annotation { "Name" : "Y axis" } Y_AXIS,
+    annotation { "Name" : "Z axis" } Z_AXIS
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ENTITY CATEGORY DETECTION
 // ══════════════════════════════════════════════════════════════════════════════
@@ -300,30 +312,30 @@ export function resolveCoordFrame(context is Context, coordSystemType is BMCoord
  * @param entityQuery {Query}
  * @param entityType  {BMEntityType}
  * @param otherPoint              — opposing reference point (Vector) or undefined
- * @param mcAxisType  {MateConnectorAxisType}
+ * @param mcAxisType  {BMMCAxis}
  * @returns {Vector | undefined}  — unitless direction, or undefined if not applicable
  *
  * Ref: evaluate.fs — evEdgeTangentLine, evFaceTangentPlane, evMateConnector, evDistance
  *      coordSystem.fs — yAxis
  */
 export function extractEntityDirection(context is Context, entityQuery is Query,
-    entityType is BMEntityType, otherPoint, mcAxisType is MateConnectorAxisType)
+    entityType is BMEntityType, otherPoint, mcAxisType is BMMCAxis)
 {
     // ── Mate connector: user-selected axis
     if (entityType == BMEntityType.MATE_CONNECTOR)
     {
         var cSys = evMateConnector(context, { "mateConnector" : entityQuery });
-        if (mcAxisType == MateConnectorAxisType.PLUS_X)
+        if (mcAxisType == BMMCAxis.X_AXIS)
         {
             return cSys.xAxis;
         }
-        else if (mcAxisType == MateConnectorAxisType.PLUS_Y)
+        else if (mcAxisType == BMMCAxis.Y_AXIS)
         {
             return yAxis(cSys);
         }
         else
         {
-            // PLUS_Z default, MINUS_* handled by negate at call site if needed
+            // Z_AXIS default
             return cSys.zAxis;
         }
     }
@@ -418,8 +430,8 @@ export function extractEntityDirection(context is Context, entityQuery is Query,
  * @param entityType1  {BMEntityType}
  * @param entity2      {Query}
  * @param entityType2  {BMEntityType}
- * @param mc1AxisType  {MateConnectorAxisType}  — MC axis for entity1
- * @param mc2AxisType  {MateConnectorAxisType}  — MC axis for entity2
+ * @param mc1AxisType  {BMMCAxis}  — MC axis for entity1
+ * @param mc2AxisType  {BMMCAxis}  — MC axis for entity2
  * @returns {ValueWithUnits | undefined} — angle in radians
  *
  * Ref: evaluate.fs — evApproximateCentroid; mathUtils.fs — acos, dot, normalize
@@ -427,7 +439,7 @@ export function extractEntityDirection(context is Context, entityQuery is Query,
 export function measureAngleBetweenEntities(context is Context,
     entity1 is Query, entityType1 is BMEntityType,
     entity2 is Query, entityType2 is BMEntityType,
-    mc1AxisType is MateConnectorAxisType, mc2AxisType is MateConnectorAxisType)
+    mc1AxisType is BMMCAxis, mc2AxisType is BMMCAxis)
 {
     // Rough positions to provide context for direction extraction
     var rough1 = evApproximateCentroid(context, { "entities" : entity1 });
