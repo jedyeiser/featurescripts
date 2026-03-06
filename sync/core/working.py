@@ -592,6 +592,125 @@ class WorkingDirectoryManager:
 
         return removed
 
+    def create_file(
+        self,
+        project_name: str,
+        filename: str,
+    ) -> dict[str, Any]:
+        """Create a new Feature Studio in Onshape and mirror it locally.
+
+        Args:
+            project_name: Name of the configured project
+            filename: Desired filename (with or without .fs extension)
+
+        Returns:
+            Dict with keys: success, filepath, element_id, name
+        """
+        from .state import SyncState
+
+        proj = self.settings.get_project(project_name)
+        if not proj:
+            raise ValueError(f"Project not found: {project_name}")
+
+        if not proj.document_id:
+            raise ValueError(
+                f"Project '{project_name}' has no document_id. "
+                "Cannot create a Feature Studio in a folder-based project."
+            )
+
+        # Normalize name: Onshape element name has no extension
+        if filename.endswith(".fs"):
+            element_name = filename[:-3]
+            local_filename = filename
+        else:
+            element_name = filename
+            local_filename = f"{filename}.fs"
+
+        ws_id = proj.workspace_id or self.client.get_default_workspace(proj.document_id)
+
+        # Check for name collision in Onshape before creating
+        console.print(f"\n[blue]Checking for existing elements in '{proj.name}'...[/blue]")
+        try:
+            existing = self.client.list_elements(
+                document_id=proj.document_id,
+                workspace_id=ws_id,
+                element_type="FEATURESTUDIO",
+            )
+            existing_names = {e.get("name", "") for e in existing}
+            if element_name in existing_names:
+                raise ValueError(
+                    f"A Feature Studio named '{element_name}' already exists in '{proj.name}'. "
+                    "Choose a different name or pull first to sync it locally."
+                )
+        except ValueError:
+            raise
+        except Exception as e:
+            console.print(f"[yellow]Warning: could not check for existing elements: {e}[/yellow]")
+
+        # Detect FS version from existing local files, fall back to 2892
+        fs_version = _detect_fs_version(self.base_dir / proj.working_directory)
+
+        contents = _featurescript_boilerplate(fs_version)
+
+        console.print(f"[blue]Creating Feature Studio '{element_name}' in Onshape (FeatureScript {fs_version})...[/blue]")
+
+        try:
+            response = self.client.create_featurestudio(
+                document_id=proj.document_id,
+                workspace_id=ws_id,
+                name=element_name,
+                contents=contents,
+            )
+        except Exception as e:
+            console.print(f"[red]Failed to create Feature Studio in Onshape: {e}[/red]")
+            return {"success": False, "error": str(e)}
+
+        element_id = response.get("id", "")
+        microversion = response.get("microversion", "")
+
+        if not element_id:
+            console.print(f"[red]Onshape did not return an element ID. Response: {response}[/red]")
+            return {"success": False, "error": "No element ID in Onshape response"}
+
+        console.print(f"[green]Created in Onshape[/green] (id: {element_id})")
+
+        # Write local file
+        local_dir = self.base_dir / proj.working_directory
+        local_dir.mkdir(parents=True, exist_ok=True)
+        local_path = local_dir / local_filename
+
+        if local_path.exists():
+            console.print(f"[yellow]Local file already exists — overwriting: {local_path.relative_to(self.base_dir)}[/yellow]")
+
+        local_path.write_text(contents, encoding="utf-8")
+        relative_path = str(local_path.relative_to(self.base_dir))
+        console.print(f"[green]Created local file:[/green] {relative_path}")
+
+        # Record in sync state so conflict detection works from the start
+        state_file = self.base_dir / ".sync-state.json"
+        state = SyncState(state_file)
+        state.update_file_state(
+            filepath=relative_path,
+            local_hash=SyncState.compute_hash(contents),
+            remote_microversion=microversion,
+            element_id=element_id,
+            document_id=proj.document_id,
+            workspace_id=ws_id,
+        )
+        state.save()
+
+        # Update last_pull so health checks know the project is fresh
+        proj.update_pull_time()
+        self.settings.save(self.settings_path)
+
+        console.print(f"\n[bold green]Done.[/bold green] '{local_filename}' is ready in {proj.working_directory}/")
+        return {
+            "success": True,
+            "filepath": relative_path,
+            "element_id": element_id,
+            "name": element_name,
+        }
+
     def _project_to_sync_config(self, proj: ProjectConfig) -> SyncConfig:
         """Convert ProjectConfig to SyncConfig for use with SyncOperations.
 
@@ -847,6 +966,27 @@ class WorkingDirectoryManager:
             local_path=resolved_path,
             references=approved_references,
         )
+
+
+def _detect_fs_version(working_dir: Path, default: int = 2892) -> int:
+    """Scan existing .fs files in working_dir to detect the FeatureScript version in use."""
+    try:
+        for fs_file in working_dir.glob("*.fs"):
+            first_line = fs_file.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+            if first_line.startswith("FeatureScript "):
+                try:
+                    return int(first_line.split()[1].rstrip(";"))
+                except (IndexError, ValueError):
+                    pass
+    except Exception:
+        pass
+    return default
+
+
+def _featurescript_boilerplate(version: int = 2892) -> str:
+    """Return minimal FeatureScript boilerplate for a new file."""
+    return f'FeatureScript {version};\nimport(path : "onshape/std/common.fs", version : "{version}.0");\n'
+
 
 
 def _suggest_references(

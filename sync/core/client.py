@@ -167,6 +167,30 @@ class OnshapeClient:
         )
         return self.get(path)
 
+    def create_featurestudio(
+        self,
+        document_id: str,
+        workspace_id: str,
+        name: str,
+        contents: str,
+    ) -> dict[str, Any]:
+        """Create a new Feature Studio element in an Onshape document.
+
+        Args:
+            document_id: Document ID
+            workspace_id: Workspace ID
+            name: Element name (without .fs extension)
+            contents: Initial source code
+
+        Returns:
+            Created element metadata including 'id', 'name', 'microversion'
+        """
+        path = (
+            f"/api/{self.API_VERSION}/featurestudios/d/{document_id}"
+            f"/w/{workspace_id}"
+        )
+        return self.post(path, json_data={"contents": contents, "name": name})
+
     def update_featurestudio_contents(
         self,
         document_id: str,

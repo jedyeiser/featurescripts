@@ -195,7 +195,7 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             definition.side1Face is Query;
 
             annotation { "Name" : "Side 1 reference edge",
-                         "Description" : "Reference edge on face 1 — where offset is measured from. Auto-populated for adjacent faces.",
+                         "Description" : "Reference edge on face 1 - where offset is measured from. Auto-populated for adjacent faces.",
                          "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
             definition.side1Edge is Query;
 
@@ -204,7 +204,7 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             definition.side2Face is Query;
 
             annotation { "Name" : "Side 2 reference edge", "Column Name" : "Second reference edge",
-                         "Description" : "Reference edge on face 2 — where offset is measured from. Auto-populated for adjacent faces.",
+                         "Description" : "Reference edge on face 2 - where offset is measured from. Auto-populated for adjacent faces.",
                          "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
             definition.side2Edge is Query;
         }
@@ -255,6 +255,17 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Use offsets as guides" }
                 definition.useOffsetsAsGuides is boolean;
             }
+            if (definition.surfaceMode == BridgingFilletSurfaceMode.CONIC)
+            {
+                annotation { "Name" : "Conic type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
+                definition.conicType is BridgingFilletConicType;
+
+                if (definition.conicType == BridgingFilletConicType.RHO)
+                {
+                    annotation { "Name" : "Rho" }
+                    isReal(definition.rho, RHO_BOUNDS);
+                }
+            }
         }
 
         // --- Curve mode (CURVES path only) ---
@@ -262,19 +273,17 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         {
             annotation { "Name" : "Curve mode", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
             definition.curveMode is BridgingFilletCurveMode;
-        }
 
-        // --- Conic sub-parameters (either path when conic is selected) ---
-        if ((definition.inputType == BridgingFilletInputType.FACES && definition.surfaceMode == BridgingFilletSurfaceMode.CONIC) ||
-            (definition.inputType == BridgingFilletInputType.CURVES && definition.curveMode == BridgingFilletCurveMode.CONIC))
-        {
-            annotation { "Name" : "Conic type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
-            definition.conicType is BridgingFilletConicType;
-
-            if (definition.conicType == BridgingFilletConicType.RHO)
+            if (definition.curveMode == BridgingFilletCurveMode.CONIC)
             {
-                annotation { "Name" : "Rho" }
-                isReal(definition.rho, RHO_BOUNDS);
+                annotation { "Name" : "Conic type", "Column Name" : "Curve conic type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
+                definition.conicType is BridgingFilletConicType;
+
+                if (definition.conicType == BridgingFilletConicType.RHO)
+                {
+                    annotation { "Name" : "Rho" }
+                    isReal(definition.rho, RHO_BOUNDS);
+                }
             }
         }
 
@@ -300,19 +309,19 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             definition.keepOffsetWires is boolean;
         }
 
-        // --- Keep input bodies (CURVES, wire inputs only — visibility driven by hidden booleans) ---
-        if (definition.side1IsWire || definition.side2IsWire)
-        {
-            annotation { "Name" : "Keep input bodies" }
-            definition.keepInputBodies is boolean;
-        }
-
         // --- Hidden state (set by editing logic, never shown) ---
         annotation { "Name" : "side1IsWire", "UIHint" : UIHint.ALWAYS_HIDDEN }
         definition.side1IsWire is boolean;
 
         annotation { "Name" : "side2IsWire", "UIHint" : UIHint.ALWAYS_HIDDEN }
         definition.side2IsWire is boolean;
+
+        // --- Keep input bodies (CURVES, wire inputs only — visibility driven by hidden booleans) ---
+        if (definition.side1IsWire || definition.side2IsWire)
+        {
+            annotation { "Name" : "Keep input bodies" }
+            definition.keepInputBodies is boolean;
+        }
 
         // --- Debug group (collapsed by default) ---
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }

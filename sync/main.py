@@ -577,6 +577,32 @@ def cmd_push_new(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_create(args: argparse.Namespace) -> int:
+    """Create a new Feature Studio file in an Onshape project."""
+    base_dir = get_base_dir()
+    settings_path = base_dir / "featurescriptSettings.json"
+
+    settings = FeatureScriptSettings.load(settings_path)
+
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    work_manager = WorkingDirectoryManager(settings, settings_path, base_dir, client)
+
+    try:
+        result = work_manager.create_file(
+            project_name=args.project_name,
+            filename=args.filename,
+        )
+        return 0 if result["success"] else 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}")
+        return 1
+
+
 def cmd_reference(args: argparse.Namespace) -> int:
     """Manage references (read-only libraries from Onshape)."""
     base_dir = get_base_dir()
@@ -797,6 +823,11 @@ def main() -> int:
     push_new_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before push")
     push_new_parser.add_argument("--auto-push", action="store_true", help="Push backup commit to Git remote")
 
+    # create command
+    create_parser = subparsers.add_parser("create", help="Create a new Feature Studio file in an Onshape project")
+    create_parser.add_argument("project_name", help="Project name (must exist in featurescriptSettings.json)")
+    create_parser.add_argument("filename", help="Filename for the new Feature Studio (e.g. myUtils or myUtils.fs)")
+
     # reference commands
     reference_parser = subparsers.add_parser("reference", help="Manage reference libraries (read-only)")
     reference_subparsers = reference_parser.add_subparsers(dest="reference_command")
@@ -863,6 +894,8 @@ def main() -> int:
         return cmd_get(args)
     elif args.command == "pushproject":
         return cmd_push_new(args)
+    elif args.command == "create":
+        return cmd_create(args)
     elif args.command == "reference":
         if args.reference_command:
             return cmd_reference(args)
