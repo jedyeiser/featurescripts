@@ -420,28 +420,28 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var allSecondaryOffsetSegBodies   = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
-            var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
-            var numSamples = max([5, ceil(srcLen / samplingDensity) + 1]);
+            var srcSamplingMode = (definition.sourceSamplingMode != undefined)
+                ? definition.sourceSamplingMode
+                : SamplingMode.LENGTH_BASED;
+            var srcBSpline = (srcSamplingMode == SamplingMode.CP_BASED)
+                ? evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] })
+                : undefined;
 
-            var srcPoints = mapArray(evEdgeTangentLines(context, {
-                "edge"       : sourceCurveArray[i],
-                "parameters" : range(0, 1, numSamples)
-            }), function(x) { return x.origin; });
-
-            // Build chord-based arc-length array
-            var srcArcLengths = [0 * meter];
-            for (var k = 1; k < size(srcPoints); k += 1)
-            {
-                srcArcLengths = append(srcArcLengths, srcArcLengths[k - 1] + norm(srcPoints[k] - srcPoints[k - 1]));
-            }
+            var sampleResult = sampleSourceEdge(context, sourceCurveArray[i], srcSamplingMode, {
+                "samplingDensity"    : samplingDensity,
+                "sourceCPMultiplier" : definition.sourceCPMultiplier,
+                "srcBSpline"         : srcBSpline
+            });
+            var srcPoints  = sampleResult.points;
+            var numSamples = sampleResult.numSamples;
 
             if (definition.debugSourceBSplines)
             {
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
-                println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
-                        " samples, length = " ~ toString(srcLen));
-                var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
-                printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
+                println("Source curve " ~ toString(i) ~ ": " ~ toString(numSamples) ~
+                        " samples, length = " ~ toString(sampleResult.arcLengths[size(sampleResult.arcLengths) - 1]));
+                if (srcBSpline != undefined)
+                    printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
             // Map each sampled point through the Frenet frame transformation;
@@ -649,15 +649,23 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         }
                     }
 
+                    // Offset curves: no interpolateIndices (avoids the ~36s runtime penalty documented in MEMORY.md)
+                    var offsetApproxBase = {
+                        "tolerance"        : definition.approximationTolerance,
+                        "maxControlPoints" : definition.approximationMaxCPs,
+                        "degree"           : degree,
+                        "isPeriodic"       : false
+                    };
+
                     var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
-                    var primaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
+                    var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
 
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
                         var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
-                        var secondaryOffsetApproxDef = mergeMaps(approxDef, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
+                        var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
                     }
 
@@ -742,26 +750,51 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 println("ERROR: wrapAndLoft loft failed - " ~ toString(e));
             }
 
-            // Curve cleanup
-            var allOffsetBodies = qUnion(allPrimaryOffsetSegBodies);
-            if (size(allSecondaryOffsetSegBodies) > 0)
+            // Collect multi-span segments into wire bodies (one wire per connected run)
+            var wrappedWireId = id + "wrappedWires";
+            opExtractWires(context, wrappedWireId, { "edges": qUnion(allWrappedSegQueries) });
+            var wrappedWireBodies = qCreatedBy(wrappedWireId, EntityType.BODY);
+
+            var primaryWireId = id + "primaryOffsetWires";
+            opExtractWires(context, primaryWireId, { "edges": qUnion(allPrimaryOffsetSegQueries) });
+            var primaryWireBodies = qCreatedBy(primaryWireId, EntityType.BODY);
+
+            var secondaryWireBodies = undefined;
+            if (size(allSecondaryOffsetSegQueries) > 0)
             {
-                allOffsetBodies = qUnion([allOffsetBodies, qUnion(allSecondaryOffsetSegBodies)]);
+                var secondaryWireId = id + "secondaryOffsetWires";
+                opExtractWires(context, secondaryWireId, { "edges": qUnion(allSecondaryOffsetSegQueries) });
+                secondaryWireBodies = qCreatedBy(secondaryWireId, EntityType.BODY);
             }
 
+            // Delete original per-segment bodies — wire bodies are the canonical output
+            var allSegBodies = qUnion([qUnion(allWrappedSegBodies), qUnion(allPrimaryOffsetSegBodies)]);
+            if (size(allSecondaryOffsetSegBodies) > 0)
+            {
+                allSegBodies = qUnion([allSegBodies, qUnion(allSecondaryOffsetSegBodies)]);
+            }
+            opDeleteBodies(context, id + "deleteSegBodies", { "entities": allSegBodies });
+
+            // Curve output cleanup
             if (!definition.keepOutputCurves)
             {
-                opDeleteBodies(context, id + "deleteAllCurves", {
-                    "entities" : qUnion([qUnion(allWrappedSegBodies), allOffsetBodies])
-                });
+                var wiresToDelete = [wrappedWireBodies, primaryWireBodies];
+                if (secondaryWireBodies != undefined)
+                {
+                    wiresToDelete = append(wiresToDelete, secondaryWireBodies);
+                }
+                opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(wiresToDelete) });
             }
             else if (definition.outputCurveMode == OutputCurveMode.KEEP_WRAPPED)
             {
-                opDeleteBodies(context, id + "deleteOffsets", {
-                    "entities" : allOffsetBodies
-                });
+                var offsetWiresToDelete = [primaryWireBodies];
+                if (secondaryWireBodies != undefined)
+                {
+                    offsetWiresToDelete = append(offsetWiresToDelete, secondaryWireBodies);
+                }
+                opDeleteBodies(context, id + "deleteOffsetWires", { "entities": qUnion(offsetWiresToDelete) });
             }
-            // OutputCurveMode.KEEP_ALL: keep everything, delete nothing
+            // OutputCurveMode.KEEP_ALL: keep all wire bodies
         }
 
         // ===== Cleanup planar projected from-curves =====
