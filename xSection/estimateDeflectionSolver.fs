@@ -9,55 +9,24 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  * Imported by estimateDeflection.fs.
  *
  * Contents:
- *   - Enums:  LoadType, LocationType, OutputSpan, CurveOutput, RegionType
  *   - Bounds: LoadBalanceBounds, EvaluationPointBounds, AppliedLoadBounds,
  *             ApproxToleranceBounds, MaxControlPointsBounds, ApproxDegreeBounds
  *   - Helpers: interpEI, sampleEdgesForEI, resolveQueryX,
  *              loadIntensityAt, findNearestIndex
  */
 
-export enum LoadType
-{
-    POINT,
-    CONSTANT,
-    LINEAR,
-    QUADRATIC,
-    QUINTIC,
-    LOGISTIC
-}
-
-export enum LocationType
-{
-    QUERY,
-    X_VAL
-}
+// LoadType and LocationType enums are defined in estimateDeflection.fs
+// (FeatureScript requires feature parameter enums to be exported from the feature file).
 
 export const LoadBalanceBounds = {(unitless) : [0.001, .75, .999]} as RealBoundSpec;
 export const EvaluationPointBounds = {(unitless) : [20, 100, 500]} as IntegerBoundSpec;
 export const AppliedLoadBounds = {(unitless) : [3, 80, 600]} as RealBoundSpec;
 
-export enum OutputSpan
-{
-    FULL_EI,
-    SUPPORT_SPAN
-}
-
-export enum CurveOutput
-{
-    FIT,
-    APPROX
-}
+// OutputSpan, CurveOutput, RegionType enums are defined in estimateDeflection.fs.
 
 export const ApproxToleranceBounds  = {(meter) : [1e-7, 1e-4, 1e-2]} as LengthBoundSpec;
 export const MaxControlPointsBounds = {(unitless) : [4, 50, 500]} as IntegerBoundSpec;
 export const ApproxDegreeBounds     = {(unitless) : [1, 3, 9]} as IntegerBoundSpec;
-
-export enum RegionType
-{
-    APPROXIMATE,
-    BRIDGING,
-    FREE_DRAG
-}
 
 
 // =============================================================================
@@ -212,9 +181,9 @@ export function resolveQueryX(context is Context, q is Query) returns ValueWithU
  * @returns {ValueWithUnits} : Load intensity [N/m]
  */
 export function loadIntensityAt(x is ValueWithUnits, center is ValueWithUnits,
-    totalForce is ValueWithUnits, shape is LoadType, width is ValueWithUnits) returns ValueWithUnits
+    totalForce is ValueWithUnits, shape, width is ValueWithUnits) returns ValueWithUnits
 {
-    if (shape == LoadType.POINT)
+    if (shape == "POINT")
     {
         return 0 * newton / meter;
     }
@@ -224,23 +193,23 @@ export function loadIntensityAt(x is ValueWithUnits, center is ValueWithUnits,
     {
         return 0 * newton / meter;
     }
-    if (shape == LoadType.CONSTANT)
+    if (shape == "CONSTANT")
     {
         return totalForce / width;
     }
-    else if (shape == LoadType.LINEAR)
+    else if (shape == "LINEAR")
     {
         // Triangle: peak at center, zero at edges. Integral = totalForce.
         var t = abs(relX) / halfW; // 0 at center, 1 at edge
         return (2 * totalForce / width) * (1 - t);
     }
-    else if (shape == LoadType.QUADRATIC)
+    else if (shape == "QUADRATIC")
     {
         // Parabola: peak at center (zero slope), zero at edges. Integral = totalForce.
         var t = relX / halfW;
         return (1.5 * totalForce / width) * (1 - t * t);
     }
-    else if (shape == LoadType.QUINTIC)
+    else if (shape == "QUINTIC")
     {
         // C2-smooth bump: f(t)=1-6t^5+15t^4-10t^3, integral over [-1,1] = 1. Integral = totalForce.
         var t = abs(relX) / halfW; // 0 at center, 1 at edge

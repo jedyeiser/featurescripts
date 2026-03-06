@@ -7,9 +7,44 @@ import(path : "b94e66e5f6d027e5be938121", version : "");
 /**
  * ESTIMATE DEFLECTION
  * ===================
- * Enums, bounds, and helper functions live in estimateDeflectionSolver.fs.
- * This file contains the editing logic and feature definition only.
+ * Enums are defined here (required by FeatureScript for feature parameter types).
+ * Bounds and helper functions live in estimateDeflectionSolver.fs.
  */
+
+export enum LoadType
+{
+    POINT,
+    CONSTANT,
+    LINEAR,
+    QUADRATIC,
+    QUINTIC,
+    LOGISTIC
+}
+
+export enum LocationType
+{
+    QUERY,
+    X_VAL
+}
+
+export enum OutputSpan
+{
+    FULL_EI,
+    SUPPORT_SPAN
+}
+
+export enum CurveOutput
+{
+    FIT,
+    APPROX
+}
+
+export enum RegionType
+{
+    APPROXIMATE,
+    BRIDGING,
+    FREE_DRAG
+}
 
 export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
