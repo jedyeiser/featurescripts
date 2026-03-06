@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "08e8748f2ef24eea16072b75/558ac7d8d514ac0cb9e52229/ad98c7f43a25a4c0e8a428e7", version : "d198ddcb398770b72248b879");
+import(path : "08e8748f2ef24eea16072b75/68ab60215931b483509b7296/ad98c7f43a25a4c0e8a428e7", version : "1efe2444c4d02973fe212fcc");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -17,14 +17,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-import(path : "08e8748f2ef24eea16072b75/558ac7d8d514ac0cb9e52229/683d867c35fdab9c98d47556", version : "d46356725d937bcb4e5825a6");
+export import(path : "08e8748f2ef24eea16072b75/68ab60215931b483509b7296/683d867c35fdab9c98d47556", version : "e1edec6b1bcad2d914000816");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");
 
-
-
-export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
 
 annotation { "Feature Type Name" : "Wrap Curve",
              "Feature Type Description" : "Map curves from one reference edge to another using Frenet frame transformations",

@@ -2,11 +2,9 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
 
-//export import wrapCurve
-export import(path : "0e53e9b1145a1bd7bbfa0193", version : "2f635cee0855f70a7b51693d");
 
 //import curveMappingCore
-import(path : "08e8748f2ef24eea16072b75/558ac7d8d514ac0cb9e52229/683d867c35fdab9c98d47556", version : "d46356725d937bcb4e5825a6");
+export import(path : "08e8748f2ef24eea16072b75/68ab60215931b483509b7296/683d867c35fdab9c98d47556", version : "e1edec6b1bcad2d914000816");
 
 IconNamespace::import(path : "c20a7510f15da01b0a06a167", version : "f014fb4b0c37e21215ee7872");
 
