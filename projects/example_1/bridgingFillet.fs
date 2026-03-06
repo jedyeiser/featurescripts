@@ -255,17 +255,6 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Use offsets as guides" }
                 definition.useOffsetsAsGuides is boolean;
             }
-            if (definition.surfaceMode == BridgingFilletSurfaceMode.CONIC)
-            {
-                annotation { "Name" : "Conic type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
-                definition.conicType is BridgingFilletConicType;
-
-                if (definition.conicType == BridgingFilletConicType.RHO)
-                {
-                    annotation { "Name" : "Rho" }
-                    isReal(definition.rho, RHO_BOUNDS);
-                }
-            }
         }
 
         // --- Curve mode (CURVES path only) ---
@@ -273,17 +262,21 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         {
             annotation { "Name" : "Curve mode", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
             definition.curveMode is BridgingFilletCurveMode;
+        }
 
-            if (definition.curveMode == BridgingFilletCurveMode.CONIC)
+        // --- Conic sub-parameters (either path) ---
+        // surfaceMode and curveMode are both declared above, so the combined condition is valid here.
+        // conicType and rho are declared once; they appear on either path when a conic mode is active.
+        if (definition.surfaceMode == BridgingFilletSurfaceMode.CONIC ||
+            definition.curveMode == BridgingFilletCurveMode.CONIC)
+        {
+            annotation { "Name" : "Conic type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
+            definition.conicType is BridgingFilletConicType;
+
+            if (definition.conicType == BridgingFilletConicType.RHO)
             {
-                annotation { "Name" : "Conic type", "Column Name" : "Curve conic type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
-                definition.conicType is BridgingFilletConicType;
-
-                if (definition.conicType == BridgingFilletConicType.RHO)
-                {
-                    annotation { "Name" : "Rho" }
-                    isReal(definition.rho, RHO_BOUNDS);
-                }
+                annotation { "Name" : "Rho" }
+                isReal(definition.rho, RHO_BOUNDS);
             }
         }
 
