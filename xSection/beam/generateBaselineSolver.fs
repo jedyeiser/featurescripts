@@ -2,7 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "6ad04ba6be4ab10b452261ce");
+import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
 
 /**
  * GENERATE BASELINE SOLVER

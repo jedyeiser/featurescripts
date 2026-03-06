@@ -1,0 +1,15 @@
+{
+  "document_id": "f8deedeb1fbd819a8fa20113",
+  "workspace_id": "33c32ba27726cb036d4d912b",
+  "document_name": "xSection",
+  "folder_path": "",
+  "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/33c32ba27726cb036d4d912b",
+  "last_sync": "2026-03-06T23:04:36.890828+00:00",
+  "feature_studios": {
+    "estimateDeflectionSolver": "b94e66e5f6d027e5be938121",
+    "generateBaselineSolver": "649902142758d832c018a0be",
+    "analyzeBaseline": "f0717a1116fee7304957da5b",
+    "xSectBeamAnalysis": "ebac109589e3bf405d3f3ae7"
+  },
+  "tab_folders": {}
+}
