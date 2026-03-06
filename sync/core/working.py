@@ -185,6 +185,19 @@ class WorkingDirectoryManager:
         # Create SyncConfig from ProjectConfig
         sync_config = self._project_to_sync_config(proj)
 
+        # Sanity check: make sure the config has something to pull
+        if not sync_config.folders and not sync_config.documents:
+            console.print(f"[red]Error: No Onshape source configured for project '{proj.name}'.[/red]")
+            console.print(f"  Project has neither a document_id nor a folder_id.")
+            console.print(f"  URL: {proj.onshape_url}")
+            return {
+                "success": False,
+                "files_updated": 0,
+                "files_skipped": 0,
+                "conflicts": [],
+                "results": [],
+            }
+
         # Create operations manager
         ops = SyncOperations(sync_config, base_dir=self.base_dir)
 
@@ -241,6 +254,35 @@ class WorkingDirectoryManager:
             self.settings.save(self.settings_path)
 
         console.print(f"\n[bold]Summary:[/bold] {files_updated} updated, {files_skipped} skipped, {len(failed)} failed")
+
+        # Completeness check: compare what was requested vs what actually happened
+        if not dry_run:
+            total_ops = files_updated + files_skipped + len(failed) + len([r for r in results if r.conflict])
+            if files is not None:
+                n_requested = len(files)
+                if files_updated == n_requested:
+                    pass  # All good, no need to say anything
+                else:
+                    console.print(
+                        f"\n[bold yellow]Completeness:[/bold yellow] "
+                        f"You requested {n_requested} file(s) — "
+                        f"{files_updated} downloaded, "
+                        f"{files_skipped} skipped (up-to-date), "
+                        f"{len(failed)} failed."
+                    )
+                    if len(failed) > 0:
+                        console.print("  Failures are listed above as FAILED. Common causes: file name mismatch, wrong project, or file doesn't exist in Onshape.")
+            elif total_ops == 0:
+                # Nothing happened and the user didn't ask for specific files — explain why
+                console.print(
+                    f"\n[bold yellow]Completeness:[/bold yellow] "
+                    f"0 operations were performed. Possible reasons:"
+                )
+                console.print(f"  - The Onshape document has no Feature Studios (only Part Studios, Assemblies, etc.)")
+                console.print(f"  - The document ID or workspace ID in the config is stale or wrong")
+                console.print(f"  - The API call to list elements returned an empty response")
+                console.print(f"  Project URL: {proj.onshape_url}")
+                console.print(f"  document_id: {proj.document_id}  workspace_id: {proj.workspace_id}")
 
         return {
             "success": len(failed) == 0,

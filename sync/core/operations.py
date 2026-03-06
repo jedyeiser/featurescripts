@@ -270,7 +270,18 @@ class SyncOperations:
             # Filter elements if specific files requested
             if files:
                 files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
+                available_fs = {f"{e.get('name', '')}.fs" for e in elements if e.get("name", "")}
                 elements = [e for e in elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
+                # Report files that were explicitly requested but not found in Onshape
+                for req in sorted(files_set):
+                    if req not in available_fs:
+                        available_str = ", ".join(sorted(available_fs)) or "none"
+                        results.append(SyncResult(
+                            success=False,
+                            filepath=f"{local_dir.relative_to(self.base_dir)}/{req}",
+                            operation="pull",
+                            message=f"'{req}' not found in Onshape document '{document_name}'. Available Feature Studios: {available_str}",
+                        ))
 
             if dry_run:
                 for element in elements:
@@ -674,7 +685,18 @@ class SyncOperations:
             if files:
                 # Normalize file list (ensure .fs extension)
                 files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
+                available_fs = {f"{e.get('name', '')}.fs" for e in elements if e.get("name", "")}
                 elements = [e for e in elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
+                # Report files that were explicitly requested but not found in Onshape
+                for req in sorted(files_set):
+                    if req not in available_fs:
+                        available_str = ", ".join(sorted(available_fs)) or "none"
+                        results.append(SyncResult(
+                            success=False,
+                            filepath=f"{doc_config.local_path}/{req}",
+                            operation="pull",
+                            message=f"'{req}' not found in Onshape document '{doc_config.name}'. Available Feature Studios: {available_str}",
+                        ))
 
             if dry_run:
                 # Dry run mode - show what would be pulled without making changes
@@ -693,13 +715,21 @@ class SyncOperations:
             # Create local directory if it doesn't exist (only when not dry-run)
             local_dir.mkdir(parents=True, exist_ok=True)
 
+            n_attempted = 0
             for element in elements:
                 element_id = element.get("id", "")
                 element_name = element.get("name", "")
 
                 if not element_id or not element_name:
+                    results.append(SyncResult(
+                        success=False,
+                        filepath=doc_config.local_path,
+                        operation="pull",
+                        message=f"Onshape returned an element with missing id or name (id={element_id!r}, name={element_name!r}) — skipping",
+                    ))
                     continue
 
+                n_attempted += 1
                 result = self._pull_feature_studio(
                     document_id=doc_config.document_id,
                     workspace_id=doc_config.workspace_id,
@@ -709,6 +739,20 @@ class SyncOperations:
                     force=force,
                 )
                 results.append(result)
+
+            # If we got here with no results at all, explain why
+            if not results:
+                if files:
+                    # All requested files were already reported as not-found above
+                    pass
+                else:
+                    results.append(SyncResult(
+                        success=True,
+                        filepath=doc_config.local_path,
+                        operation="pull",
+                        message=f"No Feature Studios found in Onshape document '{doc_config.name}' (list_elements returned 0 results for elementType=FEATURESTUDIO)",
+                        skipped=True,
+                    ))
 
         except Exception as e:
             results.append(SyncResult(
