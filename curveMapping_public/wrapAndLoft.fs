@@ -339,7 +339,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             ));
 
             // 2. For each toEdge, sample uniformly, project onto source plane, fit a spline
-            var toEdgeArray          = evaluateQuery(context, definition.toEdges);
+            var toEdgeArray          = evaluateQuery(context, expandEdgeQuery(definition.toEdges));
             var projectedEdgeQueries = [];
             var projectedBodies      = [];
 
