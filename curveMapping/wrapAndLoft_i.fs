@@ -727,12 +727,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     junctionPt        = junctionWorldPt;
                     junctionTangent   = normalize(junctionTangentDir);
                     junctionOffsetDir = junctionOffDir;
-                    var srcParamJ    = mappedData[segEndIdx].srcParam + t * (mappedData[segEndIdx + 1].srcParam - mappedData[segEndIdx].srcParam);
-                    var srcCurvJ     = evEdgeCurvature(context, { "edge": sourceCurveArray[i], "parameter": srcParamJ });
-                    var srcCurvVecJ  = srcCurvJ.curvature * curvatureFrameNormal(srcCurvJ);
-                    junction2ndDeriv = dot(srcCurvVecJ, fromResult_j.frame.zAxis) * toFrameResult_j.frame.zAxis +
-                                       dot(srcCurvVecJ, fromResult_j.frame.xAxis) * toFrameResult_j.frame.xAxis +
-                                       dot(srcCurvVecJ, yAxis(fromResult_j.frame)) * yAxis(toFrameResult_j.frame);
+                    // junction2ndDeriv left undefined here; filled in post-fit from fitted span end
                 }
                 else
                 {
@@ -795,6 +790,21 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         "interpolateIndices" : [0, size(segPoints) - 1]
                     };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
+
+                    // For interior junctions: extract end curvature from fitted span for G2 carry-over
+                    if (segEndIdx + 1 < size(mappedData))
+                    {
+                        var endKnot   = mappedCurve.knots[size(mappedCurve.knots) - 1];
+                        var evalEnd   = evaluateSpline({ "spline": mappedCurve, "parameters": [endKnot], "nDerivatives": 2 });
+                        var fe_d1     = evalEnd[1][0];
+                        var fe_d2     = evalEnd[2][0];
+                        var fe_d1_sq  = dot(fe_d1, fe_d1);
+                        if (fe_d1_sq > 0)
+                        {
+                            var fe_d1_unit = fe_d1 / sqrt(fe_d1_sq);
+                            junction2ndDeriv = (fe_d2 - dot(fe_d2, fe_d1_unit) * fe_d1_unit) / fe_d1_sq;
+                        }
+                    }
 
                     if (definition.debugWrappedCurves || definition.debugFromBSplines)
                     {
