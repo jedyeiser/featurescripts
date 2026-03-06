@@ -548,6 +548,74 @@ export function getRefPoint(context is Context, refQuery is Query) returns Vecto
 
 
 // ============================================================================
+// mapSinglePoint
+// ============================================================================
+
+/**
+ * Map one world point from fromFrenetPath to toFrenetPath.
+ *
+ * Projects onto from-path, converts to Frenet coordinates, maps arc-length
+ * linearly, and reconstructs in the to-frame with sign reconciliation.
+ *
+ * @param context        {Context}
+ * @param fromFrenetPath {map}            - result from buildFrenetPath
+ * @param toFrenetPath   {map}            - result from buildFrenetPath
+ * @param fromRefArc     {ValueWithUnits}
+ * @param toRefArc       {ValueWithUnits}
+ * @param flipToNormal   {boolean}
+ * @param pt             {Vector}         - source point with units
+ * @param projHint               - previous hint from projectOntoFrenetPath, or undefined
+ * @returns {map} : {
+ *   "point"     : Vector          - mapped world position
+ *   "edgeIndex" : number          - to-edge the mapped point landed on
+ *   "sFrom"     : ValueWithUnits  - arc-length on from-path
+ *   "offsetDir" : Vector          - to-frame xAxis (loft offset direction)
+ *   "hint"      : map             - updated projection hint for next call
+ * }
+ */
+export function mapSinglePoint(context is Context,
+    fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits,
+    flipToNormal is boolean, pt is Vector, projHint) returns map
+{
+    var projResult = projectOntoFrenetPath(fromFrenetPath, pt, projHint);
+    var s_from     = projResult.arcLength;
+    var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+
+    var localCoords = worldPointToFrenet(pt, fromResult);
+
+    var s_to     = toRefArc + (s_from - fromRefArc);
+    var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
+
+    var toSign = toResult.sign;
+    if (flipToNormal)
+        toSign = -1 * toSign;
+
+    var toFrameResult = toResult;
+    if (toSign != fromResult.sign)
+    {
+        var flippedFrame = coordSystem(toResult.frame.origin,
+                                       -1 * toResult.frame.xAxis,
+                                       toResult.frame.zAxis);
+        toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
+    }
+
+    var toPoint = toFrameResult.frame.origin
+        + toFrameResult.frame.xAxis * localCoords[1]
+        + yAxis(toFrameResult.frame) * localCoords[2]
+        + toFrameResult.frame.zAxis * localCoords[0];
+
+    return {
+        "point"     : toPoint,
+        "edgeIndex" : toResult.edgeIndex,
+        "sFrom"     : s_from,
+        "offsetDir" : toFrameResult.frame.xAxis,
+        "hint"      : projResult.hint
+    };
+}
+
+
+// ============================================================================
 // mapWorldPoints  (public API)
 // ============================================================================
 
@@ -575,37 +643,9 @@ export function mapWorldPoints(context is Context,
     var result = [];
     for (var i = 0; i < size(points); i += 1)
     {
-        var pt = points[i];
-
-        // Project source point onto from-path; get Frenet frame there
-        var s_from     = projectOntoFrenetPath(fromFrenetPath, pt, undefined).arcLength;
-        var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
-
-        // Express point in from-frame local coordinates [tangent, normal, binormal]
-        var localCoords = worldPointToFrenet(pt, fromResult);
-
-        // Linear arc-length mapping from from-path to to-path
-        var s_to = toRefArc + (s_from - fromRefArc);
-
-        // Get to-frame at mapped arc-length
-        var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
-
-        // Determine effective to-frame normal sign (apply flipToNormal toggle)
-        var toSign = toResult.sign;
-        if (flipToNormal)
-            toSign = -1 * toSign;
-
-        // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
-        var toFrameResult = toResult;
-        if (toSign != fromResult.sign)
-        {
-            var flippedFrame = coordSystem(toResult.frame.origin,
-                                           -1 * toResult.frame.xAxis,
-                                           toResult.frame.zAxis);
-            toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
-        }
-
-        result = append(result, frenetPointToWorld(localCoords, toFrameResult));
+        var r = mapSinglePoint(context, fromFrenetPath, toFrenetPath,
+            fromRefArc, toRefArc, flipToNormal, points[i], undefined);
+        result = append(result, r.point);
     }
     return result;
 }
@@ -616,33 +656,79 @@ export function mapWorldPoints(context is Context,
 // ============================================================================
 
 /**
- * Post-process a FrenetPath: for any isolated line edge (no adjacent curve),
- * borrow the to-path's normal at the corresponding arc position so the frame
- * is aligned across the mapping.
+ * Align xAxis of isolated line edges in a FrenetPath.
+ *
+ * Pass 1: promote near-linear BSpline edges to line mode when max lateral
+ *         deviation < linearThreshold * edgeLength.
+ * Pass 2: for isolated lines (no adjacent curve neighbor), borrow the to-path
+ *         normal at the mapped arc-length as the xAxis.
  *
  * Lines adjacent to a curve already received a curve-context xAxis in
- * buildFrenetPath step 4.5; this handles only the isolated-line case.
+ * buildFrenetPath step 4.5 and are skipped by Pass 2.
  *
- * @param context        {Context}
- * @param fromFrenetPath {map} — result from buildFrenetPath (source)
- * @param toFrenetPath   {map} — result from buildFrenetPath (target)
- * @param fromRefArc     {ValueWithUnits}
- * @param toRefArc       {ValueWithUnits}
- * @returns {map} — updated fromFrenetPath with corrected lineFrames
+ * @param context          {Context}
+ * @param fromFrenetPath   {map}            - result from buildFrenetPath
+ * @param toFrenetPath     {map}            - result from buildFrenetPath
+ * @param fromRefArc       {ValueWithUnits}
+ * @param toRefArc         {ValueWithUnits}
+ * @param linearThreshold  {number}         - max lateral deviation fraction (e.g. 0.001)
+ * @returns {map} - updated fromFrenetPath with corrected lineFrames
  */
 export function alignIsolatedLineFrames(context is Context,
     fromFrenetPath is map, toFrenetPath is map,
-    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits) returns map
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits,
+    linearThreshold is number) returns map
 {
     var fromEdgeData = fromFrenetPath.edgeData;
+
+    // Pass 1: promote effectively-linear BSplines to line mode so Pass 2 can fix their xAxis.
+    // Handles projected BSplines in the planar case that were not classified as CurveType.LINE.
     for (var i = 0; i < size(fromEdgeData); i += 1)
     {
         var ed = fromEdgeData[i];
-        if (!ed.isLine) { continue; }
+        if (ed.isLine)  continue;
+
+        var cps      = ed.bspline.controlPoints;
+        var n        = size(cps);
+        var p0       = cps[0];
+        var p1       = cps[n - 1];
+        var chord    = p1 - p0;
+        var chordLen = norm(chord);
+        if (chordLen.value < 1e-10)  continue;
+
+        var chordDir = normalize(chord);
+        var maxDev   = 0 * meter;
+        for (var j = 1; j < n - 1; j += 1)
+        {
+            var diff    = cps[j] - p0;
+            var lateral = norm(diff - dot(diff, chordDir) * chordDir);
+            if (lateral > maxDev)  maxDev = lateral;
+        }
+        if (maxDev >= linearThreshold * ed.length)  continue;
+
+        // Promote to line mode with a placeholder xAxis (overwritten in Pass 2)
+        var traversalStartPt = ed.stdDir ? cps[0]     : cps[n - 1];
+        var traversalEndPt   = ed.stdDir ? cps[n - 1] : cps[0];
+        var tangent          = normalize(traversalEndPt - traversalStartPt);
+        var refVec           = (abs(dot(tangent, vector(1, 0, 0))) < 0.9) ? vector(1, 0, 0) : vector(0, 1, 0);
+        var tempXAxis        = normalize(refVec - dot(refVec, tangent) * tangent);
+        fromEdgeData[i] = mergeMaps(ed, {
+            "isLine"              : true,
+            "lineStartPt"         : traversalStartPt,
+            "lineFrame"           : coordSystem(traversalStartPt, tempXAxis, tangent),
+            "localInflectionArcs" : []
+        });
+    }
+
+    // Pass 2: borrow to-path xAxis for isolated lines (no adjacent curve neighbor).
+    for (var i = 0; i < size(fromEdgeData); i += 1)
+    {
+        var ed = fromEdgeData[i];
+        if (!ed.isLine)  continue;
 
         var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
                           (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
-        if (hasCurveCtx) { continue; }
+        if (hasCurveCtx)  continue;
 
         var midFromArc = ed.startArcLength + ed.length / 2;
         var midToArc   = toRefArc + (midFromArc - fromRefArc);
@@ -657,7 +743,276 @@ export function alignIsolatedLineFrames(context is Context,
             });
         }
     }
+
     return mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+}
+
+
+// ============================================================================
+// sampleSourceEdge
+// ============================================================================
+
+/**
+ * Sample a source edge into world points and a chord arc-length table.
+ *
+ * Uses evEdgeTangentLines (correct for rational arcs; avoids the
+ * evApproximateBSplineCurve + evaluateSpline pipeline which is unreliable
+ * on rational BSplines).
+ *
+ * @param context      {Context}
+ * @param edge         {Query}        - single source edge
+ * @param samplingMode {SamplingMode} - LENGTH_BASED or CP_BASED
+ * @param params       {map} : {
+ *   "samplingDensity"    : ValueWithUnits  (used when LENGTH_BASED),
+ *   "sourceCPMultiplier" : number          (used when CP_BASED),
+ *   "srcBSpline"         : BSplineCurve   (required when CP_BASED)
+ * }
+ * @returns {map} : {
+ *   "points"     : array of Vector          - sampled world positions
+ *   "arcLengths" : array of ValueWithUnits  - cumulative chord arc-lengths
+ *   "numSamples" : number
+ * }
+ */
+export function sampleSourceEdge(context is Context, edge is Query,
+    samplingMode is SamplingMode, params is map) returns map
+{
+    var numSamples;
+    if (samplingMode == SamplingMode.CP_BASED)
+    {
+        numSamples = max([10, params.sourceCPMultiplier * size(params.srcBSpline.controlPoints)]);
+    }
+    else
+    {
+        var edgeLen = evLength(context, { "entities": edge });
+        numSamples = max([10, ceil(edgeLen / params.samplingDensity) + 1]);
+    }
+
+    var points = mapArray(evEdgeTangentLines(context, {
+        "edge"       : edge,
+        "parameters" : range(0, 1, numSamples)
+    }), function(x) { return x.origin; });
+
+    var arcLengths = [0 * meter];
+    for (var k = 1; k < size(points); k += 1)
+    {
+        arcLengths = append(arcLengths, arcLengths[k - 1] + norm(points[k] - points[k - 1]));
+    }
+
+    return {
+        "points"     : points,
+        "arcLengths" : arcLengths,
+        "numSamples" : numSamples
+    };
+}
+
+
+// ============================================================================
+// mapEdgeJunctionTangent
+// ============================================================================
+
+/**
+ * Transform a source tangent direction from one Frenet frame to another.
+ *
+ * Projects srcTangent onto the from-frame axes, then reconstructs in the
+ * to-frame. Returns a normalized unitless direction vector.
+ *
+ * @param srcTangent {Vector} - unit direction in world space
+ * @param fromResult {map}    - result from getFrameAtArcLength (from-path)
+ * @param toResult   {map}    - result from getFrameAtArcLength (to-path, sign-reconciled)
+ * @returns {Vector}
+ */
+export function mapEdgeJunctionTangent(srcTangent is Vector,
+    fromResult is map, toResult is map) returns Vector
+{
+    var dir = dot(srcTangent, fromResult.frame.zAxis) * toResult.frame.zAxis
+            + dot(srcTangent, fromResult.frame.xAxis) * toResult.frame.xAxis
+            + dot(srcTangent, yAxis(fromResult.frame)) * yAxis(toResult.frame);
+    return normalize(dir);
+}
+
+
+// ============================================================================
+// jostleG2Junctions
+// ============================================================================
+
+/**
+ * Post-process wrapped-span BSplines to achieve G2 continuity at junctions.
+ *
+ * Builds an adjacency map (last CP of span i -> first CP of span k) and for
+ * each matched junction: averages curvature from both sides, then jostles
+ * P2 of the after-span and P_{m-2} of the before-span to match.
+ *
+ * Guard: shift < 20% of local segment scale (norm(P1-P0) * degree).
+ * Deletes old bodies and creates new ones under fresh Ids derived from id.
+ *
+ * Endpoint second-derivative formulas (clamped B-spline, knot gaps dl1/dl2):
+ *   P2      = P1 + dl2 * (d2t*(dl1+dl2)/(d*(d-1)) + (P1-P0)/dl1)
+ *   P_{m-2} = (ae*PL + be*PT - Ke)/(ae+be)
+ *             where ae=1/de1, be=1/de2, Ke=d2t*(de1+de2)/(d*(d-1))
+ *
+ * @param context         {Context}
+ * @param id              {Id}     - feature Id; sub-Ids derived from this
+ * @param wrappedBSplines {array}  - BSplineCurve maps, one per span
+ * @param wrappedIds      {array}  - Id for each span body
+ * @param matchTol        {ValueWithUnits} - endpoint-match tolerance
+ * @returns {map} : {
+ *   "bsplines"    : array  - updated BSplineCurve maps
+ *   "ids"         : array  - updated Ids (replaced spans get new Ids)
+ *   "edgeQueries" : array  - qCreatedBy edge queries for all final spans
+ *   "bodyQueries" : array  - qCreatedBy body queries for all final spans
+ * }
+ */
+export function jostleG2Junctions(context is Context, id is Id,
+    wrappedBSplines is array, wrappedIds is array,
+    matchTol is ValueWithUnits) returns map
+{
+    var numSpans       = size(wrappedBSplines);
+    var wrappedCurrIds = wrappedIds;
+
+    // Build adjacency: spanNext[si] = index whose first CP matches si's last CP (-1 if none)
+    var spanNext = [];
+    for (var si = 0; si < numSpans; si += 1)
+    {
+        var cpsI   = wrappedBSplines[si].controlPoints;
+        var endPtI = cpsI[size(cpsI) - 1];
+        var found  = -1;
+        for (var sk = 0; sk < numSpans; sk += 1)
+        {
+            if (sk != si && norm(wrappedBSplines[sk].controlPoints[0] - endPtI) < matchTol)
+            {
+                found = sk;
+                break;
+            }
+        }
+        spanNext = append(spanNext, found);
+    }
+
+    for (var sj = 0; sj < numSpans; sj += 1)
+    {
+        var sjNext = spanNext[sj];
+        if (sjNext < 0)  continue;
+
+        var splineBefore = wrappedBSplines[sj];
+        var splineAfter  = wrappedBSplines[sjNext];
+        var kB           = splineBefore.knots;
+        var kA           = splineAfter.knots;
+
+        var evalB  = evaluateSpline({ "spline": splineBefore, "parameters": [kB[size(kB) - 1]], "nDerivatives": 2 });
+        var evalA  = evaluateSpline({ "spline": splineAfter,  "parameters": [kA[0]],             "nDerivatives": 2 });
+        var d1B    = evalB[1][0];  var d2B = evalB[2][0];
+        var d1A    = evalA[1][0];  var d2A = evalA[2][0];
+        var d1B_sq = dot(d1B, d1B);
+        var d1A_sq = dot(d1A, d1A);
+
+        if (!(d1B_sq > 0 && d1A_sq > 0))  continue;
+
+        var T_B          = d1B / sqrt(d1B_sq);
+        var T_A          = d1A / sqrt(d1A_sq);
+        var kappa_B      = (d2B - dot(d2B, T_B) * T_B) / d1B_sq;
+        var kappa_A      = (d2A - dot(d2A, T_A) * T_A) / d1A_sq;
+        var kappa_target = 0.5 * (kappa_B + kappa_A);
+
+        // Adjust P2 of splineAfter (start of sjNext span)
+        {
+            var d2tA = kappa_target * d1A_sq + dot(d2A, T_A) * T_A;
+            var dA   = splineAfter.degree;
+            var knA  = splineAfter.knots;
+            var CPA  = splineAfter.controlPoints;
+            if (size(CPA) >= 3 && dA >= 2)
+            {
+                var dl1 = knA[dA + 1] - knA[dA];
+                var dl2 = knA[dA + 2] - knA[dA + 1];
+                if (dl1 > 0 && dl2 > 0)
+                {
+                    var P0A  = CPA[0];
+                    var P1A  = CPA[1];
+                    var P2An = P1A + dl2 * (d2tA * (dl1 + dl2) / (dA * (dA - 1)) + (P1A - P0A) / dl1);
+                    var shA  = norm(P2An - CPA[2]);
+                    var scA  = norm(P1A - P0A) * dA;
+                    if (scA > 0 * meter && shA > 0 * meter && shA < 0.2 * scA)
+                    {
+                        var ncA = [];
+                        for (var ci = 0; ci < size(CPA); ci += 1)
+                            ncA = append(ncA, ci == 2 ? P2An : CPA[ci]);
+                        var adjA = mergeMaps(splineAfter, { "controlPoints": ncA });
+                        var nbA  = [];
+                        for (var bi = 0; bi < numSpans; bi += 1)
+                            nbA = append(nbA, bi == sjNext ? adjA : wrappedBSplines[bi]);
+                        wrappedBSplines = nbA;
+                        var g2ADelId = id + ("g2A_del_" ~ toString(sj) ~ "_" ~ toString(sjNext));
+                        var g2ACrId  = id + ("g2A_cr_"  ~ toString(sj) ~ "_" ~ toString(sjNext));
+                        opDeleteBodies(context, g2ADelId, { "entities": qCreatedBy(wrappedCurrIds[sjNext], EntityType.BODY) });
+                        opCreateBSplineCurve(context, g2ACrId, { "bSplineCurve": adjA });
+                        var nciA = [];
+                        for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
+                            nciA = append(nciA, ci2 == sjNext ? g2ACrId : wrappedCurrIds[ci2]);
+                        wrappedCurrIds = nciA;
+                    }
+                }
+            }
+        }
+
+        // Adjust P_{m-2} of splineBefore (end of sj span)
+        {
+            var d2tB = kappa_target * d1B_sq + dot(d2B, T_B) * T_B;
+            var dB   = splineBefore.degree;
+            var knB  = splineBefore.knots;
+            var CPB  = splineBefore.controlPoints;
+            var kLB  = size(knB);
+            var mB   = size(CPB);
+            if (mB >= 3 && dB >= 2)
+            {
+                var de1 = knB[kLB - dB - 1] - knB[kLB - dB - 2];
+                var de2 = knB[kLB - dB - 2] - knB[kLB - dB - 3];
+                if (de1 > 0 && de2 > 0)
+                {
+                    var ae  = 1 / de1;
+                    var be2 = 1 / de2;
+                    var Ke  = d2tB * (de1 + de2) / (dB * (dB - 1));
+                    var PL  = CPB[mB - 1];
+                    var PT  = CPB[mB - 3];
+                    var PSn = (ae * PL + be2 * PT - Ke) / (ae + be2);
+                    var shB = norm(PSn - CPB[mB - 2]);
+                    var scB = norm(PL - CPB[mB - 2]) * dB;
+                    if (scB > 0 * meter && shB > 0 * meter && shB < 0.2 * scB)
+                    {
+                        var ncB = [];
+                        for (var ci = 0; ci < mB; ci += 1)
+                            ncB = append(ncB, ci == mB - 2 ? PSn : CPB[ci]);
+                        var adjB = mergeMaps(splineBefore, { "controlPoints": ncB });
+                        var nbB  = [];
+                        for (var bi = 0; bi < numSpans; bi += 1)
+                            nbB = append(nbB, bi == sj ? adjB : wrappedBSplines[bi]);
+                        wrappedBSplines = nbB;
+                        var g2BDelId = id + ("g2B_del_" ~ toString(sj) ~ "_" ~ toString(sjNext));
+                        var g2BCrId  = id + ("g2B_cr_"  ~ toString(sj) ~ "_" ~ toString(sjNext));
+                        opDeleteBodies(context, g2BDelId, { "entities": qCreatedBy(wrappedCurrIds[sj], EntityType.BODY) });
+                        opCreateBSplineCurve(context, g2BCrId, { "bSplineCurve": adjB });
+                        var nciB = [];
+                        for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
+                            nciB = append(nciB, ci2 == sj ? g2BCrId : wrappedCurrIds[ci2]);
+                        wrappedCurrIds = nciB;
+                    }
+                }
+            }
+        }
+    }
+
+    // Build clean output arrays using final Ids
+    var finalEdgeQueries = [];
+    var finalBodyQueries = [];
+    for (var k = 0; k < numSpans; k += 1)
+    {
+        finalEdgeQueries = append(finalEdgeQueries, qCreatedBy(wrappedCurrIds[k], EntityType.EDGE));
+        finalBodyQueries = append(finalBodyQueries, qCreatedBy(wrappedCurrIds[k], EntityType.BODY));
+    }
+
+    return {
+        "bsplines"    : wrappedBSplines,
+        "ids"         : wrappedCurrIds,
+        "edgeQueries" : finalEdgeQueries,
+        "bodyQueries" : finalBodyQueries
+    };
 }
 
 

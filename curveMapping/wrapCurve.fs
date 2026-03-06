@@ -191,7 +191,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // Fix 1: Align isolated from-line xAxes with to-path normal.
         // Lines adjacent to a curve already got a curve-context xAxis in buildFrenetPath step 4.5;
         // this handles the isolated-line case (no curve neighbor) by borrowing the to-path normal.
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc);
+        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
 
         if (definition.debugShowFromFrames)
         {
@@ -199,119 +199,60 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         }
 
         // 4. For each source curve: sample, map, fit, create
-        var allSegEdges  = [];
-        var allSegBodies = [];
+        var allSegEdges      = [];
+        var allSegBodies     = [];
+        var wrappedBSplines  = [];
+        var wrappedIds       = [];
         var sourceCurveArray = evaluateQuery(context, expandEdgeQuery(definition.sourceCurves));
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
-            var srcLen = evLength(context, {
-                    "entities" : sourceCurveArray[i]
-            });
             var approxDegree = definition.keepDegree
                 ? max([definition.approximationDegree, srcBSpline.degree])
                 : definition.approximationDegree;
-            
-            var numSamples;
-            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
-            {
-                numSamples = max([10, definition.sourceCPMultiplier * size(srcBSpline.controlPoints)]);
-            }
-            else
-            {
-                numSamples = max([10, ceil(srcLen / definition.samplingDensity) + 1]);
-            }
 
-            // Sample source curve via Onshape kernel (correct for any edge type including rational arcs)
-            var srcPoints = mapArray(evEdgeTangentLines(context, {
-                    "edge" : sourceCurveArray[i],
-                    "parameters" : range(0, 1, numSamples)
-            }), function(x) { return x.origin; });
-
-            // Build arc-length array from chord distances between sample points.
-            // Avoids evApproximateBSplineCurve + evaluateSpline derivative pipeline,
-            // which produces incorrect arc-lengths for rational arcs.
-            var srcArcLengths = [0 * meter];
-            for (var k = 1; k < size(srcPoints); k += 1)
-            {
-                srcArcLengths = append(srcArcLengths, srcArcLengths[k - 1] + norm(srcPoints[k] - srcPoints[k - 1]));
-            }
+            var sampleResult = sampleSourceEdge(context, sourceCurveArray[i], definition.sourceSamplingMode, {
+                "samplingDensity"    : definition.samplingDensity,
+                "sourceCPMultiplier" : definition.sourceCPMultiplier,
+                "srcBSpline"         : srcBSpline
+            });
+            var srcPoints  = sampleResult.points;
+            var numSamples = sampleResult.numSamples;
 
             if (definition.debugSourceBSplines)
             {
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
-                        " samples, length = " ~ toString(srcArcLengths[size(srcArcLengths) - 1]));
+                        " samples, length = " ~ toString(sampleResult.arcLengths[size(sampleResult.arcLengths) - 1]));
                 printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
             // Map each sampled point through Frenet frame transformation;
-            // record which to-edge each mapped point lands on for span splitting
+            // record which to-edge each mapped point lands on for span splitting.
             var mappedData = [];
-            var projHint = undefined;
+            var projHint   = undefined;
             for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
                 var pt = srcPoints[sIdx];
                 if (definition.showSourcePoints)
                     addDebugPoint(context, pt, DebugColor.CYAN);
 
-                // Project source point onto from-path; get Frenet frame there
-                // Warm-start hint carries the previous point's edge/param for faster convergence
-                var projResult = projectOntoFrenetPath(fromFrenetPath, pt, projHint);
-                var s_from     = projResult.arcLength;
-                projHint       = projResult.hint;
-                var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+                var r    = mapSinglePoint(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, pt, projHint);
+                projHint = r.hint;
 
-                // Express point in from-frame local coordinates [tangent, normal, binormal]
-                var localCoords = worldPointToFrenet(pt, fromResult);
-
-                // Linear arc-length mapping from from-path to to-path
-                var s_to = toRefArc + (s_from - fromRefArc);
-
-                // Get to-frame at mapped arc-length
-                var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
-
-                // Determine effective to-frame normal sign (apply flipToNormal toggle)
-                var toSign = toResult.sign;
-                if (definition.flipToNormal)
-                {
-                    toSign = -1 * toSign;
-                }
-
-                // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
-                var toFrameResult = toResult;
-                if (toSign != fromResult.sign)
-                {
-                    var flippedFrame = coordSystem(toResult.frame.origin,
-                                                   -1 * toResult.frame.xAxis,
-                                                   toResult.frame.zAxis);
-                    toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
-                }
-                
-                var newToPoint = toFrameResult.frame.origin + toFrameResult.frame.xAxis * localCoords[1] + yAxis(toFrameResult.frame) * localCoords[2] + toFrameResult.frame.zAxis * localCoords[0];
-                var dist = norm(newToPoint - toFrameResult.frame.origin);
-                
                 if (definition.showWrappedPoints)
-                    addDebugPoint(context, newToPoint, DebugColor.MAGENTA);
+                    addDebugPoint(context, r.point, DebugColor.MAGENTA);
 
-                var toPoint = newToPoint; //frenetPointToWorld(localCoords, toFrameResult); -> THIS IS OLD
                 if (definition.printWrapDetails)
                 {
-                    println(
-                            " | ** FROM **: orig=" ~ toString(fromResult.frame.origin) ~
-                            " ** toXAxis ** " ~ toString(toFrameResult.frame.xAxis) ~
-
-                            " ** TO ** : orig=" ~ toString(toFrameResult.frame.origin) ~
-
-                            "  **  LOCALCOORDS  **  =" ~ toString(localCoords) ~
-                            '** OUT ** : ' ~ toString(toPoint) ~
-                            "** DIST ** " ~ toString(dist));
-                            
+                    println("pt=" ~ toString(pt) ~ " sFrom=" ~ toString(r.sFrom) ~
+                            " offsetDir=" ~ toString(r.offsetDir) ~ " out=" ~ toString(r.point));
                 }
                 mappedData = append(mappedData, {
-                    "edgeIndex": toResult.edgeIndex,
-                    "point"    : toPoint,
-                    "sFrom"    : s_from
+                    "edgeIndex": r.edgeIndex,
+                    "point"    : r.point,
+                    "sFrom"    : r.sFrom
                 });
             }
 
@@ -323,8 +264,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
-                var startLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0];
-                var startSrcTangent = startLine.direction;
+                var startSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0].direction;
                 var s_from_0        = mappedData[0].sFrom;
                 var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
                 var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
@@ -333,10 +273,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
                     ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
                     : toResult_0;
-                var startTangentDir = dot(startSrcTangent, fromResult_0.frame.zAxis) * toFrameResult_0.frame.zAxis +
-                                      dot(startSrcTangent, fromResult_0.frame.xAxis) * toFrameResult_0.frame.xAxis +
-                                      dot(startSrcTangent, yAxis(fromResult_0.frame)) * yAxis(toFrameResult_0.frame);
-                junctionTangent = normalize(startTangentDir);
+                junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
             }
 
             while (segStartIdx < size(mappedData))
@@ -425,26 +362,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
 
-                    // Transform source tangent through Frenet frames (direction-only, no origin offset)
-                    // Project world tangent onto from-frame axes, then reconstruct in to-frame
-                    var fTangential        = dot(srcTangent, fromResult_j.frame.zAxis);
-                    var fNormal            = dot(srcTangent, fromResult_j.frame.xAxis);
-                    var fBinormal          = dot(srcTangent, yAxis(fromResult_j.frame));
-                    var junctionTangentDir = fTangential * toFrameResult_j.frame.zAxis +
-                                            fNormal     * toFrameResult_j.frame.xAxis +
-                                            fBinormal   * yAxis(toFrameResult_j.frame);
-
                     // Append to current span; carry over to next span's start
                     segPoints       = append(segPoints, junctionWorldPt);
                     junctionPt      = junctionWorldPt;
-                    junctionTangent = normalize(junctionTangentDir);
+                    junctionTangent = mapEdgeJunctionTangent(srcTangent, fromResult_j, toFrameResult_j);
                 }
                 else
                 {
                     // Last span — constrain end tangent from source edge at parameter 1
-                    var endLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0];
-                    var endSrcTangent = endLine.direction;
-                    var s_from_end    = mappedData[size(mappedData) - 1].sFrom;
+                    var endSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0].direction;
+                    var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
                     var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
                     var s_to_end          = toRefArc + (s_from_end - fromRefArc);
                     var toResult_end      = getFrameAtArcLength(context, toFrenetPath, s_to_end);
@@ -452,10 +379,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var toFrameResult_end = (toSign_end != fromResult_end.sign)
                         ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
                         : toResult_end;
-                    var endTangentDir = dot(endSrcTangent, fromResult_end.frame.zAxis) * toFrameResult_end.frame.zAxis +
-                                        dot(endSrcTangent, fromResult_end.frame.xAxis) * toFrameResult_end.frame.xAxis +
-                                        dot(endSrcTangent, yAxis(fromResult_end.frame)) * yAxis(toFrameResult_end.frame);
-                    junctionTangent = normalize(endTangentDir);
+                    junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
                 }
 
                 if (size(segPoints) >= approxDegree + 1)
@@ -498,8 +422,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
                     }
 
-                    opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
-                                         { "bSplineCurve": mappedCurve });
+                    var segOpId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
+                    opCreateBSplineCurve(context, segOpId, { "bSplineCurve": mappedCurve });
+                    wrappedBSplines = append(wrappedBSplines, mappedCurve);
+                    wrappedIds      = append(wrappedIds,      segOpId);
                     segCount += 1;
                 }
                 else if (definition.debugWrappedCurves)
@@ -511,13 +437,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 segStartIdx = segEndIdx + 1;
             }
 
-            // Accumulate segment edges/bodies across all source curves for a single extraction.
+            // Accumulate segment edges/bodies across all source curves.
             for (var k = 0; k < segCount; k += 1)
             {
                 var segOpId = id + (toString(i) ~ "_" ~ toString(k) ~ "wrappedCurve");
                 allSegEdges  = append(allSegEdges,  qCreatedBy(segOpId, EntityType.EDGE));
                 allSegBodies = append(allSegBodies, qCreatedBy(segOpId, EntityType.BODY));
             }
+        }
+
+        // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
+        if (size(wrappedBSplines) >= 2)
+        {
+            var jostleResult = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter);
+            allSegEdges  = jostleResult.edgeQueries;
+            allSegBodies = jostleResult.bodyQueries;
         }
 
         // Single opExtractWires for all source curves — all output owned by id + "wire".

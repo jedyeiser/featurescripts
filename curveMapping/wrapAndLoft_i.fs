@@ -416,91 +416,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
         // ===== Isolated from-line xAxis fix =====
-        // Lines adjacent to a curve got a curve-context xAxis in buildFrenetPath step 4.5;
-        // isolated lines (no curve neighbor) borrow the to-path normal at the mapped arc-length.
-        //
-        // In the planar case, near-linear to-paths produce near-linear projected BSplines that
-        // buildFrenetPath classifies as BSplines (not CurveType.LINE), giving arbitrary xAxes.
-        // Pass 1 promotes such effectively-linear BSplines to line mode so pass 2 can fix them.
-        var fromEdgeData = fromFrenetPath.edgeData;
-
-        // Pass 1 — promote effectively-linear BSplines to line mode
-        for (var i = 0; i < size(fromEdgeData); i += 1)
-        {
-            var ed = fromEdgeData[i];
-            if (ed.isLine)  continue;  // already exact line, skip
-
-            var cps     = ed.bspline.controlPoints;
-            var n       = size(cps);
-            var p0      = cps[0];
-            var p1      = cps[n - 1];
-            var chord    = p1 - p0;
-            var chordLen = norm(chord);
-
-            if (chordLen.value < 1e-10)  continue;  // degenerate edge, leave alone
-
-            var chordDir = normalize(chord);
-            var maxDev   = 0 * meter;
-            for (var j = 1; j < n - 1; j += 1)
-            {
-                var diff    = cps[j] - p0;
-                var lateral = norm(diff - dot(diff, chordDir) * chordDir);
-                if (lateral > maxDev)  maxDev = lateral;
-            }
-
-            if (maxDev >= 0.001 * ed.length)  continue;  // well-curved, leave alone
-
-            // Promote to line mode
-            var traversalStartPt = ed.stdDir ? cps[0]     : cps[n - 1];
-            var traversalEndPt   = ed.stdDir ? cps[n - 1] : cps[0];
-            var tangent          = normalize(traversalEndPt - traversalStartPt);
-
-            // Placeholder xAxis — perpendicular to tangent, overwritten in pass 2
-            var refVec    = (abs(dot(tangent, vector(1, 0, 0))) < 0.9) ? vector(1, 0, 0) : vector(0, 1, 0);
-            var tempXAxis = normalize(refVec - dot(refVec, tangent) * tangent);
-
-            fromEdgeData[i] = mergeMaps(ed, {
-                "isLine"              : true,
-                "lineStartPt"         : traversalStartPt,
-                "lineFrame"           : coordSystem(traversalStartPt, tempXAxis, tangent),
-                "localInflectionArcs" : []   // clear spurious inflections from near-linear BSpline
-            });
-
-            if (definition.debugFromBSplines)
-            {
-                println("  Pass1: promoted edge " ~ toString(i) ~
-                        " length=" ~ toString(ed.length) ~
-                        " maxDev=" ~ toString(maxDev) ~
-                        " tangent=" ~ toString(tangent));
-            }
-        }
-
-        // Pass 2 — borrow xAxis from to-path for all isolated lines
-        // (exact lines from buildFrenetPath + newly-promoted lines from pass 1)
-        for (var i = 0; i < size(fromEdgeData); i += 1)
-        {
-            var ed = fromEdgeData[i];
-            if (!ed.isLine)  continue;
-
-            var hasCurveCtx = (i > 0 && !fromEdgeData[i - 1].isLine) ||
-                              (i + 1 < size(fromEdgeData) && !fromEdgeData[i + 1].isLine);
-            if (hasCurveCtx)  continue;
-
-            var midFromArc = ed.startArcLength + ed.length / 2;
-            var midToArc   = toRefArc + (midFromArc - fromRefArc);
-            var toXAxis    = getFrameAtArcLength(context, toFrenetPath, midToArc).frame.xAxis;
-
-            var tangent   = ed.lineFrame.zAxis;
-            var perpXAxis = toXAxis - dot(toXAxis, tangent) * tangent;
-            if (norm(perpXAxis) > 1e-6)
-            {
-                fromEdgeData[i] = mergeMaps(ed, {
-                    "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
-                });
-            }
-        }
-
-        fromFrenetPath = mergeMaps(fromFrenetPath, { "edgeData": fromEdgeData });
+        // Pass 1 promotes near-linear projected BSplines to line mode; Pass 2 borrows
+        // the to-path normal for isolated lines that have no adjacent curve neighbor.
+        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
 
         if (definition.debugShowFromFrames)
         {
@@ -519,83 +437,44 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var wrappedIds                    = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
-            var srcLen     = evLength(context, { "entities": sourceCurveArray[i] });
-            var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
-            var approxDegree = definition.keepDegree
+            var srcBSpline = (definition.keepDegree || definition.sourceSamplingMode == SamplingMode.CP_BASED)
+                ? evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] })
+                : undefined;
+            var approxDegree = (definition.keepDegree && srcBSpline != undefined)
                 ? max([definition.approximationDegree, srcBSpline.degree])
                 : definition.approximationDegree;
 
-            var numSamples;
-            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
-            {
-                numSamples = max([10, definition.sourceCPMultiplier * size(srcBSpline.controlPoints)]);
-            }
-            else
-            {
-                numSamples = max([10, ceil(srcLen / samplingDensity) + 1]);
-            }
-
-            var srcPoints = mapArray(evEdgeTangentLines(context, {
-                "edge"       : sourceCurveArray[i],
-                "parameters" : range(0, 1, numSamples)
-            }), function(x) { return x.origin; });
-
-            // Build chord-based arc-length array
-            var srcArcLengths = [0 * meter];
-            for (var k = 1; k < size(srcPoints); k += 1)
-            {
-                srcArcLengths = append(srcArcLengths, srcArcLengths[k - 1] + norm(srcPoints[k] - srcPoints[k - 1]));
-            }
+            var sampleResult = sampleSourceEdge(context, sourceCurveArray[i], definition.sourceSamplingMode, {
+                "samplingDensity"    : samplingDensity,
+                "sourceCPMultiplier" : definition.sourceCPMultiplier,
+                "srcBSpline"         : srcBSpline
+            });
+            var srcPoints  = sampleResult.points;
+            var numSamples = sampleResult.numSamples;
 
             if (definition.debugSourceBSplines)
             {
                 var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                 println("Source curve " ~ toString(i) ~ ": " ~ toString(size(srcPoints)) ~
-                        " samples, length = " ~ toString(srcLen));
-                printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
+                        " samples, length = " ~ toString(sampleResult.arcLengths[size(sampleResult.arcLengths) - 1]));
+                if (srcBSpline != undefined)
+                    printBSpline(srcBSpline, fmt, ["Source curve " ~ toString(i)]);
             }
 
             // Map each sampled point through the Frenet frame transformation;
-            // record which to-edge each mapped point lands on for span splitting
+            // record which to-edge each mapped point lands on for span splitting.
             var mappedData = [];
+            var projHint   = undefined;
             for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
-                var pt = srcPoints[sIdx];
-
-                // Project source point onto from-path; get Frenet frame there
-                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt, undefined).arcLength;
-                var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
-
-                // Express point in from-frame local coordinates
-                var localCoords = worldPointToFrenet(pt, fromResult);
-
-                // Linear arc-length mapping from from-path to to-path
-                var s_to = toRefArc + (s_from - fromRefArc);
-
-                // Get to-frame at mapped arc-length
-                var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
-
-                // Apply flipToNormal toggle then reconcile normal sign
-                var toSign = toResult.sign;
-                if (definition.flipToNormal)
-                {
-                    toSign = -1 * toSign;
-                }
-
-                var toFrameResult = toResult;
-                if (toSign != fromResult.sign)
-                {
-                    var flippedFrame = coordSystem(toResult.frame.origin,
-                                                   -1 * toResult.frame.xAxis,
-                                                   toResult.frame.zAxis);
-                    toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
-                }
-
+                var r    = mapSinglePoint(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, srcPoints[sIdx], projHint);
+                projHint = r.hint;
                 mappedData = append(mappedData, {
-                    "edgeIndex" : toResult.edgeIndex,
-                    "point"     : toFrameResult.frame.origin + toFrameResult.frame.xAxis * localCoords[1] + yAxis(toFrameResult.frame) * localCoords[2] + toFrameResult.frame.zAxis * localCoords[0],
-                    "sFrom"     : s_from,
-                    "offsetDir" : toFrameResult.frame.xAxis  // to-frame normal = loft thickness direction (~worldZ for XZ-curved to-paths)
+                    "edgeIndex" : r.edgeIndex,
+                    "point"     : r.point,
+                    "sFrom"     : r.sFrom,
+                    "offsetDir" : r.offsetDir
                 });
             }
 
@@ -608,8 +487,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
-                var startLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0];
-                var startSrcTangent = startLine.direction;
+                var startSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0].direction;
                 var s_from_0        = mappedData[0].sFrom;
                 var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
                 var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
@@ -618,10 +496,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
                     ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
                     : toResult_0;
-                var startTangentDir = dot(startSrcTangent, fromResult_0.frame.zAxis) * toFrameResult_0.frame.zAxis +
-                                      dot(startSrcTangent, fromResult_0.frame.xAxis) * toFrameResult_0.frame.xAxis +
-                                      dot(startSrcTangent, yAxis(fromResult_0.frame)) * yAxis(toFrameResult_0.frame);
-                junctionTangent = normalize(startTangentDir);
+                junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
             }
 
             while (segStartIdx < size(mappedData))
@@ -707,27 +582,18 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
 
-                    // Transform source tangent through Frenet frames (direction-only)
-                    var fTangential        = dot(srcTangent, fromResult_j.frame.zAxis);
-                    var fNormal            = dot(srcTangent, fromResult_j.frame.xAxis);
-                    var fBinormal          = dot(srcTangent, yAxis(fromResult_j.frame));
-                    var junctionTangentDir = fTangential * toFrameResult_j.frame.zAxis +
-                                            fNormal     * toFrameResult_j.frame.xAxis +
-                                            fBinormal   * yAxis(toFrameResult_j.frame);
-
                     var junctionOffDir = toFrameResult_j.frame.xAxis;
                     segPoints         = append(segPoints,     junctionWorldPt);
                     segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
                     junctionPt        = junctionWorldPt;
-                    junctionTangent   = normalize(junctionTangentDir);
+                    junctionTangent   = mapEdgeJunctionTangent(srcTangent, fromResult_j, toFrameResult_j);
                     junctionOffsetDir = junctionOffDir;
                 }
                 else
                 {
                     // Last span — constrain end tangent from source edge at parameter 1
-                    var endLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0];
-                    var endSrcTangent = endLine.direction;
-                    var s_from_end    = mappedData[size(mappedData) - 1].sFrom;
+                    var endSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0].direction;
+                    var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
                     var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
                     var s_to_end          = toRefArc + (s_from_end - fromRefArc);
                     var toResult_end      = getFrameAtArcLength(context, toFrenetPath, s_to_end);
@@ -735,10 +601,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var toFrameResult_end = (toSign_end != fromResult_end.sign)
                         ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
                         : toResult_end;
-                    var endTangentDir = dot(endSrcTangent, fromResult_end.frame.zAxis) * toFrameResult_end.frame.zAxis +
-                                        dot(endSrcTangent, fromResult_end.frame.xAxis) * toFrameResult_end.frame.xAxis +
-                                        dot(endSrcTangent, yAxis(fromResult_end.frame)) * yAxis(toFrameResult_end.frame);
-                    junctionTangent = normalize(endTangentDir);
+                    junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
                 }
 
                 if (size(segPoints) >= approxDegree + 1)
@@ -874,161 +737,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
         }
 
-        // G2 junction smoothing: correct curvature mismatches at actual geometric junctions.
-        // Runs after all source curves are processed so wrappedBSplines contains all spans.
-        // Build spanNext[] by matching each span's last CP to another span's first CP.
-        // This gives the correct chain order regardless of how source curves were ordered.
-        // At each junction, average kappa from both sides and jostle both P_{m-2} of
-        // the "before" span and P2 of the "after" span.  Guard: shift must be small.
+        // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
         if (size(wrappedBSplines) >= 2)
         {
-            var numSpans  = size(wrappedBSplines);
-            var matchTol  = 1e-6 * meter;
-
-            // Build adjacency map: spanNext[si] = index whose first CP matches si's last CP (-1 if none)
-            var spanNext = [];
-            for (var si = 0; si < numSpans; si += 1)
-            {
-                var cpsI   = wrappedBSplines[si].controlPoints;
-                var endPtI = cpsI[size(cpsI) - 1];
-                var found  = -1;
-                for (var sk = 0; sk < numSpans; sk += 1)
-                {
-                    if (sk != si)
-                    {
-                        var cpK = wrappedBSplines[sk].controlPoints;
-                        if (norm(cpK[0] - endPtI) < matchTol)
-                        {
-                            found = sk;
-                            break;
-                        }
-                    }
-                }
-                spanNext = append(spanNext, found);
-            }
-
-            var wrappedCurrIds = wrappedIds;
-
-            for (var sj = 0; sj < numSpans; sj += 1)
-            {
-                var sjNext = spanNext[sj];
-                if (sjNext >= 0)
-                {
-                    var splineBefore = wrappedBSplines[sj];
-                    var splineAfter  = wrappedBSplines[sjNext];
-                    var kB           = splineBefore.knots;
-                    var kA           = splineAfter.knots;
-
-                    var evalB  = evaluateSpline({ "spline": splineBefore, "parameters": [kB[size(kB) - 1]], "nDerivatives": 2 });
-                    var evalA  = evaluateSpline({ "spline": splineAfter,  "parameters": [kA[0]],             "nDerivatives": 2 });
-                    var d1B    = evalB[1][0];  var d2B = evalB[2][0];
-                    var d1A    = evalA[1][0];  var d2A = evalA[2][0];
-                    var d1B_sq = dot(d1B, d1B);
-                    var d1A_sq = dot(d1A, d1A);
-
-                    if (d1B_sq > 0 && d1A_sq > 0)
-                    {
-                        var T_B          = d1B / sqrt(d1B_sq);
-                        var T_A          = d1A / sqrt(d1A_sq);
-                        var kappa_B      = (d2B - dot(d2B, T_B) * T_B) / d1B_sq;
-                        var kappa_A      = (d2A - dot(d2A, T_A) * T_A) / d1A_sq;
-                        var kappa_target = 0.5 * (kappa_B + kappa_A);
-
-                        // --- Adjust P2 of splineAfter (start of sjNext span) ---
-                        {
-                            var d2tA = kappa_target * d1A_sq + dot(d2A, T_A) * T_A;
-                            var dA   = splineAfter.degree;
-                            var knA  = splineAfter.knots;
-                            var CPA  = splineAfter.controlPoints;
-                            if (size(CPA) >= 3 && dA >= 2)
-                            {
-                                var dl1 = knA[dA + 1] - knA[dA];
-                                var dl2 = knA[dA + 2] - knA[dA + 1];
-                                if (dl1 > 0 && dl2 > 0)
-                                {
-                                    var P0A  = CPA[0];
-                                    var P1A  = CPA[1];
-                                    var P2Ac = CPA[2];
-                                    var P2An = P1A + dl2 * (d2tA * (dl1 + dl2) / (dA * (dA - 1)) + (P1A - P0A) / dl1);
-                                    var shA  = norm(P2An - P2Ac);
-                                    var scA  = norm(P1A - P0A) * dA;
-                                    if (scA > 0 * meter && shA > 0 * meter && shA < 0.2 * scA)
-                                    {
-                                        var ncA = [];
-                                        for (var ci = 0; ci < size(CPA); ci += 1)
-                                            ncA = append(ncA, ci == 2 ? P2An : CPA[ci]);
-                                        var adjA = mergeMaps(splineAfter, { "controlPoints": ncA });
-                                        var nbA = [];
-                                        for (var bi = 0; bi < numSpans; bi += 1)
-                                            nbA = append(nbA, bi == sjNext ? adjA : wrappedBSplines[bi]);
-                                        wrappedBSplines = nbA;
-                                        var cidA     = wrappedCurrIds[sjNext];
-                                        var g2ADelId = id + ("g2A_del_" ~ toString(sj) ~ "_" ~ toString(sjNext));
-                                        var g2ACrId  = id + ("g2A_cr_"  ~ toString(sj) ~ "_" ~ toString(sjNext));
-                                        opDeleteBodies(context, g2ADelId, { "entities": qCreatedBy(cidA, EntityType.BODY) });
-                                        opCreateBSplineCurve(context, g2ACrId, { "bSplineCurve": adjA });
-                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(g2ACrId, EntityType.EDGE));
-                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(g2ACrId, EntityType.BODY));
-                                        var nciA = [];
-                                        for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
-                                            nciA = append(nciA, ci2 == sjNext ? g2ACrId : wrappedCurrIds[ci2]);
-                                        wrappedCurrIds = nciA;
-                                    }
-                                }
-                            }
-                        }
-
-                        // --- Adjust P_{m-2} of splineBefore (end of sj span) ---
-                        {
-                            var d2tB = kappa_target * d1B_sq + dot(d2B, T_B) * T_B;
-                            var dB   = splineBefore.degree;
-                            var knB  = splineBefore.knots;
-                            var CPB  = splineBefore.controlPoints;
-                            var kLB  = size(knB);
-                            var mB   = size(CPB);
-                            if (mB >= 3 && dB >= 2)
-                            {
-                                var de1 = knB[kLB - dB - 1] - knB[kLB - dB - 2];
-                                var de2 = knB[kLB - dB - 2] - knB[kLB - dB - 3];
-                                if (de1 > 0 && de2 > 0)
-                                {
-                                    var ae  = 1 / de1;
-                                    var be2 = 1 / de2;
-                                    var Ke  = d2tB * (de1 + de2) / (dB * (dB - 1));
-                                    var PL  = CPB[mB - 1];
-                                    var PS  = CPB[mB - 2];
-                                    var PT  = CPB[mB - 3];
-                                    var PSn = (ae * PL + be2 * PT - Ke) / (ae + be2);
-                                    var shB = norm(PSn - PS);
-                                    var scB = norm(PL - PS) * dB;
-                                    if (scB > 0 * meter && shB > 0 * meter && shB < 0.2 * scB)
-                                    {
-                                        var ncB = [];
-                                        for (var ci = 0; ci < mB; ci += 1)
-                                            ncB = append(ncB, ci == mB - 2 ? PSn : CPB[ci]);
-                                        var adjB = mergeMaps(splineBefore, { "controlPoints": ncB });
-                                        var nbB = [];
-                                        for (var bi = 0; bi < numSpans; bi += 1)
-                                            nbB = append(nbB, bi == sj ? adjB : wrappedBSplines[bi]);
-                                        wrappedBSplines = nbB;
-                                        var cidB     = wrappedCurrIds[sj];
-                                        var g2BDelId = id + ("g2B_del_" ~ toString(sj) ~ "_" ~ toString(sjNext));
-                                        var g2BCrId  = id + ("g2B_cr_"  ~ toString(sj) ~ "_" ~ toString(sjNext));
-                                        opDeleteBodies(context, g2BDelId, { "entities": qCreatedBy(cidB, EntityType.BODY) });
-                                        opCreateBSplineCurve(context, g2BCrId, { "bSplineCurve": adjB });
-                                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(g2BCrId, EntityType.EDGE));
-                                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(g2BCrId, EntityType.BODY));
-                                        var nciB = [];
-                                        for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
-                                            nciB = append(nciB, ci2 == sj ? g2BCrId : wrappedCurrIds[ci2]);
-                                        wrappedCurrIds = nciB;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            var jostleResult     = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter);
+            allWrappedSegQueries = jostleResult.edgeQueries;
+            allWrappedSegBodies  = jostleResult.bodyQueries;
         }
 
         // ===== Single loft across all source edges =====
