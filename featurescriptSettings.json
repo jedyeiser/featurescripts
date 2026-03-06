@@ -91,7 +91,7 @@
       "name": "xSection",
       "description": "Ski cross section and stiffness analysis - Original",
       "working_directory": "./xSection",
-      "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/2bac53cbf0cd1504ada12137/e/489f267862a807871c8aa5f5",
+      "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/33c32ba27726cb036d4d912b/e/489f267862a807871c8aa5f5",
       "references": [
         "Onshape Standard Library",
         "internal tools document"
@@ -99,7 +99,7 @@
       "last_pull": "2026-03-01T03:06:25.678689+00:00",
       "last_push": "2026-03-01T08:07:12.938576+00:00",
       "document_id": "f8deedeb1fbd819a8fa20113",
-      "workspace_id": "2bac53cbf0cd1504ada12137"
+      "workspace_id": "33c32ba27726cb036d4d912b"
     },
     {
       "name": "curveMapping",
