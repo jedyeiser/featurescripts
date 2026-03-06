@@ -204,6 +204,7 @@ class SyncOperations:
                     local_dir=local_doc_dir,
                     dry_run=dry_run,
                     force=force,
+                    files=files,
                 )
                 results.extend(doc_results)
 
@@ -225,6 +226,7 @@ class SyncOperations:
         local_dir: Path,
         dry_run: bool = False,
         force: bool = False,
+        files: list[str] | None = None,
     ) -> list[SyncResult]:
         """Pull a single document's Feature Studios to a local folder.
 
@@ -264,6 +266,11 @@ class SyncOperations:
                     skipped=True,
                 ))
                 return results
+
+            # Filter elements if specific files requested
+            if files:
+                files_set = {f if f.endswith(".fs") else f"{f}.fs" for f in files}
+                elements = [e for e in elements if f"{e.get('name', '')}.fs" in files_set or e.get('name', '') in files_set]
 
             if dry_run:
                 for element in elements:
