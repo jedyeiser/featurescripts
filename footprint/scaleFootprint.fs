@@ -11,21 +11,21 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // IMPORT: fpt_geometry.fs (prepareFootprintCurves, filterAndTrimBSplines, etc.)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "513e7245b3d0bbde72fdd7c1");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "9830d227df8552519d3f8f88");
 
 // IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "04b14c75c0ac9cf3de1e6acd");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "8bb2b675b43a28c46b88b124");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "2397dea14b4c7c8d1013c82a");
+import(path : "66f4f03cf728e94b8f823585", version : "b515690a8544770b606c345a");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "a3aa09351b1d5b5db386a7d9");
+import(path : "5d198387b3966ae60a549555", version : "6b16cd8eba5d492555908d81");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "f95ad68b73bfb5c55d44fff8");
+import(path : "d3ad341f5b87924b36b5aba8", version : "b63cf9586f99a882b7ddbc92");
 
-
+IconNamespace::import(path : "e81c3eb0b5c51be678eebf9c", version : "ca36ec3d0a7592b4305a1f84");
 
 
 
@@ -102,7 +102,7 @@ export enum SymmetryMode
 // FEATURE DEFINITION
 // =============================================================================
 
-annotation { "Feature Type Name" : "Scale Footprint" }
+annotation { "Feature Type Name" : "Scale Footprint", "Icon" : IconNamespace::BLOB_DATA }
 export const scaleFootprint = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
