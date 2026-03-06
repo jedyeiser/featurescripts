@@ -45,7 +45,7 @@ class CacheManager:
     def _load_manifest(self) -> CacheManifest:
         """Load manifest from disk or create empty one."""
         if self.manifest_path.exists():
-            with open(self.manifest_path) as f:
+            with open(self.manifest_path, encoding="utf-8") as f:
                 data = json.load(f)
             return CacheManifest.from_dict(data)
         return CacheManifest()
@@ -53,7 +53,7 @@ class CacheManager:
     def _save_manifest(self) -> None:
         """Save manifest to disk."""
         self.std_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.manifest_path, "w") as f:
+        with open(self.manifest_path, "w", encoding="utf-8") as f:
             json.dump(self.manifest.to_dict(), f, indent=2)
             f.write("\n")
 
@@ -87,7 +87,7 @@ class CacheManager:
             return None
 
         cache_path = self._get_cache_path(filename)
-        return cache_path.read_text()
+        return cache_path.read_text(encoding="utf-8")
 
     def resolve_import(
         self,

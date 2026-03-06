@@ -113,7 +113,7 @@ class SyncState:
     def _load_state(self) -> SyncStateData:
         """Load state from disk or create empty."""
         if self.state_file.exists():
-            with open(self.state_file) as f:
+            with open(self.state_file, encoding="utf-8") as f:
                 data = json.load(f)
             return SyncStateData.from_dict(data)
         return SyncStateData()
@@ -121,7 +121,7 @@ class SyncState:
     def save(self) -> None:
         """Save state to disk."""
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.state_file, "w") as f:
+        with open(self.state_file, "w", encoding="utf-8") as f:
             json.dump(self.state.to_dict(), f, indent=2)
             f.write("\n")
 
@@ -135,7 +135,7 @@ class SyncState:
         """Compute SHA-256 hash of a file."""
         if not filepath.exists():
             return None
-        content = filepath.read_text()
+        content = filepath.read_text(encoding="utf-8")
         return SyncState.compute_hash(content)
 
     def get_file_state(self, filepath: str) -> FileState | None:

@@ -112,7 +112,7 @@ class SyncOperations:
         )
 
         metadata_path = local_dir / self.METADATA_FILENAME
-        with open(metadata_path, "w") as f:
+        with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata.to_dict(), f, indent=2)
             f.write("\n")
 
@@ -122,7 +122,7 @@ class SyncOperations:
         if not metadata_path.exists():
             return None
 
-        with open(metadata_path) as f:
+        with open(metadata_path, encoding="utf-8") as f:
             data = json.load(f)
         return DocumentMetadata.from_dict(data)
 

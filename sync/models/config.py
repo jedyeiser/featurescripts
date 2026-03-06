@@ -159,7 +159,7 @@ class SyncConfig:
     @classmethod
     def load(cls, config_path: Path) -> "SyncConfig":
         """Load configuration from YAML file."""
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         # Load folder configs (new style)
@@ -228,7 +228,7 @@ class SyncConfig:
             "default_workspace": self.settings.default_workspace,
         }
 
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
 
