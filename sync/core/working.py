@@ -243,7 +243,9 @@ class WorkingDirectoryManager:
                 console.print(f"[red]FAILED: {result.filepath}[/red]")
                 console.print(f"        {result.message}")
             elif result.skipped:
-                if sync_config.settings.verbose:
+                # Always show diagnostic skips (no elements found); hide routine up-to-date skips unless verbose
+                is_diagnostic = "No Feature Studios" in result.message or "not found" in result.message.lower()
+                if is_diagnostic or sync_config.settings.verbose:
                     console.print(f"[dim]{result.message}[/dim]")
             else:
                 console.print(f"[green]{result.message}[/green]")
@@ -272,11 +274,11 @@ class WorkingDirectoryManager:
                     )
                     if len(failed) > 0:
                         console.print("  Failures are listed above as FAILED. Common causes: file name mismatch, wrong project, or file doesn't exist in Onshape.")
-            elif total_ops == 0:
-                # Nothing happened and the user didn't ask for specific files — explain why
+            elif files_updated == 0 and len(failed) == 0 and not any(r.conflict for r in results):
+                # Nothing was actually downloaded and nothing hard-failed — explain why
                 console.print(
                     f"\n[bold yellow]Completeness:[/bold yellow] "
-                    f"0 operations were performed. Possible reasons:"
+                    f"0 files were downloaded. Possible reasons:"
                 )
                 console.print(f"  - The Onshape document has no Feature Studios (only Part Studios, Assemblies, etc.)")
                 console.print(f"  - The document ID or workspace ID in the config is stale or wrong")
