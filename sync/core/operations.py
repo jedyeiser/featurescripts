@@ -272,33 +272,22 @@ class SyncOperations:
                     json.dump(all_elements, f, indent=2)
                     f.write("\n")
 
-            # Build folder_map from structural detection
-            all_fids = {e.get("folderId") for e in all_elements if e.get("folderId")}
-            folder_map: dict[str, str] = {
-                e["id"]: sanitize_filename(e.get("name") or e["id"])
-                for e in all_elements
-                if e.get("id") in all_fids
-            }
-
             fs_elements = [e for e in all_elements if e.get("elementType") == "FEATURESTUDIO"]
 
-            # Apply tab_folder filter
+            # Apply --folder filter: only elements whose local file already lives under local_dir/tab_folder
             if tab_folder:
-                sanitized_target = sanitize_filename(tab_folder).lower()
-                matched_id = next(
-                    (fid for fid, fname in folder_map.items() if fname.lower() == sanitized_target),
-                    None,
-                )
-                if matched_id is None:
-                    available = ", ".join(sorted(folder_map.values())) or "none"
+                folder_path_filter = local_dir / tab_folder
+                ext = self.config.settings.file_extension
+                tracked_stems = {f.stem for f in folder_path_filter.rglob(f"*{ext}")} if folder_path_filter.exists() else set()
+                if not tracked_stems:
                     results.append(SyncResult(
                         success=False,
                         filepath=str(local_dir.relative_to(self.base_dir)),
                         operation="pull",
-                        message=f"Tab folder '{tab_folder}' not found in '{document_name}'. Available folders: {available}",
+                        message=f"No local files found under '{tab_folder}' — move files there first, then re-pull",
                     ))
                     return results
-                fs_elements = [e for e in fs_elements if e.get("folderId") == matched_id]
+                fs_elements = [e for e in fs_elements if sanitize_filename(e.get("name", "")) in tracked_stems]
 
             if not fs_elements:
                 results.append(SyncResult(
@@ -325,16 +314,20 @@ class SyncOperations:
                             message=f"'{req}' not found in Onshape document '{document_name}'. Available Feature Studios: {available_str}",
                         ))
 
+            ext = self.config.settings.file_extension
+
             if dry_run:
                 for element in fs_elements:
                     elem_name = element.get("name", "unnamed")
-                    folder_id = element.get("folderId")
-                    subdir = f"/{folder_map[folder_id]}" if folder_id in folder_map else ""
+                    safe_name = sanitize_filename(elem_name)
+                    filename = safe_name if safe_name.endswith(ext) else f"{safe_name}{ext}"
+                    existing = list(local_dir.rglob(filename)) if local_dir.exists() else []
+                    element_dir = existing[0].parent if existing else local_dir
                     results.append(SyncResult(
                         success=True,
-                        filepath=f"{local_dir.relative_to(self.base_dir)}{subdir}/{elem_name}.fs",
+                        filepath=str((element_dir / filename).relative_to(self.base_dir)),
                         operation="pull",
-                        message=f"[DRY RUN] Would pull {elem_name}.fs",
+                        message=f"[DRY RUN] Would pull {filename}",
                         skipped=True,
                     ))
                 return results
@@ -348,9 +341,11 @@ class SyncOperations:
                 element_id = element.get("id", "")
                 element_name = element.get("name", "unnamed")
 
-                # Determine target subdirectory based on tab folder
-                folder_id = element.get("folderId")
-                element_dir = local_dir / folder_map[folder_id] if folder_id in folder_map else local_dir
+                # Respect user's local folder organization: pull to wherever the file already lives
+                safe_name = sanitize_filename(element_name)
+                filename = safe_name if safe_name.endswith(ext) else f"{safe_name}{ext}"
+                existing = list(local_dir.rglob(filename))
+                element_dir = existing[0].parent if existing else local_dir
 
                 result = self._pull_feature_studio(
                     document_id=document_id,
@@ -365,7 +360,6 @@ class SyncOperations:
                 if result.success:
                     feature_studios[element_name] = element_id
 
-            # Save document metadata
             self._save_document_metadata(
                 local_dir=local_dir,
                 document_id=document_id,
@@ -373,7 +367,6 @@ class SyncOperations:
                 document_name=document_name,
                 folder_path=folder_path,
                 feature_studios=feature_studios,
-                tab_folders=folder_map,
             )
 
         except Exception as e:
@@ -740,34 +733,22 @@ class SyncOperations:
                     json.dump(all_elements, f, indent=2)
                     f.write("\n")
 
-            # Build folder_map: any element whose id appears as a folderId on another element is a tab folder
-            all_fids = {e.get("folderId") for e in all_elements if e.get("folderId")}
-            folder_map: dict[str, str] = {
-                e["id"]: sanitize_filename(e.get("name") or e["id"])
-                for e in all_elements
-                if e.get("id") in all_fids
-            }
-
-            # Extract Feature Studios only
             fs_elements = [e for e in all_elements if e.get("elementType") == "FEATURESTUDIO"]
 
-            # Apply tab_folder filter
+            # Apply --folder filter: only elements whose local file already lives under local_dir/tab_folder
             if tab_folder:
-                sanitized_target = sanitize_filename(tab_folder).lower()
-                matched_id = next(
-                    (fid for fid, fname in folder_map.items() if fname.lower() == sanitized_target),
-                    None,
-                )
-                if matched_id is None:
-                    available = ", ".join(sorted(folder_map.values())) or "none"
+                folder_path = local_dir / tab_folder
+                ext = self.config.settings.file_extension
+                tracked_stems = {f.stem for f in folder_path.rglob(f"*{ext}")} if folder_path.exists() else set()
+                if not tracked_stems:
                     results.append(SyncResult(
                         success=False,
                         filepath=doc_config.local_path,
                         operation="pull",
-                        message=f"Tab folder '{tab_folder}' not found in '{doc_config.name}'. Available folders: {available}",
+                        message=f"No local files found under '{tab_folder}' — move files there first, then re-pull",
                     ))
                     return results
-                fs_elements = [e for e in fs_elements if e.get("folderId") == matched_id]
+                fs_elements = [e for e in fs_elements if sanitize_filename(e.get("name", "")) in tracked_stems]
 
             # Filter elements if specific files requested
             if files:
@@ -784,15 +765,18 @@ class SyncOperations:
                             message=f"'{req}' not found in Onshape document '{doc_config.name}'. Available Feature Studios: {available_str}",
                         ))
 
+            ext = self.config.settings.file_extension
+
             if dry_run:
                 for element in fs_elements:
                     element_name = element.get("name", "unnamed")
-                    filename = element_name if element_name.endswith(".fs") else f"{element_name}.fs"
-                    folder_id = element.get("folderId")
-                    subdir = f"/{folder_map[folder_id]}" if folder_id in folder_map else ""
+                    safe_name = sanitize_filename(element_name)
+                    filename = safe_name if safe_name.endswith(ext) else f"{safe_name}{ext}"
+                    existing = list(local_dir.rglob(filename)) if local_dir.exists() else []
+                    element_dir = existing[0].parent if existing else local_dir
                     results.append(SyncResult(
                         success=True,
-                        filepath=f"{doc_config.local_path}{subdir}/{filename}",
+                        filepath=str((element_dir / filename).relative_to(self.base_dir)),
                         operation="pull",
                         message=f"[DRY RUN] Would pull {filename}",
                         skipped=True,
@@ -802,7 +786,6 @@ class SyncOperations:
             # Create local directory if it doesn't exist
             local_dir.mkdir(parents=True, exist_ok=True)
 
-            n_attempted = 0
             feature_studios: dict[str, str] = {}
             for element in fs_elements:
                 element_id = element.get("id", "")
@@ -817,11 +800,12 @@ class SyncOperations:
                     ))
                     continue
 
-                # Determine target subdirectory based on tab folder
-                folder_id = element.get("folderId")
-                element_dir = local_dir / folder_map[folder_id] if folder_id in folder_map else local_dir
+                # Respect user's local folder organization: pull to wherever the file already lives
+                safe_name = sanitize_filename(element_name)
+                filename = safe_name if safe_name.endswith(ext) else f"{safe_name}{ext}"
+                existing = list(local_dir.rglob(filename))
+                element_dir = existing[0].parent if existing else local_dir
 
-                n_attempted += 1
                 result = self._pull_feature_studio(
                     document_id=doc_config.document_id,
                     workspace_id=doc_config.workspace_id,
@@ -835,18 +819,15 @@ class SyncOperations:
                 if result.success:
                     feature_studios[element_name] = element_id
 
-            # If we got here with no results at all, explain why
-            if not results:
-                if not files:
-                    results.append(SyncResult(
-                        success=True,
-                        filepath=doc_config.local_path,
-                        operation="pull",
-                        message=f"No Feature Studios found in Onshape document '{doc_config.name}'",
-                        skipped=True,
-                    ))
+            if not results and not files:
+                results.append(SyncResult(
+                    success=True,
+                    filepath=doc_config.local_path,
+                    operation="pull",
+                    message=f"No Feature Studios found in Onshape document '{doc_config.name}'",
+                    skipped=True,
+                ))
 
-            # Save document metadata (including tab folder map for traceability)
             self._save_document_metadata(
                 local_dir=local_dir,
                 document_id=doc_config.document_id,
@@ -854,7 +835,6 @@ class SyncOperations:
                 document_name=doc_config.name,
                 folder_path="",
                 feature_studios=feature_studios,
-                tab_folders=folder_map,
             )
 
         except Exception as e:
@@ -908,10 +888,10 @@ class SyncOperations:
             extension = self.config.settings.file_extension
             local_files = list(local_dir.rglob(f"*{extension}"))
 
-            # Filter to a single tab folder if requested
+            # Filter to a local subdirectory if requested
             if tab_folder:
-                target_dir = sanitize_filename(tab_folder).lower()
-                local_files = [f for f in local_files if f.parent.name.lower() == target_dir]
+                folder_path = local_dir / tab_folder
+                local_files = [f for f in local_files if f.is_relative_to(folder_path)]
 
             # Filter files if specific files requested
             if files:
