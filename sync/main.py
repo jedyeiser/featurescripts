@@ -540,6 +540,7 @@ def cmd_get(args: argparse.Namespace) -> int:
             auto_backup=not args.no_backup,
             auto_push_backup=args.auto_push,
             tab_folder=args.folder if hasattr(args, "folder") else None,
+            save_json=getattr(args, "save_json", False),
         )
         return 0 if result["success"] else 1
     except Exception as e:
@@ -812,6 +813,7 @@ def main() -> int:
     get_parser.add_argument("project_name", help="Project name")
     get_parser.add_argument("--files", nargs="+", help="Specific files to pull")
     get_parser.add_argument("--folder", help="Only pull files from this tab folder (by name)")
+    get_parser.add_argument("--save-json", action="store_true", help="Save raw elements API response as elements.json in the project directory")
     get_parser.add_argument("--force", action="store_true", help="Overwrite local changes")
     get_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     get_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before pull")

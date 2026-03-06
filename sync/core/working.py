@@ -122,6 +122,7 @@ class WorkingDirectoryManager:
         auto_backup: bool = True,
         auto_push_backup: bool = False,
         tab_folder: str | None = None,
+        save_json: bool = False,
     ) -> dict[str, Any]:
         """Pull a working project from Onshape.
 
@@ -237,7 +238,7 @@ class WorkingDirectoryManager:
         # Don't use spinner on Windows to avoid unicode issues
         if not dry_run:
             console.print(f"[blue]Downloading files from {proj.name}...[/blue]")
-        results = ops.pull_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder)
+        results = ops.pull_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder, save_json=save_json)
 
         # Process results
         files_updated = sum(1 for r in results if r.success and not r.skipped)

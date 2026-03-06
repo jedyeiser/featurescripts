@@ -222,20 +222,19 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             isLength(definition.offset2, OFFSET_DISTANCE_BOUNDS);
         }
 
-        // --- Continuity 1 + flip ---
+        // --- Continuity ---
         annotation { "Name" : "Continuity 1", "UIHint" : UIHint.SHOW_LABEL }
         definition.continuity1 is BridgingFilletContinuityType;
 
+        annotation { "Name" : "Continuity 2", "Column Name" : "Second continuity", "UIHint" : UIHint.SHOW_LABEL }
+        definition.continuity2 is BridgingFilletContinuityType;
+
+        // --- Flip (shown when continuity != G0) ---
         if (definition.continuity1 != BridgingFilletContinuityType.G0)
         {
             annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION }
             definition.flip1 is boolean;
         }
-
-        // --- Continuity 2 + flip ---
-        annotation { "Name" : "Continuity 2", "UIHint" : UIHint.SHOW_LABEL }
-        definition.continuity2 is BridgingFilletContinuityType;
-
         if (definition.continuity2 != BridgingFilletContinuityType.G0)
         {
             annotation { "Name" : "Opposite direction", "Column Name" : "Second opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION }
@@ -529,13 +528,8 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             {
                 addDebugEntities(context, definition.side1Curves, DebugColor.CYAN);
                 addDebugEntities(context, definition.side2Curves, DebugColor.MAGENTA);
-                // evEdgeTangentLines needs an edge query — extract from wire body if needed
-                var edge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
-                                    qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
-                var edge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
-                                    qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
-                var tl1 = try(evEdgeTangentLines(context, { "edge" : edge1, "parameters" : [0.0, 1.0] }));
-                var tl2 = try(evEdgeTangentLines(context, { "edge" : edge2, "parameters" : [0.0, 1.0] }));
+                var tl1 = try(evEdgeTangentLines(context, { "edge" : definition.side1Curves, "parameters" : [0.0, 1.0] }));
+                var tl2 = try(evEdgeTangentLines(context, { "edge" : definition.side2Curves, "parameters" : [0.0, 1.0] }));
                 if (tl1 != undefined)
                 {
                     addDebugPoint(context, tl1[0].origin, DebugColor.CYAN);
@@ -656,12 +650,9 @@ export function bridgingFilletEditingLogic(context is Context, id is Id, oldDefi
 
     if (hasBothSides && needsFlipCheck && !specifiedParameters.flip2)
     {
-        // evEdgeTangentLines needs an edge query — extract from wire body if needed
-        var evalEdge1 = qUnion([qEntityFilter(refEdge1, EntityType.EDGE), qOwnedByBody(refEdge1, EntityType.EDGE)]);
-        var evalEdge2 = qUnion([qEntityFilter(refEdge2, EntityType.EDGE), qOwnedByBody(refEdge2, EntityType.EDGE)]);
         // Evaluate tangents at the far ends of each reference edge (parameter 1.0 and 0.0)
-        var tl1 = try(evEdgeTangentLines(context, { "edge" : evalEdge1, "parameters" : [1.0], "arcLengthParameterization" : false }));
-        var tl2 = try(evEdgeTangentLines(context, { "edge" : evalEdge2, "parameters" : [0.0], "arcLengthParameterization" : false }));
+        var tl1 = try(evEdgeTangentLines(context, { "edge" : refEdge1, "parameters" : [1.0], "arcLengthParameterization" : false }));
+        var tl2 = try(evEdgeTangentLines(context, { "edge" : refEdge2, "parameters" : [0.0], "arcLengthParameterization" : false }));
         if (tl1 != undefined && tl2 != undefined)
         {
             var t1 = tl1[0].direction;

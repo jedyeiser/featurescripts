@@ -139,6 +139,7 @@ class SyncOperations:
         force: bool = False,
         files: list[str] | None = None,
         tab_folder: str | None = None,
+        save_json: bool = False,
     ) -> list[SyncResult]:
         """Pull all documents from an Onshape folder.
 
@@ -209,6 +210,7 @@ class SyncOperations:
                     force=force,
                     files=files,
                     tab_folder=tab_folder,
+                    save_json=save_json,
                 )
                 results.extend(doc_results)
 
@@ -232,6 +234,7 @@ class SyncOperations:
         force: bool = False,
         files: list[str] | None = None,
         tab_folder: str | None = None,
+        save_json: bool = False,
     ) -> list[SyncResult]:
         """Pull a single document's Feature Studios to a local folder.
 
@@ -243,6 +246,7 @@ class SyncOperations:
             dry_run: If True, show what would happen
             force: If True, overwrite local changes
             tab_folder: If set, only pull files from this tab folder (by name)
+            save_json: If True, save raw elements API response as elements.json
 
         Returns:
             List of SyncResults
@@ -260,6 +264,13 @@ class SyncOperations:
                 document_id=document_id,
                 workspace_id=workspace_id,
             )
+
+            if save_json:
+                local_dir.mkdir(parents=True, exist_ok=True)
+                json_path = local_dir / "elements.json"
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(all_elements, f, indent=2)
+                    f.write("\n")
 
             # Build folder_map from structural detection
             all_fids = {e.get("folderId") for e in all_elements if e.get("folderId")}
@@ -700,6 +711,7 @@ class SyncOperations:
         force: bool = False,
         files: list[str] | None = None,
         tab_folder: str | None = None,
+        save_json: bool = False,
     ) -> list[SyncResult]:
         """Pull all Feature Studios from a document (legacy method).
 
@@ -709,6 +721,7 @@ class SyncOperations:
             force: Force pull even if there are local changes
             files: Optional list of specific files to pull (basenames like "file.fs")
             tab_folder: If set, only pull files from this tab folder (by name)
+            save_json: If True, save raw elements API response as elements.json
         """
         results: list[SyncResult] = []
         local_dir = self.base_dir / doc_config.local_path
@@ -719,6 +732,13 @@ class SyncOperations:
                 document_id=doc_config.document_id,
                 workspace_id=doc_config.workspace_id,
             )
+
+            if save_json:
+                local_dir.mkdir(parents=True, exist_ok=True)
+                json_path = local_dir / "elements.json"
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(all_elements, f, indent=2)
+                    f.write("\n")
 
             # Build folder_map: any element whose id appears as a folderId on another element is a tab folder
             all_fids = {e.get("folderId") for e in all_elements if e.get("folderId")}
@@ -944,6 +964,7 @@ class SyncOperations:
         force: bool = False,
         files: list[str] | None = None,
         tab_folder: str | None = None,
+        save_json: bool = False,
     ) -> list[SyncResult]:
         """Pull all configured folders and documents.
 
@@ -952,17 +973,18 @@ class SyncOperations:
             force: Force pull even if there are local changes
             files: Optional list of specific files to pull (basenames like "file.fs")
             tab_folder: If set, only pull files from this tab folder (by name)
+            save_json: If True, save raw elements API response as elements.json
         """
         results: list[SyncResult] = []
 
         # Pull folders (new style)
         for folder_config in self.config.folders:
-            folder_results = self.pull_folder(folder_config, dry_run, force, files, tab_folder)
+            folder_results = self.pull_folder(folder_config, dry_run, force, files, tab_folder, save_json)
             results.extend(folder_results)
 
         # Pull documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.pull_document(doc_config, dry_run, force, files, tab_folder)
+            doc_results = self.pull_document(doc_config, dry_run, force, files, tab_folder, save_json)
             results.extend(doc_results)
 
         return results
