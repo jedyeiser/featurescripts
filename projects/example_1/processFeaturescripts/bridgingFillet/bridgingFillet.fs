@@ -630,7 +630,6 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                 var v1List = evaluateQuery(context, verts1);
                 var v2List = evaluateQuery(context, verts2);
                 var bestDist = undefined;
-                var bestV1 = v1List[0];
                 for (var v1 in v1List)
                 {
                     var p1 = evVertexPoint(context, { "vertex" : v1 });
@@ -641,7 +640,6 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                         if (bestDist == undefined || d < bestDist)
                         {
                             bestDist = d;
-                            bestV1 = v1;
                             junctionPt = p1;
                         }
                     }
@@ -664,7 +662,7 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
 
             // Visualize: triad (xAxis=normal CYAN, yAxis=binormal MAGENTA, zAxis=tangent YELLOW) + point
             debug(context, curv1.frame, DebugColor.CYAN, DebugColor.MAGENTA, DebugColor.YELLOW);
-            addDebugPoint(context, junctionPt, DebugColor.WHITE);
+            addDebugPoint(context, junctionPt, DebugColor.RED);
 
             println("bridgingFillet [junction]:");
             println("  position=" ~ toString(junctionPt));
