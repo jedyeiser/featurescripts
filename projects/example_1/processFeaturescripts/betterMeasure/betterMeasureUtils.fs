@@ -480,7 +480,7 @@ export function warnIfOffEntity(context is Context, id is Id, alongQuery is Quer
  * reportFeatureWarning if the name is invalid rather than throwing.
  */
 export function publishIfEnabled(context is Context, id is Id, shouldSave is boolean,
-    varName is string, value)
+    varName is string, faultyParameter is string, value)
 {
     if (!shouldSave)
     {
@@ -488,16 +488,16 @@ export function publishIfEnabled(context is Context, id is Id, shouldSave is boo
     }
     if (varName == "")
     {
-        reportFeatureWarning(context, id, "Variable name is empty — value not saved.");
+        reportFeatureWarning(context, id, "Variable name is empty — value not saved.", [faultyParameter]);
         return;
     }
     try
     {
-        verifyVariableName(context, varName);
+        verifyVariableName(context, varName, faultyParameter);
         setVariable(context, varName, value);
     }
     catch
     {
-        reportFeatureWarning(context, id, "Invalid variable name '" ~ varName ~ "' — value not saved.");
+        reportFeatureWarning(context, id, "Invalid variable name '" ~ varName ~ "' — value not saved.", [faultyParameter]);
     }
 }

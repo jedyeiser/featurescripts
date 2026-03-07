@@ -82,11 +82,6 @@ export function debugVisualization(context is Context, id is Id, data is map, de
 
             var color = DEBUG_COLOR_SEQUENCE[bodyIdx % size(DEBUG_COLOR_SEQUENCE)];
 
-            if (definition.printBodyData)
-            {
-                printGroupData(bodyInfo.groups, sectionPoints, 1, definition.printTriangles);
-            }
-
             if (definition.debugType == XSectionDebugType.EDGES)
             {
                 var bodyCurves = filter(section.bSplineCurves, function(c) {
@@ -153,27 +148,6 @@ function debugGroupMesh(context is Context, groups is array, sectionPoints is ar
             }
         }
         debugGroupMesh(context, group.subgroups, sectionPoints, color);
-    }
-}
-
-/**
- * Recursively print group perimeter point coordinates and (optionally) triangle vertex coordinates to the debug console.
- */
-function printGroupData(groups is array, sectionPoints is array, depth is number, printTriangles is boolean)
-{
-    var indent = "";
-    for (var d = 0; d < depth; d += 1)
-        indent = indent ~ "  ";
-
-    for (var g = 0; g < size(groups); g += 1)
-    {
-        var group = groups[g];
-
-        // stub: println calls removed — loops had no output
-        if (size(group.subgroups) > 0)
-        {
-            printGroupData(group.subgroups, sectionPoints, depth + 1, printTriangles);
-        }
     }
 }
 

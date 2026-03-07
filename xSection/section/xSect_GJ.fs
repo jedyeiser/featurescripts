@@ -60,7 +60,6 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     var meshData = buildGlobalMesh(section);
     var triangles = meshData.triangles;
     var bodyIndices = meshData.bodyIndices;
-    var numNodes = meshData.numNodes;
 
     // Handle edge cases
     if (size(triangles) == 0)

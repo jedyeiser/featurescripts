@@ -17,7 +17,7 @@ export enum BMCoordSystem { WORLD, MATE_CONNECTOR }
 export function betterMeasureEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map,
-    hiddenBodies is Query, clickedButton is string) returns map
+    hiddenBodies is Query) returns map
 {
     if (specifiedParameters.entity1 == true)
     {
@@ -246,7 +246,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
 
             if (definition.saveMainVar)
             {
-                annotation { "Name" : "Variable name", "UIHint" : UIHint.SHOW_LABEL,
+                annotation { "Name" : "Variable name", "UIHint" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],
                              "MaxLength" : 10000 }
                 definition.mainVarName is string;
             }
@@ -258,7 +258,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
 
                 if (definition.saveDeltaX)
                 {
-                    annotation { "Name" : "Delta X variable", "UIHint" : UIHint.SHOW_LABEL,
+                    annotation { "Name" : "Delta X variable", "UIHint" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],
                                  "MaxLength" : 10000 }
                     definition.deltaXVarName is string;
                 }
@@ -268,7 +268,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
 
                 if (definition.saveDeltaY)
                 {
-                    annotation { "Name" : "Delta Y variable", "UIHint" : UIHint.SHOW_LABEL,
+                    annotation { "Name" : "Delta Y variable", "UIHint" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],
                                  "MaxLength" : 10000 }
                     definition.deltaYVarName is string;
                 }
@@ -278,7 +278,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
 
                 if (definition.saveDeltaZ)
                 {
-                    annotation { "Name" : "Delta Z variable", "UIHint" : UIHint.SHOW_LABEL,
+                    annotation { "Name" : "Delta Z variable", "UIHint" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],
                                  "MaxLength" : 10000 }
                     definition.deltaZVarName is string;
                 }
@@ -290,7 +290,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
 
                     if (definition.saveAlongVar)
                     {
-                        annotation { "Name" : "Along variable", "UIHint" : UIHint.SHOW_LABEL,
+                        annotation { "Name" : "Along variable", "UIHint" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],
                                      "MaxLength" : 10000 }
                         definition.alongVarName is string;
                     }
@@ -509,13 +509,13 @@ function computeDistanceMeasurements(context is Context, id is Id, definition is
         setFeatureComputedParameter(context, id, { "name" : "displayDistanceAlong", "value" : distAlong });
     }
 
-    publishIfEnabled(context, id, definition.saveMainVar,  definition.mainVarName,  dist);
-    publishIfEnabled(context, id, definition.saveDeltaX,   definition.deltaXVarName, dX);
-    publishIfEnabled(context, id, definition.saveDeltaY,   definition.deltaYVarName, dY);
-    publishIfEnabled(context, id, definition.saveDeltaZ,   definition.deltaZVarName, dZ);
+    publishIfEnabled(context, id, definition.saveMainVar,  definition.mainVarName,  "mainVarName",  dist);
+    publishIfEnabled(context, id, definition.saveDeltaX,   definition.deltaXVarName, "deltaXVarName", dX);
+    publishIfEnabled(context, id, definition.saveDeltaY,   definition.deltaYVarName, "deltaYVarName", dY);
+    publishIfEnabled(context, id, definition.saveDeltaZ,   definition.deltaZVarName, "deltaZVarName", dZ);
     if (definition.useAlong)
     {
-        publishIfEnabled(context, id, definition.saveAlongVar, definition.alongVarName, distAlong);
+        publishIfEnabled(context, id, definition.saveAlongVar, definition.alongVarName, "alongVarName", distAlong);
     }
 }
 
@@ -572,7 +572,7 @@ function computeVectorMeasurements(context is Context, id is Id, definition is m
         publishVal = [delta[0] / meter, delta[1] / meter, delta[2] / meter];
     }
 
-    publishIfEnabled(context, id, definition.saveMainVar, definition.mainVarName, publishVal);
+    publishIfEnabled(context, id, definition.saveMainVar, definition.mainVarName, "mainVarName", publishVal);
 }
 
 function computeAngleMeasurement(context is Context, id is Id, definition is map)
@@ -595,7 +595,7 @@ function computeAngleMeasurement(context is Context, id is Id, definition is map
     }
 
     setFeatureComputedParameter(context, id, { "name" : "displayAngle", "value" : angle });
-    publishIfEnabled(context, id, definition.saveMainVar, definition.mainVarName, angle);
+    publishIfEnabled(context, id, definition.saveMainVar, definition.mainVarName, "mainVarName", angle);
 }
 
 function computeLengthMeasurement(context is Context, id is Id, definition is map)
@@ -607,5 +607,5 @@ function computeLengthMeasurement(context is Context, id is Id, definition is ma
         return;
     }
     setFeatureComputedParameter(context, id, { "name" : "displayLength", "value" : len });
-    publishIfEnabled(context, id, definition.saveMainVar, definition.mainVarName, len);
+    publishIfEnabled(context, id, definition.saveMainVar, definition.mainVarName, "mainVarName", len);
 }

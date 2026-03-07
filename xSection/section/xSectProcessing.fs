@@ -22,7 +22,7 @@ import(path : "17142132b20343b5f125e7e7", version : "fe8ba7347fa3e73f881abb63");
 import(path : "c2c3edd39b85fde5e6062533", version : "e28c1b2ccec93ed1e9fe271b");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
 import(path : "08d3a8d4e34a60d45d46e261", version : "6248bced7aebad1dde031271");
-// IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
+// IMPORTS - xSectMaterials (buildMaterialLookup, tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
 
 // IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
@@ -136,7 +136,8 @@ export function processCrossSections(context is Context, id is Id, definition is
         var matName = tryGetKey(bodyDef, "materialName");
         if (matName != undefined && matName != "Not assigned")
         {
-            var key = normalizeMaterialName(matName);
+            // Exact match — names must match CSV character-for-character
+            var key = matName;
             var csvMatch = materialLookup[key];
             if (csvMatch != undefined)
             {

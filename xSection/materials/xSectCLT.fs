@@ -1,7 +1,7 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
-// xSectMaterials (buildMaterialLookup, normalizeMaterialName)
+// xSectMaterials (buildMaterialLookup)
 import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
 
 // xSect_GJ (computeTorsionalStiffness)
@@ -457,5 +457,5 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
 }
 
 
-// NOTE: buildMaterialLookup() and normalizeMaterialName() have been moved to xSectMaterials.fs
-// and are imported above. This keeps CLT module focused on mechanical calculations.
+// NOTE: buildMaterialLookup() has been moved to xSectMaterials.fs
+// and is imported above. This keeps CLT module focused on mechanical calculations.

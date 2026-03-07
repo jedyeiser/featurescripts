@@ -48,9 +48,8 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *    [Q12, Q22, Q26],
  *    [Q16, Q26, Q66]]
  *
- * The lookup map is keyed by normalized names (exact match) via the companion
- * function normalizeMaterialName(). Names must match exactly as they appear
- * in the CSV and in Onshape's material library.
+ * The lookup map is keyed by exact name match. Names must match exactly as they appear
+ * in the CSV and in Onshape's material library (case-sensitive, whitespace-sensitive).
  *
  * Usage in editing logic:
  *   var lookup = buildMaterialLookup(definition.materialCSV.csvData);

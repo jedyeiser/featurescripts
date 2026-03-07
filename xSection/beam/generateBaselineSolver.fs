@@ -38,6 +38,11 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
  * Solve deflection shape of a simply-supported beam with variable EI,
  * loaded off-center at xLoad with P = 1 N.
  *
+ * Derived from Euler-Bernoulli beam theory (EI·κ = M) with double-numerical integration.
+ * Reactions: RA = (L-a)/L, RB = a/L for load at position a from left support.
+ * Symmetry conditions (zero slope at midpoint for symmetric loading) are NOT assumed
+ * here since loading is off-center; instead BCs are enforced by chord subtraction.
+ *
  * Returns dense 2D samples [{x, z}] with max(z) = H * meter.
  *
  * All internal arithmetic uses plain numbers (SI units stripped).
