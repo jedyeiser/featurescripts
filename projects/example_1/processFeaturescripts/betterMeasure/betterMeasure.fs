@@ -20,11 +20,14 @@ export function betterMeasureEditingLogic(context is Context, id is Id,
     isCreating is boolean, specifiedParameters is map,
     hiddenBodies is Query) returns map
 {
-    if (specifiedParameters.entity1 == true)
+    // Always refresh type when entity changed, or when type is stale (NONE but entity is set)
+    if (specifiedParameters.entity1 == true ||
+        (definition.entity1Type == BMEntityType.NONE && !isQueryEmpty(context, definition.entity1)))
     {
         definition.entity1Type = getEntityBodyType(context, definition.entity1);
     }
-    if (specifiedParameters.entity2 == true)
+    if (specifiedParameters.entity2 == true ||
+        (definition.entity2Type == BMEntityType.NONE && !isQueryEmpty(context, definition.entity2)))
     {
         definition.entity2Type = getEntityBodyType(context, definition.entity2);
     }
@@ -392,7 +395,31 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
             }
             if (definition.debugPrintValues)
             {
+                // Coordinate frame
                 debug(context, cSys);
+
+                // Input entities — types and resolved reference points
+                debug(context, {
+                    "entity1Type" : t1,
+                    "p1_x"        : p1[0],
+                    "p1_y"        : p1[1],
+                    "p1_z"        : p1[2]
+                });
+                debug(context, {
+                    "entity2Type" : t2,
+                    "p2_x"        : p2[0],
+                    "p2_y"        : p2[1],
+                    "p2_z"        : p2[2]
+                });
+
+                // Measurement result
+                var debugDelta = p2 - p1;
+                debug(context, {
+                    "distance"   : norm(debugDelta),
+                    "delta_x"    : debugDelta[0],
+                    "delta_y"    : debugDelta[1],
+                    "delta_z"    : debugDelta[2]
+                });
             }
         }
     },
