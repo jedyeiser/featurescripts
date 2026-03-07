@@ -406,10 +406,14 @@ export function measureAlongFace(context is Context, id is Id, faceQuery is Quer
     var uv1 = dist1.sides[1].parameter;
     var uv2 = dist2.sides[1].parameter;
 
-    // Batch evaluate — one kernel call instead of 20
+    // Build UV parameter array for batch evaluation
     var nSteps = 20;
-    var tValues = range(0, 1, nSteps + 1);
-    var uvParams = mapArray(tValues, function(t) { return uv1 + (uv2 - uv1) * t; });
+    var uvParams = [];
+    for (var i = 0; i <= nSteps; i += 1)
+    {
+        var t = i / nSteps;
+        uvParams = append(uvParams, uv1 + (uv2 - uv1) * t);
+    }
     var planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : uvParams });
 
     var totalLength = 0 * meter;
@@ -420,7 +424,11 @@ export function measureAlongFace(context is Context, id is Id, faceQuery is Quer
 
     if (keepWire)
     {
-        var pts = mapArray(planes, function(p) { return p.origin; });
+        var pts = [];
+        for (var i = 0; i < size(planes); i += 1)
+        {
+            pts = append(pts, planes[i].origin);
+        }
         try silent(opFitSpline(context, id + "measureWire", {
             "points" : pts
         }));

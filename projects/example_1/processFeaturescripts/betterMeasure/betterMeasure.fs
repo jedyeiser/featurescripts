@@ -1,6 +1,9 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
+
 // IMPORT: betterMeasureUtils.fs
+import(path : "2cfcc5809c8901350804ef33", version : "8f65581cc8b49485be623a7e");
+
 
 // ---------------------------------------------------------------------------
 // Feature-level enums

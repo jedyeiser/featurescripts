@@ -4,11 +4,10 @@
   "document_name": "example_1",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/7183868d32cdc7a6ad14410d/w/a3ea9a8cd3639eb3be0528c6",
-  "last_sync": "2026-03-06T21:37:30.831665+00:00",
+  "last_sync": "2026-03-07T07:07:21.320157+00:00",
   "feature_studios": {
-    "decalTrials": "554cf567fa568f3aaa45aa11",
-    "decal_std": "4863fb42df2418e6c3a75daa",
-    "flatCylindricalFace": "f648dab662c1bac06802b296"
+    "betterMeasure": "30e98afa5c15e5f060cb3c4f",
+    "betterMeasureUtils": "2cfcc5809c8901350804ef33"
   },
   "tab_folders": {}
 }

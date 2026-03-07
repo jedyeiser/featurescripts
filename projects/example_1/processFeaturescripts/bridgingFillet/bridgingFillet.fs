@@ -630,8 +630,8 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                                                       "arcLengthParameterization" : false });
             var etl2 = evEdgeTangentLines(context, { "edge" : side2Edge, "parameters" : [0.0, 1.0],
                                                       "arcLengthParameterization" : false });
-            junctionParam1 = tolerantEquals(etl1[0].origin, junctionPt) ? 0.0 : 1.0;
-            junctionParam2 = tolerantEquals(etl2[0].origin, junctionPt) ? 0.0 : 1.0;
+            junctionParam1 = norm(etl1[0].origin - junctionPt) < norm(etl1[1].origin - junctionPt) ? 0.0 : 1.0;
+            junctionParam2 = norm(etl2[0].origin - junctionPt) < norm(etl2[1].origin - junctionPt) ? 0.0 : 1.0;
         }
 
         if (definition.showOffsets)
@@ -650,8 +650,8 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                                                           "arcLengthParameterization" : true });
                 var otl2 = evEdgeTangentLines(context, { "edge" : side2Edge, "parameters" : [offsetParam2],
                                                           "arcLengthParameterization" : true });
-                addDebugPoint(context, otl1[0].origin, DebugColor.CYAN);
-                addDebugPoint(context, otl2[0].origin, DebugColor.MAGENTA);
+                addDebugPoint(context, otl1[0].origin, DebugColor.GREEN);
+                addDebugPoint(context, otl2[0].origin, DebugColor.BLUE);
 
                 println("bridgingFillet [offsets]:");
                 println("  side1 offset pt=" ~ toString(otl1[0].origin) ~ "  param=" ~ toString(offsetParam1));
