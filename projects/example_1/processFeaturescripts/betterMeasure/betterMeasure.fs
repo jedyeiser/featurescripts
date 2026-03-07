@@ -73,12 +73,6 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
             definition.entity1SolidRef is BMSolidRef;
         }
 
-        if (definition.entity1Type == BMEntityType.SHEET)
-        {
-            annotation { "Name" : "Entity 1 sheet reference", "UIHint" : UIHint.SHOW_LABEL }
-            definition.entity1SheetRef is BMSheetRef;
-        }
-
         if (definition.entity1Type == BMEntityType.MATE_CONNECTOR &&
             (definition.measurementType == BMMeasurementType.ANGLE || definition.measurementType == BMMeasurementType.VECTOR))
         {
@@ -102,12 +96,6 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
             {
                 annotation { "Name" : "Entity 2 solid reference", "UIHint" : UIHint.SHOW_LABEL }
                 definition.entity2SolidRef is BMSolidRef;
-            }
-
-            if (definition.entity2Type == BMEntityType.SHEET)
-            {
-                annotation { "Name" : "Entity 2 sheet reference", "UIHint" : UIHint.SHOW_LABEL }
-                definition.entity2SheetRef is BMSheetRef;
             }
 
             if (definition.entity2Type == BMEntityType.MATE_CONNECTOR &&
@@ -332,27 +320,25 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         var e1 = definition.entity1;
         var t1 = definition.entity1Type;
         var sr1 = definition.entity1SolidRef;
-        var sh1 = definition.entity1SheetRef;
 
         var e2 = definition.entity2;
         var t2 = definition.entity2Type;
         var sr2 = definition.entity2SolidRef;
-        var sh2 = definition.entity2SheetRef;
 
         if (definition.measurementType == BMMeasurementType.LENGTH)
         {
             // LENGTH only needs entity1
-            p1 = try silent(resolveEntityPoint(context, e1, t1, sr1, sh1, undefined));
+            p1 = try silent(resolveEntityPoint(context, e1, t1, sr1, undefined));
             p2 = p1;
         }
         else
         {
             // Rough pass
-            var p1Rough = try silent(resolveEntityPoint(context, e1, t1, sr1, sh1, undefined));
-            var p2Rough = try silent(resolveEntityPoint(context, e2, t2, sr2, sh2, p1Rough));
+            var p1Rough = try silent(resolveEntityPoint(context, e1, t1, sr1, undefined));
+            var p2Rough = try silent(resolveEntityPoint(context, e2, t2, sr2, p1Rough));
             // Refined pass
-            p1 = try silent(resolveEntityPoint(context, e1, t1, sr1, sh1, p2Rough));
-            p2 = try silent(resolveEntityPoint(context, e2, t2, sr2, sh2, p1));
+            p1 = try silent(resolveEntityPoint(context, e1, t1, sr1, p2Rough));
+            p2 = try silent(resolveEntityPoint(context, e2, t2, sr2, p1));
         }
 
         // Fallback if resolution failed
@@ -416,13 +402,11 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         "entity1"         : qNothing(),
         "entity1Type"     : BMEntityType.NONE,
         "entity1SolidRef" : BMSolidRef.COM,
-        "entity1SheetRef" : BMSheetRef.COA,
         "entity1MCAxis"   : BMMCAxis.Z_AXIS,
 
         "entity2"         : qNothing(),
         "entity2Type"     : BMEntityType.NONE,
         "entity2SolidRef" : BMSolidRef.COM,
-        "entity2SheetRef" : BMSheetRef.COA,
         "entity2MCAxis"   : BMMCAxis.Z_AXIS,
 
         "useAlong"            : false,

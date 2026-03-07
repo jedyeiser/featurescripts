@@ -17,9 +17,6 @@ export enum BMEntityType { NONE, SOLID, SHEET, WIRE, EDGE, VERTEX, MATE_CONNECTO
 /** Sub-selection for SOLID body reference point. */
 export enum BMSolidRef { COM, NEAREST_FACE, NEAREST_EDGE, NEAREST_VERTEX }
 
-/** Sub-selection for SHEET body reference point. */
-export enum BMSheetRef { COA, NEAREST_EDGE, NEAREST_VERTEX }
-
 /**
  * Mate connector axis for ANGLE/VECTOR direction extraction.
  * Replaces MateConnectorAxisType — that enum has no PLUS_Z member,
@@ -104,7 +101,7 @@ export function getEntityBodyType(context is Context, entityQuery is Query) retu
  * Returns a 3-D position Vector (with length units).
  */
 export function resolveEntityPoint(context is Context, entityQuery is Query,
-    entityType is BMEntityType, solidRef is BMSolidRef, sheetRef is BMSheetRef,
+    entityType is BMEntityType, solidRef is BMSolidRef,
     otherPoint) returns Vector
 {
     if (entityType == BMEntityType.VERTEX)
@@ -153,18 +150,9 @@ export function resolveEntityPoint(context is Context, entityQuery is Query,
 
     if (entityType == BMEntityType.SHEET)
     {
-        if (sheetRef == BMSheetRef.COA)
-        {
-            return evApproximateCentroid(context, { "entities" : entityQuery });
-        }
-        var subFilter = EntityType.EDGE;
-        if (sheetRef == BMSheetRef.NEAREST_VERTEX)
-        {
-            subFilter = EntityType.VERTEX;
-        }
-        var subQuery = qOwnedByBody(entityQuery, subFilter);
+        // Always nearest point — COA is not meaningful for a surface boundary
         var refPoint = (otherPoint != undefined) ? otherPoint : evApproximateCentroid(context, { "entities" : entityQuery });
-        var dist = evDistance(context, { "side0" : refPoint, "side1" : subQuery });
+        var dist = evDistance(context, { "side0" : refPoint, "side1" : entityQuery });
         return dist.sides[1].point;
     }
 
@@ -289,8 +277,8 @@ export function measureAngleBetweenEntities(context is Context,
     entity2 is Query, type2 is BMEntityType,
     mc1Axis is BMMCAxis, mc2Axis is BMMCAxis)
 {
-    var p1 = try silent(resolveEntityPoint(context, entity1, type1, BMSolidRef.COM, BMSheetRef.COA, undefined));
-    var p2 = try silent(resolveEntityPoint(context, entity2, type2, BMSolidRef.COM, BMSheetRef.COA, p1));
+    var p1 = try silent(resolveEntityPoint(context, entity1, type1, BMSolidRef.COM, undefined));
+    var p2 = try silent(resolveEntityPoint(context, entity2, type2, BMSolidRef.COM, p1));
 
     var d1 = try silent(extractEntityDirection(context, entity1, type1, p2, mc1Axis));
     var d2 = try silent(extractEntityDirection(context, entity2, type2, p1, mc2Axis));
