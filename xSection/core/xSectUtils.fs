@@ -335,6 +335,12 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     var tipIsLeft = (xStart < xEnd);  // True if edge goes left-to-right
 
     // Assign station numbers
+    // Station number scheme:
+    // - Reference region (FCP→ACP): stations 0 to numRefSections-1 (the user-specified count)
+    // - Tip region (before FCP): stations -numTipSections to -1 (negative = before reference)
+    // - Tail region (after ACP): stations numRefSections to numRefSections+numTailSections-1
+    // Negative station numbers mark bonus sections outside the FCP–ACP span.
+    // When tipIsLeft==false, the geometric "tip" is on the right side and station signs flip.
     var stationNumbers = [];
 
     // Tip stations
@@ -638,10 +644,14 @@ export function findBodyIndex(context is Context, body is Query, bodyQueries is 
 }
 
 /**
- * Generate an array of integers from start to end (inclusive).
- * 
- * @param start {number} : Starting value
- * @param end {number} : Ending value (inclusive)
+ * Generate an array of integers from start to end (inclusive on both ends).
+ * Example: range(2, 5) → [2, 3, 4, 5]
+ *
+ * Note: For uniformly-spaced non-integer values, use FeatureScript's built-in
+ * range(start, end, numPoints): range(0, 1, 3) → [0, 0.5, 1]
+ *
+ * @param start {number} : Starting integer value
+ * @param end {number} : Ending integer value (inclusive)
  * @returns {array} : Array of integers [start, start+1, ..., end]
  */
 export function range(start is number, end is number) returns array
@@ -697,22 +707,6 @@ export function approximateControlPolygonLength(curve is BSplineCurve) returns V
         length += norm(cps[i + 1] - cps[i]);
     }
     return length;
-}
-
-/**
- * Draw B-spline control polygon as debug lines. Debug-only; has no effect in production builds.
- *
- * @param context {Context}
- * @param curve {BSplineCurve} : Curve whose control polygon to visualize
- * @param color {DebugColor} : Debug line color
- */
-export function debugControlPolygon(context is Context, curve is BSplineCurve, color is DebugColor)
-{
-    var cps = curve.controlPoints;
-    for (var i = 1; i < size(cps); i += 1)
-    {
-        addDebugLine(context, cps[i-1], cps[i], color);
-    }
 }
 
 // =============================================================================

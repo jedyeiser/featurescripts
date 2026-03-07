@@ -201,7 +201,7 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
         var denom_mid = uL_m * (uL_m - L_m);
         if (abs(denom_mid) < 1e-20)
         {
-            // Degenerate — return flat
+            // Degenerate load position (load within tolerance of midpoint) — return flat profile
             var flatPts = [];
             for (var i = 0; i <= N; i += 1)
             {
@@ -223,7 +223,7 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
         var denom2 = uL_m * uL_m * uL_m + bOverA * uL_m * uL_m + cOverA * uL_m;
         if (abs(denom2) < 1e-20)
         {
-            // Degenerate — return flat
+            // Degenerate load position (load within tolerance of midpoint) — return flat profile
             var flatPts2 = [];
             for (var i = 0; i <= N; i += 1)
             {
@@ -595,14 +595,6 @@ export function innerSolve(context is Context,
     var camberPts = [];
     if (hasEI && size(eiData) >= 2)
     {
-        var eiMin = eiData[0].EI / (newton * meter * meter);
-        var eiMax = eiMin;
-        for (var eid in eiData)
-        {
-            var v = eid.EI / (newton * meter * meter);
-            if (v < eiMin) { eiMin = v; }
-            if (v > eiMax) { eiMax = v; }
-        }
         camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H);
     }
     else
@@ -699,7 +691,7 @@ export function solveBaseline(context is Context,
                         frcpl is ValueWithUnits, arcpl is ValueWithUnits,
                         MCH_target) returns array
 {
-    var BISECT_TOL = 0.00001;  // 0.01 mm in meters
+    var BISECT_TOL = 0.00001;  // 0.01mm — adequate for ski profile accuracy requirements
     var MAX_ITER   = 20;
 
     // Zero-camber special case: no iteration needed

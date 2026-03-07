@@ -139,7 +139,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         }
 
         // --- Measurements group ---
-        annotation { "Name" : "Measurements", "UIHint" : UIHint.COLLAPSED }
+        annotation { "Name" : "Measurements" }
         {
             if (definition.measurementType == BMMeasurementType.DISTANCE ||
                 definition.measurementType == BMMeasurementType.VECTOR)

@@ -136,7 +136,9 @@ export predicate eiXSectPrecondition(definition is map)
                  "Description" : "Optional name prefix for output curves. Curves named {name}_EI, {name}_neutralAxis." }
     definition.analysisName is string;
     
-    annotation { "Name" : "FCP (Front Contact Point)", 
+    // FCP = Front Contact Point, ACP = Aft Contact Point — ski/snowboard industry standard
+    // camber reference locations where the ski first contacts a flat surface under rider weight.
+    annotation { "Name" : "FCP (Front Contact Point)",
                  "Filter" : (EntityType.VERTEX) || (EntityType.FACE && GeometryType.PLANE) || (BodyType.MATE_CONNECTOR),
                  "MaxNumberOfPicks" : 1,
                  "Description" : "Front support location. Vertex, planar face normal to ski axis, or mate connector." }

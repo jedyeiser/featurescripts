@@ -22,6 +22,11 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "b840272d29f360c74ebcaadc");
  *    - Store GJ result
  * 3. Update attribute with new GJ values (preserving EI and other data)
  * 4. Optionally create 3D visualization curve showing GJ(x)
+ *
+ * Error handling pattern:
+ * - User-facing errors (bad selection, missing data): throw regenError("...") with entity highlight
+ * - Internal assertions (should never happen): plain throw "..." string
+ * Only regenError propagates properly to the Onshape UI; plain throws show as generic failures.
  */
 
 /**
@@ -180,11 +185,6 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     {
         createGJCurve(context, id + "gjCurve", updatedSections, definition.curvePrefix);
     }
-
-    // =========================================================================
-    // Summary
-    // =========================================================================
-
 }
 
 /**
@@ -236,11 +236,9 @@ function getXSectFeatureFromEntity(context is Context, entityQuery is Query) ret
         return featureKeys[0];
     }
 
-    // Multiple xSect features - try to match based on entity
-    // For now, throw an error asking user to specify
-    throw "Multiple xSect features found (" ~ size(featureKeys) ~
-          "). Please manually identify which feature created this entity.\n" ~
-          "Available features: " ~ featureKeys;
+    // Multiple xSect features — cannot determine which one owns this entity
+    throw regenError("Multiple xSect features found (" ~ size(featureKeys) ~
+          "). Select an entity (face or edge) that belongs to exactly one xSect feature's analysis path.");
 }
 
 /**

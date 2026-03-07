@@ -380,7 +380,7 @@ export function analyzeBaselineGeometry(context is Context,
     var chain = buildEdgeChain(context, baselineEdgesQ);
     if (size(chain) == 0)
     {
-        return undefined;
+        throw regenError("Could not build edge chain — edges may not form a connected G1 path. Check that all selected baseline edges share endpoints.");
     }
 
     // Step 2: Uniform sample across entire chain (200 points)
@@ -658,7 +658,7 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
 // FEATURE DEFINITION
 // ============================================================================
 
-annotation { "Feature Type Name" : "Analze baseline",
+annotation { "Feature Type Name" : "Analyze baseline",
 "Feature Type Description" : "Takes input edge queries, fcp and acp locations and generates ",
 "Editing Logic Function" : "analyzeBaselineEditLogic"}
 export const analyzeBaseline = defineFeature(function(context is Context, id is Id, definition is map)

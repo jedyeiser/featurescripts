@@ -100,7 +100,10 @@ function createGenericCurve(context is Context, id is Id, points is array,
 /**
  * Create an EI visualization curve in the XZ plane.
  *
- * Scale: 1mm of curve height in Z = 1 N*m^2 of bending stiffness.
+ * Scale: 1mm of curve height in Z = 1 N·m² of bending stiffness.
+ * NOTE: This is intentional — a ski with 200 N·m² peak EI will produce a
+ * 200mm-tall curve. The large visual scale makes the distribution easy to read.
+ *
  * X position = world X of each cross-section origin.
  * Z position = EI_value * millimeter.
  * Y position = 0 (lives in XZ plane).

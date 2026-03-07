@@ -298,7 +298,7 @@ export function measureAngleBetweenEntities(context is Context,
     }
 
     var cosAngle = clamp(abs(dot(d1, d2)), 0, 1);
-    return acos(cosAngle) * radian;
+    return acos(cosAngle); // acos() already returns ValueWithUnits (radians)
 }
 
 // ---------------------------------------------------------------------------
@@ -328,12 +328,12 @@ export function computeRelativeEuler(context is Context, mc1Query is Query, mc2Q
     var rz = vector(dot(x1, z2), dot(y1, z2), dot(z1, z2));
 
     // ZYX Euler: R = Rz * Ry * Rx
-    // ry[0] = -sin(eulerY), rz[0] = cos(eulerY)*sin(eulerZ), rx[0] = cos(eulerY)*cos(eulerX) ... etc.
-    var eulerY = asin(clamp(-rx[2], -1, 1));
-    var cosY = cos(eulerY);
+    // asin/atan2 return ValueWithUnits (radians) — do NOT multiply by radian again
+    var eulerY = asin(clamp(-rx[2], -1, 1)); // ValueWithUnits
+    var cosY = cos(eulerY);                   // number
 
-    var eulerX = 0;
-    var eulerZ = 0;
+    var eulerX = 0 * radian;
+    var eulerZ = 0 * radian;
     if (abs(cosY) > 1e-6)
     {
         eulerX = atan2(ry[2], rz[2]);
@@ -343,10 +343,10 @@ export function computeRelativeEuler(context is Context, mc1Query is Query, mc2Q
     {
         // Gimbal lock
         eulerX = atan2(-rz[1], ry[1]);
-        eulerZ = 0;
+        eulerZ = 0 * radian;
     }
 
-    return [eulerX * radian, eulerY * radian, eulerZ * radian];
+    return [eulerX, eulerY, eulerZ];
 }
 
 // ---------------------------------------------------------------------------

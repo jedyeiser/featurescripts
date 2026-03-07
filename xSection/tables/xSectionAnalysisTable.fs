@@ -234,6 +234,12 @@ function buildRenderedBodyTable(bodyTableData is map, titlePrefix is string) ret
         bodyTableType = BodyTableType.FULL;
     }
 
+    // Column layout depends on bodyTableType:
+    //   FULL      — all columns: Area, Centroid, I, EI, % per body + EI_sum suffix
+    //   GEO_ONLY  — geometry only: Area, Centroid, I per body (no EI/% columns, no EI_sum)
+    //   EI_ONLY   — stiffness only: EI, % per body + EI_sum suffix
+    //   BASIC     — compact summary: Area, Centroid-above-NA, EI, % per body + EI_sum suffix
+
     // Fixed prefix columns (always present)
     var columns = [
         tableColumnDefinition("bdt_station", "Station",          TableTextAlignment.RIGHT),

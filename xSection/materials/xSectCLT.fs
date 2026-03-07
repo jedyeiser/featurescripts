@@ -429,13 +429,13 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         // For a symmetric layup (B = 0), this reduces to D11.
         EI_eff = D[0][0] - (B[0][0] * B[0][0]) / A[0][0];
 
-        // Warn if stiffness is suspiciously low
-        if (abs(A[0][0]) < LOW_STIFFNESS_WARNING)
+        // Guard: EI_eff must be physically non-negative. A negative result indicates
+        // corrupted upstream data (e.g. zero/negative Q matrix entries from a bad CSV row).
+        if (EI_eff < 0 * newton * meter * meter)
         {
+            println("WARNING: xSectCLT computed negative EI_eff — forcing to 0. Check material Q matrix data.");
+            EI_eff = 0 * newton * meter * meter;
         }
-    }
-    else
-    {
     }
 
     // =====================================================================

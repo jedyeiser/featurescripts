@@ -2,12 +2,17 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "ef4a95bef1c88e594c76dedb");
+import(path : "08fddb59786b6bfee020ee05", version : "d4ef98b7b0acf40b1998b4ed");
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "8984e1ab14c99a11a8b53f23");
+import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
 
 
 /**
+ * BOUNDING BOX CONVENTION (critical):
+ * Throughout this module, `boundingBox.width` = beam HEIGHT (thickness direction, short axis)
+ * and `boundingBox.height` = beam WIDTH (span direction, long axis). This is counterintuitive
+ * but matches how Onshape returns bounding box dimensions for skis oriented along world X.
+ *
  * This function is used to make informed decisions about what a ski or
  * snowboard thickness profile SHOULD be to achieve a provided ei proifle.
  *
@@ -695,13 +700,15 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
 
                 if (effectiveTargEI <= EI_min)
                 {
-                    // Target below minimum-thickness EI — clamp to lower bound
+                    // Target EI is below the minimum achievable (2mm floor thickness).
+                    // Clamped to lower bound — output profile will be thinner than requested.
                     deltaT_final = deltaT_min;
                     solvedEI     = EI_min;
                 }
                 else if (effectiveTargEI >= EI_max)
                 {
-                    // Target above maximum-delta EI — clamp to upper bound
+                    // Target EI is above the maximum achievable (50mm delta cap).
+                    // Clamped to upper bound — output profile will be stiffer than requested.
                     deltaT_final = deltaT_max;
                     solvedEI     = EI_max;
                 }

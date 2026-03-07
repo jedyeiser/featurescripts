@@ -20,6 +20,11 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  * into a closed composite part. Each composite is named "XSect N Composite" where
  * N is the section index.
  *
+ * Failure handling: opCreateBSplineCurve and opCreateCompositePart failures are
+ * caught and silently skipped. This is intentional — a partially successful composite
+ * (some sections created, others failed due to degenerate geometry) is still useful
+ * for visualization. Callers should not rely on all sections being present.
+ *
  * @param context {Context}
  * @param id {Id} : Base feature ID for operations
  * @param data {map} : Cross-section data with bSplineCurves array

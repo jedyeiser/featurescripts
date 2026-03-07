@@ -176,7 +176,7 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
 export function roundValue(value is number, precision is number) returns number
 {
     var rounded = round(value / precision) * precision;
-    // Eliminate floating point artifacts
+    // 1e8 eliminates floating-point noise beyond 8 significant digits
     return round(rounded * 1e8) / 1e8;
 }
 
@@ -268,7 +268,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
 
         // Calculate NA as percentage of beam height (after sign flip and rounding)
         var naPercentage = 0;
-        if (beamHeight > 0.05)  // Guard: only compute if beam height > tolerance
+        if (beamHeight > 0.05)  // Guard: skip NA% if beam height < 0.05mm (degenerate section)
         {
             naPercentage = roundValue((naHeight / beamHeight) * 100, 0.1);  // 0.1% precision
         }

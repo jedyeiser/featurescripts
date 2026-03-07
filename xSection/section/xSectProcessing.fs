@@ -67,9 +67,14 @@ const SPATIAL_GRID_CELL_SIZE = 5 * millimeter;
  */
 export enum OverlapType
 {
-    NONE,               // No overlap detected
-    FULL_CONTAINMENT,   // One curve fully contains the other
-    PARTIAL_OVERLAP     // Curves partially overlap at endpoints
+    // No geometric overlap between the two curves
+    NONE,
+    // One curve's bounding box fully contains the other's — the contained curve
+    // represents an inner boundary (e.g. core surrounded by skin)
+    FULL_CONTAINMENT,
+    // Curves share endpoint proximity — adjacent body edges that should be merged
+    // into a single composite boundary
+    PARTIAL_OVERLAP
 }
 
 // =============================================================================

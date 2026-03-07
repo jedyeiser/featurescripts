@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectBeamAnalysis (beam stiffness computations)
-import(path : "ebac109589e3bf405d3f3ae7", version : "f6756c9d11585cb98775aa96");
+import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
 
 // xSectReferencePoints
-import(path : "08fddb59786b6bfee020ee05", version : "61f33606f9384a2757e0729b");
+import(path : "08fddb59786b6bfee020ee05", version : "d4ef98b7b0acf40b1998b4ed");
 
 /**
  * Takes a query for edges for an EI profile, a query for FCP and a query for ACP.
@@ -36,17 +36,26 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
         // Guard: eiEdges must be non-empty
         var edges = evaluateQuery(context, definition.eiEdges);
         if (size(edges) == 0)
+        {
+            reportFeatureWarning(context, id, "No EI edges selected — recalculation skipped.");
             return definition;
+        }
 
         // Resolve FCP and ACP to world X
         var xFCP = resolveReferencePointX(context, definition.fcpQuery, definition.eiEdges);
         var xACP = resolveReferencePointX(context, definition.acpQuery, definition.eiEdges);
 
         if (xFCP == undefined || xACP == undefined)
+        {
+            reportFeatureWarning(context, id, "Could not resolve FCP or ACP location — check selection.");
             return definition;
+        }
 
         if (xFCP >= xACP)
+        {
+            reportFeatureWarning(context, id, "FCP must be forward of (smaller X than) ACP.");
             return definition;
+        }
 
         // Sample EI profile from curve geometry
         var eiData = getEIFromEdges(context, definition.eiEdges, xFCP, xACP);
@@ -109,6 +118,8 @@ export const estimateStiffness = defineFeature(function(context is Context, id i
 
     }
     {
-        //Doesn't actually do anything
+        // All computation runs in estimateStiffnessEditingLogic() (editing logic).
+        // The four stiffness fields are READ_ONLY outputs updated there.
+        // The feature body intentionally does nothing — geometry is not modified.
     });
 

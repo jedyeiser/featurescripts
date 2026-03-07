@@ -121,6 +121,8 @@ export function buildMaterialLookup(csvData) returns map
         var poissonsRatio = row[3];
         var youngsModulus = row[4] * 1e9 * pascal;
 
+        // CSV column order: [Q11, Q22, Q12, Q66, Q16, Q26] at columns 5–10.
+        // All Q values are in GPa in the CSV (multiplied by 1e9 here to convert to Pa).
         var Q11 = row[5] * 1e9 * pascal;
         var Q22 = row[6] * 1e9 * pascal;
         var Q12 = row[7] * 1e9 * pascal;
@@ -139,6 +141,15 @@ export function buildMaterialLookup(csvData) returns map
         {
             if (row[12] is number)
                 cte_y = row[12];
+        }
+
+        // Sanity check: Q11 and Q66 must be positive for a physically valid stiffness matrix.
+        // Zero or negative values indicate corrupted CSV data (e.g. wrong column order, empty cells).
+        if (Q11 <= 0 * pascal || Q66 <= 0 * pascal)
+        {
+            println("WARNING: xSectMaterials: material '" ~ name ~ "' has Q11=" ~
+                    toString(Q11 / (1e9 * pascal)) ~ " GPa, Q66=" ~
+                    toString(Q66 / (1e9 * pascal)) ~ " GPa — check CSV data.");
         }
 
         var qMatrix = [
@@ -165,10 +176,12 @@ export function buildMaterialLookup(csvData) returns map
 
 /**
  * Normalize a material name for lookup matching.
- * Returns the name unchanged (identity function). Names must match exactly.
+ * Returns the name unchanged — this is an identity function.
+ * Matching is exact (case-sensitive, whitespace-sensitive).
+ * The material name in Onshape's part properties must match the CSV name character-for-character.
  *
  * @param name {string} : Raw material name
- * @returns {string} : Key for lookup (same as input)
+ * @returns {string} : Key for lookup (identical to input)
  */
 export function normalizeMaterialName(name is string) returns string
 {

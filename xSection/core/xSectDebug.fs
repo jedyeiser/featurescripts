@@ -72,10 +72,6 @@ export function debugVisualization(context is Context, id is Id, data is map, de
         var section = data.crossSections[idx];
         var sectionPoints = section.sectionPoints;
 
-        if (definition.printBodyData)
-        {
-        }
-
         for (var bodyInfo in section.bodyData)
         {
             var bodyIdx = bodyInfo.bodyIdx;
