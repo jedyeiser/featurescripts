@@ -71,25 +71,13 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     // Extract shear modulus for each triangle from material Q matrices
     var G_elem = extractShearModuli(triangles, bodyIndices, bodies);
 
-    // Compute G statistics for diagnostics
-    var G_min = 1e99;
-    var G_max = 0.0;
-    var G_sum = 0.0;
+    // Count valid G values; used for early return if no structural material exists
     var G_count = 0;
-
     for (var i = 0; i < size(G_elem); i += 1)
     {
-        var G = G_elem[i];
-        if (G >= 1e-6)  // Only count valid G values
-        {
-            G_min = min(G_min, G);
-            G_max = max(G_max, G);
-            G_sum += G;
+        if (G_elem[i] >= 1e-6)
             G_count += 1;
-        }
     }
-
-    var G_mean = (G_count > 0) ? (G_sum / G_count) : 0.0;
 
     // Check if any structural material exists
     if (G_count == 0)

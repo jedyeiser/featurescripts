@@ -54,8 +54,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *
  * Usage in editing logic:
  *   var lookup = buildMaterialLookup(definition.materialCSV.csvData);
- *   var key = normalizeMaterialName(onshapeMaterialName);
- *   var match = lookup[key];  // returns materialData or undefined
+ *   var match = lookup[onshapeMaterialName];  // exact match — case and whitespace sensitive
  *
  * @param csvData {array} : Array of row arrays from TableData.csvData.
  *                           Each row is an array of parsed values (numbers/strings).
@@ -111,7 +110,8 @@ export function buildMaterialLookup(csvData) returns map
             continue;
         }
 
-        var key = normalizeMaterialName(name);
+        // Exact match — names must match CSV character-for-character
+        var key = name;
 
         // Parse numeric values with units
         // csvData from TableData provides numbers directly; we attach units
@@ -173,21 +173,6 @@ export function buildMaterialLookup(csvData) returns map
 
     return lookup;
 }
-
-/**
- * Normalize a material name for lookup matching.
- * Returns the name unchanged — this is an identity function.
- * Matching is exact (case-sensitive, whitespace-sensitive).
- * The material name in Onshape's part properties must match the CSV name character-for-character.
- *
- * @param name {string} : Raw material name
- * @returns {string} : Key for lookup (identical to input)
- */
-export function normalizeMaterialName(name is string) returns string
-{
-    return name;
-}
-
 
 // =============================================================================
 // EDITING LOGIC HELPERS

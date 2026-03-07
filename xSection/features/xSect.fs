@@ -143,13 +143,10 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         {
             materialLookup = buildMaterialLookup(csvData);
         }
-        else
-        {
-        }
     }
     catch (e)
     {
-        // Proceed with empty lookup
+        println("xSect elFunc: CSV parse failed — " ~ toString(e));
     }
 
     // -----------------------------------------------------------------
@@ -198,6 +195,7 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         }
         catch (e)
         {
+            println("xSect elFunc: getProperty MATERIAL failed — " ~ toString(e));
         }
 
         // --- Match against CSV ---
@@ -205,7 +203,8 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
 
         if (materialName != "Not assigned")
         {
-            var key = normalizeMaterialName(materialName);
+            // Exact match — names must match CSV character-for-character
+            var key = materialName;
             var csvMatch = materialLookup[key];
             if (csvMatch != undefined)
             {
@@ -338,15 +337,10 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // Step 6: Create visualization curves (EI, neutral axis)
         // -----------------------------------------------------------------
         var namePrefix = "";
-        try
+        var analysisName = tryGetKey(definition, "analysisName");
+        if (analysisName != undefined && analysisName != "")
         {
-            if (definition.analysisName != undefined && definition.analysisName != "")
-            {
-                namePrefix = definition.analysisName;
-            }
-        }
-        catch (e)
-        {
+            namePrefix = analysisName;
         }
 
         createVisualizationCurves(context, id, crossSectionData, namePrefix);

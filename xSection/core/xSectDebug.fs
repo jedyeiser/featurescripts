@@ -169,23 +169,7 @@ function printGroupData(groups is array, sectionPoints is array, depth is number
     {
         var group = groups[g];
 
-        for (var i = 0; i < size(group.perimeterPointIndices); i += 1)
-        {
-            var ptIdx = group.perimeterPointIndices[i];
-            var pt2D = sectionPoints[ptIdx].point2D;
-        }
-
-        if (printTriangles)
-        {
-            for (var t = 0; t < size(group.triangles); t += 1)
-            {
-                var tri = group.triangles[t];
-                var p0 = sectionPoints[tri[0]].point2D;
-                var p1 = sectionPoints[tri[1]].point2D;
-                var p2 = sectionPoints[tri[2]].point2D;
-            }
-        }
-
+        // stub: println calls removed — loops had no output
         if (size(group.subgroups) > 0)
         {
             printGroupData(group.subgroups, sectionPoints, depth + 1, printTriangles);

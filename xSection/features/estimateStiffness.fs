@@ -37,7 +37,7 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
         var edges = evaluateQuery(context, definition.eiEdges);
         if (size(edges) == 0)
         {
-            reportFeatureWarning(context, id, "No EI edges selected — recalculation skipped.");
+            println("No EI edges selected — recalculation skipped.");
             return definition;
         }
 
@@ -47,13 +47,13 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
 
         if (xFCP == undefined || xACP == undefined)
         {
-            reportFeatureWarning(context, id, "Could not resolve FCP or ACP location — check selection.");
+            println("Could not resolve FCP or ACP location — check selection.");
             return definition;
         }
 
         if (xFCP >= xACP)
         {
-            reportFeatureWarning(context, id, "FCP must be forward of (smaller X than) ACP.");
+            println("FCP must be forward of (smaller X than) ACP.");
             return definition;
         }
 
