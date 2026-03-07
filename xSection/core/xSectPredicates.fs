@@ -2,7 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 //import xSectLanguage (export/import)
-export import(path : "a0fab52ee4d0b16ffbc1c603", version : "946ae802f4abcbcd6592484c");
+export import(path : "a0fab52ee4d0b16ffbc1c603", version : "e11eea4b83b69908204425ae");
 
 
 
@@ -136,9 +136,7 @@ export predicate eiXSectPrecondition(definition is map)
                  "Description" : "Optional name prefix for output curves. Curves named {name}_EI, {name}_neutralAxis." }
     definition.analysisName is string;
     
-    // FCP = Front Contact Point, ACP = Aft Contact Point — ski/snowboard industry standard
-    // camber reference locations where the ski first contacts a flat surface under rider weight.
-    annotation { "Name" : "FCP (Front Contact Point)",
+    annotation { "Name" : "FCP (Front Contact Point)", 
                  "Filter" : (EntityType.VERTEX) || (EntityType.FACE && GeometryType.PLANE) || (BodyType.MATE_CONNECTOR),
                  "MaxNumberOfPicks" : 1,
                  "Description" : "Front support location. Vertex, planar face normal to ski axis, or mate connector." }

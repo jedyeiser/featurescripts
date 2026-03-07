@@ -2,7 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
+import(path : "f8e590162884d45f56e0a05f", version : "c6d4a2440a5dac22f41a1a21");
 
 // =============================================================================
 // PLANE VALIDATION CONSTANTS
@@ -42,10 +42,7 @@ const PLANE_NORMAL_Y_TOLERANCE = 0.01;
  * @param context {Context}
  * @param refQuery {Query} : The FCP or ACP query
  * @param edgeQuery {Query} : The cross-section edge (for future plane intersection)
- * @returns : World X coordinate as ValueWithUnits on success.
- *            Returns undefined if the query resolves to no entities.
- *            Throws regenError if a planar face is selected but its normal has a Y component
- *            (i.e. the plane is not perpendicular to world X).
+ * @returns : World X coordinate (ValueWithUnits), or undefined if unresolvable
  */
 export function resolveReferencePointX(context is Context, refQuery is Query, edgeQuery is Query)
 {
@@ -63,9 +60,8 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
             return pos[0];
         }
     }
-    catch
+    catch (e)
     {
-        // Entity type not matched — try next
     }
 
     // --- Try as mate connector ---
@@ -78,9 +74,8 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
             return csys.origin[0];
         }
     }
-    catch
+    catch (e)
     {
-        // Entity type not matched — try next
     }
 
     // --- Try as planar face ---
@@ -104,7 +99,6 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
     {
         if (e is map && tryGetKey(e, "message") != undefined)
             throw e;  // Re-throw our validation error
-        // Otherwise entity type not matched — fall through to return undefined
     }
 
     return undefined;

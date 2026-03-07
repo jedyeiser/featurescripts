@@ -364,7 +364,35 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         verifyNoMesh(context, definition, "side1Face");
         verifyNoMesh(context, definition, "side2Face");
 
-        // 2. RESOLVE REFERENCE EDGES
+        // 2. RESOLVE INPUT SELECTIONS TO EDGES (CURVES path)
+        // Evaluate each selection and branch on entity type:
+        //   bare edge  → use directly
+        //   wire body  → extract owned edges
+        var side1Edge = qNothing();
+        var side2Edge = qNothing();
+        if (definition.inputType == BridgingFilletInputType.CURVES)
+        {
+            var s1Entities = evaluateQuery(context, definition.side1Curves);
+            if (size(s1Entities) > 0)
+            {
+                var s1Entity = s1Entities[0];
+                if (!isQueryEmpty(context, qEntityFilter(s1Entity, EntityType.EDGE)))
+                    side1Edge = s1Entity;
+                else
+                    side1Edge = qOwnedByBody(s1Entity, EntityType.EDGE);
+            }
+            var s2Entities = evaluateQuery(context, definition.side2Curves);
+            if (size(s2Entities) > 0)
+            {
+                var s2Entity = s2Entities[0];
+                if (!isQueryEmpty(context, qEntityFilter(s2Entity, EntityType.EDGE)))
+                    side2Edge = s2Entity;
+                else
+                    side2Edge = qOwnedByBody(s2Entity, EntityType.EDGE);
+            }
+        }
+
+        // 2b. RESOLVE REFERENCE EDGES
         if (definition.inputType == BridgingFilletInputType.FACES)
         {
             // VALIDATE: side1Edge must lie on side1Face, side2Edge on side2Face
@@ -513,10 +541,8 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
                 println("  flip1=" ~ toString(definition.flip1) ~ "  flip2=" ~ toString(definition.flip2));
                 if (definition.debugIntersectionLevel == BridgingFilletDebugPrintLevel.DETAILS)
                 {
-                    var detEdge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
-                                           qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
-                    var detEdge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
-                                           qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
+                    var detEdge1 = side1Edge;
+                    var detEdge2 = side2Edge;
                     var dtl1 = try(evEdgeTangentLines(context, { "edge" : detEdge1, "parameters" : [0.0, 1.0],
                                                                   "arcLengthParameterization" : false }));
                     var dtl2 = try(evEdgeTangentLines(context, { "edge" : detEdge2, "parameters" : [0.0, 1.0],
@@ -566,14 +592,10 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             // Highlight selected input entities and show their endpoints
             if (definition.inputType == BridgingFilletInputType.CURVES)
             {
-                addDebugEntities(context, definition.side1Curves, DebugColor.CYAN);
-                addDebugEntities(context, definition.side2Curves, DebugColor.MAGENTA);
-                var edge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
-                                    qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
-                var edge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
-                                    qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
-                var tl1 = try(evEdgeTangentLines(context, { "edge" : edge1, "parameters" : [0.0, 1.0] }));
-                var tl2 = try(evEdgeTangentLines(context, { "edge" : edge2, "parameters" : [0.0, 1.0] }));
+                addDebugEntities(context, side1Edge, DebugColor.CYAN);
+                addDebugEntities(context, side2Edge, DebugColor.MAGENTA);
+                var tl1 = try(evEdgeTangentLines(context, { "edge" : side1Edge, "parameters" : [0.0, 1.0] }));
+                var tl2 = try(evEdgeTangentLines(context, { "edge" : side2Edge, "parameters" : [0.0, 1.0] }));
                 if (tl1 != undefined)
                 {
                     addDebugPoint(context, tl1[0].origin, DebugColor.CYAN);
@@ -593,10 +615,8 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         }
         if (definition.inputType == BridgingFilletInputType.CURVES && definition.showJunctionFrame)
         {
-            var jEdge1 = qUnion([qEntityFilter(definition.side1Curves, EntityType.EDGE),
-                                 qOwnedByBody(definition.side1Curves, EntityType.EDGE)]);
-            var jEdge2 = qUnion([qEntityFilter(definition.side2Curves, EntityType.EDGE),
-                                 qOwnedByBody(definition.side2Curves, EntityType.EDGE)]);
+            var jEdge1 = side1Edge;
+            var jEdge2 = side2Edge;
 
             // Find shared vertex (junction) between the two edges
             var verts1 = qAdjacent(jEdge1, AdjacencyType.VERTEX, EntityType.VERTEX);

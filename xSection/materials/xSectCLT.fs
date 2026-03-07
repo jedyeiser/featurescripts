@@ -1,11 +1,11 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
-// xSectMaterials (buildMaterialLookup)
-import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
+// xSectMaterials (buildMaterialLookup, normalizeMaterialName)
+import(path : "f8e590162884d45f56e0a05f", version : "c6d4a2440a5dac22f41a1a21");
 
 // xSect_GJ (computeTorsionalStiffness)
-import(path : "9df6ba3db06d479fabe63c1d", version : "b840272d29f360c74ebcaadc");
+import(path : "9df6ba3db06d479fabe63c1d", version : "dfcffe2529d8e0ac4d2add13");
 
 
 // =============================================================================
@@ -429,13 +429,13 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         // For a symmetric layup (B = 0), this reduces to D11.
         EI_eff = D[0][0] - (B[0][0] * B[0][0]) / A[0][0];
 
-        // Guard: EI_eff must be physically non-negative. A negative result indicates
-        // corrupted upstream data (e.g. zero/negative Q matrix entries from a bad CSV row).
-        if (EI_eff < 0 * newton * meter * meter)
+        // Warn if stiffness is suspiciously low
+        if (abs(A[0][0]) < LOW_STIFFNESS_WARNING)
         {
-            println("WARNING: xSectCLT computed negative EI_eff — forcing to 0. Check material Q matrix data.");
-            EI_eff = 0 * newton * meter * meter;
         }
+    }
+    else
+    {
     }
 
     // =====================================================================
@@ -457,5 +457,5 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
 }
 
 
-// NOTE: buildMaterialLookup() has been moved to xSectMaterials.fs
-// and is imported above. This keeps CLT module focused on mechanical calculations.
+// NOTE: buildMaterialLookup() and normalizeMaterialName() have been moved to xSectMaterials.fs
+// and are imported above. This keeps CLT module focused on mechanical calculations.

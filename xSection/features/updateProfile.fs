@@ -8,11 +8,6 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
 
 
 /**
- * BOUNDING BOX CONVENTION (critical):
- * Throughout this module, `boundingBox.width` = beam HEIGHT (thickness direction, short axis)
- * and `boundingBox.height` = beam WIDTH (span direction, long axis). This is counterintuitive
- * but matches how Onshape returns bounding box dimensions for skis oriented along world X.
- *
  * This function is used to make informed decisions about what a ski or
  * snowboard thickness profile SHOULD be to achieve a provided ei proifle.
  *
@@ -700,15 +695,13 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
 
                 if (effectiveTargEI <= EI_min)
                 {
-                    // Target EI is below the minimum achievable (2mm floor thickness).
-                    // Clamped to lower bound — output profile will be thinner than requested.
+                    // Target below minimum-thickness EI — clamp to lower bound
                     deltaT_final = deltaT_min;
                     solvedEI     = EI_min;
                 }
                 else if (effectiveTargEI >= EI_max)
                 {
-                    // Target EI is above the maximum achievable (50mm delta cap).
-                    // Clamped to upper bound — output profile will be stiffer than requested.
+                    // Target above maximum-delta EI — clamp to upper bound
                     deltaT_final = deltaT_max;
                     solvedEI     = EI_max;
                 }
@@ -830,8 +823,16 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                         });
                     }
                 }
-                catch
+                catch (e)
                 {
+
+                    for (var i = 0; i < size(outputPoints); i += 1)
+                    {
+                        var pt = outputPoints[i];
+                        var x_mm = toString(pt[0] / millimeter);
+                        var z_mm = toString(pt[2] / millimeter);
+                    }
+
                     for (var i = 0; i < size(outputPoints) - 1; i += 1)
                     {
                         addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
@@ -861,8 +862,17 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                         });
                     }
                 }
-                catch
+                catch (e)
                 {
+
+                    // Print each point (X in mm, Z in mm — Y is always 0)
+                    for (var i = 0; i < size(outputPoints); i += 1)
+                    {
+                        var pt = outputPoints[i];
+                        var x_mm = toString(pt[0] / millimeter);
+                        var z_mm = toString(pt[2] / millimeter);
+                    }
+
                     // Draw debug polyline so we can see the point sequence in-canvas
                     for (var i = 0; i < size(outputPoints) - 1; i += 1)
                     {

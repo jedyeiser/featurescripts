@@ -2,9 +2,9 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSection/gjDataAccess
-import(path : "12c9e75dc2139eb927245033", version : "9ac6c3b7c431a4120610201f");
+import(path : "12c9e75dc2139eb927245033", version : "4cfcb18f325bcdb4a8bb7d4c");
 // IMPORT: xSection/xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "b840272d29f360c74ebcaadc");
+import(path : "9df6ba3db06d479fabe63c1d", version : "dfcffe2529d8e0ac4d2add13");
 
 
 /**
@@ -22,11 +22,6 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "b840272d29f360c74ebcaadc");
  *    - Store GJ result
  * 3. Update attribute with new GJ values (preserving EI and other data)
  * 4. Optionally create 3D visualization curve showing GJ(x)
- *
- * Error handling pattern:
- * - User-facing errors (bad selection, missing data): throw regenError("...") with entity highlight
- * - Internal assertions (should never happen): plain throw "..." string
- * Only regenError propagates properly to the Onshape UI; plain throws show as generic failures.
  */
 
 /**
@@ -77,7 +72,7 @@ export function computeAndStoreGJByFeatureKey(context is Context, id is Id,
             var GJ_eff = computeTorsionalStiffness(section, bodies);
             section.GJ_eff = GJ_eff;
         }
-        catch
+        catch (e)
         {
             // Keep existing GJ value on failure
         }
@@ -135,14 +130,19 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     // =========================================================================
 
     var updatedSections = [];
+    var successCount = 0;
+    var failCount = 0;
+    var skipCount = 0;
 
     for (var i = 0; i < numSections; i += 1)
     {
         var section = crossSections[i];
+        var stationNum = section.stationNumber;
 
         // Validate section has required data
         if (!validateSectionData(section))
         {
+            skipCount += 1;
             updatedSections = append(updatedSections, section);
             continue;
         }
@@ -152,12 +152,14 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
         try
         {
             GJ_eff = computeTorsionalStiffness(section, bodies);
+            successCount += 1;
 
             // Update section with new GJ value (only on success)
             section.GJ_eff = GJ_eff;
         }
-        catch
+        catch (e)
         {
+            failCount += 1;
             // Keep existing GJ value (don't overwrite with 0)
         }
 
@@ -178,6 +180,11 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     {
         createGJCurve(context, id + "gjCurve", updatedSections, definition.curvePrefix);
     }
+
+    // =========================================================================
+    // Summary
+    // =========================================================================
+
 }
 
 /**
@@ -229,9 +236,11 @@ function getXSectFeatureFromEntity(context is Context, entityQuery is Query) ret
         return featureKeys[0];
     }
 
-    // Multiple xSect features — cannot determine which one owns this entity
-    throw regenError("Multiple xSect features found (" ~ size(featureKeys) ~
-          "). Select an entity (face or edge) that belongs to exactly one xSect feature's analysis path.");
+    // Multiple xSect features - try to match based on entity
+    // For now, throw an error asking user to specify
+    throw "Multiple xSect features found (" ~ size(featureKeys) ~
+          "). Please manually identify which feature created this entity.\n" ~
+          "Available features: " ~ featureKeys;
 }
 
 /**
@@ -297,7 +306,7 @@ function createGJCurve(context is Context, id is Id, sections is array, namePref
         {
         }
     }
-    catch
+    catch (e)
     {
     }
 }

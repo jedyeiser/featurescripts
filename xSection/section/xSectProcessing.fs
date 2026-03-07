@@ -17,16 +17,16 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  */
 
 // IMPORTS - xSectPredicates (for MaterialBehavior and MaterialType enums)
-import(path : "17142132b20343b5f125e7e7", version : "fe8ba7347fa3e73f881abb63");
+import(path : "17142132b20343b5f125e7e7", version : "0e6215d723bc0619b74f7dd4");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "e28c1b2ccec93ed1e9fe271b");
+import(path : "c2c3edd39b85fde5e6062533", version : "33bc110a345c59dd98776a00");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "6248bced7aebad1dde031271");
-// IMPORTS - xSectMaterials (buildMaterialLookup, tryGetKey)
-import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
+import(path : "08d3a8d4e34a60d45d46e261", version : "def07f3081753ec29af91957");
+// IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
+import(path : "f8e590162884d45f56e0a05f", version : "c6d4a2440a5dac22f41a1a21");
 
 // IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
-import(path : "74231d1d53f5a117d47d17a9", version : "0db30b5154d6a274cf3bf74f");
+import(path : "74231d1d53f5a117d47d17a9", version : "8bd88ef6a6d18e7e44aef45e");
 
 // =============================================================================
 // OVERLAP DETECTION CONSTANTS
@@ -67,14 +67,9 @@ const SPATIAL_GRID_CELL_SIZE = 5 * millimeter;
  */
 export enum OverlapType
 {
-    // No geometric overlap between the two curves
-    NONE,
-    // One curve's bounding box fully contains the other's — the contained curve
-    // represents an inner boundary (e.g. core surrounded by skin)
-    FULL_CONTAINMENT,
-    // Curves share endpoint proximity — adjacent body edges that should be merged
-    // into a single composite boundary
-    PARTIAL_OVERLAP
+    NONE,               // No overlap detected
+    FULL_CONTAINMENT,   // One curve fully contains the other
+    PARTIAL_OVERLAP     // Curves partially overlap at endpoints
 }
 
 // =============================================================================
@@ -112,7 +107,7 @@ export function processCrossSections(context is Context, id is Id, definition is
             materialLookup = buildMaterialLookup(csvData);
         }
     }
-    catch
+    catch (e)
     {
     }
 
@@ -136,8 +131,7 @@ export function processCrossSections(context is Context, id is Id, definition is
         var matName = tryGetKey(bodyDef, "materialName");
         if (matName != undefined && matName != "Not assigned")
         {
-            // Exact match — names must match CSV character-for-character
-            var key = matName;
+            var key = normalizeMaterialName(matName);
             var csvMatch = materialLookup[key];
             if (csvMatch != undefined)
             {
@@ -162,7 +156,7 @@ export function processCrossSections(context is Context, id is Id, definition is
         {
             bodyVolume = evVolume(context, { "entities" : bodyDef.bodyQuery });
         }
-        catch
+        catch (e)
         {
         }
         bodyEntry.volume = bodyVolume;
@@ -336,13 +330,13 @@ export function processCrossSections(context is Context, id is Id, definition is
 
         // Cleanup
         try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
-        catch
+        catch (e)
         {
         }
         if (size(wireQueries) > 0)
         {
             try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
-            catch
+            catch (e)
             {
             }
         }
@@ -424,7 +418,7 @@ export function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) re
             };
         }
     }
-    catch
+    catch (e)
     {
     }
     return updated;

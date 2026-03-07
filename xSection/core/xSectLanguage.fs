@@ -19,8 +19,8 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *
  * Key conventions:
  *   - Keys are the canonical English strings (same as LANGUAGE.ENG values)
- *   - Missing keys throw at runtime; callers must use `tryGetKey` for safe access
- *     when a key may not exist in all language maps.
+ *   - Missing keys fall through to the English key; callers should guard with `tryGetKey`
+ *     if adding new keys without a full translation.
  */
 export enum LANGUAGE
 {

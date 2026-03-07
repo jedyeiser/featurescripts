@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectMaterials (for tryGetKey helper)
-import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
+import(path : "f8e590162884d45f56e0a05f", version : "c6d4a2440a5dac22f41a1a21");
 
 // xSectLanguage (translation lookups)
-import(path : "a0fab52ee4d0b16ffbc1c603", version : "946ae802f4abcbcd6592484c");
+import(path : "a0fab52ee4d0b16ffbc1c603", version : "e11eea4b83b69908204425ae");
 
 // =============================================================================
 // DISPLAY ROUNDING CONSTANTS
@@ -163,7 +163,7 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
         });
 
     }
-    catch
+    catch (e)
     {
     }
 }
@@ -176,7 +176,7 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
 export function roundValue(value is number, precision is number) returns number
 {
     var rounded = round(value / precision) * precision;
-    // 1e8 eliminates floating-point noise beyond 8 significant digits
+    // Eliminate floating point artifacts
     return round(rounded * 1e8) / 1e8;
 }
 
@@ -268,7 +268,7 @@ export function buildTableData(crossSections is array, beamAnalysis, totalWeight
 
         // Calculate NA as percentage of beam height (after sign flip and rounding)
         var naPercentage = 0;
-        if (beamHeight > 0.05)  // Guard: skip NA% if beam height < 0.05mm (degenerate section)
+        if (beamHeight > 0.05)  // Guard: only compute if beam height > tolerance
         {
             naPercentage = roundValue((naHeight / beamHeight) * 100, 0.1);  // 0.1% precision
         }

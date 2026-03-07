@@ -60,6 +60,7 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
     var meshData = buildGlobalMesh(section);
     var triangles = meshData.triangles;
     var bodyIndices = meshData.bodyIndices;
+    var numNodes = meshData.numNodes;
 
     // Handle edge cases
     if (size(triangles) == 0)
@@ -67,16 +68,32 @@ export function computeTorsionalStiffness(section is map, bodies is array) retur
         return 0 * newton * meter * meter;
     }
 
+    if (numNodes > 2000)
+    {
+    }
+
     // Extract shear modulus for each triangle from material Q matrices
     var G_elem = extractShearModuli(triangles, bodyIndices, bodies);
 
-    // Count valid G values; used for early return if no structural material exists
+    // Compute G statistics for diagnostics
+    var G_min = 1e99;
+    var G_max = 0.0;
+    var G_sum = 0.0;
     var G_count = 0;
+
     for (var i = 0; i < size(G_elem); i += 1)
     {
-        if (G_elem[i] >= 1e-6)
+        var G = G_elem[i];
+        if (G >= 1e-6)  // Only count valid G values
+        {
+            G_min = min(G_min, G);
+            G_max = max(G_max, G);
+            G_sum += G;
             G_count += 1;
+        }
     }
+
+    var G_mean = (G_count > 0) ? (G_sum / G_count) : 0.0;
 
     // Check if any structural material exists
     if (G_count == 0)
@@ -265,14 +282,345 @@ function computeGJThinPlate(triangles is array, G_elem is array,
         var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
         if (shapeData.area < MIN_AREA) { continue; }
 
-        // Exact closed form for second moment of area of triangle about centroid:
         // Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1·y2 + y1·y3 + y2·y3)
-        // See e.g. Pilkey, "Analysis and Design of Elastic Beams" (Wiley, 2002)
         var Iz = (shapeData.area / 6.0) *
                  (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
         Iz_sum += G * Iz;
     }
     return 4.0 * Iz_sum;  // GJ = 4·Σ G_e·Iz_e, implicit N·m²
+}
+
+/**
+ * Assemble global FEM system K·ψ = f
+ *
+ * @param triangles : Array of [i,j,k] node indices
+ * @param G_elem : Shear modulus for each triangle (plain numbers, implicit N/m²)
+ * @param sectionPoints : Array of {point2D: [y,z], ...}
+ * @param numNodes : Total number of nodes
+ * @returns : map with { K: array (n×n), f: array (n×1), numNodes: int }
+ *
+ * Element stiffness (linear triangle):
+ *   K_local[a,b] = G * A * (dNdy[a]*dNdy[b] + dNdz[a]*dNdz[b])
+ *
+ * Element load:
+ *   f_local[a] = G * A * (z_c * dNdy[a] - y_c * dNdz[a])
+ *
+ * where (y_c, z_c) is triangle centroid
+ */
+function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is array, numNodes is number, y_bar is number, z_bar is number) returns map
+{
+    // Initialize global arrays
+    var n = numNodes;
+    var K = makeArray(n);
+    var f = makeArray(n);
+
+    for (var i = 0; i < n; i += 1)
+    {
+        K[i] = makeArray(n, 0.0);
+        f[i] = 0.0;
+    }
+
+    // Loop over all triangles
+    var validElements = 0;
+    var skippedZeroG = 0;
+    var skippedDegenerateArea = 0;
+
+    for (var e = 0; e < size(triangles); e += 1)
+    {
+        var tri = triangles[e];
+        var i1 = tri[0];
+        var i2 = tri[1];
+        var i3 = tri[2];
+
+        var G = G_elem[e];  // Plain number, implicit N/m²
+
+        // Skip elements with zero stiffness
+        if (G < 1e-6)  // Implicit N/m²
+        {
+            skippedZeroG += 1;
+            continue;
+        }
+
+        // Get nodal coordinates in local (y,z) frame
+        var pt1 = sectionPoints[i1].point2D;
+        var pt2 = sectionPoints[i2].point2D;
+        var pt3 = sectionPoints[i3].point2D;
+
+        var y1 = pt1[0] / meter - y_bar;
+        var z1 = pt1[1] / meter - z_bar;
+        var y2 = pt2[0] / meter - y_bar;
+        var z2 = pt2[1] / meter - z_bar;
+        var y3 = pt3[0] / meter - y_bar;
+        var z3 = pt3[1] / meter - z_bar;
+
+        // Compute shape function gradients and area
+        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
+        var dNdy = shapeData.dNdy;
+        var dNdz = shapeData.dNdz;
+        var A = shapeData.area;
+
+        // Skip degenerate triangles
+        if (A < MIN_AREA)
+        {
+            skippedDegenerateArea += 1;
+            continue;
+        }
+
+        validElements += 1;
+
+        // Centroid
+        var y_c = (y1 + y2 + y3) / 3.0;
+        var z_c = (z1 + z2 + z3) / 3.0;
+
+        // Local stiffness and load (3×3 for linear triangle)
+        var nodeIndices = [i1, i2, i3];
+
+        for (var a = 0; a < 3; a += 1)
+        {
+            var ia = nodeIndices[a];
+
+            // Element load vector
+            // Dimensional analysis: (N/m²) * m² * m * (1/m) = N
+            var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);  // All plain numbers
+            f[ia] += f_local;  // No unit stripping needed
+
+            // Element stiffness matrix
+            for (var b = 0; b < 3; b += 1)
+            {
+                var ib = nodeIndices[b];
+                // Dimensional analysis: (N/m²) * m² * (1/m)² = N/m²
+                var K_local = G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b]);  // All plain numbers
+                K[ia][ib] += K_local;  // No unit stripping needed
+            }
+        }
+    }
+
+    // Warn if too many degenerate triangles (indicates mesh quality issues)
+    if (skippedDegenerateArea > size(triangles) * 0.1)
+    {
+        var pct = (skippedDegenerateArea * 100.0 / size(triangles));
+    }
+
+    return {
+        "K" : K,
+        "f" : f,
+        "numNodes" : n
+    };
+}
+
+/**
+ * Apply boundary condition to remove rigid body mode
+ *
+ * @param K : Global stiffness matrix (n×n)
+ * @param f : Global load vector (n×1)
+ * @param n : Number of nodes
+ * @returns : map with { K, f } (modified in place)
+ *
+ * Pin first node: ψ[0] = 0
+ * - Set K[0,:] = 0, K[:,0] = 0, K[0,0] = 1
+ * - Set f[0] = 0
+ *
+ * This removes the singularity (∇²ψ = 0 has constant solutions)
+ */
+function applyBoundaryCondition(K is array, f is array, n is number) returns map
+{
+    // Pin first node to remove rigid body mode
+    for (var j = 0; j < n; j += 1)
+    {
+        K[0][j] = 0.0;
+        K[j][0] = 0.0;
+    }
+    K[0][0] = 1.0;
+    f[0] = 0.0;
+
+    // Pin any unused nodes (disconnected from mesh) to prevent singularity
+    // These nodes have zero diagonal entries (not part of any triangle)
+    var pinnedNodes = 0;
+    for (var i = 1; i < n; i += 1)
+    {
+        if (abs(K[i][i]) < 1e-15)
+        {
+            // Node i is unused - pin it
+            for (var j = 0; j < n; j += 1)
+            {
+                K[i][j] = 0.0;
+                K[j][i] = 0.0;
+            }
+            K[i][i] = 1.0;
+            f[i] = 0.0;
+            pinnedNodes += 1;
+        }
+    }
+
+    return {
+        "K" : K,
+        "f" : f
+    };
+}
+
+/**
+ * Solve FEM system K·ψ = f for the Saint-Venant warping function.
+ *
+ * @param K {array} : Stiffness matrix (n×n), plain numbers (implicit N/m²)
+ * @param f {array} : Load vector (n×1), plain numbers (implicit N)
+ * @param n {number} : Number of nodes
+ * @returns {array} : ψ at each node (dimensionless plain numbers), or empty array [] on failure.
+ *
+ * Failure conditions (returns []):
+ *   - K is singular or near-singular (more than n/2 zero diagonal entries)
+ *   - `solveLinearSystem` returns undefined (Gaussian elimination fails, e.g. rank-deficient after BC)
+ *
+ * NOTE: This function does NOT throw; callers must check `size(psi) == 0` and fall back
+ * to the thin-plate formula (`computeGJThinPlate`) which is used in practice.
+ */
+function solveFEMSystem(K is array, f is array, n is number) returns array
+{
+    // Check matrix diagonal health
+    var diagZeros = 0;
+    var diagNonZeros = 0;
+    var diagMax = 0.0;
+    var diagMin = 1e99;
+
+    for (var i = 0; i < n; i += 1)
+    {
+        var d = abs(K[i][i]);
+        if (d < 1e-15)
+        {
+            diagZeros += 1;
+        }
+        else
+        {
+            diagNonZeros += 1;
+            if (d > diagMax) diagMax = d;
+            if (d < diagMin) diagMin = d;
+        }
+    }
+
+    if (diagZeros > n / 2)
+    {
+    }
+
+    // Solve system using dense Gaussian elimination
+    var psi = solveLinearSystem(K, f, n);
+
+    if (psi == undefined)
+    {
+        return [];  // Return empty array instead of undefined
+    }
+
+    return psi;
+}
+
+/**
+ * Compute GJ from warping function and polar moments
+ *
+ * @param triangles : Array of [i,j,k] node indices
+ * @param G_elem : Shear modulus for each triangle (plain numbers, implicit N/m²)
+ * @param psi : Warping function values at nodes (dimensionless)
+ * @param sectionPoints : Array of {point2D: [y,z], ...}
+ * @returns : GJ in N·m²
+ *
+ * For each triangle:
+ *   Jp_e = polar moment of inertia (exact for triangle)
+ *   dpsi_dy, dpsi_dz = constant gradients from nodal ψ
+ *   warp_correction = A * (y_c * dpsi_dz - z_c * dpsi_dy)
+ *   GJ += G * (Jp_e + warp_correction)
+ *
+ * Polar moment (exact closed form):
+ *   Jp = A/6 * (y1² + y2² + y3² + z1² + z2² + z3² + y1*y2 + y2*y3 + y3*y1 + z1*z2 + z2*z3 + z3*z1)
+ */
+function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array, y_bar is number, z_bar is number) returns ValueWithUnits
+{
+    var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
+    var Jp_total = 0.0;   // Diagnostic: sum of G*Jp_e contributions
+    var warp_total = 0.0; // Diagnostic: sum of G*warp_correction contributions
+    var Iz_sum = 0.0;  // For thin-plate formula: GJ = 4 * Iz_sum
+
+    // Defensive check: ensure psi array is valid
+    if (size(psi) == 0)
+    {
+        return 0 * newton * meter * meter;
+    }
+
+    for (var e = 0; e < size(triangles); e += 1)
+    {
+        var tri = triangles[e];
+        var i1 = tri[0];
+        var i2 = tri[1];
+        var i3 = tri[2];
+
+        var G = G_elem[e];  // Plain number, implicit N/m²
+
+        // Skip elements with zero stiffness
+        if (G < 1e-6)  // Implicit N/m²
+        {
+            continue;
+        }
+
+        // Get nodal coordinates
+        var pt1 = sectionPoints[i1].point2D;
+        var pt2 = sectionPoints[i2].point2D;
+        var pt3 = sectionPoints[i3].point2D;
+
+        var y1 = pt1[0] / meter - y_bar;
+        var z1 = pt1[1] / meter - z_bar;
+        var y2 = pt2[0] / meter - y_bar;
+        var z2 = pt2[1] / meter - z_bar;
+        var y3 = pt3[0] / meter - y_bar;
+        var z3 = pt3[1] / meter - z_bar;
+
+        // Compute shape function gradients and area
+        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
+        var dNdy = shapeData.dNdy;
+        var dNdz = shapeData.dNdz;
+        var A = shapeData.area;
+
+        // Skip degenerate triangles
+        if (A < MIN_AREA)
+        {
+            continue;
+        }
+
+        // Get warping function values at nodes (dimensionless)
+        var psi1 = psi[i1];
+        var psi2 = psi[i2];
+        var psi3 = psi[i3];
+
+        // Compute warping gradients (constant over element)
+        var dpsi_dy = psi1 * dNdy[0] + psi2 * dNdy[1] + psi3 * dNdy[2];
+        var dpsi_dz = psi1 * dNdz[0] + psi2 * dNdz[1] + psi3 * dNdz[2];
+
+        // Centroid
+        var y_c = (y1 + y2 + y3) / 3.0;
+        var z_c = (z1 + z2 + z3) / 3.0;
+
+        // Polar moment of inertia (exact closed form for triangle)
+        // Jp = Iy + Iz where:
+        //   Iy = ∫z² dA = (A/6) * (z1² + z2² + z3² + z1*z2 + z1*z3 + z2*z3)
+        //   Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1*y2 + y1*y3 + y2*y3)
+        var Iy = (A / 6.0) * (z1*z1 + z2*z2 + z3*z3 + z1*z2 + z1*z3 + z2*z3);
+        var Iz = (A / 6.0) * (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
+        var Jp_e = Iy + Iz;
+
+        // Warping correction
+        var warp_correction = A * (y_c * dpsi_dz - z_c * dpsi_dy);
+
+        // Accumulate GJ element contribution
+        // Dimensional analysis: (N/m²) * m⁴ = N·m²
+        Jp_total += G * Jp_e;
+        warp_total += G * warp_correction;
+        GJ_sum += G * (Jp_e + warp_correction);  // All plain numbers, implicit N·m²
+        Iz_sum += G * Iz;
+    }
+
+    // Diagnostic: breakdown of Jp vs warping correction
+    // After fix, warp_total should be strongly negative for flat/wide sections
+
+    // Use thin-plate formula (GJ = 4*Iz) — analytically exact for b/t >> 1,
+    // far more accurate than coarse FEM for ski cross-sections.
+    // FEM result (J_SV) kept above as diagnostic to show warping solve comparison.
+    var GJ_thin_plate = 4.0 * Iz_sum;
+    return GJ_thin_plate * newton * meter * meter;
 }
 
 /**

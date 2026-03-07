@@ -3,9 +3,9 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/table.fs", version : "2892.0");
 
 // xSectMaterials (for tryGetKey)
-import(path : "f8e590162884d45f56e0a05f", version : "e5392c408679921c0a537da3");
+import(path : "f8e590162884d45f56e0a05f", version : "c6d4a2440a5dac22f41a1a21");
 
-import(path : "17142132b20343b5f125e7e7", version : "fe8ba7347fa3e73f881abb63");
+import(path : "17142132b20343b5f125e7e7", version : "0e6215d723bc0619b74f7dd4");
 
 /**
  * CROSS-SECTION ANALYSIS TABLE MODULE
@@ -233,12 +233,6 @@ function buildRenderedBodyTable(bodyTableData is map, titlePrefix is string) ret
     {
         bodyTableType = BodyTableType.FULL;
     }
-
-    // Column layout depends on bodyTableType:
-    //   FULL      — all columns: Area, Centroid, I, EI, % per body + EI_sum suffix
-    //   GEO_ONLY  — geometry only: Area, Centroid, I per body (no EI/% columns, no EI_sum)
-    //   EI_ONLY   — stiffness only: EI, % per body + EI_sum suffix
-    //   BASIC     — compact summary: Area, Centroid-above-NA, EI, % per body + EI_sum suffix
 
     // Fixed prefix columns (always present)
     var columns = [

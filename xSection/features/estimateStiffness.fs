@@ -36,26 +36,17 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
         // Guard: eiEdges must be non-empty
         var edges = evaluateQuery(context, definition.eiEdges);
         if (size(edges) == 0)
-        {
-            println("No EI edges selected — recalculation skipped.");
             return definition;
-        }
 
         // Resolve FCP and ACP to world X
         var xFCP = resolveReferencePointX(context, definition.fcpQuery, definition.eiEdges);
         var xACP = resolveReferencePointX(context, definition.acpQuery, definition.eiEdges);
 
         if (xFCP == undefined || xACP == undefined)
-        {
-            println("Could not resolve FCP or ACP location — check selection.");
             return definition;
-        }
 
         if (xFCP >= xACP)
-        {
-            println("FCP must be forward of (smaller X than) ACP.");
             return definition;
-        }
 
         // Sample EI profile from curve geometry
         var eiData = getEIFromEdges(context, definition.eiEdges, xFCP, xACP);
@@ -118,8 +109,6 @@ export const estimateStiffness = defineFeature(function(context is Context, id i
 
     }
     {
-        // All computation runs in estimateStiffnessEditingLogic() (editing logic).
-        // The four stiffness fields are READ_ONLY outputs updated there.
-        // The feature body intentionally does nothing — geometry is not modified.
+        //Doesn't actually do anything
     });
 

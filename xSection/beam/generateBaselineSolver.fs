@@ -38,11 +38,6 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
  * Solve deflection shape of a simply-supported beam with variable EI,
  * loaded off-center at xLoad with P = 1 N.
  *
- * Derived from Euler-Bernoulli beam theory (EI·κ = M) with double-numerical integration.
- * Reactions: RA = (L-a)/L, RB = a/L for load at position a from left support.
- * Symmetry conditions (zero slope at midpoint for symmetric loading) are NOT assumed
- * here since loading is off-center; instead BCs are enforced by chord subtraction.
- *
  * Returns dense 2D samples [{x, z}] with max(z) = H * meter.
  *
  * All internal arithmetic uses plain numbers (SI units stripped).
@@ -206,7 +201,7 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
         var denom_mid = uL_m * (uL_m - L_m);
         if (abs(denom_mid) < 1e-20)
         {
-            // Degenerate load position (load within tolerance of midpoint) — return flat profile
+            // Degenerate — return flat
             var flatPts = [];
             for (var i = 0; i <= N; i += 1)
             {
@@ -228,7 +223,7 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
         var denom2 = uL_m * uL_m * uL_m + bOverA * uL_m * uL_m + cOverA * uL_m;
         if (abs(denom2) < 1e-20)
         {
-            // Degenerate load position (load within tolerance of midpoint) — return flat profile
+            // Degenerate — return flat
             var flatPts2 = [];
             for (var i = 0; i <= N; i += 1)
             {
@@ -600,6 +595,14 @@ export function innerSolve(context is Context,
     var camberPts = [];
     if (hasEI && size(eiData) >= 2)
     {
+        var eiMin = eiData[0].EI / (newton * meter * meter);
+        var eiMax = eiMin;
+        for (var eid in eiData)
+        {
+            var v = eid.EI / (newton * meter * meter);
+            if (v < eiMin) { eiMin = v; }
+            if (v > eiMax) { eiMax = v; }
+        }
         camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H);
     }
     else
@@ -696,7 +699,7 @@ export function solveBaseline(context is Context,
                         frcpl is ValueWithUnits, arcpl is ValueWithUnits,
                         MCH_target) returns array
 {
-    var BISECT_TOL = 0.00001;  // 0.01mm — adequate for ski profile accuracy requirements
+    var BISECT_TOL = 0.00001;  // 0.01 mm in meters
     var MAX_ITER   = 20;
 
     // Zero-camber special case: no iteration needed
@@ -715,6 +718,7 @@ export function solveBaseline(context is Context,
     var ptsLo  = innerSolve(context, eiData, hasEI, xFCP, xACP,
                              xFRCP, xARCP, xLoad,
                              fcpHeight, acpHeight, frcpl, arcpl, H_lo);
+    var camLo  = measureCamberHeight(ptsLo, xFRCP, xARCP);
 
     var ptsHi  = innerSolve(context, eiData, hasEI, xFCP, xACP,
                              xFRCP, xARCP, xLoad,

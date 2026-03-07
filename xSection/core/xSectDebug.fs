@@ -2,7 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectPredicates (for DEBUG_COLOR_SEQUENCE and XSectionDebugType enum)
-import(path : "17142132b20343b5f125e7e7", version : "fe8ba7347fa3e73f881abb63");
+import(path : "17142132b20343b5f125e7e7", version : "0e6215d723bc0619b74f7dd4");
 // tools/debug - provides debugControlPolygon
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/8944e3e431de4929b0a28fbc", version : "889ff7e9c358da182dc0bf8a");
 
@@ -72,6 +72,10 @@ export function debugVisualization(context is Context, id is Id, data is map, de
         var section = data.crossSections[idx];
         var sectionPoints = section.sectionPoints;
 
+        if (definition.printBodyData)
+        {
+        }
+
         for (var bodyInfo in section.bodyData)
         {
             var bodyIdx = bodyInfo.bodyIdx;
@@ -81,6 +85,11 @@ export function debugVisualization(context is Context, id is Id, data is map, de
                 continue;
 
             var color = DEBUG_COLOR_SEQUENCE[bodyIdx % size(DEBUG_COLOR_SEQUENCE)];
+
+            if (definition.printBodyData)
+            {
+                printGroupData(bodyInfo.groups, sectionPoints, 1, definition.printTriangles);
+            }
 
             if (definition.debugType == XSectionDebugType.EDGES)
             {
@@ -148,6 +157,43 @@ function debugGroupMesh(context is Context, groups is array, sectionPoints is ar
             }
         }
         debugGroupMesh(context, group.subgroups, sectionPoints, color);
+    }
+}
+
+/**
+ * Recursively print group perimeter point coordinates and (optionally) triangle vertex coordinates to the debug console.
+ */
+function printGroupData(groups is array, sectionPoints is array, depth is number, printTriangles is boolean)
+{
+    var indent = "";
+    for (var d = 0; d < depth; d += 1)
+        indent = indent ~ "  ";
+
+    for (var g = 0; g < size(groups); g += 1)
+    {
+        var group = groups[g];
+
+        for (var i = 0; i < size(group.perimeterPointIndices); i += 1)
+        {
+            var ptIdx = group.perimeterPointIndices[i];
+            var pt2D = sectionPoints[ptIdx].point2D;
+        }
+
+        if (printTriangles)
+        {
+            for (var t = 0; t < size(group.triangles); t += 1)
+            {
+                var tri = group.triangles[t];
+                var p0 = sectionPoints[tri[0]].point2D;
+                var p1 = sectionPoints[tri[1]].point2D;
+                var p2 = sectionPoints[tri[2]].point2D;
+            }
+        }
+
+        if (size(group.subgroups) > 0)
+        {
+            printGroupData(group.subgroups, sectionPoints, depth + 1, printTriangles);
+        }
     }
 }
 

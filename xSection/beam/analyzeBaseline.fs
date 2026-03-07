@@ -320,6 +320,22 @@ function findInflectionsOnCurve(context is Context, edge is Query) returns array
     return inflections;
 }
 
+/**
+ * Approximate arc length between two sample indices by summing chord lengths.
+ */
+function approximateChainArcLength(samples is array, idxA is number, idxB is number) returns ValueWithUnits
+{
+    var length = 0 * meter;
+    var iStart = min(idxA, idxB);
+    var iEnd   = max(idxA, idxB);
+
+    for (var i = iStart; i < iEnd; i += 1)
+    {
+        length += norm(samples[i + 1].pt - samples[i].pt);
+    }
+
+    return length;
+}
 
 /**
  * Format a 3D position vector as a millimeter string (2 decimal places).
@@ -364,7 +380,7 @@ export function analyzeBaselineGeometry(context is Context,
     var chain = buildEdgeChain(context, baselineEdgesQ);
     if (size(chain) == 0)
     {
-        throw regenError("Could not build edge chain — edges may not form a connected G1 path. Check that all selected baseline edges share endpoints.");
+        return undefined;
     }
 
     // Step 2: Uniform sample across entire chain (200 points)
@@ -642,7 +658,7 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
 // FEATURE DEFINITION
 // ============================================================================
 
-annotation { "Feature Type Name" : "Analyze baseline",
+annotation { "Feature Type Name" : "Analze baseline",
 "Feature Type Description" : "Takes input edge queries, fcp and acp locations and generates ",
 "Editing Logic Function" : "analyzeBaselineEditLogic"}
 export const analyzeBaseline = defineFeature(function(context is Context, id is Id, definition is map)

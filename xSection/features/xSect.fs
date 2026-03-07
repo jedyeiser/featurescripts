@@ -143,10 +143,13 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
         {
             materialLookup = buildMaterialLookup(csvData);
         }
+        else
+        {
+        }
     }
-    catch
+    catch (e)
     {
-        // Proceed with empty lookup — no CSV loaded or field not yet set
+        // Proceed with empty lookup
     }
 
     // -----------------------------------------------------------------
@@ -176,7 +179,7 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
                     "propertyType" : PropertyType.NAME
             });
         }
-        catch
+        catch (e)
         {
         }
 
@@ -193,9 +196,8 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
                 materialName = onshapeMaterial['name'];
             }
         }
-        catch
+        catch (e)
         {
-            // No material assigned — materialName stays "Not assigned"
         }
 
         // --- Match against CSV ---
@@ -203,8 +205,7 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
 
         if (materialName != "Not assigned")
         {
-            // Exact match — names must match CSV character-for-character
-            var key = materialName;
+            var key = normalizeMaterialName(materialName);
             var csvMatch = materialLookup[key];
             if (csvMatch != undefined)
             {
@@ -311,7 +312,6 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         }
         catch (e)
         {
-            println("xSect: GJ computation failed — " ~ toString(e));
         }
 
         // -----------------------------------------------------------------
@@ -337,10 +337,15 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // Step 6: Create visualization curves (EI, neutral axis)
         // -----------------------------------------------------------------
         var namePrefix = "";
-        var analysisName = tryGetKey(definition, "analysisName");
-        if (analysisName != undefined && analysisName != "")
+        try
         {
-            namePrefix = analysisName;
+            if (definition.analysisName != undefined && definition.analysisName != "")
+            {
+                namePrefix = definition.analysisName;
+            }
+        }
+        catch (e)
+        {
         }
 
         createVisualizationCurves(context, id, crossSectionData, namePrefix);
@@ -384,10 +389,12 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         {
             storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData, massData);
 
+            if (definition.debug)
+            {
+            }
         }
         catch (e)
         {
-            println("xSect: storeAnalysisData failed — " ~ toString(e));
         }
 
         // -----------------------------------------------------------------

@@ -34,7 +34,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  */
 
 // xSectUtils (provides POINT_DEDUP_TOL constant)
-import(path : "c2c3edd39b85fde5e6062533", version : "e28c1b2ccec93ed1e9fe271b");
+import(path : "c2c3edd39b85fde5e6062533", version : "33bc110a345c59dd98776a00");
 
 // =============================================================================
 // CONSTANTS
@@ -263,6 +263,11 @@ function groupCurvesIntoBoundaries(curves is array, tolerance is ValueWithUnits)
             groups = append(groups, group);
         }
     }
+    /*
+    for (var g = 0; g < size(groups); g += 1)
+    {
+    }
+    */
     return groups;
 }
 
@@ -794,6 +799,15 @@ export function earClipTriangulate(points2D is array, pointIndices is array) ret
         ]);
     }
     
+    // Debug output
+    if (size(triangles) > 0)
+    {
+        var expected = size(points2D) - 2;
+        if (size(triangles) != expected)
+        {
+        }
+    }
+    
     return triangles;
 }
 
@@ -1105,12 +1119,7 @@ export function computeSectionBoundingBox(points is array) returns map
 // =============================================================================
 
 /**
- * Compute area of a 2D triangle.
- *
- * @param a {array} : First vertex [x, y] as ValueWithUnits
- * @param b {array} : Second vertex [x, y] as ValueWithUnits
- * @param c {array} : Third vertex [x, y] as ValueWithUnits
- * @returns {ValueWithUnits} : Triangle area (always positive; uses abs of cross product)
+ * Triangle area from 2D vertices.
  */
 export function triangleArea2D(a is array, b is array, c is array) returns ValueWithUnits
 {
@@ -1118,13 +1127,7 @@ export function triangleArea2D(a is array, b is array, c is array) returns Value
 }
 
 /**
- * Compute signed area of a 2D polygon using the shoelace formula.
- *
- * @param points2D {array} : Polygon vertices as [[x,y], ...] with ValueWithUnits
- * @returns {ValueWithUnits} : Signed area — positive for CCW winding, negative for CW
- *
- * Sign convention: positive = counter-clockwise (standard math orientation).
- * The winding direction of cross-section perimeters determines inside/outside.
+ * Signed area of polygon (positive = CCW).
  */
 export function polygonSignedArea2D(points2D is array) returns ValueWithUnits
 {

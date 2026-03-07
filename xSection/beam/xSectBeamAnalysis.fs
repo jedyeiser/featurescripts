@@ -55,18 +55,17 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 // CONSTANTS
 // =============================================================================
 
-/** Standard test load: 30 kg applied at MRS, matching common ski/snowboard flex test protocols */
+/** Standard test load for deflection measurement */
 export const STANDARD_LOAD_KG = 30;
 export const STANDARD_LOAD = 30 * 9.80665 * newton;  // 294.2 N
 
-/** Standard deflection (1 inch = 25.4 mm) used to compute lb/in stiffness values */
+/** Standard deflection for load measurement */
 export const STANDARD_DEFLECTION = 25.4 * millimeter;  // 1 inch
 
 /** Conversion: 1 lbf in Newtons */
 export const NEWTONS_PER_LBF = 4.44822 * newton;
 
-/** Number of integration segments for trapezoidal Mohr's integral.
- *  200 segments gives <0.1% error for typical 1–2m ski geometries. */
+/** Number of integration segments for trapezoidal rule */
 export const INTEGRATION_SEGMENTS = 200;
 
 
@@ -362,12 +361,8 @@ const EI_SAMPLE_COUNT = 100;
  * so Z / millimeter = EI in N·m².
  *
  * Samples EI_SAMPLE_COUNT evenly spaced parametric points per edge, decodes EI from Z,
- * sorts by X, and linearly extrapolates to FCP/ACP if the curve doesn't reach those bounds.
- *
- * NOTE: EI values are clamped to >= 0 after decoding. opFitSpline can produce cubic
- * overshoot near steep endpoints (e.g. at the shovel tip), which gives small negative Z
- * values that are physically impossible for EI. Clamping prevents negative compliance
- * values from corrupting the Mohr's integral.
+ * sorts by X, and linearly extrapolates to FCP/ACP if the curve doesn't reach those bounds
+ * (extrapolated values are clamped to zero if negative).
  *
  * @param context {Context}
  * @param eiEdges {Query} : Edge(s) of the EI visualization curve
@@ -394,7 +389,7 @@ export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is Val
                 var EI = (pt[2] / millimeter) * newton * meter * meter;
                 points = append(points, { "x" : x, "EI" : EI });
             }
-            catch
+            catch (e)
             {
                 // Skip failed evaluations
             }

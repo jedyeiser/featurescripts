@@ -16,24 +16,15 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 
 /**
  * Read cross-section analysis data from an xSect feature's stored attribute.
- * Takes a Query for the xSect feature entity; use readXSectAnalysisDataByKey if
- * you already have the feature key string (avoids the query→key conversion step).
  *
  * @param context {Context}
- * @param xSectFeature {Query} : The xSect feature entity to read from
- * @returns {map} : {
- *     bodies: [{
- *         bodyIdx, bodyName, materialName, hasMaterialData,
- *         materialData?: { youngsModulus, poissonsRatio, density, qMatrix }
- *     }, ...],
- *     crossSections: [{
- *         frame: CoordSystem,
- *         sectionPoints: [{ point2D, point3D }, ...],
- *         bodyData: [{ bodyIdx, groups, totalSectionProperties }, ...],
- *         mechanicalProperties: { EI_eff, GJ_eff, neutralAxisY, A, B, D, ... }
- *     }, ...]
- * }
+ * @param xSectFeature {Query} : The xSect feature to read from
+ * @returns {map} : { bodies: array, crossSections: array }
  * @throws : Error if attribute not found or data incomplete
+ *
+ * The returned crossSections array contains section data with:
+ * - frame, sectionPoints, bodyData (for GJ computation)
+ * - mechanicalProperties.GJ_eff (current GJ value, may be 0)
  */
 export function readXSectAnalysisData(context is Context, xSectFeature is Query) returns map
 {
@@ -89,11 +80,9 @@ export function readXSectAnalysisData(context is Context, xSectFeature is Query)
 
 /**
  * Update GJ values in the stored attribute for an xSect feature.
- * Takes a Query for the xSect feature entity; use updateXSectGJDataByKey if
- * you already have the feature key string.
  *
  * @param context {Context}
- * @param xSectFeature {Query} : The xSect feature entity to update
+ * @param xSectFeature {Query} : The xSect feature to update
  * @param updatedCrossSections {array} : Cross-sections with new GJ_eff values
  *
  * This function:
@@ -134,8 +123,9 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
 
     // Update GJ values in cross-sections
     var existingSections = featureData.details.crossSections;
-    // Size mismatch is non-fatal — the loop below uses index bounds to skip
-    // sections that don't exist in both arrays. GJ update is best-effort.
+    if (size(existingSections) != size(updatedCrossSections))
+    {
+    }
 
     for (var i = 0; i < size(updatedCrossSections); i += 1)
     {
@@ -148,6 +138,7 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
 
     // Sync GJ values into tableData so the displayed table reflects new values.
     // Table layout: row 0 = header, rows 1+ = data. GJ is column index 3.
+    var csTable = featureData.details.crossSections;  // Re-read for table update
     if (featureData.tableData != undefined &&
         featureData.tableData.crossSections != undefined &&
         size(featureData.tableData.crossSections) > 1)
@@ -177,20 +168,17 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
         });
 
     }
-    catch
+    catch (e)
     {
     }
 }
 
 /**
  * Read cross-section analysis data by feature key string (no query needed).
- * Use this variant (instead of readXSectAnalysisData) when the feature key is
- * already known — avoids the entity query step. The returned map has the same
- * structure as readXSectAnalysisData.
  *
  * @param context {Context}
- * @param featureKey {string} : Attribute key for the xSect feature (from toAttributeId)
- * @returns {map} : { bodies: array, crossSections: array } — same schema as readXSectAnalysisData
+ * @param featureKey {string} : Attribute key for the xSect feature
+ * @returns {map} : { bodies: array, crossSections: array }
  * @throws : Error if attribute not found or data incomplete
  */
 export function readXSectAnalysisDataByKey(context is Context, featureKey is string) returns map
@@ -238,11 +226,9 @@ export function readXSectAnalysisDataByKey(context is Context, featureKey is str
 
 /**
  * Update GJ values in the stored attribute by feature key string (no query needed).
- * Use this variant (instead of updateXSectGJData) when the feature key is already
- * known — avoids the entity query step. Behavior is otherwise identical.
  *
  * @param context {Context}
- * @param featureKey {string} : Attribute key for the xSect feature (from toAttributeId)
+ * @param featureKey {string} : Attribute key for the xSect feature
  * @param updatedCrossSections {array} : Cross-sections with new GJ_eff values
  */
 export function updateXSectGJDataByKey(context is Context, featureKey is string, updatedCrossSections is array)
@@ -267,8 +253,9 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
 
     // Update GJ values in cross-sections
     var existingSections = featureData.details.crossSections;
-    // Size mismatch is non-fatal — the loop below uses index bounds to skip
-    // sections that don't exist in both arrays. GJ update is best-effort.
+    if (size(existingSections) != size(updatedCrossSections))
+    {
+    }
 
     for (var i = 0; i < size(updatedCrossSections); i += 1)
     {
@@ -306,7 +293,7 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
             "attribute" : attributeData
         });
     }
-    catch
+    catch (e)
     {
     }
 }

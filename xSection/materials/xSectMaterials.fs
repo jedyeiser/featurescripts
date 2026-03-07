@@ -48,12 +48,14 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *    [Q12, Q22, Q26],
  *    [Q16, Q26, Q66]]
  *
- * The lookup map is keyed by exact name match. Names must match exactly as they appear
- * in the CSV and in Onshape's material library (case-sensitive, whitespace-sensitive).
+ * The lookup map is keyed by normalized names (exact match) via the companion
+ * function normalizeMaterialName(). Names must match exactly as they appear
+ * in the CSV and in Onshape's material library.
  *
  * Usage in editing logic:
  *   var lookup = buildMaterialLookup(definition.materialCSV.csvData);
- *   var match = lookup[onshapeMaterialName];  // exact match — case and whitespace sensitive
+ *   var key = normalizeMaterialName(onshapeMaterialName);
+ *   var match = lookup[key];  // returns materialData or undefined
  *
  * @param csvData {array} : Array of row arrays from TableData.csvData.
  *                           Each row is an array of parsed values (numbers/strings).
@@ -76,27 +78,40 @@ export function buildMaterialLookup(csvData) returns map
     }
 
     var lookup = {};
+    var validRows = 0;
+    var skippedRows = 0;
 
     for (var row in csvData)
     {
         // Skip rows that don't have enough columns or have empty name
         if (size(row) < 11)
+        {
+            skippedRows += 1;
             continue;
+        }
 
         var name = row[1];
         if (name == undefined || name == "")
+        {
+            skippedRows += 1;
             continue;
+        }
 
         // Skip header row or any row where density isn't numeric
         if (!(row[2] is number))
+        {
+            skippedRows += 1;
             continue;
+        }
 
         // Validate Young's modulus is numeric
         if (!(row[4] is number))
+        {
+            skippedRows += 1;
             continue;
+        }
 
-        // Exact match — names must match CSV character-for-character
-        var key = name;
+        var key = normalizeMaterialName(name);
 
         // Parse numeric values with units
         // csvData from TableData provides numbers directly; we attach units
@@ -106,8 +121,6 @@ export function buildMaterialLookup(csvData) returns map
         var poissonsRatio = row[3];
         var youngsModulus = row[4] * 1e9 * pascal;
 
-        // CSV column order: [Q11, Q22, Q12, Q66, Q16, Q26] at columns 5–10.
-        // All Q values are in GPa in the CSV (multiplied by 1e9 here to convert to Pa).
         var Q11 = row[5] * 1e9 * pascal;
         var Q22 = row[6] * 1e9 * pascal;
         var Q12 = row[7] * 1e9 * pascal;
@@ -128,15 +141,6 @@ export function buildMaterialLookup(csvData) returns map
                 cte_y = row[12];
         }
 
-        // Sanity check: Q11 and Q66 must be positive for a physically valid stiffness matrix.
-        // Zero or negative values indicate corrupted CSV data (e.g. wrong column order, empty cells).
-        if (Q11 <= 0 * pascal || Q66 <= 0 * pascal)
-        {
-            println("WARNING: xSectMaterials: material '" ~ name ~ "' has Q11=" ~
-                    toString(Q11 / (1e9 * pascal)) ~ " GPa, Q66=" ~
-                    toString(Q66 / (1e9 * pascal)) ~ " GPa — check CSV data.");
-        }
-
         var qMatrix = [
             [Q11, Q12, Q16],
             [Q12, Q22, Q26],
@@ -153,10 +157,24 @@ export function buildMaterialLookup(csvData) returns map
             "cte_x" : cte_x,
             "cte_y" : cte_y
         };
+        validRows += 1;
     }
 
     return lookup;
 }
+
+/**
+ * Normalize a material name for lookup matching.
+ * Returns the name unchanged (identity function). Names must match exactly.
+ *
+ * @param name {string} : Raw material name
+ * @returns {string} : Key for lookup (same as input)
+ */
+export function normalizeMaterialName(name is string) returns string
+{
+    return name;
+}
+
 
 // =============================================================================
 // EDITING LOGIC HELPERS
@@ -182,7 +200,7 @@ export function findOldBodyEntry(context is Context, bodyQ is Query, oldDefiniti
                 if (areQueriesEquivalent(context, bodyQ, oldQ))
                     return oldEntry;
             }
-            catch
+            catch (e)
             {
             }
         }

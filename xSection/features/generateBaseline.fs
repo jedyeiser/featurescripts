@@ -679,7 +679,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 }
             }
         }
-        catch
+        catch (e)
         {
             throw regenError("Baseline spline fitting failed — see console output.");
         }
