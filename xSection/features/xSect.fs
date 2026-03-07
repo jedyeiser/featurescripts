@@ -144,9 +144,9 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
             materialLookup = buildMaterialLookup(csvData);
         }
     }
-    catch (e)
+    catch
     {
-        println("xSect elFunc: CSV parse failed — " ~ toString(e));
+        // Proceed with empty lookup — no CSV loaded or field not yet set
     }
 
     // -----------------------------------------------------------------
@@ -176,7 +176,7 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
                     "propertyType" : PropertyType.NAME
             });
         }
-        catch (e)
+        catch
         {
         }
 
@@ -193,9 +193,9 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
                 materialName = onshapeMaterial['name'];
             }
         }
-        catch (e)
+        catch
         {
-            println("xSect elFunc: getProperty MATERIAL failed — " ~ toString(e));
+            // No material assigned — materialName stays "Not assigned"
         }
 
         // --- Match against CSV ---

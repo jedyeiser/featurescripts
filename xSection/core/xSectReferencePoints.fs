@@ -63,7 +63,7 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
             return pos[0];
         }
     }
-    catch (e)
+    catch
     {
         // Entity type not matched — try next
     }
@@ -78,7 +78,7 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
             return csys.origin[0];
         }
     }
-    catch (e)
+    catch
     {
         // Entity type not matched — try next
     }

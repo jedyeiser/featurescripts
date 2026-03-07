@@ -163,7 +163,7 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
         });
 
     }
-    catch (e)
+    catch
     {
     }
 }

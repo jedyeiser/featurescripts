@@ -320,22 +320,6 @@ function findInflectionsOnCurve(context is Context, edge is Query) returns array
     return inflections;
 }
 
-/**
- * Approximate arc length between two sample indices by summing chord lengths.
- */
-function approximateChainArcLength(samples is array, idxA is number, idxB is number) returns ValueWithUnits
-{
-    var length = 0 * meter;
-    var iStart = min(idxA, idxB);
-    var iEnd   = max(idxA, idxB);
-
-    for (var i = iStart; i < iEnd; i += 1)
-    {
-        length += norm(samples[i + 1].pt - samples[i].pt);
-    }
-
-    return length;
-}
 
 /**
  * Format a 3D position vector as a millimeter string (2 decimal places).

@@ -394,7 +394,7 @@ export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is Val
                 var EI = (pt[2] / millimeter) * newton * meter * meter;
                 points = append(points, { "x" : x, "EI" : EI });
             }
-            catch (e)
+            catch
             {
                 // Skip failed evaluations
             }

@@ -112,7 +112,7 @@ export function processCrossSections(context is Context, id is Id, definition is
             materialLookup = buildMaterialLookup(csvData);
         }
     }
-    catch (e)
+    catch
     {
     }
 
@@ -162,7 +162,7 @@ export function processCrossSections(context is Context, id is Id, definition is
         {
             bodyVolume = evVolume(context, { "entities" : bodyDef.bodyQuery });
         }
-        catch (e)
+        catch
         {
         }
         bodyEntry.volume = bodyVolume;
@@ -336,13 +336,13 @@ export function processCrossSections(context is Context, id is Id, definition is
 
         // Cleanup
         try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
-        catch (e)
+        catch
         {
         }
         if (size(wireQueries) > 0)
         {
             try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
-            catch (e)
+            catch
             {
             }
         }
@@ -424,7 +424,7 @@ export function resolveOverrideMaterialData(bodyDef is map, bodyEntry is map) re
             };
         }
     }
-    catch (e)
+    catch
     {
     }
     return updated;

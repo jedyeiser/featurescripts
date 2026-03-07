@@ -88,7 +88,7 @@ function createGenericCurve(context is Context, id is Id, points is array,
             });
         }
     }
-    catch (e)
+    catch
     {
     }
 }

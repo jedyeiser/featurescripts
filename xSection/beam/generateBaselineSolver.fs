@@ -715,7 +715,6 @@ export function solveBaseline(context is Context,
     var ptsLo  = innerSolve(context, eiData, hasEI, xFCP, xACP,
                              xFRCP, xARCP, xLoad,
                              fcpHeight, acpHeight, frcpl, arcpl, H_lo);
-    var camLo  = measureCamberHeight(ptsLo, xFRCP, xARCP);
 
     var ptsHi  = innerSolve(context, eiData, hasEI, xFCP, xACP,
                              xFRCP, xARCP, xLoad,

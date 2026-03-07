@@ -48,7 +48,7 @@ export function createCompositeWires(context is Context, id is Id, data is map)
 
                 createdBodies = append(createdBodies, qCreatedBy(id + ("curve" ~ i ~ "_" ~ s), EntityType.BODY));
             }
-            catch (e)
+            catch
             {
             }
         }
@@ -68,7 +68,7 @@ export function createCompositeWires(context is Context, id is Id, data is map)
                         "value" : "XSect " ~ i ~ " Composite"
                 });
             }
-            catch (e)
+            catch
             {
             }
         }

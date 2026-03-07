@@ -101,7 +101,7 @@ export function sampleEdgesForEI(context is Context, edgeQuery is Query, numSamp
                 var EI = (pt[2] / millimeter) * newton * meter * meter;
                 samples = append(samples, { "x" : pt[0], "EI" : EI });
             }
-            catch (e)
+            catch
             {
                 // Skip failed evaluations
             }
@@ -141,7 +141,7 @@ export function resolveQueryX(context is Context, q is Query) returns ValueWithU
             return evVertexPoint(context, { "vertex" : verts[0] })[0];
         }
     }
-    catch (e) {}
+    catch {}
 
     // Try mate connector
     try
@@ -152,7 +152,7 @@ export function resolveQueryX(context is Context, q is Query) returns ValueWithU
             return evMateConnector(context, { "mateConnector" : connectors[0] }).origin[0];
         }
     }
-    catch (e) {}
+    catch {}
 
     // Try planar face
     try
@@ -163,7 +163,7 @@ export function resolveQueryX(context is Context, q is Query) returns ValueWithU
             return evPlane(context, { "face" : faces[0] }).origin[0];
         }
     }
-    catch (e) {}
+    catch {}
 
     throw regenError("Could not resolve X position from the selected query. Use a vertex, mate connector, or planar face.");
 }

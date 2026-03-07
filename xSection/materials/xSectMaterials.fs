@@ -76,38 +76,24 @@ export function buildMaterialLookup(csvData) returns map
     }
 
     var lookup = {};
-    var validRows = 0;
-    var skippedRows = 0;
 
     for (var row in csvData)
     {
         // Skip rows that don't have enough columns or have empty name
         if (size(row) < 11)
-        {
-            skippedRows += 1;
             continue;
-        }
 
         var name = row[1];
         if (name == undefined || name == "")
-        {
-            skippedRows += 1;
             continue;
-        }
 
         // Skip header row or any row where density isn't numeric
         if (!(row[2] is number))
-        {
-            skippedRows += 1;
             continue;
-        }
 
         // Validate Young's modulus is numeric
         if (!(row[4] is number))
-        {
-            skippedRows += 1;
             continue;
-        }
 
         // Exact match — names must match CSV character-for-character
         var key = name;
@@ -167,7 +153,6 @@ export function buildMaterialLookup(csvData) returns map
             "cte_x" : cte_x,
             "cte_y" : cte_y
         };
-        validRows += 1;
     }
 
     return lookup;
@@ -197,7 +182,7 @@ export function findOldBodyEntry(context is Context, bodyQ is Query, oldDefiniti
                 if (areQueriesEquivalent(context, bodyQ, oldQ))
                     return oldEntry;
             }
-            catch (e)
+            catch
             {
             }
         }

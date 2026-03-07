@@ -77,7 +77,7 @@ export function computeAndStoreGJByFeatureKey(context is Context, id is Id,
             var GJ_eff = computeTorsionalStiffness(section, bodies);
             section.GJ_eff = GJ_eff;
         }
-        catch (e)
+        catch
         {
             // Keep existing GJ value on failure
         }
@@ -135,19 +135,14 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
     // =========================================================================
 
     var updatedSections = [];
-    var successCount = 0;
-    var failCount = 0;
-    var skipCount = 0;
 
     for (var i = 0; i < numSections; i += 1)
     {
         var section = crossSections[i];
-        var stationNum = section.stationNumber;
 
         // Validate section has required data
         if (!validateSectionData(section))
         {
-            skipCount += 1;
             updatedSections = append(updatedSections, section);
             continue;
         }
@@ -157,14 +152,12 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
         try
         {
             GJ_eff = computeTorsionalStiffness(section, bodies);
-            successCount += 1;
 
             // Update section with new GJ value (only on success)
             section.GJ_eff = GJ_eff;
         }
-        catch (e)
+        catch
         {
-            failCount += 1;
             // Keep existing GJ value (don't overwrite with 0)
         }
 
@@ -304,7 +297,7 @@ function createGJCurve(context is Context, id is Id, sections is array, namePref
         {
         }
     }
-    catch (e)
+    catch
     {
     }
 }

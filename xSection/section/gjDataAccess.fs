@@ -148,7 +148,6 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
 
     // Sync GJ values into tableData so the displayed table reflects new values.
     // Table layout: row 0 = header, rows 1+ = data. GJ is column index 3.
-    var csTable = featureData.details.crossSections;  // Re-read for table update
     if (featureData.tableData != undefined &&
         featureData.tableData.crossSections != undefined &&
         size(featureData.tableData.crossSections) > 1)
@@ -178,7 +177,7 @@ export function updateXSectGJData(context is Context, xSectFeature is Query, upd
         });
 
     }
-    catch (e)
+    catch
     {
     }
 }
@@ -307,7 +306,7 @@ export function updateXSectGJDataByKey(context is Context, featureKey is string,
             "attribute" : attributeData
         });
     }
-    catch (e)
+    catch
     {
     }
 }

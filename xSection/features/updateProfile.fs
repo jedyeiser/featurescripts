@@ -830,16 +830,8 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                         });
                     }
                 }
-                catch (e)
+                catch
                 {
-
-                    for (var i = 0; i < size(outputPoints); i += 1)
-                    {
-                        var pt = outputPoints[i];
-                        var x_mm = toString(pt[0] / millimeter);
-                        var z_mm = toString(pt[2] / millimeter);
-                    }
-
                     for (var i = 0; i < size(outputPoints) - 1; i += 1)
                     {
                         addDebugLine(context, outputPoints[i], outputPoints[i + 1], DebugColor.RED);
@@ -869,17 +861,8 @@ export const updateProfile = defineFeature(function(context is Context, id is Id
                         });
                     }
                 }
-                catch (e)
+                catch
                 {
-
-                    // Print each point (X in mm, Z in mm — Y is always 0)
-                    for (var i = 0; i < size(outputPoints); i += 1)
-                    {
-                        var pt = outputPoints[i];
-                        var x_mm = toString(pt[0] / millimeter);
-                        var z_mm = toString(pt[2] / millimeter);
-                    }
-
                     // Draw debug polyline so we can see the point sequence in-canvas
                     for (var i = 0; i < size(outputPoints) - 1; i += 1)
                     {

@@ -633,19 +633,6 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
             if (definition.addThirdSupport)
             {
             }
-            if (definition.addThirdSupport)
-            {
-            }
-            if (definition.secondApplied)
-            {
-            }
-            var netForce = R1 + R2 + R3 - F1 - F2;
-            for (var dl in distLoads)
-            {
-            }
-            for (var pl in pointLoads)
-            {
-            }
         }
 
         // --- 8. Build distributed net load q_net at each eval point ---
@@ -711,7 +698,6 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
             throw regenError("Support positions map to the same eval grid node. Increase numEvalPoints or move supports.");
         }
         var M_raw1  = M_arr[i1];
-        var M_raw2  = M_arr[i2];
         var M_slope = (M_arr[i2] - M_arr[i1]) / xSpan12;
         for (var i = 0; i < N; i += 1)
         {

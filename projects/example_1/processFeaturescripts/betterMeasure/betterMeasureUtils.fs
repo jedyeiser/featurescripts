@@ -27,6 +27,9 @@ export enum BMSheetRef { COA, NEAREST_EDGE, NEAREST_VERTEX }
  */
 export enum BMMCAxis { X_AXIS, Y_AXIS, Z_AXIS }
 
+/** Coordinate frame for measurement decomposition. */
+export enum BMCoordSystem { WORLD, MATE_CONNECTOR }
+
 // ---------------------------------------------------------------------------
 // getEntityBodyType
 // ---------------------------------------------------------------------------
@@ -247,7 +250,7 @@ export function extractEntityDirection(context is Context, entityQuery is Query,
         if (otherPoint != undefined)
         {
             var dist = evDistance(context, { "side0" : otherPoint, "side1" : entityQuery });
-            param = dist.sides[1].parameter[0];
+            param = dist.sides[1].parameter; // number for edges (arc-length 0..1)
         }
         var line = evEdgeTangentLine(context, { "edge" : entityQuery, "parameter" : param });
         return line.direction;
@@ -364,8 +367,8 @@ export function measureAlongEdge(context is Context, edgeQuery is Query,
     var dist1 = evDistance(context, { "side0" : p1, "side1" : edgeQuery });
     var dist2 = evDistance(context, { "side0" : p2, "side1" : edgeQuery });
 
-    var t1 = dist1.sides[1].parameter[0];
-    var t2 = dist2.sides[1].parameter[0];
+    var t1 = dist1.sides[1].parameter; // number (arc-length 0..1) for edges
+    var t2 = dist2.sides[1].parameter;
 
     if (t1 > t2)
     {
@@ -374,17 +377,15 @@ export function measureAlongEdge(context is Context, edgeQuery is Query,
         t2 = tmp;
     }
 
-    // Sample chord lengths over parameter span
+    // Batch evaluate — one kernel call instead of 20
     var nSteps = 20;
-    var totalLength = 0 * meter;
-    var prevPt = evEdgeTangentLine(context, { "edge" : edgeQuery, "parameter" : t1 }).origin;
+    var params = range(t1, t2, nSteps + 1);
+    var lines = evEdgeTangentLines(context, { "edge" : edgeQuery, "parameters" : params });
 
-    for (var i = 1; i <= nSteps; i += 1)
+    var totalLength = 0 * meter;
+    for (var i = 1; i < size(lines); i += 1)
     {
-        var t = t1 + (t2 - t1) * i / nSteps;
-        var pt = evEdgeTangentLine(context, { "edge" : edgeQuery, "parameter" : t }).origin;
-        totalLength = totalLength + norm(pt - prevPt);
-        prevPt = pt;
+        totalLength = totalLength + norm(lines[i].origin - lines[i - 1].origin);
     }
 
     return totalLength;
@@ -417,24 +418,21 @@ export function measureAlongFace(context is Context, id is Id, faceQuery is Quer
     var uv1 = dist1.sides[1].parameter;
     var uv2 = dist2.sides[1].parameter;
 
+    // Batch evaluate — one kernel call instead of 20
     var nSteps = 20;
-    var pts = [];
-    var totalLength = 0 * meter;
-    var prevPt = evFaceTangentPlane(context, { "face" : face, "parameter" : uv1 }).origin;
-    pts = append(pts, prevPt);
+    var tValues = range(0, 1, nSteps + 1);
+    var uvParams = mapArray(tValues, function(t) { return uv1 + (uv2 - uv1) * t; });
+    var planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : uvParams });
 
-    for (var i = 1; i <= nSteps; i += 1)
+    var totalLength = 0 * meter;
+    for (var i = 1; i < size(planes); i += 1)
     {
-        var uv = uv1 + (uv2 - uv1) * i / nSteps;
-        var tp = evFaceTangentPlane(context, { "face" : face, "parameter" : uv });
-        var pt = tp.origin;
-        totalLength = totalLength + norm(pt - prevPt);
-        prevPt = pt;
-        pts = append(pts, pt);
+        totalLength = totalLength + norm(planes[i].origin - planes[i - 1].origin);
     }
 
     if (keepWire)
     {
+        var pts = mapArray(planes, function(p) { return p.origin; });
         try silent(opFitSpline(context, id + "measureWire", {
             "points" : pts
         }));

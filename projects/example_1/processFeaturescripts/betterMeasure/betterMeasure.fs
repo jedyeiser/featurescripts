@@ -8,8 +8,6 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 
 export enum BMMeasurementType { DISTANCE, VECTOR, ANGLE, LENGTH }
 
-export enum BMCoordSystem { WORLD, MATE_CONNECTOR }
-
 // ---------------------------------------------------------------------------
 // Editing Logic
 // ---------------------------------------------------------------------------
@@ -139,7 +137,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         }
 
         // --- Measurements group ---
-        annotation { "Name" : "Measurements" }
+        annotation { "Group Name" : "Measurements" }
         {
             if (definition.measurementType == BMMeasurementType.DISTANCE ||
                 definition.measurementType == BMMeasurementType.VECTOR)
@@ -184,7 +182,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         // --- Axis Deltas group (DISTANCE only) ---
         if (definition.measurementType == BMMeasurementType.DISTANCE)
         {
-            annotation { "Name" : "Axis Deltas", "UIHint" : UIHint.COLLAPSED }
+            annotation { "Group Name" : "Axis Deltas", "Collapsed By Default" : true }
             {
                 annotation { "Name" : "Delta X", "UIHint" : UIHint.READ_ONLY }
                 isLength(definition.displayDeltaX, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
@@ -206,7 +204,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         // --- Delta Vector group (VECTOR only) ---
         if (definition.measurementType == BMMeasurementType.VECTOR)
         {
-            annotation { "Name" : "Delta Vector", "UIHint" : UIHint.COLLAPSED }
+            annotation { "Group Name" : "Delta Vector", "Collapsed By Default" : true }
             {
                 annotation { "Name" : "Vec X", "UIHint" : UIHint.READ_ONLY }
                 isLength(definition.displayVecX, ZERO_DEFAULT_LENGTH_BOUNDS);
@@ -225,7 +223,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
             definition.entity2Type == BMEntityType.MATE_CONNECTOR &&
             definition.showEuler)
         {
-            annotation { "Name" : "Euler Angles (ZYX)", "UIHint" : UIHint.COLLAPSED }
+            annotation { "Group Name" : "Euler Angles (ZYX)", "Collapsed By Default" : true }
             {
                 annotation { "Name" : "Euler X", "UIHint" : UIHint.READ_ONLY }
                 isAngle(definition.displayEulerX, ANGLE_360_ZERO_DEFAULT_BOUNDS);
@@ -239,7 +237,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         }
 
         // --- Create Variable group ---
-        annotation { "Name" : "Create Variable", "UIHint" : UIHint.COLLAPSED }
+        annotation { "Group Name" : "Create Variable", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Save result" }
             definition.saveMainVar is boolean;
@@ -299,7 +297,7 @@ export const betterMeasure = defineFeature(function(context is Context, id is Id
         }
 
         // --- Debug group ---
-        annotation { "Name" : "Debug", "UIHint" : UIHint.COLLAPSED }
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Show debug" }
             definition.showDebug is boolean;
@@ -477,9 +475,11 @@ function computeDistanceMeasurements(context is Context, id is Id, definition is
     var delta = p2 - p1;
     var dist = norm(delta);
 
-    var dX = abs(dot(delta, cSys.xAxis));
-    var dY = abs(dot(delta, yAxis(cSys)));
-    var dZ = abs(dot(delta, cSys.zAxis));
+    // fromWorld decomposes the delta into cSys frame components cleanly
+    var deltaInFrame = fromWorld(cSys, p2) - fromWorld(cSys, p1);
+    var dX = abs(deltaInFrame[0]);
+    var dY = abs(deltaInFrame[1]);
+    var dZ = abs(deltaInFrame[2]);
 
     setFeatureComputedParameter(context, id, { "name" : "displayDistance", "value" : dist });
     setFeatureComputedParameter(context, id, { "name" : "displayDeltaX",   "value" : dX });
