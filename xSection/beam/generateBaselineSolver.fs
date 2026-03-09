@@ -304,8 +304,8 @@ export function computeTipZ(xAnchor is ValueWithUnits, zAnchor is ValueWithUnits
     }
 
     // T = [(k + t) + sqrt(t * (t - 2k))] / 2
-    // Discriminant = t*(t-2k) ≥ t² > 0 since k ≤ 0
-    var T = ((k + t) + sqrt(t * (t - 2 * k))) / 2;
+    // Discriminant ≥ 0 when k ≤ 0; clamp to 0 for degenerate slopes (k > 0)
+    var T = ((k + t) + sqrt(max(0, t * (t - 2 * k)))) / 2;
     return zAnchor + T * meter;
 }
 
