@@ -12,17 +12,15 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
  * Imported by generateBaseline.fs.
  *
  * Call hierarchy (feature body entry point → leaves):
- *   runMCHBisection
- *     └─ solveBaseline
- *          └─ innerSolve
- *               ├─ solveCamberBeam   (uses interpolateEI from xSectBeamAnalysis)
- *               ├─ solveCamberCubic
- *               ├─ computeTipZ
- *               ├─ solveRockerQuadratic
- *               ├─ interpZ
- *               ├─ slopeAt
- *               ├─ measureCamberHeight
- *               └─ rotateTranslate
+ *   buildBaseline
+ *     ├─ solveCamberBeam   (uses interpolateEI from xSectBeamAnalysis)
+ *     │    OR solveCamberCubic
+ *     ├─ computeTipZ
+ *     ├─ solveRockerQuadratic
+ *     ├─ interpZ
+ *     ├─ slopeAt
+ *     ├─ measureCamberHeight
+ *     └─ rotateTranslate
  *
  * Dependencies:
  *   - onshape/std/common.fs  — standard FeatureScript library
@@ -59,7 +57,7 @@ export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits,
                           xARCP is ValueWithUnits, xLoad is ValueWithUnits,
                           H) returns array
 {
-    var N   = 200;
+    var N   = 100;
     var L   = xARCP - xFRCP;
     var dx  = L / N;
     var dx_m = dx / meter;   // plain number
@@ -177,7 +175,7 @@ export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits,
 export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnits,
                            xLoad is ValueWithUnits, H) returns array
 {
-    var N = 200;
+    var N = 100;
 
     // Work in local coords (u = x - xFRCP, plain meters)
     var L_m  = (xARCP - xFRCP) / meter;
@@ -555,18 +553,22 @@ export function rotateTranslate(pts is array, xFCP is ValueWithUnits,
 
 
 // =============================================================================
-// INNER SOLVE  (one iteration for a given H)
+// MAIN ENTRY POINT
 // =============================================================================
 
 /**
- * Assemble camber pocket + rocker sections for a given inner height H (plain, meters).
- * Returns the assembled, rotated, and translated [{x,z}] point array.
+ * Solve the full baseline geometry:
+ *   1. Solve camber pocket (beam or cubic) with initial H = MCH_m.
+ *   2. Attach rocker quadratics at each end.
+ *   3. Rotate/translate so tip minima land at z = 0.
+ *   4. Measure actual camber; scale H proportionally and repeat (≤ 10 iters).
  *
- * Assembly order (by increasing x):  xFCP … xFRCP … xARCP … xACP
+ * The beam/cubic relationship is linear in H, so this converges in 1-2 iterations.
+ * 10 iterations is a generous upper bound.
  *
  * @param context {Context}
- * @param eiData {array} : Sorted [{ "x", "EI" }]; may be empty if hasEI is false
- * @param hasEI {boolean} : Whether to use beam-bending solver (true) or cubic (false)
+ * @param eiData {array} : Sorted [{ "x", "EI" }]; empty if hasEI is false
+ * @param hasEI {boolean}
  * @param xFCP {ValueWithUnits}
  * @param xACP {ValueWithUnits}
  * @param xFRCP {ValueWithUnits}
@@ -576,334 +578,85 @@ export function rotateTranslate(pts is array, xFCP is ValueWithUnits,
  * @param acpHeight {ValueWithUnits} : Target ACP tip snow height
  * @param frcpl {ValueWithUnits} : Forebody rocker length
  * @param arcpl {ValueWithUnits} : Aftbody rocker length
- * @param H {number} : Target camber height (plain meters)
- * @returns {array} : [{x : ValueWithUnits, z : ValueWithUnits}] sorted by x
+ * @param MCH_m {number} : Target camber height in plain meters
+ * @returns {array} : [{x : ValueWithUnits, z : ValueWithUnits}]
  */
-export function innerSolve(context is Context,
-                    eiData is array, hasEI is boolean,
-                    xFCP is ValueWithUnits, xACP is ValueWithUnits,
-                    xFRCP is ValueWithUnits, xARCP is ValueWithUnits,
-                    xLoad is ValueWithUnits,
-                    fcpHeight is ValueWithUnits, acpHeight is ValueWithUnits,
-                    frcpl is ValueWithUnits, arcpl is ValueWithUnits,
-                    H) returns array
-{
-    var hasForeRocker = frcpl > 0 * meter;
-    var hasAftRocker  = arcpl > 0 * meter;
-
-    // --- Camber pocket (xFRCP → xARCP) ---
-    var camberPts = [];
-    if (hasEI && size(eiData) >= 2)
-    {
-        var eiMin = eiData[0].EI / (newton * meter * meter);
-        var eiMax = eiMin;
-        for (var eid in eiData)
-        {
-            var v = eid.EI / (newton * meter * meter);
-            if (v < eiMin) { eiMin = v; }
-            if (v > eiMax) { eiMax = v; }
-        }
-        camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H);
-    }
-    else
-    {
-        camberPts = solveCamberCubic(xFRCP, xARCP, xLoad, H);
-    }
-
-    var allPts = camberPts;
-
-    // --- Forebody rocker (xFCP → xFRCP) ---
-    if (hasForeRocker)
-    {
-        var zFRCP     = interpZ(camberPts, xFRCP);
-        var slopeFore = slopeAt(camberPts, xFRCP);
-        var zFCPtip   = computeTipZ(xFRCP, zFRCP, slopeFore, xFCP, fcpHeight);
-        var foreRocker = solveRockerQuadratic(xFRCP, zFRCP, slopeFore, xFCP, zFCPtip, 51);
-
-        // Exclude the xFRCP point (index 0) to avoid duplicate with camberPts[0];
-        // include the xFCP tip point (index 50).
-        var foreOnly = [];
-        for (var i = 1; i < size(foreRocker); i += 1)
-        {
-            foreOnly = append(foreOnly, foreRocker[i]);
-        }
-        allPts = concatenateArrays([foreOnly, allPts]);
-    }
-
-    // --- Aftbody rocker (xARCP → xACP) ---
-    if (hasAftRocker)
-    {
-        var zARCP    = interpZ(camberPts, xARCP);
-        var slopeAft = slopeAt(camberPts, xARCP);
-        var zACPtip  = computeTipZ(xARCP, zARCP, slopeAft, xACP, acpHeight);
-        var aftRocker = solveRockerQuadratic(xARCP, zARCP, slopeAft, xACP, zACPtip, 51);
-
-        // Exclude xARCP (index 0); include xACP (index 50).
-        var aftOnly = [];
-        for (var i = 1; i < size(aftRocker); i += 1)
-        {
-            aftOnly = append(aftOnly, aftRocker[i]);
-        }
-        allPts = concatenateArrays([allPts, aftOnly]);
-    }
-
-    // Sort by X (defensive; arrays should already be in order)
-    for (var i = 1; i < size(allPts); i += 1)
-    {
-        var key = allPts[i];
-        var j = i - 1;
-        while (j >= 0 && allPts[j].x > key.x)
-        {
-            allPts[j + 1] = allPts[j];
-            j -= 1;
-        }
-        allPts[j + 1] = key;
-    }
-
-    // Rotate + translate so contact points are at Z = 0
-    allPts = rotateTranslate(allPts, xFRCP, xARCP);
-
-    return allPts;
-}
-
-
-// =============================================================================
-// OUTER BISECTION  (converge actualCamber → MCH_target)
-// =============================================================================
-
-/**
- * Bisect on inner height H until the measured post-rotation camber height
- * matches MCH_target (plain meters) within BISECT_TOL.
- *
- * @param context {Context}
- * @param eiData {array}
- * @param hasEI {boolean}
- * @param xFCP {ValueWithUnits}
- * @param xACP {ValueWithUnits}
- * @param xFRCP {ValueWithUnits}
- * @param xARCP {ValueWithUnits}
- * @param xLoad {ValueWithUnits}
- * @param fcpHeight {ValueWithUnits}
- * @param acpHeight {ValueWithUnits}
- * @param frcpl {ValueWithUnits}
- * @param arcpl {ValueWithUnits}
- * @param MCH_target {number} : Target camber in plain meters
- * @returns {array} : [{x, z}] converged profile
- */
-export function solveBaseline(context is Context,
+export function buildBaseline(context is Context,
                         eiData is array, hasEI is boolean,
                         xFCP is ValueWithUnits, xACP is ValueWithUnits,
                         xFRCP is ValueWithUnits, xARCP is ValueWithUnits,
                         xLoad is ValueWithUnits,
                         fcpHeight is ValueWithUnits, acpHeight is ValueWithUnits,
                         frcpl is ValueWithUnits, arcpl is ValueWithUnits,
-                        MCH_target) returns array
+                        MCH_m) returns array
 {
-    var BISECT_TOL = 0.00001;  // 0.01 mm in meters
-    var MAX_ITER   = 20;
+    var TOL           = 1e-5;   // 0.01 mm
+    var hasForeRocker = frcpl > 0 * meter;
+    var hasAftRocker  = arcpl > 0 * meter;
+    var H_guess       = MCH_m;
+    var finalPts      = [];
 
-    // Zero-camber special case: no iteration needed
-    if (abs(MCH_target) < BISECT_TOL)
+    for (var iter = 0; iter < 10; iter += 1)
     {
-        return innerSolve(context, eiData, hasEI, xFCP, xACP,
-                          xFRCP, xARCP, xLoad,
-                          fcpHeight, acpHeight, frcpl, arcpl, 0.0);
-    }
-
-    // Bracket: start with [0.5*target, 3*target]
-    var H_lo = 0.5 * MCH_target;
-    var H_hi = 3.0 * MCH_target;
-
-    // Evaluate bracket bounds
-    var ptsLo  = innerSolve(context, eiData, hasEI, xFCP, xACP,
-                             xFRCP, xARCP, xLoad,
-                             fcpHeight, acpHeight, frcpl, arcpl, H_lo);
-    var camLo  = measureCamberHeight(ptsLo, xFRCP, xARCP);
-
-    var ptsHi  = innerSolve(context, eiData, hasEI, xFCP, xACP,
-                             xFRCP, xARCP, xLoad,
-                             fcpHeight, acpHeight, frcpl, arcpl, H_hi);
-    var camHi  = measureCamberHeight(ptsHi, xFRCP, xARCP);
-
-    // Expand upper bound if camHi is still below target
-    var expandIter = 0;
-    while (camHi < MCH_target && expandIter < 10)
-    {
-        H_hi  = H_hi * 2;
-        ptsHi = innerSolve(context, eiData, hasEI, xFCP, xACP,
-                            xFRCP, xARCP, xLoad,
-                            fcpHeight, acpHeight, frcpl, arcpl, H_hi);
-        camHi = measureCamberHeight(ptsHi, xFRCP, xARCP);
-        expandIter += 1;
-    }
-
-    // Bisect
-    var H_mid    = (H_lo + H_hi) / 2;
-    var finalPts = innerSolve(context, eiData, hasEI, xFCP, xACP,
-                               xFRCP, xARCP, xLoad,
-                               fcpHeight, acpHeight, frcpl, arcpl, H_mid);
-
-    for (var iter = 0; iter < MAX_ITER; iter += 1)
-    {
-        H_mid    = (H_lo + H_hi) / 2;
-        finalPts = innerSolve(context, eiData, hasEI, xFCP, xACP,
-                               xFRCP, xARCP, xLoad,
-                               fcpHeight, acpHeight, frcpl, arcpl, H_mid);
-        var camMid = measureCamberHeight(finalPts, xFRCP, xARCP);
-
-        if (abs(camMid - MCH_target) < BISECT_TOL)
+        // --- Step 1: Solve camber pocket ---
+        var camberPts = [];
+        if (hasEI && size(eiData) >= 2)
         {
-            break;
-        }
-        if (camMid < MCH_target)
-        {
-            H_lo = H_mid;
+            camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H_guess);
         }
         else
         {
-            H_hi = H_mid;
+            camberPts = solveCamberCubic(xFRCP, xARCP, xLoad, H_guess);
         }
+
+        // --- Step 2: Attach rockers ---
+        var zFRCP_v   = interpZ(camberPts, xFRCP);
+        var zARCP_v   = interpZ(camberPts, xARCP);
+        var slopeFore = slopeAt(camberPts, xFRCP);
+        var slopeAft  = slopeAt(camberPts, xARCP);
+
+        var allPts = camberPts;
+
+        if (hasForeRocker)
+        {
+            var zFCPtip    = computeTipZ(xFRCP, zFRCP_v, slopeFore, xFCP, fcpHeight);
+            var foreRocker = solveRockerQuadratic(xFRCP, zFRCP_v, slopeFore, xFCP, zFCPtip, 51);
+            var foreOnly   = [];
+            for (var i = 1; i < size(foreRocker); i += 1)
+            {
+                foreOnly = append(foreOnly, foreRocker[i]);
+            }
+            allPts = concatenateArrays([foreOnly, allPts]);
+        }
+
+        if (hasAftRocker)
+        {
+            var zACPtip   = computeTipZ(xARCP, zARCP_v, slopeAft, xACP, acpHeight);
+            var aftRocker = solveRockerQuadratic(xARCP, zARCP_v, slopeAft, xACP, zACPtip, 51);
+            var aftOnly   = [];
+            for (var i = 1; i < size(aftRocker); i += 1)
+            {
+                aftOnly = append(aftOnly, aftRocker[i]);
+            }
+            allPts = concatenateArrays([allPts, aftOnly]);
+        }
+
+        // --- Step 3: Rotate/translate so tip minima are at z = 0 ---
+        allPts   = rotateTranslate(allPts, xFCP, xACP);
+        finalPts = allPts;
+
+        // --- Step 4: Measure and scale H for next iteration ---
+        if (MCH_m < TOL)
+        {
+            break;
+        }
+        var measured = measureCamberHeight(allPts, xFRCP, xARCP);
+        if (measured < 1e-9 || abs(measured - MCH_m) < TOL)
+        {
+            break;
+        }
+        H_guess = H_guess * (MCH_m / measured);
     }
 
     return finalPts;
-}
-
-
-// =============================================================================
-// MCH BISECTION WRAPPER  (outer camber-height bisection + global shift)
-// =============================================================================
-
-/**
- * Converges the outer MCH bisection so that the post-shift camber height
- * (max Z in [xFRCP, xARCP] above Z(xFRCP), after the global Z-shift) matches
- * MCH_m (plain meters) within 0.01 mm.
- *
- * fcpH / acpH are the VERTICAL tip-height targets (ValueWithUnits).
- * The global shift is applied inside this function.
- *
- * @param context {Context}
- * @param eiData {array}
- * @param hasEI {boolean}
- * @param xFCP {ValueWithUnits}
- * @param xACP {ValueWithUnits}
- * @param xFRCP {ValueWithUnits}
- * @param xARCP {ValueWithUnits}
- * @param xLoad {ValueWithUnits}
- * @param fcpH {ValueWithUnits} : Vertical FCP tip-height target
- * @param acpH {ValueWithUnits} : Vertical ACP tip-height target
- * @param frcpl {ValueWithUnits}
- * @param arcpl {ValueWithUnits}
- * @param hasForeRocker {boolean}
- * @param hasAftRocker {boolean}
- * @param MCH_m {number} : Target camber height in plain meters
- * @returns {map} : { "finalPts" : array of {x,z}, "zMinShift" : number (plain meters, ≤ 0) }
- */
-export function runMCHBisection(context is Context,
-                          eiData is array, hasEI is boolean,
-                          xFCP is ValueWithUnits, xACP is ValueWithUnits,
-                          xFRCP is ValueWithUnits, xARCP is ValueWithUnits,
-                          xLoad is ValueWithUnits,
-                          fcpH is ValueWithUnits, acpH is ValueWithUnits,
-                          frcpl is ValueWithUnits, arcpl is ValueWithUnits,
-                          hasForeRocker is boolean, hasAftRocker is boolean,
-                          MCH_m) returns map
-{
-    var OUTER_TOL = 0.00001;   // 0.01 mm in plain meters
-    var finalPts  = [];
-    var zMinShift = 0.0;
-
-    if (MCH_m < 1e-9)
-    {
-        finalPts  = solveBaseline(context, eiData, hasEI,
-                                  xFCP, xACP, xFRCP, xARCP, xLoad,
-                                  fcpH, acpH, frcpl, arcpl, 0.0);
-        zMinShift = 0.0;
-    }
-    else
-    {
-        // ---- Hi bracket: MCH_inner = MCH_m ----
-        var MCH_hi = MCH_m;
-        finalPts = solveBaseline(context, eiData, hasEI,
-                                 xFCP, xACP, xFRCP, xARCP, xLoad,
-                                 fcpH, acpH, frcpl, arcpl, MCH_hi);
-        zMinShift = 0.0;
-        if (hasForeRocker)
-        {
-            var vFH = interpZ(finalPts, xFCP) / meter - fcpH / meter;
-            if (vFH < zMinShift) { zMinShift = vFH; }
-        }
-        if (hasAftRocker)
-        {
-            var vAH = interpZ(finalPts, xACP) / meter - acpH / meter;
-            if (vAH < zMinShift) { zMinShift = vAH; }
-        }
-        var ac_hi = MCH_hi - zMinShift;
-
-        if (abs(ac_hi - MCH_m) >= OUTER_TOL)
-        {
-            // ---- Lo bracket: MCH_inner = 0 ----
-            var MCH_lo = 0.0;
-            finalPts = solveBaseline(context, eiData, hasEI,
-                                     xFCP, xACP, xFRCP, xARCP, xLoad,
-                                     fcpH, acpH, frcpl, arcpl, MCH_lo);
-            zMinShift = 0.0;
-            if (hasForeRocker)
-            {
-                var vFL = interpZ(finalPts, xFCP) / meter - fcpH / meter;
-                if (vFL < zMinShift) { zMinShift = vFL; }
-            }
-            if (hasAftRocker)
-            {
-                var vAL = interpZ(finalPts, xACP) / meter - acpH / meter;
-                if (vAL < zMinShift) { zMinShift = vAL; }
-            }
-            var ac_lo = MCH_lo - zMinShift;
-
-            if (ac_lo < MCH_m)
-            {
-                // Bisect [MCH_lo, MCH_hi]
-                for (var outerIter = 0; outerIter < 15; outerIter += 1)
-                {
-                    var MCH_mid = (MCH_lo + MCH_hi) * 0.5;
-                    finalPts = solveBaseline(context, eiData, hasEI,
-                                             xFCP, xACP, xFRCP, xARCP, xLoad,
-                                             fcpH, acpH, frcpl, arcpl, MCH_mid);
-                    zMinShift = 0.0;
-                    if (hasForeRocker)
-                    {
-                        var vFM = interpZ(finalPts, xFCP) / meter - fcpH / meter;
-                        if (vFM < zMinShift) { zMinShift = vFM; }
-                    }
-                    if (hasAftRocker)
-                    {
-                        var vAM = interpZ(finalPts, xACP) / meter - acpH / meter;
-                        if (vAM < zMinShift) { zMinShift = vAM; }
-                    }
-                    var ac_mid = MCH_mid - zMinShift;
-
-                    if (abs(ac_mid - MCH_m) < OUTER_TOL) { break; }
-                    if (ac_mid < MCH_m) { MCH_lo = MCH_mid; }
-                    else               { MCH_hi = MCH_mid; }
-                }
-            }
-            // else: tip height exceeds target; finalPts/zMinShift from lo solve
-        }
-        // else: hi bracket already within tolerance
-    }
-
-    // Apply global shift so no tip falls below its target snow height
-    if (zMinShift < -1e-10)
-    {
-        var shiftedPts = [];
-        for (var pt in finalPts)
-        {
-            shiftedPts = append(shiftedPts, {
-                "x" : pt.x,
-                "z" : pt.z - zMinShift * meter
-            });
-        }
-        finalPts = shiftedPts;
-    }
-
-    return { "finalPts" : finalPts, "zMinShift" : zMinShift };
 }
