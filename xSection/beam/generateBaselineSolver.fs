@@ -394,26 +394,24 @@ function computeMinZXDist(startPoint is Vector, endPoint is Vector, startTangent
     const z1 = midCtrl[2];
     const z2 = endPoint[2];
 
-    const denom = z0 - 2 * z1 + z2;
-
-    if (abs(denom) < 1e-9 * meter)
-        throw regenError("Curve Z profile is linear — no interior minimum exists");
-
-    const tStar = (z0 - z1) / denom; // dimensionless: length / length
-
-    if (tStar < 0 || tStar > 1)
-        throw regenError("Z minimum falls outside curve domain [0, 1] at this tension");
-
     const x0 = startPoint[0];
     const x1 = midCtrl[0];
     const x2 = endPoint[0];
+
+    const denom = z0 - 2 * z1 + z2;
+    const tStar = (abs(denom) < 1e-9 * meter) ? 2.0 : ((z0 - z1) / denom);
+
+    // If the Z minimum falls outside [0, 1] (linear profile or monotone curve),
+    // clamp to whichever endpoint has the lower Z value.
+    if (tStar < 0 || tStar > 1)
+        return (z2 < z0) ? abs(x2 - x0) : 0 * meter;
 
     const oneMinusT = 1 - tStar;
     const xAtMin = oneMinusT * oneMinusT * x0
                  + 2 * tStar * oneMinusT * x1
                  + tStar * tStar * x2;
 
-    return abs(xAtMin - x0); // ValueWithUnits (length)
+    return abs(xAtMin - x0);
 }
 
 
@@ -422,11 +420,20 @@ export function solveForTension(startPoint is Vector, endPoint is Vector, startT
     var tLo = 0.01;
     var tHi = 0.99;
 
-    var fLo = computeMinZXDist(startPoint, endPoint, startTangent, tLo) - distFromStart;
-    const fHi = computeMinZXDist(startPoint, endPoint, startTangent, tHi) - distFromStart;
+    const xDistLo = computeMinZXDist(startPoint, endPoint, startTangent, tLo);
+    const xDistHi = computeMinZXDist(startPoint, endPoint, startTangent, tHi);
+    var fLo = xDistLo - distFromStart;
+    const fHi = xDistHi - distFromStart;
 
     if (fLo * fHi > 0)
-        throw regenError("distFromStart is not achievable within tension range [0.01, 0.99]");
+    {
+        const minDist = (xDistLo < xDistHi) ? xDistLo : xDistHi;
+        const maxDist = (xDistLo > xDistHi) ? xDistLo : xDistHi;
+        throw regenError("Min point distance " ~ toString(round(distFromStart / millimeter))
+            ~ " mm is outside achievable range ["
+            ~ toString(round(minDist / millimeter)) ~ ", "
+            ~ toString(round(maxDist / millimeter)) ~ "] mm for current rocker geometry.");
+    }
 
     const maxIter   = 60;
     const tolerance = 1e-9 * meter; // ValueWithUnits — matches fMid units

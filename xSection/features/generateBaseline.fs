@@ -154,8 +154,11 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
 
         annotation { "Name" : "Add baseline sketch" }
-        definition.addBaselineSketch is boolean;       
-        
+        definition.addBaselineSketch is boolean;
+
+        annotation { "Name" : "Create weighted baseline", "Default" : false, "Description" : "Outputs a second curve with zero camber and the same rocker geometry as the primary baseline." }
+        definition.createWeightedBaseline is boolean;
+
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Print setup" }
@@ -422,8 +425,69 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     "value" : definition.outputCurveName
             });
         }
-        
-        
+
+        // ----------------------------------------------------------------
+        // Weighted baseline
+        // ----------------------------------------------------------------
+        if (definition.createWeightedBaseline)
+        {
+            // FRCP and ARCP in the transformed coordinate system are the first
+            // and last control points of the (clamped, interpolated) camber spline.
+            var nCPCamber = size(baselineBSplines[0].controlPoints);
+            var wbFrcpPt  = baselineBSplines[0].controlPoints[0];
+            var wbArcpPt  = baselineBSplines[0].controlPoints[nCPCamber - 1];
+
+            // Zero-camber section: straight line from FRCP to ARCP
+            var wbCamber = bSplineCurve({
+                    "degree"        : 1,
+                    "dimension"     : 3,
+                    "isRational"    : false,
+                    "isPeriodic"    : false,
+                    "controlPoints" : [wbFrcpPt, wbArcpPt],
+                    "knots"         : [0, 0, 1, 1] as KnotArray
+            });
+
+            // Assemble: flat camber + same transformed rockers (already snapped + leveled)
+            var weightedBSplines = [wbCamber];
+            var wbRockerIdx = 1;
+            if (hasForeRocker)
+            {
+                weightedBSplines = append(weightedBSplines, baselineBSplines[wbRockerIdx]);
+                wbRockerIdx += 1;
+            }
+            if (hasAftRocker)
+            {
+                weightedBSplines = append(weightedBSplines, baselineBSplines[wbRockerIdx]);
+            }
+
+            var wbCreatedEdges  = [];
+            var wbCreatedBodies = [];
+            for (var i = 0; i < size(weightedBSplines); i += 1)
+            {
+                opCreateBSplineCurve(context, id + ("createWeightedBSpline" ~ i), {
+                        "bSplineCurve" : weightedBSplines[i]
+                });
+                wbCreatedEdges  = append(wbCreatedEdges,  qCreatedBy(id + ("createWeightedBSpline" ~ i), EntityType.EDGE));
+                wbCreatedBodies = append(wbCreatedBodies, qCreatedBy(id + ("createWeightedBSpline" ~ i), EntityType.BODY));
+            }
+
+            opExtractWires(context, id + "extractWeightedCurves", {
+                    "edges" : qUnion(wbCreatedEdges)
+            });
+
+            var wbBodyQ = qCreatedBy(id + "extractWeightedCurves", EntityType.BODY);
+
+            opDeleteBodies(context, id + "deleteOriginalWeightedWires", {
+                    "entities" : qUnion(wbCreatedBodies)
+            });
+
+            setProperty(context, {
+                    "entities"     : wbBodyQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : (length(definition.outputCurveName) > 0 ? definition.outputCurveName : "Baseline") ~ " (Weighted)"
+            });
+        }
+
         // Baseline sketch — analyze the generated curve and output measurement geometry
         if (definition.addBaselineSketch)
         
