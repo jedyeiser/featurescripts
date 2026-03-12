@@ -89,20 +89,20 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
     }
 
     // Greedy chain assembly using edge endpoints
-    var used       = makeArray(size(edgeData), false);
-    var chain      = [{ "edge" : edgeData[0].edge, "reversed" : false }];
-    used[0]        = true;
-    var chainEndPt = edgeData[0].endPt;
+    var used         = makeArray(size(edgeData), false);
+    var chain        = [{ "edge" : edgeData[0].edge, "reversed" : false }];
+    used[0]          = true;
+    var chainEndPt   = edgeData[0].endPt;
+    var chainStartPt = edgeData[0].startPt;
 
+    // Forward pass: extend from the chain's current end
     for (var iter = 0; iter < size(edgeData) - 1; iter += 1)
     {
         var found = false;
         for (var j = 0; j < size(edgeData); j += 1)
         {
             if (used[j])
-            {
                 continue;
-            }
 
             if (norm(edgeData[j].startPt - chainEndPt) < GEOM_TOL)
             {
@@ -122,9 +122,50 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
             }
         }
         if (!found)
-        {
             break;
+    }
+
+    // Backward pass: extend from the chain's current start (catches edges like the
+    // forebody rocker whose connection point is the *start* of the seed edge, not the end)
+    var backSegments = [];
+    for (var iter = 0; iter < size(edgeData) - 1; iter += 1)
+    {
+        var found = false;
+        for (var j = 0; j < size(edgeData); j += 1)
+        {
+            if (used[j])
+                continue;
+
+            if (norm(edgeData[j].endPt - chainStartPt) < GEOM_TOL)
+            {
+                backSegments = append(backSegments, { "edge" : edgeData[j].edge, "reversed" : false });
+                used[j]      = true;
+                chainStartPt = edgeData[j].startPt;
+                found        = true;
+                break;
+            }
+            else if (norm(edgeData[j].startPt - chainStartPt) < GEOM_TOL)
+            {
+                backSegments = append(backSegments, { "edge" : edgeData[j].edge, "reversed" : true });
+                used[j]      = true;
+                chainStartPt = edgeData[j].endPt;
+                found        = true;
+                break;
+            }
         }
+        if (!found)
+            break;
+    }
+
+    // Prepend back segments in reverse discovery order so the chain runs tip-to-tip
+    if (size(backSegments) > 0)
+    {
+        var fullChain = [];
+        for (var i = size(backSegments) - 1; i >= 0; i -= 1)
+            fullChain = append(fullChain, backSegments[i]);
+        for (var i = 0; i < size(chain); i += 1)
+            fullChain = append(fullChain, chain[i]);
+        chain = fullChain;
     }
 
     return chain;
