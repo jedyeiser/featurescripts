@@ -415,6 +415,21 @@ function computeMinZXDist(startPoint is Vector, endPoint is Vector, startTangent
 }
 
 
+export function getAchievableXDistRange(startPoint is Vector, endPoint is Vector, startTangent is Vector) returns map
+{
+    const xDistLo = computeMinZXDist(startPoint, endPoint, startTangent, 0.01);
+    const xDistHi = computeMinZXDist(startPoint, endPoint, startTangent, 0.99);
+    if (xDistLo < xDistHi)
+    {
+        return { "minDist" : xDistLo, "maxDist" : xDistHi, "tForMin" : 0.01, "tForMax" : 0.99 };
+    }
+    else
+    {
+        return { "minDist" : xDistHi, "maxDist" : xDistLo, "tForMin" : 0.99, "tForMax" : 0.01 };
+    }
+}
+
+
 export function solveForTension(startPoint is Vector, endPoint is Vector, startTangent is Vector, distFromStart is ValueWithUnits) returns number
 {
     var tLo = 0.01;

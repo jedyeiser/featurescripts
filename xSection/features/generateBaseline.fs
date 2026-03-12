@@ -236,6 +236,13 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         var forebodyRockerBSpline = undefined;
         var aftbodyRockerBSpline = undefined;
         var baselineBSplines =[];
+
+        var lastFbT = 0.5;
+        var lastAbT = 0.5;
+        var fbDistClamped = false;
+        var abDistClamped = false;
+        var fbClampMsg = "";
+        var abClampMsg = "";
         
         for (var i = 0; i < 20; i += 1) // main solver loop
         {
@@ -294,9 +301,31 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     var tangentPoint = frcpPoint + tangent_l*frcpSlope;
                     var rockerPoint = tangentPoint + rockerNormalVector;
                     
-                    var t = (definition.specForebodyMin) ? solveForTension(frcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * frcpSlope, definition.forebodyMinPointDist) : 0.5; //tension for rocker
-                    
-                    var rockerSpline = quadraticSplineFromTangent(frcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * frcpSlope, t);
+                    var fbTangent = (rockerXDelta < 0 * millimeter ? -1 : 1) * frcpSlope;
+                    var t = 0.5;
+                    if (definition.specForebodyMin)
+                    {
+                        var fbRange = getAchievableXDistRange(frcpPoint, rockerPoint, fbTangent);
+                        if (definition.forebodyMinPointDist < fbRange.minDist || definition.forebodyMinPointDist > fbRange.maxDist)
+                        {
+                            fbDistClamped = true;
+                            t = (definition.forebodyMinPointDist < fbRange.minDist) ? fbRange.tForMin : fbRange.tForMax;
+                            fbClampMsg = "Forebody min point distance "
+                                ~ toString(round(definition.forebodyMinPointDist / millimeter))
+                                ~ " mm is outside achievable range ["
+                                ~ toString(round(fbRange.minDist / millimeter)) ~ ", "
+                                ~ toString(round(fbRange.maxDist / millimeter))
+                                ~ "] mm. Using closest achievable value.";
+                        }
+                        else
+                        {
+                            fbDistClamped = false;
+                            t = solveForTension(frcpPoint, rockerPoint, fbTangent, definition.forebodyMinPointDist);
+                        }
+                    }
+                    lastFbT = t;
+
+                    var rockerSpline = quadraticSplineFromTangent(frcpPoint, rockerPoint, fbTangent, t);
 
                     baselineBSplines = append(baselineBSplines, rockerSpline);
                     forebodyRockerBSpline = rockerSpline;
@@ -316,9 +345,31 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     var tangentPoint = arcpPoint + tangent_l*arcpSlope;
                     var rockerPoint = tangentPoint + rockerNormalVector;
                     
-                    var t = (definition.specAftbodyMin) ? solveForTension(arcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * arcpSlope, definition.aftbodyMinPointDist) : 0.5; //tension for rocker
-                    
-                    var rockerSpline = quadraticSplineFromTangent(arcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * arcpSlope, t);
+                    var abTangent = (rockerXDelta < 0 * millimeter ? -1 : 1) * arcpSlope;
+                    var t = 0.5;
+                    if (definition.specAftbodyMin)
+                    {
+                        var abRange = getAchievableXDistRange(arcpPoint, rockerPoint, abTangent);
+                        if (definition.aftbodyMinPointDist < abRange.minDist || definition.aftbodyMinPointDist > abRange.maxDist)
+                        {
+                            abDistClamped = true;
+                            t = (definition.aftbodyMinPointDist < abRange.minDist) ? abRange.tForMin : abRange.tForMax;
+                            abClampMsg = "Aftbody min point distance "
+                                ~ toString(round(definition.aftbodyMinPointDist / millimeter))
+                                ~ " mm is outside achievable range ["
+                                ~ toString(round(abRange.minDist / millimeter)) ~ ", "
+                                ~ toString(round(abRange.maxDist / millimeter))
+                                ~ "] mm. Using closest achievable value.";
+                        }
+                        else
+                        {
+                            abDistClamped = false;
+                            t = solveForTension(arcpPoint, rockerPoint, abTangent, definition.aftbodyMinPointDist);
+                        }
+                    }
+                    lastAbT = t;
+
+                    var rockerSpline = quadraticSplineFromTangent(arcpPoint, rockerPoint, abTangent, t);
 
                     baselineBSplines = append(baselineBSplines, rockerSpline);
                     aftbodyRockerBSpline = rockerSpline;
@@ -352,6 +403,11 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             }
         }
         
+        if (fbDistClamped)
+            reportFeatureInfo(context, id + "fbRangeInfo", fbClampMsg);
+        if (abDistClamped)
+            reportFeatureInfo(context, id + "abRangeInfo", abClampMsg);
+
         baselineBSplines = [camberBSpline];
         if (hasForeRocker)
         {
@@ -447,17 +503,20 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     "knots"         : [0, 0, 1, 1] as KnotArray
             });
 
-            // Assemble: flat camber + same transformed rockers (already snapped + leveled)
+            // Assemble: flat camber + rockers rebuilt tangent to the flat baseline
+            var flatDir = normalize(wbArcpPt - wbFrcpPt);
             var weightedBSplines = [wbCamber];
             var wbRockerIdx = 1;
             if (hasForeRocker)
             {
-                weightedBSplines = append(weightedBSplines, baselineBSplines[wbRockerIdx]);
+                var wbFcpPt = baselineBSplines[wbRockerIdx].controlPoints[2];
+                weightedBSplines = append(weightedBSplines, quadraticSplineFromTangent(wbFrcpPt, wbFcpPt, -flatDir, lastFbT));
                 wbRockerIdx += 1;
             }
             if (hasAftRocker)
             {
-                weightedBSplines = append(weightedBSplines, baselineBSplines[wbRockerIdx]);
+                var wbAcpPt = baselineBSplines[wbRockerIdx].controlPoints[2];
+                weightedBSplines = append(weightedBSplines, quadraticSplineFromTangent(wbArcpPt, wbAcpPt, flatDir, lastAbT));
             }
 
             var wbCreatedEdges  = [];
