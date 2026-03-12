@@ -2,7 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
+import(path : "ebac109589e3bf405d3f3ae7", version : "9e8676f449d3bc6ce225a1b8");
 
 /**
  * GENERATE BASELINE SOLVER
@@ -53,11 +53,9 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
  * @param H {number} : Target max deflection in plain meters
  * @returns {array} : [{x : ValueWithUnits, z : ValueWithUnits}]
  */
-export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits,
-                          xARCP is ValueWithUnits, xLoad is ValueWithUnits,
-                          H) returns array
+export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits, xARCP is ValueWithUnits, xLoad is ValueWithUnits, H) returns array
 {
-    var N   = 100;
+    var N   = size(eiData);
     var L   = xARCP - xFRCP;
     var dx  = L / N;
     var dx_m = dx / meter;   // plain number
@@ -250,413 +248,368 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
 }
 
 
-// =============================================================================
-// ROCKER TIP Z CALCULATION
-// =============================================================================
-
-/**
- * Compute the pre-shift z of the rocker tip so that, after the global shift,
- * the tip lands at exactly targetSnowHeight above snow (z = 0).
- *
- * Given the rocker quadratic anchored at (xAnchor, zAnchor=0) with slope `slope`
- * at xAnchor and tip at xTip, the parabola has a vertex below z = 0.
- * The global shift lifts the profile by |vertex_z|, so the tip ends up at
- *   zTip_final = zTip_pre_shift - vertex_z  =  targetSnowHeight
- *
- * Closed-form solution (derived from the vertex condition):
- *   k = slope * uB            where uB = (xTip - xAnchor) / meter  (< 0 fore, > 0 aft)
- *   t = targetSnowHeight / meter
- *   zTip_pre_shift = zAnchor + [(k + t) + sqrt(t * (t - 2*k))] / 2 * meter
- *
- * Both camber solvers guarantee zAnchor = 0 at xFRCP / xARCP, so the formula
- * reduces to: T = [(k + t) + sqrt(t * (t - 2*k))] / 2 * meter.
- *
- * Special cases:
- *   t = 0  →  zTip = vertex_z  (tip on snow; shift = 0)
- *   uB = 0 →  degenerate; return zAnchor
- *
- * @param xAnchor {ValueWithUnits} : Junction point X (FRCP or ARCP)
- * @param zAnchor {ValueWithUnits} : Junction point Z (= 0 from camber solver)
- * @param slope {number} : dz/dx at xAnchor (dimensionless)
- * @param xTip {ValueWithUnits} : Tip point X (FCP or ACP)
- * @param targetSnowHeight {ValueWithUnits} : Desired tip height above snow
- * @returns {ValueWithUnits} : Pre-shift Z of the tip
- */
-export function computeTipZ(xAnchor is ValueWithUnits, zAnchor is ValueWithUnits,
-                     slope, xTip is ValueWithUnits,
-                     targetSnowHeight is ValueWithUnits) returns ValueWithUnits
+export function quadraticSplineFromTangent(startPoint is Vector, endPoint is Vector, startTangent is Vector, tension is number) returns BSplineCurve
 {
-    var uB = (xTip - xAnchor) / meter;
-    if (abs(uB) < 1e-12)
+    // Compute middle control point from start tangent
+    const tHat = normalize(startTangent);
+    const s = norm(endPoint - startPoint) * tension;
+    const midControl = startPoint + s * tHat;
+
+    // Degree-2 clamped knot vector: [0,0,0,1,1,1]
+    // Size rule: 1 + degree + nControlPoints = 1 + 2 + 3 = 6
+    const knots = [0, 0, 0, 1, 1, 1] as KnotArray;
+
+    return bSplineCurve({
+            "degree"        : 2,
+            "dimension"     : 3,
+            "isRational"    : false,
+            "isPeriodic"    : false,
+            "controlPoints" : [startPoint, midControl, endPoint],
+            "knots"         : knots
+    });
+}
+
+function refineMinZ(curve is BSplineCurve, tLo is number, tHi is number, tolerance is ValueWithUnits) returns Vector
+{
+    var lo = tLo;
+    var hi = tHi;
+    var prevBestZ = undefined;
+
+    for (var iter = 0; iter < 100; iter += 1)
     {
-        return zAnchor;
+        const m1 = lo + (hi - lo) / 3;
+        const m2 = hi - (hi - lo) / 3;
+
+        const result = evaluateSpline({
+                "spline"      : curve,
+                "parameters"  : [m1, m2, (lo + hi) / 2]
+        });
+
+        const z1      = result[0][0][2];
+        const z2      = result[0][1][2];
+        const bestZ   = result[0][2][2];
+
+        if (z1 < z2)
+            hi = m2;
+        else
+            lo = m1;
+
+        if (prevBestZ != undefined && abs(bestZ - prevBestZ) < tolerance)
+            break;
+
+        prevBestZ = bestZ;
     }
 
-    var k = slope * uB;                             // < 0 for both fore and aft
-    var t = (targetSnowHeight - zAnchor) / meter;   // target height above anchor (plain m)
-
-    if (t <= 0)
-    {
-        // Zero or negative target: place tip at zAnchor + t (no dip involved)
-        return zAnchor + t * meter;
-    }
-
-    // T = [(k + t) + sqrt(t * (t - 2k))] / 2
-    // Discriminant ≥ 0 when k ≤ 0; clamp to 0 for degenerate slopes (k > 0)
-    var T = ((k + t) + sqrt(max(0, t * (t - 2 * k)))) / 2;
-    return zAnchor + T * meter;
+    // Final evaluation at midpoint
+    return evaluateSpline({
+            "spline"     : curve,
+            "parameters" : [(lo + hi) / 2]
+    })[0][0];
 }
 
 
-// =============================================================================
-// ROCKER QUADRATIC SOLVER
-// =============================================================================
-
-/**
- * Fit quadratic f(x) = p·x² + q·x + r satisfying:
- *   f(xA) = zA,   f'(xA) = slopeA,   f(xB) = zB
- *
- * Works in shifted coordinates (u = x - xA) to improve numerics.
- *
- * @param xA {ValueWithUnits} : Start X (junction point)
- * @param zA {ValueWithUnits} : Start Z
- * @param slopeA {number} : Slope dz/dx at xA (dimensionless)
- * @param xB {ValueWithUnits} : End X (tip point)
- * @param zB {ValueWithUnits} : End Z
- * @param nPoints {number} : Number of output samples
- * @returns {array} : [{x : ValueWithUnits, z : ValueWithUnits}] from xA to xB
- */
-export function solveRockerQuadratic(xA is ValueWithUnits, zA is ValueWithUnits,
-                               slopeA, xB is ValueWithUnits, zB is ValueWithUnits,
-                               nPoints) returns array
+export function findMinZBothSides(curves is array, xPosition is ValueWithUnits, stdDir is boolean) returns map
 {
-    var uB   = (xB - xA) / meter;   // plain (negative for forebody: xB < xA)
-    var zA_m = zA / meter;
-    var zB_m = zB / meter;
+    const N = 50;
+    const tolerance = 0.1 * millimeter;
 
-    // f(u) = p·u² + q·u + r
-    // r = f(0) = zA_m
-    // q = f'(0) = slopeA
-    // p = (zB_m - q*uB - r) / uB²
-    var r = zA_m;
-    var q = slopeA;
-    var p = 0.0;
-    if (abs(uB) >= 1e-12)
+    var fbFound     = false;
+    var abFound     = false;
+    var fbBestZ     = undefined;
+    var abBestZ     = undefined;
+    var fbBestCurve = undefined;
+    var abBestCurve = undefined;
+    var fbParamLo   = undefined;
+    var fbParamHi   = undefined;
+    var abParamLo   = undefined;
+    var abParamHi   = undefined;
+
+    for (var curveIdx = 0; curveIdx < size(curves); curveIdx += 1)
     {
-        p = (zB_m - q * uB - r) / (uB * uB);
+        const curve  = curves[curveIdx];
+        const knots  = curve.knots;
+        const tStart = knots[0];
+        const tEnd   = knots[size(knots) - 1];
+
+        // Build parameter array for all N samples in one batch call
+        var params = makeArray(N);
+        for (var i = 0; i < N; i += 1)
+            params[i] = tStart + (tEnd - tStart) * i / (N - 1);
+
+        const result = evaluateSpline({
+                "spline"     : curve,
+                "parameters" : params
+        });
+
+        for (var i = 0; i < N; i += 1)
+        {
+            const pt  = result[0][i];
+            const ptX = pt[0];
+            const ptZ = pt[2];
+
+            const onFbSide = stdDir ? (ptX < xPosition) : (ptX > xPosition);
+
+            const tLo = params[i];
+            const tHi = (i < N - 1) ? params[i + 1] : tEnd;
+
+            if (onFbSide && (!fbFound || ptZ < fbBestZ))
+            {
+                fbFound     = true;
+                fbBestZ     = ptZ;
+                fbBestCurve = curve;
+                fbParamLo   = tLo;
+                fbParamHi   = tHi;
+            }
+            else if (!onFbSide && (!abFound || ptZ < abBestZ))
+            {
+                abFound     = true;
+                abBestZ     = ptZ;
+                abBestCurve = curve;
+                abParamLo   = tLo;
+                abParamHi   = tHi;
+            }
+        }
     }
 
-    var result = [];
-    for (var i = 0; i < nPoints; i += 1)
+    if (!fbFound)
+        throw regenError("findMinZBothSides: no curve data on FB side of xPosition");
+    if (!abFound)
+        throw regenError("findMinZBothSides: no curve data on AB side of xPosition");
+
+    return {
+        "fbMin" : refineMinZ(fbBestCurve, fbParamLo, fbParamHi, tolerance),
+        "abMin" : refineMinZ(abBestCurve, abParamLo, abParamHi, tolerance)
+    };
+}
+
+// Returns the X-distance from startPoint to the minimum-Z point on the curve,
+// for a given tension value. Pure helper — no solver state.
+function computeMinZXDist(startPoint is Vector, endPoint is Vector, startTangent is Vector, tension is number) returns ValueWithUnits
+{
+    const tHat    = normalize(startTangent);
+    const s       = norm(endPoint - startPoint) * tension;
+    const midCtrl = startPoint + s * tHat;
+
+    const z0 = startPoint[2];
+    const z1 = midCtrl[2];
+    const z2 = endPoint[2];
+
+    const denom = z0 - 2 * z1 + z2;
+
+    if (abs(denom) < 1e-9 * meter)
+        throw regenError("Curve Z profile is linear — no interior minimum exists");
+
+    const tStar = (z0 - z1) / denom; // dimensionless: length / length
+
+    if (tStar < 0 || tStar > 1)
+        throw regenError("Z minimum falls outside curve domain [0, 1] at this tension");
+
+    const x0 = startPoint[0];
+    const x1 = midCtrl[0];
+    const x2 = endPoint[0];
+
+    const oneMinusT = 1 - tStar;
+    const xAtMin = oneMinusT * oneMinusT * x0
+                 + 2 * tStar * oneMinusT * x1
+                 + tStar * tStar * x2;
+
+    return abs(xAtMin - x0); // ValueWithUnits (length)
+}
+
+
+export function solveForTension(startPoint is Vector, endPoint is Vector, startTangent is Vector, distFromStart is ValueWithUnits) returns number
+{
+    var tLo = 0.01;
+    var tHi = 0.99;
+
+    var fLo = computeMinZXDist(startPoint, endPoint, startTangent, tLo) - distFromStart;
+    const fHi = computeMinZXDist(startPoint, endPoint, startTangent, tHi) - distFromStart;
+
+    if (fLo * fHi > 0)
+        throw regenError("distFromStart is not achievable within tension range [0.01, 0.99]");
+
+    const maxIter   = 60;
+    const tolerance = 1e-9 * meter; // ValueWithUnits — matches fMid units
+
+    for (var i = 0; i < maxIter; i += 1)
     {
-        var u = uB * i / (nPoints - 1);
-        var z = p * u * u + q * u + r;
-        result = append(result, {
-            "x" : xA + u * meter,
-            "z" : z * meter
-        });
+        const tMid = (tLo + tHi) / 2;
+        const fMid = computeMinZXDist(startPoint, endPoint, startTangent, tMid) - distFromStart;
+
+        if (abs(fMid) < tolerance || (tHi - tLo) < 1e-12)
+            return tMid;
+
+        if (fLo * fMid < 0)
+            tHi = tMid;
+        else
+        {
+            tLo = tMid;
+            fLo = fMid;
+        }
+    }
+
+    return (tLo + tHi) / 2;
+}
+
+function rotatePointAboutY(pt is Vector, angle is ValueWithUnits) returns Vector
+{
+    const c = cos(angle);
+    const s = sin(angle);
+    return vector(
+        pt[0] * c - pt[2] * s,
+        pt[1],
+        pt[0] * s + pt[2] * c
+    );
+}
+
+export function transformCurves(curves is array, fbMin is Vector, abMin is Vector) returns array
+{
+    // Angle of the line fbMin->abMin in the XZ plane
+    // Divide by millimeter to get unitless values for atan2
+    const dx = (abMin[0] - fbMin[0]) / millimeter;
+    const dz = (abMin[2] - fbMin[2]) / millimeter;
+    const theta = atan2(dz, dx);
+
+    // Rotate fbMin to find the Z offset we need to remove
+    const rotatedFbMin = rotatePointAboutY(fbMin, -theta);
+    const zOffset = rotatedFbMin[2];
+
+    var result = [];
+    for (var curveIdx = 0; curveIdx < size(curves); curveIdx += 1)
+    {
+        const curve = curves[curveIdx];
+
+        var newControlPoints = [];
+        for (var ptIdx = 0; ptIdx < size(curve.controlPoints); ptIdx += 1)
+        {
+            const rotated = rotatePointAboutY(curve.controlPoints[ptIdx], -theta);
+            newControlPoints = append(newControlPoints, rotated - vector(0 * millimeter, 0 * millimeter, zOffset));
+        }
+
+        result = append(result, bSplineCurve({
+                "degree"        : curve.degree,
+                "dimension"     : curve.dimension,
+                "isRational"    : curve.isRational,
+                "isPeriodic"    : curve.isPeriodic,
+                "controlPoints" : newControlPoints,
+                "knots"         : curve.knots
+        }));
     }
 
     return result;
 }
 
 
-// =============================================================================
-// POINT-ARRAY UTILITIES
-// =============================================================================
-
-/**
- * Linearly interpolate Z at xTarget in a sorted [{x, z}] array.
- * Flat-extrapolates outside range.
- *
- * @param pts {array} : [{x : ValueWithUnits, z : ValueWithUnits}] sorted by x
- * @param xTarget {ValueWithUnits}
- * @returns {ValueWithUnits} : Interpolated Z
- */
-export function interpZ(pts is array, xTarget is ValueWithUnits) returns ValueWithUnits
+export function solveZAtX(curves is array, xPosition is ValueWithUnits) returns ValueWithUnits
 {
-    var n = size(pts);
-    if (n == 0)
+    const N = 50;
+    const tolerance = 0.1 * millimeter;
+
+    var foundCurve = undefined;
+    var bracketLo = undefined;
+    var bracketHi = undefined;
+
+    for (var curveIdx = 0; curveIdx < size(curves); curveIdx += 1)
     {
-        return 0 * meter;
-    }
-    if (xTarget <= pts[0].x)
-    {
-        return pts[0].z;
-    }
-    if (xTarget >= pts[n - 1].x)
-    {
-        return pts[n - 1].z;
-    }
-    for (var i = 0; i < n - 1; i += 1)
-    {
-        if (xTarget >= pts[i].x && xTarget <= pts[i + 1].x)
+        const curve = curves[curveIdx];
+
+        for (var i = 0; i < N - 1; i += 1)
         {
-            var dx = (pts[i + 1].x - pts[i].x) / meter;
-            if (abs(dx) < 1e-15)
+            const t0 = i / (N - 1);
+            const t1 = (i + 1) / (N - 1);
+            const x0 = evaluateSpline({ "spline": curve, "parameters": [t0] })[0][0][0];
+            const x1 = evaluateSpline({ "spline": curve, "parameters": [t1] })[0][0][0];
+
+            if ((x0 <= xPosition && x1 >= xPosition) || (x0 >= xPosition && x1 <= xPosition))
             {
-                return pts[i].z;
+                foundCurve = curve;
+                bracketLo = t0;
+                bracketHi = t1;
+                break;
             }
-            var t = (xTarget - pts[i].x) / meter / dx;
-            return pts[i].z + t * (pts[i + 1].z - pts[i].z);
         }
-    }
-    return pts[n - 1].z;
-}
 
-/**
- * Compute dz/dx at xTarget in a sorted [{x, z}] array.
- * Uses central differences when available; one-sided at boundaries.
- *
- * @param pts {array} : [{x : ValueWithUnits, z : ValueWithUnits}] sorted by x
- * @param xTarget {ValueWithUnits}
- * @returns {number} : Slope dz/dx (dimensionless: m/m)
- */
-export function slopeAt(pts is array, xTarget is ValueWithUnits)
-{
-    var n = size(pts);
-    if (n < 2)
-    {
-        return 0.0;
-    }
-
-    // Find bracketing interval
-    var idx = 0;
-    for (var i = 0; i < n - 1; i += 1)
-    {
-        if (xTarget >= pts[i].x && xTarget <= pts[i + 1].x)
-        {
-            idx = i;
+        if (foundCurve != undefined)
             break;
-        }
     }
 
-    // Central differences if interior
-    if (idx > 0 && idx < n - 2)
+    if (foundCurve == undefined)
+        throw regenError("solveZAtX: no curve data found at provided x position");
+
+    var lo = bracketLo;
+    var hi = bracketHi;
+
+    for (var iter = 0; iter < 100; iter += 1)
     {
-        var dx = (pts[idx + 1].x - pts[idx - 1].x) / meter;
-        var dz = (pts[idx + 1].z - pts[idx - 1].z) / meter;
-        if (abs(dx) < 1e-15)
-        {
-            return 0.0;
-        }
-        return dz / dx;
-    }
-    else
-    {
-        var dx2 = (pts[idx + 1].x - pts[idx].x) / meter;
-        var dz2 = (pts[idx + 1].z - pts[idx].z) / meter;
-        if (abs(dx2) < 1e-15)
-        {
-            return 0.0;
-        }
-        return dz2 / dx2;
-    }
-}
+        const mid = (lo + hi) / 2;
+        const xMid = evaluateSpline({ "spline": foundCurve, "parameters": [mid] })[0][0][0];
 
-/**
- * Camber height above the contact-point elevation in [xFRCP, xARCP].
- * Measures relative to z(xFRCP), so the result is shift-invariant.
- *
- * @param pts {array} : [{x, z}] sorted by x
- * @param xFRCP {ValueWithUnits}
- * @param xARCP {ValueWithUnits}
- * @returns {number} : Camber height in plain meters
- */
-export function measureCamberHeight(pts is array, xFRCP is ValueWithUnits,
-                              xARCP is ValueWithUnits)
-{
-    var contactZ = interpZ(pts, xFRCP) / meter;
-    var maxZ = contactZ;
-    for (var pt in pts)
-    {
-        if (pt.x >= xFRCP && pt.x <= xARCP)
-        {
-            var z = pt.z / meter;
-            if (z > maxZ)
-            {
-                maxZ = z;
-            }
-        }
-    }
-    return maxZ - contactZ;
-}
+        if (abs(xMid - xPosition) < tolerance)
+            break;
 
+        const xLo = evaluateSpline({ "spline": foundCurve, "parameters": [lo] })[0][0][0];
 
-// =============================================================================
-// ROTATE + TRANSLATE  (tips to Z = 0)
-// =============================================================================
-
-/**
- * Rotate the assembled point array so that the chord FCP→ACP is horizontal,
- * then translate so both tips land at Z = 0.
- *
- * Rotation pivot is the FCP point. The minimum of the two tip Z values
- * is translated to 0 (handles non-perfectly-symmetric rocker).
- *
- * @param pts {array} : [{x, z}] sorted by x
- * @param xFCP {ValueWithUnits}
- * @param xACP {ValueWithUnits}
- * @returns {array} : Rotated and translated [{x, z}]
- */
-export function rotateTranslate(pts is array, xFCP is ValueWithUnits,
-                          xACP is ValueWithUnits) returns array
-{
-    var zFCP_m = interpZ(pts, xFCP) / meter;
-    var zACP_m = interpZ(pts, xACP) / meter;
-
-    // Chord angle
-    var chordDz = zACP_m - zFCP_m;
-    var chordDx = (xACP - xFCP) / meter;
-    var theta   = atan2(chordDz, chordDx);
-    var cosT    = cos(-theta);
-    var sinT    = sin(-theta);
-
-    // Pivot at FCP
-    var xPiv = xFCP / meter;
-    var zPiv = zFCP_m;
-
-    // Rotate all points
-    var rotated = [];
-    for (var pt in pts)
-    {
-        var rx = pt.x / meter - xPiv;
-        var rz = pt.z / meter - zPiv;
-        var nx = cosT * rx - sinT * rz;
-        var nz = sinT * rx + cosT * rz;
-        rotated = append(rotated, {
-            "x" : (nx + xPiv) * meter,
-            "z" : nz * meter
-        });
-    }
-
-    // Find minimum tip Z after rotation, translate so it = 0
-    var zFCProt = interpZ(rotated, xFCP) / meter;
-    var zACProt = interpZ(rotated, xACP) / meter;
-    var tipZ    = zFCProt;
-    if (zACProt < tipZ)
-    {
-        tipZ = zACProt;
-    }
-
-    var translated = [];
-    for (var pt in rotated)
-    {
-        translated = append(translated, {
-            "x" : pt.x,
-            "z" : pt.z - tipZ * meter
-        });
-    }
-
-    return translated;
-}
-
-
-// =============================================================================
-// MAIN ENTRY POINT
-// =============================================================================
-
-/**
- * Solve the full baseline geometry:
- *   1. Solve camber pocket (beam or cubic) with initial H = MCH_m.
- *   2. Attach rocker quadratics at each end.
- *   3. Rotate/translate so tip minima land at z = 0.
- *   4. Measure actual camber; scale H proportionally and repeat (≤ 10 iters).
- *
- * The beam/cubic relationship is linear in H, so this converges in 1-2 iterations.
- * 10 iterations is a generous upper bound.
- *
- * @param context {Context}
- * @param eiData {array} : Sorted [{ "x", "EI" }]; empty if hasEI is false
- * @param hasEI {boolean}
- * @param xFCP {ValueWithUnits}
- * @param xACP {ValueWithUnits}
- * @param xFRCP {ValueWithUnits}
- * @param xARCP {ValueWithUnits}
- * @param xLoad {ValueWithUnits} : Load application point (mount)
- * @param fcpHeight {ValueWithUnits} : Target FCP tip snow height
- * @param acpHeight {ValueWithUnits} : Target ACP tip snow height
- * @param frcpl {ValueWithUnits} : Forebody rocker length
- * @param arcpl {ValueWithUnits} : Aftbody rocker length
- * @param MCH_m {number} : Target camber height in plain meters
- * @returns {array} : [{x : ValueWithUnits, z : ValueWithUnits}]
- */
-export function buildBaseline(context is Context,
-                        eiData is array, hasEI is boolean,
-                        xFCP is ValueWithUnits, xACP is ValueWithUnits,
-                        xFRCP is ValueWithUnits, xARCP is ValueWithUnits,
-                        xLoad is ValueWithUnits,
-                        fcpHeight is ValueWithUnits, acpHeight is ValueWithUnits,
-                        frcpl is ValueWithUnits, arcpl is ValueWithUnits,
-                        MCH_m) returns array
-{
-    var TOL           = 1e-5;   // 0.01 mm
-    var hasForeRocker = frcpl > 0 * meter;
-    var hasAftRocker  = arcpl > 0 * meter;
-    var H_guess       = MCH_m;
-    var finalPts      = [];
-
-    for (var iter = 0; iter < 10; iter += 1)
-    {
-        // --- Step 1: Solve camber pocket ---
-        var camberPts = [];
-        if (hasEI && size(eiData) >= 2)
-        {
-            camberPts = solveCamberBeam(eiData, xFRCP, xARCP, xLoad, H_guess);
-        }
+        if ((xLo <= xPosition && xMid >= xPosition) || (xLo >= xPosition && xMid <= xPosition))
+            hi = mid;
         else
-        {
-            camberPts = solveCamberCubic(xFRCP, xARCP, xLoad, H_guess);
-        }
-
-        // --- Step 2: Attach rockers ---
-        var zFRCP_v   = interpZ(camberPts, xFRCP);
-        var zARCP_v   = interpZ(camberPts, xARCP);
-        var slopeFore = slopeAt(camberPts, xFRCP);
-        var slopeAft  = slopeAt(camberPts, xARCP);
-
-        var allPts = camberPts;
-
-        if (hasForeRocker)
-        {
-            var zFCPtip    = computeTipZ(xFRCP, zFRCP_v, slopeFore, xFCP, fcpHeight);
-            var foreRocker = solveRockerQuadratic(xFRCP, zFRCP_v, slopeFore, xFCP, zFCPtip, 51);
-            var foreOnly   = [];
-            for (var i = 1; i < size(foreRocker); i += 1)
-            {
-                foreOnly = append(foreOnly, foreRocker[i]);
-            }
-            allPts = concatenateArrays([foreOnly, allPts]);
-        }
-
-        if (hasAftRocker)
-        {
-            var zACPtip   = computeTipZ(xARCP, zARCP_v, slopeAft, xACP, acpHeight);
-            var aftRocker = solveRockerQuadratic(xARCP, zARCP_v, slopeAft, xACP, zACPtip, 51);
-            var aftOnly   = [];
-            for (var i = 1; i < size(aftRocker); i += 1)
-            {
-                aftOnly = append(aftOnly, aftRocker[i]);
-            }
-            allPts = concatenateArrays([allPts, aftOnly]);
-        }
-
-        // --- Step 3: Rotate/translate so tip minima are at z = 0 ---
-        allPts   = rotateTranslate(allPts, xFCP, xACP);
-        finalPts = allPts;
-
-        // --- Step 4: Measure and scale H for next iteration ---
-        if (MCH_m < TOL)
-        {
-            break;
-        }
-        var measured = measureCamberHeight(allPts, xFRCP, xARCP);
-        if (measured < 1e-9 || abs(measured - MCH_m) < TOL)
-        {
-            break;
-        }
-        H_guess = H_guess * (MCH_m / measured);
+            lo = mid;
     }
 
-    return finalPts;
+    return evaluateSpline({ "spline": foundCurve, "parameters": [(lo + hi) / 2] })[0][0][2];
+}
+
+export function setControlPointX(curve is BSplineCurve, xPosition is ValueWithUnits) returns BSplineCurve
+{
+    // Find control point with X closest to xPosition
+    var bestIdx = 0;
+    var bestDist = abs(curve.controlPoints[0][0] - xPosition);
+
+    for (var i = 1; i < size(curve.controlPoints); i += 1)
+    {
+        const dist = abs(curve.controlPoints[i][0] - xPosition);
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            bestIdx = i;
+        }
+    }
+
+    // Replace that control point's X, leaving Y and Z unchanged
+    var newControlPoints = curve.controlPoints;
+    const oldPt = newControlPoints[bestIdx];
+    newControlPoints[bestIdx] = vector(xPosition, oldPt[1], oldPt[2]);
+
+    return bSplineCurve({
+        "degree"        : curve.degree,
+        "dimension"     : curve.dimension,
+        "isRational"    : curve.isRational,
+        "isPeriodic"    : curve.isPeriodic,
+        "controlPoints" : newControlPoints,
+        "knots"         : curve.knots
+    });
+}
+
+export function sampleAndSortCurves(curves is array, nPoints is number) returns array
+{
+    var allPoints = [];
+
+    for (var curveIdx = 0; curveIdx < size(curves); curveIdx += 1)
+    {
+        const curve = curves[curveIdx];
+
+        const tStart = curve.knots[0];
+        const tEnd   = curve.knots[size(curve.knots) - 1];
+
+        const params = range(tStart, tEnd, nPoints);
+
+        const evaluated = evaluateSpline({ "spline": curve, "parameters": params })[0];
+
+        for (var i = 0; i < size(evaluated); i += 1)
+            allPoints = append(allPoints, evaluated[i]);
+    }
+    
+    allPoints = deduplicate(allPoints);
+    allPoints = sort(allPoints, function(a, b) {return a[0] - b[0];});
+
+    return allPoints;
 }

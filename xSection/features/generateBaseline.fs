@@ -4,13 +4,16 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 // IMPORT: xSectReferencePoints.fs
 import(path : "08fddb59786b6bfee020ee05", version : "d4ef98b7b0acf40b1998b4ed");
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
+import(path : "ebac109589e3bf405d3f3ae7", version : "9e8676f449d3bc6ce225a1b8");
 
 // IMPORT: generateBaselineSolver.fs
-import(path : "649902142758d832c018a0be", version : "bf935e5ab4c5f802d1acf5fb");
+import(path : "649902142758d832c018a0be", version : "085deabdc3aac82e93a37db7");
 
 // IMPORT: analyzeBaseline.fs
 import(path : "f0717a1116fee7304957da5b", version : "5b40b4a82d143f10befe8c4e");
+
+//import export baselineCore
+export import(path : "14d1222501acfaf0e2029dac", version : "8111d5991f2b8f3fc012e166");
 
 
 
@@ -45,8 +48,8 @@ import(path : "f0717a1116fee7304957da5b", version : "5b40b4a82d143f10befe8c4e");
 // =============================================================================
 
 export const ApproxToleranceBounds  = { (meter) : [1e-7, 1e-4, 1e-2] } as LengthBoundSpec;
-export const MaxControlPointsBounds = { (unitless) : [4, 50, 500] }    as IntegerBoundSpec;
-export const ApproxDegreeBounds     = { (unitless) : [1, 3, 9] }       as IntegerBoundSpec;
+export const MaxControlPointsBounds = { (unitless) : [4, 15, 50] }    as IntegerBoundSpec;
+export const ApproxDegreeBounds     = { (unitless) : [3, 3, 9] }       as IntegerBoundSpec;
 
 
 // =============================================================================
@@ -69,58 +72,64 @@ export function generateBaselineEditLogic(context is Context, id is Id,
 // FEATURE DEFINITION
 // =============================================================================
 
-annotation {
-    "Feature Type Name"        : "Generate baseline",
+annotation {"Feature Type Name"        : "Generate baseline",
     "Feature Type Description" : "Generates a camber/rocker baseline curve for a ski or snowboard",
-    "Editing Logic Function"   : "generateBaselineEditLogic"
-}
+    "Editing Logic Function"   : "generateBaselineEditLogic" }
 export const generateBaseline = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
+        annotation { "Name" : "Output type", "Default" : BaselineCurveOutputType.CURVE_PER_REGION, "UIHint" : UIHint.HORIZONTAL_ENUM }
+        definition.outputType is BaselineCurveOutputType;
+        
         annotation { "Name" : "Output curve name", "Default" : "Baseline" }
         definition.outputCurveName is string;
 
-        annotation { "Name" : "FCP",
-                     "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
-                     "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "FCP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.fcpQuery is Query;
 
-        annotation { "Name" : "ACP",
-                     "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
-                     "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.acpQuery is Query;
 
-        annotation { "Name" : "Mount / load point",
-                     "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
-                     "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Mount / load point", "Filter" : (EntityType.FACE && GeometryType.PLANE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.mountQuery is Query;
 
-        annotation { "Group Name" : "Camber targets", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Baseline targets", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Camber height (MCH)",
-                         "Description" : "Maximum camber height after rocker rotation. 0 = flat ski." }
-            isLength(definition.camberHeight, LENGTH_BOUNDS);
+            annotation { "Name" : "Camber height (MCH)", "Description" : "Maximum camber height after rocker rotation. 0 = flat ski." }
+            isLength(definition.camberHeight, CamberHeightBounds);
 
-            annotation { "Name" : "Forebody rocker length",
-                         "Description" : "FCP -> FRCP distance. 0 = no forebody rocker." }
-            isLength(definition.frcpl, LENGTH_BOUNDS);
+            annotation { "Name" : "Forebody rocker length", "Description" : "FCP -> FRCP distance. 0 = no forebody rocker." }
+            isLength(definition.frcpl, RockerLengthBounds);
+            
+            annotation { "Name" : "Spec forebody minimum" }
+            definition.specForebodyMin is boolean;
+            
+            if (definition.specForebodyMin)
+            {
+                annotation { "Name" : "Forebody inflection point to minimum point dist" }
+                isLength(definition.forebodyMinPointDist, MinPointDistBounds);  
+            }
 
-            annotation { "Name" : "Aftbody rocker length",
-                         "Description" : "ARCP -> ACP distance. 0 = no aftbody rocker." }
-            isLength(definition.arcpl, LENGTH_BOUNDS);
+            annotation { "Name" : "Aftbody rocker length","Description" : "ARCP -> ACP distance. 0 = no aftbody rocker." }
+            isLength(definition.arcpl, RockerLengthBounds);
+            
+            annotation { "Name" : "Spec aftbody minimum" }
+            definition.specAftbodyMin is boolean;
+            
+            if (definition.specAftbodyMin)
+            {
+                annotation { "Name" : "Aftbody inflection point to minimum point dist" }
+                isLength(definition.aftbodyMinPointDist, MinPointDistBounds);  
+            }
 
-            annotation { "Name" : "FCP height",
-                         "Description" : "Normal-distance offset of FCP tip below camber tangent at FRCP." }
-            isLength(definition.fcpHeight, LENGTH_BOUNDS);
+            annotation { "Name" : "FCP height", "Description" : "Normal-distance offset of FCP tip below camber tangent at FRCP." }
+            isLength(definition.fcpHeight, RockerHeightBounds);
 
-            annotation { "Name" : "ACP height",
-                         "Description" : "Normal-distance offset of ACP tip below camber tangent at ARCP." }
-            isLength(definition.acpHeight, LENGTH_BOUNDS);
+            annotation { "Name" : "ACP height", "Description" : "Normal-distance offset of ACP tip below camber tangent at ARCP." }
+            isLength(definition.acpHeight, RockerHeightBounds);
         }
 
-        annotation { "Name" : "Use EI profile",
-                     "Default" : false,
-                     "Description" : "When enabled, solve camber pocket using beam bending with the provided EI profile." }
+        annotation { "Name" : "Use EI profile", "Default" : false, "Description" : "When enabled, solve camber pocket using beam bending with the provided EI profile. When false, solve for a simple cubic as the camber pocket" }
         definition.hasEIProfile is boolean;
 
         annotation { "Name" : "showEIQuery", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
@@ -128,9 +137,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
         if (definition.showEIQuery)
         {
-            annotation { "Name" : "EI profile edges",
-                         "Filter" : EntityType.EDGE,
-                         "Description" : "World Z in mm = EI in Nm^2." }
+            annotation { "Name" : "EI profile edges", "Filter" : EntityType.EDGE, "Description" : "World Z in mm = EI in Nm^2." }
             definition.eiEdgesQuery is Query;
         }
 
@@ -147,7 +154,17 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
 
         annotation { "Name" : "Add baseline sketch" }
-        definition.addBaselineSketch is boolean;
+        definition.addBaselineSketch is boolean;       
+        
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print setup" }
+            definition.debugPrintSetup is boolean;
+            
+            annotation { "Name" : "Print solver iterations" }
+            definition.debugPrintSolverIterations is boolean;
+        }
+        
 
     }
     {
@@ -155,39 +172,40 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         // 1. Resolve reference X coordinates
         // ----------------------------------------------------------------
         var dummyEdge = qNothing();
-        var xFCP   = resolveReferencePointX(context, definition.fcpQuery,   dummyEdge);
-        var xACP   = resolveReferencePointX(context, definition.acpQuery,   dummyEdge);
+        var xFCP = round(resolveReferencePointX(context, definition.fcpQuery,   dummyEdge), 0.1 * millimeter);
+        var xACP = round(resolveReferencePointX(context, definition.acpQuery,   dummyEdge), 0.1 * millimeter);
+        var xMRS = (xFCP + xACP)/2;
         var xMount = resolveReferencePointX(context, definition.mountQuery,  dummyEdge);
+        
+        println('xFCP = ' ~ toString(xFCP));
+        println('xACP = ' ~ toString(xACP));
+        println('xMount = ' ~ toString(xMount));
 
         if (xFCP == undefined || xACP == undefined || xMount == undefined)
         {
             throw regenError("Could not resolve FCP, ACP, or mount point.");
         }
-        if (xFCP >= xACP)
-        {
-            throw regenError("FCP must have a smaller X coordinate than ACP.");
-        }
-        if (xMount < xFCP || xMount > xACP)
+        
+        //println('xFCP -> ' ~ toString(xFCP) ~ '. xACP -> ' ~ toString(xACP) ~ '. xMP -> ' ~ toString(xMount));
+        
+        if (!((xFCP > xMount && xACP < xMount)  || (xFCP < xMount && xACP > xMount)))
         {
             throw regenError("Mount / load point must lie between FCP and ACP.");
         }
+        
+        var stdDir = xFCP < xACP;
 
         // ----------------------------------------------------------------
         // 2. Derive FRCP and ARCP
         // ----------------------------------------------------------------
-        var xFRCP = xFCP + definition.frcpl;
-        var xARCP = xACP - definition.arcpl;
-
-        if (xFRCP >= xARCP)
-        {
-            throw regenError("Rocker lengths are too large — FRCP must be less than ARCP.");
-        }
+        var xFRCP = (stdDir) ? xFCP + definition.frcpl : xFCP - definition.frcpl;
+        var xARCP = (stdDir) ? xACP - definition.arcpl : xACP + definition.arcpl;
 
 
         // ----------------------------------------------------------------
         // 3. Load EI data
         // ----------------------------------------------------------------
-        var eiData = [];
+        var eiData = []; // {x: (xPoint) , EI: (EI)}
         var hasEI  = false;
 
         if (definition.hasEIProfile && definition.showEIQuery)
@@ -198,327 +216,294 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 eiData = getEIFromEdges(context, definition.eiEdgesQuery, xFCP, xACP);
                 hasEI  = (size(eiData) >= 2);
             }
+            else
+            {
+                throw regenError("Unable to extract edges from provided EI profile");
+            }
         }
 
         // Needed by steps 4, 5, and 6
         var hasForeRocker = definition.frcpl > 0 * meter;
         var hasAftRocker  = definition.arcpl  > 0 * meter;
-
-        // ----------------------------------------------------------------
-        // 4-5. Solve baseline geometry
-        // ----------------------------------------------------------------
-        var MCH_m    = definition.camberHeight / meter;
-        var finalPts = buildBaseline(context, eiData, hasEI,
-                                     xFCP, xACP, xFRCP, xARCP, xMount,
-                                     definition.fcpHeight, definition.acpHeight,
-                                     definition.frcpl, definition.arcpl,
-                                     MCH_m);
-
-
-        // ----------------------------------------------------------------
-        // 6. Fit camber spline separately, then build exact G1 Bézier
-        //    rockers tangent to the fitted camber at the junction points.
-        //
-        //    Rationale: fitting one big spline over all ~300 points then
-        //    splitting near FRCP/ARCP shares the approximation budget across
-        //    the whole span and, when an EI profile is used, the k=0 clamp
-        //    near the EI profile endpoints causes a curvature kink that the
-        //    spline fitter absorbs by introducing a spurious inflection in
-        //    the camber pocket.  Fitting the camber alone dedicates the full
-        //    control-point budget to the camber shape.  The rockers become
-        //    exact degree-2 Béziers whose G1 tangent at the junction is
-        //    read directly from the fitted camber endpoint.
-        // ----------------------------------------------------------------
-
-        try
+        
+        var iterCamberHeight = definition.camberHeight; // iteration variable
+        var camberDelta = 1 * meter; //update this data with each iteration
+        
+        var camberBSpline = undefined;
+        var forebodyRockerBSpline = undefined;
+        var aftbodyRockerBSpline = undefined;
+        var baselineBSplines =[];
+        
+        for (var i = 0; i < 20; i += 1) // main solver loop
         {
-            // Bucket finalPts into camber vs rocker regions.
-            // Camber:     xFRCP ≤ x ≤ xARCP  (includes both junction points)
-            // Fore rocker: x < xFRCP          (FCP tip side)
-            // Aft rocker:  x > xARCP          (ACP tip side)
-            var camberPts     = [];
-            var foreRockerPts = [];
-            var aftRockerPts  = [];
-            var GEOM_TOL_BKT  = 1e-9 * meter;
-
-            for (var pt in finalPts)
+            println('camber delta at the start of iteration ' ~ i ~ ' = ' ~ toString(camberDelta));
+            if (camberDelta < 0.001 * millimeter)
             {
-                var inFore = hasForeRocker && (pt.x < xFRCP - GEOM_TOL_BKT);
-                var inAft  = hasAftRocker  && (pt.x > xARCP + GEOM_TOL_BKT);
-                if (inFore)
+                break; //last iteration is sufficent
+            }
+            else
+            {
+                
+                baselineBSplines =[]; // clear array
+
+                var camberPocket = (hasEI) ? solveCamberBeam(eiData, xFRCP, xARCP, xMount, iterCamberHeight/meter) : solveCamberCubic(xFRCP, xARCP, xMount, iterCamberHeight/meter);
+                
+                var cleanPocket = mapArray(camberPocket, function(x) {return vector(x['x'], 0 * millimeter, x['z']);}); // convert to usable form (vectors)
+                
+                cleanPocket = sort(cleanPocket, function(a, b) {return a[0] - b[0];}); //sort points in ascending order in X
+                
+                var approxCamberPocket = approximateSpline(context, {
+                        "degree" : definition.curveDegree,
+                        "tolerance" : definition.approxTolerance,
+                        "maxControlPoints" : definition.maxControlPoints,
+                        "isPeriodic" : false,
+                        "targets" : [approximationTarget({ 'positions' : cleanPocket })],
+                        "interpolateIndices" : [0, size(cleanPocket) -1]
+                })[0];
+                
+                baselineBSplines = append(baselineBSplines, approxCamberPocket);
+                camberBSpline = approxCamberPocket;
+                
+                
+                var cpFRCP_data = (stdDir) ? evaluateSpline({ "spline" : approxCamberPocket, "parameters" : [approxCamberPocket.knots[0]], "nDerivatives" : 1}) : evaluateSpline({ "spline" : approxCamberPocket, "parameters" : [approxCamberPocket.knots[size(approxCamberPocket.knots) -1]], "nDerivatives" : 1});
+                var cpARCP_data = (stdDir) ? evaluateSpline({ "spline" : approxCamberPocket, "parameters" : [approxCamberPocket.knots[size(approxCamberPocket.knots) -1]], "nDerivatives" : 1}) : evaluateSpline({ "spline" : approxCamberPocket, "parameters" : [approxCamberPocket.knots[0]], "nDerivatives" : 1});
+                
+                var frcpPoint = cpFRCP_data[0][0];
+                var frcpSlope = normalize(cpFRCP_data[1][0]);
+                var frcpNormalSlope = vector(frcpSlope[2], 0, -frcpSlope[0]);
+                
+                var arcpPoint = cpARCP_data[0][0];
+                var arcpSlope = normalize(cpARCP_data[1][0]);
+                var arcpNormalSlope = vector(arcpSlope[2], 0, -arcpSlope[0]);
+                
+                //b. if forebody rocker, generate forebody rocker
+                if (hasForeRocker)
                 {
-                    foreRockerPts = append(foreRockerPts, vector(pt.x, 0 * meter, pt.z));
-                }
-                else if (inAft)
-                {
-                    aftRockerPts = append(aftRockerPts, vector(pt.x, 0 * meter, pt.z));
-                }
-                else
-                {
-                    camberPts = append(camberPts, vector(pt.x, 0 * meter, pt.z));
-                }
-            }
+                    var rockerXDelta = xFCP - frcpPoint[0];
 
-            if (size(camberPts) < 2)
-            {
-                throw regenError("Baseline solver produced insufficient camber points.");
-            }
-
-            // --- Fit the camber spline (full approximation budget) ---
-            var approxCamber = approximateSpline(context, {
-                "degree"           : definition.curveDegree,
-                "tolerance"        : definition.approxTolerance,
-                "isPeriodic"       : false,
-                "targets"          : [{ "positions" : camberPts }],
-                "maxControlPoints" : definition.maxControlPoints
-            });
-
-            opCreateBSplineCurve(context, id + "camber", {
-                "bSplineCurve" : approxCamber[0]
-            });
-
-            var camberEdges = evaluateQuery(context, qCreatedBy(id + "camber", EntityType.EDGE));
-            if (size(camberEdges) == 0)
-            {
-                throw regenError("Baseline: camber spline body produced no edges.");
-            }
-            var camberEdge = camberEdges[0];
-
-            // Track which rocker bodies were actually created.
-            var hasForeBody = false;
-            var hasAftBody  = false;
-
-            // --- Build G1 Bézier forebody rocker ---
-            // Degree-2 Bézier: P0 = FCP tip, P1 = G1 control, P2 = fitted camber start.
-            //
-            //   G1 at P2: Bézier tangent at t=1 = 2*(P2-P1) ∝ camberStartTan
-            //   => P1 = P2 - (α/2)*camberStartTan
-            //      α  = (P2.x - P0.x) / camberStartTan.x
-            //   => P1.x = midpoint(P0.x, P2.x)
-            if (hasForeRocker && size(foreRockerPts) >= 1)
-            {
-                var camberStartCurv = evEdgeCurvatures(context, { "edge" : camberEdge, "parameters" : [0.0] });
-                var camberStartPt   = camberStartCurv[0].frame.origin;
-                var camberStartTan  = camberStartCurv[0].frame.zAxis;  // normalized tangent, points FCP→ACP
-
-                var fTipPt = foreRockerPts[0];  // lowest-X point = FCP tip
-                var dxFore = camberStartPt[0] - fTipPt[0];
-
-                if (abs(camberStartTan[0]) > 0.01)
-                {
-                    var alphaFore = dxFore / camberStartTan[0];
-                    var P1fore = vector(
-                        camberStartPt[0] - (alphaFore / 2) * camberStartTan[0],
-                        0 * meter,
-                        camberStartPt[2] - (alphaFore / 2) * camberStartTan[2]
-                    );
-                    opCreateBSplineCurve(context, id + "forebody", {
-                        "bSplineCurve" : bSplineCurve({
-                            "degree"        : 2,
-                            "isPeriodic"    : false,
-                            "controlPoints" : [fTipPt, P1fore, camberStartPt]
-                        })
-                    });
-                    hasForeBody = true;
-                }
-                else
-                {
-                    // Near-vertical junction tangent: approximate through fore points.
-                    var forePoints = append(foreRockerPts, camberStartPt);
-                    var approxFore = approximateSpline(context, {
-                        "degree"           : definition.curveDegree,
-                        "tolerance"        : definition.approxTolerance,
-                        "isPeriodic"       : false,
-                        "targets"          : [{ "positions" : forePoints }],
-                        "maxControlPoints" : definition.maxControlPoints
-                    });
-                    opCreateBSplineCurve(context, id + "forebody", {
-                        "bSplineCurve" : approxFore[0]
-                    });
-                    hasForeBody = true;
-                }
-            }
-
-            // --- Build G1 Bézier aftbody rocker ---
-            // Degree-2 Bézier: P0 = fitted camber end, P1 = G1 control, P2 = ACP tip.
-            //
-            //   G1 at P0: Bézier tangent at t=0 = 2*(P1-P0) ∝ camberEndTan
-            //   => P1 = P0 + (β/2)*camberEndTan
-            //      β  = (P2.x - P0.x) / camberEndTan.x
-            //   => P1.x = midpoint(P0.x, P2.x)
-            if (hasAftRocker && size(aftRockerPts) >= 1)
-            {
-                var camberEndCurv = evEdgeCurvatures(context, { "edge" : camberEdge, "parameters" : [1.0] });
-                var camberEndPt   = camberEndCurv[0].frame.origin;
-                var camberEndTan  = camberEndCurv[0].frame.zAxis;  // normalized tangent, points FCP→ACP
-
-                var aTipPt = aftRockerPts[size(aftRockerPts) - 1];  // highest-X point = ACP tip
-                var dxAft  = aTipPt[0] - camberEndPt[0];
-
-                if (abs(camberEndTan[0]) > 0.01)
-                {
-                    var betaAft = dxAft / camberEndTan[0];
-                    var P1aft = vector(
-                        camberEndPt[0] + (betaAft / 2) * camberEndTan[0],
-                        0 * meter,
-                        camberEndPt[2] + (betaAft / 2) * camberEndTan[2]
-                    );
-                    opCreateBSplineCurve(context, id + "aftbody", {
-                        "bSplineCurve" : bSplineCurve({
-                            "degree"        : 2,
-                            "isPeriodic"    : false,
-                            "controlPoints" : [camberEndPt, P1aft, aTipPt]
-                        })
-                    });
-                    hasAftBody = true;
-                }
-                else
-                {
-                    // Near-vertical junction tangent: approximate through aft points.
-                    var aftPoints = concatenateArrays([[camberEndPt], aftRockerPts]);
-                    var approxAft = approximateSpline(context, {
-                        "degree"           : definition.curveDegree,
-                        "tolerance"        : definition.approxTolerance,
-                        "isPeriodic"       : false,
-                        "targets"          : [{ "positions" : aftPoints }],
-                        "maxControlPoints" : definition.maxControlPoints
-                    });
-                    opCreateBSplineCurve(context, id + "aftbody", {
-                        "bSplineCurve" : approxAft[0]
-                    });
-                    hasAftBody = true;
-                }
-            }
-
-            // --- Merge all segment edges into a single wire body ---
-            var allEdgeQueries = [qCreatedBy(id + "camber", EntityType.EDGE)];
-            if (hasForeBody)
-            {
-                allEdgeQueries = append(allEdgeQueries, qCreatedBy(id + "forebody", EntityType.EDGE));
-            }
-            if (hasAftBody)
-            {
-                allEdgeQueries = append(allEdgeQueries, qCreatedBy(id + "aftbody", EntityType.EDGE));
-            }
-
-            opExtractWires(context, id + "baseline", {
-                "edges" : qUnion(allEdgeQueries)
-            });
-
-            // Delete the now-redundant segment bodies.
-            var segBodyQueries = [qCreatedBy(id + "camber", EntityType.BODY)];
-            if (hasForeBody)
-            {
-                segBodyQueries = append(segBodyQueries, qCreatedBy(id + "forebody", EntityType.BODY));
-            }
-            if (hasAftBody)
-            {
-                segBodyQueries = append(segBodyQueries, qCreatedBy(id + "aftbody", EntityType.BODY));
-            }
-            opDeleteBodies(context, id + "deleteSegments", {
-                "entities" : qUnion(segBodyQueries)
-            });
-
-            // Name the wire body if a name was provided.
-            if (definition.outputCurveName != "")
-            {
-                var wireBody = evaluateQuery(context, qCreatedBy(id + "baseline", EntityType.BODY));
-                if (size(wireBody) > 0)
-                {
-                    setProperty(context, {
-                        "entities"     : wireBody[0],
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : definition.outputCurveName
-                    });
-                }
-            }
-
-            // Baseline sketch — analyze the generated curve and output measurement geometry
-            if (definition.addBaselineSketch)
-            {
-                var baselineEdges = qCreatedBy(id + "baseline", EntityType.EDGE);
-                var result = analyzeBaselineGeometry(context, baselineEdges,
-                                                     definition.fcpQuery, definition.acpQuery);
-                if (result != undefined)
-                {
-                    var chordDir   = normalize(result.ab_min_pt - result.fb_min_pt);
-                    var camberDiff = result.max_camber_pt - result.fb_min_pt;
-                    var camberFoot = result.fb_min_pt + dot(camberDiff, chordDir) * chordDir;
-
-                    var fbFoot = undefined;
-                    if (result.frcp_pt != undefined)
+                    var rockerNormalVector = definition.fcpHeight * frcpNormalSlope;
+                    if (rockerNormalVector[2] < 0 * millimeter) // flip vector to get correct Z delta
                     {
-                        var fcpDiff = result.fcp_pt - result.frcp_pt;
-                        fbFoot = result.frcp_pt + dot(fcpDiff, result.frcp_dir) * result.frcp_dir;
+                        rockerNormalVector = -1 * rockerNormalVector;
                     }
+                    
+                    var tangent_l = rockerXDelta - rockerNormalVector[0];
+                    var tangentPoint = frcpPoint + tangent_l*frcpSlope;
+                    var rockerPoint = tangentPoint + rockerNormalVector;
+                    
+                    var t = (definition.specForebodyMin) ? solveForTension(frcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * frcpSlope, definition.forebodyMinPointDist) : 0.5; //tension for rocker
+                    
+                    var rockerSpline = quadraticSplineFromTangent(frcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * frcpSlope, t);
 
-                    var abFoot = undefined;
-                    if (result.arcp_pt != undefined)
-                    {
-                        var acpDiff = result.acp_pt - result.arcp_pt;
-                        abFoot = result.arcp_pt + dot(acpDiff, result.arcp_dir) * result.arcp_dir;
-                    }
-
-                    var sketchPl = plane(vector(0, 0, 0) * meter, vector(0, -1, 0), vector(1, 0, 0));
-                    var sketch = newSketchOnPlane(context, id + "baselineMeasurementSketch", {
-                        "sketchPlane" : sketchPl
-                    });
-
-                    skLineSegment(sketch, "minChord", {
-                        "start"        : worldToPlane(sketchPl, result.fb_min_pt),
-                        "end"          : worldToPlane(sketchPl, result.ab_min_pt),
-                        "construction" : true
-                    });
-
-                    if (result.frcp_pt != undefined && result.arcp_pt != undefined)
-                    {
-                        skLineSegment(sketch, "inflChord", {
-                            "start"        : worldToPlane(sketchPl, result.frcp_pt),
-                            "end"          : worldToPlane(sketchPl, result.arcp_pt),
-                            "construction" : true
-                        });
-                    }
-
-                    if (result.frcp_pt != undefined && fbFoot != undefined)
-                    {
-                        skLineSegment(sketch, "fbTangentLeg", {
-                            "start"        : worldToPlane(sketchPl, result.frcp_pt),
-                            "end"          : worldToPlane(sketchPl, fbFoot),
-                            "construction" : true
-                        });
-                        skLineSegment(sketch, "fbNormalLeg", {
-                            "start"        : worldToPlane(sketchPl, result.fcp_pt),
-                            "end"          : worldToPlane(sketchPl, fbFoot),
-                            "construction" : true
-                        });
-                    }
-
-                    if (result.arcp_pt != undefined && abFoot != undefined)
-                    {
-                        skLineSegment(sketch, "abTangentLeg", {
-                            "start"        : worldToPlane(sketchPl, result.arcp_pt),
-                            "end"          : worldToPlane(sketchPl, abFoot),
-                            "construction" : true
-                        });
-                        skLineSegment(sketch, "abNormalLeg", {
-                            "start"        : worldToPlane(sketchPl, result.acp_pt),
-                            "end"          : worldToPlane(sketchPl, abFoot),
-                            "construction" : true
-                        });
-                    }
-
-                    skLineSegment(sketch, "camberNormal", {
-                        "start"        : worldToPlane(sketchPl, result.max_camber_pt),
-                        "end"          : worldToPlane(sketchPl, camberFoot),
-                        "construction" : true
-                    });
-
-                    skSolve(sketch);
+                    baselineBSplines = append(baselineBSplines, rockerSpline);
+                    forebodyRockerBSpline = rockerSpline;
                 }
+                //c. if aftbody rocker, generate aftbody rocker
+                if (hasAftRocker)
+                {
+                    var rockerXDelta = xACP - arcpPoint[0];
+
+                    var rockerNormalVector = definition.acpHeight * arcpNormalSlope;
+                    if (rockerNormalVector[2] < 0 * millimeter) // flip vector to get correct Z delta
+                    {
+                        rockerNormalVector = -1 * rockerNormalVector;
+                    }
+                    
+                    var tangent_l = rockerXDelta - rockerNormalVector[0];
+                    var tangentPoint = arcpPoint + tangent_l*arcpSlope;
+                    var rockerPoint = tangentPoint + rockerNormalVector;
+                    
+                    var t = (definition.specAftbodyMin) ? solveForTension(arcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * arcpSlope, definition.aftbodyMinPointDist) : 0.5; //tension for rocker
+                    
+                    var rockerSpline = quadraticSplineFromTangent(arcpPoint, rockerPoint, (rockerXDelta < 0 * millimeter ? -1 : 1) * arcpSlope, t);
+
+                    baselineBSplines = append(baselineBSplines, rockerSpline);
+                    aftbodyRockerBSpline = rockerSpline;
+                    
+                }
+                
+                //d. package, translate and shift. 
+                var minPoints = findMinZBothSides(baselineBSplines, xMRS, stdDir);
+                var translatedCurves = transformCurves(baselineBSplines, minPoints.fbMin, minPoints.abMin);
+                
+                //2. solve for baseline values
+                
+                var camber = solveZAtX(baselineBSplines, xMount);
+                //println('iterCamber = ' ~ iterCamber);
+                //3. based on values, update iterCamberHeight
+                var camberDiff = definition.camberHeight - camber;
+                var pctChange = (iterCamberHeight + camberDiff)/iterCamberHeight;
+                /*
+                println('********** ITERATION ' ~ i ~ ' ***************');
+                println('current -> ' ~ iterCamberHeight);
+                println('measured - > ' ~ camber);
+                println('delta -> ' ~ camberDiff);
+                println('pctChange -> ' ~ pctChange)
+                */
+                
+                iterCamberHeight = iterCamberHeight * pctChange;
+                //println('updated -> ' ~ iterCamberHeight);
+                
+                
+                camberDelta = camberDiff;
             }
         }
-        catch (e)
+        
+        baselineBSplines = [camberBSpline];
+        if (hasForeRocker)
         {
-            throw regenError("Baseline spline fitting failed — see console output.");
+            forebodyRockerBSpline = setControlPointX(forebodyRockerBSpline, xFCP); // ensure last point lands on FCP
+            baselineBSplines = append(baselineBSplines, forebodyRockerBSpline);
         }
+        if (hasAftRocker)
+        {
+            aftbodyRockerBSpline = setControlPointX(aftbodyRockerBSpline, xACP);// ensure last point lands on ACP
+            baselineBSplines = append(baselineBSplines, aftbodyRockerBSpline);
+        }
+        
+        var curveBodyQ = qNothing();
+        
+        if (definition.outputType == BaselineCurveOutputType.CURVE_PER_REGION)
+        {
+            var createdEdges = [];
+            var createdBodies = [];
+            for (var i = 0; i < size(baselineBSplines); i += 1)
+            {
+                opCreateBSplineCurve(context, id + ("createSectionBSplines" ~ i), {
+                        "bSplineCurve" : baselineBSplines[i]
+                });
+                
+                createdEdges = append(createdEdges, qCreatedBy(id + ("createSectionBSplines" ~ i), EntityType.EDGE));
+                createdBodies = append(createdBodies, qCreatedBy(id + ("createSectionBSplines" ~ i), EntityType.BODY));
+                
+            }
+            
+            opExtractWires(context, id + "extractBaselineCurves", {
+                    "edges" : qUnion(createdEdges)
+            });
+            
+            curveBodyQ = qCreatedBy(id + "extractBaselineCurves", EntityType.BODY);
+            
+            opDeleteBodies(context, id + "deleteOriginalWires", {
+                    "entities" : qUnion(createdBodies)
+            });
+        }
+        else
+        {
+            var curvePoints = sampleAndSortCurves(baselineBSplines, 20);
+            
+            var fullSpline = approximateSpline(context, {
+                    "degree" : definition.curveDegree,
+                    "tolerance" : definition.approxTolerance,
+                    "maxControlPoints" : definition.maxControlPoints,
+                    "isPeriodic" : false,
+                    "targets" : [approximationTarget({ 'positions' : curvePoints })]
+            })[0];
+            
+            opCreateBSplineCurve(context, id + "createFullCurve", {
+                    "bSplineCurve" : fullSpline
+            });
+            
+            curveBodyQ = qCreatedBy(id + "createFullCurve", EntityType.BODY);
+        }
+        
+        
+
+        // Name the wire body if a name was provided.
+        if (length(definition.outputCurveName) > 0)
+        {
+            setProperty(context, {
+                    "entities" : curveBodyQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value" : definition.outputCurveName
+            });
+        }
+        
+        
+        // Baseline sketch — analyze the generated curve and output measurement geometry
+        if (definition.addBaselineSketch)
+        
+        {
+            var baselineEdges = qUnion([qOwnedByBody(curveBodyQ, EntityType.EDGE)]);
+            var result = analyzeBaselineGeometry(context, baselineEdges,
+                                                 definition.fcpQuery, definition.acpQuery);
+            if (result != undefined)
+            {
+                var chordDir   = normalize(result.ab_min_pt - result.fb_min_pt);
+                var camberDiff = result.max_camber_pt - result.fb_min_pt;
+                var camberFoot = result.fb_min_pt + dot(camberDiff, chordDir) * chordDir;
+
+                var fbFoot = undefined;
+                if (result.frcp_pt != undefined)
+                {
+                    var fcpDiff = result.fcp_pt - result.frcp_pt;
+                    fbFoot = result.frcp_pt + dot(fcpDiff, result.frcp_dir) * result.frcp_dir;
+                }
+
+                var abFoot = undefined;
+                if (result.arcp_pt != undefined)
+                {
+                    var acpDiff = result.acp_pt - result.arcp_pt;
+                    abFoot = result.arcp_pt + dot(acpDiff, result.arcp_dir) * result.arcp_dir;
+                }
+
+                var sketchPl = plane(vector(0, 0, 0) * meter, vector(0, -1, 0), vector(1, 0, 0));
+                var sketch = newSketchOnPlane(context, id + "baselineMeasurementSketch", {
+                    "sketchPlane" : sketchPl
+                });
+
+                skLineSegment(sketch, "minChord", {
+                    "start"        : worldToPlane(sketchPl, result.fb_min_pt),
+                    "end"          : worldToPlane(sketchPl, result.ab_min_pt),
+                    "construction" : true
+                });
+
+                if (result.frcp_pt != undefined && result.arcp_pt != undefined)
+                {
+                    skLineSegment(sketch, "inflChord", {
+                        "start"        : worldToPlane(sketchPl, result.frcp_pt),
+                        "end"          : worldToPlane(sketchPl, result.arcp_pt),
+                        "construction" : true
+                    });
+                }
+
+                if (result.frcp_pt != undefined && fbFoot != undefined)
+                {
+                    skLineSegment(sketch, "fbTangentLeg", {
+                        "start"        : worldToPlane(sketchPl, result.frcp_pt),
+                        "end"          : worldToPlane(sketchPl, fbFoot),
+                        "construction" : true
+                    });
+                    skLineSegment(sketch, "fbNormalLeg", {
+                        "start"        : worldToPlane(sketchPl, result.fcp_pt),
+                        "end"          : worldToPlane(sketchPl, fbFoot),
+                        "construction" : true
+                    });
+                }
+
+                if (result.arcp_pt != undefined && abFoot != undefined)
+                {
+                    skLineSegment(sketch, "abTangentLeg", {
+                        "start"        : worldToPlane(sketchPl, result.arcp_pt),
+                        "end"          : worldToPlane(sketchPl, abFoot),
+                        "construction" : true
+                    });
+                    skLineSegment(sketch, "abNormalLeg", {
+                        "start"        : worldToPlane(sketchPl, result.acp_pt),
+                        "end"          : worldToPlane(sketchPl, abFoot),
+                        "construction" : true
+                    });
+                }
+
+                skLineSegment(sketch, "camberNormal", {
+                    "start"        : worldToPlane(sketchPl, result.max_camber_pt),
+                    "end"          : worldToPlane(sketchPl, camberFoot),
+                    "construction" : true
+                });
+
+                skSolve(sketch);
+            }
+            
+        }
+    
     });

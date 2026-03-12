@@ -4,10 +4,11 @@
   "document_name": "xSection",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/f8deedeb1fbd819a8fa20113/w/33c32ba27726cb036d4d912b",
-  "last_sync": "2026-03-07T04:13:20.269869+00:00",
+  "last_sync": "2026-03-11T23:53:08.247302+00:00",
   "feature_studios": {
     "estimateDeflectionSolver": "b94e66e5f6d027e5be938121",
     "generateBaselineSolver": "649902142758d832c018a0be",
+    "baselineCore": "14d1222501acfaf0e2029dac",
     "analyzeBaseline": "f0717a1116fee7304957da5b",
     "profileUpdatesTable": "aaee9996cb42961cccbaaaa3",
     "updateProfile": "9a4f5d9ae6383b28085b329d",

@@ -396,21 +396,7 @@ export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is Val
         }
     }
 
-    if (size(points) < 2)
-        return points;
-
-    // Insertion sort by x
-    for (var i = 1; i < size(points); i += 1)
-    {
-        var key = points[i];
-        var j = i - 1;
-        while (j >= 0 && points[j].x > key.x)
-        {
-            points[j + 1] = points[j];
-            j -= 1;
-        }
-        points[j + 1] = key;
-    }
+    points = sort(points, function(a, b) {return a.x - b.x;});
 
     // Clamp all sampled EI values to non-negative.
     // opFitSpline can produce negative Z near steep endpoints (cubic overshoot),
@@ -421,37 +407,6 @@ export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is Val
         if (points[i].EI < 0 * newton * meter * meter)
         {
             points[i] = { "x" : points[i].x, "EI" : 0 * newton * meter * meter };
-        }
-    }
-
-    var n = size(points);
-
-    // Linear extrapolation at front boundary
-    if (points[0].x > xFCP && n >= 2)
-    {
-        var dx = points[1].x - points[0].x;
-        if (abs(dx) > 1e-10 * meter)
-        {
-            var slope = (points[1].EI - points[0].EI) / dx;
-            var extEI = points[0].EI + slope * (xFCP - points[0].x);
-            if (extEI < 0 * newton * meter * meter)
-                extEI = 0 * newton * meter * meter;
-            points = concatenateArrays([[{ "x" : xFCP, "EI" : extEI }], points]);
-            n = size(points);
-        }
-    }
-
-    // Linear extrapolation at rear boundary
-    if (points[n - 1].x < xACP && n >= 2)
-    {
-        var dx2 = points[n - 1].x - points[n - 2].x;
-        if (abs(dx2) > 1e-10 * meter)
-        {
-            var slope2 = (points[n - 1].EI - points[n - 2].EI) / dx2;
-            var extEI2 = points[n - 1].EI + slope2 * (xACP - points[n - 1].x);
-            if (extEI2 < 0 * newton * meter * meter)
-                extEI2 = 0 * newton * meter * meter;
-            points = append(points, { "x" : xACP, "EI" : extEI2 });
         }
     }
 

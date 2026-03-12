@@ -11,7 +11,7 @@ import(path : "c2c3edd39b85fde5e6062533", version : "33bc110a345c59dd98776a00");
 import(path : "74231d1d53f5a117d47d17a9", version : "8bd88ef6a6d18e7e44aef45e");
 
 // xSectBeamAnalysis (beam stiffness computations)
-import(path : "ebac109589e3bf405d3f3ae7", version : "7e4fdcd1cd16322867bb23fc");
+import(path : "ebac109589e3bf405d3f3ae7", version : "9e8676f449d3bc6ce225a1b8");
 
 //import xSectMatrials
 import(path : "f8e590162884d45f56e0a05f", version : "c6d4a2440a5dac22f41a1a21");
