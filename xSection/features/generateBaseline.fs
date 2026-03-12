@@ -503,20 +503,52 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                     "knots"         : [0, 0, 1, 1] as KnotArray
             });
 
-            // Assemble: flat camber + rockers rebuilt tangent to the flat baseline
+            // Assemble: flat camber + rockers rigidly rotated about their contact points
+            // so the start tangent aligns with the flat baseline. Shape is preserved;
+            // only the orientation changes (tip position moves with the rotation).
             var flatDir = normalize(wbArcpPt - wbFrcpPt);
             var weightedBSplines = [wbCamber];
             var wbRockerIdx = 1;
             if (hasForeRocker)
             {
-                var wbFcpPt = baselineBSplines[wbRockerIdx].controlPoints[2];
-                weightedBSplines = append(weightedBSplines, quadraticSplineFromTangent(wbFrcpPt, wbFcpPt, -flatDir, lastFbT));
+                var fbRocker = baselineBSplines[wbRockerIdx];
+                var fbCP0 = fbRocker.controlPoints[0]; // FRCP — pivot
+                var fbCP1 = fbRocker.controlPoints[1];
+                var fbCP2 = fbRocker.controlPoints[2];
+                var oldFbDir = normalize(fbCP1 - fbCP0);
+                var newFbDir = -flatDir; // forebody points away from center
+                var fbDeltaAngle = atan2(newFbDir[2], newFbDir[0]) - atan2(oldFbDir[2], oldFbDir[0]);
+                weightedBSplines = append(weightedBSplines, bSplineCurve({
+                        "degree"        : fbRocker.degree,
+                        "dimension"     : fbRocker.dimension,
+                        "isRational"    : fbRocker.isRational,
+                        "isPeriodic"    : fbRocker.isPeriodic,
+                        "controlPoints" : [fbCP0,
+                                           fbCP0 + rotatePointAboutY(fbCP1 - fbCP0, fbDeltaAngle),
+                                           fbCP0 + rotatePointAboutY(fbCP2 - fbCP0, fbDeltaAngle)],
+                        "knots"         : fbRocker.knots
+                }));
                 wbRockerIdx += 1;
             }
             if (hasAftRocker)
             {
-                var wbAcpPt = baselineBSplines[wbRockerIdx].controlPoints[2];
-                weightedBSplines = append(weightedBSplines, quadraticSplineFromTangent(wbArcpPt, wbAcpPt, flatDir, lastAbT));
+                var abRocker = baselineBSplines[wbRockerIdx];
+                var abCP0 = abRocker.controlPoints[0]; // ARCP — pivot
+                var abCP1 = abRocker.controlPoints[1];
+                var abCP2 = abRocker.controlPoints[2];
+                var oldAbDir = normalize(abCP1 - abCP0);
+                var newAbDir = flatDir; // aftbody points away from center
+                var abDeltaAngle = atan2(newAbDir[2], newAbDir[0]) - atan2(oldAbDir[2], oldAbDir[0]);
+                weightedBSplines = append(weightedBSplines, bSplineCurve({
+                        "degree"        : abRocker.degree,
+                        "dimension"     : abRocker.dimension,
+                        "isRational"    : abRocker.isRational,
+                        "isPeriodic"    : abRocker.isPeriodic,
+                        "controlPoints" : [abCP0,
+                                           abCP0 + rotatePointAboutY(abCP1 - abCP0, abDeltaAngle),
+                                           abCP0 + rotatePointAboutY(abCP2 - abCP0, abDeltaAngle)],
+                        "knots"         : abRocker.knots
+                }));
             }
 
             var wbCreatedEdges  = [];

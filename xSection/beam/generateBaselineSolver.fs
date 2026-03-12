@@ -473,7 +473,7 @@ export function solveForTension(startPoint is Vector, endPoint is Vector, startT
     return (tLo + tHi) / 2;
 }
 
-function rotatePointAboutY(pt is Vector, angle is ValueWithUnits) returns Vector
+export function rotatePointAboutY(pt is Vector, angle is ValueWithUnits) returns Vector
 {
     const c = cos(angle);
     const s = sin(angle);
