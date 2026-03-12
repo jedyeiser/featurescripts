@@ -511,12 +511,14 @@ export function solveZAtX(curves is array, xPosition is ValueWithUnits) returns 
 
     for (var curveIdx = 0; curveIdx < size(curves); curveIdx += 1)
     {
-        const curve = curves[curveIdx];
+        const curve   = curves[curveIdx];
+        const tStart  = curve.knots[0];
+        const tEnd    = curve.knots[size(curve.knots) - 1];
 
         for (var i = 0; i < N - 1; i += 1)
         {
-            const t0 = i / (N - 1);
-            const t1 = (i + 1) / (N - 1);
+            const t0 = tStart + (tEnd - tStart) * i       / (N - 1);
+            const t1 = tStart + (tEnd - tStart) * (i + 1) / (N - 1);
             const x0 = evaluateSpline({ "spline": curve, "parameters": [t0] })[0][0][0];
             const x1 = evaluateSpline({ "spline": curve, "parameters": [t1] })[0][0][0];
 

@@ -237,7 +237,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         for (var i = 0; i < 20; i += 1) // main solver loop
         {
             println('camber delta at the start of iteration ' ~ i ~ ' = ' ~ toString(camberDelta));
-            if (camberDelta < 0.001 * millimeter)
+            if (abs(camberDelta) < 0.001 * millimeter)
             {
                 break; //last iteration is sufficent
             }
@@ -328,8 +328,8 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 
                 //2. solve for baseline values
                 
-                var camber = solveZAtX(baselineBSplines, xMount);
-                //println('iterCamber = ' ~ iterCamber);
+                var camber = solveZAtX(translatedCurves, xMount);
+                //println('Iteration ' ~ i ~ ' camber = ' ~ camber);
                 //3. based on values, update iterCamberHeight
                 var camberDiff = definition.camberHeight - camber;
                 var pctChange = (iterCamberHeight + camberDiff)/iterCamberHeight;
@@ -357,10 +357,14 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         }
         if (hasAftRocker)
         {
-            aftbodyRockerBSpline = setControlPointX(aftbodyRockerBSpline, xACP);// ensure last point lands on ACP
+            aftbodyRockerBSpline = setControlPointX(aftbodyRockerBSpline, xACP); // ensure last point lands on ACP
             baselineBSplines = append(baselineBSplines, aftbodyRockerBSpline);
         }
-        
+
+        // Level the output: rotate so the FB/AB contact minima share the same Z (ground plane)
+        var outputMinPoints = findMinZBothSides(baselineBSplines, xMRS, stdDir);
+        baselineBSplines = transformCurves(baselineBSplines, outputMinPoints.fbMin, outputMinPoints.abMin);
+
         var curveBodyQ = qNothing();
         
         if (definition.outputType == BaselineCurveOutputType.CURVE_PER_REGION)
