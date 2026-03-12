@@ -264,13 +264,15 @@ function findSampleAtX(samples is array, x) returns number
 }
 
 /**
- * Return {idx, pt} of the sample with minimum Z in [xLow, xHigh].
+ * Return {idx, pt, curveIdx, u} of the sample with minimum Z in [xLow, xHigh].
  * Returns {idx: -1, pt: undefined} if no samples fall in range.
  */
 function findMinZInXRange(samples is array, xLow, xHigh) returns map
 {
-    var bestIdx = -1;
-    var bestZ   = undefined;
+    var bestIdx      = -1;
+    var bestZ        = undefined;
+    var bestCurveIdx = -1;
+    var bestU        = undefined;
 
     for (var i = 0; i < size(samples); i += 1)
     {
@@ -280,8 +282,10 @@ function findMinZInXRange(samples is array, xLow, xHigh) returns map
             var pz = samples[i].pt[2];
             if (bestZ == undefined || pz < bestZ)
             {
-                bestZ   = pz;
-                bestIdx = i;
+                bestZ        = pz;
+                bestIdx      = i;
+                bestCurveIdx = samples[i].curveIdx;
+                bestU        = samples[i].u;
             }
         }
     }
@@ -291,7 +295,40 @@ function findMinZInXRange(samples is array, xLow, xHigh) returns map
         return { "idx" : -1, "pt" : undefined };
     }
 
-    return { "idx" : bestIdx, "pt" : samples[bestIdx].pt };
+    return { "idx" : bestIdx, "pt" : samples[bestIdx].pt, "curveIdx" : bestCurveIdx, "u" : bestU };
+}
+
+/**
+ * Ternary search for the minimum-Z point on an edge within a native [0,1] parameter bracket.
+ * Uses evEdgeCurvatures so it works on any edge type without a BSpline handle.
+ */
+function refineMinZOnEdge(context is Context, edge is Query, uLo is number, uHi is number) returns Vector
+{
+    var lo        = uLo;
+    var hi        = uHi;
+    var prevBestZ = undefined;
+
+    for (var iter = 0; iter < 60; iter += 1)
+    {
+        const m1 = lo + (hi - lo) / 3;
+        const m2 = hi - (hi - lo) / 3;
+
+        const z1 = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [m1] })[0].frame.origin[2];
+        const z2 = evEdgeCurvatures(context, { "edge" : edge, "parameters" : [m2] })[0].frame.origin[2];
+
+        if (z1 < z2)
+            hi = m2;
+        else
+            lo = m1;
+
+        const bestZ = (z1 < z2) ? z1 : z2;
+        if (prevBestZ != undefined && abs(bestZ - prevBestZ) < 1e-9 * millimeter)
+            break;
+
+        prevBestZ = bestZ;
+    }
+
+    return evEdgeCurvatures(context, { "edge" : edge, "parameters" : [(lo + hi) / 2] })[0].frame.origin;
 }
 
 /**
@@ -499,8 +536,14 @@ export function analyzeBaselineGeometry(context is Context,
         return undefined;
     }
 
-    var fbMinPt = fbMinResult.pt;
-    var abMinPt = abMinResult.pt;
+    var fbEdge  = chain[fbMinResult.curveIdx].edge;
+    var abEdge  = chain[abMinResult.curveIdx].edge;
+    var fbULo   = max(0, fbMinResult.u - 0.1);
+    var fbUHi   = min(1, fbMinResult.u + 0.1);
+    var abULo   = max(0, abMinResult.u - 0.1);
+    var abUHi   = min(1, abMinResult.u + 0.1);
+    var fbMinPt = refineMinZOnEdge(context, fbEdge, fbULo, fbUHi);
+    var abMinPt = refineMinZOnEdge(context, abEdge, abULo, abUHi);
 
     // Step 5: Camber height — max perpendicular distance from FB-min→AB-min chord
     var chordDir    = normalize(abMinPt - fbMinPt);
