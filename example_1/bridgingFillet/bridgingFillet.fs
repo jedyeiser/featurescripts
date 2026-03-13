@@ -20,7 +20,7 @@ import(path : "onshape/std/bridgingCurve.fs", version : "2892.0");
  * Feature auto-solves for bridging curve direction/flip (bridging entrances face each other).
  *
  * Method:
- *   BRIDGING — Hermite bridging curve (cubic G1, quintic G2) via computeBridgingControlPoints.
+ *   BRIDGING — uses bridgingCurve.fs from std
  *   CONIC    — Rational quadratic Bézier arc or rho-conic.
  *
  * If inputs are faces: return either 1) bridging surface only, 2) trimmed faces + bridging, or 3) joined.
@@ -34,11 +34,6 @@ import(path : "onshape/std/bridgingCurve.fs", version : "2892.0");
 // Enums
 // ---------------------------------------------------------------------------
 
-/**
- * Selects whether inputs are edge/wire curves or solid/sheet faces.
- * @value CURVES : Input is two edge or wire body curves.
- * @value FACES : Input is two solid or sheet faces.
- */
 export enum BridgingFilletInputType
 {
     annotation { "Name" : "Curves" }
@@ -47,11 +42,6 @@ export enum BridgingFilletInputType
     FACES
 }
 
-/**
- * Selects the bridging construction method.
- * @value BRIDGING : Hermite bridging curve (cubic for G1, quintic for G2) via computeBridgingControlPoints.
- * @value CONIC : Rational quadratic Bézier arc or rho-conic.
- */
 export enum BridgingFilletMethod
 {
     annotation { "Name" : "Bridging curve" }
@@ -60,11 +50,6 @@ export enum BridgingFilletMethod
     CONIC
 }
 
-/**
- * Controls the conic section type used for conic bridging profiles.
- * @value ARC : Rational quadratic Bézier with w = cos(θ/2), producing a true circular arc (P&T §7.3).
- * @value RHO : User-specified shape factor ρ ∈ (0,1): ρ=0.5 → parabola, ρ<0.5 → ellipse, ρ>0.5 → hyperbola (Farin CAGD §8.5).
- */
 export enum BridgingFilletConicType
 {
     annotation { "Name" : "Arc" }
@@ -73,11 +58,6 @@ export enum BridgingFilletConicType
     RHO
 }
 
-/**
- * Specifies geometric continuity at each bridging boundary.
- * @value G1 : Tangent continuity — requires cubic Hermite (4 DOF, P&T §9.1).
- * @value G2 : Curvature-matched continuity — requires degree ≥ 5 (6 DOF, P&T §9.1).
- */
 export enum BridgingFilletContinuityType
 {
     annotation { "Name" : "G1 (tangent)" }
@@ -86,12 +66,6 @@ export enum BridgingFilletContinuityType
     G2
 }
 
-/**
- * Controls what geometry is produced and how seed faces are handled.
- * @value BRIDGE_ONLY : Return only the bridging surface; seed faces are unchanged.
- * @value TRIMMED_FACES : Trim each seed face back to its offset curve and return all three surfaces.
- * @value JOINED_FACES : Trim seed faces and boolean-join with bridging surface into one body.
- */
 export enum BridgingFilletOutputType
 {
     annotation { "Name" : "Bridge only" }
@@ -135,11 +109,9 @@ annotation { "Feature Type Name" : "Bridging fillet",
 export const bridgingFillet = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        // --- Input type ---
         annotation { "Name" : "Input type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
         definition.inputType is BridgingFilletInputType;
 
-        // --- Selectors (conditional on inputType) ---
         if (definition.inputType == BridgingFilletInputType.CURVES)
         {
             annotation { "Name" : "Side 1", "Filter" : EntityType.EDGE || BodyType.WIRE, "MaxNumberOfPicks" : 1 }
@@ -153,19 +125,10 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Side 1 face", "Filter" : EntityType.FACE && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
             definition.side1Face is Query;
 
-            annotation { "Name" : "Side 1 reference edge",
-                         "Description" : "Reference edge on face 1 - where offset is measured from. Auto-populated for adjacent faces.",
-                         "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
-            definition.side1Edge is Query;
-
             annotation { "Name" : "Side 2 face", "Column Name" : "Second face",
                          "Filter" : EntityType.FACE && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
             definition.side2Face is Query;
 
-            annotation { "Name" : "Side 2 reference edge", "Column Name" : "Second reference edge",
-                         "Description" : "Reference edge on face 2 - where offset is measured from. Auto-populated for adjacent faces.",
-                         "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
-            definition.side2Edge is Query;
         }
 
         // --- Offset ---
@@ -201,81 +164,30 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         // --- Continuity ---
         annotation { "Name" : "Continuity 1", "UIHint" : UIHint.SHOW_LABEL }
         definition.continuity1 is BridgingFilletContinuityType;
-
-        annotation { "Name" : "Continuity 2", "Column Name" : "Second continuity", "UIHint" : UIHint.SHOW_LABEL }
-        definition.continuity2 is BridgingFilletContinuityType;
-
+        
         // --- Flip (always shown for G1/G2) ---
         annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION }
         definition.flip1 is boolean;
 
+        annotation { "Name" : "Continuity 2", "Column Name" : "Second continuity", "UIHint" : UIHint.SHOW_LABEL }
+        definition.continuity2 is BridgingFilletContinuityType;
+
         annotation { "Name" : "Opposite direction", "Column Name" : "Second opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION }
         definition.flip2 is boolean;
 
-        // --- Output options (FACES path) ---
-        if (definition.inputType == BridgingFilletInputType.FACES)
-        {
-            annotation { "Name" : "Output type", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
-            definition.outputType is BridgingFilletOutputType;
-
-            annotation { "Name" : "Keep junction wire" }
-            definition.keepJunctionWire is boolean;
-
-            annotation { "Name" : "Keep offset wires" }
-            definition.keepOffsetWires is boolean;
-        }
-
-        // --- Hidden state (set by editing logic, never shown) ---
-        annotation { "Name" : "side1IsWire", "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.side1IsWire is boolean;
-
-        annotation { "Name" : "side2IsWire", "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.side2IsWire is boolean;
-
-        // --- Keep input bodies (CURVES, wire inputs only — visibility driven by hidden booleans) ---
-        if (definition.side1IsWire || definition.side2IsWire)
-        {
-            annotation { "Name" : "Keep input bodies" }
-            definition.keepInputBodies is boolean;
-        }
 
         // --- Debug group (collapsed by default) ---
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Debug intersection" }
+            annotation { "Name" : "Show intersection" }
             definition.debugIntersection is boolean;
-
-            annotation { "Name" : "Debug bridge" }
-            definition.debugBridge is boolean;
 
             annotation { "Name" : "Show offsets" }
             definition.showOffsets is boolean;
 
-            if (definition.inputType == BridgingFilletInputType.CURVES)
-            {
-                annotation { "Name" : "Show junction frame" }
-                definition.showJunctionFrame is boolean;
-            }
-
-            if (definition.inputType == BridgingFilletInputType.FACES)
-            {
-                annotation { "Name" : "Show isocurves" }
-                definition.showIsocurves is boolean;
-
-                if (definition.showIsocurves)
-                {
-                    annotation { "Name" : "Isocurve count" }
-                    isInteger(definition.isocurveCount, { (unitless) : [1, 5, 50] } as IntegerBoundSpec);
-                }
-            }
         }
     }
     {
-        // 1. VALIDATION
-        verifyNoMesh(context, definition, "side1Curves");
-        verifyNoMesh(context, definition, "side2Curves");
-        verifyNoMesh(context, definition, "side1Face");
-        verifyNoMesh(context, definition, "side2Face");
 
         // 2. RESOLVE INPUT SELECTIONS TO EDGES (CURVES path)
         // Evaluate each selection and branch on entity type:
@@ -283,26 +195,32 @@ export const bridgingFillet = defineFeature(function(context is Context, id is I
         //   wire body  → extract owned edges
         var side1Edge = qNothing();
         var side2Edge = qNothing();
+        var edgeIntersectionPoint = vector([0, 0, 0] * millimeter);
         if (definition.inputType == BridgingFilletInputType.CURVES)
         {
-            var s1Entities = evaluateQuery(context, definition.side1Curves);
-            if (size(s1Entities) > 0)
+            var side1Edges = (isQueryEmpty(context, qBodyType(definition.side1Curves, BodyType.WIRE))) ? side1Edge : qOwnedByBody(definition.side1Curves, EntityType.EDGE);
+            var side2Edges = (isQueryEmpty(context, qBodyType(definition.side1Curves, BodyType.WIRE))) ? side1Edge : qOwnedByBody(definition.side1Curves, EntityType.EDGE);
+            
+            side1Edges = evaluateQuery(context, side1Edges);
+            side2Edge = evaluateQuery(context, side2Edges);
+            
+            var pointDist = evDistance(context, {
+                    "side0" : qUnion(side1Edges),
+                    "side1" : qUnion(side2Edges)
+            });
+            
+            if (pointDist.distance > 1e-5 * millimeter) // if the points don't intersect
             {
-                var s1Entity = s1Entities[0];
-                if (!isQueryEmpty(context, qEntityFilter(s1Entity, EntityType.EDGE)))
-                    side1Edge = s1Entity;
-                else
-                    side1Edge = qOwnedByBody(s1Entity, EntityType.EDGE);
+                throw reportFeatureInfo(context, id, "Edges must intersect");
+                
             }
-            var s2Entities = evaluateQuery(context, definition.side2Curves);
-            if (size(s2Entities) > 0)
+            else
             {
-                var s2Entity = s2Entities[0];
-                if (!isQueryEmpty(context, qEntityFilter(s2Entity, EntityType.EDGE)))
-                    side2Edge = s2Entity;
-                else
-                    side2Edge = qOwnedByBody(s2Entity, EntityType.EDGE);
+                edgeIntersectionPoint = pointDist.sides[0].point;
+                side1Edge = qContainsPoint(qUnion(side1Edges), edgeIntersectionPoint);
+                side2Edge = qContainsPoint(qUnion(side2Edges), edgeIntersectionPoint);
             }
+            
         }
 
         // 2b. RESOLVE REFERENCE EDGES

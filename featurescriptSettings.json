@@ -178,13 +178,13 @@
     {
       "name": "example_1",
       "description": "Template ski and snowboard design document.",
-      "working_directory": "./example/1",
+      "working_directory": "./example_1",
       "onshape_url": "https://k2-sports.onshape.com/documents/7183868d32cdc7a6ad14410d/w/a3ea9a8cd3639eb3be0528c6/e/6853a9dd0adbae714052f968",
       "references": [
         "Onshape Standard Library",
         "internal tools document"
       ],
-      "last_pull": "2026-03-07T07:07:21.322746+00:00",
+      "last_pull": "2026-03-13T21:20:47.154921+00:00",
       "last_push": "2026-03-07T20:12:00.674800+00:00",
       "document_id": "7183868d32cdc7a6ad14410d",
       "workspace_id": "a3ea9a8cd3639eb3be0528c6"

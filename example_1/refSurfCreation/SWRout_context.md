@@ -1,0 +1,250 @@
+# SWRout Context & Refactoring Notes
+
+This document records API findings, known bugs, and refactoring guidance for `createSWRoutSurf.fs`.
+Generated from std library research on 2026-03-13.
+
+---
+
+## Feature Overview
+
+`SWRout` generates a sidewall rout surface for a ski/snowboard given:
+- A bottom surface and a side surface
+- Rout angle, step-in distance, and height above bottom
+- Optional: endpoint trimming with a reference wire and cutter radius
+
+**Logical flow:**
+1. Copy both surfaces as working bodies
+2. Determine offset direction signs (up for bottom, outward for side) via `processFirstMoves`
+3. Intersect copies → extract start wire (at `distAboveBottom`)
+4. If step-in > 0: offset side inward, intersect again → extract step-in wire
+5. Offset bottom up by `routHeight`, offset side out by `routOffset`, intersect → extract stop wire
+6. Split all wires at front plane (keep one half — ski is symmetric)
+7. Loft stop→stepIn and optionally stepIn→start; boolean union if two lofts
+8. Find outside edges (on original side surface), extend them
+9. (Incomplete) If endpoint-specified: trim at start/stop points using `trimSWRout`
+
+---
+
+## API Reference: Verified Signatures
+
+### opPattern — Body Copy
+```featurescript
+opPattern(context, id + "copyBottom", {
+    "entities" : definition.bottomSheet,
+    "transforms" : [identityTransform()],   // prefer over transform(vector(0,0,0)*mm)
+    "instanceNames" : ['1']
+});
+var copy = qCreatedBy(id + "copyBottom", EntityType.BODY);
+```
+- `opPattern` preserves original, creates copies. `opTransform` moves original — do NOT use for copies.
+- `identityTransform()` is the idiomatic zero-transform (cleaner than `transform(vector(0,0,0)*millimeter)`).
+
+### opIntersectFaces — Creates Edges AND Wire Bodies
+```featurescript
+opIntersectFaces(context, id + "intersect", {
+    "tools" : faceQueryA,
+    "targets" : faceQueryB
+});
+// Directly usable — opIntersectFaces creates BOTH edges and wire bodies:
+var edges = qCreatedBy(id + "intersect", EntityType.EDGE);
+var wires = qCreatedBy(id + "intersect", EntityType.BODY);
+```
+- **Key finding:** `opIntersectFaces` already creates wire bodies. The extra `opExtractWires` step
+  in the current code is redundant — you can use `EntityType.BODY` directly from the intersection op,
+  then delete when no longer needed.
+- Neither `tools` nor `targets` bodies are modified.
+
+### opExtractWires — Only Needed for Loose Edges
+```featurescript
+opExtractWires(context, id + "extractWire", {
+    "edges" : someLooseEdgeQuery
+});
+var wire = qCreatedBy(id + "extractWire", EntityType.BODY);
+```
+- Use when you have edges from a non-intersection source (e.g., `qEdgeTopologyFilter`).
+- Fails if edges overlap, cross, or more than 2 meet at a point.
+
+### opOffsetFace — moveFaces Must Be FACE Query
+```featurescript
+opOffsetFace(context, id + "offset", {
+    "moveFaces" : qOwnedByBody(bodyQ, EntityType.FACE),  // MUST be EntityType.FACE
+    "offsetDistance" : someSign * someDistance
+});
+```
+- `moveFaces` accepts only face entities. `EntityType.BODY` silently fails or errors.
+
+### extendSurface — BLIND Requires Non-Zero extendDistance
+```featurescript
+extendSurface(context, id + "extend", {
+    "entities" : edgeQuery,
+    "tangentPropagation" : true,
+    "endCondition" : ExtendBoundingType.BLIND,
+    "oppositeDirection" : false,
+    "extendDistance" : definition.bottomExtension,   // must be non-zero for BLIND
+    "maintainCurvature" : true
+});
+```
+- `ExtendBoundingType.BLIND` requires a nonzero `extendDistance`. Passing `0 * millimeter` is a bug.
+- Entities can be boundary edges (ONE_SIDED) or the sheet body itself.
+
+### constructPath / evDistancePath / evPathTangentLines
+```featurescript
+var path = constructPath(context, edgeQuery);
+// path.edges    → array of Query (in traversal order)
+// path.flipped  → array of boolean (true = traverse backwards)
+// path.closed   → boolean
+
+var distResult = evDistancePath(context, { "side0" : path, "side1" : pointOrQuery });
+// distResult.distance      → ValueWithUnits
+// distResult.pathParameter → number [0..1] along path
+// distResult.sides[0/1]    → { index, point, parameter }
+
+var tangentResult = evPathTangentLines(context, path, [0, 1]);
+// tangentResult.tangentLines  → array of Line
+// tangentResult.edgeIndices   → array of int (which path.edges entry)
+```
+- `evDistancePath` is a **custom function** (from footprintAnalytics), not std. It requires a Path on one side.
+- Passing `refPath.edges` (an array of Queries) directly to `evDistance` is valid — it finds the nearest.
+
+### qFrontPlane / qSplitBy
+```featurescript
+qFrontPlane(EntityType.FACE)   // XZ plane face — correct as opSplitPart tool
+qSplitBy(id + "split", EntityType.BODY, true)   // back body (behind plane)
+qSplitBy(id + "split", EntityType.BODY, false)  // front body (in front of plane)
+```
+
+---
+
+## Confirmed Bugs
+
+| # | Location | Bug | Fix |
+|---|----------|-----|-----|
+| 1 | Line 80 | `copySide` patterns `definition.bottomSheet` instead of `definition.sideSheet` | Change to `definition.sideSheet` |
+| 2 | Line 418 vs 90–91 | `processFirstMoves` returns `'bottomDir'`/`'sideDir'` but caller reads `.bottomDirSign`/`.sideDirSign` | Align key names |
+| 3 | Lines 370, 374 | `opOffsetFace` uses `EntityType.BODY` for `moveFaces` | Change to `EntityType.FACE` |
+| 4 | Line 235 | `extendSurface` has `extendDistance: 0 * millimeter` | Use `definition.bottomExtension` |
+
+## Non-Bugs (Previously Suspected)
+- **`qCreatedBy(id + "loft1")` after `opBoolean` UNION** — valid. `boolean.fs` explicitly states "Owner body of matches[0].topology1 survives." First tool body identity is preserved. Current code is correct.
+- **`opExtractWires` after `opIntersectFaces`** — intentional. Guarantees a single wire body for clean loft profiles.
+
+---
+
+## Refactoring Opportunities
+
+### 1. Keep opExtractWires — Intentional
+The intersect → extractWires → deleteIntersectionBodies pattern is **intentional**.
+`opExtractWires` guarantees a single unified wire body even when `opIntersectFaces` produces
+multiple disjoint edges. This is required for reliable loft profiles downstream. Do not collapse.
+
+### 2. Consolidate Worker Body Cleanup
+Currently piecemeal deletes after each intersection. Better: collect all temp bodies, delete in one pass at end.
+
+### 3. processFirstMoves — Use EntityType.FACE, Fix Return Keys
+```featurescript
+// Fix moveFaces throughout processFirstMoves
+"moveFaces" : qOwnedByBody(toDeleteBottomBody, EntityType.FACE),
+
+// Fix return map to match caller
+return { "bottomDirSign" : bottomDirSign, "sideDirSign" : sideDirSign };
+```
+
+### 4. processFirstMoves — Logic Clarification
+The side face always returns to its original position (zero net offset) — the function is purely
+direction sensing. Both branches correctly undo the initial probe offset:
+- Wrong direction: sideDirSign flips to -1 → offset `−distAboveBottom` → returns to original ✓
+- Correct direction: offset `−distAboveBottom` → returns to original ✓
+
+The bottom body is NOT reset — it stays at `distAboveBottom` after the probe. This is intentional:
+the start wire intersection fires immediately after `processFirstMoves`, and needs the bottom body
+already at `distAboveBottom`. The final offset then adds `routHeight` on top of that accumulated offset.
+Worth adding comments to make this accumulation explicit.
+
+### 5. Complete Endpoint Trimming (Lines 241–255)
+
+**Intent:**
+- Each provided trim point is projected onto the ref wire to find the nearest point + tangent
+- A plane is constructed at that point, normal to the wire tangent
+- The loft surface is split by that plane
+- We keep the **larger** of the two resulting bodies (the surface "inside" the points)
+- Either start or stop point may be omitted (only one may be provided)
+
+**Issues with current `trimSWRout`:**
+- Uses distance to `keepRefPoint` to decide which body to keep — wrong. Should keep the larger body.
+- `keepRefPoint` parameter is unnecessary given the "keep larger" rule.
+- `sweepAxisSearchPoint` at the end of `trimSWRout` is computed but never used — dead code.
+
+**Correct call site:**
+```featurescript
+if (definition.specSWRoutEndpoints)
+{
+    var startIsEmpty = isQueryEmpty(context, definition.startPointQ);
+    var stopIsEmpty  = isQueryEmpty(context, definition.stopPointQ);
+    if (!startIsEmpty)
+        trimSWRout(context, id + "trimStart", loftBody, refWirePath, definition.startPointQ);
+    if (!stopIsEmpty)
+        trimSWRout(context, id + "trimStop",  loftBody, refWirePath, definition.stopPointQ);
+}
+```
+
+**Correct `trimSWRout` keep logic** (replace distance comparison with size comparison):
+```featurescript
+var trueBox  = evBox3d(context, { "topology" : splitBodyTrue,  "tight" : true });
+var falseBox = evBox3d(context, { "topology" : splitBodyFalse, "tight" : true });
+var trueVol  = (trueBox.maxCorner  - trueBox.minCorner)[0] *
+               (trueBox.maxCorner  - trueBox.minCorner)[1] *
+               (trueBox.maxCorner  - trueBox.minCorner)[2];
+var falseVol = (falseBox.maxCorner - falseBox.minCorner)[0] *
+               (falseBox.maxCorner - falseBox.minCorner)[1] *
+               (falseBox.maxCorner - falseBox.minCorner)[2];
+if (trueVol < falseVol)
+    opDeleteBodies(context, id + "deleteSWSplitTrue",  { "entities" : splitBodyTrue });
+else
+    opDeleteBodies(context, id + "deleteSWSplitFalse", { "entities" : splitBodyFalse });
+```
+
+**Post-trim cutter relief geometry** (after keeping the larger body):
+
+The trim point represents where a router bit stops. The end geometry reflects the physical bit shape:
+
+1. **Outside edge extend**: Find the ONE_SIDED edge of the kept loft body nearest `definition.sideSheet`
+   (same logic as main feature's outside edge detection). Extend it by `cutterBottomRadius` using
+   `extendSurface` — this traces the path the cutter bottom travels past the endpoint.
+
+2. **Split edge cap**: Revolve the split edges (the cut boundary, `qCreatedBy(id + "splitSWRout", EntityType.EDGE)`)
+   90° about the wire tangent axis at the trim point using `opRevolve`:
+   ```featurescript
+   opRevolve(context, id + "capRevolve", {
+       "entities"     : qCreatedBy(id + "splitSWRout", EntityType.EDGE),
+       "axis"         : line(edgeLine.origin, edgeLine.direction),
+       "angleForward" : 90 * degree
+       // angleBack defaults to 0
+   });
+   ```
+   This creates a quarter-cylinder cap that closes the end of the rout cleanly — matching the
+   cylindrical profile of a router bit — rather than leaving an open edge or overlapping.
+
+3. Together: extend traces the bit's radial reach; the revolve caps the rout channel end.
+
+The axis (`edgeLine.direction`) is already computed in `trimSWRout` — `sweepAxisSearchPoint` was
+dead code reaching for this same axis. Remove it.
+
+---
+
+## Resolved Questions
+- **KEEP_FRONT correctness**: Ski geometry always lives in +Y. Onshape front plane = XZ plane. KEEP_FRONT retains the +Y half. ✓
+- **Top edge identification in `generateDummyTopSurf`**: Use `qEdgeTopologyFilter(sideSheetEdges, EdgeTopology.ONE_SIDED)` → `opExtractWires` → 2 wire bodies → pick the one with highest average Z. The side surface may have many edges on each boundary, so extract-wires is the right consolidation step.
+- **`generateDummyTopSurf` refactored approach**:
+  1. `qEdgeTopologyFilter` on side surface → ONE_SIDED edges
+  2. `opExtractWires` → 2 wire bodies (top + bottom boundaries)
+  3. Measure average Z of each wire body's edges via `evBox3d` midpoint Z → pick higher one as top wire
+  4. Sample points from top wire, project onto XZ plane (set Y component = 0)
+  5. `approximateSpline` to fit smooth curve through projected points
+  6. Return the resulting spline body as the dummy top surface
+- **Endpoint trimming keep logic**: Keep the **larger** body (by bounding box volume). `keepRefPoint` parameter removed.
+- **Trim point optionality**: Either start or stop point may be omitted. Guard with `isQueryEmpty`.
+- **`opExtractWires` after `opIntersectFaces`**: Intentional — single wire body guarantee for loft profiles.
+- **`qCreatedBy(id + "loft1")` after union**: Valid — first tool body survives `opBoolean` UNION.
+- **Top trim**: A top surface (projection of side surface top edges onto XZ plane) is created elsewhere in the workflow. The `+2mm` overshoot in `routHeight` is reserved for that future trim step. Do not implement yet.
+- **Mirror**: Out of scope for this refactor.
+- **Cap geometry**: `opRevolve` on split edges, 90° about `edgeLine.direction` (wire tangent at trim point).
