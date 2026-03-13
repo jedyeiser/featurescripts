@@ -354,14 +354,16 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     });
 
     // Fit a spline through the projected points.
-    var splineDef = approximateSpline({
-            "points"  : projectedPoints,
-            "degree"  : 3,
-            "closed"  : false
-    });
+    var splineCurve = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : projectedPoints })],
+            "degree"           : 3,
+            "tolerance"        : 1e-4 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : 200
+    })[0];
 
     opCreateBSplineCurve(context, id + "dummyTopSpline", {
-            "bSplineCurve" : splineDef
+            "bSplineCurve" : splineCurve
     });
 
     return qCreatedBy(id + "dummyTopSpline", EntityType.BODY);
