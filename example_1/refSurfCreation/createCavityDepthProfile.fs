@@ -286,6 +286,14 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
             annotation { "Name" : "Print curve details",
                          "Description" : "Print BSpline metadata (degree, CP count, knots) to FeatureStudio console" }
             definition.printCurveDetails is boolean;
+
+            annotation { "Name" : "Print reference data",
+                         "Description" : "Print path length, refParam, stdDir, and 3D positions at path endpoints" }
+            definition.printRefData is boolean;
+
+            annotation { "Name" : "Print region points",
+                         "Description" : "Print computed tStart/tEnd and their 3D positions for each region" }
+            definition.printRegionPoints is boolean;
         }
     }
     {
@@ -304,6 +312,57 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
         buildOutputWire(context, id, definition, pathInfo, sortedRegions);
 
         // ── Debug ──────────────────────────────────────────────────────────────
+        if (definition.printRefData)
+        {
+            var ep0    = evPathTangentLines(context, pathInfo.path, [0]).tangentLines[0].origin;
+            var ep1    = evPathTangentLines(context, pathInfo.path, [1]).tangentLines[0].origin;
+            var refPt3d = evPathTangentLines(context, pathInfo.path, [pathInfo.refParam]).tangentLines[0].origin;
+            println("=== Reference Path Data ===");
+            println("  path edges:  " ~ toString(size(pathInfo.path.edges)));
+            println("  pathLength:  " ~ toString(pathInfo.length / millimeter) ~ " mm");
+            println("  stdDir:      " ~ toString(pathInfo.stdDir));
+            println("  refParam:    " ~ toString(pathInfo.refParam));
+            println("  refPoint3d:  [" ~ toString(refPt3d[0] / millimeter) ~ ", "
+                                       ~ toString(refPt3d[1] / millimeter) ~ ", "
+                                       ~ toString(refPt3d[2] / millimeter) ~ "] mm");
+            println("  t=0 point:   [" ~ toString(ep0[0] / millimeter) ~ ", "
+                                       ~ toString(ep0[1] / millimeter) ~ ", "
+                                       ~ toString(ep0[2] / millimeter) ~ "] mm (x=" ~ toString(ep0[0] / millimeter) ~ ")");
+            println("  t=1 point:   [" ~ toString(ep1[0] / millimeter) ~ ", "
+                                       ~ toString(ep1[1] / millimeter) ~ ", "
+                                       ~ toString(ep1[2] / millimeter) ~ "] mm (x=" ~ toString(ep1[0] / millimeter) ~ ")");
+        }
+
+        if (definition.printRegionPoints)
+        {
+            var sign = pathInfo.stdDir ? 1 : -1;
+            println("=== Region Points ===");
+            for (var reg in sortedRegions)
+            {
+                var ptStart = evPathTangentLines(context, pathInfo.path, [reg.tStart]).tangentLines[0].origin;
+                var ptEnd   = evPathTangentLines(context, pathInfo.path, [reg.tEnd]).tangentLines[0].origin;
+                println("  Region: '" ~ reg.regionName ~ "'");
+                println("    tStart:       " ~ toString(reg.tStart)
+                    ~ "  →  [" ~ toString(ptStart[0] / millimeter) ~ ", "
+                               ~ toString(ptStart[1] / millimeter) ~ ", "
+                               ~ toString(ptStart[2] / millimeter) ~ "] mm");
+                println("    tEnd:         " ~ toString(reg.tEnd)
+                    ~ "  →  [" ~ toString(ptEnd[0] / millimeter) ~ ", "
+                               ~ toString(ptEnd[1] / millimeter) ~ ", "
+                               ~ toString(ptEnd[2] / millimeter) ~ "] mm");
+                println("    length:       " ~ toString(reg.length / millimeter) ~ " mm");
+                println("    startOffset:  " ~ toString(reg.startOffset / millimeter) ~ " mm");
+                println("    endOffset:    " ~ toString(reg.endOffset / millimeter) ~ " mm");
+                if (reg.extentType == RegionExtentType.X_EXTENTS)
+                {
+                    var rawTStart = pathInfo.refParam + sign * (reg.regionStart / pathInfo.length);
+                    var rawTEnd   = pathInfo.refParam + sign * (reg.regionEnd   / pathInfo.length);
+                    println("    input xStart: " ~ toString(reg.regionStart / millimeter) ~ " mm  →  rawT=" ~ toString(rawTStart));
+                    println("    input xEnd:   " ~ toString(reg.regionEnd   / millimeter) ~ " mm  →  rawT=" ~ toString(rawTEnd));
+                }
+            }
+        }
+
         if (definition.showInputWires)
         {
             debug(context, definition.bottomWire, DebugColor.GREEN);
