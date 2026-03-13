@@ -2,6 +2,8 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/extend.fs", version : "2892.0");
 // IMPORT: tools/printing.fs
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+
 
 /**
  * Generates a sidewall rout surface given:
@@ -111,7 +113,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // --- Measure total side height via dummy top surface, then delete it ---
-        var dummyTopSurf = generateDummyTopSurf(context, id + "dummyTop", definition.sideSheet, bottomDirSign);
+        var dummyTopSurf = generateDummyTopSurf(context, id + "dummyTop", definition.sideSheet);
         var gapDist = evDistance(context, {
                 "side0" : dummyTopSurf,
                 "side1" : definition.bottomSheet
@@ -119,13 +121,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         if (definition.debugPrintBSplines)
         {
-            var dummyEdges = evaluateQuery(context, qOwnedByBody(dummyTopSurf, EntityType.EDGE));
-            println("=== Dummy top spline (" ~ size(dummyEdges) ~ " edge(s)) ===");
-            for (var i = 0; i < size(dummyEdges); i += 1)
-            {
-                var curve = evApproximateBSplineCurve(context, { "edge" : dummyEdges[i] });
-                printBSpline(curve, debugFmt, ["  Edge " ~ toString(i) ~ ":"]);
-            }
+            debugPrintWireBSplines(context, dummyTopSurf, "Dummy top wire", debugFmt);
             println("  gapDist = " ~ toString(gapDist));
         }
 
@@ -350,11 +346,11 @@ export function trimSWRout(context is Context, id is Id, swRoutSurface is Query,
 }
 
 /**
- * Finds the top boundary wire of the side surface (highest average Z), projects its
- * points onto the XZ plane (Y = 0), and returns an approximated spline wire body.
- * Used to measure gapDist (total side height) and as a future top-trim reference.
+ * Returns the top boundary wire of the side surface (highest average Z).
+ * Used to measure gapDist via evDistance against the bottom sheet.
+ * The bottom boundary wire is deleted; caller is responsible for deleting the returned wire.
  */
-export function generateDummyTopSurf(context is Context, id is Id, sideSheet is Query, bottomDirSign is number) returns Query
+export function generateDummyTopSurf(context is Context, id is Id, sideSheet is Query) returns Query
 {
     // Extract the two boundary wires of the side surface.
     var oneSidedEdges = qEdgeTopologyFilter(qOwnedByBody(sideSheet, EntityType.EDGE), EdgeTopology.ONE_SIDED);
@@ -368,45 +364,15 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     var box1  = evBox3d(context, { "topology" : wireBodies[1], "tight" : true });
     var midZ0 = (box0.minCorner[2] + box0.maxCorner[2]) / 2;
     var midZ1 = (box1.minCorner[2] + box1.maxCorner[2]) / 2;
-    var topWireBody = (midZ0 > midZ1) ? wireBodies[0] : wireBodies[1];
+    var topIdx    = (midZ0 > midZ1) ? 0 : 1;
+    var bottomIdx = (midZ0 > midZ1) ? 1 : 0;
 
-    // Order the top wire edges and sample uniformly along the full path.
-    // Using constructPath + evPathTangentLines avoids duplicate junction points
-    // that would arise from sampling each edge independently at t=0 and t=1.
-    var topPath = constructPath(context, qOwnedByBody(topWireBody, EntityType.EDGE));
-    var numSamples = 30;
-    var params = [];
-    for (var i = 0; i <= numSamples; i += 1)
-    {
-        params = append(params, i / numSamples);
-    }
-    var tangentResult    = evPathTangentLines(context, topPath, params);
-    var projectedPoints  = [];
-    for (var tl in tangentResult.tangentLines)
-    {
-        var pt = tl.origin;
-        projectedPoints = append(projectedPoints, vector(pt[0], 0 * meter, pt[2]));
-    }
-
-    // Clean up boundary wires.
-    opDeleteBodies(context, id + "deleteBoundaryWires", {
-            "entities" : qCreatedBy(id + "extractBoundaryWires", EntityType.BODY)
+    // Delete the bottom boundary wire; return the top wire for gapDist measurement.
+    opDeleteBodies(context, id + "deleteBottomBoundaryWire", {
+            "entities" : wireBodies[bottomIdx]
     });
 
-    // Fit a spline through the projected points and create a wire body.
-    var splineCurve = approximateSpline(context, {
-            "targets"          : [approximationTarget({ "positions" : projectedPoints })],
-            "degree"           : 3,
-            "tolerance"        : 1e-4 * meter,
-            "isPeriodic"       : false,
-            "maxControlPoints" : 200
-    })[0];
-
-    opCreateBSplineCurve(context, id + "dummyTopSpline", {
-            "bSplineCurve" : splineCurve
-    });
-
-    return qCreatedBy(id + "dummyTopSpline", EntityType.BODY);
+    return wireBodies[topIdx];
 }
 
 /**

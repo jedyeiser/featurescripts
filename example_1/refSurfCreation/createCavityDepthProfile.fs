@@ -94,7 +94,7 @@ export function generateCavityDepthProfileEditingLogic(context is Context, id is
         // Default entry — will be overridden by preserved user settings below
         var entry = {
             "isValid"         : true,
-            "intersectionNum" : i,
+            "intersectionNum" : i + 1,
             "region1"         : regA.regionName,
             "region2"         : regB.regionName,
             "blend"           : false,
@@ -111,7 +111,7 @@ export function generateCavityDepthProfileEditingLogic(context is Context, id is
             {
                 entry = mergeMaps(entry, existing);
                 entry.isValid         = true;
-                entry.intersectionNum = i;
+                entry.intersectionNum = i + 1;
                 break;
             }
         }
