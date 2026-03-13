@@ -126,7 +126,8 @@ export function generateCavityDepthProfileEditingLogic(context is Context, id is
 // ─── Feature ──────────────────────────────────────────────────────────────────
 
 annotation { "Feature Type Name" : "Generate cavity depth profile",
-             "Feature Type Description" : "Generates a cavity depth profile based on user inputs" }
+             "Feature Type Description" : "Generates a cavity depth profile based on user inputs",
+             "Editing Logic Function" : "generateCavityDepthProfileEditingLogic" }
 export const generateCavityDepthProfile = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -266,14 +267,25 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Show reference frames" }
+            annotation { "Name" : "Show reference frames",
+                         "Description" : "Draw XYZ coordinate frame at each region start and end point" }
             definition.showRefFrames is boolean;
 
-            annotation { "Name" : "Show regions" }
+            annotation { "Name" : "Show input wires",
+                         "Description" : "Highlight bottom wire (green) and top wire if provided (blue)" }
+            definition.showInputWires is boolean;
+
+            annotation { "Name" : "Show regions",
+                         "Description" : "Highlight region output curves (cyan)" }
             definition.showRegions is boolean;
 
-            annotation { "Name" : "Show blends" }
+            annotation { "Name" : "Show blends",
+                         "Description" : "Highlight blend output curves (yellow)" }
             definition.showBlends is boolean;
+
+            annotation { "Name" : "Print curve details",
+                         "Description" : "Print BSpline metadata (degree, CP count, knots) to FeatureStudio console" }
+            definition.printCurveDetails is boolean;
         }
     }
     {
@@ -290,6 +302,30 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
         var sortedRegions = sortRegionsByTStart(processedRegions);
         buildOutputWire(context, id, definition, pathInfo, sortedRegions);
+
+        // ── Debug ──────────────────────────────────────────────────────────────
+        if (definition.showInputWires)
+        {
+            debug(context, definition.bottomWire, DebugColor.GREEN);
+            if (definition.cdInputType == CavityDepthInputType.CAVITY_DEPTH)
+                debug(context, definition.topWire, DebugColor.BLUE);
+        }
+
+        if (definition.showRefFrames)
+        {
+            var axisLen = 20 * millimeter;
+            for (var reg in sortedRegions)
+            {
+                for (var tp in [reg.tStart, reg.tEnd])
+                {
+                    var tl     = evPathTangentLines(context, pathInfo.path, [tp]).tangentLines[0];
+                    var origin = tl.origin;
+                    var xAxis  = tl.direction[0] < 0 ? -tl.direction : tl.direction;
+                    var zAxis  = computeEdgeNormal(tl.direction);
+                    debug(context, coordSystem(origin, xAxis, zAxis));
+                }
+            }
+        }
     });
 
 
@@ -297,9 +333,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
 function processPath(context is Context, id is Id, definition is map) returns map
 {
-    var wireBody = (definition.cdInputType == CavityDepthInputType.CAVITY_DEPTH)
-                    ? definition.topWire
-                    : definition.bottomWire;
+    var wireBody = definition.bottomWire; // X is always measured along the bottom wire
     var pathEdges = qUnion([qOwnedByBody(wireBody, EntityType.EDGE)]);
     var refPath;
     try
@@ -634,9 +668,21 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             "interpolateIndices" : [0, size(pts) - 1]
         })[0];
 
-        opCreateBSplineCurve(context, id + ("reg_" ~ toString(ri)), {
-            "bSplineCurve" : bspline
-        });
+        var wireId = id + ("reg_" ~ toString(ri));
+        opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
+
+        if (definition.printCurveDetails)
+        {
+            println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') ===");
+            println("  degree:         " ~ toString(bspline.degree));
+            println("  isPeriodic:     " ~ toString(bspline.isPeriodic));
+            println("  control points: " ~ toString(size(bspline.controlPoints)));
+            println("  knot count:     " ~ toString(size(bspline.knots)));
+            println("  sample points:  " ~ toString(size(pts)));
+            println("  t range:        [" ~ toString(tSegStart) ~ ", " ~ toString(tSegEnd) ~ "]");
+        }
+        if (definition.showRegions)
+            addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.CYAN);
     }
 
     // One BSpline wire per active blend zone
@@ -660,8 +706,19 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             "interpolateIndices" : [0, size(pts) - 1]
         })[0];
 
-        opCreateBSplineCurve(context, id + ("blend_" ~ toString(bzi)), {
-            "bSplineCurve" : bspline
-        });
+        var wireId = id + ("blend_" ~ toString(bzi));
+        opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
+
+        if (definition.printCurveDetails)
+        {
+            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' → '" ~ bz.regB.regionName ~ "') ===");
+            println("  degree:         " ~ toString(bspline.degree));
+            println("  isPeriodic:     " ~ toString(bspline.isPeriodic));
+            println("  control points: " ~ toString(size(bspline.controlPoints)));
+            println("  knot count:     " ~ toString(size(bspline.knots)));
+            println("  sample points:  " ~ toString(size(pts)));
+        }
+        if (definition.showBlends)
+            addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.YELLOW);
     }
 }
