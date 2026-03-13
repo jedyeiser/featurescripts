@@ -404,19 +404,34 @@ function processPath(context is Context, id is Id, definition is map) returns ma
         throw regenError("Reference wire edges must form a continuous path");
     }
 
-    var pathRefPoint = evDistancePath(context, {
-        "side0" : refPath,
-        "side1" : definition.refPoint
-    });
-
     var endpoints = evPathTangentLines(context, refPath, [0, 1]);
     var stdDir = endpoints.tangentLines[0].origin[0] < endpoints.tangentLines[1].origin[0];
     var pathLength = evPathLength(context, refPath);
 
+    // Find the parameter where the wire's X coordinate equals the reference point's X coordinate.
+    // Binary search — more reliable than evDistancePath for a 3D reference entity whose closest
+    // wire projection may not land at the intended X position (e.g. a mate connector at the origin
+    // whose wire projection is offset in Z).
+    var refX  = resolveQueryToPoint(context, definition.refPoint)[0];
+    var ep0X  = endpoints.tangentLines[0].origin[0];
+    var ep1X  = endpoints.tangentLines[1].origin[0];
+    var tLo   = 0.0;
+    var tHi   = 1.0;
+    for (var iter = 0; iter < 30; iter += 1)
+    {
+        var tMid = (tLo + tHi) / 2;
+        var midX = evPathTangentLines(context, refPath, [tMid]).tangentLines[0].origin[0];
+        if ((midX < refX) == (ep0X < ep1X))
+            tLo = tMid;
+        else
+            tHi = tMid;
+    }
+    var refParam = (tLo + tHi) / 2;
+
     return {
         "path"     : refPath,
         "length"   : pathLength,
-        "refParam" : pathRefPoint.sides[0].pathParam,
+        "refParam" : refParam,
         "stdDir"   : stdDir
     };
 }

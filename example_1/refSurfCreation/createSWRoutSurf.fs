@@ -1,6 +1,7 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/extend.fs", version : "2892.0");
+// IMPORT: tools/printing.fs
 
 /**
  * Generates a sidewall rout surface given:
@@ -58,8 +59,19 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Cutter bottom radius" }
             isLength(definition.cutterBottomRadius, cutterRadiusBounds);
         }
+
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print wire BSplines", "Default" : false }
+            definition.debugPrintBSplines is boolean;
+
+            annotation { "Name" : "Detailed output", "Default" : false, "UIHint" : UIHint.SHOW_LABEL }
+            definition.debugDetailedBSplines is boolean;
+        }
     }
     {
+        var debugFmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
+
         // --- Working copies (deleted before feature exits) ---
         opPattern(context, id + "copyBottom", {
                 "entities"      : definition.bottomSheet,
@@ -76,7 +88,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var sideCopy   = qCreatedBy(id + "copySide",   EntityType.BODY);
 
         // Determine correct offset directions; bottom copy is left at distAboveBottom.
-        var dirMap      = processFirstMoves(context, id + "firstMoves", definition, bottomCopy, sideCopy);
+        var dirMap        = processFirstMoves(context, id + "firstMoves", definition, bottomCopy, sideCopy);
         var bottomDirSign = dirMap.bottomDirSign;
         var sideDirSign   = dirMap.sideDirSign;
 
@@ -93,12 +105,30 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY)
         });
 
-        // --- Measure total side height via dummy top surface ---
+        if (definition.debugPrintBSplines)
+        {
+            debugPrintWireBSplines(context, startWire, "Start wire", debugFmt);
+        }
+
+        // --- Measure total side height via dummy top surface, then delete it ---
         var dummyTopSurf = generateDummyTopSurf(context, id + "dummyTop", definition.sideSheet, bottomDirSign);
         var gapDist = evDistance(context, {
                 "side0" : dummyTopSurf,
                 "side1" : definition.bottomSheet
         }).distance;
+
+        if (definition.debugPrintBSplines)
+        {
+            var dummyEdges = evaluateQuery(context, qOwnedByBody(dummyTopSurf, EntityType.EDGE));
+            println("=== Dummy top spline (" ~ size(dummyEdges) ~ " edge(s)) ===");
+            for (var i = 0; i < size(dummyEdges); i += 1)
+            {
+                var curve = evApproximateBSplineCurve(context, { "edge" : dummyEdges[i] });
+                printBSpline(curve, debugFmt, ["  Edge " ~ toString(i) ~ ":"]);
+            }
+            println("  gapDist = " ~ toString(gapDist));
+        }
+
         opDeleteBodies(context, id + "deleteDummyTop", {
                 "entities" : dummyTopSurf
         });
@@ -122,10 +152,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "entities" : qCreatedBy(id + "stepInIntersect", EntityType.BODY)
             });
             stepInWire = qCreatedBy(id + "stepInWireExtract", EntityType.BODY);
+
+            if (definition.debugPrintBSplines)
+            {
+                debugPrintWireBSplines(context, stepInWire, "Step-in wire", debugFmt);
+            }
         }
 
         // --- Stop wire: offset to full rout height + angle ---
-        // routHeight overshoots by 2 mm; the top is trimmed later by an external top reference surface.
+        // routHeight overshoots by 2 mm; trimmed later by external top reference surface.
         var routHeight = gapDist - definition.distAboveBottom + 2 * millimeter;
         var routOffset = routHeight * tan(definition.swRoutAngle);
 
@@ -148,6 +183,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         opDeleteBodies(context, id + "deleteStopIntersect", {
                 "entities" : qCreatedBy(id + "stopIntersect", EntityType.BODY)
         });
+
+        if (definition.debugPrintBSplines)
+        {
+            debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
+        }
 
         // --- Clean up working copies ---
         opDeleteBodies(context, id + "deleteWorkerCopies", {
@@ -189,7 +229,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var outsideEdges = [];
         for (var edge in loftOneSidedEdges)
         {
-            var midPoint = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
+            var midPoint   = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
             var distToSide = evDistance(context, { "side0" : midPoint, "side1" : definition.sideSheet }).distance;
             if (distToSide < 1e-5 * meter)
             {
@@ -233,7 +273,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 /**
  * Trims the SW rout surface at a point on the reference wire.
  * Keeps the larger of the two split bodies (the portion inside the endpoints).
- * Adds a cutter-radius arc cap on the cut end.
+ * Extends the outside edge by cutterRadius and caps the cut end with a 90° revolve.
  */
 export function trimSWRout(context is Context, id is Id, swRoutSurface is Query, refPath is Path, trimPoint is Query, sideSheet is Query, cutterRadius is ValueWithUnits)
 {
@@ -277,9 +317,9 @@ export function trimSWRout(context is Context, id is Id, swRoutSurface is Query,
     }
 
     // Extend the outside edge (edge nearest the side surface) by the cutter radius.
-    var keptBody = qCreatedBy(id + "splitSWRout", EntityType.BODY);
+    var keptBody      = qCreatedBy(id + "splitSWRout", EntityType.BODY);
     var oneSidedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(keptBody, EntityType.EDGE), EdgeTopology.ONE_SIDED));
-    var outsideEdges = [];
+    var outsideEdges  = [];
     for (var edge in oneSidedEdges)
     {
         var midPoint   = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
@@ -301,10 +341,9 @@ export function trimSWRout(context is Context, id is Id, swRoutSurface is Query,
         });
     }
 
-    // Revolve the split edges 90° about the wire tangent axis to form a closing cap.
-    var splitEdges = qCreatedBy(id + "splitSWRout", EntityType.EDGE);
+    // Revolve the split edges 90° about the wire tangent axis to cap the rout end.
     opRevolve(context, id + "capRevolve", {
-            "entities"     : splitEdges,
+            "entities"     : qCreatedBy(id + "splitSWRout", EntityType.EDGE),
             "axis"         : line(edgeLine.origin, edgeLine.direction),
             "angleForward" : 90 * degree
     });
@@ -312,8 +351,8 @@ export function trimSWRout(context is Context, id is Id, swRoutSurface is Query,
 
 /**
  * Finds the top boundary wire of the side surface (highest average Z), projects its
- * points onto the XZ plane (Y = 0), and returns an approximated spline body.
- * Used to measure gapDist (the total side height) and as a reference for future top trimming.
+ * points onto the XZ plane (Y = 0), and returns an approximated spline wire body.
+ * Used to measure gapDist (total side height) and as a future top-trim reference.
  */
 export function generateDummyTopSurf(context is Context, id is Id, sideSheet is Query, bottomDirSign is number) returns Query
 {
@@ -322,38 +361,39 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     opExtractWires(context, id + "extractBoundaryWires", {
             "edges" : oneSidedEdges
     });
-
     var wireBodies = evaluateQuery(context, qCreatedBy(id + "extractBoundaryWires", EntityType.BODY));
 
-    // Identify top wire by highest average Z (midpoint of bounding box).
-    var box0 = evBox3d(context, { "topology" : wireBodies[0], "tight" : true });
-    var box1 = evBox3d(context, { "topology" : wireBodies[1], "tight" : true });
+    // Identify top wire by highest average Z (bounding box midpoint).
+    var box0  = evBox3d(context, { "topology" : wireBodies[0], "tight" : true });
+    var box1  = evBox3d(context, { "topology" : wireBodies[1], "tight" : true });
     var midZ0 = (box0.minCorner[2] + box0.maxCorner[2]) / 2;
     var midZ1 = (box1.minCorner[2] + box1.maxCorner[2]) / 2;
     var topWireBody = (midZ0 > midZ1) ? wireBodies[0] : wireBodies[1];
 
-    // Sample points from the top wire edges and project onto XZ plane (Y = 0).
-    var topEdges = evaluateQuery(context, qOwnedByBody(topWireBody, EntityType.EDGE));
-    var projectedPoints = [];
-    for (var edge in topEdges)
+    // Order the top wire edges and sample uniformly along the full path.
+    // Using constructPath + evPathTangentLines avoids duplicate junction points
+    // that would arise from sampling each edge independently at t=0 and t=1.
+    var topPath = constructPath(context, qOwnedByBody(topWireBody, EntityType.EDGE));
+    var numSamples = 30;
+    var params = [];
+    for (var i = 0; i <= numSamples; i += 1)
     {
-        var tangentLines = evEdgeTangentLines(context, {
-                "edge"       : edge,
-                "parameters" : [0, 0.5, 1]
-        });
-        for (var tl in tangentLines)
-        {
-            var pt = tl.origin;
-            projectedPoints = append(projectedPoints, vector(pt[0], 0 * meter, pt[2]));
-        }
+        params = append(params, i / numSamples);
+    }
+    var tangentResult    = evPathTangentLines(context, topPath, params);
+    var projectedPoints  = [];
+    for (var tl in tangentResult.tangentLines)
+    {
+        var pt = tl.origin;
+        projectedPoints = append(projectedPoints, vector(pt[0], 0 * meter, pt[2]));
     }
 
-    // Clean up boundary wires — they were just for identification.
+    // Clean up boundary wires.
     opDeleteBodies(context, id + "deleteBoundaryWires", {
             "entities" : qCreatedBy(id + "extractBoundaryWires", EntityType.BODY)
     });
 
-    // Fit a spline through the projected points.
+    // Fit a spline through the projected points and create a wire body.
     var splineCurve = approximateSpline(context, {
             "targets"          : [approximationTarget({ "positions" : projectedPoints })],
             "degree"           : 3,
@@ -379,7 +419,7 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
  * immediately after and needs the side at zero.
  *
  * Bottom copy is left at +distAboveBottom (correct direction) — the start wire
- * intersection also fires immediately after and needs the bottom already elevated.
+ * intersection fires immediately after and needs the bottom already elevated.
  * The final profile offset adds routHeight on top of this accumulated offset.
  */
 export function processFirstMoves(context is Context, id is Id, definition is map, toDeleteBottomBody is Query, toDeleteSideBody is Query) returns map
@@ -391,7 +431,7 @@ export function processFirstMoves(context is Context, id is Id, definition is ma
     var initialSideBox    = evBox3d(context, { "topology" : definition.sideSheet,   "tight" : true });
     var initialSideWidth  = initialSideBox.maxCorner[1] - initialSideBox.minCorner[1];
 
-    // Probe both copies.
+    // Probe both copies with a positive offset.
     opOffsetFace(context, id + "initialBottomOffset", {
             "moveFaces"      : qOwnedByBody(toDeleteBottomBody, EntityType.FACE),
             "offsetDistance" : definition.distAboveBottom
@@ -415,7 +455,7 @@ export function processFirstMoves(context is Context, id is Id, definition is ma
         });
     }
 
-    // Side: return to original regardless. Flip sign if probe went inward.
+    // Side: return to original position regardless. Flip sign if probe went inward.
     if (newSideWidth < initialSideWidth)
     {
         sideDirSign = -1;
@@ -433,4 +473,19 @@ export function processFirstMoves(context is Context, id is Id, definition is ma
     }
 
     return { "bottomDirSign" : bottomDirSign, "sideDirSign" : sideDirSign };
+}
+
+/**
+ * Prints the BSplineCurve for each edge in a wire body.
+ * Intended for debug use only — gated by definition.debugPrintBSplines.
+ */
+function debugPrintWireBSplines(context is Context, wireBody is Query, label is string, format is PrintFormat)
+{
+    var edges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
+    println("=== " ~ label ~ " (" ~ size(edges) ~ " edge(s)) ===");
+    for (var i = 0; i < size(edges); i += 1)
+    {
+        var curve = evApproximateBSplineCurve(context, { "edge" : edges[i] });
+        printBSpline(curve, format, ["  Edge " ~ toString(i) ~ ":"]);
+    }
 }

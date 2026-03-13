@@ -99,7 +99,7 @@ function computePathParam(context is Context, path is Path, edgeIndex is number,
     var totalLength = 0 * meter;
     for (var i = 0; i < size(path.edges); i += 1)
     {
-        const len = evPathLength(context, path);
+        const len = evLength(context, { "entities" : path.edges[i] });
         edgeLengths[i] = len;
         totalLength += len;
     }
