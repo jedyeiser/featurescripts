@@ -178,7 +178,7 @@
     {
       "name": "example_1",
       "description": "Template ski and snowboard design document.",
-      "working_directory": "./projects/example_1",
+      "working_directory": "./example/1",
       "onshape_url": "https://k2-sports.onshape.com/documents/7183868d32cdc7a6ad14410d/w/a3ea9a8cd3639eb3be0528c6/e/6853a9dd0adbae714052f968",
       "references": [
         "Onshape Standard Library",
