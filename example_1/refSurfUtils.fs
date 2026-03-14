@@ -86,6 +86,30 @@ function augmentPathSide(context is Context, side is map, path is Path, edgeInde
 }
 
 /**
+ * Binary-searches for the path parameter [0,1] at which the wire's world-space
+ * X coordinate equals targetX.  Works for any monotone-in-X wire.
+ * 30 iterations give sub-nanometre precision.
+ */
+export function findPathParamAtX(context is Context, path is Path, targetX is number) returns number
+{
+    var endpoints = evPathTangentLines(context, path, [0, 1]);
+    var ep0X = endpoints.tangentLines[0].origin[0];
+    var ep1X = endpoints.tangentLines[1].origin[0];
+    var tLo  = 0.0;
+    var tHi  = 1.0;
+    for (var iter = 0; iter < 30; iter += 1)
+    {
+        var tMid = (tLo + tHi) / 2;
+        var midX = evPathTangentLines(context, path, [tMid]).tangentLines[0].origin[0];
+        if ((midX < targetX) == (ep0X < ep1X))
+            tLo = tMid;
+        else
+            tHi = tMid;
+    }
+    return (tLo + tHi) / 2;
+}
+
+/**
  * Computes the arc-length normalized [0,1] path parameter for a point
  * located at 'localParam' on path.edges[edgeIndex].
  *

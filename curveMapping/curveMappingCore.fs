@@ -832,6 +832,31 @@ export function mapEdgeJunctionTangent(srcTangent is Vector,
 
 
 // ============================================================================
+// mapEdgeJunctionCurvature
+// ============================================================================
+
+/**
+ * Transform a source curvature vector from one Frenet frame to another.
+ *
+ * Projects srcCurvature onto the normal (xAxis) and binormal (yAxis) components
+ * of the from-frame, then reconstructs in the to-frame. The tangent (zAxis)
+ * component is discarded — curvature is always perpendicular to the tangent
+ * for smooth curves; any residual tangential component is numerical noise.
+ *
+ * @param srcCurvature {Vector} - curvature vector in world space (units: 1/length)
+ * @param fromResult   {map}    - result from getFrameAtArcLength (from-path)
+ * @param toResult     {map}    - result from getFrameAtArcLength (to-path, sign-reconciled)
+ * @returns {Vector} - mapped curvature vector in world space (units: 1/length)
+ */
+export function mapEdgeJunctionCurvature(srcCurvature is Vector,
+    fromResult is map, toResult is map) returns Vector
+{
+    return dot(srcCurvature, fromResult.frame.xAxis) * toResult.frame.xAxis
+         + dot(srcCurvature, yAxis(fromResult.frame)) * yAxis(toResult.frame);
+}
+
+
+// ============================================================================
 // jostleG2Junctions
 // ============================================================================
 
@@ -855,6 +880,10 @@ export function mapEdgeJunctionTangent(srcTangent is Vector,
  * @param wrappedBSplines {array}  - BSplineCurve maps, one per span
  * @param wrappedIds      {array}  - Id for each span body
  * @param matchTol        {ValueWithUnits} - endpoint-match tolerance
+ * @param junctionCurvatures {array} - per-span mapped source curvature at span END (same indexing
+ *   as wrappedBSplines). junctionCurvatures[k] is the mapped source curvature Vector at the end
+ *   of span k (junction to span k+1), or undefined if not available. When defined, used as the
+ *   G2 target instead of averaging both sides. Pass [] if no source curvature data available.
  * @returns {map} : {
  *   "bsplines"    : array  - updated BSplineCurve maps
  *   "ids"         : array  - updated Ids (replaced spans get new Ids)
@@ -864,7 +893,7 @@ export function mapEdgeJunctionTangent(srcTangent is Vector,
  */
 export function jostleG2Junctions(context is Context, id is Id,
     wrappedBSplines is array, wrappedIds is array,
-    matchTol is ValueWithUnits) returns map
+    matchTol is ValueWithUnits, junctionCurvatures is array) returns map
 {
     var numSpans       = size(wrappedBSplines);
     var wrappedCurrIds = wrappedIds;
@@ -910,7 +939,25 @@ export function jostleG2Junctions(context is Context, id is Id,
         var T_A          = d1A / sqrt(d1A_sq);
         var kappa_B      = (d2B - dot(d2B, T_B) * T_B) / d1B_sq;
         var kappa_A      = (d2A - dot(d2A, T_A) * T_A) / d1A_sq;
-        var kappa_target = 0.5 * (kappa_B + kappa_A);
+        // Near-linear guard: skip G2 jostle entirely if either adjacent span is effectively
+        // a line (κ ≈ 0). Attempting G2 at a line/curve junction forces an inflection in the
+        // curved span; skipping produces cleaner geometry than jostling toward κ/2.
+        var kappaLinTol = 1e-6 / meter;
+        if (norm(kappa_B) < kappaLinTol || norm(kappa_A) < kappaLinTol)
+            continue;
+
+        // Use mapped source curvature as G2 target when available (ground truth from source
+        // geometry). Falls back to averaging both output sides when not available.
+        var kappa_target;
+        var kappa_source = (sj < size(junctionCurvatures)) ? junctionCurvatures[sj] : undefined;
+        if (kappa_source != undefined)
+        {
+            kappa_target = kappa_source;
+        }
+        else
+        {
+            kappa_target = 0.5 * (kappa_B + kappa_A);
+        }
 
         // Adjust P2 of splineAfter (start of sjNext span)
         {
@@ -1013,6 +1060,80 @@ export function jostleG2Junctions(context is Context, id is Id,
         "edgeQueries" : finalEdgeQueries,
         "bodyQueries" : finalBodyQueries
     };
+}
+
+
+// ============================================================================
+// enforceEndpointDerivatives
+// ============================================================================
+
+/**
+ * Correct endpoint control points of a clamped B-spline so the first derivative
+ * at each end matches the supplied target velocity vector.
+ *
+ * Clamped endpoint derivative formula:
+ *   C'(t0) = degree * (P1 - P0) / (knots[degree+1] - knots[degree])
+ *     => P1 = P0 + startDeriv * (knots[degree+1] - knots[degree]) / degree
+ *
+ *   C'(t_end) = degree * (P_m - P_{m-1}) / (knots[m+d+1] - knots[m+d])
+ *     => P_{m-1} = P_m - endDeriv * (knots[m+d+1] - knots[m+d]) / degree
+ *
+ * Guard: adjustment skipped when shift > 50 % of local span scale
+ * (norm(P1-P0) * degree), to avoid over-correction on degenerate fits.
+ *
+ * @param bspline    {map}    - BSplineCurve map (controlPoints, knots, degree)
+ * @param startDeriv {Vector} - target velocity at t0 (length units), or undefined
+ * @param endDeriv   {Vector} - target velocity at t_end (length units), or undefined
+ * @returns {map} - updated BSplineCurve map
+ */
+export function enforceEndpointDerivatives(bspline is map, startDeriv, endDeriv) returns map
+{
+    var cps = bspline.controlPoints;
+    var kns = bspline.knots;
+    var d   = bspline.degree;
+    var m   = size(cps) - 1;
+    if (m < 2 || d < 1)
+        return bspline;
+
+    var newCps = cps;
+
+    if (startDeriv != undefined)
+    {
+        var dk0 = kns[d + 1] - kns[d];
+        if (dk0 > 0)
+        {
+            var P1target = cps[0] + startDeriv * (dk0 / d);
+            var scaleS   = norm(cps[1] - cps[0]) * d;
+            var shiftS   = norm(P1target - cps[1]);
+            if (scaleS > 0 * meter && shiftS < 0.5 * scaleS)
+            {
+                var nc = [];
+                for (var ci = 0; ci <= m; ci += 1)
+                    nc = append(nc, ci == 1 ? P1target : newCps[ci]);
+                newCps = nc;
+            }
+        }
+    }
+
+    if (endDeriv != undefined)
+    {
+        var dkm = kns[m + d + 1] - kns[m + d];
+        if (dkm > 0)
+        {
+            var Pm1target = cps[m] - endDeriv * (dkm / d);
+            var scaleE    = norm(cps[m] - cps[m - 1]) * d;
+            var shiftE    = norm(Pm1target - newCps[m - 1]);
+            if (scaleE > 0 * meter && shiftE < 0.5 * scaleE)
+            {
+                var nc = [];
+                for (var ci = 0; ci <= m; ci += 1)
+                    nc = append(nc, ci == m - 1 ? Pm1target : newCps[ci]);
+                newCps = nc;
+            }
+        }
+    }
+
+    return mergeMaps(bspline, { "controlPoints": newCps });
 }
 
 
