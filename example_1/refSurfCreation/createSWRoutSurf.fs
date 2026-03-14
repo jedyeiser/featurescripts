@@ -164,18 +164,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "tools"   : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE),
                 "targets" : qOwnedByBody(qCreatedBy(id + "startSide",   EntityType.BODY), EntityType.FACE)
         });
-
-        opExtractWires(context, id + "startWireExtract", {
-                "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
-        });
+        extractWiresDeduped(context, id + "startWireExtract",
+                qOwnedByBody(qCreatedBy(id + "startIntersect", EntityType.BODY), EntityType.EDGE));
         var startWire = qCreatedBy(id + "startWireExtract", EntityType.BODY);
         setProperty(context, { "entities" : startWire, "propertyType" : PropertyType.NAME, "value" : "Start wire (pre-split)" });
 
         if (!definition.debugKeepAllBodies)
         {
             opDeleteBodies(context, id + "deleteStartCopies", {
-                    "entities" : qUnion([qCreatedBy(id + "startBottom", EntityType.BODY),
-                                         qCreatedBy(id + "startSide",   EntityType.BODY)])
+                    "entities" : qUnion([qCreatedBy(id + "startBottom",    EntityType.BODY),
+                                         qCreatedBy(id + "startSide",      EntityType.BODY),
+                                         qCreatedBy(id + "startIntersect", EntityType.BODY)])
             });
         }
 
@@ -234,17 +233,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "targets" : qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)
             });
 
-            opExtractWires(context, id + "stepInWireExtract", {
-                    "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
-            });
+            extractWiresDeduped(context, id + "stepInWireExtract",
+                    qOwnedByBody(qCreatedBy(id + "stepInIntersect", EntityType.BODY), EntityType.EDGE));
             stepInWire = qCreatedBy(id + "stepInWireExtract", EntityType.BODY);
             setProperty(context, { "entities" : stepInWire, "propertyType" : PropertyType.NAME, "value" : "Step-in wire (pre-split)" });
 
             if (!definition.debugKeepAllBodies)
             {
                 opDeleteBodies(context, id + "deleteStepInCopies", {
-                        "entities" : qUnion([qCreatedBy(id + "stepInSide",   EntityType.BODY),
-                                             qCreatedBy(id + "stepInBottom", EntityType.BODY)])
+                        "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
+                                             qCreatedBy(id + "stepInBottom",    EntityType.BODY),
+                                             qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
                 });
             }
 
@@ -323,17 +322,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "targets" : qOwnedByBody(qCreatedBy(id + "stopSide",   EntityType.BODY), EntityType.FACE)
         });
 
-        opExtractWires(context, id + "stopWireExtract", {
-                "edges" : qCreatedBy(id + "stopIntersect", EntityType.EDGE)
-        });
+        extractWiresDeduped(context, id + "stopWireExtract",
+                qOwnedByBody(qCreatedBy(id + "stopIntersect", EntityType.BODY), EntityType.EDGE));
         var stopWire = qCreatedBy(id + "stopWireExtract", EntityType.BODY);
         setProperty(context, { "entities" : stopWire, "propertyType" : PropertyType.NAME, "value" : "Stop wire (pre-split)" });
 
         if (!definition.debugKeepAllBodies)
         {
             opDeleteBodies(context, id + "deleteStopCopies", {
-                    "entities" : qUnion([qCreatedBy(id + "stopBottom", EntityType.BODY),
-                                         qCreatedBy(id + "stopSide",   EntityType.BODY)])
+                    "entities" : qUnion([qCreatedBy(id + "stopBottom",    EntityType.BODY),
+                                         qCreatedBy(id + "stopSide",      EntityType.BODY),
+                                         qCreatedBy(id + "stopIntersect", EntityType.BODY)])
             });
         }
 
@@ -562,6 +561,50 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     }
 
     return wireBodies[topIdx];
+}
+
+/**
+ * Collects edges from per-face wire bodies created by opIntersectFaces, deduplicates
+ * geometrically coincident edges (adjacent face pairs produce identical curves at shared
+ * boundaries), then calls opExtractWires to assemble into wire bodies.
+ *
+ * Deduplication compares edge midpoints within a 1 µm tolerance. Two edges with the same
+ * midpoint and tangent direction are considered coincident; only the first is kept.
+ */
+function extractWiresDeduped(context is Context, id is Id, edgeQuery is Query)
+{
+    var allEdges = evaluateQuery(context, edgeQuery);
+    var uniqueEdges = [];
+    var midpoints   = [];
+    var tangents    = [];
+
+    for (var edge in allEdges)
+    {
+        var tl  = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 });
+        var mid = tl.origin;
+        var tan = tl.direction;
+        var isDup = false;
+        for (var i = 0; i < size(midpoints); i += 1)
+        {
+            if (norm(mid - midpoints[i]) < 1e-6 * meter &&
+                (norm(tan - tangents[i]) < 1e-4 || norm(tan + tangents[i]) < 1e-4))
+            {
+                isDup = true;
+                break;
+            }
+        }
+        if (!isDup)
+        {
+            uniqueEdges = append(uniqueEdges, edge);
+            midpoints   = append(midpoints,   mid);
+            tangents    = append(tangents,    tan);
+        }
+    }
+
+    if (size(uniqueEdges) == 0)
+        return;
+
+    opExtractWires(context, id, { "edges" : qUnion(uniqueEdges) });
 }
 
 /**
