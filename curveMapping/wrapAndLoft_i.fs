@@ -741,6 +741,21 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "endDerivative": junctionTangent * primaryOffsetChord });
                     var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
+                    // Snap CP[0] and CP[-1] to exact input positions. For a clamped BSpline,
+                    // CP[0] = C(t0) and CP[-1] = C(t_end) exactly, so this costs nothing
+                    // geometrically but makes boundary edges bit-identical across source curves,
+                    // which is required for the surface union to stitch correctly.
+                    {
+                        var cps = primaryOffsetCurve.controlPoints;
+                        var m   = size(cps) - 1;
+                        var snapped = [];
+                        for (var ci = 0; ci <= m; ci += 1)
+                            snapped = append(snapped,
+                                ci == 0 ? primaryOffsetPoints[0] :
+                                ci == m ? primaryOffsetPoints[size(primaryOffsetPoints) - 1] :
+                                cps[ci]);
+                        primaryOffsetCurve = mergeMaps(primaryOffsetCurve, { "controlPoints": snapped });
+                    }
 
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
@@ -755,6 +770,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "endDerivative": junctionTangent * secondaryOffsetChord });
                         var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
+                        {
+                            var cps = secondaryOffsetCurve.controlPoints;
+                            var m   = size(cps) - 1;
+                            var snapped = [];
+                            for (var ci = 0; ci <= m; ci += 1)
+                                snapped = append(snapped,
+                                    ci == 0 ? secondaryOffsetPoints[0] :
+                                    ci == m ? secondaryOffsetPoints[size(secondaryOffsetPoints) - 1] :
+                                    cps[ci]);
+                            secondaryOffsetCurve = mergeMaps(secondaryOffsetCurve, { "controlPoints": snapped });
+                        }
                     }
 
                     // Capture and pre-increment so a failed op can never reuse the same Id
@@ -833,6 +859,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // opLoft from chaining all spans across all source curves into one huge surface.
         if (size(allWrappedSegQueries) > 0)
         {
+            var allLoftBodyQueries = [];
             var segOffset = 0;
             for (var li = 0; li < size(sourceCurveArray); li += 1)
             {
@@ -872,6 +899,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             "bodyType"          : ToolBodyType.SURFACE,
                             "profileSubqueries" : [loftProfile1, loftProfile2]
                         });
+                        allLoftBodyQueries = append(allLoftBodyQueries,
+                            qCreatedBy(id + ("loft_" ~ toString(li)), EntityType.BODY));
                     }
                     catch (e)
                     {
@@ -880,6 +909,24 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
 
                 segOffset += iCount;
+            }
+
+            // Union all per-source-curve surfaces into one body with N faces.
+            // Requires boundary edges to be exactly coincident — guaranteed by the
+            // endpoint-snapping step on offset curves above.
+            if (size(allLoftBodyQueries) > 1)
+            {
+                try
+                {
+                    opBoolean(context, id + "unionSurfaces", {
+                        "operationType" : BooleanType.UNION,
+                        "tools"         : qUnion(allLoftBodyQueries)
+                    });
+                }
+                catch (e)
+                {
+                    println("Surface union failed (surfaces may not share edges): " ~ toString(e));
+                }
             }
 
             // Collect multi-span segments into wire bodies (one wire per connected run)

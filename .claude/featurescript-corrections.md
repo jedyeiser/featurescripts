@@ -825,9 +825,37 @@ var magnitude = 10 ^ exponent;  // ✅ Use ^ operator for exponentiation
 
 ---
 
+## Reserved Variable Names — Built-in Type Identifiers
+
+**Date**: 2026-03-14
+**Issue**: Certain lowercase identifiers are reserved in FeatureScript and cannot be used as variable names. `box` is the most surprising — it is a built-in mutable reference type (used as `new box(undefined)`). Assigning `var box = ...` causes a parse error: `mismatched input 'box' expecting ID`.
+
+**Known reserved identifiers** (cannot be used as variable names):
+- `box` — built-in mutable reference type
+- `line` — std function that constructs a `Line` value (from `std/line.fs`)
+- `plane` — std function that constructs a `Plane` value (from `std/coordSystem.fs`)
+- `transform` — std function that constructs a `Transform` value
+- `array`, `map`, `string`, `number`, `boolean`, `function`, `undefined`, `builtin` — primitive type keywords
+
+**Type names** (PascalCase) are also reserved: `Box3d`, `Line`, `Plane`, `Path`, `Query`, `Context`, `Id`, `Vector`, `BSplineCurve`, etc. — do not use these as variable names.
+
+**Fix**: Use a descriptive prefix or suffix. Examples:
+```featurescript
+// WRONG
+var box  = evBox3d(context, { "topology" : body, "tight" : true });
+var line = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 });
+
+// CORRECT
+var bb   = evBox3d(context, { "topology" : body, "tight" : true });
+var tl   = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 });
+```
+**Lesson Learned**: Scan all variable names for conflicts with built-in identifiers before writing any FeatureScript. Prefer prefixed names (`bb`, `tl`, `pl`, `xf`) for geometry temporaries.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 13
+- **Total Corrections**: 14
 - **Last Updated**: 2026-03-01
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
