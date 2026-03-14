@@ -483,6 +483,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
             var segStartIdx               = 0;
             var segCount                  = 0;
+            var wrappedCountBefore        = size(allWrappedSegQueries);  // track successful spans
             var junctionPt                = undefined;
             var junctionTangent           = undefined;
             var junctionOffsetDir         = undefined;
@@ -851,7 +852,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 segStartIdx = segEndIdx + 1;
             }
 
-            segCountPerSourceCurve = append(segCountPerSourceCurve, segCount);
+            // Use actual successful span count, not segCount (which includes failed ops)
+            segCountPerSourceCurve = append(segCountPerSourceCurve, size(allWrappedSegQueries) - wrappedCountBefore);
         }
 
         // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
