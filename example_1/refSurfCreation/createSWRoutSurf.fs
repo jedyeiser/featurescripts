@@ -74,37 +74,26 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
     {
         var debugFmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
 
-        // --- Determine offset direction signs via probe extracts ---
-        // opExtractSurface creates a fresh offset body without modifying the original.
-        // Bottom: correct direction = increasing Z (upward).
-        opExtractSurface(context, id + "bottomDirProbe", {
-                "faces"  : qOwnedByBody(definition.bottomSheet, EntityType.FACE),
-                "offset" : 1 * millimeter,
-                "useFacesAroundToTrimOffset" : false
-        });
-        var initialBottomZ = evBox3d(context, { "topology" : definition.bottomSheet,                              "tight" : true }).minCorner[2];
-        var probeBottomZ   = evBox3d(context, { "topology" : qCreatedBy(id + "bottomDirProbe", EntityType.BODY), "tight" : true }).minCorner[2];
-        var bottomDirSign  = (probeBottomZ > initialBottomZ) ? 1 : -1;
-        opDeleteBodies(context, id + "deleteBottomDirProbe", { "entities" : qCreatedBy(id + "bottomDirProbe", EntityType.BODY) });
+        // --- Get face normals to determine offset directions ---
+        // evFaceTangentPlane at parameter (0.5, 0.5) = centre of the face's parameter space.
+        // The returned plane's normal is a unitless unit vector pointing away from the face.
+        // Multiplying by a length gives a translation vector; opPattern copies the surface
+        // without any direct-edit kernel call.
+        var bottomNormal = evFaceTangentPlane(context, {
+                "face"      : qNthElement(qOwnedByBody(definition.bottomSheet, EntityType.FACE), 0),
+                "parameter" : vector(0.5, 0.5)
+        }).normal;
 
-        // Side: correct direction = increasing Y span (outward).
-        opExtractSurface(context, id + "sideDirProbe", {
-                "faces"  : qOwnedByBody(definition.sideSheet, EntityType.FACE),
-                "offset" : 1 * millimeter,
-                "useFacesAroundToTrimOffset" : false
-        });
-        var initialSideBox  = evBox3d(context, { "topology" : definition.sideSheet,                            "tight" : true });
-        var initialSideSpan = initialSideBox.maxCorner[1] - initialSideBox.minCorner[1];
-        var probeSideBox    = evBox3d(context, { "topology" : qCreatedBy(id + "sideDirProbe", EntityType.BODY), "tight" : true });
-        var probeSideSpan   = probeSideBox.maxCorner[1] - probeSideBox.minCorner[1];
-        var sideDirSign     = (probeSideSpan > initialSideSpan) ? 1 : -1;
-        opDeleteBodies(context, id + "deleteSideDirProbe", { "entities" : qCreatedBy(id + "sideDirProbe", EntityType.BODY) });
+        var sideNormal = evFaceTangentPlane(context, {
+                "face"      : qNthElement(qOwnedByBody(definition.sideSheet, EntityType.FACE), 0),
+                "parameter" : vector(0.5, 0.5)
+        }).normal;
 
-        // --- Start wire: bottom at distAboveBottom, side at original position ---
-        opExtractSurface(context, id + "startBottom", {
-                "faces"  : qOwnedByBody(definition.bottomSheet, EntityType.FACE),
-                "offset" : bottomDirSign * definition.distAboveBottom,
-                "useFacesAroundToTrimOffset" : false
+        // --- Start wire: bottom shifted up by distAboveBottom, side at original position ---
+        opPattern(context, id + "startBottom", {
+                "entities"      : definition.bottomSheet,
+                "transforms"    : [transform(definition.distAboveBottom * bottomNormal)],
+                "instanceNames" : ["1"]
         });
         opIntersectFaces(context, id + "startIntersect", {
                 "tools"   : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE),
@@ -114,7 +103,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
         });
         var startWire = qCreatedBy(id + "startWireExtract", EntityType.BODY);
-        opDeleteBodies(context, id + "deleteStartExtract", {
+        opDeleteBodies(context, id + "deleteStartCopies", {
                 "entities" : qUnion([qCreatedBy(id + "startBottom",    EntityType.BODY),
                                      qCreatedBy(id + "startIntersect", EntityType.BODY)])
         });
@@ -141,19 +130,19 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "entities" : dummyTopSurf
         });
 
-        // --- Optional step-in wire: side inward by swRoutStepin, bottom at distAboveBottom ---
+        // --- Optional step-in wire: side shifted inward, bottom at distAboveBottom ---
         var stepInWire = qNothing();
         if (definition.swRoutStepin > 0 * millimeter)
         {
-            opExtractSurface(context, id + "stepInSide", {
-                    "faces"  : qOwnedByBody(definition.sideSheet, EntityType.FACE),
-                    "offset" : -sideDirSign * definition.swRoutStepin,
-                    "useFacesAroundToTrimOffset" : false
+            opPattern(context, id + "stepInSide", {
+                    "entities"      : definition.sideSheet,
+                    "transforms"    : [transform(-definition.swRoutStepin * sideNormal)],
+                    "instanceNames" : ["1"]
             });
-            opExtractSurface(context, id + "stepInBottom", {
-                    "faces"  : qOwnedByBody(definition.bottomSheet, EntityType.FACE),
-                    "offset" : bottomDirSign * definition.distAboveBottom,
-                    "useFacesAroundToTrimOffset" : false
+            opPattern(context, id + "stepInBottom", {
+                    "entities"      : definition.bottomSheet,
+                    "transforms"    : [transform(definition.distAboveBottom * bottomNormal)],
+                    "instanceNames" : ["1"]
             });
             opIntersectFaces(context, id + "stepInIntersect", {
                     "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",   EntityType.BODY), EntityType.FACE),
@@ -163,7 +152,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
             });
             stepInWire = qCreatedBy(id + "stepInWireExtract", EntityType.BODY);
-            opDeleteBodies(context, id + "deleteStepInExtract", {
+            opDeleteBodies(context, id + "deleteStepInCopies", {
                     "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
                                          qCreatedBy(id + "stepInBottom",    EntityType.BODY),
                                          qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
@@ -175,20 +164,20 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
-        // --- Stop wire: bottom at distAboveBottom + routHeight, side outward by routOffset ---
+        // --- Stop wire: bottom shifted to full rout height, side shifted outward ---
         // routHeight overshoots by 2 mm; trimmed later by external top reference surface.
         var routHeight = gapDist - definition.distAboveBottom + 2 * millimeter;
         var routOffset = routHeight * tan(definition.swRoutAngle);
 
-        opExtractSurface(context, id + "stopBottom", {
-                "faces"  : qOwnedByBody(definition.bottomSheet, EntityType.FACE),
-                "offset" : bottomDirSign * (definition.distAboveBottom + routHeight),
-                "useFacesAroundToTrimOffset" : false
+        opPattern(context, id + "stopBottom", {
+                "entities"      : definition.bottomSheet,
+                "transforms"    : [transform((definition.distAboveBottom + routHeight) * bottomNormal)],
+                "instanceNames" : ["1"]
         });
-        opExtractSurface(context, id + "stopSide", {
-                "faces"  : qOwnedByBody(definition.sideSheet, EntityType.FACE),
-                "offset" : sideDirSign * routOffset,
-                "useFacesAroundToTrimOffset" : false
+        opPattern(context, id + "stopSide", {
+                "entities"      : definition.sideSheet,
+                "transforms"    : [transform(routOffset * sideNormal)],
+                "instanceNames" : ["1"]
         });
         opIntersectFaces(context, id + "stopIntersect", {
                 "tools"   : qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE),
@@ -198,7 +187,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "edges" : qCreatedBy(id + "stopIntersect", EntityType.EDGE)
         });
         var stopWire = qCreatedBy(id + "stopWireExtract", EntityType.BODY);
-        opDeleteBodies(context, id + "deleteStopExtract", {
+        opDeleteBodies(context, id + "deleteStopCopies", {
                 "entities" : qUnion([qCreatedBy(id + "stopBottom",    EntityType.BODY),
                                      qCreatedBy(id + "stopSide",      EntityType.BODY),
                                      qCreatedBy(id + "stopIntersect", EntityType.BODY)])

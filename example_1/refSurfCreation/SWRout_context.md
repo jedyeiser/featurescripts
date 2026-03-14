@@ -64,21 +64,39 @@ var wire = qCreatedBy(id + "extractWire", EntityType.BODY);
 - Use when you have edges from a non-intersection source (e.g., `qEdgeTopologyFilter`).
 - Fails if edges overlap, cross, or more than 2 meet at a point.
 
-### opExtractSurface — Correct Tool for Offsetting Sheet Bodies
+### Correct Pattern — opPattern + transform for Sheet Body Copies
+
+Both `opOffsetFace` and `opExtractSurface` with `offset` use the same direct-edit kernel internally
+and fail with `DIRECT_EDIT_OFFSET_FACE_FAILED` on complex surface geometry.
+
+The correct approach: get the face normal direction from `evFaceTangentPlane`, then create
+translated copies with `opPattern`. `opPattern` is a pure geometric copy — no kernel offset call.
+
 ```featurescript
-opExtractSurface(context, id + "offsetCopy", {
-    "faces"  : qOwnedByBody(sheetBodyQ, EntityType.FACE),
-    "offset" : sign * distance,
-    "useFacesAroundToTrimOffset" : false   // prevent trimming by surrounding geometry
+// 1. Get face normal (unit vector, direction of surface offset)
+var faceNormal = evFaceTangentPlane(context, {
+    "face"      : qNthElement(qOwnedByBody(sheetBodyQ, EntityType.FACE), 0),
+    "parameter" : vector(0.5, 0.5)   // centre of parameter space
+}).normal;
+
+// 2. Create a translated copy in the normal direction
+opPattern(context, id + "shiftedCopy", {
+    "entities"      : sheetBodyQ,
+    "transforms"    : [transform(distance * faceNormal)],  // unitless normal * length = translation vector
+    "instanceNames" : ["1"]
 });
-var offsetBody = qCreatedBy(id + "offsetCopy", EntityType.BODY);
-// ... use offsetBody for intersection, then delete it
-opDeleteBodies(context, id + "deleteOffsetCopy", { "entities" : offsetBody });
+var shiftedCopy = qCreatedBy(id + "shiftedCopy", EntityType.BODY);
+
+// 3. Intersect, extract wire, delete copy
+opIntersectFaces(...);
+opExtractWires(...);
+opDeleteBodies(context, id + "deleteShiftedCopy", { "entities" : shiftedCopy });
 ```
-- Creates a **new** sheet body at the offset position — does NOT modify the original.
-- `opOffsetFace` is a direct-editing operation for **solid** bodies. Using it on sheet bodies causes `DIRECT_EDIT_OFFSET_FACE_FAILED`.
-- `useFacesAroundToTrimOffset : false` is important — without it Onshape may try to trim using surrounding geometry and produce unexpected results.
-- Always delete the extracted body when done to avoid leaving orphan geometry.
+
+- `evFaceTangentPlane` `parameter` is a 2D vector in parameter-space [0,1]×[0,1]; `vector(0.5, 0.5)` is the face centre.
+- `distance * faceNormal` — unitless normal × ValueWithUnits = Vector with units, valid for `transform()`.
+- To shift **inward** (opposite normal), use `-distance * faceNormal`.
+- Approximation note: all points translate by the same vector rather than along local normals. Accurate for gently curved surfaces like ski geometry.
 
 ### extendSurface — BLIND Requires Non-Zero extendDistance
 ```featurescript
@@ -130,7 +148,7 @@ qSplitBy(id + "split", EntityType.BODY, false)  // front body (in front of plane
 | 2 | Line 418 vs 90–91 | `processFirstMoves` returned `'bottomDir'`/`'sideDir'` but caller read `.bottomDirSign`/`.sideDirSign` | Fixed (then removed) |
 | 3 | Lines 370, 374 | `opOffsetFace` used `EntityType.BODY` for `moveFaces` | Fixed (then removed — `opOffsetFace` replaced entirely) |
 | 4 | Line 235 | `extendSurface` had `extendDistance: 0 * millimeter` | Fixed |
-| 5 | All offset ops | `opOffsetFace` on sheet bodies causes `DIRECT_EDIT_OFFSET_FACE_FAILED` | Replaced with `opExtractSurface` throughout |
+| 5 | All offset ops | `opOffsetFace` AND `opExtractSurface` with `offset` both use direct-edit kernel — fail on complex sheet geometry | Replaced with `opPattern` + `transform(distance * faceNormal)` |
 
 ## Non-Bugs (Previously Suspected)
 - **`qCreatedBy(id + "loft1")` after `opBoolean` UNION** — valid. `boolean.fs` explicitly states "Owner body of matches[0].topology1 survives." First tool body identity is preserved. Current code is correct.
