@@ -939,10 +939,11 @@ export function jostleG2Junctions(context is Context, id is Id,
         var T_A          = d1A / sqrt(d1A_sq);
         var kappa_B      = (d2B - dot(d2B, T_B) * T_B) / d1B_sq;
         var kappa_A      = (d2A - dot(d2A, T_A) * T_A) / d1A_sq;
-        // Near-linear guard: skip G2 jostle entirely if either adjacent span is effectively
-        // a line (κ ≈ 0). Attempting G2 at a line/curve junction forces an inflection in the
-        // curved span; skipping produces cleaner geometry than jostling toward κ/2.
-        var kappaLinTol = 1e-6 / meter;
+        // Option 2 — relative near-linear guard: skip jostle when either span's curvature is
+        // less than 5% of the dominant side. This naturally suppresses jostling near inflection
+        // points without needing an absolute threshold, and handles asymmetric span curvatures.
+        var kappaScale  = max([norm(kappa_B), norm(kappa_A)]);
+        var kappaLinTol = kappaScale * 0.05;
         if (norm(kappa_B) < kappaLinTol || norm(kappa_A) < kappaLinTol)
             continue;
 
@@ -957,6 +958,18 @@ export function jostleG2Junctions(context is Context, id is Id,
         else
         {
             kappa_target = 0.5 * (kappa_B + kappa_A);
+        }
+
+        // Option 1 — inflection detector: if kappa_B and kappa_A point in opposite directions,
+        // the junction is (or contains) a curvature sign-reversal. Force kappa_target to the
+        // zero vector so the jostle targets κ=0 rather than a noisy near-zero direction from
+        // the finite-difference estimate. The shift guard still prevents over-correction.
+        var nKB = norm(kappa_B);
+        var nKA = norm(kappa_A);
+        if (nKB > 0 * (1 / meter) && nKA > 0 * (1 / meter))
+        {
+            if (dot(kappa_B / nKB, kappa_A / nKA) < 0)
+                kappa_target = vector(0, 0, 0) / meter;
         }
 
         // Adjust P2 of splineAfter (start of sjNext span)
