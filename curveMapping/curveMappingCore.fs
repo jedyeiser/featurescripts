@@ -1097,7 +1097,7 @@ export function enforceEndpointDerivatives(bspline is map, startDeriv, endDeriv)
 
     var newCps = cps;
 
-    if (startDeriv != undefined)
+    if (startDeriv != undefined && norm(startDeriv) > 1e-10 * meter)
     {
         var dk0 = kns[d + 1] - kns[d];
         if (dk0 > 0)
@@ -1105,7 +1105,7 @@ export function enforceEndpointDerivatives(bspline is map, startDeriv, endDeriv)
             var P1target = cps[0] + startDeriv * (dk0 / d);
             var scaleS   = norm(cps[1] - cps[0]) * d;
             var shiftS   = norm(P1target - cps[1]);
-            if (scaleS > 0 * meter && shiftS < 0.5 * scaleS)
+            if (scaleS > 0 * meter && shiftS < 0.2 * scaleS)
             {
                 var nc = [];
                 for (var ci = 0; ci <= m; ci += 1)
@@ -1115,7 +1115,7 @@ export function enforceEndpointDerivatives(bspline is map, startDeriv, endDeriv)
         }
     }
 
-    if (endDeriv != undefined)
+    if (endDeriv != undefined && norm(endDeriv) > 1e-10 * meter)
     {
         var dkm = kns[m + d + 1] - kns[m + d];
         if (dkm > 0)
@@ -1123,7 +1123,7 @@ export function enforceEndpointDerivatives(bspline is map, startDeriv, endDeriv)
             var Pm1target = cps[m] - endDeriv * (dkm / d);
             var scaleE    = norm(cps[m] - cps[m - 1]) * d;
             var shiftE    = norm(Pm1target - newCps[m - 1]);
-            if (scaleE > 0 * meter && shiftE < 0.5 * scaleE)
+            if (scaleE > 0 * meter && shiftE < 0.2 * scaleE)
             {
                 var nc = [];
                 for (var ci = 0; ci <= m; ci += 1)

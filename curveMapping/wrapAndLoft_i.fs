@@ -756,9 +756,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
                     }
 
+                    // Capture and pre-increment so a failed op can never reuse the same Id
+                    var thisSegCount = segCount;
+                    segCount += 1;
+
                     try
                     {
-                        var wrappedId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
+                        var wrappedId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "wrappedCurve");
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
                         allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
                         allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
@@ -766,25 +770,23 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
 
-                        var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "primaryOffset");
+                        var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "primaryOffset");
                         opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
                         allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(primaryOffsetId, EntityType.BODY));
 
                         if (secondaryOffsetCurve != undefined)
                         {
-                            var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "secondaryOffset");
+                            var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "secondaryOffset");
                             opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
                             allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(secondaryOffsetId, EntityType.EDGE));
                             allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(secondaryOffsetId, EntityType.BODY));
                         }
-
-                        segCount += 1;
                     }
                     catch (e)
                     {
                         println("ERROR: wrapAndLoft opCreateBSplineCurve BAD_GEOMETRY - " ~ e);
-                        println("  curve i=" ~ i ~ "  seg=" ~ segCount ~
+                        println("  curve i=" ~ i ~ "  seg=" ~ thisSegCount ~
                                 "  segPoints count=" ~ size(segPoints));
                         println("  approxScale=" ~ toString(approxScale / millimeter) ~ " mm");
                         println("  carryOverTangent defined=" ~ (carryOverTangent != undefined));
