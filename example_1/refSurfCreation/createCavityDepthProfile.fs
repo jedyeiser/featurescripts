@@ -1001,12 +1001,14 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.YELLOW);
     }
 
-    // Merge all individual curve bodies into one wire body
-    if (size(allWireBodies) > 1)
+    // Collect all edges from individual wire bodies, extract into one wire body, delete originals
+    if (size(allWireBodies) > 0)
     {
-        opBoolean(context, id + "mergeWires", {
-            "tools"         : qUnion(allWireBodies),
-            "operationType" : BooleanOperationType.UNION
+        opExtractWires(context, id + "mergeWires", {
+            "edges" : qOwnedByBody(qUnion(allWireBodies), EntityType.EDGE)
+        });
+        opDeleteBodies(context, id + "deleteSourceWires", {
+            "entities" : qUnion(allWireBodies)
         });
     }
 }
