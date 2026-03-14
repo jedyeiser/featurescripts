@@ -135,8 +135,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         opPattern(context, id + "startBottom", {
                 "entities"      : definition.bottomSheet,
-                "transforms"    : [transform(definition.distAboveBottom * bottomNormal)],
+                "transforms"    : [transform(vector(0, 0, 0) * meter)],
                 "instanceNames" : ["1"]
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (copy)" });
+        opOffsetFace(context, id + "startBottomOffset", {
+                "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)]),
+                "offsetDistance" : definition.distAboveBottom
         });
         setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (offset copy)" });
 
@@ -200,8 +205,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             opPattern(context, id + "stepInBottom", {
                     "entities"      : definition.bottomSheet,
-                    "transforms"    : [transform(definition.distAboveBottom * bottomNormal)],
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
                     "instanceNames" : ["1"]
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (copy)" });
+            opOffsetFace(context, id + "stepInBottomOffset", {
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : definition.distAboveBottom
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (offset copy)" });
 
@@ -274,15 +284,25 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // Same construction pattern as start wire and step-in wire.
         opPattern(context, id + "stopBottom", {
                 "entities"      : definition.bottomSheet,
-                "transforms"    : [transform((definition.distAboveBottom + routHeight) * bottomNormal)],
+                "transforms"    : [transform(vector(0, 0, 0) * meter)],
                 "instanceNames" : ["1"]
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (copy)" });
+        opOffsetFace(context, id + "stopBottomOffset", {
+                "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE)]),
+                "offsetDistance" : definition.distAboveBottom + routHeight
         });
         setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
 
         opPattern(context, id + "stopSide", {
                 "entities"      : definition.sideSheet,
-                "transforms"    : [transform(-routOffset * outwardDir)],
+                "transforms"    : [transform(vector(0, 0, 0) * meter)],
                 "instanceNames" : ["1"]
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (copy)" });
+        opOffsetFace(context, id + "stopSideOffset", {
+                "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopSide", EntityType.BODY), EntityType.FACE)]),
+                "offsetDistance" : -routOffset
         });
         setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
 
