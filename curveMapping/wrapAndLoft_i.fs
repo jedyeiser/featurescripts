@@ -750,10 +750,14 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         var m   = size(cps) - 1;
                         var snapped = [];
                         for (var ci = 0; ci <= m; ci += 1)
-                            snapped = append(snapped,
-                                ci == 0 ? primaryOffsetPoints[0] :
-                                ci == m ? primaryOffsetPoints[size(primaryOffsetPoints) - 1] :
-                                cps[ci]);
+                        {
+                            if (ci == 0)
+                                snapped = append(snapped, primaryOffsetPoints[0]);
+                            else if (ci == m)
+                                snapped = append(snapped, primaryOffsetPoints[size(primaryOffsetPoints) - 1]);
+                            else
+                                snapped = append(snapped, cps[ci]);
+                        }
                         primaryOffsetCurve = mergeMaps(primaryOffsetCurve, { "controlPoints": snapped });
                     }
 
@@ -775,10 +779,14 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             var m   = size(cps) - 1;
                             var snapped = [];
                             for (var ci = 0; ci <= m; ci += 1)
-                                snapped = append(snapped,
-                                    ci == 0 ? secondaryOffsetPoints[0] :
-                                    ci == m ? secondaryOffsetPoints[size(secondaryOffsetPoints) - 1] :
-                                    cps[ci]);
+                            {
+                                if (ci == 0)
+                                    snapped = append(snapped, secondaryOffsetPoints[0]);
+                                else if (ci == m)
+                                    snapped = append(snapped, secondaryOffsetPoints[size(secondaryOffsetPoints) - 1]);
+                                else
+                                    snapped = append(snapped, cps[ci]);
+                            }
                             secondaryOffsetCurve = mergeMaps(secondaryOffsetCurve, { "controlPoints": snapped });
                         }
                     }
@@ -919,7 +927,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 try
                 {
                     opBoolean(context, id + "unionSurfaces", {
-                        "operationType" : BooleanType.UNION,
+                        "operationType" : BooleanOperationType.UNION,
                         "tools"         : qUnion(allLoftBodyQueries)
                     });
                 }
