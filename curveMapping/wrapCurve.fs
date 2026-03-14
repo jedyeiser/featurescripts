@@ -258,8 +258,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             }
 
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
-            var segStartIdx = 0;
-            var segCount    = 0;
+            var segStartIdx     = 0;
+            var segCount        = 0;
+            var wrappedIdsBefore  = size(wrappedIds);  // snapshot before this source curve's spans
             var junctionPt        = undefined;  // carry-over exact junction point between spans
             var junctionTangent   = undefined;  // carry-over junction tangent direction in to-space
             var junctionCurvature = undefined;  // carry-over mapped source curvature at span END
@@ -292,7 +293,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 // Capture carry-over tangent from previous span's junction before clearing
                 var carryOverTangent   = junctionTangent;
-                var carryOverCurvature = junctionCurvature;
                 junctionTangent   = undefined;
                 junctionCurvature = undefined;
 
@@ -450,18 +450,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var approxScale = totalChord;
 
-                    var targetDef = { "positions": segPoints };
-                    if (carryOverTangent != undefined)
-                    {
-                        targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
-                    }
-                    if (junctionTangent != undefined)
-                    {
-                        targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
-                    }
-
+                    // Approximation: positions only — derivative constraints applied by
+                    // enforceEndpointDerivatives below. Derivatives + interpolateIndices
+                    // over-constrains the solver → "No approximation found" fallback → BAD_GEOMETRY.
                     var approxDef = {
-                        "targets"            : [approximationTarget(targetDef)],
+                        "targets"            : [approximationTarget({ "positions": segPoints })],
                         "tolerance"          : definition.approximationTolerance,
                         "maxControlPoints"   : definition.approximationMaxCPs,
                         "degree"             : approxDegree,
@@ -478,12 +471,26 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
                     }
 
-                    var segOpId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
-                    opCreateBSplineCurve(context, segOpId, { "bSplineCurve": mappedCurve });
-                    wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
-                    wrappedIds            = append(wrappedIds,            segOpId);
-                    allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
+                    var thisSegCount = segCount;
                     segCount += 1;
+                    try
+                    {
+                        var segOpId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "wrappedCurve");
+                        opCreateBSplineCurve(context, segOpId, { "bSplineCurve": mappedCurve });
+                        wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
+                        wrappedIds            = append(wrappedIds,            segOpId);
+                        allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
+                    }
+                    catch (e)
+                    {
+                        println("ERROR: wrapCurve opCreateBSplineCurve BAD_GEOMETRY - " ~ toString(e));
+                        println("  curve i=" ~ toString(i) ~ " seg=" ~ toString(thisSegCount) ~
+                                "  segPoints count=" ~ toString(size(segPoints)));
+                        for (var di = 0; di < size(segPoints) - 1; di += 1)
+                            addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
+                        for (var di = 0; di < size(segPoints); di += 1)
+                            addDebugPoint(context, segPoints[di], DebugColor.MAGENTA);
+                    }
                 }
                 else if (definition.debugWrappedCurves)
                 {
@@ -494,12 +501,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 segStartIdx = segEndIdx + 1;
             }
 
-            // Accumulate segment edges/bodies across all source curves.
-            for (var k = 0; k < segCount; k += 1)
+            // Accumulate segment edges/bodies for this source curve (only successfully created spans).
+            for (var k = wrappedIdsBefore; k < size(wrappedIds); k += 1)
             {
-                var segOpId = id + (toString(i) ~ "_" ~ toString(k) ~ "wrappedCurve");
-                allSegEdges  = append(allSegEdges,  qCreatedBy(segOpId, EntityType.EDGE));
-                allSegBodies = append(allSegBodies, qCreatedBy(segOpId, EntityType.BODY));
+                allSegEdges  = append(allSegEdges,  qCreatedBy(wrappedIds[k], EntityType.EDGE));
+                allSegBodies = append(allSegBodies, qCreatedBy(wrappedIds[k], EntityType.BODY));
             }
         }
 
