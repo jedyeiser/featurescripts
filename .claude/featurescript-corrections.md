@@ -853,9 +853,27 @@ var tl   = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 });
 
 ---
 
+## Annotations Must Use Printable ASCII Only
+
+**Date**: 2026-03-14
+**Issue**: Unicode characters in `"Name"`, `"Description"`, or any annotation string cause a compile error: `Invalid character in '...' annotation: only printable ASCII allowed`. Common offenders: `–` (en dash U+2013), `−` (minus U+2212), `…` (ellipsis U+2026), `"` / `"` (smart quotes).
+**Fix**: Use only plain ASCII: `-` not `–` or `−`, `...` not `…`, `"` not smart quotes.
+```featurescript
+// WRONG — Unicode en dash / minus sign
+annotation { "Name" : "Step (1–6)" }           // U+2013 en dash
+annotation { "Description" : "x = a − b" }    // U+2212 minus
+
+// CORRECT — plain ASCII
+annotation { "Name" : "Step (1-6)" }
+annotation { "Description" : "x = a - b" }
+```
+**Lesson Learned**: Write all annotation strings in plain ASCII. Editors that auto-correct punctuation (smart quotes, en dashes) will silently break FeatureScript annotations.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 14
+- **Total Corrections**: 15
 - **Last Updated**: 2026-03-01
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)

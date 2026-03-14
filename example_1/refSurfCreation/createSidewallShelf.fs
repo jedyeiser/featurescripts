@@ -2,7 +2,8 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2892.0");
 
-// IMPORT: refSurfUtils.fs
+// real import path for refSurfUtils (managed by sync)
+import(path : "d41884a96244793beb462449", version : "4ef3ccb7ad146786136be32b");
 
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -144,7 +145,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         definition.refPoint is Query;
 
         annotation { "Name" : "Sidewall width",
-                     "Description" : "Thickness of sidewall material; inside surface = shelf − sidewallWidth" }
+                     "Description" : "Thickness of sidewall material; inside surface = shelf - sidewallWidth" }
         isLength(definition.sidewallWidth, SidewallWidthBounds);
 
         annotation { "Name" : "Regions", "Item name" : "Region",
@@ -268,7 +269,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                          "Driving Parameter" : "debugStepThrough",
                          "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1–6)", "UIHint" : UIHint.SHOW_LABEL,
+                annotation { "Name" : "Step (1-6)", "UIHint" : UIHint.SHOW_LABEL,
                              "Description" : "1=path  2=rails  3=sample points  4=rail wires  5=shelf surface  6=inside surface" }
                 isInteger(definition.debugStep, ShelfDebugStepBounds);
             }
@@ -419,8 +420,14 @@ function processShelfPath(context is Context, id is Id, definition is map) retur
 {
     var pathEdges = qUnion([qOwnedByBody(definition.bottomWire, EntityType.EDGE)]);
     var refPath;
-    try { refPath = constructPath(context, pathEdges); }
-    catch (error) { throw regenError("Bottom wire edges must form a continuous path"); }
+    try
+    {
+        refPath = constructPath(context, pathEdges);
+    }
+    catch
+    {
+        throw regenError("Bottom wire edges must form a continuous path");
+    }
 
     var endpoints  = evPathTangentLines(context, refPath, [0, 1]);
     var stdDir     = endpoints.tangentLines[0].origin[0] < endpoints.tangentLines[1].origin[0];
