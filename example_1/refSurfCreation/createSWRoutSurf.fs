@@ -185,7 +185,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
-        // --- Stop wire: bottom shifted to full rout height, side shifted outward ---
+        // --- Stop wire: bottom shifted to full rout height, side shifted inward ---
+        // The rout angle cuts INTO the sidewall: as height increases, the cut goes inward (-Y).
         // routHeight overshoots by 2 mm; trimmed later by external top reference surface.
         var routHeight = gapDist - definition.distAboveBottom + 2 * millimeter;
         var routOffset = routHeight * tan(definition.swRoutAngle);
@@ -197,7 +198,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         });
         opPattern(context, id + "stopSide", {
                 "entities"      : definition.sideSheet,
-                "transforms"    : [transform(routOffset * sideNormal)],
+                "transforms"    : [transform(-routOffset * sideNormal)],
                 "instanceNames" : ["1"]
         });
         opIntersectFaces(context, id + "stopIntersect", {
