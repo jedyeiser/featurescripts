@@ -675,6 +675,25 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
                 }
 
+                // Remove near-coincident points (segOffsetDirs kept in sync).
+                // Degenerate spans produce all-identical points (zero-chord sliver);
+                // deduplication reduces them below degree+1 so the span is skipped.
+                {
+                    var minSep       = 1e-6 * meter;
+                    var dedupedPts   = [segPoints[0]];
+                    var dedupedDirs  = [segOffsetDirs[0]];
+                    for (var k = 1; k < size(segPoints); k += 1)
+                    {
+                        if (norm(segPoints[k] - dedupedPts[size(dedupedPts) - 1]) >= minSep)
+                        {
+                            dedupedPts  = append(dedupedPts,  segPoints[k]);
+                            dedupedDirs = append(dedupedDirs, segOffsetDirs[k]);
+                        }
+                    }
+                    segPoints     = dedupedPts;
+                    segOffsetDirs = dedupedDirs;
+                }
+
                 if (size(segPoints) >= degree + 1)
                 {
                     // Scale for derivative constraints: total chord length of this segment.
@@ -839,7 +858,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         // Debug geometry: polyline + points
                         for (var di = 0; di < size(segPoints) - 1; di += 1)
                         {
-                            addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
+                            if (norm(segPoints[di + 1] - segPoints[di]) > 1e-10 * meter)
+                                addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
                         }
                         for (var di = 0; di < size(segPoints); di += 1)
                         {

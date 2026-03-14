@@ -489,6 +489,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
                 }
 
+                // Remove near-coincident points before approximation. A degenerate span can
+                // produce all-identical segPoints (e.g. a tiny sliver on one to-edge where
+                // junctionPt + phase-4 extras + regular samples all map to the same world point).
+                // After deduplication the size check below will correctly skip the span.
+                {
+                    var minSep   = 1e-6 * meter;
+                    var deduped  = [segPoints[0]];
+                    for (var k = 1; k < size(segPoints); k += 1)
+                    {
+                        if (norm(segPoints[k] - deduped[size(deduped) - 1]) >= minSep)
+                            deduped = append(deduped, segPoints[k]);
+                    }
+                    segPoints = deduped;
+                }
+
                 if (size(segPoints) >= degree + 1)
                 {
                     // Scale for derivative constraints: total chord length of this segment.
@@ -542,7 +557,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         println("  curve i=" ~ toString(i) ~ " seg=" ~ toString(thisSegCount) ~
                                 "  segPoints count=" ~ toString(size(segPoints)));
                         for (var di = 0; di < size(segPoints) - 1; di += 1)
-                            addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
+                        {
+                            if (norm(segPoints[di + 1] - segPoints[di]) > 1e-10 * meter)
+                                addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
+                        }
                         for (var di = 0; di < size(segPoints); di += 1)
                             addDebugPoint(context, segPoints[di], DebugColor.MAGENTA);
                     }
