@@ -146,38 +146,20 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "entities" : dummyTopSurf
         });
 
-        // --- Optional step-in wire: side shifted inward, bottom at distAboveBottom ---
+        // --- Optional step-in wire: startWire translated inward by swRoutStepin ---
+        // Same approach as stop wire: copy startWire with a translation rather than intersecting
+        // two shifted surface copies. The intersection approach produces identical endpoints to
+        // startWire because both wires cross the front plane at the same XZ position.
+        // startWire is already the +Y half; the copy inherits that geometry, no split needed.
         var stepInWire = qNothing();
         if (definition.swRoutStepin > 0 * millimeter)
         {
-            opPattern(context, id + "stepInSide", {
-                    "entities"      : definition.sideSheet,
+            opPattern(context, id + "stepInWirePat", {
+                    "entities"      : startWire,
                     "transforms"    : [transform(-definition.swRoutStepin * sideNormal)],
                     "instanceNames" : ["1"]
             });
-            opPattern(context, id + "stepInBottom", {
-                    "entities"      : definition.bottomSheet,
-                    "transforms"    : [transform(definition.distAboveBottom * bottomNormal)],
-                    "instanceNames" : ["1"]
-            });
-            opIntersectFaces(context, id + "stepInIntersect", {
-                    "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",   EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)
-            });
-            opExtractWires(context, id + "stepInWireExtract", {
-                    "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
-            });
-            stepInWire = qCreatedBy(id + "stepInWireExtract", EntityType.BODY);
-            opDeleteBodies(context, id + "deleteStepInCopies", {
-                    "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
-                                         qCreatedBy(id + "stepInBottom",    EntityType.BODY),
-                                         qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
-            });
-            opSplitPart(context, id + "splitStepInWire", {
-                    "targets"  : stepInWire,
-                    "tool"     : qFrontPlane(EntityType.FACE),
-                    "keepType" : SplitOperationKeepType.KEEP_BACK
-            });
+            stepInWire = qCreatedBy(id + "stepInWirePat", EntityType.BODY);
 
             if (definition.debugPrintBSplines)
             {
@@ -185,40 +167,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
-        // --- Stop wire: bottom shifted to full rout height, side shifted inward ---
-        // The rout angle cuts INTO the sidewall: as height increases, the cut goes inward (-Y).
-        // routHeight overshoots by 2 mm; trimmed later by external top reference surface.
+        // --- Stop wire: translate startWire up by routHeight and inward by routOffset ---
+        // The intersection approach (shifted bottom × shifted side) fails because gapDist is the
+        // minimum distance from the side top to the bottom — the shifted bottom ends up above the
+        // side surface across most of the ski, leaving only a tiny tail-region intersection.
+        // Instead, copy the already-correct start wire with the combined rout offset transform.
+        // startWire was already split to +Y; the copy inherits that geometry, no split needed.
         var routHeight = gapDist - definition.distAboveBottom + 2 * millimeter;
         var routOffset = routHeight * tan(definition.swRoutAngle);
 
-        opPattern(context, id + "stopBottom", {
-                "entities"      : definition.bottomSheet,
-                "transforms"    : [transform((definition.distAboveBottom + routHeight) * bottomNormal)],
+        opPattern(context, id + "stopWirePat", {
+                "entities"      : startWire,
+                "transforms"    : [transform(routHeight * bottomNormal - routOffset * sideNormal)],
                 "instanceNames" : ["1"]
         });
-        opPattern(context, id + "stopSide", {
-                "entities"      : definition.sideSheet,
-                "transforms"    : [transform(-routOffset * sideNormal)],
-                "instanceNames" : ["1"]
-        });
-        opIntersectFaces(context, id + "stopIntersect", {
-                "tools"   : qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE),
-                "targets" : qOwnedByBody(qCreatedBy(id + "stopSide",   EntityType.BODY), EntityType.FACE)
-        });
-        opExtractWires(context, id + "stopWireExtract", {
-                "edges" : qCreatedBy(id + "stopIntersect", EntityType.EDGE)
-        });
-        var stopWire = qCreatedBy(id + "stopWireExtract", EntityType.BODY);
-        opDeleteBodies(context, id + "deleteStopCopies", {
-                "entities" : qUnion([qCreatedBy(id + "stopBottom",    EntityType.BODY),
-                                     qCreatedBy(id + "stopSide",      EntityType.BODY),
-                                     qCreatedBy(id + "stopIntersect", EntityType.BODY)])
-        });
-        opSplitPart(context, id + "splitStopWire", {
-                "targets"  : stopWire,
-                "tool"     : qFrontPlane(EntityType.FACE),
-                "keepType" : SplitOperationKeepType.KEEP_BACK
-        });
+        var stopWire = qCreatedBy(id + "stopWirePat", EntityType.BODY);
 
         if (definition.debugPrintBSplines)
         {
