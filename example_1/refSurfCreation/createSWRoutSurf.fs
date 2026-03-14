@@ -107,6 +107,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "parameter" : vector(0.5, 0.5)
         }).normal;
 
+        // opOffsetFace moves faces in the direction of the raw face normal for positive distances.
+        // Capture the sign before flipping so we can invert the offset distance when the raw
+        // normal is anti-aligned with the intended direction.
+        const bottomOffsetSign = bottomNormal[2] >= 0 ? 1 : -1;
+        const sideOffsetSign   = sideNormal[1]   >= 0 ? 1 : -1;
+
         // Guarantee correct orientation: bottomNormal must point up (+Z), sideNormal must point
         // outward (+Y) for the +Y ski half. evFaceTangentPlane direction depends on surface creation
         // order and may be flipped. Correcting here avoids wrong-direction translations downstream.
@@ -123,8 +129,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         if (definition.debugPrint)
         {
             println("=== SWRout debug ===");
-            println("  bottomNormal = " ~ toString(bottomNormal));
-            println("  sideNormal   = " ~ toString(sideNormal));
+            println("  bottomNormal    = " ~ toString(bottomNormal));
+            println("  bottomOffsetSign= " ~ toString(bottomOffsetSign));
+            println("  sideNormal      = " ~ toString(sideNormal));
+            println("  sideOffsetSign  = " ~ toString(sideOffsetSign));
             println("  distAboveBottom = " ~ toString(definition.distAboveBottom));
             println("  swRoutAngle     = " ~ toString(definition.swRoutAngle));
             println("  swRoutStepin    = " ~ toString(definition.swRoutStepin));
@@ -141,7 +149,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (copy)" });
         opOffsetFace(context, id + "startBottomOffset", {
                 "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)]),
-                "offsetDistance" : definition.distAboveBottom
+                "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
         });
         setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (offset copy)" });
 
@@ -205,7 +213,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             opOffsetFace(context, id + "stepInSideOffset", {
                     "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stepInSide", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : -definition.swRoutStepin
+                    "offsetDistance" : -sideOffsetSign * definition.swRoutStepin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (offset copy)" });
 
@@ -217,7 +225,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (copy)" });
             opOffsetFace(context, id + "stepInBottomOffset", {
                     "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : definition.distAboveBottom
+                    "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (offset copy)" });
 
@@ -294,7 +302,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (copy)" });
         opOffsetFace(context, id + "stopBottomOffset", {
                 "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE)]),
-                "offsetDistance" : definition.distAboveBottom + routHeight
+                "offsetDistance" : bottomOffsetSign * (definition.distAboveBottom + routHeight)
         });
         setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
 
@@ -306,7 +314,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (copy)" });
         opOffsetFace(context, id + "stopSideOffset", {
                 "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopSide", EntityType.BODY), EntityType.FACE)]),
-                "offsetDistance" : -routOffset
+                "offsetDistance" : -sideOffsetSign * routOffset
         });
         setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
 
