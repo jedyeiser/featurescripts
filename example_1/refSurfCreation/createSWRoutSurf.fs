@@ -177,18 +177,54 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         if (stepThrough && step == 1) return;
 
         // =====================================================================
-        // Step 2: (Optional) offset side surface inward → step-in wire
+        // Step 2: (Optional) offset side surface inward, intersect with shifted
+        //         bottom at distAboveBottom → step-in wire
+        // Same construction as start wire but with side copy shifted inward.
         // =====================================================================
         var hasStepIn = definition.swRoutStepin > 0 * millimeter;
         var stepInWire = qNothing();
         if (hasStepIn)
         {
-            opPattern(context, id + "stepInWirePat", {
-                    "entities"      : startWire,
-                    "transforms"    : [transform(-definition.swRoutStepin * outwardDir)],
+            opPattern(context, id + "stepInSide", {
+                    "entities"      : definition.sideSheet,
+                    "transforms"    : [transform(-definition.swRoutStepin * sideNormal)],
                     "instanceNames" : ["1"]
             });
-            stepInWire = qCreatedBy(id + "stepInWirePat", EntityType.BODY);
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (offset copy)" });
+
+            opPattern(context, id + "stepInBottom", {
+                    "entities"      : definition.bottomSheet,
+                    "transforms"    : [transform(definition.distAboveBottom * bottomNormal)],
+                    "instanceNames" : ["1"]
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (offset copy)" });
+
+            opIntersectFaces(context, id + "stepInIntersect", {
+                    "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",   EntityType.BODY), EntityType.FACE),
+                    "targets" : qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in intersection" });
+
+            opExtractWires(context, id + "stepInWireExtract", {
+                    "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
+            });
+            stepInWire = qCreatedBy(id + "stepInWireExtract", EntityType.BODY);
+            setProperty(context, { "entities" : stepInWire, "propertyType" : PropertyType.NAME, "value" : "Step-in wire (pre-split)" });
+
+            if (!definition.debugKeepAllBodies)
+            {
+                opDeleteBodies(context, id + "deleteStepInCopies", {
+                        "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
+                                             qCreatedBy(id + "stepInBottom",    EntityType.BODY),
+                                             qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
+                });
+            }
+
+            opSplitPart(context, id + "splitStepInWire", {
+                    "targets"  : stepInWire,
+                    "tool"     : qFrontPlane(EntityType.FACE),
+                    "keepType" : SplitOperationKeepType.KEEP_BACK
+            });
             setProperty(context, { "entities" : stepInWire, "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
             if (definition.debugPrint)
@@ -221,20 +257,59 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var routHeight = gapDist - definition.distAboveBottom + 2 * millimeter;
         var routOffset = routHeight * tan(definition.swRoutAngle);
 
-        opPattern(context, id + "stopWirePat", {
-                "entities"      : startWire,
-                "transforms"    : [transform(routHeight * upDir - routOffset * outwardDir)],
-                "instanceNames" : ["1"]
-        });
-        var stopWire = qCreatedBy(id + "stopWirePat", EntityType.BODY);
-        setProperty(context, { "entities" : stopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
-
         if (definition.debugPrint)
         {
             println("  routHeight = " ~ toString(routHeight));
             println("  routOffset = " ~ toString(routOffset));
-            debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
         }
+
+        // Stop wire: offset bottom up by (distAboveBottom + routHeight), offset side inward
+        // by routOffset, intersect the two copies → extract wires → split KEEP_BACK.
+        // Same construction pattern as start wire and step-in wire.
+        opPattern(context, id + "stopBottom", {
+                "entities"      : definition.bottomSheet,
+                "transforms"    : [transform((definition.distAboveBottom + routHeight) * bottomNormal)],
+                "instanceNames" : ["1"]
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
+
+        opPattern(context, id + "stopSide", {
+                "entities"      : definition.sideSheet,
+                "transforms"    : [transform(-routOffset * outwardDir)],
+                "instanceNames" : ["1"]
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
+
+        opIntersectFaces(context, id + "stopIntersect", {
+                "tools"   : qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE),
+                "targets" : qOwnedByBody(qCreatedBy(id + "stopSide",   EntityType.BODY), EntityType.FACE)
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "stopIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop intersection" });
+
+        opExtractWires(context, id + "stopWireExtract", {
+                "edges" : qCreatedBy(id + "stopIntersect", EntityType.EDGE)
+        });
+        var stopWire = qCreatedBy(id + "stopWireExtract", EntityType.BODY);
+        setProperty(context, { "entities" : stopWire, "propertyType" : PropertyType.NAME, "value" : "Stop wire (pre-split)" });
+
+        if (!definition.debugKeepAllBodies)
+        {
+            opDeleteBodies(context, id + "deleteStopCopies", {
+                    "entities" : qUnion([qCreatedBy(id + "stopBottom",    EntityType.BODY),
+                                         qCreatedBy(id + "stopSide",      EntityType.BODY),
+                                         qCreatedBy(id + "stopIntersect", EntityType.BODY)])
+            });
+        }
+
+        opSplitPart(context, id + "splitStopWire", {
+                "targets"  : stopWire,
+                "tool"     : qFrontPlane(EntityType.FACE),
+                "keepType" : SplitOperationKeepType.KEEP_BACK
+        });
+        setProperty(context, { "entities" : stopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
+
+        if (definition.debugPrint)
+            debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
 
         if (stepThrough && step == 3) return;
 
