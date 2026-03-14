@@ -143,6 +143,51 @@ qSplitBy(id + "split", EntityType.BODY, true)   // back body (behind plane)
 qSplitBy(id + "split", EntityType.BODY, false)  // front body (in front of plane)
 ```
 
+### opLoft connections — Resolving LOFT_DIRECTION_ERROR
+`opExtractWires` assigns an **arbitrary traversal direction** to each wire body. When two profile
+wires end up traversed in opposite directions, `opLoft` throws `LOFT_DIRECTION_ERROR` ("Could not
+determine loft direction.").
+
+**Fix: vertex connection.** Find the nearest endpoint vertex pair across the two wires and pass
+them as a connection entry. This gives the loft kernel an unambiguous direction reference.
+
+```featurescript
+// connections array entry — vertex-only (no edge params needed)
+{
+    "connectionEntities"       : qUnion([vertexOnWireA, vertexOnWireB]),
+    "connectionEdgeQueries"    : qUnion([]),   // empty — no edge entries
+    "connectionEdgeParameters" : []            // must match size of evaluated connectionEdgeQueries
+}
+```
+
+**Finding the nearest vertex pair (robust to arbitrary opExtractWires orientation):**
+```featurescript
+var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
+var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
+// For open wires: 2 vertices each. For closed wires: 0 (return [] — no connection needed).
+if (size(vertsA) == 0 || size(vertsB) == 0) return [];
+var minDist = 1e10 * meter; var bestA = vertsA[0]; var bestB = vertsB[0];
+for (var va in vertsA) {
+    for (var vb in vertsB) {
+        var d = evDistance(context, { "side0" : va, "side1" : vb }).distance;
+        if (d < minDist) { minDist = d; bestA = va; bestB = vb; }
+    }
+}
+```
+
+**Structure notes (from loft.fs source):**
+- `loft.fs` internally calls `evaluateQuery(context, connection.connectionEdgeQueries)` → stores as
+  `connectionEdges`. Size check: `size(connectionEdges) == size(connectionEdgeParameters)`. Both
+  empty → passes. ✓
+- `connectionEntities` vertices are passed through to the `builtin_opLoft` kernel for alignment.
+- The manipulator code only activates for non-empty `connectionEdgeQueries` — skipped for
+  vertex-only connections.
+- For edge connections (if needed): `connectionEntities` = union including the edge,
+  `connectionEdgeQueries` = union of just the edges, `connectionEdgeParameters` = [paramValue] per edge.
+
+**Why not guide curves?** Guide curves require creating additional wire geometry (line between
+midpoints), which adds complexity. Vertex connections are cleaner for endpoint alignment.
+
 ---
 
 ## Confirmed Bugs (all fixed in refactor)

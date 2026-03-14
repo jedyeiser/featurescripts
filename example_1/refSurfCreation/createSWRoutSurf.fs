@@ -205,20 +205,22 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // --- Loft the rout surface using full (un-split) wires ---
-        // Splitting wires before lofting causes LOFT_DIRECTION_ERROR: the half-wire resulting from
-        // opSplitPart has an arbitrary start endpoint, and the two halves end up in opposite
-        // directions. Instead, loft the full wires and split the resulting surface.
+        // opExtractWires assigns an arbitrary traversal direction to each wire body. The two profile
+        // wires may end up traversed in opposite directions, causing LOFT_DIRECTION_ERROR.
+        // Fix: provide a connections entry that aligns the nearest endpoint vertex pair across the
+        // two profiles. This gives the loft kernel an unambiguous direction reference.
         var hasStepIn = definition.swRoutStepin > 0 * millimeter;
+        var profile1B = hasStepIn ? stepInWire : startWire;
         opLoft(context, id + "loft1", {
-                "profileSubqueries" : [stopWire, hasStepIn ? stepInWire : startWire],
-                "connections"       : [],
+                "profileSubqueries" : [stopWire, profile1B],
+                "connections"       : buildLoftConnection(context, stopWire, profile1B),
                 "bodyType"          : ToolBodyType.SURFACE
         });
         if (hasStepIn)
         {
             opLoft(context, id + "loft2", {
                     "profileSubqueries" : [stepInWire, startWire],
-                    "connections"       : [],
+                    "connections"       : buildLoftConnection(context, stepInWire, startWire),
                     "bodyType"          : ToolBodyType.SURFACE
             });
             // loft1 body identity is preserved through the union (first tool survives opBoolean UNION)
@@ -398,6 +400,49 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     });
 
     return wireBodies[topIdx];
+}
+
+/**
+ * Returns a single-entry connections array that aligns the nearest endpoint vertex pair
+ * between wireA and wireB. Resolves LOFT_DIRECTION_ERROR caused by opExtractWires
+ * assigning an arbitrary traversal direction to each wire body.
+ *
+ * The connection entry uses only vertex entities (no edge params needed). opLoft processes
+ * connectionEdgeQueries/connectionEdgeParameters only for edge entities; empty arrays are
+ * valid when connectionEntities contains only vertices.
+ *
+ * Returns [] if either wire is closed (no vertices) — caller should handle fallback.
+ */
+function buildLoftConnection(context is Context, wireA is Query, wireB is Query) returns array
+{
+    var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
+    var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
+    if (size(vertsA) == 0 || size(vertsB) == 0)
+        return [];
+
+    // Find the nearest vertex pair across the two wires — these are geometrically corresponding
+    // endpoints (e.g. both at the tail end), giving the loft a consistent direction reference.
+    var minDist = 1e10 * meter;
+    var bestA   = vertsA[0];
+    var bestB   = vertsB[0];
+    for (var va in vertsA)
+    {
+        for (var vb in vertsB)
+        {
+            var d = evDistance(context, { "side0" : va, "side1" : vb }).distance;
+            if (d < minDist)
+            {
+                minDist = d;
+                bestA   = va;
+                bestB   = vb;
+            }
+        }
+    }
+    return [{
+        "connectionEntities"       : qUnion([bestA, bestB]),
+        "connectionEdgeQueries"    : qUnion([]),
+        "connectionEdgeParameters" : []
+    }];
 }
 
 /**
