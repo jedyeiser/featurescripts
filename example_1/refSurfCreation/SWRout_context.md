@@ -64,14 +64,21 @@ var wire = qCreatedBy(id + "extractWire", EntityType.BODY);
 - Use when you have edges from a non-intersection source (e.g., `qEdgeTopologyFilter`).
 - Fails if edges overlap, cross, or more than 2 meet at a point.
 
-### opOffsetFace — moveFaces Must Be FACE Query
+### opExtractSurface — Correct Tool for Offsetting Sheet Bodies
 ```featurescript
-opOffsetFace(context, id + "offset", {
-    "moveFaces" : qOwnedByBody(bodyQ, EntityType.FACE),  // MUST be EntityType.FACE
-    "offsetDistance" : someSign * someDistance
+opExtractSurface(context, id + "offsetCopy", {
+    "faces"  : qOwnedByBody(sheetBodyQ, EntityType.FACE),
+    "offset" : sign * distance,
+    "useFacesAroundToTrimOffset" : false   // prevent trimming by surrounding geometry
 });
+var offsetBody = qCreatedBy(id + "offsetCopy", EntityType.BODY);
+// ... use offsetBody for intersection, then delete it
+opDeleteBodies(context, id + "deleteOffsetCopy", { "entities" : offsetBody });
 ```
-- `moveFaces` accepts only face entities. `EntityType.BODY` silently fails or errors.
+- Creates a **new** sheet body at the offset position — does NOT modify the original.
+- `opOffsetFace` is a direct-editing operation for **solid** bodies. Using it on sheet bodies causes `DIRECT_EDIT_OFFSET_FACE_FAILED`.
+- `useFacesAroundToTrimOffset : false` is important — without it Onshape may try to trim using surrounding geometry and produce unexpected results.
+- Always delete the extracted body when done to avoid leaving orphan geometry.
 
 ### extendSurface — BLIND Requires Non-Zero extendDistance
 ```featurescript
@@ -115,14 +122,15 @@ qSplitBy(id + "split", EntityType.BODY, false)  // front body (in front of plane
 
 ---
 
-## Confirmed Bugs
+## Confirmed Bugs (all fixed in refactor)
 
-| # | Location | Bug | Fix |
+| # | Original Location | Bug | Fix |
 |---|----------|-----|-----|
-| 1 | Line 80 | `copySide` patterns `definition.bottomSheet` instead of `definition.sideSheet` | Change to `definition.sideSheet` |
-| 2 | Line 418 vs 90–91 | `processFirstMoves` returns `'bottomDir'`/`'sideDir'` but caller reads `.bottomDirSign`/`.sideDirSign` | Align key names |
-| 3 | Lines 370, 374 | `opOffsetFace` uses `EntityType.BODY` for `moveFaces` | Change to `EntityType.FACE` |
-| 4 | Line 235 | `extendSurface` has `extendDistance: 0 * millimeter` | Use `definition.bottomExtension` |
+| 1 | Line 80 | `copySide` patterned `definition.bottomSheet` instead of `definition.sideSheet` | Fixed |
+| 2 | Line 418 vs 90–91 | `processFirstMoves` returned `'bottomDir'`/`'sideDir'` but caller read `.bottomDirSign`/`.sideDirSign` | Fixed (then removed) |
+| 3 | Lines 370, 374 | `opOffsetFace` used `EntityType.BODY` for `moveFaces` | Fixed (then removed — `opOffsetFace` replaced entirely) |
+| 4 | Line 235 | `extendSurface` had `extendDistance: 0 * millimeter` | Fixed |
+| 5 | All offset ops | `opOffsetFace` on sheet bodies causes `DIRECT_EDIT_OFFSET_FACE_FAILED` | Replaced with `opExtractSurface` throughout |
 
 ## Non-Bugs (Previously Suspected)
 - **`qCreatedBy(id + "loft1")` after `opBoolean` UNION** — valid. `boolean.fs` explicitly states "Owner body of matches[0].topology1 survives." First tool body identity is preserved. Current code is correct.

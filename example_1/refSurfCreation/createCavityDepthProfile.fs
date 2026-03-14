@@ -131,10 +131,6 @@ annotation { "Feature Type Name" : "Generate cavity depth profile",
 export const generateCavityDepthProfile = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Input type", "Default" : CavityDepthInputType.SIDEWALL,
-                     "UIHint" : UIHint.HORIZONTAL_ENUM }
-        definition.cdInputType is CavityDepthInputType;
-
         annotation { "Name" : "Bottom wire", "Filter" : BodyType.WIRE, "MaxNumberOfPicks" : 1,
                      "Description" : "Bottom wire of ski or snowboard" }
         definition.bottomWire is Query;
@@ -145,25 +141,20 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
                      "Description" : "Defines X = 0 along the wire" }
         definition.refPoint is Query;
 
-        if (definition.cdInputType == CavityDepthInputType.CAVITY_DEPTH)
-        {
-            annotation { "Name" : "Top wire", "Filter" : BodyType.WIRE, "MaxNumberOfPicks" : 1,
-                         "Description" : "Top wire of the ski or snowboard profile" }
-            definition.topWire is Query;
-        }
+        annotation { "Name" : "Top wire", "Filter" : BodyType.WIRE, "MaxNumberOfPicks" : 1,
+                     "Description" : "Top wire of the ski or snowboard profile (required for Cavity Depth regions)" }
+        definition.topWire is Query;
 
-        if (definition.cdInputType == CavityDepthInputType.SIDEWALL)
-        {
-            annotation { "Name" : "Sidewall bottom offset",
-                         "Description" : "Fixed offset above the bottom wire where the sidewall region begins" }
-            isLength(definition.swBottomOffset, SidewallBottomOffsetBounds);
+        annotation { "Name" : "Sidewall bottom offset",
+                     "Description" : "Fixed offset above the bottom wire where the sidewall region begins" }
+        isLength(definition.swBottomOffset, SidewallBottomOffsetBounds);
 
-            annotation { "Name" : "Sidewall top offset",
-                         "Description" : "Fixed offset added above the sidewall height" }
-            isLength(definition.swTopOffset, SidewallTopOffsetBounds);
-        }
+        annotation { "Name" : "Sidewall top offset",
+                     "Description" : "Fixed offset added above the sidewall height" }
+        isLength(definition.swTopOffset, SidewallTopOffsetBounds);
 
-        annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#regionName" }
+        annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#regionName",
+                     "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.regions is array;
         for (var region in definition.regions)
         {
@@ -176,6 +167,10 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
             annotation { "Name" : "Region name" }
             region.regionName is string;
+
+            annotation { "Name" : "Input type", "Default" : CavityDepthInputType.SIDEWALL,
+                         "UIHint" : UIHint.HORIZONTAL_ENUM }
+            region.regionInputType is CavityDepthInputType;
 
             annotation { "Name" : "Extent type", "Default" : RegionExtentType.X_EXTENTS }
             region.extentType is RegionExtentType;
@@ -366,7 +361,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
         if (definition.showInputWires)
         {
             debug(context, definition.bottomWire, DebugColor.GREEN);
-            if (definition.cdInputType == CavityDepthInputType.CAVITY_DEPTH)
+            if (!isQueryEmpty(context, definition.topWire))
                 debug(context, definition.topWire, DebugColor.BLUE);
         }
 
@@ -597,21 +592,19 @@ function profileValueAt(t is number, region is map) returns ValueWithUnits
 // ─── Offset point computation ─────────────────────────────────────────────────
 
 /**
- * Computes the 3D output point for a given path parameter t and profile offset value.
- *   SIDEWALL     : bottomPoint + (swBottomOffset + offsetValue + swTopOffset) * normal
- *   CAVITY_DEPTH : topWirePoint (found via raycast) - offsetValue * normal
+ * Returns the height above the bottom wire (along the outward normal) for a given region mode.
+ *   SIDEWALL     : swBottomOffset + offsetValue + swTopOffset
+ *   CAVITY_DEPTH : distance(bottomPoint → topWire along normal) − offsetValue
+ *
+ * By working in a common "height above bottom wire" space, mixed-mode blends
+ * (e.g. SIDEWALL → CAVITY_DEPTH) interpolate consistently.
  */
-function computeOffsetPoint(context is Context, definition is map, pathInfo is map,
-    t is number, offsetValue is ValueWithUnits) returns Vector
+function computeEffectiveHeight(context is Context, definition is map, region is map,
+    basePoint is Vector, normal is Vector, offsetValue is ValueWithUnits) returns ValueWithUnits
 {
-    var tl = evPathTangentLines(context, pathInfo.path, [t]).tangentLines[0];
-    var basePoint = tl.origin;
-    var normal    = computeEdgeNormal(tl.direction);
-
-    if (definition.cdInputType == CavityDepthInputType.SIDEWALL)
+    if (region.regionInputType == CavityDepthInputType.SIDEWALL)
     {
-        var totalOffset = definition.swBottomOffset + offsetValue + definition.swTopOffset;
-        return basePoint + totalOffset * normal;
+        return definition.swBottomOffset + offsetValue + definition.swTopOffset;
     }
     else // CAVITY_DEPTH
     {
@@ -622,10 +615,23 @@ function computeOffsetPoint(context is Context, definition is map, pathInfo is m
             "closest"  : true
         });
         if (size(hits) == 0)
-            throw regenError("No intersection with top wire at path parameter " ~ toString(t) ~
-                             ". Verify the top wire is above the bottom wire along its full extent.");
-        return hits[0].intersection - offsetValue * normal;
+            throw regenError("No intersection with top wire. Verify the top wire is above the bottom wire along its full extent.");
+        return norm(hits[0].intersection - basePoint) - offsetValue;
     }
+}
+
+
+/**
+ * Computes the 3D output point for a given path parameter t and profile offset value.
+ * Delegates to computeEffectiveHeight so all modes share a common height-from-bottom-wire basis.
+ */
+function computeOffsetPoint(context is Context, definition is map, pathInfo is map,
+    region is map, t is number, offsetValue is ValueWithUnits) returns Vector
+{
+    var tl        = evPathTangentLines(context, pathInfo.path, [t]).tangentLines[0];
+    var basePoint = tl.origin;
+    var normal    = computeEdgeNormal(tl.direction);
+    return basePoint + computeEffectiveHeight(context, definition, region, basePoint, normal, offsetValue) * normal;
 }
 
 
@@ -645,7 +651,7 @@ function generateSegmentPoints(context is Context, definition is map, pathInfo i
     {
         var t     = tSegStart + (tSegEnd - tSegStart) * i / (n - 1);
         var tNorm = min(max((t - region.tStart) / (region.tEnd - region.tStart), 0), 1);
-        points = append(points, computeOffsetPoint(context, definition, pathInfo, t, profileValueAt(tNorm, region)));
+        points = append(points, computeOffsetPoint(context, definition, pathInfo, region, t, profileValueAt(tNorm, region)));
     }
     return points;
 }
@@ -653,22 +659,35 @@ function generateSegmentPoints(context is Context, definition is map, pathInfo i
 
 /**
  * Samples n points across the blend zone [tBlendStart, tBlendEnd], interpolating
- * between valueStart (end of region A) and valueEnd (start of region B) using
- * smoothstep to guarantee C1 junctions with adjacent region curves.
+ * between the 3D heights of region A's endpoint and region B's startpoint using
+ * smoothstep. Heights are resolved in a common "height above bottom wire" space so
+ * that mixed-mode blends (e.g. SIDEWALL → CAVITY_DEPTH) are physically consistent.
  */
 function generateBlendPoints(context is Context, definition is map, pathInfo is map,
     tBlendStart is number, tBlendEnd is number,
-    valueStart is ValueWithUnits, valueEnd is ValueWithUnits) returns array
+    valueStart is ValueWithUnits, valueEnd is ValueWithUnits,
+    regA is map, regB is map) returns array
 {
     var n = definition.samplingDensity;
+
+    // Pre-compute endpoint heights in common "height above bottom wire" space
+    var tlA       = evPathTangentLines(context, pathInfo.path, [tBlendStart]).tangentLines[0];
+    var tlB       = evPathTangentLines(context, pathInfo.path, [tBlendEnd]).tangentLines[0];
+    var normA     = computeEdgeNormal(tlA.direction);
+    var normB     = computeEdgeNormal(tlB.direction);
+    var heightStart = computeEffectiveHeight(context, definition, regA, tlA.origin, normA, valueStart);
+    var heightEnd   = computeEffectiveHeight(context, definition, regB, tlB.origin, normB, valueEnd);
+
     var points = [];
     for (var i = 0; i < n; i += 1)
     {
-        var t     = tBlendStart + (tBlendEnd - tBlendStart) * i / (n - 1);
-        var tNorm = i / (n - 1);
-        var s     = tNorm * tNorm * (3 - 2 * tNorm); // smoothstep
-        var offsetValue = valueStart + (valueEnd - valueStart) * s;
-        points = append(points, computeOffsetPoint(context, definition, pathInfo, t, offsetValue));
+        var t      = tBlendStart + (tBlendEnd - tBlendStart) * i / (n - 1);
+        var tNorm  = i / (n - 1);
+        var s      = tNorm * tNorm * (3 - 2 * tNorm); // smoothstep
+        var height = heightStart + (heightEnd - heightStart) * s;
+        var tl     = evPathTangentLines(context, pathInfo.path, [t]).tangentLines[0];
+        var normal = computeEdgeNormal(tl.direction);
+        points = append(points, tl.origin + height * normal);
     }
     return points;
 }
@@ -767,7 +786,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         var valueEnd   = profileValueAt(0.0, bz.regB);
 
         var pts = generateBlendPoints(context, definition, pathInfo,
-            bz.tBlendStart, bz.tBlendEnd, valueStart, valueEnd);
+            bz.tBlendStart, bz.tBlendEnd, valueStart, valueEnd, bz.regA, bz.regB);
         if (size(pts) < 2)
             continue;
 
