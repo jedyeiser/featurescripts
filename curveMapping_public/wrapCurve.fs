@@ -350,7 +350,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 // Capture carry-over tangent/curvature from previous span's junction before clearing
                 var carryOverTangent   = junctionTangent;
-                var carryOverCurvature = junctionCurvature;
                 junctionTangent   = undefined;
                 junctionCurvature = undefined;
 
@@ -505,18 +504,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var approxScale = totalChord;
 
-                    var targetDef = { "positions": segPoints };
-                    if (carryOverTangent != undefined)
-                    {
-                        targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
-                    }
-                    if (junctionTangent != undefined)
-                    {
-                        targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
-                    }
-
+                    // Approximation: positions only — derivative constraints are applied
+                    // by enforceEndpointDerivatives below. Passing startDerivative/endDerivative
+                    // to approximateSpline alongside interpolateIndices can over-constrain the
+                    // solver, causing "No approximation found" fallback → BAD_GEOMETRY.
                     var approxDef = {
-                        "targets"            : [approximationTarget(targetDef)],
+                        "targets"            : [approximationTarget({ "positions": segPoints })],
                         "tolerance"          : definition.approximationTolerance,
                         "maxControlPoints"   : definition.approximationMaxCPs,
                         "degree"             : degree,
@@ -533,12 +526,26 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
                     }
 
-                    var segOpId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
-                    opCreateBSplineCurve(context, segOpId, { "bSplineCurve": mappedCurve });
-                    wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
-                    wrappedIds            = append(wrappedIds,            segOpId);
-                    allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
+                    var thisSegCount = segCount;
                     segCount += 1;
+                    try
+                    {
+                        var segOpId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "wrappedCurve");
+                        opCreateBSplineCurve(context, segOpId, { "bSplineCurve": mappedCurve });
+                        wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
+                        wrappedIds            = append(wrappedIds,            segOpId);
+                        allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
+                    }
+                    catch (e)
+                    {
+                        println("ERROR: wrapCurve opCreateBSplineCurve BAD_GEOMETRY - " ~ toString(e));
+                        println("  curve i=" ~ toString(i) ~ " seg=" ~ toString(thisSegCount) ~
+                                "  segPoints count=" ~ toString(size(segPoints)));
+                        for (var di = 0; di < size(segPoints) - 1; di += 1)
+                            addDebugLine(context, segPoints[di], segPoints[di + 1], DebugColor.RED);
+                        for (var di = 0; di < size(segPoints); di += 1)
+                            addDebugPoint(context, segPoints[di], DebugColor.MAGENTA);
+                    }
                 }
                 else if (definition.debugWrappedCurves)
                 {

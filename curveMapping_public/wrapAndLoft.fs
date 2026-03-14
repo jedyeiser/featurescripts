@@ -531,7 +531,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 // Capture carry-over junction data before clearing for this span
                 var carryOverTangent   = junctionTangent;
                 var carryOverOffsetDir = junctionOffsetDir;
-                var carryOverCurvature = junctionCurvature;
                 junctionTangent   = undefined;
                 junctionOffsetDir = undefined;
                 junctionCurvature = undefined;
@@ -686,18 +685,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
                     var approxScale = totalChord;
 
-                    var targetDef = { "positions": segPoints };
-                    if (carryOverTangent != undefined)
-                    {
-                        targetDef = mergeMaps(targetDef, { "startDerivative": carryOverTangent * approxScale });
-                    }
-                    if (junctionTangent != undefined)
-                    {
-                        targetDef = mergeMaps(targetDef, { "endDerivative": junctionTangent * approxScale });
-                    }
-
+                    // Approximation: positions only — derivative constraints are applied
+                    // by enforceEndpointDerivatives below. Passing startDerivative/endDerivative
+                    // to approximateSpline alongside interpolateIndices can over-constrain the
+                    // solver, causing "No approximation found" fallback → BAD_GEOMETRY.
                     var approxDef = {
-                        "targets"            : [approximationTarget(targetDef)],
+                        "targets"            : [approximationTarget({ "positions": segPoints })],
                         "tolerance"          : definition.approximationTolerance,
                         "maxControlPoints"   : definition.approximationMaxCPs,
                         "degree"             : degree,
