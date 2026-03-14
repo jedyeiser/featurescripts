@@ -21,7 +21,7 @@ export const SWRoutAngleBounds      = {(degree)     : [0,  20, 45]} as AngleBoun
 export const DistAboveBottomBounds  = {(millimeter) : [1,   4, 10]} as LengthBoundSpec;
 export const SWStepInBounds         = {(millimeter) : [0,   0,  3]} as LengthBoundSpec;
 export const cutterRadiusBounds     = {(millimeter) : [2,  10, 20]} as LengthBoundSpec;
-export const DEBUG_STEP_BOUNDS      = {(unitless)   : [0,   0,  9]} as IntegerBoundSpec;
+export const DEBUG_STEP_BOUNDS      = {(unitless)   : [1,   1,  9]} as IntegerBoundSpec;
 
 annotation { "Feature Type Name" : "Sidewall rout surface", "Feature Type Description" : "Creates a SW rout surface based on inputs" }
 export const SWRout = defineFeature(function(context is Context, id is Id, definition is map)
@@ -45,6 +45,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         annotation { "Name" : "SW rout step-in" }
         isLength(definition.swRoutStepin, SWStepInBounds);
 
+        annotation { "Name" : "Output profile wires", "Default" : false, "Description" : "Keep start, step-in, and stop wires as output bodies alongside the surface" }
+        definition.outputProfileWires is boolean;
+
         annotation { "Name" : "Spec rout endpoints?", "Default" : false }
         definition.specSWRoutEndpoints is boolean;
 
@@ -65,24 +68,29 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Step through (0 = off)", "Default" : 0, "UIHint" : UIHint.SHOW_LABEL }
-            isInteger(definition.debugStep, DEBUG_STEP_BOUNDS);
+            annotation { "Name" : "Step through", "Default" : false }
+            definition.debugStepThrough is boolean;
 
-            annotation { "Name" : "Return wires only", "Default" : false }
-            definition.debugReturnWires is boolean;
+            annotation { "Group Name" : "Step through options", "Driving Parameter" : "debugStepThrough", "Collapsed By Default" : false }
+            {
+                annotation { "Name" : "Step (1–9)", "UIHint" : UIHint.SHOW_LABEL }
+                isInteger(definition.debugStep, DEBUG_STEP_BOUNDS);
+            }
 
             annotation { "Name" : "Keep all bodies", "Default" : false }
             definition.debugKeepAllBodies is boolean;
 
-            annotation { "Name" : "Print wire BSplines", "Default" : false }
-            definition.debugPrintBSplines is boolean;
+            annotation { "Name" : "Print debug", "Default" : false }
+            definition.debugPrint is boolean;
 
-            annotation { "Name" : "Detailed output", "Default" : false, "UIHint" : UIHint.SHOW_LABEL }
+            annotation { "Name" : "Detailed BSplines", "Default" : false, "UIHint" : UIHint.SHOW_LABEL }
             definition.debugDetailedBSplines is boolean;
         }
     }
     {
-        var debugFmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
+        var debugFmt    = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
+        var stepThrough = definition.debugStepThrough;
+        var step        = definition.debugStep;
 
         // --- Get face normals to determine offset directions ---
         // evFaceTangentPlane at parameter (0.5, 0.5) = centre of the face's parameter space.
@@ -109,8 +117,18 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // Face normals have cross-axis contamination: the side surface is angled (normal has both Y
         // and Z components), so using sideNormal for a "purely inward" translation also moves the
         // wire vertically. For wire translation we want exact axis offsets.
-        const upDir     = vector(0, 0, 1);   // +Z — vertical up
-        const outwardDir = vector(0, 1, 0);  // +Y — outward on the +Y ski half
+        const upDir      = vector(0, 0, 1);   // +Z — vertical up
+        const outwardDir = vector(0, 1, 0);   // +Y — outward on the +Y ski half
+
+        if (definition.debugPrint)
+        {
+            println("=== SWRout debug ===");
+            println("  bottomNormal = " ~ toString(bottomNormal));
+            println("  sideNormal   = " ~ toString(sideNormal));
+            println("  distAboveBottom = " ~ toString(definition.distAboveBottom));
+            println("  swRoutAngle     = " ~ toString(definition.swRoutAngle));
+            println("  swRoutStepin    = " ~ toString(definition.swRoutStepin));
+        }
 
         // =====================================================================
         // Step 1: Offset bottom surface up, intersect with side → start wire
@@ -149,10 +167,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         });
         setProperty(context, { "entities" : startWire, "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
-        if (definition.debugPrintBSplines)
+        if (definition.debugPrint)
+        {
+            var nStartEdges = size(evaluateQuery(context, qCreatedBy(id + "startIntersect", EntityType.EDGE)));
+            println("  startIntersect: " ~ toString(nStartEdges) ~ " edge(s)");
             debugPrintWireBSplines(context, startWire, "Start wire", debugFmt);
+        }
 
-        if (definition.debugStep == 1) return;
+        if (stepThrough && step == 1) return;
 
         // =====================================================================
         // Step 2: (Optional) offset side surface inward → step-in wire
@@ -169,11 +191,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             stepInWire = qCreatedBy(id + "stepInWirePat", EntityType.BODY);
             setProperty(context, { "entities" : stepInWire, "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
-            if (definition.debugPrintBSplines)
+            if (definition.debugPrint)
                 debugPrintWireBSplines(context, stepInWire, "Step-in wire", debugFmt);
         }
 
-        if (definition.debugStep == 2) return;
+        if (stepThrough && step == 2) return;
 
         // =====================================================================
         // Step 3: Measure side height, offset start wire up+inward → stop wire
@@ -185,10 +207,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "side1" : definition.bottomSheet
         }).distance;
 
-        if (definition.debugPrintBSplines)
+        if (definition.debugPrint)
         {
-            debugPrintWireBSplines(context, dummyTopSurf, "Dummy top wire", debugFmt);
-            println("  gapDist = " ~ toString(gapDist));
+            debugPrintWireBSplines(context, dummyTopSurf, "Side top boundary wire", debugFmt);
+            println("  gapDist    = " ~ toString(gapDist));
         }
 
         if (!definition.debugKeepAllBodies)
@@ -207,11 +229,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var stopWire = qCreatedBy(id + "stopWirePat", EntityType.BODY);
         setProperty(context, { "entities" : stopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
 
-        if (definition.debugPrintBSplines)
+        if (definition.debugPrint)
+        {
+            println("  routHeight = " ~ toString(routHeight));
+            println("  routOffset = " ~ toString(routOffset));
             debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
+        }
 
-        // debugReturnWires: leave all three profile wires in place and exit.
-        if (definition.debugReturnWires || definition.debugStep == 3) return;
+        if (stepThrough && step == 3) return;
 
         // =====================================================================
         // Step 4: First loft (stop → stepIn, or stop → start if no step-in)
@@ -224,7 +249,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         });
         setProperty(context, { "entities" : qCreatedBy(id + "loft1", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 1" });
 
-        if (definition.debugStep == 4) return;
+        if (stepThrough && step == 4) return;
 
         // =====================================================================
         // Step 5: Second loft (stepIn → start) + union; no-op if no step-in
@@ -247,7 +272,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var loftBody = qCreatedBy(id + "loft1", EntityType.BODY);
         setProperty(context, { "entities" : loftBody, "propertyType" : PropertyType.NAME, "value" : "SWRout surface" });
 
-        if (!definition.debugKeepAllBodies)
+        if (!definition.outputProfileWires && !definition.debugKeepAllBodies)
         {
             var wireBodiesToDelete = hasStepIn
                 ? qUnion([startWire, stepInWire, stopWire])
@@ -278,7 +303,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             });
         }
 
-        if (definition.debugStep == 5) return;
+        if (stepThrough && step == 5) return;
 
         // =====================================================================
         // Steps 6–9: Endpoint trimming (only if specSWRoutEndpoints)
@@ -292,18 +317,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             if (!isQueryEmpty(context, definition.startPointQ))
             {
                 // Step 6 stops before the revolve; step 7+ includes it.
-                var doStartRevolve = (definition.debugStep == 0 || definition.debugStep >= 7);
+                var doStartRevolve = !stepThrough || step >= 7;
                 trimSWRout(context, id + "trimStart", loftBody, refWirePath, definition.startPointQ, definition.sideSheet, definition.cutterBottomRadius, doStartRevolve);
-                if (definition.debugStep == 6 || definition.debugStep == 7) return;
+                if (stepThrough && (step == 6 || step == 7)) return;
             }
 
             if (!isQueryEmpty(context, definition.stopPointQ))
             {
                 // Step 8 stops before the revolve; step 9+ includes it.
-                var doStopRevolve = (definition.debugStep == 0 || definition.debugStep >= 9);
+                var doStopRevolve = !stepThrough || step >= 9;
                 trimSWRout(context, id + "trimStop", loftBody, refWirePath, definition.stopPointQ, definition.sideSheet, definition.cutterBottomRadius, doStopRevolve);
-                // step 8 returns; step 9 (or 0) falls through to end.
-                if (definition.debugStep == 8) return;
+                if (stepThrough && step == 8) return;
             }
         }
 
@@ -474,7 +498,7 @@ function buildLoftConnection(context is Context, wireA is Query, wireB is Query)
 
 /**
  * Prints the BSplineCurve for each edge in a wire body.
- * Intended for debug use only — gated by definition.debugPrintBSplines.
+ * Intended for debug use only — gated by definition.debugPrint.
  */
 function debugPrintWireBSplines(context is Context, wireBody is Query, label is string, format is PrintFormat)
 {
