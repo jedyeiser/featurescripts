@@ -885,6 +885,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
 {
     // Collect active blend zones
     var blendZones = [];
+    var allWireBodies = [];
     for (var intr in definition.intersections)
     {
         if (!intr.isValid || !intr.blend)
@@ -949,6 +950,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
 
         var wireId = id + ("reg_" ~ toString(ri));
         opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
+        allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
 
         if (definition.printCurveDetails)
         {
@@ -984,6 +986,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
 
         var wireId = id + ("blend_" ~ toString(bzi));
         opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
+        allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
 
         if (definition.printCurveDetails)
         {
@@ -996,5 +999,14 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         }
         if (definition.showBlends)
             addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.YELLOW);
+    }
+
+    // Merge all individual curve bodies into one wire body
+    if (size(allWireBodies) > 1)
+    {
+        opBoolean(context, id + "mergeWires", {
+            "tools"         : qUnion(allWireBodies),
+            "operationType" : BooleanType.UNION
+        });
     }
 }
