@@ -9,11 +9,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/68ab60215931b483509b7296/683d867c35fdab9c98d47556", version : "e1edec6b1bcad2d914000816");
+export import(path : "08e8748f2ef24eea16072b75/f978f8e46256a09d3349266a/683d867c35fdab9c98d47556", version : "b6844b2ef23e11ceb42f1d75");
 
 
 //import wrapCurve.fs
-import(path : "0e53e9b1145a1bd7bbfa0193", version : "d0b850eabda68c2f68fc3c1a");
+import(path : "0e53e9b1145a1bd7bbfa0193", version : "f795f63197acb0bb8c2faf4f");
 
 IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
 
@@ -418,6 +418,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var allWrappedSegBodies           = [];
         var allPrimaryOffsetSegBodies     = [];
         var allSecondaryOffsetSegBodies   = [];
+        var wrappedBSplines               = [];
+        var wrappedIds                    = [];
+        var allJunctionCurvatures         = [];
+        var segCountPerSourceCurve        = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcSamplingMode = (definition.sourceSamplingMode != undefined)
@@ -494,6 +498,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var junctionPt                = undefined;
             var junctionTangent           = undefined;
             var junctionOffsetDir         = undefined;
+            var junctionCurvature         = undefined;
+            var wrappedCountBefore        = size(allWrappedSegQueries);
+
+            // Pre-constrain first span's start tangent from source edge at parameter 0
+            {
+                var startSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0].direction;
+                var s_from_0        = mappedData[0].sFrom;
+                var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
+                var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
+                var toResult_0      = getFrameAtArcLength(context, toFrenetPath, s_to_0);
+                var toSign_0        = definition.flipToNormal ? -1 * toResult_0.sign : toResult_0.sign;
+                var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
+                    ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
+                    : toResult_0;
+                junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
+            }
 
             while (segStartIdx < size(mappedData))
             {
@@ -511,8 +531,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 // Capture carry-over junction data before clearing for this span
                 var carryOverTangent   = junctionTangent;
                 var carryOverOffsetDir = junctionOffsetDir;
-                junctionTangent  = undefined;
+                var carryOverCurvature = junctionCurvature;
+                junctionTangent   = undefined;
                 junctionOffsetDir = undefined;
+                junctionCurvature = undefined;
 
                 // Prepend exact junction point carried from end of previous span
                 if (junctionPt != undefined)
@@ -558,8 +580,14 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     {
                         t = 1;
                     }
-                    var pt_junction = srcPoints[segEndIdx] + t * (srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
-                    var srcTangent  = normalize(srcPoints[segEndIdx + 1] - srcPoints[segEndIdx]);
+                    // FIX: use evEdgeTangentLines for exact position and tangent at junction
+                    var junctionParam = (segEndIdx + t) / (numSamples - 1);
+                    var junctionLine  = evEdgeTangentLines(context, {
+                        "edge"       : sourceCurveArray[i],
+                        "parameters" : [junctionParam]
+                    })[0];
+                    var pt_junction = junctionLine.origin;
+                    var srcTangent  = junctionLine.direction;
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
@@ -577,21 +605,75 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             coordSystem(toResult_j.frame.origin, -1 * toResult_j.frame.xAxis, toResult_j.frame.zAxis) });
                     }
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
+                    var junctionOffDir  = toFrameResult_j.frame.xAxis;
 
-                    // Transform source tangent through Frenet frames (direction-only)
-                    var fTangential        = dot(srcTangent, fromResult_j.frame.zAxis);
-                    var fNormal            = dot(srcTangent, fromResult_j.frame.xAxis);
-                    var fBinormal          = dot(srcTangent, yAxis(fromResult_j.frame));
-                    var junctionTangentDir = fTangential * toFrameResult_j.frame.zAxis +
-                                            fNormal     * toFrameResult_j.frame.xAxis +
-                                            fBinormal   * yAxis(toFrameResult_j.frame);
+                    // Phase 4: junction-aware oversampling — 2 extra mapped points between last
+                    // regular sample and the junction for better curvature fit near junctions.
+                    {
+                        var nExtra = 2;
+                        for (var ex = 1; ex <= nExtra; ex += 1)
+                        {
+                            var alpha      = ex / (nExtra + 1.0);
+                            var extraParam = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
+                            var extraLine  = evEdgeTangentLines(context, {
+                                "edge"       : sourceCurveArray[i],
+                                "parameters" : [extraParam]
+                            })[0];
+                            var sFrom_extra   = mappedData[segEndIdx].sFrom + alpha * (s_from_junction - mappedData[segEndIdx].sFrom);
+                            var fromResult_e  = getFrameAtArcLength(context, fromFrenetPath, sFrom_extra);
+                            var localCoords_e = worldPointToFrenet(extraLine.origin, fromResult_e);
+                            var s_to_extra    = toRefArc + (sFrom_extra - fromRefArc);
+                            var toResult_e    = getFrameAtArcLength(context, toFrenetPath, s_to_extra);
+                            var toSign_e      = definition.flipToNormal ? -1 * toResult_e.sign : toResult_e.sign;
+                            var toFrameResult_e = (toSign_e != fromResult_e.sign)
+                                ? mergeMaps(toResult_e, { "frame": coordSystem(toResult_e.frame.origin, -1 * toResult_e.frame.xAxis, toResult_e.frame.zAxis) })
+                                : toResult_e;
+                            segPoints     = append(segPoints,     frenetPointToWorld(localCoords_e, toFrameResult_e));
+                            segOffsetDirs = append(segOffsetDirs, toFrameResult_e.frame.xAxis);
+                        }
+                    }
 
-                    var junctionOffDir = toFrameResult_j.frame.xAxis;
+                    // Phase 2: finite-difference source curvature at junction (chord-based arc length step)
+                    {
+                        var jEps   = 0.005;
+                        var pJm    = max([0, junctionParam - jEps]);
+                        var pJp    = min([1, junctionParam + jEps]);
+                        var kLines = evEdgeTangentLines(context, {
+                            "edge"       : sourceCurveArray[i],
+                            "parameters" : [pJm, pJp]
+                        });
+                        var dsJ    = norm(kLines[1].origin - kLines[0].origin);
+                        var deltaT = kLines[1].direction - kLines[0].direction;
+                        if (dsJ > 1e-10 * meter && norm(deltaT) > 1e-10)
+                        {
+                            var kappaSrc      = deltaT / dsJ;
+                            junctionCurvature = mapEdgeJunctionCurvature(kappaSrc, fromResult_j, toFrameResult_j);
+                        }
+                        else
+                        {
+                            junctionCurvature = undefined;
+                        }
+                    }
+
                     segPoints         = append(segPoints,     junctionWorldPt);
                     segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
                     junctionPt        = junctionWorldPt;
-                    junctionTangent   = normalize(junctionTangentDir);
+                    junctionTangent   = mapEdgeJunctionTangent(srcTangent, fromResult_j, toFrameResult_j);
                     junctionOffsetDir = junctionOffDir;
+                }
+                else
+                {
+                    // Last span — constrain end tangent from source edge at parameter 1
+                    var endSrcTangent     = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0].direction;
+                    var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
+                    var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
+                    var s_to_end          = toRefArc + (s_from_end - fromRefArc);
+                    var toResult_end      = getFrameAtArcLength(context, toFrenetPath, s_to_end);
+                    var toSign_end        = definition.flipToNormal ? -1 * toResult_end.sign : toResult_end.sign;
+                    var toFrameResult_end = (toSign_end != fromResult_end.sign)
+                        ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
+                        : toResult_end;
+                    junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
                 }
 
                 if (size(segPoints) >= degree + 1)
@@ -623,6 +705,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         "interpolateIndices" : [0, size(segPoints) - 1]
                     };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
+                    mappedCurve = enforceEndpointDerivatives(mappedCurve,
+                        carryOverTangent != undefined ? carryOverTangent * approxScale : undefined,
+                        junctionTangent  != undefined ? junctionTangent  * approxScale : undefined);
 
                     if (definition.debugWrappedCurves || definition.debugFromBSplines)
                     {
@@ -657,39 +742,88 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         "isPeriodic"       : false
                     };
 
-                    var primaryOffsetTargetDef = mergeMaps(targetDef, { "positions": primaryOffsetPoints });
+                    // Offset curves need derivative constraints scaled to their own chord length
+                    var primaryOffsetChord = 0 * meter;
+                    for (var k = 0; k < size(primaryOffsetPoints) - 1; k += 1)
+                        primaryOffsetChord += norm(primaryOffsetPoints[k + 1] - primaryOffsetPoints[k]);
+                    var primaryOffsetTargetDef = { "positions": primaryOffsetPoints };
+                    if (carryOverTangent != undefined)
+                        primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "startDerivative": carryOverTangent * primaryOffsetChord });
+                    if (junctionTangent != undefined)
+                        primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "endDerivative": junctionTangent * primaryOffsetChord });
                     var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
                     var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
+                    {
+                        var cps = primaryOffsetCurve.controlPoints;
+                        var m   = size(cps) - 1;
+                        var snapped = [];
+                        for (var ci = 0; ci <= m; ci += 1)
+                        {
+                            if (ci == 0)
+                                snapped = append(snapped, primaryOffsetPoints[0]);
+                            else if (ci == m)
+                                snapped = append(snapped, primaryOffsetPoints[size(primaryOffsetPoints) - 1]);
+                            else
+                                snapped = append(snapped, cps[ci]);
+                        }
+                        primaryOffsetCurve = mergeMaps(primaryOffsetCurve, { "controlPoints": snapped });
+                    }
 
                     var secondaryOffsetCurve = undefined;
                     if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                     {
-                        var secondaryOffsetTargetDef = mergeMaps(targetDef, { "positions": secondaryOffsetPoints });
+                        var secondaryOffsetChord = 0 * meter;
+                        for (var k = 0; k < size(secondaryOffsetPoints) - 1; k += 1)
+                            secondaryOffsetChord += norm(secondaryOffsetPoints[k + 1] - secondaryOffsetPoints[k]);
+                        var secondaryOffsetTargetDef = { "positions": secondaryOffsetPoints };
+                        if (carryOverTangent != undefined)
+                            secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "startDerivative": carryOverTangent * secondaryOffsetChord });
+                        if (junctionTangent != undefined)
+                            secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "endDerivative": junctionTangent * secondaryOffsetChord });
                         var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
                         secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
+                        {
+                            var cps = secondaryOffsetCurve.controlPoints;
+                            var m   = size(cps) - 1;
+                            var snapped = [];
+                            for (var ci = 0; ci <= m; ci += 1)
+                            {
+                                if (ci == 0)
+                                    snapped = append(snapped, secondaryOffsetPoints[0]);
+                                else if (ci == m)
+                                    snapped = append(snapped, secondaryOffsetPoints[size(secondaryOffsetPoints) - 1]);
+                                else
+                                    snapped = append(snapped, cps[ci]);
+                            }
+                            secondaryOffsetCurve = mergeMaps(secondaryOffsetCurve, { "controlPoints": snapped });
+                        }
                     }
+
+                    var thisSegCount = segCount;
+                    segCount += 1;
 
                     try
                     {
-                        var wrappedId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
+                        var wrappedId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "wrappedCurve");
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
-                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
-                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
+                        allWrappedSegQueries  = append(allWrappedSegQueries,  qCreatedBy(wrappedId, EntityType.EDGE));
+                        allWrappedSegBodies   = append(allWrappedSegBodies,   qCreatedBy(wrappedId, EntityType.BODY));
+                        wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
+                        wrappedIds            = append(wrappedIds,            wrappedId);
+                        allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
 
-                        var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "primaryOffset");
+                        var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "primaryOffset");
                         opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
                         allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(primaryOffsetId, EntityType.BODY));
 
                         if (secondaryOffsetCurve != undefined)
                         {
-                            var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "secondaryOffset");
+                            var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "secondaryOffset");
                             opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
                             allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(secondaryOffsetId, EntityType.EDGE));
                             allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(secondaryOffsetId, EntityType.BODY));
                         }
-
-                        segCount += 1;
                     }
                     catch (e)
                     {
@@ -724,30 +858,87 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 segStartIdx = segEndIdx + 1;
             }
 
+            segCountPerSourceCurve = append(segCountPerSourceCurve, size(allWrappedSegQueries) - wrappedCountBefore);
         }
 
-        // ===== Single loft across all source edges =====
+        // ===== G2 junction smoothing =====
+        if (size(wrappedBSplines) >= 2)
+        {
+            var jostleResult     = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures);
+            allWrappedSegQueries = jostleResult.edgeQueries;
+            allWrappedSegBodies  = jostleResult.bodyQueries;
+        }
+
+        // ===== Per-source-curve loft =====
+        // One opLoft per source curve — prevents opLoft from chaining all spans into one huge surface.
         if (size(allWrappedSegQueries) > 0)
         {
-            // Outermost pair: no secondDirection → [wrapped, primary]; secondDirection → [primary, secondary]
-            var loftProfile1 = qUnion(allWrappedSegQueries);
-            var loftProfile2 = qUnion(allPrimaryOffsetSegQueries);
-            if (definition.secondDirection && size(allSecondaryOffsetSegQueries) > 0)
+            var allLoftBodyQueries = [];
+            var segOffset = 0;
+            for (var li = 0; li < size(sourceCurveArray); li += 1)
             {
-                loftProfile1 = qUnion(allPrimaryOffsetSegQueries);
-                loftProfile2 = qUnion(allSecondaryOffsetSegQueries);
+                var iCount = segCountPerSourceCurve[li];
+                if (iCount == 0)
+                {
+                    segOffset += iCount;
+                    continue;
+                }
+
+                var iWrappedQueries   = [];
+                var iPrimaryQueries   = [];
+                var iSecondaryQueries = [];
+                for (var k = 0; k < iCount; k += 1)
+                {
+                    var idx = segOffset + k;
+                    iWrappedQueries = append(iWrappedQueries, allWrappedSegQueries[idx]);
+                    if (idx < size(allPrimaryOffsetSegQueries))
+                        iPrimaryQueries = append(iPrimaryQueries, allPrimaryOffsetSegQueries[idx]);
+                    if (idx < size(allSecondaryOffsetSegQueries))
+                        iSecondaryQueries = append(iSecondaryQueries, allSecondaryOffsetSegQueries[idx]);
+                }
+
+                var loftProfile1 = qUnion(iWrappedQueries);
+                var loftProfile2 = qUnion(iPrimaryQueries);
+                if (definition.secondDirection && size(iSecondaryQueries) > 0)
+                {
+                    loftProfile1 = qUnion(iPrimaryQueries);
+                    loftProfile2 = qUnion(iSecondaryQueries);
+                }
+
+                if (size(iWrappedQueries) > 0 && size(iPrimaryQueries) > 0)
+                {
+                    try
+                    {
+                        opLoft(context, id + ("loft_" ~ toString(li)), {
+                            "bodyType"          : ToolBodyType.SURFACE,
+                            "profileSubqueries" : [loftProfile1, loftProfile2]
+                        });
+                        allLoftBodyQueries = append(allLoftBodyQueries,
+                            qCreatedBy(id + ("loft_" ~ toString(li)), EntityType.BODY));
+                    }
+                    catch (e)
+                    {
+                        println("ERROR: wrapAndLoft loft " ~ toString(li) ~ " failed - " ~ toString(e));
+                    }
+                }
+
+                segOffset += iCount;
             }
 
-            try
+            // Union all per-source-curve surfaces into one body with N faces
+            if (size(allLoftBodyQueries) > 1)
             {
-                opLoft(context, id + "loft", {
-                    "bodyType"          : ToolBodyType.SURFACE,
-                    "profileSubqueries" : [loftProfile1, loftProfile2]
-                });
-            }
-            catch (e)
-            {
-                println("ERROR: wrapAndLoft loft failed - " ~ toString(e));
+                try
+                {
+                    opBoolean(context, id + "unionSurfaces", {
+                        "operationType" : BooleanOperationType.UNION,
+                        "tools"         : qUnion(allLoftBodyQueries)
+                    });
+                }
+                catch (e)
+                {
+                    println("Surface union failed (surfaces may not share edges): " ~ toString(e));
+                }
             }
 
             // Collect multi-span segments into wire bodies (one wire per connected run)

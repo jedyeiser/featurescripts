@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "2878.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "08e8748f2ef24eea16072b75/68ab60215931b483509b7296/ad98c7f43a25a4c0e8a428e7", version : "1efe2444c4d02973fe212fcc");
+import(path : "08e8748f2ef24eea16072b75/f978f8e46256a09d3349266a/ad98c7f43a25a4c0e8a428e7", version : "1efe2444c4d02973fe212fcc");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/68ab60215931b483509b7296/683d867c35fdab9c98d47556", version : "e1edec6b1bcad2d914000816");
+export import(path : "08e8748f2ef24eea16072b75/f978f8e46256a09d3349266a/683d867c35fdab9c98d47556", version : "b6844b2ef23e11ceb42f1d75");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");
@@ -207,8 +207,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var degree = definition.approximationDegree;
 
         // 4. For each source curve: sample, map, fit, create
-        var allSegEdges  = [];
-        var allSegBodies = [];
+        var allSegEdges           = [];
+        var allSegBodies          = [];
+        var wrappedBSplines       = [];
+        var wrappedIds            = [];
+        var allJunctionCurvatures = [];
         var sourceCurveArray = evaluateQuery(context, expandEdgeQuery(definition.sourceCurves));
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
@@ -313,10 +316,25 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             }
 
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
-            var segStartIdx = 0;
-            var segCount    = 0;
-            var junctionPt      = undefined;  // carry-over exact junction point between spans
-            var junctionTangent = undefined;  // carry-over junction tangent direction in to-space
+            var segStartIdx       = 0;
+            var segCount          = 0;
+            var junctionPt        = undefined;
+            var junctionTangent   = undefined;
+            var junctionCurvature = undefined;
+
+            // Pre-constrain first span's start tangent from source edge at parameter 0
+            {
+                var startSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0].direction;
+                var s_from_0        = mappedData[0].sFrom;
+                var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
+                var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
+                var toResult_0      = getFrameAtArcLength(context, toFrenetPath, s_to_0);
+                var toSign_0        = definition.flipToNormal ? -1 * toResult_0.sign : toResult_0.sign;
+                var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
+                    ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
+                    : toResult_0;
+                junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
+            }
 
             while (segStartIdx < size(mappedData))
             {
@@ -330,9 +348,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 var segPoints = [];
 
-                // Capture carry-over tangent from previous span's junction before clearing
-                var carryOverTangent = junctionTangent;
-                junctionTangent = undefined;
+                // Capture carry-over tangent/curvature from previous span's junction before clearing
+                var carryOverTangent   = junctionTangent;
+                var carryOverCurvature = junctionCurvature;
+                junctionTangent   = undefined;
+                junctionCurvature = undefined;
 
                 // Prepend exact junction point carried over from end of previous span
                 if (junctionPt != undefined)
@@ -404,19 +424,70 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
 
-                    // Transform source tangent through Frenet frames (direction-only, no origin offset)
-                    // Project world tangent onto from-frame axes, then reconstruct in to-frame
-                    var fTangential        = dot(srcTangent, fromResult_j.frame.zAxis);
-                    var fNormal            = dot(srcTangent, fromResult_j.frame.xAxis);
-                    var fBinormal          = dot(srcTangent, yAxis(fromResult_j.frame));
-                    var junctionTangentDir = fTangential * toFrameResult_j.frame.zAxis +
-                                            fNormal     * toFrameResult_j.frame.xAxis +
-                                            fBinormal   * yAxis(toFrameResult_j.frame);
+                    // Phase 4: junction-aware oversampling — 2 extra mapped points near the junction
+                    {
+                        var nExtra = 2;
+                        for (var ex = 1; ex <= nExtra; ex += 1)
+                        {
+                            var alpha      = ex / (nExtra + 1.0);
+                            var extraParam = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
+                            var extraLine  = evEdgeTangentLines(context, {
+                                "edge"       : sourceCurveArray[i],
+                                "parameters" : [extraParam]
+                            })[0];
+                            var sFrom_extra   = mappedData[segEndIdx].sFrom + alpha * (s_from_junction - mappedData[segEndIdx].sFrom);
+                            var fromResult_e  = getFrameAtArcLength(context, fromFrenetPath, sFrom_extra);
+                            var localCoords_e = worldPointToFrenet(extraLine.origin, fromResult_e);
+                            var s_to_extra    = toRefArc + (sFrom_extra - fromRefArc);
+                            var toResult_e    = getFrameAtArcLength(context, toFrenetPath, s_to_extra);
+                            var toSign_e      = definition.flipToNormal ? -1 * toResult_e.sign : toResult_e.sign;
+                            var toFrameResult_e = (toSign_e != fromResult_e.sign)
+                                ? mergeMaps(toResult_e, { "frame": coordSystem(toResult_e.frame.origin, -1 * toResult_e.frame.xAxis, toResult_e.frame.zAxis) })
+                                : toResult_e;
+                            segPoints = append(segPoints, frenetPointToWorld(localCoords_e, toFrameResult_e));
+                        }
+                    }
 
-                    // Append to current span; carry over to next span's start
+                    // Phase 2: finite-difference source curvature at junction (chord-based arc-length step)
+                    {
+                        var jEps   = 0.005;
+                        var pJm    = max([0, junctionParam - jEps]);
+                        var pJp    = min([1, junctionParam + jEps]);
+                        var kLines = evEdgeTangentLines(context, {
+                            "edge"       : sourceCurveArray[i],
+                            "parameters" : [pJm, pJp]
+                        });
+                        var dsJ    = norm(kLines[1].origin - kLines[0].origin);
+                        var deltaT = kLines[1].direction - kLines[0].direction;
+                        if (dsJ > 1e-10 * meter && norm(deltaT) > 1e-10)
+                        {
+                            var kappaSrc      = deltaT / dsJ;
+                            junctionCurvature = mapEdgeJunctionCurvature(kappaSrc, fromResult_j, toFrameResult_j);
+                        }
+                        else
+                        {
+                            junctionCurvature = undefined;
+                        }
+                    }
+
+                    // Append junction point; carry over tangent and curvature to next span
                     segPoints       = append(segPoints, junctionWorldPt);
                     junctionPt      = junctionWorldPt;
-                    junctionTangent = normalize(junctionTangentDir);
+                    junctionTangent = mapEdgeJunctionTangent(srcTangent, fromResult_j, toFrameResult_j);
+                }
+                else
+                {
+                    // Last span — constrain end tangent from source edge at parameter 1
+                    var endSrcTangent     = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0].direction;
+                    var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
+                    var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
+                    var s_to_end          = toRefArc + (s_from_end - fromRefArc);
+                    var toResult_end      = getFrameAtArcLength(context, toFrenetPath, s_to_end);
+                    var toSign_end        = definition.flipToNormal ? -1 * toResult_end.sign : toResult_end.sign;
+                    var toFrameResult_end = (toSign_end != fromResult_end.sign)
+                        ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
+                        : toResult_end;
+                    junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
                 }
 
                 if (size(segPoints) >= degree + 1)
@@ -452,6 +523,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "isPeriodic"         : false,
                         "interpolateIndices" : [0, size(segPoints) - 1] };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
+                    mappedCurve = enforceEndpointDerivatives(mappedCurve,
+                        carryOverTangent != undefined ? carryOverTangent * approxScale : undefined,
+                        junctionTangent  != undefined ? junctionTangent  * approxScale : undefined);
 
                     if (definition.debugWrappedCurves)
                     {
@@ -459,8 +533,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
                     }
 
-                    opCreateBSplineCurve(context, id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve"),
-                                         { "bSplineCurve": mappedCurve });
+                    var segOpId = id + (toString(i) ~ "_" ~ toString(segCount) ~ "wrappedCurve");
+                    opCreateBSplineCurve(context, segOpId, { "bSplineCurve": mappedCurve });
+                    wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
+                    wrappedIds            = append(wrappedIds,            segOpId);
+                    allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
                     segCount += 1;
                 }
                 else if (definition.debugWrappedCurves)
@@ -471,13 +548,22 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
                 segStartIdx = segEndIdx + 1;
             }
+        }
 
-            // Accumulate segment edges/bodies across all source curves for a single extraction.
-            for (var k = 0; k < segCount; k += 1)
+        // G2 junction smoothing
+        if (size(wrappedBSplines) >= 2)
+        {
+            var jostleResult = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures);
+            allSegEdges  = jostleResult.edgeQueries;
+            allSegBodies = jostleResult.bodyQueries;
+        }
+        else
+        {
+            // Build allSegEdges/allSegBodies from wrappedIds directly (single span, no jostle needed)
+            for (var k = 0; k < size(wrappedIds); k += 1)
             {
-                var segOpId = id + (toString(i) ~ "_" ~ toString(k) ~ "wrappedCurve");
-                allSegEdges  = append(allSegEdges,  qCreatedBy(segOpId, EntityType.EDGE));
-                allSegBodies = append(allSegBodies, qCreatedBy(segOpId, EntityType.BODY));
+                allSegEdges  = append(allSegEdges,  qCreatedBy(wrappedIds[k], EntityType.EDGE));
+                allSegBodies = append(allSegBodies, qCreatedBy(wrappedIds[k], EntityType.BODY));
             }
         }
 
