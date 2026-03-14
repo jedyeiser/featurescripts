@@ -21,7 +21,7 @@ export const SWRoutAngleBounds      = {(degree)     : [0,  20, 45]} as AngleBoun
 export const DistAboveBottomBounds  = {(millimeter) : [1,   4, 10]} as LengthBoundSpec;
 export const SWStepInBounds         = {(millimeter) : [0,   0,  3]} as LengthBoundSpec;
 export const cutterRadiusBounds     = {(millimeter) : [2,  10, 20]} as LengthBoundSpec;
-export const DEBUG_STEP_BOUNDS      = {(unitless)   : [1,   1,  9]} as IntegerBoundSpec;
+export const DEBUG_STEP_BOUNDS      = { "min" : 1, "max" : 9 } as IntegerBoundSpec;
 
 annotation { "Feature Type Name" : "Sidewall rout surface", "Feature Type Description" : "Creates a SW rout surface based on inputs" }
 export const SWRout = defineFeature(function(context is Context, id is Id, definition is map)
@@ -73,7 +73,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Group Name" : "Step through options", "Driving Parameter" : "debugStepThrough", "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1–9)", "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "Step (1-9)", "UIHint" : UIHint.SHOW_LABEL }
                 isInteger(definition.debugStep, DEBUG_STEP_BOUNDS);
             }
 
