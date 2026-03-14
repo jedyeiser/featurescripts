@@ -106,6 +106,24 @@ var tangent = result[1][0];        // first derivative (not normalized)
 
 ---
 
+## IntegerBoundSpec — correct format
+
+**ALWAYS use `{(unitless) : [min, default, max]}`** — same pattern as every other bound spec, with `unitless` as the unit key.
+
+```featurescript
+// CORRECT
+export const MY_BOUNDS = { (unitless) : [1, 1, 9] } as IntegerBoundSpec;
+
+// WRONG — all of these fail with "verifyBounds returned undefined"
+export const BAD1 = { "min" : 1, "max" : 9 } as IntegerBoundSpec;
+export const BAD2 = { "min" : 1, "max" : 9, "default" : 1 } as IntegerBoundSpec;
+export const BAD3 = { (millimeter) : [1, 1, 9] } as IntegerBoundSpec;  // wrong unit
+```
+
+**Reference**: every `IntegerBoundSpec` in this project — `curveMappingCore.fs`, `constEnums.fs`, `xSectPredicates.fs`, `std/valueBounds.fs` lines 517–583, etc.
+
+---
+
 ## approximateSpline — common mistakes
 
 | Mistake | Fix |
