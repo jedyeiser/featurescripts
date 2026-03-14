@@ -1006,7 +1006,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
     {
         opBoolean(context, id + "mergeWires", {
             "tools"         : qUnion(allWireBodies),
-            "operationType" : BooleanType.UNION
+            "operationType" : BooleanOperationType.UNION
         });
     }
 }
