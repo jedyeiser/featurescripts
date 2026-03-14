@@ -45,7 +45,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         annotation { "Name" : "SW rout step-in" }
         isLength(definition.swRoutStepin, SWStepInBounds);
 
-        annotation { "Name" : "Output profile wires", "Default" : false, "Description" : "Keep start, step-in, and stop wires as output bodies alongside the surface" }
+        annotation { "Name" : "Output profile wires", "Default" : false }
         definition.outputProfileWires is boolean;
 
         annotation { "Name" : "Spec rout endpoints?", "Default" : false }
