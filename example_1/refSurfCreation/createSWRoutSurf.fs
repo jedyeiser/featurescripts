@@ -135,7 +135,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         {
             opOffsetFace(context, id + "stepInOffset", {
                     "moveFaces"      : qOwnedByBody(sideCopy, EntityType.FACE),
-                    "offsetDistance" : sideDirSign * definition.swRoutStepin
+                    "offsetDistance" : -sideDirSign * definition.swRoutStepin
             });
             opIntersectFaces(context, id + "stepInIntersect", {
                     "tools"   : qOwnedByBody(sideCopy,   EntityType.FACE),
