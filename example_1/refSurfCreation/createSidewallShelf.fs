@@ -456,8 +456,8 @@ function extractShelfRails(context is Context, id is Id, outsideSurface is Query
 
     for (var i = 0; i < size(wireBodies); i += 1)
     {
-        var box  = evBox3d(context, { "topology" : wireBodies[i], "tight" : true });
-        var midZ = (box.minCorner[2] + box.maxCorner[2]) / 2;
+        var bb   = evBox3d(context, { "topology" : wireBodies[i], "tight" : true });
+        var midZ = (bb.minCorner[2] + bb.maxCorner[2]) / 2;
         if (midZ > topMidZ) { topMidZ = midZ; topIdx    = i; }
         if (midZ < botMidZ) { botMidZ = midZ; bottomIdx = i; }
     }

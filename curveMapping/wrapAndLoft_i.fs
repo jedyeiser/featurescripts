@@ -436,6 +436,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var wrappedBSplines               = [];
         var wrappedIds                    = [];
         var allJunctionCurvatures         = [];
+        var segCountPerSourceCurve        = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             var srcBSpline = (definition.keepDegree || definition.sourceSamplingMode == SamplingMode.CP_BASED)
@@ -816,7 +817,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 segStartIdx = segEndIdx + 1;
             }
 
-
+            segCountPerSourceCurve = append(segCountPerSourceCurve, segCount);
         }
 
         // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
@@ -827,28 +828,58 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             allWrappedSegBodies  = jostleResult.bodyQueries;
         }
 
-        // ===== Single loft across all source edges =====
+        // ===== Per-source-curve loft =====
+        // One opLoft per source curve — each uses only its own span queries, preventing
+        // opLoft from chaining all spans across all source curves into one huge surface.
         if (size(allWrappedSegQueries) > 0)
         {
-            // Outermost pair: no secondDirection → [wrapped, primary]; secondDirection → [primary, secondary]
-            var loftProfile1 = qUnion(allWrappedSegQueries);
-            var loftProfile2 = qUnion(allPrimaryOffsetSegQueries);
-            if (definition.secondDirection && size(allSecondaryOffsetSegQueries) > 0)
+            var segOffset = 0;
+            for (var li = 0; li < size(sourceCurveArray); li += 1)
             {
-                loftProfile1 = qUnion(allPrimaryOffsetSegQueries);
-                loftProfile2 = qUnion(allSecondaryOffsetSegQueries);
-            }
+                var iCount = segCountPerSourceCurve[li];
+                if (iCount == 0)
+                {
+                    segOffset += iCount;
+                    continue;
+                }
 
-            try
-            {
-                opLoft(context, id + "loft", {
-                    "bodyType"          : ToolBodyType.SURFACE,
-                    "profileSubqueries" : [loftProfile1, loftProfile2]
-                });
-            }
-            catch (e)
-            {
-                println("ERROR: wrapAndLoft loft failed - " ~ toString(e));
+                var iWrappedQueries   = [];
+                var iPrimaryQueries   = [];
+                var iSecondaryQueries = [];
+                for (var k = 0; k < iCount; k += 1)
+                {
+                    var idx = segOffset + k;
+                    iWrappedQueries = append(iWrappedQueries, allWrappedSegQueries[idx]);
+                    if (idx < size(allPrimaryOffsetSegQueries))
+                        iPrimaryQueries = append(iPrimaryQueries, allPrimaryOffsetSegQueries[idx]);
+                    if (idx < size(allSecondaryOffsetSegQueries))
+                        iSecondaryQueries = append(iSecondaryQueries, allSecondaryOffsetSegQueries[idx]);
+                }
+
+                var loftProfile1 = qUnion(iWrappedQueries);
+                var loftProfile2 = qUnion(iPrimaryQueries);
+                if (definition.secondDirection && size(iSecondaryQueries) > 0)
+                {
+                    loftProfile1 = qUnion(iPrimaryQueries);
+                    loftProfile2 = qUnion(iSecondaryQueries);
+                }
+
+                if (size(iWrappedQueries) > 0 && size(iPrimaryQueries) > 0)
+                {
+                    try
+                    {
+                        opLoft(context, id + ("loft_" ~ toString(li)), {
+                            "bodyType"          : ToolBodyType.SURFACE,
+                            "profileSubqueries" : [loftProfile1, loftProfile2]
+                        });
+                    }
+                    catch (e)
+                    {
+                        println("ERROR: wrapAndLoft loft " ~ toString(li) ~ " failed - " ~ toString(e));
+                    }
+                }
+
+                segOffset += iCount;
             }
 
             // Collect multi-span segments into wire bodies (one wire per connected run)

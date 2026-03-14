@@ -90,7 +90,7 @@ function augmentPathSide(context is Context, side is map, path is Path, edgeInde
  * X coordinate equals targetX.  Works for any monotone-in-X wire.
  * 30 iterations give sub-nanometre precision.
  */
-export function findPathParamAtX(context is Context, path is Path, targetX is number) returns number
+export function findPathParamAtX(context is Context, path is Path, targetX is ValueWithUnits) returns number
 {
     var endpoints = evPathTangentLines(context, path, [0, 1]);
     var ep0X = endpoints.tangentLines[0].origin[0];
