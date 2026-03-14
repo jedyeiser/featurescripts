@@ -204,14 +204,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
         }
 
-        // --- Split all wires at front plane; keep +Y half ---
-        opSplitPart(context, id + "wireSplit", {
-                "targets"  : qUnion([startWire, stepInWire, stopWire]),
-                "tool"     : qFrontPlane(EntityType.FACE),
-                "keepType" : SplitOperationKeepType.KEEP_FRONT
-        });
-
-        // --- Loft the rout surface ---
+        // --- Loft the rout surface using full (un-split) wires ---
+        // Splitting wires before lofting causes LOFT_DIRECTION_ERROR: the half-wire resulting from
+        // opSplitPart has an arbitrary start endpoint, and the two halves end up in opposite
+        // directions. Instead, loft the full wires and split the resulting surface.
         var hasStepIn = definition.swRoutStepin > 0 * millimeter;
         opLoft(context, id + "loft1", {
                 "profileSubqueries" : [stopWire, hasStepIn ? stepInWire : startWire],
@@ -233,6 +229,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         var loftBody = qCreatedBy(id + "loft1", EntityType.BODY);
+
+        // Delete profile wires — no longer needed.
+        var wireBodiesToDelete = hasStepIn
+            ? qUnion([startWire, stepInWire, stopWire])
+            : qUnion([startWire, stopWire]);
+        opDeleteBodies(context, id + "deleteProfileWires", {
+                "entities" : wireBodiesToDelete
+        });
+
+        // --- Split the loft surface at front plane; keep +Y half ---
+        opSplitPart(context, id + "surfSplit", {
+                "targets"  : loftBody,
+                "tool"     : qFrontPlane(EntityType.FACE),
+                "keepType" : SplitOperationKeepType.KEEP_FRONT
+        });
 
         // --- Find outside edges (those coincident with the original side surface) ---
         var loftOneSidedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(loftBody, EntityType.EDGE), EdgeTopology.ONE_SIDED));

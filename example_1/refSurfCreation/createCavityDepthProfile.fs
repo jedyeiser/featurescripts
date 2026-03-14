@@ -171,7 +171,6 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
             if (region.regionType == RegionType.QUADRATIC)
             {
                 annotation { "Name" : "Zero slope at", "Default" : QuadraticZeroSlope.AT_START,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM,
                              "Description" : "Which end of the region has zero offset slope" }
                 region.quadZeroSlope is QuadraticZeroSlope;
             }
