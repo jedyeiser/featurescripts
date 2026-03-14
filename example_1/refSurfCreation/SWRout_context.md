@@ -96,6 +96,11 @@ opDeleteBodies(context, id + "deleteShiftedCopy", { "entities" : shiftedCopy });
 - `evFaceTangentPlane` `parameter` is a 2D vector in parameter-space [0,1]×[0,1]; `vector(0.5, 0.5)` is the face centre.
 - `distance * faceNormal` — unitless normal × ValueWithUnits = Vector with units, valid for `transform()`.
 - To shift **inward** (opposite normal), use `-distance * faceNormal`.
+- **Normal direction is not guaranteed** — `evFaceTangentPlane` returns the face normal but the sign depends on surface creation order. Always correct before use:
+  ```featurescript
+  if (bottomNormal[2] < 0) { bottomNormal = -bottomNormal; }  // must point up (+Z)
+  if (sideNormal[1]   < 0) { sideNormal   = -sideNormal; }    // must point outward (+Y for +Y half)
+  ```
 - Approximation note: all points translate by the same vector rather than along local normals. Accurate for gently curved surfaces like ski geometry.
 
 ### extendSurface — BLIND Requires Non-Zero extendDistance

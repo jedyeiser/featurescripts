@@ -89,6 +89,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "parameter" : vector(0.5, 0.5)
         }).normal;
 
+        // Guarantee correct orientation: bottomNormal must point up (+Z), sideNormal must point
+        // outward (+Y) for the +Y ski half. evFaceTangentPlane direction depends on surface creation
+        // order and may be flipped. Correcting here avoids wrong-direction translations downstream.
+        if (bottomNormal[2] < 0) { bottomNormal = -bottomNormal; }
+        if (sideNormal[1]   < 0) { sideNormal   = -sideNormal; }
+
         // --- Start wire: bottom shifted up by distAboveBottom, side at original position ---
         opPattern(context, id + "startBottom", {
                 "entities"      : definition.bottomSheet,

@@ -33,6 +33,12 @@ export enum RegionExtentType
     X_EXTENTS
 }
 
+export enum QuadraticZeroSlope
+{
+    AT_START,
+    AT_END
+}
+
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
@@ -161,6 +167,14 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
             annotation { "Name" : "Region type", "Default" : RegionType.LINEAR,
                          "UIHint" : UIHint.HORIZONTAL_ENUM }
             region.regionType is RegionType;
+
+            if (region.regionType == RegionType.QUADRATIC)
+            {
+                annotation { "Name" : "Zero slope at", "Default" : QuadraticZeroSlope.AT_START,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM,
+                             "Description" : "Which end of the region has zero offset slope" }
+                region.quadZeroSlope is QuadraticZeroSlope;
+            }
 
             annotation { "Name" : "Region number", "UIHint" : UIHint.ALWAYS_HIDDEN }
             isInteger(region.regionNum, POSITIVE_COUNT_BOUNDS);
@@ -579,7 +593,13 @@ function profileValueAt(t is number, region is map) returns ValueWithUnits
     }
     else if (region.regionType == RegionType.QUADRATIC)
     {
-        s = t * t * (3 - 2 * t);
+        // True quadratic: one endpoint has zero slope, the other ramps freely.
+        // AT_START (zero slope at t=0): f(t) = t²
+        // AT_END   (zero slope at t=1): f(t) = 2t − t²
+        if (region.quadZeroSlope == QuadraticZeroSlope.AT_END)
+            s = 2 * t - t * t;
+        else // AT_START (default)
+            s = t * t;
     }
     else // LOGISTIC
     {
@@ -658,33 +678,199 @@ function generateSegmentPoints(context is Context, definition is map, pathInfo i
 
 
 /**
- * Samples n points across the blend zone [tBlendStart, tBlendEnd], interpolating
- * between the 3D heights of region A's endpoint and region B's startpoint using
- * smoothstep. Heights are resolved in a common "height above bottom wire" space so
- * that mixed-mode blends (e.g. SIDEWALL → CAVITY_DEPTH) are physically consistent.
+ * Height of a region at a given path parameter — combines profile evaluation with
+ * mode dispatch. Used for both direct sampling and finite-difference slope/curvature.
+ */
+function computeHeightAtParam(context is Context, definition is map, region is map,
+    pathInfo is map, tPath is number) returns ValueWithUnits
+{
+    var tNorm  = min(max((tPath - region.tStart) / (region.tEnd - region.tStart), 0), 1);
+    var tl     = evPathTangentLines(context, pathInfo.path, [tPath]).tangentLines[0];
+    var normal = computeEdgeNormal(tl.direction);
+    return computeEffectiveHeight(context, definition, region, tl.origin, normal, profileValueAt(tNorm, region));
+}
+
+
+/**
+ * Returns { h, slope, curv } at tPath using central finite differences.
+ *   h     = height above bottom wire (ValueWithUnits)
+ *   slope = dH/dt  (ValueWithUnits — meters per unit of path parameter)
+ *   curv  = d²H/dt² (ValueWithUnits)
+ *
+ * Scaling to s-space before use: multiply slope by L, curv by L².
+ */
+function computeHeightDerivativesAtParam(context is Context, definition is map, region is map,
+    pathInfo is map, tPath is number) returns map
+{
+    var dt     = 1e-4;
+    var hPlus  = computeHeightAtParam(context, definition, region, pathInfo, tPath + dt);
+    var hMid   = computeHeightAtParam(context, definition, region, pathInfo, tPath);
+    var hMinus = computeHeightAtParam(context, definition, region, pathInfo, tPath - dt);
+    return {
+        "h"     : hMid,
+        "slope" : (hPlus - hMinus) / (2 * dt),
+        "curv"  : (hPlus - 2 * hMid + hMinus) / (dt * dt)
+    };
+}
+
+
+/**
+ * Evaluates the Hermite blend polynomial at s ∈ [0,1].
+ *
+ * All slope/curvature args are in s-space (multiply region dH/dt by L, d²H/dt² by L²
+ * before calling, where L = tBlendEnd − tBlendStart).
+ *
+ * Continuity dispatch:
+ *   G0+G0 → linear         G1+G0 / G0+G1 → quadratic
+ *   G1+G1 → cubic Hermite  G2+G0 / G0+G2 → cubic
+ *   G2+G1 / G1+G2 → quartic              G2+G2 → quintic Hermite
+ */
+function blendHeightAt(s is number,
+    h0 is ValueWithUnits, m0 is ValueWithUnits, k0 is ValueWithUnits,
+    h1 is ValueWithUnits, m1 is ValueWithUnits, k1 is ValueWithUnits,
+    contStart, contEnd) returns ValueWithUnits
+{
+    var matchSlopeStart = (contStart == GeometricContinuity.G1 || contStart == GeometricContinuity.G2);
+    var matchCurvStart  = (contStart == GeometricContinuity.G2);
+    var matchSlopeEnd   = (contEnd   == GeometricContinuity.G1 || contEnd   == GeometricContinuity.G2);
+    var matchCurvEnd    = (contEnd   == GeometricContinuity.G2);
+
+    var s2 = s * s;
+    var s3 = s2 * s;
+    var s4 = s3 * s;
+    var s5 = s4 * s;
+
+    if (!matchSlopeStart && !matchSlopeEnd)
+    {
+        // G0+G0: linear
+        return h0 * (1 - s) + h1 * s;
+    }
+    else if (matchSlopeStart && !matchCurvStart && !matchSlopeEnd)
+    {
+        // G1+G0: quadratic — h0, m0, h1
+        return h0 + m0 * s + (h1 - h0 - m0) * s2;
+    }
+    else if (!matchSlopeStart && matchSlopeEnd && !matchCurvEnd)
+    {
+        // G0+G1: quadratic — h0, h1, m1
+        var dh = h1 - h0;
+        return h0 + (2 * dh - m1) * s + (m1 - dh) * s2;
+    }
+    else if (matchSlopeStart && !matchCurvStart && matchSlopeEnd && !matchCurvEnd)
+    {
+        // G1+G1: cubic Hermite — h0, m0, h1, m1
+        return h0 * (2*s3 - 3*s2 + 1) + m0 * (s3 - 2*s2 + s)
+             + h1 * (-2*s3 + 3*s2)    + m1 * (s3 - s2);
+    }
+    else if (matchCurvStart && !matchSlopeEnd)
+    {
+        // G2+G0: cubic — h0, m0, k0, h1
+        return h0 + m0 * s + (k0 / 2) * s2 + (h1 - h0 - m0 - k0 / 2) * s3;
+    }
+    else if (!matchSlopeStart && matchCurvEnd)
+    {
+        // G0+G2: cubic — h0, h1, m1, k1
+        var dh = h1 - h0;
+        var d  = dh - m1 + k1 / 2;
+        var c  = -(k1 + 3 * (dh - m1));
+        var b  = 3 * dh - 2 * m1 + k1 / 2;
+        return h0 + b * s + c * s2 + d * s3;
+    }
+    else if (matchCurvStart && matchSlopeEnd && !matchCurvEnd)
+    {
+        // G2+G1: quartic — h0, m0, k0, h1, m1
+        var dh = h1 - h0;
+        var a4 = m1 + 2 * m0 + k0 / 2 - 3 * dh;
+        var a3 = 4 * dh - 3 * m0 - k0 - m1;
+        return h0 + m0 * s + (k0 / 2) * s2 + a3 * s3 + a4 * s4;
+    }
+    else if (matchSlopeStart && !matchCurvStart && matchCurvEnd)
+    {
+        // G1+G2: quartic — h0, m0, h1, m1, k1
+        var H  = h1 - h0 - m0;
+        var M  = m1 - m0;
+        var K  = k1;
+        var e  = (K - 4 * M + 6 * H) / 2;
+        var d  = 5 * M - 8 * H - K;
+        var c  = 6 * H - 3 * M + K / 2;
+        return h0 + m0 * s + c * s2 + d * s3 + e * s4;
+    }
+    else
+    {
+        // G2+G2: quintic Hermite — h0, m0, k0, h1, m1, k1
+        return h0 * (1 - 10*s3 + 15*s4 - 6*s5)
+             + m0 * (s - 6*s3 + 8*s4 - 3*s5)
+             + k0 * (s2/2 - 3*s3/2 + 3*s4/2 - s5/2)
+             + h1 * (10*s3 - 15*s4 + 6*s5)
+             + m1 * (-4*s3 + 7*s4 - 3*s5)
+             + k1 * (s3/2 - s4 + s5/2);
+    }
+}
+
+
+/**
+ * Samples n points across the blend zone [tBlendStart, tBlendEnd].
+ *
+ * Heights at the blend boundaries are evaluated at the actual tNorm positions
+ * (not at the region endpoints) so the blend wire meets the trimmed region wire.
+ * Slopes and curvatures are matched via finite difference when the intersection's
+ * continuity settings request it — accounting for the fact that the height function
+ * changes with wire position, not just offset value.
  */
 function generateBlendPoints(context is Context, definition is map, pathInfo is map,
     tBlendStart is number, tBlendEnd is number,
-    valueStart is ValueWithUnits, valueEnd is ValueWithUnits,
-    regA is map, regB is map) returns array
+    regA is map, regB is map, intr is map) returns array
 {
-    var n = definition.samplingDensity;
+    var n    = definition.samplingDensity;
+    var L    = tBlendEnd - tBlendStart;
+    var contStart = intr.startContinuity;
+    var contEnd   = intr.endContinuity;
 
-    // Pre-compute endpoint heights in common "height above bottom wire" space
-    var tlA       = evPathTangentLines(context, pathInfo.path, [tBlendStart]).tangentLines[0];
-    var tlB       = evPathTangentLines(context, pathInfo.path, [tBlendEnd]).tangentLines[0];
-    var normA     = computeEdgeNormal(tlA.direction);
-    var normB     = computeEdgeNormal(tlB.direction);
-    var heightStart = computeEffectiveHeight(context, definition, regA, tlA.origin, normA, valueStart);
-    var heightEnd   = computeEffectiveHeight(context, definition, regB, tlB.origin, normB, valueEnd);
+    var needSlopeStart = (contStart == GeometricContinuity.G1 || contStart == GeometricContinuity.G2);
+    var needSlopeEnd   = (contEnd   == GeometricContinuity.G1 || contEnd   == GeometricContinuity.G2);
+    var needCurvStart  = (contStart == GeometricContinuity.G2);
+    var needCurvEnd    = (contEnd   == GeometricContinuity.G2);
+
+    // Initialise all derivatives to zero — unused ones won't affect the polynomial
+    var h0 = 0 * meter;
+    var m0 = 0 * meter;
+    var k0 = 0 * meter;
+    var h1 = 0 * meter;
+    var m1 = 0 * meter;
+    var k1 = 0 * meter;
+
+    if (needSlopeStart || needCurvStart)
+    {
+        var dA = computeHeightDerivativesAtParam(context, definition, regA, pathInfo, tBlendStart);
+        h0 = dA.h;
+        m0 = dA.slope * L;
+        if (needCurvStart)
+            k0 = dA.curv * L * L;
+    }
+    else
+    {
+        h0 = computeHeightAtParam(context, definition, regA, pathInfo, tBlendStart);
+    }
+
+    if (needSlopeEnd || needCurvEnd)
+    {
+        var dB = computeHeightDerivativesAtParam(context, definition, regB, pathInfo, tBlendEnd);
+        h1 = dB.h;
+        m1 = dB.slope * L;
+        if (needCurvEnd)
+            k1 = dB.curv * L * L;
+    }
+    else
+    {
+        h1 = computeHeightAtParam(context, definition, regB, pathInfo, tBlendEnd);
+    }
 
     var points = [];
     for (var i = 0; i < n; i += 1)
     {
-        var t      = tBlendStart + (tBlendEnd - tBlendStart) * i / (n - 1);
-        var tNorm  = i / (n - 1);
-        var s      = tNorm * tNorm * (3 - 2 * tNorm); // smoothstep
-        var height = heightStart + (heightEnd - heightStart) * s;
+        var t      = tBlendStart + L * i / (n - 1);
+        var s      = i / (n - 1);
+        var height = blendHeightAt(s, h0, m0, k0, h1, m1, k1, contStart, contEnd);
         var tl     = evPathTangentLines(context, pathInfo.path, [t]).tangentLines[0];
         var normal = computeEdgeNormal(tl.direction);
         points = append(points, tl.origin + height * normal);
@@ -726,7 +912,8 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             "tBlendEnd"   : tBlendEnd,
             "tJunction"   : tJunction,
             "regA"        : regA,
-            "regB"        : regB
+            "regB"        : regB,
+            "intr"        : intr
         });
     }
 
@@ -781,12 +968,9 @@ function buildOutputWire(context is Context, id is Id, definition is map,
     // One BSpline wire per active blend zone
     for (var bzi = 0; bzi < size(blendZones); bzi += 1)
     {
-        var bz         = blendZones[bzi];
-        var valueStart = profileValueAt(1.0, bz.regA);
-        var valueEnd   = profileValueAt(0.0, bz.regB);
-
+        var bz  = blendZones[bzi];
         var pts = generateBlendPoints(context, definition, pathInfo,
-            bz.tBlendStart, bz.tBlendEnd, valueStart, valueEnd, bz.regA, bz.regB);
+            bz.tBlendStart, bz.tBlendEnd, bz.regA, bz.regB, bz.intr);
         if (size(pts) < 2)
             continue;
 
