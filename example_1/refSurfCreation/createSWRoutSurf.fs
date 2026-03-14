@@ -116,6 +116,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "entities" : qUnion([qCreatedBy(id + "startBottom",    EntityType.BODY),
                                      qCreatedBy(id + "startIntersect", EntityType.BODY)])
         });
+        // Trim to +Y half — the intersection spans both ski halves (closed loop).
+        // KEEP_FRONT retains the +Y side of the XZ (front) plane. Body identity is preserved.
+        opSplitPart(context, id + "splitStartWire", {
+                "targets"  : startWire,
+                "tool"     : qFrontPlane(EntityType.FACE),
+                "keepType" : SplitOperationKeepType.KEEP_FRONT
+        });
 
         if (definition.debugPrintBSplines)
         {
@@ -166,6 +173,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                          qCreatedBy(id + "stepInBottom",    EntityType.BODY),
                                          qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
             });
+            opSplitPart(context, id + "splitStepInWire", {
+                    "targets"  : stepInWire,
+                    "tool"     : qFrontPlane(EntityType.FACE),
+                    "keepType" : SplitOperationKeepType.KEEP_FRONT
+            });
 
             if (definition.debugPrintBSplines)
             {
@@ -201,6 +213,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                      qCreatedBy(id + "stopSide",      EntityType.BODY),
                                      qCreatedBy(id + "stopIntersect", EntityType.BODY)])
         });
+        opSplitPart(context, id + "splitStopWire", {
+                "targets"  : stopWire,
+                "tool"     : qFrontPlane(EntityType.FACE),
+                "keepType" : SplitOperationKeepType.KEEP_FRONT
+        });
 
         if (definition.debugPrintBSplines)
         {
@@ -214,6 +231,82 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // Use this to inspect wire geometry and manually verify loftability in Onshape.
         if (definition.debugReturnWires)
             return;
+
+        // --- Loft the rout surface ---
+        var profile1B = hasStepIn ? stepInWire : startWire;
+        opLoft(context, id + "loft1", {
+                "profileSubqueries" : [stopWire, profile1B],
+                "connections"       : buildLoftConnection(context, stopWire, profile1B),
+                "bodyType"          : ToolBodyType.SURFACE
+        });
+        if (hasStepIn)
+        {
+            opLoft(context, id + "loft2", {
+                    "profileSubqueries" : [stepInWire, startWire],
+                    "connections"       : buildLoftConnection(context, stepInWire, startWire),
+                    "bodyType"          : ToolBodyType.SURFACE
+            });
+            // loft1 body identity is preserved through the union (first tool survives opBoolean UNION)
+            opBoolean(context, id + "combineSurfs", {
+                    "tools"         : qUnion([qCreatedBy(id + "loft1", EntityType.BODY), qCreatedBy(id + "loft2", EntityType.BODY)]),
+                    "operationType" : BooleanOperationType.UNION
+            });
+        }
+
+        var loftBody = qCreatedBy(id + "loft1", EntityType.BODY);
+
+        // Delete profile wires — no longer needed.
+        var wireBodiesToDelete = hasStepIn
+            ? qUnion([startWire, stepInWire, stopWire])
+            : qUnion([startWire, stopWire]);
+        opDeleteBodies(context, id + "deleteProfileWires", {
+                "entities" : wireBodiesToDelete
+        });
+
+        // --- Find outside edges (those coincident with the original side surface) ---
+        var loftOneSidedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(loftBody, EntityType.EDGE), EdgeTopology.ONE_SIDED));
+        var outsideEdges = [];
+        for (var edge in loftOneSidedEdges)
+        {
+            var midPoint   = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
+            var distToSide = evDistance(context, { "side0" : midPoint, "side1" : definition.sideSheet }).distance;
+            if (distToSide < 1e-5 * meter)
+            {
+                outsideEdges = append(outsideEdges, edge);
+            }
+        }
+
+        // Extend outside edges — by cutter radius if endpoints are specified, else by bottomExtension.
+        var extendDistance = definition.specSWRoutEndpoints ? definition.cutterBottomRadius : definition.bottomExtension;
+        if (extendDistance > 0 * millimeter)
+        {
+            extendSurface(context, id + "extendOutside", {
+                    "entities"           : qUnion(outsideEdges),
+                    "tangentPropagation" : true,
+                    "endCondition"       : ExtendBoundingType.BLIND,
+                    "oppositeDirection"  : false,
+                    "extendDistance"     : extendDistance,
+                    "maintainCurvature"  : true
+            });
+        }
+
+        // --- Endpoint trimming ---
+        if (definition.specSWRoutEndpoints)
+        {
+            var refWirePath = constructPath(context, qOwnedByBody(definition.refWire, EntityType.EDGE));
+
+            if (!isQueryEmpty(context, definition.startPointQ))
+            {
+                trimSWRout(context, id + "trimStart", loftBody, refWirePath, definition.startPointQ, definition.sideSheet, definition.cutterBottomRadius);
+            }
+            if (!isQueryEmpty(context, definition.stopPointQ))
+            {
+                trimSWRout(context, id + "trimStop", loftBody, refWirePath, definition.stopPointQ, definition.sideSheet, definition.cutterBottomRadius);
+            }
+        }
+
+        // Top trim deferred — a top reference surface (projection of side top edges onto XZ plane)
+        // will be used to remove the 2 mm overshoot once available.
     });
 
 /**
