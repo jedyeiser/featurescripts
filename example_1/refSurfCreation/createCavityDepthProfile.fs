@@ -242,18 +242,18 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
             if (intersection.blend)
             {
-                annotation { "Name" : "Start continuity" }
+                annotation { "Name" : "Start continuity", "UIHint" : UIHint.SHOW_LABEL }
                 intersection.startContinuity is GeometricContinuity;
 
                 annotation { "Name" : "Start distance",
-                             "Description" : "Distance before junction where blend begins" }
+                             "Description" : "How far the blend reaches back into the first region from its endpoint (0 = connect at endpoint)" }
                 isLength(intersection.startDist, LENGTH_BOUNDS);
 
-                annotation { "Name" : "End continuity" }
+                annotation { "Name" : "End continuity", "UIHint" : UIHint.SHOW_LABEL }
                 intersection.endContinuity is GeometricContinuity;
 
                 annotation { "Name" : "End distance",
-                             "Description" : "Distance after junction where blend ends" }
+                             "Description" : "How far the blend reaches into the second region from its start (0 = connect at endpoint)" }
                 isLength(intersection.endDist, LENGTH_BOUNDS);
             }
         }
@@ -902,14 +902,14 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         if (regA == undefined || regB == undefined)
             continue;
 
-        var tJunction   = (regA.tEnd + regB.tStart) / 2.0;
-        var tBlendStart = tJunction - intr.startDist / pathInfo.length;
-        var tBlendEnd   = tJunction + intr.endDist   / pathInfo.length;
+        // startDist reaches back into regA from its endpoint; endDist reaches into regB from its start.
+        // With both at 0 the blend spans exactly the gap between the two curve endpoints.
+        var tBlendStart = regA.tEnd   - intr.startDist / pathInfo.length;
+        var tBlendEnd   = regB.tStart + intr.endDist   / pathInfo.length;
 
         blendZones = append(blendZones, {
             "tBlendStart" : tBlendStart,
             "tBlendEnd"   : tBlendEnd,
-            "tJunction"   : tJunction,
             "regA"        : regA,
             "regB"        : regB,
             "intr"        : intr
