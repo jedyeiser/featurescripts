@@ -145,11 +145,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         });
         setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (offset copy)" });
 
+        opPattern(context, id + "startSide", {
+                "entities"      : definition.sideSheet,
+                "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                "instanceNames" : ["1"]
+        });
+        setProperty(context, { "entities" : qCreatedBy(id + "startSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start side (copy)" });
+
         opIntersectFaces(context, id + "startIntersect", {
                 "tools"   : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE),
-                "targets" : qOwnedByBody(definition.sideSheet, EntityType.FACE)
+                "targets" : qOwnedByBody(qCreatedBy(id + "startSide",   EntityType.BODY), EntityType.FACE)
         });
-        setProperty(context, { "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start intersection" });
 
         opExtractWires(context, id + "startWireExtract", {
                 "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
@@ -160,8 +166,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         if (!definition.debugKeepAllBodies)
         {
             opDeleteBodies(context, id + "deleteStartCopies", {
-                    "entities" : qUnion([qCreatedBy(id + "startBottom",    EntityType.BODY),
-                                         qCreatedBy(id + "startIntersect", EntityType.BODY)])
+                    "entities" : qUnion([qCreatedBy(id + "startBottom", EntityType.BODY),
+                                         qCreatedBy(id + "startSide",   EntityType.BODY)])
             });
         }
 
@@ -219,7 +225,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",   EntityType.BODY), EntityType.FACE),
                     "targets" : qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in intersection" });
 
             opExtractWires(context, id + "stepInWireExtract", {
                     "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
@@ -230,9 +235,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             if (!definition.debugKeepAllBodies)
             {
                 opDeleteBodies(context, id + "deleteStepInCopies", {
-                        "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
-                                             qCreatedBy(id + "stepInBottom",    EntityType.BODY),
-                                             qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
+                        "entities" : qUnion([qCreatedBy(id + "stepInSide",   EntityType.BODY),
+                                             qCreatedBy(id + "stepInBottom", EntityType.BODY)])
                 });
             }
 
@@ -310,7 +314,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "tools"   : qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE),
                 "targets" : qOwnedByBody(qCreatedBy(id + "stopSide",   EntityType.BODY), EntityType.FACE)
         });
-        setProperty(context, { "entities" : qCreatedBy(id + "stopIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop intersection" });
 
         opExtractWires(context, id + "stopWireExtract", {
                 "edges" : qCreatedBy(id + "stopIntersect", EntityType.EDGE)
@@ -321,9 +324,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         if (!definition.debugKeepAllBodies)
         {
             opDeleteBodies(context, id + "deleteStopCopies", {
-                    "entities" : qUnion([qCreatedBy(id + "stopBottom",    EntityType.BODY),
-                                         qCreatedBy(id + "stopSide",      EntityType.BODY),
-                                         qCreatedBy(id + "stopIntersect", EntityType.BODY)])
+                    "entities" : qUnion([qCreatedBy(id + "stopBottom", EntityType.BODY),
+                                         qCreatedBy(id + "stopSide",   EntityType.BODY)])
             });
         }
 
