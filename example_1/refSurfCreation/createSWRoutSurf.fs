@@ -187,8 +187,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         {
             opPattern(context, id + "stepInSide", {
                     "entities"      : definition.sideSheet,
-                    "transforms"    : [transform(-definition.swRoutStepin * sideNormal)],
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
                     "instanceNames" : ["1"]
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (copy)" });
+
+            opOffsetFace(context, id + "stepInSideOffset", {
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stepInSide", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : -definition.swRoutStepin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (offset copy)" });
 
