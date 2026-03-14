@@ -307,7 +307,7 @@ dead code reaching for this same axis. Remove it.
 ---
 
 ## Resolved Questions
-- **KEEP_FRONT correctness**: Ski geometry always lives in +Y. Onshape front plane = XZ plane. KEEP_FRONT retains the +Y half. ✓
+- **KEEP_FRONT vs KEEP_BACK**: Ski geometry lives in +Y. Onshape front plane = XZ plane. `KEEP_BACK` retains the +Y half — `KEEP_FRONT` retains -Y (confirmed empirically on wire bodies).
 - **Top edge identification in `generateDummyTopSurf`**: Use `qEdgeTopologyFilter(sideSheetEdges, EdgeTopology.ONE_SIDED)` → `opExtractWires` → 2 wire bodies → pick the one with highest average Z. The side surface may have many edges on each boundary, so extract-wires is the right consolidation step.
 - **`generateDummyTopSurf` refactored approach**:
   1. `qEdgeTopologyFilter` on side surface → ONE_SIDED edges

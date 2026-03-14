@@ -218,11 +218,11 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
                 isLength(region.regionEnd, LENGTH_BOUNDS);
             }
 
-            annotation { "Name" : "Start offset",
+            annotation { "Name" : "Start offset/SW height",
                          "Description" : "Sidewall height or cavity depth at the start of this region" }
             isLength(region.startOffset, RegionOffsetBounds);
 
-            annotation { "Name" : "End offset",
+            annotation { "Name" : "End offset/SW height",
                          "Description" : "Sidewall height or cavity depth at the end of this region" }
             isLength(region.endOffset, RegionOffsetBounds);
 

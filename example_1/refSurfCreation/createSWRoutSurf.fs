@@ -121,7 +121,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         opSplitPart(context, id + "splitStartWire", {
                 "targets"  : startWire,
                 "tool"     : qFrontPlane(EntityType.FACE),
-                "keepType" : SplitOperationKeepType.KEEP_FRONT
+                "keepType" : SplitOperationKeepType.KEEP_BACK
         });
 
         if (definition.debugPrintBSplines)
@@ -176,7 +176,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             opSplitPart(context, id + "splitStepInWire", {
                     "targets"  : stepInWire,
                     "tool"     : qFrontPlane(EntityType.FACE),
-                    "keepType" : SplitOperationKeepType.KEEP_FRONT
+                    "keepType" : SplitOperationKeepType.KEEP_BACK
             });
 
             if (definition.debugPrintBSplines)
@@ -216,7 +216,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         opSplitPart(context, id + "splitStopWire", {
                 "targets"  : stopWire,
                 "tool"     : qFrontPlane(EntityType.FACE),
-                "keepType" : SplitOperationKeepType.KEEP_FRONT
+                "keepType" : SplitOperationKeepType.KEEP_BACK
         });
 
         if (definition.debugPrintBSplines)
