@@ -64,6 +64,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
+            annotation { "Name" : "Return wires only", "Default" : false }
+            definition.debugReturnWires is boolean;
+
             annotation { "Name" : "Print wire BSplines", "Default" : false }
             definition.debugPrintBSplines is boolean;
 
@@ -204,93 +207,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
         }
 
-        // --- Loft the rout surface using full (un-split) wires ---
-        // opExtractWires assigns an arbitrary traversal direction to each wire body. The two profile
-        // wires may end up traversed in opposite directions, causing LOFT_DIRECTION_ERROR.
-        // Fix: provide a connections entry that aligns the nearest endpoint vertex pair across the
-        // two profiles. This gives the loft kernel an unambiguous direction reference.
         var hasStepIn = definition.swRoutStepin > 0 * millimeter;
-        var profile1B = hasStepIn ? stepInWire : startWire;
-        opLoft(context, id + "loft1", {
-                "profileSubqueries" : [stopWire, profile1B],
-                "connections"       : buildLoftConnection(context, stopWire, profile1B),
-                "bodyType"          : ToolBodyType.SURFACE
-        });
-        if (hasStepIn)
-        {
-            opLoft(context, id + "loft2", {
-                    "profileSubqueries" : [stepInWire, startWire],
-                    "connections"       : buildLoftConnection(context, stepInWire, startWire),
-                    "bodyType"          : ToolBodyType.SURFACE
-            });
-            // loft1 body identity is preserved through the union (first tool survives opBoolean UNION)
-            opBoolean(context, id + "combineSurfs", {
-                    "tools"         : qUnion([qCreatedBy(id + "loft1", EntityType.BODY), qCreatedBy(id + "loft2", EntityType.BODY)]),
-                    "operationType" : BooleanOperationType.UNION
-            });
-        }
 
-        var loftBody = qCreatedBy(id + "loft1", EntityType.BODY);
-
-        // Delete profile wires — no longer needed.
-        var wireBodiesToDelete = hasStepIn
-            ? qUnion([startWire, stepInWire, stopWire])
-            : qUnion([startWire, stopWire]);
-        opDeleteBodies(context, id + "deleteProfileWires", {
-                "entities" : wireBodiesToDelete
-        });
-
-        // --- Split the loft surface at front plane; keep +Y half ---
-        opSplitPart(context, id + "surfSplit", {
-                "targets"  : loftBody,
-                "tool"     : qFrontPlane(EntityType.FACE),
-                "keepType" : SplitOperationKeepType.KEEP_FRONT
-        });
-
-        // --- Find outside edges (those coincident with the original side surface) ---
-        var loftOneSidedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(loftBody, EntityType.EDGE), EdgeTopology.ONE_SIDED));
-        var outsideEdges = [];
-        for (var edge in loftOneSidedEdges)
-        {
-            var midPoint   = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
-            var distToSide = evDistance(context, { "side0" : midPoint, "side1" : definition.sideSheet }).distance;
-            if (distToSide < 1e-5 * meter)
-            {
-                outsideEdges = append(outsideEdges, edge);
-            }
-        }
-
-        // Extend outside edges — by cutter radius if endpoints are specified, else by bottomExtension.
-        var extendDistance = definition.specSWRoutEndpoints ? definition.cutterBottomRadius : definition.bottomExtension;
-        if (extendDistance > 0 * millimeter)
-        {
-            extendSurface(context, id + "extendOutside", {
-                    "entities"           : qUnion(outsideEdges),
-                    "tangentPropagation" : true,
-                    "endCondition"       : ExtendBoundingType.BLIND,
-                    "oppositeDirection"  : false,
-                    "extendDistance"     : extendDistance,
-                    "maintainCurvature"  : true
-            });
-        }
-
-        // --- Endpoint trimming ---
-        if (definition.specSWRoutEndpoints)
-        {
-            var refWirePath = constructPath(context, qOwnedByBody(definition.refWire, EntityType.EDGE));
-
-            if (!isQueryEmpty(context, definition.startPointQ))
-            {
-                trimSWRout(context, id + "trimStart", loftBody, refWirePath, definition.startPointQ, definition.sideSheet, definition.cutterBottomRadius);
-            }
-            if (!isQueryEmpty(context, definition.stopPointQ))
-            {
-                trimSWRout(context, id + "trimStop", loftBody, refWirePath, definition.stopPointQ, definition.sideSheet, definition.cutterBottomRadius);
-            }
-        }
-
-        // Top trim deferred — a top reference surface (projection of side top edges onto XZ plane)
-        // will be used to remove the 2 mm overshoot once available.
+        // --- Debug: return wires only ---
+        // When enabled, all profile wires are left in place and the feature returns early.
+        // Use this to inspect wire geometry and manually verify loftability in Onshape.
+        if (definition.debugReturnWires)
+            return;
     });
 
 /**
@@ -440,7 +363,7 @@ function buildLoftConnection(context is Context, wireA is Query, wireB is Query)
     }
     return [{
         "connectionEntities"       : qUnion([bestA, bestB]),
-        "connectionEdgeQueries"    : qUnion([]),
+        "connectionEdges"          : [],
         "connectionEdgeParameters" : []
     }];
 }

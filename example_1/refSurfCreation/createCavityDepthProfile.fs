@@ -24,7 +24,7 @@ export enum RegionType
 {
     LINEAR,
     QUADRATIC,
-    LOGISTIC
+    SMOOTH
 }
 
 export enum RegionExtentType
@@ -65,6 +65,17 @@ export function generateCavityDepthProfileEditingLogic(context is Context, id is
     }
     if (pathInfo == undefined)
         return definition;
+
+    // Auto-name regions that have no user-supplied name
+    var namedRegions = [];
+    for (var i = 0; i < size(definition.regions); i += 1)
+    {
+        var reg = definition.regions[i];
+        if (reg.regionName == "" || reg.regionName == undefined)
+            reg.regionName = "Region " ~ toString(i + 1);
+        namedRegions = append(namedRegions, reg);
+    }
+    definition.regions = namedRegions;
 
     var sortedRegions = [];
     try silent
@@ -600,7 +611,7 @@ function profileValueAt(t is number, region is map) returns ValueWithUnits
         else // AT_START (default)
             s = t * t;
     }
-    else // LOGISTIC
+    else // SMOOTH (smootherstep: C2 at both endpoints)
     {
         s = t * t * t * (10 + t * (6 * t - 15));
     }
@@ -701,14 +712,17 @@ function computeHeightAtParam(context is Context, definition is map, region is m
 function computeHeightDerivativesAtParam(context is Context, definition is map, region is map,
     pathInfo is map, tPath is number) returns map
 {
-    var dt     = 1e-4;
-    var hPlus  = computeHeightAtParam(context, definition, region, pathInfo, tPath + dt);
+    var dt    = 1e-4;
+    var tHi   = min(tPath + dt, 1.0);
+    var tLo   = max(tPath - dt, 0.0);
+    var h     = (tHi - tLo) / 2; // effective half-step (may be less than dt near endpoints)
+    var hPlus  = computeHeightAtParam(context, definition, region, pathInfo, tHi);
     var hMid   = computeHeightAtParam(context, definition, region, pathInfo, tPath);
-    var hMinus = computeHeightAtParam(context, definition, region, pathInfo, tPath - dt);
+    var hMinus = computeHeightAtParam(context, definition, region, pathInfo, tLo);
     return {
         "h"     : hMid,
-        "slope" : (hPlus - hMinus) / (2 * dt),
-        "curv"  : (hPlus - 2 * hMid + hMinus) / (dt * dt)
+        "slope" : (hPlus - hMinus) / (2 * h),
+        "curv"  : (hPlus - 2 * hMid + hMinus) / (h * h)
     };
 }
 
@@ -908,6 +922,27 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         var tBlendStart = regA.tEnd   - intr.startDist / pathInfo.length;
         var tBlendEnd   = regB.tStart + intr.endDist   / pathInfo.length;
 
+        if (tBlendStart < regA.tStart)
+        {
+            reportFeatureWarning(context, id, "Blend start distance between '" ~ regA.regionName ~
+                "' and '" ~ regB.regionName ~ "' exceeds the extent of '" ~ regA.regionName ~
+                "'. Clamping to region start.");
+            tBlendStart = regA.tStart;
+        }
+        if (tBlendEnd > regB.tEnd)
+        {
+            reportFeatureWarning(context, id, "Blend end distance between '" ~ regA.regionName ~
+                "' and '" ~ regB.regionName ~ "' exceeds the extent of '" ~ regB.regionName ~
+                "'. Clamping to region end.");
+            tBlendEnd = regB.tEnd;
+        }
+        if (tBlendStart >= tBlendEnd)
+        {
+            reportFeatureWarning(context, id, "Blend zone between '" ~ regA.regionName ~
+                "' and '" ~ regB.regionName ~ "' has zero or negative length after clamping. Skipping blend.");
+            continue;
+        }
+
         blendZones = append(blendZones, {
             "tBlendStart" : tBlendStart,
             "tBlendEnd"   : tBlendEnd,
@@ -933,7 +968,12 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         }
 
         if (tSegEnd - tSegStart < 1e-6)
-            continue; // blend consumed entire region extent
+        {
+            reportFeatureWarning(context, id, "Region '" ~ reg.regionName ~
+                "' was fully consumed by adjacent blend zones and produced no output. " ~
+                "Reduce blend distances or expand the region extent.");
+            continue;
+        }
 
         var pts = generateSegmentPoints(context, definition, pathInfo, reg, tSegStart, tSegEnd);
         if (size(pts) < 2)

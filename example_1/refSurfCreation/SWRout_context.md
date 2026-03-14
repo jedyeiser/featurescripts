@@ -155,8 +155,8 @@ them as a connection entry. This gives the loft kernel an unambiguous direction 
 // connections array entry — vertex-only (no edge params needed)
 {
     "connectionEntities"       : qUnion([vertexOnWireA, vertexOnWireB]),
-    "connectionEdgeQueries"    : qUnion([]),   // empty — no edge entries
-    "connectionEdgeParameters" : []            // must match size of evaluated connectionEdgeQueries
+    "connectionEdges"          : [],   // array of edge queries — empty for vertex-only
+    "connectionEdgeParameters" : []    // must match size of connectionEdges
 }
 ```
 
@@ -175,15 +175,14 @@ for (var va in vertsA) {
 }
 ```
 
-**Structure notes (from loft.fs source):**
-- `loft.fs` internally calls `evaluateQuery(context, connection.connectionEdgeQueries)` → stores as
-  `connectionEdges`. Size check: `size(connectionEdges) == size(connectionEdgeParameters)`. Both
-  empty → passes. ✓
-- `connectionEntities` vertices are passed through to the `builtin_opLoft` kernel for alignment.
-- The manipulator code only activates for non-empty `connectionEdgeQueries` — skipped for
-  vertex-only connections.
+**Structure notes:**
+- Public API field is `connectionEdges` (array of Query), NOT `connectionEdgeQueries`.
+  `connectionEdgeQueries` is an internal loft.fs UI field — passing it to `opLoft` directly causes
+  "Map does not contain field 'connectionEdges'" error.
+- Size check: `size(connectionEdges) == size(connectionEdgeParameters)`. Both empty → passes. ✓
+- `connectionEntities` vertices go directly to the `builtin_opLoft` kernel for alignment.
 - For edge connections (if needed): `connectionEntities` = union including the edge,
-  `connectionEdgeQueries` = union of just the edges, `connectionEdgeParameters` = [paramValue] per edge.
+  `connectionEdges` = [edgeQuery], `connectionEdgeParameters` = [paramValue].
 
 **Why not guide curves?** Guide curves require creating additional wire geometry (line between
 midpoints), which adds complexity. Vertex connections are cleaner for endpoint alignment.
