@@ -519,21 +519,39 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var approxScale = totalChord;
 
-                    // Approximation: positions only — derivative constraints are applied
-                    // by enforceEndpointDerivatives below. Passing startDerivative/endDerivative
-                    // to approximateSpline alongside interpolateIndices can over-constrain the
-                    // solver, causing "No approximation found" fallback → BAD_GEOMETRY.
+                    // Use same pattern as offset curves: derivative constraints as hard solver
+                    // constraints (no interpolateIndices), then snap endpoints to exact positions.
+                    // enforceEndpointDerivatives had a 20% guard that could silently skip correction;
+                    // passing derivatives directly into the solver guarantees tangent continuity.
+                    var wrappedTargetDef = { "positions": segPoints };
+                    if (carryOverTangent != undefined)
+                        wrappedTargetDef = mergeMaps(wrappedTargetDef, { "startDerivative": carryOverTangent * approxScale });
+                    if (junctionTangent != undefined)
+                        wrappedTargetDef = mergeMaps(wrappedTargetDef, { "endDerivative": junctionTangent * approxScale });
                     var approxDef = {
-                        "targets"            : [approximationTarget({ "positions": segPoints })],
-                        "tolerance"          : definition.approximationTolerance,
-                        "maxControlPoints"   : definition.approximationMaxCPs,
-                        "degree"             : degree,
-                        "isPeriodic"         : false,
-                        "interpolateIndices" : [0, size(segPoints) - 1] };
+                        "targets"          : [approximationTarget(wrappedTargetDef)],
+                        "tolerance"        : definition.approximationTolerance,
+                        "maxControlPoints" : definition.approximationMaxCPs,
+                        "degree"           : degree,
+                        "isPeriodic"       : false
+                    };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
-                    mappedCurve = enforceEndpointDerivatives(mappedCurve,
-                        carryOverTangent != undefined ? carryOverTangent * approxScale : undefined,
-                        junctionTangent  != undefined ? junctionTangent  * approxScale : undefined);
+                    // Snap CP[0] and CP[-1] to exact input positions (same as offset curves).
+                    {
+                        var cps = mappedCurve.controlPoints;
+                        var m   = size(cps) - 1;
+                        var snapped = [];
+                        for (var ci = 0; ci <= m; ci += 1)
+                        {
+                            if (ci == 0)
+                                snapped = append(snapped, segPoints[0]);
+                            else if (ci == m)
+                                snapped = append(snapped, segPoints[size(segPoints) - 1]);
+                            else
+                                snapped = append(snapped, cps[ci]);
+                        }
+                        mappedCurve = mergeMaps(mappedCurve, { "controlPoints": snapped });
+                    }
 
                     if (definition.debugWrappedCurves)
                     {

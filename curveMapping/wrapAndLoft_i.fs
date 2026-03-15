@@ -194,7 +194,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             
             annotation { "Group Name" : "Sampling options", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the source edge control points" }
+                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the source edge control points" }
                 definition.sourceSamplingMode is SamplingMode;
                 
                 if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
@@ -208,7 +208,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     isLength(definition.samplingDensity, samplingDensityBounds);
                 }
     
-                annotation { "Name" : "Reference sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if reference edges  (to/from curves) should be sampled based on length between sampling points, or as an integer multiple of the source edge control points"  }
+                annotation { "Name" : "Reference sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if reference edges  (to/from curves) should be sampled based on length between sampling points, or as an integer multiple of the source edge control points"  }
                 definition.referenceSamplingMode is SamplingMode;
     
                 if (definition.referenceSamplingMode == SamplingMode.CP_BASED)

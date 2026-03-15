@@ -84,7 +84,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Setup", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the edge control points" }
+            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the edge control points" }
             definition.sourceSamplingMode is SamplingMode;
 
             if (definition.sourceSamplingMode == SamplingMode.CP_BASED)

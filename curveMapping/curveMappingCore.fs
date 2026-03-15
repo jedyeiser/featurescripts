@@ -13,7 +13,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 // IMPORT: tools/point_projection.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
 
-export const samplingDensityBounds = {(millimeter) : [.1, 1, 10]} as LengthBoundSpec;
+export const samplingDensityBounds = {(millimeter) : [.1, 10, 200]} as LengthBoundSpec;
 
 export enum SamplingMode
 {
