@@ -36,7 +36,7 @@ export const ShelfSamplingDensityBounds = {(unitless)   : [5,    50, 500]}  as I
 export const ShelfApproxDegreeBounds    = {(unitless)   : [2,     3,   5]}  as IntegerBoundSpec;
 export const ShelfApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]} as LengthBoundSpec;
 export const ShelfApproxMaxCPBounds     = {(unitless)   : [10,  100, 500]}  as IntegerBoundSpec;
-export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   4]}  as IntegerBoundSpec;
+export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   5]}  as IntegerBoundSpec;
 
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
@@ -274,8 +274,8 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                          "Driving Parameter" : "debugStepThrough",
                          "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1-4)", "UIHint" : UIHint.SHOW_LABEL,
-                             "Description" : "1=ref path  2=outward check  3=offset points  4=output curves" }
+                annotation { "Name" : "Step (1-5)", "UIHint" : UIHint.SHOW_LABEL,
+                             "Description" : "1=ref path  2=outward check  3=offset points  4=output curves  5=surfaces" }
                 isInteger(definition.debugStep, ShelfDebugStepBounds);
             }
 
@@ -388,6 +388,12 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                                 "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y wire" });
         setProperty(context, { "entities" : insideMinusWire,
                                 "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y wire" });
+
+        if (definition.debugStepThrough && definition.debugStep == 4) return;
+
+        // ── Step 5: Surfaces ──────────────────────────────────────────────────
+        // TODO: loft shelf surface from +Y/-Y shelf wires; offset inward for inside surface
+
     });
 
 

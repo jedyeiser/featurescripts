@@ -25,7 +25,6 @@ export const SWStepInBounds         = {(millimeter) : [0,    0,   3]} as LengthB
 export const cutterRadiusBounds     = {(millimeter) : [2,   10,  20]} as LengthBoundSpec;
 export const DEBUG_STEP_BOUNDS      = { (unitless) : [0, 1, 9] } as IntegerBoundSpec;
 
-const WASH_SLIVER_THRESHOLD = 1 * millimeter;
 
 annotation { "Feature Type Name" : "Sidewall rout surface", "Feature Type Description" : "Creates a SW rout surface based on inputs" }
 export const SWRout = defineFeature(function(context is Context, id is Id, definition is map)
@@ -128,9 +127,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             println("  swRoutStepin    = " ~ toString(definition.swRoutStepin));
         }
 
-        // Washed wire queries — assigned as each intersection wire is created,
-        // used in loft steps. washWire deletes the raw wire and returns a qUnion
-        // of cleaned single-edge bodies with slivers removed.
+        // Rebuilt wire queries — assigned as each intersection wire is created,
+        // used in loft steps. rebuildWire deletes the raw multi-edge wire and
+        // returns a single-edge BSpline body.
         var washedInitialWire = undefined;
         var washedStartWire   = undefined;
         var washedStepInWire  = undefined;
@@ -145,7 +144,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : definition.bottomSheet,
                     "group2" : definition.sideSheet
             });
-            washedInitialWire = washWire(context, id + "washInitial", qCreatedBy(id + "initialWire", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            washedInitialWire = rebuildWire(context, id + "rebuildInitial", qCreatedBy(id + "initialWire", EntityType.BODY));
             setProperty(context, { "entities" : washedInitialWire, "propertyType" : PropertyType.NAME, "value" : "Initial wire" });
 
             opPattern(context, id + "bottomCopy", {
@@ -180,7 +179,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "group2" : qCreatedBy(id + "bottomCopy",  EntityType.BODY)
                 });
                 
-            washedStartWire = washWire(context, id + "washStart", qCreatedBy(id + "startIntersect", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            washedStartWire = rebuildWire(context, id + "rebuildStart", qCreatedBy(id + "startIntersect", EntityType.BODY));
             setProperty(context, { "entities" : washedStartWire, "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
             if (definition.debugPrint)
@@ -207,7 +206,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
 
             
-            washedStepInWire = washWire(context, id + "washStepIn", qCreatedBy(id + "stepInIntersection", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            washedStepInWire = rebuildWire(context, id + "rebuildStepIn", qCreatedBy(id + "stepInIntersection", EntityType.BODY));
             setProperty(context, { "entities" : washedStepInWire, "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
             if (definition.debugPrint)
@@ -315,7 +314,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : sideCopyQ,
                     "group2" : bottomCopyQ
             });
-            washedStopWire = washWire(context, id + "washStop", qCreatedBy(id + "stopWire", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            washedStopWire = rebuildWire(context, id + "rebuildStop", qCreatedBy(id + "stopWire", EntityType.BODY));
             setProperty(context, { "entities" : washedStopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
 
             if (definition.debugPrint)
@@ -586,23 +585,21 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     return wireBodies[topIdx];
 }
 
-// Removes sliver edges (chord length < sliverThreshold) from a wire body.
-// For each sliver, the two neighboring real edges are re-approximated to meet at
-// the sliver midpoint. When neighbor tangents are within 5 degrees (G1), derivative
-// pinning preserves tangent continuity at the merged endpoint.
-// Returns the original wireBody unchanged if no slivers are found.
-// Otherwise deletes the original and returns a qUnion of the new edge bodies.
-function washWire(context is Context, id is Id, wireBody is Query, sliverThreshold is ValueWithUnits) returns Query
+// Rebuilds a multi-edge wire as a single BSpline edge body.
+// Walks the edges in chain order, samples each one, and fits one approximateSpline
+// through the full point sequence. Slivers are absorbed naturally by the fit.
+// Returns the wire unchanged if it already has a single edge.
+// Otherwise deletes the original and returns the new single-edge wire body.
+function rebuildWire(context is Context, id is Id, wireBody is Query) returns Query
 {
-    const G1_THRESHOLD   = 5 * degree;
     const RESAMPLE_COUNT = 20;
     const CHAIN_TOL      = 1e-5 * meter;
 
     var allEdges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
     var n = size(allEdges);
-    if (n == 0) { return wireBody; }
+    if (n <= 1) { return wireBody; }
 
-    // Collect endpoints at parameter 0 and 1 for each edge
+    // Collect endpoints for chain walking
     var ePt0 = [];
     var ePt1 = [];
     for (var edge in allEdges)
@@ -627,7 +624,7 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
         if (isStart) { startIdx = i; break; }
     }
 
-    // Walk the chain in order, tracking traversal direction per edge
+    // Walk the chain
     var orderedIdx = [startIdx];
     var orderedFwd = [true];
     var visited    = {};
@@ -659,125 +656,24 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
         }
     }
 
-    var m = size(orderedIdx);
-
-    // Chord lengths for sliver detection
-    var chordLen = [];
-    for (var i = 0; i < m; i += 1)
+    // Sample all edges in chain order into one point array
+    var allPts = [];
+    for (var i = 0; i < size(orderedIdx); i += 1)
     {
-        var idx = orderedIdx[i];
-        chordLen = append(chordLen, norm(ePt1[idx] - ePt0[idx]));
-    }
-
-    // Early exit if no slivers
-    var hasSlivers = false;
-    for (var i = 0; i < m; i += 1)
-    {
-        if (chordLen[i] < sliverThreshold) { hasSlivers = true; break; }
-    }
-    if (!hasSlivers) { return wireBody; }
-
-    // Per-edge endpoint and derivative overrides
-    var startPtOverride  = [];
-    var endPtOverride    = [];
-    var startDirOverride = [];
-    var endDirOverride   = [];
-    for (var i = 0; i < m; i += 1)
-    {
-        startPtOverride  = append(startPtOverride,  undefined);
-        endPtOverride    = append(endPtOverride,    undefined);
-        startDirOverride = append(startDirOverride, undefined);
-        endDirOverride   = append(endDirOverride,   undefined);
-    }
-
-    for (var i = 0; i < m; i += 1)
-    {
-        if (chordLen[i] >= sliverThreshold) { continue; }
-
-        var prevI = i - 1;
-        var nextI = i + 1;
-        while (prevI >= 0 && chordLen[prevI] < sliverThreshold) { prevI = prevI - 1; }
-        while (nextI < m  && chordLen[nextI] < sliverThreshold) { nextI = nextI + 1; }
-        if (prevI < 0 || nextI >= m) { continue; }
-
-        // Sliver midpoint as merge target
-        var sIdx = orderedIdx[i];
-        var sFwd = orderedFwd[i];
-        var mergePoint = ((sFwd ? ePt0[sIdx] : ePt1[sIdx]) + (sFwd ? ePt1[sIdx] : ePt0[sIdx])) * 0.5;
-
-        // Tangent at end of prev real edge (pointing toward sliver)
-        var pIdx   = orderedIdx[prevI];
-        var pFwd   = orderedFwd[prevI];
-        var pLine  = evEdgeTangentLine(context, { "edge" : allEdges[pIdx], "parameter" : pFwd ? 1.0 : 0.0 });
-        var pDir   = pFwd ? pLine.direction : -pLine.direction;
-
-        // Tangent at start of next real edge (pointing away from sliver)
-        var nIdx   = orderedIdx[nextI];
-        var nFwd   = orderedFwd[nextI];
-        var nLine  = evEdgeTangentLine(context, { "edge" : allEdges[nIdx], "parameter" : nFwd ? 0.0 : 1.0 });
-        var nDir   = nFwd ? nLine.direction : -nLine.direction;
-
-        var cosA = dot(pDir, nDir);
-        if (cosA >  1.0) { cosA =  1.0; }
-        if (cosA < -1.0) { cosA = -1.0; }
-        var isG1 = acos(cosA) < G1_THRESHOLD;
-
-        endPtOverride[prevI]   = mergePoint;
-        startPtOverride[nextI] = mergePoint;
-        if (isG1)
-        {
-            var sharedDir = normalize(pDir + nDir);
-            endDirOverride[prevI]   = sharedDir;
-            startDirOverride[nextI] = sharedDir;
-        }
-    }
-
-    // Collect all sample points from non-sliver edges in chain order into one array.
-    // Skip the first point of each subsequent segment to avoid duplicating join points.
-    var allPts       = [];
-    var startDir     = undefined;
-    var endDir       = undefined;
-    var firstSegment = true;
-    for (var i = 0; i < m; i += 1)
-    {
-        if (chordLen[i] < sliverThreshold) { continue; }
-
-        var idx  = orderedIdx[i];
-        var fwd  = orderedFwd[i];
-        var edge = allEdges[idx];
-
-        var segPts = [];
-        for (var k = 0; k <= RESAMPLE_COUNT; k += 1)
+        var idx    = orderedIdx[i];
+        var fwd    = orderedFwd[i];
+        var edge   = allEdges[idx];
+        var kStart = (size(allPts) == 0) ? 0 : 1;
+        for (var k = kStart; k <= RESAMPLE_COUNT; k += 1)
         {
             var t     = k / RESAMPLE_COUNT;
             var param = fwd ? t : (1.0 - t);
-            segPts = append(segPts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : param }).origin);
-        }
-        if (startPtOverride[i] != undefined) { segPts[0] = startPtOverride[i]; }
-        if (endPtOverride[i]   != undefined) { segPts[size(segPts) - 1] = endPtOverride[i]; }
-
-        // Capture wire-level start/end derivatives from the first and last real edges
-        if (firstSegment)
-        {
-            if (startDirOverride[i] != undefined) { startDir = startDirOverride[i]; }
-            firstSegment = false;
-        }
-        if (endDirOverride[i] != undefined) { endDir = endDirOverride[i]; }
-
-        // Skip first point on all but the first segment to avoid duplicating the join
-        var kStart = (size(allPts) == 0) ? 0 : 1;
-        for (var k = kStart; k < size(segPts); k += 1)
-        {
-            allPts = append(allPts, segPts[k]);
+            allPts = append(allPts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : param }).origin);
         }
     }
 
-    var targetDef = { "positions" : allPts };
-    if (startDir != undefined) { targetDef["startDerivative"] = startDir; }
-    if (endDir   != undefined) { targetDef["endDerivative"]   = endDir; }
-
-    var cleanedCurve = approximateSpline(context, {
-            "targets"          : [approximationTarget(targetDef)],
+    var curve = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : allPts })],
             "degree"           : 3,
             "tolerance"        : 1e-5 * meter,
             "isPeriodic"       : false,
@@ -785,53 +681,8 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
     })[0];
 
     opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-    opCreateBSplineCurve(context, id + "cleanedWire", { "bSplineCurve" : cleanedCurve });
-    return qCreatedBy(id + "cleanedWire", EntityType.BODY);
-}
-
-/**
- * Returns a single-entry connections array that aligns the nearest endpoint vertex pair
- * between wireA and wireB. Resolves LOFT_DIRECTION_ERROR caused by opExtractWires
- * assigning an arbitrary traversal direction to each wire body.
- *
- * The connection entry uses only vertex entities (no edge params needed). opLoft processes
- * connectionEdgeQueries/connectionEdgeParameters only for edge entities; empty arrays are
- * valid when connectionEntities contains only vertices.
- *
- * Returns [] if either wire is closed (no vertices) — caller should handle fallback.
- */
-function buildLoftConnection(context is Context, wireA is Query, wireB is Query) returns array
-{
-    var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
-    var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
-    if (size(vertsA) == 0 || size(vertsB) == 0)
-    {
-        return [];
-    }
-
-    // Find the nearest vertex pair across the two wires — these are geometrically corresponding
-    // endpoints (e.g. both at the tail end), giving the loft a consistent direction reference.
-    var minDist = 1e10 * meter;
-    var bestA   = vertsA[0];
-    var bestB   = vertsB[0];
-    for (var va in vertsA)
-    {
-        for (var vb in vertsB)
-        {
-            var d = evDistance(context, { "side0" : va, "side1" : vb }).distance;
-            if (d < minDist)
-            {
-                minDist = d;
-                bestA   = va;
-                bestB   = vb;
-            }
-        }
-    }
-    return [{
-        "connectionEntities"       : qUnion([bestA, bestB]),
-        "connectionEdges"          : [],
-        "connectionEdgeParameters" : []
-    }];
+    opCreateBSplineCurve(context, id + "rebuiltWire", { "bSplineCurve" : curve });
+    return qCreatedBy(id + "rebuiltWire", EntityType.BODY);
 }
 
 /**
