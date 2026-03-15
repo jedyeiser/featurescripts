@@ -656,9 +656,7 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
         }
     }
 
-    // Sample all edges in chain order into one point array.
-    // Skip edges shorter than MIN_CHORD -- near-duplicate points from slivers
-    // cause approximateSpline to fail with BAD_GEOMETRY.
+    // Sample all edges in chain order, skipping slivers to avoid near-duplicate points
     const MIN_CHORD = 0.5 * millimeter;
     var allPts = [];
     for (var i = 0; i < size(orderedIdx); i += 1)
@@ -673,6 +671,70 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
             var t     = k / RESAMPLE_COUNT;
             var param = fwd ? t : (1.0 - t);
             allPts = append(allPts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : param }).origin);
+        }
+    }
+
+    // The intersection wire is a closed loop. Split at y=0, keeping only the y>=0
+    // half. Insert interpolated boundary points exactly at y=0 so the open arc
+    // has clean endpoints for approximateSpline.
+    var hasNegY = false;
+    for (var pt in allPts)
+    {
+        if (pt[1] < 0 * meter) { hasNegY = true; break; }
+    }
+
+    if (hasNegY)
+    {
+        var nPts = size(allPts);
+
+        // Find the y<0 -> y>=0 transition (with wrap-around)
+        var transitionIn = -1;
+        for (var i = 0; i < nPts; i += 1)
+        {
+            var j = i + 1;
+            if (j >= nPts) { j = 0; }
+            if (allPts[i][1] < 0 * meter && allPts[j][1] >= 0 * meter)
+            {
+                transitionIn = i;
+                break;
+            }
+        }
+
+        if (transitionIn != -1)
+        {
+            var filteredPts = [];
+
+            // Interpolated start point at y=0
+            var i0 = transitionIn;
+            var i1 = transitionIn + 1;
+            if (i1 >= nPts) { i1 = 0; }
+            var t0 = (-allPts[i0][1]) / (allPts[i1][1] - allPts[i0][1]);
+            filteredPts = append(filteredPts, allPts[i0] + t0 * (allPts[i1] - allPts[i0]));
+
+            // Collect y>=0 points until the y>=0 -> y<0 transition
+            var transitionOut = -1;
+            for (var k = 1; k <= nPts; k += 1)
+            {
+                var idx = transitionIn + k;
+                if (idx >= nPts) { idx = idx - nPts; }
+                if (allPts[idx][1] < 0 * meter)
+                {
+                    transitionOut = idx;
+                    break;
+                }
+                filteredPts = append(filteredPts, allPts[idx]);
+            }
+
+            // Interpolated end point at y=0
+            if (transitionOut != -1)
+            {
+                var lastPt = filteredPts[size(filteredPts) - 1];
+                var nextPt = allPts[transitionOut];
+                var tEnd   = lastPt[1] / (lastPt[1] - nextPt[1]);
+                filteredPts = append(filteredPts, lastPt + tEnd * (nextPt - lastPt));
+            }
+
+            allPts = filteredPts;
         }
     }
 

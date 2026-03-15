@@ -1088,15 +1088,11 @@ function buildShelfWires(context is Context, id is Id, definition is map, pathIn
             buildShelfWire(context, id + ("seg" ~ toString(i)), definition, pts));
     }
 
-    if (size(segWires) == 1)
-        return segWires[0];
-
-    // Merge all segment wire bodies into one wire body
-    opBoolean(context, id + "merge", {
-        "tools"         : qUnion(segWires),
-        "operationType" : BooleanType.UNION
-    });
-    return qCreatedBy(id + "merge", EntityType.BODY);
+    // Return a union query covering all segment bodies.
+    // opBoolean does not support wire-body unions; each segment remains its
+    // own body but they share the same name via the setProperty call in the
+    // main feature body.
+    return qUnion(segWires);
 }
 
 
