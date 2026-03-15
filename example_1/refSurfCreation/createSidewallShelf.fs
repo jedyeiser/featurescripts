@@ -479,14 +479,31 @@ function extractShelfRails(context is Context, id is Id, outsideSurface is Query
     if (size(toDelete) > 0)
         opDeleteBodies(context, id + "deleteExtra", { "entities" : qUnion(toDelete) });
 
-    var topPath    = constructPath(context, qOwnedByBody(wireBodies[topIdx],    EntityType.EDGE));
-    var bottomPath = constructPath(context, qOwnedByBody(wireBodies[bottomIdx], EntityType.EDGE));
+    var topWire    = wireBodies[topIdx];
+    var bottomWire = wireBodies[bottomIdx];
+
+    // The outside surface boundary loops wrap around both +Y and -Y ski halves.
+    // Split at the front plane (XZ plane, Y=0) and keep the +Y side (KEEP_BACK),
+    // matching the same convention used in createSWRoutSurf.
+    opSplitPart(context, id + "splitTop", {
+        "targets"  : topWire,
+        "tool"     : qFrontPlane(EntityType.FACE),
+        "keepType" : SplitOperationKeepType.KEEP_BACK
+    });
+    opSplitPart(context, id + "splitBottom", {
+        "targets"  : bottomWire,
+        "tool"     : qFrontPlane(EntityType.FACE),
+        "keepType" : SplitOperationKeepType.KEEP_BACK
+    });
+
+    var topPath    = constructPath(context, qOwnedByBody(topWire,    EntityType.EDGE));
+    var bottomPath = constructPath(context, qOwnedByBody(bottomWire, EntityType.EDGE));
 
     return {
         "topPath"    : topPath,
         "bottomPath" : bottomPath,
-        "topWire"    : wireBodies[topIdx],
-        "bottomWire" : wireBodies[bottomIdx]
+        "topWire"    : topWire,
+        "bottomWire" : bottomWire
     };
 }
 

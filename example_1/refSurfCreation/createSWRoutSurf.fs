@@ -93,10 +93,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var step        = definition.debugStep;
 
         // --- Get face normals to determine offset directions ---
-        // evFaceTangentPlane at parameter (0.5, 0.5) = centre of the face's parameter space.
-        // The returned plane's normal is a unitless unit vector pointing away from the face.
-        // Multiplying by a length gives a translation vector; opPattern copies the surface
-        // without any direct-edit kernel call.
         var bottomNormal = evFaceTangentPlane(context, {
                 "face"      : qNthElement(qOwnedByBody(definition.bottomSheet, EntityType.FACE), 0),
                 "parameter" : vector(0.5, 0.5)
@@ -113,18 +109,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         const bottomOffsetSign = bottomNormal[2] >= 0 ? 1 : -1;
         const sideOffsetSign   = sideNormal[1]   >= 0 ? 1 : -1;
 
-        // Guarantee correct orientation: bottomNormal must point up (+Z), sideNormal must point
-        // outward (+Y) for the +Y ski half. evFaceTangentPlane direction depends on surface creation
-        // order and may be flipped. Correcting here avoids wrong-direction translations downstream.
         if (bottomNormal[2] < 0) { bottomNormal = -bottomNormal; }
         if (sideNormal[1]   < 0) { sideNormal   = -sideNormal; }
-
-        // Pure axis directions used when translating profile wires (step-in, stop).
-        // Face normals have cross-axis contamination: the side surface is angled (normal has both Y
-        // and Z components), so using sideNormal for a "purely inward" translation also moves the
-        // wire vertically. For wire translation we want exact axis offsets.
-        const upDir      = vector(0, 0, 1);   // +Z — vertical up
-        const outwardDir = vector(0, 1, 0);   // +Y — outward on the +Y ski half
 
         if (definition.debugPrint)
         {
@@ -141,48 +127,45 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         // Step 1: Offset bottom surface up, intersect with side → start wire
         // =====================================================================
-        opPattern(context, id + "startBottom", {
-                "entities"      : definition.bottomSheet,
-                "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                "instanceNames" : ["1"]
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (copy)" });
-        opOffsetFace(context, id + "startBottomOffset", {
-                "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)]),
-                "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (offset copy)" });
-
-        opIntersectFaces(context, id + "startIntersect", {
-                "tools"   : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE),
-                "targets" : qOwnedByBody(definition.sideSheet, EntityType.FACE)
-        });
-        opExtractWires(context, id + "startWire", {
-                "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
-        });
-        var startWire = qCreatedBy(id + "startWire", EntityType.BODY);
-        setProperty(context, { "entities" : startWire, "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
-
-        if (definition.debugPrint)
-            debugPrintWireBSplines(context, startWire, "Start wire", debugFmt);
-
-        if (!definition.debugKeepAllBodies)
+        if (stepThrough && step >= 1)
         {
-            opDeleteBodies(context, id + "deleteStart", {
-                    "entities" : qUnion([qCreatedBy(id + "startBottom",   EntityType.BODY),
-                                         qCreatedBy(id + "startIntersect", EntityType.BODY)])
+            opPattern(context, id + "startBottom", {
+                    "entities"      : definition.bottomSheet,
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                    "instanceNames" : ["1"]
             });
+            setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (copy)" });
+            opOffsetFace(context, id + "startBottomOffset", {
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (offset copy)" });
+
+            opIntersectFaces(context, id + "startIntersect", {
+                    "tools"   : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE),
+                    "targets" : qOwnedByBody(definition.sideSheet, EntityType.FACE)
+            });
+            opExtractWires(context, id + "startWire", {
+                    "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "startWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
+
+            if (definition.debugPrint)
+                debugPrintWireBSplines(context, qCreatedBy(id + "startWire", EntityType.BODY), "Start wire", debugFmt);
+
+            if (!definition.debugKeepAllBodies)
+            {
+                opDeleteBodies(context, id + "deleteStartIntersect", {
+                        "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY)
+                });
+            }
         }
 
-        if (stepThrough && step == 1) return;
-
         // =====================================================================
-        // Step 2: (Optional) offset side surface inward, intersect with offset
-        //         bottom at distAboveBottom → step-in wire
+        // Step 2: (Only if swRoutStepin > 0) offset side inward, intersect
+        //         with startBottom from step 1 → step-in wire
         // =====================================================================
-        var hasStepIn = definition.swRoutStepin > 0 * millimeter;
-        var stepInWire = qNothing();
-        if (hasStepIn)
+        if (stepThrough && step >= 2 && definition.swRoutStepin > 0 * millimeter)
         {
             opPattern(context, id + "stepInSide", {
                     "entities"      : definition.sideSheet,
@@ -196,205 +179,26 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (offset copy)" });
 
-            opPattern(context, id + "stepInBottom", {
-                    "entities"      : definition.bottomSheet,
-                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                    "instanceNames" : ["1"]
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (copy)" });
-            opOffsetFace(context, id + "stepInBottomOffset", {
-                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in bottom (offset copy)" });
-
             opIntersectFaces(context, id + "stepInIntersect", {
-                    "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",   EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(qCreatedBy(id + "stepInBottom", EntityType.BODY), EntityType.FACE)
+                    "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",  EntityType.BODY), EntityType.FACE),
+                    "targets" : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)
             });
             opExtractWires(context, id + "stepInWire", {
                     "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
             });
-            stepInWire = qCreatedBy(id + "stepInWire", EntityType.BODY);
-            setProperty(context, { "entities" : stepInWire, "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
             if (definition.debugPrint)
-                debugPrintWireBSplines(context, stepInWire, "Step-in wire", debugFmt);
+                debugPrintWireBSplines(context, qCreatedBy(id + "stepInWire", EntityType.BODY), "Step-in wire", debugFmt);
 
             if (!definition.debugKeepAllBodies)
             {
-                opDeleteBodies(context, id + "deleteStepIn", {
+                opDeleteBodies(context, id + "deleteStepInIntersect", {
                         "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
-                                             qCreatedBy(id + "stepInBottom",    EntityType.BODY),
                                              qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
                 });
             }
         }
-
-        if (stepThrough && step == 2) return;
-
-        // =====================================================================
-        // Step 3: Offset bottom and side to stop height/position → stop wire
-        // =====================================================================
-        var dummyTopSurf = generateDummyTopSurf(context, id + "dummyTop", definition.sideSheet, definition.debugKeepAllBodies);
-        setProperty(context, { "entities" : dummyTopSurf, "propertyType" : PropertyType.NAME, "value" : "Side top boundary wire" });
-        var gapDist = evDistance(context, { "side0" : dummyTopSurf, "side1" : definition.bottomSheet }).distance;
-        if (!definition.debugKeepAllBodies)
-            opDeleteBodies(context, id + "deleteDummyTop", { "entities" : dummyTopSurf });
-
-        var routHeight = gapDist - definition.distAboveBottom + 2 * millimeter;
-        var routOffset = routHeight * tan(definition.swRoutAngle);
-
-        if (definition.debugPrint)
-        {
-            println("  gapDist    = " ~ toString(gapDist));
-            println("  routHeight = " ~ toString(routHeight));
-            println("  routOffset = " ~ toString(routOffset));
-        }
-
-        opPattern(context, id + "stopBottom", {
-                "entities"      : definition.bottomSheet,
-                "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                "instanceNames" : ["1"]
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (copy)" });
-        opOffsetFace(context, id + "stopBottomOffset", {
-                "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE)]),
-                "offsetDistance" : bottomOffsetSign * (definition.distAboveBottom + routHeight)
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
-
-        opPattern(context, id + "stopSide", {
-                "entities"      : definition.sideSheet,
-                "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                "instanceNames" : ["1"]
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (copy)" });
-        opOffsetFace(context, id + "stopSideOffset", {
-                "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopSide", EntityType.BODY), EntityType.FACE)]),
-                "offsetDistance" : -sideOffsetSign * routOffset
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
-
-        opIntersectFaces(context, id + "stopIntersect", {
-                "tools"   : qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE),
-                "targets" : qOwnedByBody(qCreatedBy(id + "stopSide",   EntityType.BODY), EntityType.FACE)
-        });
-        opExtractWires(context, id + "stopWire", {
-                "edges" : qCreatedBy(id + "stopIntersect", EntityType.EDGE)
-        });
-        var stopWire = qCreatedBy(id + "stopWire", EntityType.BODY);
-        setProperty(context, { "entities" : stopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
-
-        if (definition.debugPrint)
-            debugPrintWireBSplines(context, stopWire, "Stop wire", debugFmt);
-
-        if (!definition.debugKeepAllBodies)
-        {
-            opDeleteBodies(context, id + "deleteStop", {
-                    "entities" : qUnion([qCreatedBy(id + "stopBottom",    EntityType.BODY),
-                                         qCreatedBy(id + "stopSide",      EntityType.BODY),
-                                         qCreatedBy(id + "stopIntersect", EntityType.BODY)])
-            });
-        }
-
-        if (stepThrough && step == 3) return;
-
-        // =====================================================================
-        // Step 4: First loft (stop → stepIn, or stop → start if no step-in)
-        // =====================================================================
-        var profile1B = hasStepIn ? stepInWire : startWire;
-        opLoft(context, id + "loft1", {
-                "profileSubqueries" : [stopWire, profile1B],
-                "connections"       : buildLoftConnection(context, stopWire, profile1B),
-                "bodyType"          : ToolBodyType.SURFACE
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "loft1", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 1" });
-
-        if (stepThrough && step == 4) return;
-
-        // =====================================================================
-        // Step 5: Second loft (stepIn → start) + union; no-op if no step-in
-        // =====================================================================
-        if (hasStepIn)
-        {
-            opLoft(context, id + "loft2", {
-                    "profileSubqueries" : [stepInWire, startWire],
-                    "connections"       : buildLoftConnection(context, stepInWire, startWire),
-                    "bodyType"          : ToolBodyType.SURFACE
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "loft2", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 2" });
-            // loft1 body identity is preserved through the union (first tool survives opBoolean UNION)
-            opBoolean(context, id + "combineSurfs", {
-                    "tools"         : qUnion([qCreatedBy(id + "loft1", EntityType.BODY), qCreatedBy(id + "loft2", EntityType.BODY)]),
-                    "operationType" : BooleanOperationType.UNION
-            });
-        }
-
-        var loftBody = qCreatedBy(id + "loft1", EntityType.BODY);
-        setProperty(context, { "entities" : loftBody, "propertyType" : PropertyType.NAME, "value" : "SWRout surface" });
-
-        if (!definition.outputProfileWires && !definition.debugKeepAllBodies)
-        {
-            var wireBodiesToDelete = hasStepIn
-                ? qUnion([startWire, stepInWire, stopWire])
-                : qUnion([startWire, stopWire]);
-            opDeleteBodies(context, id + "deleteProfileWires", { "entities" : wireBodiesToDelete });
-        }
-
-        // --- Find outside edges and extend ---
-        var loftOneSidedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(loftBody, EntityType.EDGE), EdgeTopology.ONE_SIDED));
-        var outsideEdges = [];
-        for (var edge in loftOneSidedEdges)
-        {
-            var midPoint   = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
-            var distToSide = evDistance(context, { "side0" : midPoint, "side1" : definition.sideSheet }).distance;
-            if (distToSide < 1e-5 * meter)
-                outsideEdges = append(outsideEdges, edge);
-        }
-        var extendDistance = definition.specSWRoutEndpoints ? definition.cutterBottomRadius : definition.bottomExtension;
-        if (extendDistance > 0 * millimeter)
-        {
-            extendSurface(context, id + "extendOutside", {
-                    "entities"           : qUnion(outsideEdges),
-                    "tangentPropagation" : true,
-                    "endCondition"       : ExtendBoundingType.BLIND,
-                    "oppositeDirection"  : false,
-                    "extendDistance"     : extendDistance,
-                    "maintainCurvature"  : true
-            });
-        }
-
-        if (stepThrough && step == 5) return;
-
-        // =====================================================================
-        // Steps 6–9: Endpoint trimming (only if specSWRoutEndpoints)
-        // Step 6: trim at start point  Step 7: revolve cap at start
-        // Step 8: trim at stop point   Step 9: revolve cap at stop
-        // =====================================================================
-        if (definition.specSWRoutEndpoints)
-        {
-            var refWirePath = constructPath(context, qOwnedByBody(definition.refWire, EntityType.EDGE));
-
-            if (!isQueryEmpty(context, definition.startPointQ))
-            {
-                // Step 6 stops before the revolve; step 7+ includes it.
-                var doStartRevolve = !stepThrough || step >= 7;
-                trimSWRout(context, id + "trimStart", loftBody, refWirePath, definition.startPointQ, definition.sideSheet, definition.cutterBottomRadius, doStartRevolve);
-                if (stepThrough && (step == 6 || step == 7)) return;
-            }
-
-            if (!isQueryEmpty(context, definition.stopPointQ))
-            {
-                // Step 8 stops before the revolve; step 9+ includes it.
-                var doStopRevolve = !stepThrough || step >= 9;
-                trimSWRout(context, id + "trimStop", loftBody, refWirePath, definition.stopPointQ, definition.sideSheet, definition.cutterBottomRadius, doStopRevolve);
-                if (stepThrough && step == 8) return;
-            }
-        }
-
-        // Top trim deferred — a top reference surface (projection of side top edges onto XZ plane)
-        // will be used to remove the 2 mm overshoot once available.
     });
 
 /**
