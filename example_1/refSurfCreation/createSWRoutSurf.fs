@@ -162,7 +162,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             setProperty(context, { "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
             if (definition.debugPrint)
-                debugPrintWireBSplines(context, qCreatedBy(id + "startWire", EntityType.BODY), "Start wire", debugFmt);
+            {
+                debugPrintWireBSplines(context, qCreatedBy(id + "startIntersect", EntityType.BODY), "Start wire", debugFmt);
+            }
         }
 
         // =====================================================================
@@ -190,6 +192,59 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 debugPrintWireBSplines(context, qCreatedBy(id + "stepInIntersection", EntityType.BODY), "Step-in wire", debugFmt);
             }
             
+        }
+
+        // =====================================================================
+        // Step 3: Copy and offset both surfaces to stop position → stop wire
+        // =====================================================================
+        if (stepThrough && step >= 3)
+        {
+            var dummyTopSurf = generateDummyTopSurf(context, id + "dummyTop", definition.sideSheet, true);
+            var gapDist      = evDistance(context, { "side0" : dummyTopSurf, "side1" : definition.bottomSheet }).distance;
+            var routHeight   = gapDist - definition.distAboveBottom + 2 * millimeter;
+            var routOffset   = routHeight * tan(definition.swRoutAngle);
+
+            if (definition.debugPrint)
+            {
+                println("  gapDist    = " ~ toString(gapDist));
+                println("  routHeight = " ~ toString(routHeight));
+                println("  routOffset = " ~ toString(routOffset));
+            }
+
+            opPattern(context, id + "stopBottom", {
+                    "entities"      : definition.bottomSheet,
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                    "instanceNames" : ["1"]
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (copy)" });
+            opOffsetFace(context, id + "stopBottomOffset", {
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : bottomOffsetSign * (definition.distAboveBottom + routHeight)
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
+
+            opPattern(context, id + "stopSide", {
+                    "entities"      : definition.sideSheet,
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                    "instanceNames" : ["1"]
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (copy)" });
+            opOffsetFace(context, id + "stopSideOffset", {
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopSide", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : -sideOffsetSign * routOffset
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
+
+            intersectionCurve(context, id + "stopIntersect", {
+                    "group1" : qCreatedBy(id + "stopBottom", EntityType.BODY),
+                    "group2" : qCreatedBy(id + "stopSide",   EntityType.BODY)
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stopIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
+
+            if (definition.debugPrint)
+            {
+                debugPrintWireBSplines(context, qCreatedBy(id + "stopIntersect", EntityType.BODY), "Stop wire", debugFmt);
+            }
         }
     });
 
@@ -327,7 +382,9 @@ function buildLoftConnection(context is Context, wireA is Query, wireB is Query)
     var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
     var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
     if (size(vertsA) == 0 || size(vertsB) == 0)
+    {
         return [];
+    }
 
     // Find the nearest vertex pair across the two wires — these are geometrically corresponding
     // endpoints (e.g. both at the tail end), giving the loft a consistent direction reference.
