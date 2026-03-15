@@ -2,7 +2,7 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2892.0");
 
-// real import path for refSurfUtils (managed by sync)
+// IMPORT: refSurfUtils.fs  (findPathParamAtX, evDistancePath, resolveQueryToPoint)
 import(path : "d41884a96244793beb462449", version : "452a78e9338f921ea6ae9fb6");
 
 
@@ -36,7 +36,7 @@ export const ShelfSamplingDensityBounds = {(unitless)   : [5,    50, 500]}  as I
 export const ShelfApproxDegreeBounds    = {(unitless)   : [2,     3,   5]}  as IntegerBoundSpec;
 export const ShelfApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]} as LengthBoundSpec;
 export const ShelfApproxMaxCPBounds     = {(unitless)   : [10,  100, 500]}  as IntegerBoundSpec;
-export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   6]}  as IntegerBoundSpec;
+export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   4]}  as IntegerBoundSpec;
 
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
@@ -128,24 +128,29 @@ annotation { "Feature Type Name" : "Sidewall shelf",
 export const generateSidewallShelf = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Outside surface",
-                     "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1,
-                     "Description" : "Outer side surface of the ski (may be multi-face)" }
-        definition.outsideSurface is Query;
-
-        annotation { "Name" : "Bottom wire",
+        annotation { "Name" : "Footprint wire",
                      "Filter" : BodyType.WIRE, "MaxNumberOfPicks" : 1,
-                     "Description" : "Reference wire for X-coordinate mapping" }
-        definition.bottomWire is Query;
+                     "Description" : "Closed wire on the bottom surface defining the ski outline" }
+        definition.footprintWire is Query;
+
+        annotation { "Name" : "Bottom surface",
+                     "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1,
+                     "Description" : "Surface on which the footprint wire lies" }
+        definition.bottomSurface is Query;
+
+        annotation { "Name" : "Reference wire",
+                     "Filter" : BodyType.WIRE, "MaxNumberOfPicks" : 1,
+                     "Description" : "Reference path for region parameterization" }
+        definition.refWire is Query;
 
         annotation { "Name" : "Reference point",
                      "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
                      "MaxNumberOfPicks" : 1,
-                     "Description" : "Defines X = 0 along the wire" }
+                     "Description" : "Defines X = 0 along the reference wire" }
         definition.refPoint is Query;
 
         annotation { "Name" : "Sidewall width",
-                     "Description" : "Thickness of sidewall material; inside surface = shelf - sidewallWidth" }
+                     "Description" : "Thickness of sidewall material; inside curve = shelf - sidewallWidth" }
         isLength(definition.sidewallWidth, SidewallWidthBounds);
 
         annotation { "Name" : "Regions", "Item name" : "Region",
@@ -185,7 +190,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
             if (region.extentType == ShelfExtentType.X_EXTENTS)
             {
                 annotation { "Name" : "Region start",
-                             "Description" : "Distance along wire from reference point (negative = toward tail)" }
+                             "Description" : "Distance along ref wire from reference point (negative = toward tail)" }
                 isLength(region.regionStart, LENGTH_BOUNDS);
 
                 annotation { "Name" : "Region end" }
@@ -193,11 +198,11 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
             }
 
             annotation { "Name" : "Start shelf depth",
-                         "Description" : "Distance outward from outside surface at start of region" }
+                         "Description" : "Distance outward from footprint at start of region" }
             isLength(region.startShelfDepth, ShelfDepthBounds);
 
             annotation { "Name" : "End shelf depth",
-                         "Description" : "Distance outward from outside surface at end of region" }
+                         "Description" : "Distance outward from footprint at end of region" }
             isLength(region.endShelfDepth, ShelfDepthBounds);
 
             annotation { "Name" : "Region length", "UIHint" : UIHint.READ_ONLY }
@@ -246,7 +251,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Sampling density",
-                         "Description" : "Points sampled per rail (more = smoother surface, slower)" }
+                         "Description" : "Points sampled along footprint (more = smoother curve, slower)" }
             isInteger(definition.samplingDensity, ShelfSamplingDensityBounds);
 
             annotation { "Name" : "Spline degree" }
@@ -269,38 +274,26 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                          "Driving Parameter" : "debugStepThrough",
                          "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1-6)", "UIHint" : UIHint.SHOW_LABEL,
-                             "Description" : "1=path  2=rails  3=sample points  4=rail wires  5=shelf surface  6=inside surface" }
+                annotation { "Name" : "Step (1-4)", "UIHint" : UIHint.SHOW_LABEL,
+                             "Description" : "1=ref path  2=outward check  3=offset points  4=output curves" }
                 isInteger(definition.debugStep, ShelfDebugStepBounds);
             }
-
-            annotation { "Name" : "Keep intermediate bodies", "Default" : false,
-                         "Description" : "Retain rail wire bodies after lofting" }
-            definition.debugKeepAllBodies is boolean;
 
             annotation { "Name" : "Print debug", "Default" : false }
             definition.debugPrint is boolean;
 
-            annotation { "Name" : "Show rails", "Default" : false,
-                         "Description" : "Highlight extracted top (green) and bottom (red) rail wires" }
-            definition.debugShowRails is boolean;
-
-            annotation { "Name" : "Show shelf sample points", "Default" : false,
-                         "Description" : "Draw shelf top (green) and bottom (blue) offset points" }
+            annotation { "Name" : "Show shelf points", "Default" : false,
+                         "Description" : "Draw shelf (green) and inside (blue) offset points" }
             definition.debugShowShelfPoints is boolean;
-
-            annotation { "Name" : "Show inside sample points", "Default" : false,
-                         "Description" : "Draw inside top (yellow) and bottom (magenta) offset points" }
-            definition.debugShowInsidePoints is boolean;
         }
     }
     {
-        // ── Step 1: Path ──────────────────────────────────────────────────────
+        // ── Step 1: Reference path ────────────────────────────────────────────
         var pathInfo = processShelfPath(context, id + "path", definition);
 
         if (size(definition.shelfRegions) == 0)
         {
-            reportFeatureWarning(context, id, "No regions defined — nothing to generate");
+            reportFeatureWarning(context, id, "No regions defined - nothing to generate");
             return;
         }
 
@@ -310,113 +303,65 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
 
         if (definition.debugPrint)
         {
-            println("=== SWShelf: pathLength = " ~ toString(pathInfo.length / millimeter) ~ " mm");
+            println("=== SWShelf: refPathLength = " ~ toString(pathInfo.length / millimeter) ~ " mm");
             println("  refParam = " ~ toString(pathInfo.refParam));
-            println("  stdDir   = " ~ toString(pathInfo.stdDir));
             for (var reg in sortedRegions)
-            {
-                println("  Region '" ~ reg.regionName ~ "': tStart=" ~ toString(reg.tStart)
-                    ~ "  tEnd=" ~ toString(reg.tEnd)
-                    ~ "  start=" ~ toString(reg.startShelfDepth / millimeter) ~ "mm"
-                    ~ "  end="   ~ toString(reg.endShelfDepth   / millimeter) ~ "mm");
-            }
+                println("  Region '" ~ reg.regionName ~ "': tStart=" ~ toString(reg.tStart) ~ "  tEnd=" ~ toString(reg.tEnd));
         }
 
         if (definition.debugStepThrough && definition.debugStep == 1) return;
 
-        // ── Step 2: Extract rails from outside surface ────────────────────────
-        var railInfo       = extractShelfRails(context, id + "rails", definition.outsideSurface);
-        var topRailPath    = railInfo.topPath;
-        var bottomRailPath = railInfo.bottomPath;
-        var topRailWire    = railInfo.topWire;
-        var bottomRailWire = railInfo.bottomWire;
-
-        if (definition.debugPrint)
+        // ── Step 2: Footprint path + outward direction check ──────────────────
+        var footprintEdges = qOwnedByBody(definition.footprintWire, EntityType.EDGE);
+        var footprintPath;
+        try
         {
-            println("  topRail edges    = " ~ toString(size(topRailPath.edges)));
-            println("  bottomRail edges = " ~ toString(size(bottomRailPath.edges)));
+            footprintPath = constructPath(context, footprintEdges);
+        }
+        catch
+        {
+            throw regenError("Footprint wire edges must form a continuous closed path");
         }
 
-        if (definition.debugShowRails)
-        {
-            debug(context, topRailWire,    DebugColor.GREEN);
-            debug(context, bottomRailWire, DebugColor.RED);
-        }
+        var surfFaces   = evaluateQuery(context, qOwnedByBody(definition.bottomSurface, EntityType.FACE));
+        var flipOutward = determineOutwardFlip(context, footprintPath, surfFaces);
 
         if (definition.debugStepThrough && definition.debugStep == 2) return;
 
-        // ── Step 3: Collect blend zones; sample rail points ───────────────────
+        // ── Step 3: Sample footprint, compute offset points ───────────────────
         var blendZones = collectShelfBlendZones(context, id, definition, pathInfo, sortedRegions);
 
-        var topShelfPts     = buildShelfRailPoints(context, definition, pathInfo, topRailPath,    sortedRegions, blendZones, 0 * meter);
-        var bottomShelfPts  = buildShelfRailPoints(context, definition, pathInfo, bottomRailPath, sortedRegions, blendZones, 0 * meter);
-        var topInsidePts    = buildShelfRailPoints(context, definition, pathInfo, topRailPath,    sortedRegions, blendZones, -definition.sidewallWidth);
-        var bottomInsidePts = buildShelfRailPoints(context, definition, pathInfo, bottomRailPath, sortedRegions, blendZones, -definition.sidewallWidth);
+        var shelfPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
+                            footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                            0 * meter);
+        var insidePts = buildFootprintOffsetPoints(context, definition, pathInfo,
+                            footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                            -definition.sidewallWidth);
 
         if (definition.debugShowShelfPoints)
         {
-            for (var pt in topShelfPts)    debug(context, pt, DebugColor.GREEN);
-            for (var pt in bottomShelfPts) debug(context, pt, DebugColor.BLUE);
-        }
-        if (definition.debugShowInsidePoints)
-        {
-            for (var pt in topInsidePts)    debug(context, pt, DebugColor.YELLOW);
-            for (var pt in bottomInsidePts) debug(context, pt, DebugColor.MAGENTA);
+            for (var pt in shelfPts)  debug(context, pt, DebugColor.GREEN);
+            for (var pt in insidePts) debug(context, pt, DebugColor.BLUE);
         }
 
         if (definition.debugStepThrough && definition.debugStep == 3) return;
 
-        // ── Step 4: Build spline rail wires ───────────────────────────────────
-        var topShelfWire     = buildShelfWire(context, id + "topShelf",     definition, topShelfPts);
-        var bottomShelfWire  = buildShelfWire(context, id + "bottomShelf",  definition, bottomShelfPts);
-        var topInsideWire    = buildShelfWire(context, id + "topInside",    definition, topInsidePts);
-        var bottomInsideWire = buildShelfWire(context, id + "bottomInside", definition, bottomInsidePts);
+        // ── Step 4: Fit and output curves ─────────────────────────────────────
+        var shelfWire  = buildShelfWire(context, id + "shelfWire",  definition, shelfPts);
+        var insideWire = buildShelfWire(context, id + "insideWire", definition, insidePts);
 
-        setProperty(context, { "entities" : topShelfWire,     "propertyType" : PropertyType.NAME, "value" : "SW Shelf top rail" });
-        setProperty(context, { "entities" : bottomShelfWire,  "propertyType" : PropertyType.NAME, "value" : "SW Shelf bottom rail" });
-        setProperty(context, { "entities" : topInsideWire,    "propertyType" : PropertyType.NAME, "value" : "SW Inside top rail" });
-        setProperty(context, { "entities" : bottomInsideWire, "propertyType" : PropertyType.NAME, "value" : "SW Inside bottom rail" });
-
-        if (definition.debugStepThrough && definition.debugStep == 4) return;
-
-        // ── Step 5: Loft shelf surface ────────────────────────────────────────
-        opLoft(context, id + "shelfLoft", {
-            "profileSubqueries" : [topShelfWire, bottomShelfWire],
-            "connections"       : shelfLoftConnection(context, topShelfWire, bottomShelfWire),
-            "bodyType"          : ToolBodyType.SURFACE
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "shelfLoft", EntityType.BODY),
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf surface" });
-
-        if (definition.debugStepThrough && definition.debugStep == 5) return;
-
-        // ── Step 6: Loft inside surface ───────────────────────────────────────
-        opLoft(context, id + "insideLoft", {
-            "profileSubqueries" : [topInsideWire, bottomInsideWire],
-            "connections"       : shelfLoftConnection(context, topInsideWire, bottomInsideWire),
-            "bodyType"          : ToolBodyType.SURFACE
-        });
-        setProperty(context, { "entities" : qCreatedBy(id + "insideLoft", EntityType.BODY),
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside surface" });
-
-        // ── Cleanup ───────────────────────────────────────────────────────────
-        if (!definition.debugKeepAllBodies)
-        {
-            opDeleteBodies(context, id + "deleteRailWires", {
-                "entities" : qUnion([topShelfWire, bottomShelfWire, topInsideWire, bottomInsideWire])
-            });
-            opDeleteBodies(context, id + "deleteExtractedRails", {
-                "entities" : qUnion([topRailWire, bottomRailWire])
-            });
-        }
+        setProperty(context, { "entities" : shelfWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf wire" });
+        setProperty(context, { "entities" : insideWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside wire" });
     });
 
 
-// ─── Path processing ──────────────────────────────────────────────────────────
+// ─── Reference path ───────────────────────────────────────────────────────────
 
 function processShelfPath(context is Context, id is Id, definition is map) returns map
 {
-    var pathEdges = qUnion([qOwnedByBody(definition.bottomWire, EntityType.EDGE)]);
+    var pathEdges = qOwnedByBody(definition.refWire, EntityType.EDGE);
     var refPath;
     try
     {
@@ -424,7 +369,7 @@ function processShelfPath(context is Context, id is Id, definition is map) retur
     }
     catch
     {
-        throw regenError("Bottom wire edges must form a continuous path");
+        throw regenError("Reference wire edges must form a continuous path");
     }
 
     var endpoints  = evPathTangentLines(context, refPath, [0, 1]);
@@ -437,105 +382,62 @@ function processShelfPath(context is Context, id is Id, definition is map) retur
 }
 
 
-// ─── Rail extraction ──────────────────────────────────────────────────────────
+// ─── Outward direction ────────────────────────────────────────────────────────
 
 /**
- * Splits wireBody at the front plane (Y = 0) and returns the half with the
- * highest max-Y bounding box (the +Y ski side). If the wire lies entirely on
- * one side it is returned unchanged.
+ * Samples 20 points on the footprint, finds the highest-Y one, and checks
+ * whether cross(surfaceNormal, tangent) points toward +Y at that location.
+ * Returns true if the cross product must be negated to get the outward direction.
  */
-function splitWireAndKeepPlusY(context is Context, id is Id, wireBody is Query) returns Query
+function determineOutwardFlip(context is Context, footprintPath is Path, surfFaces is array) returns boolean
 {
-    try
+    var params = [];
+    for (var i = 0; i < 20; i += 1)
+        params = append(params, i / 20.0);
+    var tls = evPathTangentLines(context, footprintPath, params).tangentLines;
+
+    var maxY    = -1e10 * meter;
+    var maxYIdx = 0;
+    for (var i = 0; i < 20; i += 1)
     {
-        opSplitPart(context, id + "split", {
-            "targets" : wireBody,
-            "tool"    : qFrontPlane(EntityType.FACE)
-        });
-    }
-    catch
-    {
-        // Wire does not intersect the front plane — already fully on one side
-        return wireBody;
+        if (tls[i].origin[1] > maxY)
+        {
+            maxY    = tls[i].origin[1];
+            maxYIdx = i;
+        }
     }
 
-    var trueBody  = qSplitBy(id + "split", EntityType.BODY, true);
-    var falseBody = qSplitBy(id + "split", EntityType.BODY, false);
+    var testPt      = tls[maxYIdx].origin;
+    var testTangent = tls[maxYIdx].direction;
+    var testNormal  = surfaceNormalAt(context, surfFaces, testPt);
+    var candidate   = cross(testNormal, testTangent);
 
-    var trueEmpty  = isQueryEmpty(context, trueBody);
-    var falseEmpty = isQueryEmpty(context, falseBody);
-
-    if (trueEmpty && falseEmpty) return wireBody;
-    if (trueEmpty)  return falseBody;
-    if (falseEmpty) return trueBody;
-
-    var trueMaxY  = evBox3d(context, { "topology" : trueBody,  "tight" : true }).maxCorner[1];
-    var falseMaxY = evBox3d(context, { "topology" : falseBody, "tight" : true }).maxCorner[1];
-
-    var kept    = trueMaxY >= falseMaxY ? trueBody  : falseBody;
-    var deleted = trueMaxY >= falseMaxY ? falseBody : trueBody;
-
-    opDeleteBodies(context, id + "del", { "entities" : deleted });
-    return kept;
+    // At the highest-Y point on the footprint, outward must have positive Y
+    return candidate[1] < 0;
 }
 
 
 /**
- * Extracts the top (highest Z) and bottom (lowest Z) free-edge rail paths from
- * the outside surface. Any extra boundary wires (tip/tail edges) are deleted.
- * Returns { topPath, bottomPath, topWire, bottomWire }.
+ * Returns the surface normal of the bottom surface at pt (which lies on or near it).
  */
-function extractShelfRails(context is Context, id is Id, outsideSurface is Query) returns map
+function surfaceNormalAt(context is Context, surfFaces is array, pt is Vector) returns Vector
 {
-    var oneSidedEdges = qEdgeTopologyFilter(qOwnedByBody(outsideSurface, EntityType.EDGE), EdgeTopology.ONE_SIDED);
-    opExtractWires(context, id + "extract", { "edges" : oneSidedEdges });
-    var wireBodies = evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY));
+    var bestDist = 1e10 * meter;
+    var bestFace = surfFaces[0];
+    var bestUV   = vector(0.5, 0.5);
 
-    if (size(wireBodies) < 2)
-        throw regenError("Outside surface must have at least 2 free boundary edges (top and bottom rails)");
-
-    // Sort wire bodies by average Z (bounding box midpoint)
-    var topIdx    = 0;
-    var topMidZ   = -1e10 * meter;
-    var bottomIdx = 0;
-    var botMidZ   = 1e10 * meter;
-
-    for (var i = 0; i < size(wireBodies); i += 1)
+    for (var face in surfFaces)
     {
-        var bb   = evBox3d(context, { "topology" : wireBodies[i], "tight" : true });
-        var midZ = (bb.minCorner[2] + bb.maxCorner[2]) / 2;
-        if (midZ > topMidZ) { topMidZ = midZ; topIdx    = i; }
-        if (midZ < botMidZ) { botMidZ = midZ; bottomIdx = i; }
+        var d = evDistance(context, { "side0" : pt, "side1" : face });
+        if (d.distance < bestDist)
+        {
+            bestDist = d.distance;
+            bestFace = face;
+            bestUV   = d.sides[1].parameter;
+        }
     }
 
-    // Delete any extra wires (tip/tail edges on a closed loop surface)
-    var toDelete = [];
-    for (var i = 0; i < size(wireBodies); i += 1)
-    {
-        if (i != topIdx && i != bottomIdx)
-            toDelete = append(toDelete, wireBodies[i]);
-    }
-    if (size(toDelete) > 0)
-        opDeleteBodies(context, id + "deleteExtra", { "entities" : qUnion(toDelete) });
-
-    var topWire    = wireBodies[topIdx];
-    var bottomWire = wireBodies[bottomIdx];
-
-    // The boundary loops wrap around both +Y and -Y ski halves.
-    // Split each at the front plane without a keepType, then keep whichever half
-    // has the higher max Y (the +Y side used for the shelf feature).
-    var topWireKept    = splitWireAndKeepPlusY(context, id + "splitTop",    topWire);
-    var bottomWireKept = splitWireAndKeepPlusY(context, id + "splitBottom", bottomWire);
-
-    var topPath    = constructPath(context, qOwnedByBody(topWireKept,    EntityType.EDGE));
-    var bottomPath = constructPath(context, qOwnedByBody(bottomWireKept, EntityType.EDGE));
-
-    return {
-        "topPath"    : topPath,
-        "bottomPath" : bottomPath,
-        "topWire"    : topWireKept,
-        "bottomWire" : bottomWireKept
-    };
+    return evFaceTangentPlane(context, { "face" : bestFace, "parameter" : bestUV }).normal;
 }
 
 
@@ -599,7 +501,7 @@ function validateShelfNoOverlap(context is Context, id is Id, regions is array)
             var a = regions[i];
             var b = regions[j];
             if (a.tStart < b.tEnd - eps && b.tStart < a.tEnd - eps)
-                throw regenError("Regions '" ~ a.regionName ~ "' and '" ~ b.regionName ~ "' overlap. Regions must not overlap.");
+                throw regenError("Regions '" ~ a.regionName ~ "' and '" ~ b.regionName ~ "' overlap.");
         }
     }
 }
@@ -644,9 +546,6 @@ function resolveShelfPoint(context is Context, q is Query) returns Vector
 
 // ─── Profile value ────────────────────────────────────────────────────────────
 
-/**
- * Evaluates shelfDepth at normalized position t ∈ [0,1] within a region.
- */
 function shelfProfileValueAt(t is number, region is map) returns ValueWithUnits
 {
     var s;
@@ -671,9 +570,6 @@ function shelfProfileValueAt(t is number, region is map) returns ValueWithUnits
 
 // ─── Shelf depth evaluation ───────────────────────────────────────────────────
 
-/**
- * Returns shelfDepth for a region at path parameter t.
- */
 function shelfRegionDepthAt(region is map, t is number) returns ValueWithUnits
 {
     var tNorm = min(max((t - region.tStart) / (region.tEnd - region.tStart), 0), 1);
@@ -681,33 +577,25 @@ function shelfRegionDepthAt(region is map, t is number) returns ValueWithUnits
 }
 
 
-/**
- * Returns shelfDepth for path parameter t, with tip/tail extrapolation (clamp to
- * first/last region endpoint) and linear gap fill between non-adjacent regions.
- * Does NOT handle blend zones — use shelfDepthAtT for blend-aware evaluation.
- */
 function computeShelfDepthAtT(sortedRegions is array, t is number) returns ValueWithUnits
 {
     if (size(sortedRegions) == 0)
         return 0 * meter;
 
-    // Before first region — clamp to start of first region
     if (t <= sortedRegions[0].tStart)
         return sortedRegions[0].startShelfDepth;
 
-    // After last region — clamp to end of last region
     var last = sortedRegions[size(sortedRegions) - 1];
     if (t >= last.tEnd)
         return last.endShelfDepth;
 
-    // Inside a region
     for (var reg in sortedRegions)
     {
         if (t >= reg.tStart && t <= reg.tEnd)
             return shelfRegionDepthAt(reg, t);
     }
 
-    // Gap between two adjacent regions — linear fill
+    // Gap between regions - linear fill
     for (var i = 0; i < size(sortedRegions) - 1; i += 1)
     {
         var regA = sortedRegions[i];
@@ -725,10 +613,6 @@ function computeShelfDepthAtT(sortedRegions is array, t is number) returns Value
 }
 
 
-/**
- * Blend-aware shelfDepth evaluation. Checks blend zones first; falls back to
- * computeShelfDepthAtT for non-blend regions and tip/tail extrapolation.
- */
 function shelfDepthAtT(sortedRegions is array, blendZones is array, t is number) returns ValueWithUnits
 {
     for (var bz in blendZones)
@@ -875,12 +759,12 @@ function collectShelfBlendZones(context is Context, id is Id, definition is map,
 
         if (tBlendStart < regA.tStart)
         {
-            reportFeatureWarning(context, id, "Blend start distance exceeds extent of '" ~ regA.regionName ~ "'. Clamping.");
+            reportFeatureWarning(context, id, "Blend start exceeds extent of '" ~ regA.regionName ~ "'. Clamping.");
             tBlendStart = regA.tStart;
         }
         if (tBlendEnd > regB.tEnd)
         {
-            reportFeatureWarning(context, id, "Blend end distance exceeds extent of '" ~ regB.regionName ~ "'. Clamping.");
+            reportFeatureWarning(context, id, "Blend end exceeds extent of '" ~ regB.regionName ~ "'. Clamping.");
             tBlendEnd = regB.tEnd;
         }
         if (tBlendStart >= tBlendEnd)
@@ -901,47 +785,58 @@ function collectShelfBlendZones(context is Context, id is Id, definition is map,
 }
 
 
-// ─── Rail point sampling ──────────────────────────────────────────────────────
+// ─── Footprint offset sampling ────────────────────────────────────────────────
 
 /**
- * Samples n points along railPath, offsets each by shelfDepth(X) + depthOffset
- * in the outward direction — perpendicular to the rail tangent in the XY plane,
- * pointing toward the +Y (outside) ski side.
+ * Samples n points uniformly around the closed footprint wire and offsets each
+ * point outward by shelfDepth + depthOffset along the bottom surface.
  *
- * depthOffset: additional signed offset applied after shelfDepth (pass
- *   -sidewallWidth to get inside surface points, 0 for shelf surface points).
+ * Outward direction at each sample: cross(surfaceNormal, wireTangent), with sign
+ * determined by flipOutward (from determineOutwardFlip).
+ *
+ * Depth is found by projecting each footprint sample onto the refWire to get a
+ * refWire parameter, then evaluating shelfDepthAtT.
  */
-function buildShelfRailPoints(context is Context, definition is map, pathInfo is map,
-    railPath is Path, sortedRegions is array, blendZones is array,
+function buildFootprintOffsetPoints(context is Context, definition is map, pathInfo is map,
+    footprintPath is Path, sortedRegions is array, blendZones is array,
+    surfFaces is array, flipOutward is boolean,
     depthOffset is ValueWithUnits) returns array
 {
-    var n      = definition.samplingDensity;
-    var params = range(0, 1, n);
-    var tls    = evPathTangentLines(context, railPath, params).tangentLines;
-    var pts    = [];
+    var n = definition.samplingDensity;
+
+    // Sample uniformly around the closed loop, excluding the repeated endpoint
+    var params = [];
+    for (var i = 0; i < n; i += 1)
+        params = append(params, i / n);
+
+    var tls = evPathTangentLines(context, footprintPath, params).tangentLines;
+    var pts = [];
 
     for (var i = 0; i < n; i += 1)
     {
-        var railPt  = tls[i].origin;
-        var tangent = tls[i].direction; // unit vector along rail
+        var footPt  = tls[i].origin;
+        var tangent = tls[i].direction;
 
-        var X     = railPt[0];
-        var t     = findPathParamAtX(context, pathInfo.path, X);
-        var depth = shelfDepthAtT(sortedRegions, blendZones, t) + depthOffset;
+        // Surface normal at this footprint point
+        var surfNormal = surfaceNormalAt(context, surfFaces, footPt);
 
-        // Outward offset direction: perpendicular to rail tangent in XY plane,
-        // pointing toward +Y (away from ski center axis).
-        // For tangent = [tx, ty, tz], the XY-plane perpendicular is [-ty, tx, 0].
-        var perpXY  = vector(-tangent[1], tangent[0], 0.0);
-        var perpLen = norm(perpXY);
-        var outward = vector(0.0, 1.0, 0.0); // default: +Y when tangent is nearly vertical
-        if (perpLen >= 1e-8)
-        {
-            outward = perpXY / perpLen;
-            if (outward[1] < 0) outward = -outward;
-        }
+        // Outward direction in the surface tangent plane
+        var outward = cross(surfNormal, tangent);
+        if (flipOutward) outward = -outward;
+        var outLen = norm(outward);
+        if (outLen > 1e-10)
+            outward = outward / outLen;
+        else
+            outward = vector(0.0, 1.0, 0.0);
 
-        pts = append(pts, railPt + depth * outward);
+        // Map footprint point to refWire parameter via closest-point projection
+        var refDist = evDistancePath(context, { "side0" : pathInfo.path, "side1" : footPt });
+        var refT    = refDist.sides[0].pathParam;
+
+        // Evaluate shelf depth at this refWire parameter
+        var depth = shelfDepthAtT(sortedRegions, blendZones, refT) + depthOffset;
+
+        pts = append(pts, footPt + depth * outward);
     }
     return pts;
 }
@@ -951,51 +846,17 @@ function buildShelfRailPoints(context is Context, definition is map, pathInfo is
 
 function buildShelfWire(context is Context, id is Id, definition is map, pts is array) returns Query
 {
-    if (size(pts) < 2)
-        throw regenError("Too few sample points to build a wire — increase sampling density or expand region extents");
+    if (size(pts) < 3)
+        throw regenError("Too few sample points to build a wire");
 
     var bspline = approximateSpline(context, {
-        "degree"             : definition.approxDegree,
-        "tolerance"          : definition.approxTolerance,
-        "isPeriodic"         : false,
-        "maxControlPoints"   : definition.approxMaxCP,
-        "targets"            : [approximationTarget({ "positions" : pts })],
-        "interpolateIndices" : [0, size(pts) - 1]
+        "degree"           : definition.approxDegree,
+        "tolerance"        : definition.approxTolerance,
+        "isPeriodic"       : true,
+        "maxControlPoints" : definition.approxMaxCP,
+        "targets"          : [approximationTarget({ "positions" : pts })]
     })[0];
 
     opCreateBSplineCurve(context, id + "curve", { "bSplineCurve" : bspline });
     return qCreatedBy(id + "curve", EntityType.BODY);
-}
-
-
-// ─── Loft connection helper ───────────────────────────────────────────────────
-
-/**
- * Builds a loft connection aligning the nearest endpoint pair between wireA and wireB.
- * Prevents LOFT_DIRECTION_ERROR from mismatched wire traversal directions.
- */
-function shelfLoftConnection(context is Context, wireA is Query, wireB is Query) returns array
-{
-    var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
-    var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
-    if (size(vertsA) == 0 || size(vertsB) == 0)
-        return [];
-
-    var minDist = 1e10 * meter;
-    var bestA   = vertsA[0];
-    var bestB   = vertsB[0];
-    for (var va in vertsA)
-    {
-        for (var vb in vertsB)
-        {
-            var d = evDistance(context, { "side0" : va, "side1" : vb }).distance;
-            if (d < minDist) { minDist = d; bestA = va; bestB = vb; }
-        }
-    }
-
-    return [{
-        "connectionEntities"       : qUnion([bestA, bestB]),
-        "connectionEdges"          : [],
-        "connectionEdgeParameters" : []
-    }];
 }

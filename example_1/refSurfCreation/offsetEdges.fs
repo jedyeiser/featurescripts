@@ -312,7 +312,25 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
         buildOutputWire(context, id, definition, pathInfo, sortedRegions);
 
         if (definition.showRefFrames)
-            debugDrawFrames(context, pathInfo.frenetPath, definition.numRegionPoints);
+        {
+            // Draw frames with flipNormal/flipBinormal applied so arrows match
+            // the actual offset directions (RED = normal offset dir, GREEN = binormal offset dir, BLUE = tangent)
+            var numF   = definition.numRegionPoints;
+            var len    = pathInfo.length;
+            var aLen   = len / max([1, numF - 1]) / 3;
+            var aRad   = aLen * 0.05;
+            for (var fi = 0; fi < numF; fi += 1)
+            {
+                var s   = len * fi / max([1, numF - 1]);
+                var fr  = getFrameAtArcLength(context, pathInfo.frenetPath, s);
+                var org = fr.frame.origin;
+                var nD  = definition.flipNormal   ? -yAxis(fr.frame) : yAxis(fr.frame);
+                var bD  = definition.flipBinormal ? -fr.frame.xAxis  : fr.frame.xAxis;
+                addDebugArrow(context, org, org + aLen * nD,              aRad,          DebugColor.RED);
+                addDebugArrow(context, org, org + aLen * bD,              aRad * (2/3),  DebugColor.GREEN);
+                addDebugArrow(context, org, org + aLen * fr.frame.zAxis,  aRad * 0.5,   DebugColor.BLUE);
+            }
+        }
 
         if (definition.printPathData)
         {
@@ -524,8 +542,9 @@ function computeOffsetPoint(context is Context, pathInfo is map, definition is m
     t is number, normalOff is ValueWithUnits, binormalOff is ValueWithUnits) returns Vector
 {
     var fr   = getFrameAtArcLength(context, pathInfo.frenetPath, t * pathInfo.length);
-    var nDir = definition.flipNormal   ? -fr.frame.xAxis : fr.frame.xAxis;
-    var bDir = definition.flipBinormal ? -yAxis(fr.frame) : yAxis(fr.frame);
+    // Empirically: yAxis(frame) = visual normal direction, xAxis = visual binormal direction
+    var nDir = definition.flipNormal   ? -yAxis(fr.frame) : yAxis(fr.frame);
+    var bDir = definition.flipBinormal ? -fr.frame.xAxis  : fr.frame.xAxis;
     return fr.frame.origin + normalOff * nDir + binormalOff * bDir;
 }
 

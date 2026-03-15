@@ -154,7 +154,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             opIntersectFaces(context, id + "startIntersect", {
                     "tools"   : qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(qCreatedBy(id + "sideCopy",   EntityType.BODY), EntityType.FACE)
+                    "targets" : qOwnedByBody(definition.sideSheet, EntityType.FACE)
             });
             opExtractWires(context, id + "startWire", {
                     "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
@@ -165,7 +165,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             setProperty(context, { "entities" : qCreatedBy(id + "startWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
             if (definition.debugPrint)
+            {
                 debugPrintWireBSplines(context, qCreatedBy(id + "startWire", EntityType.BODY), "Start wire", debugFmt);
+            }
         }
 
         // =====================================================================
@@ -192,7 +194,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             setProperty(context, { "entities" : qCreatedBy(id + "stepInWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
             if (definition.debugPrint)
+            {
                 debugPrintWireBSplines(context, qCreatedBy(id + "stepInWire", EntityType.BODY), "Step-in wire", debugFmt);
+            }
         }
     });
 
@@ -330,7 +334,9 @@ function buildLoftConnection(context is Context, wireA is Query, wireB is Query)
     var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
     var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
     if (size(vertsA) == 0 || size(vertsB) == 0)
+    {
         return [];
+    }
 
     // Find the nearest vertex pair across the two wires — these are geometrically corresponding
     // endpoints (e.g. both at the tail end), giving the loft a consistent direction reference.
