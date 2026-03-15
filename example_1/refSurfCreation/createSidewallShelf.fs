@@ -359,7 +359,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         for (var i = 0; i < size(plusEdges); i += 1)
         {
             var e = plusEdges[i];
-            var w = buildEdgeOffsetWires(context, id + "ep" ~ toString(i), definition, pathInfo,
+            var w = buildEdgeOffsetWires(context, id + ("ep" ~ i), definition, pathInfo,
                         sortedRegions, blendZones, surfFaces, flipOutward,
                         e.edge, e.paramStart, e.paramEnd);
             spShelf     = append(spShelf,     w.shelf);
@@ -370,7 +370,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         for (var i = 0; i < size(minusEdges); i += 1)
         {
             var e = minusEdges[i];
-            var w = buildEdgeOffsetWires(context, id + "em" ~ toString(i), definition, pathInfo,
+            var w = buildEdgeOffsetWires(context, id + ("em" ~ i), definition, pathInfo,
                         sortedRegions, blendZones, surfFaces, flipOutward,
                         e.edge, e.paramStart, e.paramEnd);
             smShelf     = append(smShelf,     w.shelf);
@@ -998,7 +998,7 @@ function loftMatchedWires(context is Context, id is Id,
     var surfs = [];
     for (var i = 0; i < size(listA); i += 1)
     {
-        var segId = id + toString(i);
+        var segId = id + ("s" ~ i);
         opLoft(context, segId, {
             "profileSubqueries" : [qOwnedByBody(listA[i], EntityType.EDGE),
                                    qOwnedByBody(listB[i], EntityType.EDGE)],

@@ -3,6 +3,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2892.0");
 
 // IMPORT: refSurfUtils.fs
+import(path : "d41884a96244793beb462449", version : "452a78e9338f921ea6ae9fb6");
 
 
 // --- Enums -------------------------------------------------------------------
@@ -49,8 +50,8 @@ export function processSwRoutRegions(context is Context, id is Id,
 
         if (region.extentType == SWRoutExtentType.X_EXTENTS)
         {
-            tStart = region.regionStart / totalLength;
-            tEnd   = region.regionEnd   / totalLength;
+            tStart = findPathParamAtX(context, refWirePath, region.regionStart);
+            tEnd   = findPathParamAtX(context, refWirePath, region.regionEnd);
         }
         else // QUERY
         {

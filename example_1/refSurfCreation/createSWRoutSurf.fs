@@ -10,7 +10,6 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b2
 export import(path : "7e3b271854475bf6cf878b2b", version : "3203c87d6d93f0d21693ccd1");
 
 
-export const cutterRadiusBounds = {(millimeter) : [2,   10,  20]} as LengthBoundSpec;
 export const DEBUG_STEP_BOUNDS  = { (unitless)  : [0,    1,   9]} as IntegerBoundSpec;
 
 
@@ -89,6 +88,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                      "Description" : "Wire defining the ski path. Used for region extents and endpoint trimming." }
         definition.refWire is Query;
 
+        annotation { "Name" : "Reference wire origin",
+                     "Filter" : EntityType.VERTEX || (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR,
+                     "MaxNumberOfPicks" : 1,
+                     "Description" : "Reference point defining t=0 (arc-length origin) along the reference wire." }
+        definition.refWireOrigin is Query;
+
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#regionName",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -101,7 +106,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Region name" }
             region.regionName is string;
 
-            annotation { "Name" : "Extent type", "Default" : SWRoutExtentType.QUERY }
+            annotation { "Name" : "Extent type", "Default" : SWRoutExtentType.X_EXTENTS }
             region.extentType is SWRoutExtentType;
 
             if (region.extentType == SWRoutExtentType.QUERY)
@@ -115,11 +120,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             if (region.extentType == SWRoutExtentType.X_EXTENTS)
             {
                 annotation { "Name" : "Region start",
-                             "Description" : "Arc length from start of reference wire" }
+                             "Description" : "World X coordinate of region start" }
                 isLength(region.regionStart, LENGTH_BOUNDS);
 
                 annotation { "Name" : "Region end",
-                             "Description" : "Arc length from start of reference wire" }
+                             "Description" : "World X coordinate of region end" }
                 isLength(region.regionEnd, LENGTH_BOUNDS);
             }
 
@@ -179,27 +184,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Name" : "Output profile wires", "Default" : false }
         definition.outputProfileWires is boolean;
-
-        annotation { "Name" : "Spec rout endpoints?", "Default" : false }
-        definition.specSWRoutEndpoints is boolean;
-
-        annotation { "Group Name" : "SW rout endpoint data",
-                     "Driving Parameter" : "specSWRoutEndpoints",
-                     "Collapsed By Default" : false }
-        {
-            annotation { "Name" : "Start point",
-                         "Filter" : EntityType.VERTEX || (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR,
-                         "MaxNumberOfPicks" : 1 }
-            definition.startPointQ is Query;
-
-            annotation { "Name" : "Stop point",
-                         "Filter" : EntityType.VERTEX || (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR,
-                         "MaxNumberOfPicks" : 1 }
-            definition.stopPointQ is Query;
-
-            annotation { "Name" : "Cutter bottom radius" }
-            isLength(definition.cutterBottomRadius, cutterRadiusBounds);
-        }
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
