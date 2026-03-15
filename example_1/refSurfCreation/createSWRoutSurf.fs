@@ -1,6 +1,7 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/extend.fs", version : "2892.0");
+import(path : "onshape/std/faceIntersection.fs", version : "2892.0");
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
@@ -150,24 +151,18 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE)]),
                     "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
             });
+            
             setProperty(context, { "entities" : qCreatedBy(id + "bottomCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Bottom (offset copy)" });
-
-            opIntersectFaces(context, id + "startIntersect", {
-                    "tools"   : qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(definition.sideSheet, EntityType.FACE)
-            });
-            opExtractWires(context, id + "startWire", {
-                    "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
-            });
-            opDeleteBodies(context, id + "deleteStartIntersect", {
-                    "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY)
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "startWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
+            
+            intersectionCurve(context, id + 'startIntersect', {
+                "group1"   : qCreatedBy(id + "sideCopy",    EntityType.BODY),
+                "group2" : qCreatedBy(id + "bottomCopy",  EntityType.BODY)
+                });
+                
+            setProperty(context, { "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
             if (definition.debugPrint)
-            {
                 debugPrintWireBSplines(context, qCreatedBy(id + "startWire", EntityType.BODY), "Start wire", debugFmt);
-            }
         }
 
         // =====================================================================
@@ -180,23 +175,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "offsetDistance" : -sideOffsetSign * definition.swRoutStepin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Side (offset copy)" });
+            
+            //use Onshape builtin to help with processing. Feed in bodies - one wire out
+            intersectionCurve(context, id + 'stepInIntersection', {
+                "group1"   : qCreatedBy(id + "sideCopy",    EntityType.BODY),
+                "group2" : qCreatedBy(id + "bottomCopy",  EntityType.BODY)
+                });
 
-            opIntersectFaces(context, id + "stepInIntersect", {
-                    "tools"   : qOwnedByBody(qCreatedBy(id + "sideCopy",    EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(qCreatedBy(id + "bottomCopy",  EntityType.BODY), EntityType.FACE)
-            });
-            opExtractWires(context, id + "stepInWire", {
-                    "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
-            });
-            opDeleteBodies(context, id + "deleteStepInIntersect", {
-                    "entities" : qCreatedBy(id + "stepInIntersect", EntityType.BODY)
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
+            
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInIntersection", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, qCreatedBy(id + "stepInWire", EntityType.BODY), "Step-in wire", debugFmt);
+                debugPrintWireBSplines(context, qCreatedBy(id + "stepInIntersection", EntityType.BODY), "Step-in wire", debugFmt);
             }
+            
         }
     });
 
@@ -334,9 +327,7 @@ function buildLoftConnection(context is Context, wireA is Query, wireB is Query)
     var vertsA = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
     var vertsB = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
     if (size(vertsA) == 0 || size(vertsB) == 0)
-    {
         return [];
-    }
 
     // Find the nearest vertex pair across the two wires — these are geometrically corresponding
     // endpoints (e.g. both at the tail end), giving the loft a consistent direction reference.
