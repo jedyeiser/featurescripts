@@ -463,9 +463,8 @@ function determineOutwardFlip(context is Context, footprintEdges is array, surfF
         }
     }
 
-    var tl         = evEdgeTangentLines(context, { "edge" : footprintEdges[bestIdx], "parameters" : [0.5] })[0];
-    var testNormal = surfaceNormalAt(context, surfFaces, tl.origin);
-    var candidate  = cross(testNormal, tl.direction);
+    var tl        = evEdgeTangentLines(context, { "edge" : footprintEdges[bestIdx], "parameters" : [0.5] })[0];
+    var candidate = cross(vector(0.0, 0.0, 1.0), tl.direction);
     return candidate[1] < 0;
 }
 
@@ -943,10 +942,10 @@ function buildEdgeOffsetWires(context is Context, id is Id, definition is map, p
         var pt      = tls[i].origin;
         var tangent = tls[i].direction;
 
-        var surfNormal = surfaceNormalAt(context, surfFaces, pt);
-
-        // In-surface perpendicular (outward from ski edge)
-        var outward = cross(surfNormal, tangent);
+        // Horizontal outward direction: perpendicular to edge tangent in the XY plane.
+        // Use [0,0,1] (not surface normal) so the cross product has no Z component
+        // and the offset distance is purely horizontal regardless of surface tilt.
+        var outward = cross(vector(0.0, 0.0, 1.0), tangent);
         if (flipOutward) outward = -outward;
         var outLen = norm(outward);
         if (outLen > 1e-10)
@@ -954,7 +953,8 @@ function buildEdgeOffsetWires(context is Context, id is Id, definition is map, p
         else
             outward = vector(0.0, 1.0, 0.0);
 
-        // Upward direction: surface normal oriented to +Z
+        // Upward direction: surface normal at this footprint point, oriented to +Z
+        var surfNormal = surfaceNormalAt(context, surfFaces, pt);
         var up = surfNormal;
         if (up[2] < 0) up = -up;
 
