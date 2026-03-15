@@ -895,8 +895,8 @@ function classifyEdgeAgainstPlanes(context is Context, edge is Query,
     var pEnd   = 1.0;
 
     // Clip at start plane
-    if      (d0s < 0 && d1s >= 0) pStart = findEdgePlaneCrossing(context, edge, 0.0, 1.0, startOrigin, startNormal,  1);
-    else if (d1s < 0 && d0s >= 0) pEnd   = findEdgePlaneCrossing(context, edge, 0.0, 1.0, startOrigin, startNormal, -1);
+    if      (d0s < 0 && d1s >= 0) pStart = findEdgePlaneCrossing(context, edge, 0.0, 1.0, startOrigin, startNormal, -1);
+    else if (d1s < 0 && d0s >= 0) pEnd   = findEdgePlaneCrossing(context, edge, 0.0, 1.0, startOrigin, startNormal,  1);
 
     // Clip at end plane
     if      (d1e > 0 && d0e <= 0) pEnd   = findEdgePlaneCrossing(context, edge, pStart, 1.0, endOrigin, endNormal, -1);

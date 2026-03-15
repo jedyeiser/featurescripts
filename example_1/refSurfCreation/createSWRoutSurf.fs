@@ -36,8 +36,8 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
     var sortedRegions = [];
     try silent
     {
-        var refWirePath = constructPath(context, id + "editRefPath",
-                { "wire" : definition.refWire });
+        var refWirePath = constructPath(context,
+                { "edges" : qOwnedByBody(definition.refWire, EntityType.EDGE) });
         var processed = processSwRoutRegions(context, id, definition, refWirePath);
 
         var newRegions = [];
@@ -214,8 +214,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 PrintFormat.DETAILS : PrintFormat.METADATA;
 
         // Build refWire path for region parameterization and bounding planes
-        var refWirePath = constructPath(context, id + "refWirePath",
-                { "wire" : definition.refWire });
+        var refWirePath = constructPath(context,
+                { "edges" : qOwnedByBody(definition.refWire, EntityType.EDGE) });
 
         // Process and sort regions
         var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath);

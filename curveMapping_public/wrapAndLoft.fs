@@ -492,6 +492,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 });
             }
 
+            // Detect if source curve is parameterized opposite to the from-path direction
+            // (happens with mirrored edges). If so, reverse mappedData and remap parameters.
+            var srcFlipped = size(mappedData) > 1 && mappedData[size(mappedData) - 1].sFrom < mappedData[0].sFrom;
+            if (srcFlipped)
+            {
+                var flippedData = [];
+                for (var ri = size(mappedData) - 1; ri >= 0; ri -= 1)
+                    flippedData = append(flippedData, mappedData[ri]);
+                mappedData = flippedData;
+            }
+
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
             var segStartIdx               = 0;
             var segCount                  = 0;
@@ -503,7 +514,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
-                var startSrcTangent = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [0] })[0].direction;
+                var startParam      = srcFlipped ? 1 : 0;
+                var startLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [startParam] })[0];
+                var startSrcTangent = srcFlipped ? -1 * startLine.direction : startLine.direction;
                 var s_from_0        = mappedData[0].sFrom;
                 var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
                 var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
@@ -580,13 +593,14 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         t = 1;
                     }
                     // FIX: use evEdgeTangentLines for exact position and tangent at junction
-                    var junctionParam = (segEndIdx + t) / (numSamples - 1);
-                    var junctionLine  = evEdgeTangentLines(context, {
+                    var junctionParam    = (segEndIdx + t) / (numSamples - 1);
+                    var srcJunctionParam = srcFlipped ? 1 - junctionParam : junctionParam;
+                    var junctionLine     = evEdgeTangentLines(context, {
                         "edge"       : sourceCurveArray[i],
-                        "parameters" : [junctionParam]
+                        "parameters" : [srcJunctionParam]
                     })[0];
                     var pt_junction = junctionLine.origin;
-                    var srcTangent  = junctionLine.direction;
+                    var srcTangent  = srcFlipped ? -1 * junctionLine.direction : junctionLine.direction;
 
                     // Map through frames with same sign-reconciliation as main loop
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
@@ -613,10 +627,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         for (var ex = 1; ex <= nExtra; ex += 1)
                         {
                             var alpha      = ex / (nExtra + 1.0);
-                            var extraParam = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
-                            var extraLine  = evEdgeTangentLines(context, {
+                            var extraParam    = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
+                            var srcExtraParam = srcFlipped ? 1 - extraParam : extraParam;
+                            var extraLine     = evEdgeTangentLines(context, {
                                 "edge"       : sourceCurveArray[i],
-                                "parameters" : [extraParam]
+                                "parameters" : [srcExtraParam]
                             })[0];
                             var sFrom_extra   = mappedData[segEndIdx].sFrom + alpha * (s_from_junction - mappedData[segEndIdx].sFrom);
                             var fromResult_e  = getFrameAtArcLength(context, fromFrenetPath, sFrom_extra);
@@ -635,8 +650,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // Phase 2: finite-difference source curvature at junction (chord-based arc length step)
                     {
                         var jEps   = 0.005;
-                        var pJm    = max([0, junctionParam - jEps]);
-                        var pJp    = min([1, junctionParam + jEps]);
+                        var srcJP  = srcFlipped ? 1 - junctionParam : junctionParam;
+                        var pJm    = max([0, srcJP - jEps]);
+                        var pJp    = min([1, srcJP + jEps]);
                         var kLines = evEdgeTangentLines(context, {
                             "edge"       : sourceCurveArray[i],
                             "parameters" : [pJm, pJp]
@@ -663,7 +679,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 else
                 {
                     // Last span — constrain end tangent from source edge at parameter 1
-                    var endSrcTangent     = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [1] })[0].direction;
+                    var endParam      = srcFlipped ? 0 : 1;
+                    var endLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [endParam] })[0];
+                    var endSrcTangent = srcFlipped ? -1 * endLine.direction : endLine.direction;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
                     var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
                     var s_to_end          = toRefArc + (s_from_end - fromRefArc);
