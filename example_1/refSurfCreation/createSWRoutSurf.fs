@@ -354,7 +354,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "operationType" : BooleanOperationType.UNION
             });
             setProperty(context, {
-                    "entities"     : qCreatedBy(id + "combineInitialLofts", EntityType.BODY),
+                    "entities"     : qUnion(loftedSurfs),
                     "propertyType" : PropertyType.NAME,
                     "value"        : "Initial to Start Surf"
             });
@@ -401,7 +401,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "operationType" : BooleanOperationType.UNION
             });
             setProperty(context, {
-                    "entities"     : qCreatedBy(id + "combineStartStepInLofts", EntityType.BODY),
+                    "entities"     : qUnion(loftedSurfs),
                     "propertyType" : PropertyType.NAME,
                     "value"        : "Start to Step-In Surf"
             });
@@ -452,7 +452,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "operationType" : BooleanOperationType.UNION
             });
             setProperty(context, {
-                    "entities"     : qCreatedBy(id + "combineLowerStopLofts", EntityType.BODY),
+                    "entities"     : qUnion(loftedSurfs),
                     "propertyType" : PropertyType.NAME,
                     "value"        : "Lower to Stop Surf"
             });
