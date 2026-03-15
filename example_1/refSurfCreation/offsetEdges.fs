@@ -344,10 +344,46 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 
 // ─── Path processing ──────────────────────────────────────────────────────────
 
+function fixFrenetPathSigns(context is Context, frenetPath is map) returns map
+{
+    var edgeData = frenetPath.edgeData;
+    var n = size(edgeData);
+    if (n < 2)
+    {
+        return frenetPath;
+    }
+
+    for (var i = 0; i < n - 1; i += 1)
+    {
+        var lenA = edgeData[i].length;
+        var lenB = edgeData[i + 1].length;
+        var eps  = (lenA < lenB ? lenA : lenB) * 0.01;
+        var junctionArc = edgeData[i + 1].startArcLength;
+
+        var fBefore = getFrameAtArcLength(context, frenetPath, junctionArc - eps);
+        var fAfter  = getFrameAtArcLength(context, frenetPath, junctionArc + eps);
+
+        if (dot(fBefore.frame.xAxis, fAfter.frame.xAxis) < 0)
+        {
+            for (var j = i + 1; j < n; j += 1)
+            {
+                edgeData[j] = mergeMaps(edgeData[j], {
+                    "startSign": -1 * edgeData[j].startSign
+                });
+            }
+            frenetPath = mergeMaps(frenetPath, { "edgeData": edgeData });
+        }
+    }
+
+    return frenetPath;
+}
+
+
 function processPath(context is Context, id is Id, definition is map) returns map
 {
     var edges       = expandEdgeQuery(definition.userSelection);
     var frenetPath  = buildFrenetPath(context, id, edges, definition.flipDirection);
+    frenetPath      = fixFrenetPathSigns(context, frenetPath);
     var totalLength = frenetPath.totalLength;
 
     var refPt     = getRefPoint(context, definition.referencePoint);
