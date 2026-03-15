@@ -909,198 +909,104 @@ function classifyEdgeAgainstPlanes(context is Context, edge is Query,
 // ─── Edge offset wire construction ────────────────────────────────────────────
 
 /**
- * Placeholder — sortNumbers removed (no longer needed).
- * Retained section header to keep diff minimal.
- */
-function sortNumbers(arr is array) returns array
-{
-    var sorted    = [];
-    var remaining = arr;
-    for (var i = 0; i < size(arr); i += 1)
-    {
-        var minIdx = 0;
-        for (var j = 1; j < size(remaining); j += 1)
-        {
-            if (remaining[j] < remaining[minIdx]) minIdx = j;
-        }
-        sorted = append(sorted, remaining[minIdx]);
-        var next = [];
-        for (var j = 0; j < size(remaining); j += 1)
-        {
-            if (j != minIdx) next = append(next, remaining[j]);
-        }
-        remaining = next;
-    }
-    return sorted;
-}
-
-
 /**
- * Returns the footprint path parameters of every inter-edge vertex on the
- * footprint wire, sorted ascending in [0, 1).
- */
-function getFootprintVertexParams(context is Context, footprintPath is Path,
-    footprintWire is Query) returns array
-{
-    var vertices = evaluateQuery(context, qOwnedByBody(footprintWire, EntityType.VERTEX));
-    var params   = [];
-    for (var v in vertices)
-    {
-        var vPt = evVertexPoint(context, { "vertex" : v });
-        var d   = evDistancePath(context, { "side0" : footprintPath, "side1" : vPt });
-        params  = append(params, d.sides[0].pathParam);
-    }
-    return sortNumbers(params);
-}
-
-
-/**
- * Returns vertex params that lie strictly inside (arcStart, arcEnd), in
- * ascending order in the "extended" parameter space (arcEnd may exceed 1.0).
+ * Samples one classified footprint edge from paramStart to paramEnd and builds
+ * four wire bodies simultaneously — shelf bottom, inside bottom, shelf top, and
+ * inside top — all offset from the same footprint evaluation point using the
+ * same outward and up vectors.
  *
- * In the wrap case (arcEnd > 1.0), each vertex param p is also tested as
- * p + 1.0 so wrap-around vertices are included correctly.
- * A tolerance of 1e-6 prevents including a vertex that nearly coincides with
- * an arc endpoint.
- */
-function arcVertexBreakpoints(vertexParams is array, arcStart is number, arcEnd is number) returns array
-{
-    var eps    = 1e-6;
-    var result = [];
-    for (var p in vertexParams)
-    {
-        if (p > arcStart + eps && p < arcEnd - eps)
-            result = append(result, p);
-        if (arcEnd > 1.0)
-        {
-            var pWrap = p + 1.0;
-            if (pWrap > arcStart + eps && pWrap < arcEnd - eps)
-                result = append(result, pWrap);
-        }
-    }
-    return sortNumbers(result);
-}
-
-
-/**
- * Builds one wire body for one side of the shelf.  The arc is split at every
- * footprint edge vertex that falls within it, giving one BSpline curve per
- * footprint-edge segment.  All segment bodies are merged via opBoolean UNION
- * into a single wire body.
+ * outward = normalize(cross(surfNormal, edgeTangent)), flipped by flipOutward.
+ * up      = surfNormal oriented to +Z (for the surfaceHeight offset).
  *
- * If definition.debugShowShelfPoints is true, each segment's sample points are
- * drawn in debugColor before curve fitting.
+ * Returns a map: { "shelf", "inside", "shelfTop", "insideTop" } — each a Query
+ * for one wire body.
  */
-function buildShelfWires(context is Context, id is Id, definition is map, pathInfo is map,
-    footprintPath is Path, sortedRegions is array, blendZones is array,
+function buildEdgeOffsetWires(context is Context, id is Id, definition is map, pathInfo is map,
+    sortedRegions is array, blendZones is array,
     surfFaces is array, flipOutward is boolean,
-    arc is map, depthOffset is ValueWithUnits,
-    vertexParams is array, debugColor is DebugColor) returns Query
+    edge is Query, paramStart is number, paramEnd is number) returns map
 {
-    var breakpoints = arcVertexBreakpoints(vertexParams, arc.start, arc.end);
+    var n      = definition.samplingDensity;
+    var params = [];
+    for (var i = 0; i < n; i += 1)
+        params = append(params, paramStart + (paramEnd - paramStart) * i / (n - 1));
 
-    // Sub-segment boundaries: [arc.start, bp1, bp2, ..., arc.end]
-    var boundaries = [arc.start];
-    for (var bp in breakpoints)
-        boundaries = append(boundaries, bp);
-    boundaries = append(boundaries, arc.end);
+    var tls = evEdgeTangentLines(context, { "edge" : edge, "parameters" : params });
 
-    var segWires = [];
-    for (var i = 0; i < size(boundaries) - 1; i += 1)
+    var shelfPts    = [];
+    var insidePts   = [];
+    var shelfTopPts = [];
+    var insideTopPts = [];
+
+    for (var i = 0; i < n; i += 1)
     {
-        var pts = buildFootprintOffsetPoints(context, definition, pathInfo,
-                      footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                      boundaries[i], boundaries[i + 1], depthOffset);
+        var pt      = tls[i].origin;
+        var tangent = tls[i].direction;
+
+        var surfNormal = surfaceNormalAt(context, surfFaces, pt);
+
+        // In-surface perpendicular (outward from ski edge)
+        var outward = cross(surfNormal, tangent);
+        if (flipOutward) outward = -outward;
+        var outLen = norm(outward);
+        if (outLen > 1e-10)
+            outward = outward / outLen;
+        else
+            outward = vector(0.0, 1.0, 0.0);
+
+        // Upward direction: surface normal oriented to +Z
+        var up = surfNormal;
+        if (up[2] < 0) up = -up;
+
+        // Shelf depth from refWire parameter at this footprint point
+        var refT  = evDistancePath(context, { "side0" : pathInfo.path, "side1" : pt }).sides[0].pathParam;
+        var depth = shelfDepthAtT(sortedRegions, blendZones, refT);
+        var swW   = definition.sidewallWidth;
+        var swH   = definition.surfaceHeight;
+
+        var basePt    = pt + depth       * outward;
+        var insidePt  = pt + (depth - swW) * outward;
+
+        shelfPts     = append(shelfPts,     basePt);
+        insidePts    = append(insidePts,    insidePt);
+        shelfTopPts  = append(shelfTopPts,  basePt   + swH * up);
+        insideTopPts = append(insideTopPts, insidePt + swH * up);
 
         if (definition.debugShowShelfPoints)
         {
-            for (var pt in pts) debug(context, pt, debugColor);
-        }
-
-        segWires = append(segWires,
-            buildShelfWire(context, id + ("seg" ~ toString(i)), definition, pts));
-    }
-
-    // Return a union query covering all segment bodies.
-    // opBoolean does not support wire-body unions; each segment remains its
-    // own body but they share the same name via the setProperty call in the
-    // main feature body.
-    return qUnion(segWires);
-}
-
-
-// ─── Surface construction ─────────────────────────────────────────────────────
-
-/**
- * For each body in wireGroupQuery, samples its edge at samplingDensity points,
- * offsets each point by surfaceHeight along the bottom-surface normal (flipped
- * to ensure positive world-Z), and fits a new BSpline with exact endpoint
- * interpolation.  Returns a query covering all resulting offset wire bodies.
- *
- * G-continuity at segment boundaries is preserved to the degree that the source
- * wire carries it: because both the original and offset endpoints at any footprint
- * vertex are computed from the same base point, G0 is exact; G1 is inherited
- * approximately through the dense sampling.
- */
-function offsetWireGroup(context is Context, id is Id, definition is map,
-    wireGroupQuery is Query, surfFaces is array) returns Query
-{
-    var bodies   = evaluateQuery(context, wireGroupQuery);
-    var segWires = [];
-    for (var i = 0; i < size(bodies); i += 1)
-    {
-        var edges = evaluateQuery(context, qOwnedByBody(bodies[i], EntityType.EDGE));
-        for (var j = 0; j < size(edges); j += 1)
-        {
-            var n   = definition.samplingDensity;
-            var pts = [];
-            for (var k = 0; k < n; k += 1)
-            {
-                var t  = k / (n - 1.0);
-                var tl = evEdgeTangentLine(context, { "edge" : edges[j], "parameter" : t });
-                var pt = tl.origin;
-                var surfNormal = surfaceNormalAt(context, surfFaces, pt);
-                // Default upward direction to +Z
-                if (surfNormal[2] < 0) surfNormal = -surfNormal;
-                pts = append(pts, pt + definition.surfaceHeight * surfNormal);
-            }
-            var segId = id + ("b" ~ toString(i) ~ "e" ~ toString(j));
-            segWires  = append(segWires, buildShelfWire(context, segId, definition, pts));
+            debug(context, basePt,   DebugColor.GREEN);
+            debug(context, insidePt, DebugColor.BLUE);
         }
     }
-    return qUnion(segWires);
+
+    return {
+        "shelf"     : buildShelfWire(context, id + "shelf",     definition, shelfPts),
+        "inside"    : buildShelfWire(context, id + "inside",    definition, insidePts),
+        "shelfTop"  : buildShelfWire(context, id + "shelfTop",  definition, shelfTopPts),
+        "insideTop" : buildShelfWire(context, id + "insideTop", definition, insideTopPts)
+    };
 }
 
 
 /**
- * Lofts between corresponding body pairs from wireGroupA and wireGroupB.
- * Each body is assumed to carry exactly one edge (as built by buildShelfWires /
- * offsetWireGroup).  The i-th body of A is lofted with the i-th body of B.
- * Returns a query covering all resulting surface bodies.
+ * Lofts each wire in listA against the corresponding wire in listB (index-matched).
+ * Returns an array of surface body Queries.
  */
-function loftWirePairs(context is Context, id is Id,
-    wireGroupA is Query, wireGroupB is Query) returns Query
+function loftMatchedWires(context is Context, id is Id,
+    listA is array, listB is array) returns array
 {
-    var bodiesA = evaluateQuery(context, wireGroupA);
-    var bodiesB = evaluateQuery(context, wireGroupB);
-
-    if (size(bodiesA) != size(bodiesB))
-        throw regenError("Wire group size mismatch in loft: " ~
-            toString(size(bodiesA)) ~ " vs " ~ toString(size(bodiesB)));
-
-    var surfBodies = [];
-    for (var i = 0; i < size(bodiesA); i += 1)
+    var surfs = [];
+    for (var i = 0; i < size(listA); i += 1)
     {
-        var edgesA = qOwnedByBody(bodiesA[i], EntityType.EDGE);
-        var edgesB = qOwnedByBody(bodiesB[i], EntityType.EDGE);
-        var segId  = id + ("seg" ~ toString(i));
+        var segId = id + toString(i);
         opLoft(context, segId, {
-            "profileSubqueries" : [edgesA, edgesB],
+            "profileSubqueries" : [qOwnedByBody(listA[i], EntityType.EDGE),
+                                   qOwnedByBody(listB[i], EntityType.EDGE)],
             "bodyType"          : ToolBodyType.SURFACE
         });
-        surfBodies = append(surfBodies, qCreatedBy(segId, EntityType.BODY));
+        surfs = append(surfs, qCreatedBy(segId, EntityType.BODY));
     }
-    return qUnion(surfBodies);
+    return surfs;
 }
 
 
