@@ -435,7 +435,8 @@ function fixFrenetPathSigns(frenetPath is map, printLog is boolean) returns map
 
     for (var i = 0; i < n - 1; i += 1)
     {
-        var inflCount  = size(edgeData[i].localInflectionArcs);
+        var inflArcs   = edgeData[i].localInflectionArcs;
+        var inflCount  = (inflArcs == undefined) ? 0 : size(inflArcs);
         var endSign    = edgeData[i].startSign * (inflCount % 2 == 1 ? -1 : 1);
         var nextStart  = edgeData[i + 1].startSign;
         var needsFlip  = (endSign != nextStart);
@@ -563,6 +564,22 @@ function sampleParallelTransportFrame(context is Context, frenetPath is map, ptT
     var xLerp   = x0 * (1 - alpha) + x1 * alpha;
     var xLen    = norm(xLerp);
     var ptXAxis = (xLen > 1e-10) ? xLerp / xLen : x0;
+
+    // Re-orthogonalize against the exact tangent at this arc length.
+    // The interpolated xAxis may have drifted slightly off the perpendicular plane.
+    var tangent = fr.frame.zAxis;
+    ptXAxis = ptXAxis - tangent * dot(tangent, ptXAxis);
+    var xLen2 = norm(ptXAxis);
+    if (xLen2 > 1e-10)
+    {
+        ptXAxis = ptXAxis / xLen2;
+    }
+    else
+    {
+        // Degenerate: interpolated PT direction is nearly parallel to the tangent.
+        // Fall back to the raw Frenet xAxis, which is guaranteed perpendicular.
+        ptXAxis = fr.frame.xAxis;
+    }
 
     return mergeMaps(fr, { "frame" : coordSystem(fr.frame.origin, ptXAxis, fr.frame.zAxis) });
 }
