@@ -792,24 +792,40 @@ function splitAndKeep(context is Context, id is Id, body is Query,
         return body;
     }
 
-    var splitTrue  = qSplitBy(id + "split", EntityType.BODY, true);
-    var splitFalse = qSplitBy(id + "split", EntityType.BODY, false);
+    // opSplitPart modifies the original body and creates one new body
+    var pieceA = qModifiedBy(id + "split", EntityType.BODY);
+    var pieceB = qCreatedBy(id + "split",  EntityType.BODY);
 
-    var bbTrue  = evBox3d(context, { "topology" : splitTrue,  "tight" : true });
-    var bbFalse = evBox3d(context, { "topology" : splitFalse, "tight" : true });
-    var cTrue   = (bbTrue.minCorner  + bbTrue.maxCorner)  / 2;
-    var cFalse  = (bbFalse.minCorner + bbFalse.maxCorner) / 2;
+    var allPieces = evaluateQuery(context, qUnion([pieceA, pieceB]));
+    if (size(allPieces) < 2)
+    {
+        return body;
+    }
 
-    if (norm(cTrue - probePoint) < norm(cFalse - probePoint))
+    var keepIdx = 0;
+    var minDist = undefined;
+    for (var i = 0; i < size(allPieces); i += 1)
     {
-        opDeleteBodies(context, id + "delFar", { "entities" : splitFalse });
-        return splitTrue;
+        var bb = evBox3d(context, { "topology" : allPieces[i], "tight" : true });
+        var c  = (bb.minCorner + bb.maxCorner) / 2;
+        var d  = norm(c - probePoint);
+        if (minDist == undefined || d < minDist)
+        {
+            minDist  = d;
+            keepIdx  = i;
+        }
     }
-    else
+
+    var toDelete = [];
+    for (var i = 0; i < size(allPieces); i += 1)
     {
-        opDeleteBodies(context, id + "delFar", { "entities" : splitTrue });
-        return splitFalse;
+        if (i != keepIdx)
+        {
+            toDelete = append(toDelete, allPieces[i]);
+        }
     }
+    opDeleteBodies(context, id + "del", { "entities" : qUnion(toDelete) });
+    return allPieces[keepIdx];
 }
 
 

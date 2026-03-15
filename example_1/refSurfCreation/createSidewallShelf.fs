@@ -316,10 +316,16 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
 
         if (definition.debugStepThrough && definition.debugStep == 1) return;
 
-        // ── Step 2: Footprint edges + outward direction ───────────────────────
+        // ── Step 2: Footprint edges + footprint centroid ─────────────────────
         var footprintEdges = evaluateQuery(context, qOwnedByBody(definition.footprintWire, EntityType.EDGE));
         var surfFaces      = evaluateQuery(context, qOwnedByBody(definition.bottomSurface, EntityType.FACE));
-        var flipOutward    = determineOutwardFlip(context, footprintEdges, surfFaces);
+
+        // Centroid of the closed footprint loop (average of all edge midpoints).
+        // Used to determine outward direction per-edge.
+        var centroidSum = vector(0.0, 0.0, 0.0) * meter;
+        for (var edge in footprintEdges)
+            centroidSum = centroidSum + evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.5] })[0].origin;
+        var footprintCentroid = centroidSum / size(footprintEdges);
 
         if (definition.debugStepThrough && definition.debugStep == 2) return;
 
@@ -331,7 +337,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         var startTl = evPathTangentLines(context, pathInfo.path, [tRefStart]).tangentLines[0];
         var endTl   = evPathTangentLines(context, pathInfo.path, [tRefEnd  ]).tangentLines[0];
 
-        // Separate classified edges by Y side
+        // Separate classified edges by Y side; determine per-edge outward flip.
         var plusEdges  = [];
         var minusEdges = [];
         for (var edge in footprintEdges)
@@ -341,8 +347,12 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                           endTl.origin,   endTl.direction);
             if (!cls.include) continue;
 
-            var midPt = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.5] })[0].origin;
-            var entry = { "edge" : edge, "paramStart" : cls.paramStart, "paramEnd" : cls.paramEnd };
+            var midTl     = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.5] })[0];
+            var midPt     = midTl.origin;
+            var candidate = cross(vector(0.0, 0.0, 1.0), midTl.direction);
+            // If candidate points toward the centroid, it's inward — flip it.
+            var flipEdge  = dot(midPt - footprintCentroid, candidate) < 0;
+            var entry     = { "edge" : edge, "paramStart" : cls.paramStart, "paramEnd" : cls.paramEnd, "flipOutward" : flipEdge };
             if (midPt[1] >= 0)
                 plusEdges  = append(plusEdges,  entry);
             else
@@ -360,7 +370,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         {
             var e = plusEdges[i];
             var w = buildEdgeOffsetWires(context, id + ("ep" ~ i), definition, pathInfo,
-                        sortedRegions, blendZones, surfFaces, flipOutward,
+                        sortedRegions, blendZones, surfFaces, e.flipOutward,
                         e.edge, e.paramStart, e.paramEnd);
             spShelf     = append(spShelf,     w.shelf);
             spInside    = append(spInside,    w.inside);
@@ -371,7 +381,7 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         {
             var e = minusEdges[i];
             var w = buildEdgeOffsetWires(context, id + ("em" ~ i), definition, pathInfo,
-                        sortedRegions, blendZones, surfFaces, flipOutward,
+                        sortedRegions, blendZones, surfFaces, e.flipOutward,
                         e.edge, e.paramStart, e.paramEnd);
             smShelf     = append(smShelf,     w.shelf);
             smInside    = append(smInside,    w.inside);
@@ -442,31 +452,6 @@ function processShelfPath(context is Context, id is Id, definition is map) retur
 }
 
 
-// ─── Outward direction ────────────────────────────────────────────────────────
-
-/**
- * Finds the footprint edge whose midpoint has the highest Y, samples it there,
- * and checks whether cross(surfNormal, tangent)[1] >= 0.
- * Returns true if the cross product must be negated to get the outward (+Y) direction.
- */
-function determineOutwardFlip(context is Context, footprintEdges is array, surfFaces is array) returns boolean
-{
-    var maxY    = -1e10 * meter;
-    var bestIdx = 0;
-    for (var i = 0; i < size(footprintEdges); i += 1)
-    {
-        var midPt = evEdgeTangentLines(context, { "edge" : footprintEdges[i], "parameters" : [0.5] })[0].origin;
-        if (midPt[1] > maxY)
-        {
-            maxY    = midPt[1];
-            bestIdx = i;
-        }
-    }
-
-    var tl        = evEdgeTangentLines(context, { "edge" : footprintEdges[bestIdx], "parameters" : [0.5] })[0];
-    var candidate = cross(vector(0.0, 0.0, 1.0), tl.direction);
-    return candidate[1] < 0;
-}
 
 
 /**
