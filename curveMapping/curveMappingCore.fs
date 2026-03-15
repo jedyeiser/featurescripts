@@ -893,7 +893,8 @@ export function mapEdgeJunctionCurvature(srcCurvature is Vector,
  */
 export function jostleG2Junctions(context is Context, id is Id,
     wrappedBSplines is array, wrappedIds is array,
-    matchTol is ValueWithUnits, junctionCurvatures is array) returns map
+    matchTol is ValueWithUnits, junctionCurvatures is array,
+    frontPlaneOnly is boolean) returns map
 {
     var numSpans       = size(wrappedBSplines);
     var wrappedCurrIds = wrappedIds;
@@ -923,6 +924,13 @@ export function jostleG2Junctions(context is Context, id is Id,
 
         var splineBefore = wrappedBSplines[sj];
         var splineAfter  = wrappedBSplines[sjNext];
+
+        // Only jostle at junctions on the front plane (Y = 0) when requested.
+        if (frontPlaneOnly)
+        {
+            var junctionPt = splineBefore.controlPoints[size(splineBefore.controlPoints) - 1];
+            if (abs(junctionPt[1]) > 1e-4 * meter)  continue;
+        }
         var kB           = splineBefore.knots;
         var kA           = splineAfter.knots;
 

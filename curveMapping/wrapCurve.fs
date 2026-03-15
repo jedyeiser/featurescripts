@@ -546,7 +546,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
         if (size(wrappedBSplines) >= 2)
         {
-            var jostleResult = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures);
+            var jostleResult = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures, false);
             allSegEdges  = jostleResult.edgeQueries;
             allSegBodies = jostleResult.bodyQueries;
         }
