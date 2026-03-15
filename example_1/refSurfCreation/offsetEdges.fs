@@ -330,7 +330,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             for (var fi = 0; fi < numF; fi += 1)
             {
                 var s   = len * fi / max([1, numF - 1]);
-                var fr  = getFrameAtArcLength(context, pathInfo.frenetPath, s);
+                var fr  = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, s);
                 var org = fr.frame.origin;
                 var nD  = definition.flipNormal   ? -yAxis(fr.frame) : yAxis(fr.frame);
                 var bD  = definition.flipBinormal ? -fr.frame.xAxis  : fr.frame.xAxis;
@@ -368,8 +368,8 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 
             if (definition.printFrameSamples)
             {
-                println("=== Frenet frame samples (5 pts/edge) ===");
-                println("  xAxis = binormal dir  |  yAxis = normal dir  |  zAxis = tangent");
+                println("=== Parallel transport frame samples (5 pts/edge) ===");
+                println("  xAxis = PT binormal dir  |  yAxis = PT normal dir  |  zAxis = tangent");
                 for (var ei = 0; ei < nEdges; ei += 1)
                 {
                     var ed       = edgeData[ei];
@@ -381,7 +381,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                     for (var si = 0; si <= 4; si += 1)
                     {
                         var s  = arcStart + (arcEnd - arcStart) * si / 4;
-                        var fr = getFrameAtArcLength(context, pathInfo.frenetPath, s);
+                        var fr = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, s);
                         var xa = fr.frame.xAxis;
                         var ya = yAxis(fr.frame);
                         println("    s=" ~ toString(s / millimeter) ~ "mm"
@@ -391,16 +391,14 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 
                     if (ei < nEdges - 1)
                     {
-                        var lenA = edgeData[ei].length;
-                        var lenB = edgeData[ei + 1].length;
-                        var eps  = (lenA < lenB ? lenA : lenB) * 0.01;
                         var jArc = edgeData[ei + 1].startArcLength;
-                        var fB   = getFrameAtArcLength(context, pathInfo.frenetPath, jArc - eps);
-                        var fA   = getFrameAtArcLength(context, pathInfo.frenetPath, jArc + eps);
+                        var fB   = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, jArc);
+                        var fA   = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable,
+                            jArc + edgeData[ei + 1].length * 0.01);
                         var d    = dot(fB.frame.xAxis, fA.frame.xAxis);
-                        var tag  = (d < 0) ? "  *** STILL ANTIPARALLEL ***" : "  OK";
+                        var tag  = (d < 0.9) ? "  *** DISCONTINUITY (dot=" ~ toString(d) ~ ") ***" : "  OK";
                         println("  Junction " ~ toString(ei) ~ "->" ~ toString(ei + 1)
-                            ~ "  dot(xBefore, xAfter)=" ~ toString(d) ~ tag);
+                            ~ "  dot(PT xBefore, xAfter)=" ~ toString(d) ~ tag);
                     }
                 }
             }
@@ -410,7 +408,20 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 
 // ─── Path processing ──────────────────────────────────────────────────────────
 
-function fixFrenetPathSigns(context is Context, frenetPath is map, printLog is boolean) returns map
+// Corrects startSign mismatches at inter-edge junctions that buildFrenetPath leaves unfixed.
+//
+// buildFrenetPath propagates startSign across the chain accounting only for intra-edge
+// inflections. At junctions where the raw curvature direction is antiparallel between
+// adjacent edges, it leaves startSign_{i+1} inconsistent with endSign_i.
+//
+// We detect this algebraically: the effective sign at the END of edge i is
+//   endSign_i = startSign_i * (-1)^(number of inflections in edge i)
+// If endSign_i != startSign_{i+1}, the junction is antiparallel and all edges i+1..n-1
+// need their startSign flipped.
+//
+// This approach is robust against inflections near edge endpoints (which made the previous
+// eps-based dot-product probe unreliable).
+function fixFrenetPathSigns(frenetPath is map, printLog is boolean) returns map
 {
     var edgeData = frenetPath.edgeData;
     var n = size(edgeData);
@@ -424,29 +435,25 @@ function fixFrenetPathSigns(context is Context, frenetPath is map, printLog is b
 
     for (var i = 0; i < n - 1; i += 1)
     {
-        var lenA = edgeData[i].length;
-        var lenB = edgeData[i + 1].length;
-        var eps  = (lenA < lenB ? lenA : lenB) * 0.01;
-        var junctionArc = edgeData[i + 1].startArcLength;
-
-        var fBefore = getFrameAtArcLength(context, frenetPath, junctionArc - eps);
-        var fAfter  = getFrameAtArcLength(context, frenetPath, junctionArc + eps);
-        var d       = dot(fBefore.frame.xAxis, fAfter.frame.xAxis);
+        var inflCount  = size(edgeData[i].localInflectionArcs);
+        var endSign    = edgeData[i].startSign * (inflCount % 2 == 1 ? -1 : 1);
+        var nextStart  = edgeData[i + 1].startSign;
+        var needsFlip  = (endSign != nextStart);
 
         if (printLog)
         {
-            var action = (d < 0) ? "  -> FLIPPING edges " ~ toString(i + 1) ~ ".." ~ toString(n - 1) : "  -> OK";
+            var action = needsFlip
+                ? "  -> FLIPPING edges " ~ toString(i + 1) ~ ".." ~ toString(n - 1)
+                : "  -> OK";
             println("  Junction " ~ toString(i) ~ "->" ~ toString(i + 1)
-                ~ "  arc=" ~ toString(junctionArc / millimeter) ~ "mm"
-                ~ "  eps=" ~ toString(eps / millimeter) ~ "mm"
-                ~ "  dot=" ~ toString(d) ~ action);
-            var xa_b = fBefore.frame.xAxis;
-            var xa_a = fAfter.frame.xAxis;
-            println("    xBefore=[" ~ toString(xa_b[0]) ~ ", " ~ toString(xa_b[1]) ~ ", " ~ toString(xa_b[2]) ~ "]"
-                ~ "  xAfter=["  ~ toString(xa_a[0]) ~ ", " ~ toString(xa_a[1]) ~ ", " ~ toString(xa_a[2]) ~ "]");
+                ~ "  startSign[" ~ toString(i) ~ "]=" ~ toString(edgeData[i].startSign)
+                ~ "  inflections=" ~ toString(inflCount)
+                ~ "  endSign=" ~ toString(endSign)
+                ~ "  startSign[" ~ toString(i + 1) ~ "]=" ~ toString(nextStart)
+                ~ action);
         }
 
-        if (d < 0)
+        if (needsFlip)
         {
             for (var j = i + 1; j < n; j += 1)
             {
@@ -462,12 +469,114 @@ function fixFrenetPathSigns(context is Context, frenetPath is map, printLog is b
 }
 
 
+// Builds a parallel transport (Bishop) frame table along the path.
+//
+// Starting from the Frenet frame at s=0, each step rotates the previous xAxis by
+// the same rotation that carries prevTangent -> currTangent (Rodrigues formula).
+// This eliminates the torsion-driven spinning of the Frenet normal while preserving
+// tangent continuity — the frame never flips direction on smooth G1 BSpline chains.
+//
+// Returns an array of { arcLength, xAxis } entries at numSamples uniform positions.
+// yAxis = cross(tangent, xAxis) is not stored; it is computed on demand.
+function buildParallelTransportTable(context is Context, frenetPath is map, numSamples is number) returns array
+{
+    var totalLength = frenetPath.totalLength;
+    var fr0         = getFrameAtArcLength(context, frenetPath, 0 * meter);
+    var prevXAxis   = fr0.frame.xAxis;
+    var prevTangent = fr0.frame.zAxis;
+
+    var table = [{ "arcLength" : 0 * meter, "xAxis" : prevXAxis }];
+
+    for (var i = 1; i < numSamples; i += 1)
+    {
+        var s           = totalLength * i / (numSamples - 1);
+        var fr          = getFrameAtArcLength(context, frenetPath, s);
+        var currTangent = fr.frame.zAxis;
+
+        // Rodrigues rotation: rotate prevXAxis by the rotation taking prevTangent -> currTangent
+        var k    = cross(prevTangent, currTangent);
+        var kLen = norm(k);
+        var newXAxis = prevXAxis;
+
+        if (kLen >= 1e-10)
+        {
+            var kHat     = k / kLen;
+            var sinTheta = kLen;                              // |cross(a,b)| = sin(angle) for unit vecs
+            var cosTheta = dot(prevTangent, currTangent);
+            newXAxis = prevXAxis * cosTheta
+                + cross(kHat, prevXAxis) * sinTheta
+                + kHat * (dot(kHat, prevXAxis) * (1 - cosTheta));
+        }
+
+        // Re-orthogonalize against tangent to prevent numerical drift
+        newXAxis = newXAxis - currTangent * dot(currTangent, newXAxis);
+        var xLen = norm(newXAxis);
+        if (xLen > 1e-10)
+        {
+            newXAxis = newXAxis / xLen;
+        }
+
+        table       = append(table, { "arcLength" : s, "xAxis" : newXAxis });
+        prevXAxis   = newXAxis;
+        prevTangent = currTangent;
+    }
+
+    return table;
+}
+
+
+// Looks up the parallel transport xAxis at the given arc length via binary search + lerp,
+// then returns a frame map in the same format as getFrameAtArcLength but with the PT
+// xAxis substituted.  Origin and tangent (zAxis) are exact from getFrameAtArcLength.
+function sampleParallelTransportFrame(context is Context, frenetPath is map, ptTable is array,
+    arcLength) returns map
+{
+    var n  = size(ptTable);
+    var fr = getFrameAtArcLength(context, frenetPath, arcLength);
+
+    if (n == 0)
+    {
+        return fr;
+    }
+
+    // Binary search for the bracketing interval
+    var lo = 0;
+    var hi = n - 1;
+    while (hi - lo > 1)
+    {
+        var mid = floor((lo + hi) / 2);
+        if (ptTable[mid].arcLength <= arcLength)
+        {
+            lo = mid;
+        }
+        else
+        {
+            hi = mid;
+        }
+    }
+
+    // Lerp + renormalize between lo and hi
+    var span    = ptTable[hi].arcLength - ptTable[lo].arcLength;
+    var alpha   = (span > TOLERANCE.zeroLength) ? (arcLength - ptTable[lo].arcLength) / span : 0.0;
+    var x0      = ptTable[lo].xAxis;
+    var x1      = ptTable[hi].xAxis;
+    var xLerp   = x0 * (1 - alpha) + x1 * alpha;
+    var xLen    = norm(xLerp);
+    var ptXAxis = (xLen > 1e-10) ? xLerp / xLen : x0;
+
+    return mergeMaps(fr, { "frame" : coordSystem(fr.frame.origin, ptXAxis, fr.frame.zAxis) });
+}
+
+
 function processPath(context is Context, id is Id, definition is map) returns map
 {
     var edges       = expandEdgeQuery(definition.userSelection);
     var frenetPath  = buildFrenetPath(context, id, edges, definition.flipDirection);
-    frenetPath      = fixFrenetPathSigns(context, frenetPath, definition.printFrameSamples);
+    frenetPath      = fixFrenetPathSigns(frenetPath, definition.printFrameSamples);
     var totalLength = frenetPath.totalLength;
+
+    var numPTSamples = max([100, definition.numRegionPoints * 4]);
+    var ptTable      = buildParallelTransportTable(context, frenetPath, numPTSamples);
 
     var refPt     = getRefPoint(context, definition.referencePoint);
     var refResult = projectOntoFrenetPath(frenetPath, refPt, undefined);
@@ -475,6 +584,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 
     return {
         "frenetPath" : frenetPath,
+        "ptTable"    : ptTable,
         "length"     : totalLength,
         "refParam"   : refParam
     };
@@ -660,7 +770,7 @@ function computeOffsetDerivativesAt(region is map, tPath is number) returns map
 function computeOffsetPoint(context is Context, pathInfo is map, definition is map,
     t is number, normalOff is ValueWithUnits, binormalOff is ValueWithUnits) returns Vector
 {
-    var fr   = getFrameAtArcLength(context, pathInfo.frenetPath, t * pathInfo.length);
+    var fr   = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length);
     // Empirically: yAxis(frame) = visual normal direction, xAxis = visual binormal direction
     var nDir = definition.flipNormal   ? -yAxis(fr.frame) : yAxis(fr.frame);
     var bDir = definition.flipBinormal ? -fr.frame.xAxis  : fr.frame.xAxis;
