@@ -18,10 +18,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b2
  * top-trim step driven by an externally created top reference surface.
  */
 
-export const SWRoutAngleBounds      = {(degree)     : [0,  20, 45]} as AngleBoundSpec;
-export const DistAboveBottomBounds  = {(millimeter) : [1,   4, 10]} as LengthBoundSpec;
-export const SWStepInBounds         = {(millimeter) : [0,   0,  3]} as LengthBoundSpec;
-export const cutterRadiusBounds     = {(millimeter) : [2,  10, 20]} as LengthBoundSpec;
+export const SWRoutAngleBounds      = {(degree)     : [0,   20,  45]} as AngleBoundSpec;
+export const DistAboveBottomBounds  = {(millimeter) : [1,    4,  10]} as LengthBoundSpec;
+export const SWRoutHeightBounds     = {(millimeter) : [5,   30, 100]} as LengthBoundSpec;
+export const SWStepInBounds         = {(millimeter) : [0,    0,   3]} as LengthBoundSpec;
+export const cutterRadiusBounds     = {(millimeter) : [2,   10,  20]} as LengthBoundSpec;
 export const DEBUG_STEP_BOUNDS      = { (unitless) : [0, 1, 9] } as IntegerBoundSpec;
 
 annotation { "Feature Type Name" : "Sidewall rout surface", "Feature Type Description" : "Creates a SW rout surface based on inputs" }
@@ -42,6 +43,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Name" : "Distance from bottom rout begins" }
         isLength(definition.distAboveBottom, DistAboveBottomBounds);
+
+        annotation { "Name" : "SW Rout Surf Height" }
+        isLength(definition.swRoutHeight, SWRoutHeightBounds);
 
         annotation { "Name" : "SW rout step-in" }
         isLength(definition.swRoutStepin, SWStepInBounds);
@@ -123,10 +127,16 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 0: Copy both sheet bodies
+        // Step 0: Intersect originals → initial wire, then copy both sheet bodies
         // =====================================================================
         if (stepThrough && step >= 0)
         {
+            intersectionCurve(context, id + "initialWire", {
+                    "group1" : definition.bottomSheet,
+                    "group2" : definition.sideSheet
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "initialWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Initial wire" });
+
             opPattern(context, id + "bottomCopy", {
                     "entities"      : definition.bottomSheet,
                     "transforms"    : [transform(vector(0, 0, 0) * meter)],
@@ -195,46 +205,40 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 3: Further offset both copies to stop position → stop wire
-        //   bottomCopy: currently at distAboveBottom, add routHeight
-        //   sideCopy:   currently at swRoutStepin (or 0), add routOffset - swRoutStepin
+        // Step 3: Offset both copies to stop position (surfaces only, no wires yet)
+        //
+        //   routSpanHeight = swRoutHeight - distAboveBottom
+        //     The rout surface spans this height vertically (from start wire to stop wire).
+        //     bottomCopy is currently at distAboveBottom → add routSpanHeight to reach swRoutHeight.
+        //
+        //   routSpanSide = routSpanHeight * tan(swRoutAngle)
+        //     The angle-derived inward offset of the stop side relative to the start side.
+        //     sideCopy is currently at swRoutStepin (or 0) → add routSpanSide on top of that.
+        //     The step-in shifts the whole rout inward; the span is independent of it.
         // =====================================================================
         if (stepThrough && step >= 3)
         {
-            var dummyTopSurf = generateDummyTopSurf(context, id + "dummyTop", definition.sideSheet, true);
-            var gapDist      = evDistance(context, { "side0" : dummyTopSurf, "side1" : definition.bottomSheet }).distance;
-            var routHeight   = gapDist - definition.distAboveBottom + 2 * millimeter;
-            var routOffset   = routHeight * tan(definition.swRoutAngle);
+            var routSpanHeight = definition.swRoutHeight - definition.distAboveBottom;
+            var routSpanSide   = routSpanHeight * tan(definition.swRoutAngle);
 
             if (definition.debugPrint)
             {
-                println("  gapDist    = " ~ toString(gapDist));
-                println("  routHeight = " ~ toString(routHeight));
-                println("  routOffset = " ~ toString(routOffset));
+                println("  swRoutHeight   = " ~ toString(definition.swRoutHeight));
+                println("  routSpanHeight = " ~ toString(routSpanHeight));
+                println("  routSpanSide   = " ~ toString(routSpanSide));
             }
 
             opOffsetFace(context, id + "stopBottomOffset", {
                     "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : bottomOffsetSign * routHeight
+                    "offsetDistance" : bottomOffsetSign * routSpanHeight
             });
             setProperty(context, { "entities" : qCreatedBy(id + "bottomCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
 
             opOffsetFace(context, id + "stopSideOffset", {
                     "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "sideCopy", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : -sideOffsetSign * (routOffset - definition.swRoutStepin)
+                    "offsetDistance" : -sideOffsetSign * routSpanSide
             });
             setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
-
-            intersectionCurve(context, id + "stopIntersect", {
-                    "group1" : qCreatedBy(id + "bottomCopy", EntityType.BODY),
-                    "group2" : qCreatedBy(id + "sideCopy",   EntityType.BODY)
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stopIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
-
-            if (definition.debugPrint)
-            {
-                debugPrintWireBSplines(context, qCreatedBy(id + "stopIntersect", EntityType.BODY), "Stop wire", debugFmt);
-            }
         }
     });
 
