@@ -348,12 +348,10 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         // ── Step 3: Collect blend zones; sample rail points ───────────────────
         var blendZones = collectShelfBlendZones(context, id, definition, pathInfo, sortedRegions);
 
-        var surfFaces = evaluateQuery(context, qOwnedByBody(definition.outsideSurface, EntityType.FACE));
-
-        var topShelfPts     = buildShelfRailPoints(context, definition, pathInfo, topRailPath,    sortedRegions, blendZones, surfFaces, 0 * meter);
-        var bottomShelfPts  = buildShelfRailPoints(context, definition, pathInfo, bottomRailPath, sortedRegions, blendZones, surfFaces, 0 * meter);
-        var topInsidePts    = buildShelfRailPoints(context, definition, pathInfo, topRailPath,    sortedRegions, blendZones, surfFaces, -definition.sidewallWidth);
-        var bottomInsidePts = buildShelfRailPoints(context, definition, pathInfo, bottomRailPath, sortedRegions, blendZones, surfFaces, -definition.sidewallWidth);
+        var topShelfPts     = buildShelfRailPoints(context, definition, pathInfo, topRailPath,    sortedRegions, blendZones, 0 * meter);
+        var bottomShelfPts  = buildShelfRailPoints(context, definition, pathInfo, bottomRailPath, sortedRegions, blendZones, 0 * meter);
+        var topInsidePts    = buildShelfRailPoints(context, definition, pathInfo, topRailPath,    sortedRegions, blendZones, -definition.sidewallWidth);
+        var bottomInsidePts = buildShelfRailPoints(context, definition, pathInfo, bottomRailPath, sortedRegions, blendZones, -definition.sidewallWidth);
 
         if (definition.debugShowShelfPoints)
         {
