@@ -311,7 +311,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 5: Loft initial wire → start wire
+        // Step 5: Loft initial wire -> start wire
         // =====================================================================
         if (stepThrough && step >= 5)
         {
