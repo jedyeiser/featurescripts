@@ -800,7 +800,14 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         });
     }
 
-    // One BSpline wire per region (trimmed where blend zones border it)
+    // Collect edge-boundary t-values (one per inter-edge junction in the FrenetPath)
+    var edgeBoundaryTs = [];
+    var edgeData = pathInfo.frenetPath.edgeData;
+    for (var ei = 1; ei < size(edgeData); ei += 1)
+        edgeBoundaryTs = append(edgeBoundaryTs, edgeData[ei].startArcLength / pathInfo.length);
+
+    // One or more BSpline wires per region — split at edge boundaries so each
+    // output curve spans at most one source edge.
     for (var ri = 0; ri < size(sortedRegions); ri += 1)
     {
         var reg       = sortedRegions[ri];
@@ -823,33 +830,50 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             continue;
         }
 
-        var pts = generateSegmentPoints(context, pathInfo, definition, reg, tSegStart, tSegEnd);
-        if (size(pts) < 2) continue;
-
-        var bspline = approximateSpline(context, {
-            "degree"             : definition.approxDegree,
-            "tolerance"          : definition.approxTolerance,
-            "isPeriodic"         : false,
-            "maxControlPoints"   : definition.approxMaxCP,
-            "targets"            : [approximationTarget({ "positions" : pts })],
-            "interpolateIndices" : [0, size(pts) - 1]
-        })[0];
-
-        var wireId = id + ("reg_" ~ toString(ri));
-        opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
-        allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
-
-        if (definition.printCurveDetails)
+        // Build the ordered list of split points: region endpoints + any edge
+        // boundaries that fall strictly inside the trimmed segment
+        var splitTs = [tSegStart];
+        for (var tb in edgeBoundaryTs)
         {
-            println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') ===");
-            println("  degree:  " ~ toString(bspline.degree));
-            println("  CPs:     " ~ toString(size(bspline.controlPoints)));
-            println("  samples: " ~ toString(size(pts)));
-            println("  t range: [" ~ toString(tSegStart) ~ ", " ~ toString(tSegEnd) ~ "]");
+            if (tb > tSegStart + 1e-6 && tb < tSegEnd - 1e-6)
+                splitTs = append(splitTs, tb);
         }
+        splitTs = append(splitTs, tSegEnd);
 
-        if (definition.showRegions)
-            addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.CYAN);
+        for (var si = 0; si < size(splitTs) - 1; si += 1)
+        {
+            var tA = splitTs[si];
+            var tB = splitTs[si + 1];
+            if (tB - tA < 1e-6) continue;
+
+            var pts = generateSegmentPoints(context, pathInfo, definition, reg, tA, tB);
+            if (size(pts) < 2) continue;
+
+            var bspline = approximateSpline(context, {
+                "degree"             : definition.approxDegree,
+                "tolerance"          : definition.approxTolerance,
+                "isPeriodic"         : false,
+                "maxControlPoints"   : definition.approxMaxCP,
+                "targets"            : [approximationTarget({ "positions" : pts })],
+                "interpolateIndices" : [0, size(pts) - 1]
+            })[0];
+
+            var wireId = id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si));
+            opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
+            allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
+
+            if (definition.printCurveDetails)
+            {
+                println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " ===");
+                println("  degree:  " ~ toString(bspline.degree));
+                println("  CPs:     " ~ toString(size(bspline.controlPoints)));
+                println("  samples: " ~ toString(size(pts)));
+                println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+            }
+
+            if (definition.showRegions)
+                addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.CYAN);
+        }
     }
 
     // One BSpline wire per active blend zone

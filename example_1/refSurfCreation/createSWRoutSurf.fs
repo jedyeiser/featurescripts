@@ -353,6 +353,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "tools"         : qUnion(loftedSurfs),
                     "operationType" : BooleanOperationType.UNION
             });
+            
             setProperty(context, {
                     "entities"     : qUnion(loftedSurfs),
                     "propertyType" : PropertyType.NAME,
@@ -365,8 +366,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 6 && definition.swRoutStepin > 0 * millimeter)
         {
-            var startEdges  = qUnion([qOwnedByBody(qCreatedBy(id + "startIntersect",     EntityType.BODY), EntityType.EDGE)]);
-            var stepInEdges = qUnion([qOwnedByBody(qCreatedBy(id + "stepInIntersection", EntityType.BODY), EntityType.EDGE)]);
+            var startEdges  = qUnion([qCreatedBy(id + "startIntersect", EntityType.EDGE)]);
+            var stepInEdges = qUnion([qCreatedBy(id + "stepInIntersection", EntityType.EDGE)]);
 
             var loftedSurfs = [];
             var iterEdges = evaluateQuery(context, startEdges);
