@@ -295,6 +295,14 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Print path data",
                          "Description" : "Print path length, refParam, and edge count" }
             definition.printPathData is boolean;
+
+            annotation { "Name" : "Print edge data",
+                         "Description" : "Print per-edge arc lengths, lengths, and startSign values" }
+            definition.printEdgeData is boolean;
+
+            annotation { "Name" : "Print frame samples",
+                         "Description" : "Sample Frenet xAxis/yAxis at 5 points per edge; show junction dot products" }
+            definition.printFrameSamples is boolean;
         }
     }
     {
@@ -339,12 +347,70 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             println("  refParam:     " ~ toString(pathInfo.refParam));
             println("  edge count:   " ~ toString(size(pathInfo.frenetPath.edgeData)));
         }
+
+        if (definition.printEdgeData || definition.printFrameSamples)
+        {
+            var edgeData = pathInfo.frenetPath.edgeData;
+            var nEdges   = size(edgeData);
+
+            if (definition.printEdgeData)
+            {
+                println("=== Frenet edge data (" ~ toString(nEdges) ~ " edges) ===");
+                for (var ei = 0; ei < nEdges; ei += 1)
+                {
+                    var ed = edgeData[ei];
+                    println("  Edge " ~ toString(ei) ~ ":"
+                        ~ "  startArc=" ~ toString(ed.startArcLength / millimeter) ~ "mm"
+                        ~ "  len="      ~ toString(ed.length          / millimeter) ~ "mm"
+                        ~ "  startSign=" ~ toString(ed.startSign));
+                }
+            }
+
+            if (definition.printFrameSamples)
+            {
+                println("=== Frenet frame samples (5 pts/edge) ===");
+                println("  xAxis = binormal dir  |  yAxis = normal dir  |  zAxis = tangent");
+                for (var ei = 0; ei < nEdges; ei += 1)
+                {
+                    var ed       = edgeData[ei];
+                    var arcStart = ed.startArcLength;
+                    var arcEnd   = arcStart + ed.length;
+                    println("  -- Edge " ~ toString(ei)
+                        ~ "  startSign=" ~ toString(ed.startSign)
+                        ~ "  len=" ~ toString(ed.length / millimeter) ~ "mm --");
+                    for (var si = 0; si <= 4; si += 1)
+                    {
+                        var s  = arcStart + (arcEnd - arcStart) * si / 4;
+                        var fr = getFrameAtArcLength(context, pathInfo.frenetPath, s);
+                        var xa = fr.frame.xAxis;
+                        var ya = yAxis(fr.frame);
+                        println("    s=" ~ toString(s / millimeter) ~ "mm"
+                            ~ "  xAxis=[" ~ toString(xa[0]) ~ ", " ~ toString(xa[1]) ~ ", " ~ toString(xa[2]) ~ "]"
+                            ~ "  yAxis=[" ~ toString(ya[0]) ~ ", " ~ toString(ya[1]) ~ ", " ~ toString(ya[2]) ~ "]");
+                    }
+
+                    if (ei < nEdges - 1)
+                    {
+                        var lenA = edgeData[ei].length;
+                        var lenB = edgeData[ei + 1].length;
+                        var eps  = (lenA < lenB ? lenA : lenB) * 0.01;
+                        var jArc = edgeData[ei + 1].startArcLength;
+                        var fB   = getFrameAtArcLength(context, pathInfo.frenetPath, jArc - eps);
+                        var fA   = getFrameAtArcLength(context, pathInfo.frenetPath, jArc + eps);
+                        var d    = dot(fB.frame.xAxis, fA.frame.xAxis);
+                        var tag  = (d < 0) ? "  *** STILL ANTIPARALLEL ***" : "  OK";
+                        println("  Junction " ~ toString(ei) ~ "->" ~ toString(ei + 1)
+                            ~ "  dot(xBefore, xAfter)=" ~ toString(d) ~ tag);
+                    }
+                }
+            }
+        }
     });
 
 
 // ─── Path processing ──────────────────────────────────────────────────────────
 
-function fixFrenetPathSigns(context is Context, frenetPath is map) returns map
+function fixFrenetPathSigns(context is Context, frenetPath is map, printLog is boolean) returns map
 {
     var edgeData = frenetPath.edgeData;
     var n = size(edgeData);
@@ -352,6 +418,9 @@ function fixFrenetPathSigns(context is Context, frenetPath is map) returns map
     {
         return frenetPath;
     }
+
+    if (printLog)
+        println("=== fixFrenetPathSigns (" ~ toString(n) ~ " edges) ===");
 
     for (var i = 0; i < n - 1; i += 1)
     {
@@ -362,8 +431,22 @@ function fixFrenetPathSigns(context is Context, frenetPath is map) returns map
 
         var fBefore = getFrameAtArcLength(context, frenetPath, junctionArc - eps);
         var fAfter  = getFrameAtArcLength(context, frenetPath, junctionArc + eps);
+        var d       = dot(fBefore.frame.xAxis, fAfter.frame.xAxis);
 
-        if (dot(fBefore.frame.xAxis, fAfter.frame.xAxis) < 0)
+        if (printLog)
+        {
+            var action = (d < 0) ? "  -> FLIPPING edges " ~ toString(i + 1) ~ ".." ~ toString(n - 1) : "  -> OK";
+            println("  Junction " ~ toString(i) ~ "->" ~ toString(i + 1)
+                ~ "  arc=" ~ toString(junctionArc / millimeter) ~ "mm"
+                ~ "  eps=" ~ toString(eps / millimeter) ~ "mm"
+                ~ "  dot=" ~ toString(d) ~ action);
+            var xa_b = fBefore.frame.xAxis;
+            var xa_a = fAfter.frame.xAxis;
+            println("    xBefore=[" ~ toString(xa_b[0]) ~ ", " ~ toString(xa_b[1]) ~ ", " ~ toString(xa_b[2]) ~ "]"
+                ~ "  xAfter=["  ~ toString(xa_a[0]) ~ ", " ~ toString(xa_a[1]) ~ ", " ~ toString(xa_a[2]) ~ "]");
+        }
+
+        if (d < 0)
         {
             for (var j = i + 1; j < n; j += 1)
             {
@@ -383,7 +466,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 {
     var edges       = expandEdgeQuery(definition.userSelection);
     var frenetPath  = buildFrenetPath(context, id, edges, definition.flipDirection);
-    frenetPath      = fixFrenetPathSigns(context, frenetPath);
+    frenetPath      = fixFrenetPathSigns(context, frenetPath, definition.printFrameSamples);
     var totalLength = frenetPath.totalLength;
 
     var refPt     = getRefPoint(context, definition.referencePoint);
