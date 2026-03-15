@@ -152,8 +152,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 2: (Only if swRoutStepin > 0) offset side inward, intersect
-        //         with startBottom from step 1 → step-in wire
+        // Step 2: (Only if swRoutStepin > 0) copy side surface and offset inward
         // =====================================================================
         if (stepThrough && step >= 2 && definition.swRoutStepin > 0 * millimeter)
         {
@@ -168,18 +167,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "offsetDistance" : -sideOffsetSign * definition.swRoutStepin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (offset copy)" });
-
-            opIntersectFaces(context, id + "stepInIntersect", {
-                    "tools"   : qOwnedByBody(qCreatedBy(id + "stepInSide",  EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)
-            });
-            opExtractWires(context, id + "stepInWire", {
-                    "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
-
-            if (definition.debugPrint)
-                debugPrintWireBSplines(context, qCreatedBy(id + "stepInWire", EntityType.BODY), "Step-in wire", debugFmt);
         }
     });
 
