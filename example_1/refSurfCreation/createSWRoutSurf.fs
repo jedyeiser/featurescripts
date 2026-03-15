@@ -732,8 +732,12 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
         }
     }
 
-    // Re-approximate each non-sliver edge with corrected endpoints
-    var cleanedCurves = [];
+    // Collect all sample points from non-sliver edges in chain order into one array.
+    // Skip the first point of each subsequent segment to avoid duplicating join points.
+    var allPts       = [];
+    var startDir     = undefined;
+    var endDir       = undefined;
+    var firstSegment = true;
     for (var i = 0; i < m; i += 1)
     {
         if (chordLen[i] < sliverThreshold) { continue; }
@@ -742,46 +746,47 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
         var fwd  = orderedFwd[i];
         var edge = allEdges[idx];
 
-        var pts = [];
+        var segPts = [];
         for (var k = 0; k <= RESAMPLE_COUNT; k += 1)
         {
             var t     = k / RESAMPLE_COUNT;
             var param = fwd ? t : (1.0 - t);
-            pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : param }).origin);
+            segPts = append(segPts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : param }).origin);
         }
-        if (startPtOverride[i] != undefined) { pts[0] = startPtOverride[i]; }
-        if (endPtOverride[i]   != undefined) { pts[size(pts) - 1] = endPtOverride[i]; }
+        if (startPtOverride[i] != undefined) { segPts[0] = startPtOverride[i]; }
+        if (endPtOverride[i]   != undefined) { segPts[size(segPts) - 1] = endPtOverride[i]; }
 
-        var targetDef = { "positions" : pts };
-        if (startDirOverride[i] != undefined) { targetDef["startDerivative"] = startDirOverride[i]; }
-        if (endDirOverride[i]   != undefined) { targetDef["endDerivative"]   = endDirOverride[i]; }
+        // Capture wire-level start/end derivatives from the first and last real edges
+        if (firstSegment)
+        {
+            if (startDirOverride[i] != undefined) { startDir = startDirOverride[i]; }
+            firstSegment = false;
+        }
+        if (endDirOverride[i] != undefined) { endDir = endDirOverride[i]; }
 
-        cleanedCurves = append(cleanedCurves, approximateSpline(context, {
-                "targets"          : [approximationTarget(targetDef)],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : false,
-                "maxControlPoints" : 200
-        })[0]);
+        // Skip first point on all but the first segment to avoid duplicating the join
+        var kStart = (size(allPts) == 0) ? 0 : 1;
+        for (var k = kStart; k < size(segPts); k += 1)
+        {
+            allPts = append(allPts, segPts[k]);
+        }
     }
+
+    var targetDef = { "positions" : allPts };
+    if (startDir != undefined) { targetDef["startDerivative"] = startDir; }
+    if (endDir   != undefined) { targetDef["endDerivative"]   = endDir; }
+
+    var cleanedCurve = approximateSpline(context, {
+            "targets"          : [approximationTarget(targetDef)],
+            "degree"           : 3,
+            "tolerance"        : 1e-5 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : 200
+    })[0];
 
     opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-
-    var edgeBodies = [];
-    for (var i = 0; i < size(cleanedCurves); i += 1)
-    {
-        opCreateBSplineCurve(context, id + ("edge" ~ i), { "bSplineCurve" : cleanedCurves[i] });
-        edgeBodies = append(edgeBodies, qCreatedBy(id + ("edge" ~ i), EntityType.BODY));
-    }
-
-    if (size(edgeBodies) > 1)
-    {
-        var allCleanEdges = qOwnedByBody(qUnion(edgeBodies), EntityType.EDGE);
-        opExtractWires(context, id + "mergeWire", { "edges" : allCleanEdges });
-        opDeleteBodies(context, id + "deleteEdgeBodies", { "entities" : qUnion(edgeBodies) });
-        return qCreatedBy(id + "mergeWire", EntityType.BODY);
-    }
-    return edgeBodies[0];
+    opCreateBSplineCurve(context, id + "cleanedWire", { "bSplineCurve" : cleanedCurve });
+    return qCreatedBy(id + "cleanedWire", EntityType.BODY);
 }
 
 /**
