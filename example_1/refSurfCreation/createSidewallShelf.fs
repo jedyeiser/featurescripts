@@ -906,10 +906,11 @@ function classifyEdgeAgainstPlanes(context is Context, edge is Query,
 }
 
 
-// ─── Wire construction (multi-segment) ───────────────────────────────────────
+// ─── Edge offset wire construction ────────────────────────────────────────────
 
 /**
- * Sorts a number array ascending (selection-sort; arrays are small).
+ * Placeholder — sortNumbers removed (no longer needed).
+ * Retained section header to keep diff minimal.
  */
 function sortNumbers(arr is array) returns array
 {
