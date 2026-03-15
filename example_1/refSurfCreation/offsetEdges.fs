@@ -470,6 +470,91 @@ function fixFrenetPathSigns(frenetPath is map, printLog is boolean) returns map
 }
 
 
+// Returns a frame at the given arc length along the path, handling both BSpline/line edges
+// (delegated to getFrameAtArcLength) and circular arc edges (computed natively).
+//
+// For circular arcs, getFrameAtArcLength fails internally because evApproximateBSplineCurve
+// returns a rational NURBS and the arc-length table pipeline does not support weighted
+// BSplines.  We bypass it entirely:
+//   - position + tangent  via evEdgeTangentLine  (native, works for any edge type)
+//   - centripetal normal  via (center - position) (geometric, no BSpline needed)
+//   - traversal direction via edgeData.stdDir
+//   - sign correction     via edgeData.startSign  (same convention as getFrameAtArcLength)
+//
+// The returned map has the same shape as getFrameAtArcLength: { frame, sign, edgeIndex }.
+function evalNativeFrame(context is Context, frenetPath is map, arcLength) returns map
+{
+    var edgeData = frenetPath.edgeData;
+    var n        = size(edgeData);
+
+    // Find the edge that contains this arc length
+    var ei = n - 1;
+    for (var i = 0; i < n - 1; i += 1)
+    {
+        if (edgeData[i + 1].startArcLength > arcLength)
+        {
+            ei = i;
+            break;
+        }
+    }
+    var ed = edgeData[ei];
+
+    // Check curve type; only circles need special handling.
+    // evCurveDefinition uses the field name "curveType" (not "type").
+    var curveDef = evCurveDefinition(context, { "edge": ed.query });
+    if (curveDef.curveType != CurveType.CIRCLE)
+    {
+        return getFrameAtArcLength(context, frenetPath, arcLength);
+    }
+
+    // ── Circular arc: compute frame directly ──────────────────────────────────
+
+    // Convert local arc length to native edge parameter [0, 1].
+    // For a circular arc, the native parameter is proportional to arc length.
+    var localArc = arcLength - ed.startArcLength;
+    var edgeLen  = ed.length;
+    var p        = (edgeLen / meter > 1e-10) ? localArc / edgeLen : 0.0;
+    p = ed.stdDir ? p : (1.0 - p);
+    p = min(max(p, 0.0), 1.0);
+
+    // Position and tangent from the native edge query
+    var tl      = evEdgeTangentLine(context, { "edge": ed.query, "parameter": p });
+    var origin  = tl.origin;
+    var tangent = ed.stdDir ? tl.direction : -tl.direction;
+
+    // Centripetal normal: direction from the point on the arc toward the circle center.
+    // curveDef.coordSystem.origin IS the circle center for CurveType.CIRCLE.
+    var center  = curveDef.coordSystem.origin;
+    var diff    = center - origin;
+    var diffLen = norm(diff);
+    var rawNorm = (diffLen / meter > 1e-10) ? diff / diffLen : curveDef.coordSystem.xAxis;
+
+    // Apply startSign (same convention buildFrenetPath uses for BSpline edges)
+    var sign  = ed.startSign;
+    var xAxis = sign * rawNorm;
+
+    // Re-orthogonalize against tangent — should already be perpendicular for a true circle,
+    // but floating-point and edge parameterization can introduce small errors.
+    xAxis     = xAxis - tangent * dot(tangent, xAxis);
+    var xLen  = norm(xAxis);
+    if (xLen > 1e-10)
+    {
+        xAxis = xAxis / xLen;
+    }
+    else
+    {
+        // True degenerate (query point at circle center — geometrically impossible for valid input)
+        xAxis = rawNorm;
+    }
+
+    return {
+        "frame"     : coordSystem(origin, xAxis, tangent),
+        "sign"      : sign,
+        "edgeIndex" : ei
+    };
+}
+
+
 // Builds a parallel transport (Bishop) frame table along the path.
 //
 // Starting from the Frenet frame at s=0, each step rotates the previous xAxis by
@@ -482,7 +567,7 @@ function fixFrenetPathSigns(frenetPath is map, printLog is boolean) returns map
 function buildParallelTransportTable(context is Context, frenetPath is map, numSamples is number) returns array
 {
     var totalLength = frenetPath.totalLength;
-    var fr0         = getFrameAtArcLength(context, frenetPath, 0 * meter);
+    var fr0         = evalNativeFrame(context, frenetPath, 0 * meter);
     var prevXAxis   = fr0.frame.xAxis;
     var prevTangent = fr0.frame.zAxis;
 
@@ -491,7 +576,7 @@ function buildParallelTransportTable(context is Context, frenetPath is map, numS
     for (var i = 1; i < numSamples; i += 1)
     {
         var s           = totalLength * i / (numSamples - 1);
-        var fr          = getFrameAtArcLength(context, frenetPath, s);
+        var fr          = evalNativeFrame(context, frenetPath, s);
         var currTangent = fr.frame.zAxis;
 
         // Rodrigues rotation: rotate prevXAxis by the rotation taking prevTangent -> currTangent
@@ -533,7 +618,7 @@ function sampleParallelTransportFrame(context is Context, frenetPath is map, ptT
     arcLength) returns map
 {
     var n  = size(ptTable);
-    var fr = getFrameAtArcLength(context, frenetPath, arcLength);
+    var fr = evalNativeFrame(context, frenetPath, arcLength);
 
     if (n == 0)
     {
@@ -592,16 +677,8 @@ function processPath(context is Context, id is Id, definition is map) returns ma
     frenetPath      = fixFrenetPathSigns(frenetPath, definition.printFrameSamples);
     var totalLength = frenetPath.totalLength;
 
-    // Build parallel transport table.  Falls back to empty table (= raw Frenet frames) if any
-    // edge in the chain is a native arc/circle: evApproximateBSplineCurve returns a rational
-    // NURBS for arcs, and getFrameAtArcLength's internal evaluateSpline does not support
-    // rational BSplines.  For circular arcs, Frenet = parallel transport anyway (zero torsion).
     var numPTSamples = max([100, definition.numRegionPoints * 4]);
-    var ptTable      = [];
-    try silent
-    {
-        ptTable = buildParallelTransportTable(context, frenetPath, numPTSamples);
-    }
+    var ptTable      = buildParallelTransportTable(context, frenetPath, numPTSamples);
 
     var refPt     = getRefPoint(context, definition.referencePoint);
     var refResult = projectOntoFrenetPath(frenetPath, refPt, undefined);
