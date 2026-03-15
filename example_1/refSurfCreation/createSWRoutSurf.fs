@@ -77,9 +77,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 isInteger(definition.debugStep, DEBUG_STEP_BOUNDS);
             }
 
-            annotation { "Name" : "Keep all bodies", "Default" : false }
-            definition.debugKeepAllBodies is boolean;
-
             annotation { "Name" : "Print debug", "Default" : false }
             definition.debugPrint is boolean;
 
@@ -152,13 +149,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             if (definition.debugPrint)
                 debugPrintWireBSplines(context, qCreatedBy(id + "startWire", EntityType.BODY), "Start wire", debugFmt);
-
-            if (!definition.debugKeepAllBodies)
-            {
-                opDeleteBodies(context, id + "deleteStartIntersect", {
-                        "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY)
-                });
-            }
         }
 
         // =====================================================================
@@ -190,14 +180,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             if (definition.debugPrint)
                 debugPrintWireBSplines(context, qCreatedBy(id + "stepInWire", EntityType.BODY), "Step-in wire", debugFmt);
-
-            if (!definition.debugKeepAllBodies)
-            {
-                opDeleteBodies(context, id + "deleteStepInIntersect", {
-                        "entities" : qUnion([qCreatedBy(id + "stepInSide",      EntityType.BODY),
-                                             qCreatedBy(id + "stepInIntersect", EntityType.BODY)])
-                });
-            }
         }
     });
 

@@ -442,6 +442,47 @@ function processShelfPath(context is Context, id is Id, definition is map) retur
 // ─── Rail extraction ──────────────────────────────────────────────────────────
 
 /**
+ * Splits wireBody at the front plane (Y = 0) and returns the half with the
+ * highest max-Y bounding box (the +Y ski side). If the wire lies entirely on
+ * one side it is returned unchanged.
+ */
+function splitWireAndKeepPlusY(context is Context, id is Id, wireBody is Query) returns Query
+{
+    try
+    {
+        opSplitPart(context, id + "split", {
+            "targets" : wireBody,
+            "tool"    : qFrontPlane(EntityType.FACE)
+        });
+    }
+    catch
+    {
+        // Wire does not intersect the front plane — already fully on one side
+        return wireBody;
+    }
+
+    var trueBody  = qSplitBy(id + "split", EntityType.BODY, true);
+    var falseBody = qSplitBy(id + "split", EntityType.BODY, false);
+
+    var trueEmpty  = isQueryEmpty(context, trueBody);
+    var falseEmpty = isQueryEmpty(context, falseBody);
+
+    if (trueEmpty && falseEmpty) return wireBody;
+    if (trueEmpty)  return falseBody;
+    if (falseEmpty) return trueBody;
+
+    var trueMaxY  = evBox3d(context, { "topology" : trueBody,  "tight" : true }).maxCorner[1];
+    var falseMaxY = evBox3d(context, { "topology" : falseBody, "tight" : true }).maxCorner[1];
+
+    var kept    = trueMaxY >= falseMaxY ? trueBody  : falseBody;
+    var deleted = trueMaxY >= falseMaxY ? falseBody : trueBody;
+
+    opDeleteBodies(context, id + "del", { "entities" : deleted });
+    return kept;
+}
+
+
+/**
  * Extracts the top (highest Z) and bottom (lowest Z) free-edge rail paths from
  * the outside surface. Any extra boundary wires (tip/tail edges) are deleted.
  * Returns { topPath, bottomPath, topWire, bottomWire }.
@@ -482,28 +523,20 @@ function extractShelfRails(context is Context, id is Id, outsideSurface is Query
     var topWire    = wireBodies[topIdx];
     var bottomWire = wireBodies[bottomIdx];
 
-    // The outside surface boundary loops wrap around both +Y and -Y ski halves.
-    // Split at the front plane (XZ plane, Y=0) and keep the +Y side (KEEP_BACK),
-    // matching the same convention used in createSWRoutSurf.
-    opSplitPart(context, id + "splitTop", {
-        "targets"  : topWire,
-        "tool"     : qFrontPlane(EntityType.FACE),
-        "keepType" : SplitOperationKeepType.KEEP_BACK
-    });
-    opSplitPart(context, id + "splitBottom", {
-        "targets"  : bottomWire,
-        "tool"     : qFrontPlane(EntityType.FACE),
-        "keepType" : SplitOperationKeepType.KEEP_BACK
-    });
+    // The boundary loops wrap around both +Y and -Y ski halves.
+    // Split each at the front plane without a keepType, then keep whichever half
+    // has the higher max Y (the +Y side used for the shelf feature).
+    var topWireKept    = splitWireAndKeepPlusY(context, id + "splitTop",    topWire);
+    var bottomWireKept = splitWireAndKeepPlusY(context, id + "splitBottom", bottomWire);
 
-    var topPath    = constructPath(context, qOwnedByBody(topWire,    EntityType.EDGE));
-    var bottomPath = constructPath(context, qOwnedByBody(bottomWire, EntityType.EDGE));
+    var topPath    = constructPath(context, qOwnedByBody(topWireKept,    EntityType.EDGE));
+    var bottomPath = constructPath(context, qOwnedByBody(bottomWireKept, EntityType.EDGE));
 
     return {
         "topPath"    : topPath,
         "bottomPath" : bottomPath,
-        "topWire"    : topWire,
-        "bottomWire" : bottomWire
+        "topWire"    : topWireKept,
+        "bottomWire" : bottomWireKept
     };
 }
 
