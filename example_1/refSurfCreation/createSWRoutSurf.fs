@@ -195,7 +195,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 3: Copy and offset both surfaces to stop position → stop wire
+        // Step 3: Further offset both copies to stop position → stop wire
+        //   bottomCopy: currently at distAboveBottom, add routHeight
+        //   sideCopy:   currently at swRoutStepin (or 0), add routOffset - swRoutStepin
         // =====================================================================
         if (stepThrough && step >= 3)
         {
@@ -211,33 +213,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 println("  routOffset = " ~ toString(routOffset));
             }
 
-            opPattern(context, id + "stopBottom", {
-                    "entities"      : definition.bottomSheet,
-                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                    "instanceNames" : ["1"]
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (copy)" });
             opOffsetFace(context, id + "stopBottomOffset", {
-                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopBottom", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : bottomOffsetSign * (definition.distAboveBottom + routHeight)
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : bottomOffsetSign * routHeight
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "stopBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
+            setProperty(context, { "entities" : qCreatedBy(id + "bottomCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop bottom (offset copy)" });
 
-            opPattern(context, id + "stopSide", {
-                    "entities"      : definition.sideSheet,
-                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                    "instanceNames" : ["1"]
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (copy)" });
             opOffsetFace(context, id + "stopSideOffset", {
-                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stopSide", EntityType.BODY), EntityType.FACE)]),
-                    "offsetDistance" : -sideOffsetSign * routOffset
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "sideCopy", EntityType.BODY), EntityType.FACE)]),
+                    "offsetDistance" : -sideOffsetSign * (routOffset - definition.swRoutStepin)
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "stopSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
+            setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
 
             intersectionCurve(context, id + "stopIntersect", {
-                    "group1" : qCreatedBy(id + "stopBottom", EntityType.BODY),
-                    "group2" : qCreatedBy(id + "stopSide",   EntityType.BODY)
+                    "group1" : qCreatedBy(id + "bottomCopy", EntityType.BODY),
+                    "group2" : qCreatedBy(id + "sideCopy",   EntityType.BODY)
             });
             setProperty(context, { "entities" : qCreatedBy(id + "stopIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
 
