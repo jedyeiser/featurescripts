@@ -37,7 +37,7 @@ export const ShelfSamplingDensityBounds = {(unitless)   : [5,    50, 500]}  as I
 export const ShelfApproxDegreeBounds    = {(unitless)   : [2,     3,   5]}  as IntegerBoundSpec;
 export const ShelfApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]} as LengthBoundSpec;
 export const ShelfApproxMaxCPBounds     = {(unitless)   : [10,  100, 500]}  as IntegerBoundSpec;
-export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   7]}  as IntegerBoundSpec;
+export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   6]}  as IntegerBoundSpec;
 
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
@@ -279,8 +279,8 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                          "Driving Parameter" : "debugStepThrough",
                          "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1-7)", "UIHint" : UIHint.SHOW_LABEL,
-                             "Description" : "1=ref path  2=outward  3=before curves  4=curves  5=offset wires  6=loft surfaces  7=boolean" }
+                annotation { "Name" : "Step (1-6)", "UIHint" : UIHint.SHOW_LABEL,
+                             "Description" : "1=ref path  2=outward  3=edge classification  4=wires  5=loft surfaces  6=boolean" }
                 isInteger(definition.debugStep, ShelfDebugStepBounds);
             }
 
@@ -316,122 +316,103 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
 
         if (definition.debugStepThrough && definition.debugStep == 1) return;
 
-        // ── Step 2: Footprint path + outward direction check ──────────────────
-        var footprintEdges = qOwnedByBody(definition.footprintWire, EntityType.EDGE);
-        var footprintPath;
-        try
-        {
-            footprintPath = constructPath(context, footprintEdges);
-        }
-        catch
-        {
-            throw regenError("Footprint wire edges must form a continuous closed path");
-        }
-
-        var surfFaces   = evaluateQuery(context, qOwnedByBody(definition.bottomSurface, EntityType.FACE));
-        var flipOutward  = determineOutwardFlip(context, footprintPath, surfFaces);
-        var vertexParams = getFootprintVertexParams(context, footprintPath, definition.footprintWire);
+        // ── Step 2: Footprint edges + outward direction ───────────────────────
+        var footprintEdges = evaluateQuery(context, qOwnedByBody(definition.footprintWire, EntityType.EDGE));
+        var surfFaces      = evaluateQuery(context, qOwnedByBody(definition.bottomSurface, EntityType.FACE));
+        var flipOutward    = determineOutwardFlip(context, footprintEdges, surfFaces);
 
         if (definition.debugStepThrough && definition.debugStep == 2) return;
 
-        // ── Step 3: Find footprint extent; sample two open arcs ───────────────
+        // ── Step 3: Region boundary planes; classify + split footprint edges ──
         var blendZones = collectShelfBlendZones(context, id, definition, pathInfo, sortedRegions);
+        var tRefStart  = sortedRegions[0].tStart;
+        var tRefEnd    = sortedRegions[size(sortedRegions) - 1].tEnd;
 
-        // Overall region extent on the refWire
-        var tRefStart = sortedRegions[0].tStart;
-        var tRefEnd   = sortedRegions[size(sortedRegions) - 1].tEnd;
-
-        // RefWire point + tangent at each boundary
         var startTl = evPathTangentLines(context, pathInfo.path, [tRefStart]).tangentLines[0];
         var endTl   = evPathTangentLines(context, pathInfo.path, [tRefEnd  ]).tangentLines[0];
 
-        // Footprint cross-section parameters at each boundary
-        var startCross = findFootprintCrossSectionParams(context, footprintPath,
-                             startTl.origin, startTl.direction);
-        var endCross   = findFootprintCrossSectionParams(context, footprintPath,
-                             endTl.origin,   endTl.direction);
+        // Separate classified edges by Y side
+        var plusEdges  = [];
+        var minusEdges = [];
+        for (var edge in footprintEdges)
+        {
+            var cls = classifyEdgeAgainstPlanes(context, edge,
+                          startTl.origin, startTl.direction,
+                          endTl.origin,   endTl.direction);
+            if (!cls.include) continue;
 
-        // Orient each arc so the midpoint is on the correct Y side.
-        // If the footprint path's 0/1 boundary lies inside the arc, direct linear
-        // interpolation crosses the other side; complement by wrapping.
-        var plusArc  = orientFootprintArc(context, footprintPath, startCross.plusY,  endCross.plusY,   1);
-        var minusArc = orientFootprintArc(context, footprintPath, endCross.minusY, startCross.minusY, -1);
+            var midPt = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.5] })[0].origin;
+            var entry = { "edge" : edge, "paramStart" : cls.paramStart, "paramEnd" : cls.paramEnd };
+            if (midPt[1] >= 0)
+                plusEdges  = append(plusEdges,  entry);
+            else
+                minusEdges = append(minusEdges, entry);
+        }
 
         if (definition.debugStepThrough && definition.debugStep == 3) return;
 
-        // ── Step 4: Fit and output curves (split at footprint edge vertices) ──
-        var shelfPlusWire  = buildShelfWires(context, id + "shelfPlus",  definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                plusArc,  0 * meter,                 vertexParams, DebugColor.GREEN);
-        var shelfMinusWire = buildShelfWires(context, id + "shelfMinus", definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                minusArc, 0 * meter,                 vertexParams, DebugColor.GREEN);
-        var insidePlusWire  = buildShelfWires(context, id + "insidePlus",  definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                plusArc,  -definition.sidewallWidth, vertexParams, DebugColor.BLUE);
-        var insideMinusWire = buildShelfWires(context, id + "insideMinus", definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                minusArc, -definition.sidewallWidth, vertexParams, DebugColor.BLUE);
+        // ── Step 4: Sample each classified edge; build all 4 wire types ───────
+        // Each entry produces { shelf, inside, shelfTop, insideTop } wire bodies.
+        var spShelf  = []; var spInside  = []; var spShelfTop  = []; var spInsideTop  = [];
+        var smShelf  = []; var smInside  = []; var smShelfTop  = []; var smInsideTop  = [];
 
-        setProperty(context, { "entities" : shelfPlusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y wire" });
-        setProperty(context, { "entities" : shelfMinusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y wire" });
-        setProperty(context, { "entities" : insidePlusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y wire" });
-        setProperty(context, { "entities" : insideMinusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y wire" });
+        for (var i = 0; i < size(plusEdges); i += 1)
+        {
+            var e = plusEdges[i];
+            var w = buildEdgeOffsetWires(context, id + "ep" ~ toString(i), definition, pathInfo,
+                        sortedRegions, blendZones, surfFaces, flipOutward,
+                        e.edge, e.paramStart, e.paramEnd);
+            spShelf     = append(spShelf,     w.shelf);
+            spInside    = append(spInside,    w.inside);
+            spShelfTop  = append(spShelfTop,  w.shelfTop);
+            spInsideTop = append(spInsideTop, w.insideTop);
+        }
+        for (var i = 0; i < size(minusEdges); i += 1)
+        {
+            var e = minusEdges[i];
+            var w = buildEdgeOffsetWires(context, id + "em" ~ toString(i), definition, pathInfo,
+                        sortedRegions, blendZones, surfFaces, flipOutward,
+                        e.edge, e.paramStart, e.paramEnd);
+            smShelf     = append(smShelf,     w.shelf);
+            smInside    = append(smInside,    w.inside);
+            smShelfTop  = append(smShelfTop,  w.shelfTop);
+            smInsideTop = append(smInsideTop, w.insideTop);
+        }
+
+        setProperty(context, { "entities" : qUnion(spShelf),    "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y wire" });
+        setProperty(context, { "entities" : qUnion(smShelf),    "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y wire" });
+        setProperty(context, { "entities" : qUnion(spInside),   "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y wire" });
+        setProperty(context, { "entities" : qUnion(smInside),   "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y wire" });
+        setProperty(context, { "entities" : qUnion(spShelfTop), "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y top" });
+        setProperty(context, { "entities" : qUnion(smShelfTop), "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y top" });
+        setProperty(context, { "entities" : qUnion(spInsideTop),"propertyType" : PropertyType.NAME, "value" : "SW Inside +Y top" });
+        setProperty(context, { "entities" : qUnion(smInsideTop),"propertyType" : PropertyType.NAME, "value" : "SW Inside -Y top" });
 
         if (definition.debugStepThrough && definition.debugStep == 4) return;
 
-        // ── Step 5: Offset wires (raise each wire by surfaceHeight along normal) ──
-        var offsetShelfPlusWire  = offsetWireGroup(context, id + "offSP", definition, shelfPlusWire,  surfFaces);
-        var offsetShelfMinusWire = offsetWireGroup(context, id + "offSM", definition, shelfMinusWire, surfFaces);
-        var offsetInsidePlusWire  = offsetWireGroup(context, id + "offIP", definition, insidePlusWire,  surfFaces);
-        var offsetInsideMinusWire = offsetWireGroup(context, id + "offIM", definition, insideMinusWire, surfFaces);
+        // ── Step 5: Loft each bottom↔top pair (index-matched from step 4) ────
+        var shelfPlusSurfs   = loftMatchedWires(context, id + "loftSP", spShelf,   spShelfTop);
+        var shelfMinusSurfs  = loftMatchedWires(context, id + "loftSM", smShelf,   smShelfTop);
+        var insidePlusSurfs  = loftMatchedWires(context, id + "loftIP", spInside,  spInsideTop);
+        var insideMinusSurfs = loftMatchedWires(context, id + "loftIM", smInside,  smInsideTop);
 
-        setProperty(context, { "entities" : offsetShelfPlusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y top" });
-        setProperty(context, { "entities" : offsetShelfMinusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y top" });
-        setProperty(context, { "entities" : offsetInsidePlusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y top" });
-        setProperty(context, { "entities" : offsetInsideMinusWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y top" });
+        setProperty(context, { "entities" : qUnion(shelfPlusSurfs),   "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y surface" });
+        setProperty(context, { "entities" : qUnion(shelfMinusSurfs),  "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y surface" });
+        setProperty(context, { "entities" : qUnion(insidePlusSurfs),  "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y surface" });
+        setProperty(context, { "entities" : qUnion(insideMinusSurfs), "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y surface" });
 
         if (definition.debugStepThrough && definition.debugStep == 5) return;
 
-        // ── Step 6: Loft surfaces between shelf wires and their offset tops ──
-        var shelfPlusSurfs   = loftWirePairs(context, id + "loftSP", shelfPlusWire,   offsetShelfPlusWire);
-        var shelfMinusSurfs  = loftWirePairs(context, id + "loftSM", shelfMinusWire,  offsetShelfMinusWire);
-        var insidePlusSurfs  = loftWirePairs(context, id + "loftIP", insidePlusWire,  offsetInsidePlusWire);
-        var insideMinusSurfs = loftWirePairs(context, id + "loftIM", insideMinusWire, offsetInsideMinusWire);
+        // ── Step 6: Boolean unite each side's segments ────────────────────────
+        var finalSP = booleanSurfaces(context, id + "boolSP", qUnion(shelfPlusSurfs));
+        var finalSM = booleanSurfaces(context, id + "boolSM", qUnion(shelfMinusSurfs));
+        var finalIP = booleanSurfaces(context, id + "boolIP", qUnion(insidePlusSurfs));
+        var finalIM = booleanSurfaces(context, id + "boolIM", qUnion(insideMinusSurfs));
 
-        setProperty(context, { "entities" : shelfPlusSurfs,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y surface" });
-        setProperty(context, { "entities" : shelfMinusSurfs,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y surface" });
-        setProperty(context, { "entities" : insidePlusSurfs,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y surface" });
-        setProperty(context, { "entities" : insideMinusSurfs,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y surface" });
-
-        if (definition.debugStepThrough && definition.debugStep == 6) return;
-
-        // ── Step 7: Boolean unite each side's loft segments into one surface ──
-        var finalShelfPlus   = booleanSurfaces(context, id + "boolSP", shelfPlusSurfs);
-        var finalShelfMinus  = booleanSurfaces(context, id + "boolSM", shelfMinusSurfs);
-        var finalInsidePlus  = booleanSurfaces(context, id + "boolIP", insidePlusSurfs);
-        var finalInsideMinus = booleanSurfaces(context, id + "boolIM", insideMinusSurfs);
-
-        setProperty(context, { "entities" : finalShelfPlus,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y surface" });
-        setProperty(context, { "entities" : finalShelfMinus,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y surface" });
-        setProperty(context, { "entities" : finalInsidePlus,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y surface" });
-        setProperty(context, { "entities" : finalInsideMinus,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y surface" });
+        setProperty(context, { "entities" : finalSP, "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y surface" });
+        setProperty(context, { "entities" : finalSM, "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y surface" });
+        setProperty(context, { "entities" : finalIP, "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y surface" });
+        setProperty(context, { "entities" : finalIM, "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y surface" });
 
     });
 
@@ -464,34 +445,27 @@ function processShelfPath(context is Context, id is Id, definition is map) retur
 // ─── Outward direction ────────────────────────────────────────────────────────
 
 /**
- * Samples 20 points on the footprint, finds the highest-Y one, and checks
- * whether cross(surfaceNormal, tangent) points toward +Y at that location.
- * Returns true if the cross product must be negated to get the outward direction.
+ * Finds the footprint edge whose midpoint has the highest Y, samples it there,
+ * and checks whether cross(surfNormal, tangent)[1] >= 0.
+ * Returns true if the cross product must be negated to get the outward (+Y) direction.
  */
-function determineOutwardFlip(context is Context, footprintPath is Path, surfFaces is array) returns boolean
+function determineOutwardFlip(context is Context, footprintEdges is array, surfFaces is array) returns boolean
 {
-    var params = [];
-    for (var i = 0; i < 20; i += 1)
-        params = append(params, i / 20.0);
-    var tls = evPathTangentLines(context, footprintPath, params).tangentLines;
-
     var maxY    = -1e10 * meter;
-    var maxYIdx = 0;
-    for (var i = 0; i < 20; i += 1)
+    var bestIdx = 0;
+    for (var i = 0; i < size(footprintEdges); i += 1)
     {
-        if (tls[i].origin[1] > maxY)
+        var midPt = evEdgeTangentLines(context, { "edge" : footprintEdges[i], "parameters" : [0.5] })[0].origin;
+        if (midPt[1] > maxY)
         {
-            maxY    = tls[i].origin[1];
-            maxYIdx = i;
+            maxY    = midPt[1];
+            bestIdx = i;
         }
     }
 
-    var testPt      = tls[maxYIdx].origin;
-    var testTangent = tls[maxYIdx].direction;
-    var testNormal  = surfaceNormalAt(context, surfFaces, testPt);
-    var candidate   = cross(testNormal, testTangent);
-
-    // At the highest-Y point on the footprint, outward must have positive Y
+    var tl         = evEdgeTangentLines(context, { "edge" : footprintEdges[bestIdx], "parameters" : [0.5] })[0];
+    var testNormal = surfaceNormalAt(context, surfFaces, tl.origin);
+    var candidate  = cross(testNormal, tl.direction);
     return candidate[1] < 0;
 }
 
@@ -864,164 +838,71 @@ function collectShelfBlendZones(context is Context, id is Id, definition is map,
 }
 
 
-// ─── Arc orientation ──────────────────────────────────────────────────────────
+// ─── Edge classification against region boundary planes ───────────────────────
 
 /**
- * Returns the { start, end } footprint parameter pair that traces the arc
- * between paramA and paramB on the correct Y side (ySign > 0 → +Y, < 0 → -Y).
- *
- * The direct arc [paramA, paramB] has its midpoint at (paramA+paramB)/2.
- * If that midpoint is on the wrong Y side, the path's 0/1 boundary lies
- * inside the intended arc; fix by pushing the smaller param up by 1.0 so the
- * sampling wraps through the boundary.
+ * Binary-searches for the parameter t on 'edge' in [pLo, pHi] where
+ * dot(pt(t) - planeOrigin, planeNormal) = 0.
+ * dLoSign should be the sign of the dot product at pLo (pass as +1 or -1).
  */
-function orientFootprintArc(context is Context, footprintPath is Path,
-    paramA is number, paramB is number, ySign is number) returns map
+function findEdgePlaneCrossing(context is Context, edge is Query,
+    pLo is number, pHi is number,
+    planeOrigin is Vector, planeNormal is Vector,
+    dLoSign is number) returns number
 {
-    var midParam = (paramA + paramB) / 2;
-    var midPt    = evPathTangentLines(context, footprintPath, [midParam]).tangentLines[0].origin;
-    var midY     = midPt[1] / meter;
-
-    // Direct arc is correct
-    if (ySign > 0 && midY >= 0) return { "start" : paramA, "end" : paramB };
-    if (ySign < 0 && midY <= 0) return { "start" : paramA, "end" : paramB };
-
-    // Wrong side: complement the arc by pushing the smaller param up by 1.0
-    if (paramA <= paramB)
-        return { "start" : paramA + 1.0, "end" : paramB };
-    else
-        return { "start" : paramA, "end" : paramB + 1.0 };
-}
-
-
-// ─── Footprint cross-section intersection ─────────────────────────────────────
-
-/**
- * Finds where the plane (refPt, refTangent) cuts the footprint wire, returning
- * the footprint parameter on the +Y side and the -Y side.
- *
- * Method: coarse-sample the footprint, find sign changes in
- * dot(footPt - refPt, refTangent), binary-search each crossing for precision.
- */
-function findFootprintCrossSectionParams(context is Context, footprintPath is Path,
-    refPt is Vector, refTangent is Vector) returns map
-{
-    var coarseN = 100;
-    var coarseParams = [];
-    for (var i = 0; i < coarseN; i += 1)
-        coarseParams = append(coarseParams, i / coarseN);
-
-    var coarseTls = evPathTangentLines(context, footprintPath, coarseParams).tangentLines;
-
-    // Signed projection value (length units) at each coarse sample
-    var vals = [];
-    for (var i = 0; i < coarseN; i += 1)
-        vals = append(vals, dot(coarseTls[i].origin - refPt, refTangent));
-
-    // Find sign changes and binary-search each one
-    var crossings = [];
-    for (var i = 0; i < coarseN; i += 1)
+    for (var iter = 0; iter < 30; iter += 1)
     {
-        var j    = (i + 1) % coarseN;
-        var vI   = vals[i] / meter;
-        var vJ   = vals[j] / meter;
-        if (vI * vJ >= 0) continue; // no sign change
-
-        var pLo  = coarseParams[i];
-        var pHi  = (j == 0) ? 1.0 : coarseParams[j];
-        var vLo  = vI;
-
-        for (var iter = 0; iter < 30; iter += 1)
-        {
-            var pMid   = (pLo + pHi) / 2;
-            var midPt  = evPathTangentLines(context, footprintPath, [pMid]).tangentLines[0].origin;
-            var midVal = dot(midPt - refPt, refTangent) / meter;
-            if (midVal * vLo > 0)
-                pLo = pMid;
-            else
-                pHi = pMid;
-        }
-
-        var tFinal  = (pLo + pHi) / 2;
-        var finalPt = evPathTangentLines(context, footprintPath, [tFinal]).tangentLines[0].origin;
-        crossings = append(crossings, { "t" : tFinal, "y" : finalPt[1] });
-    }
-
-    if (size(crossings) < 2)
-        throw regenError("Region boundary cross-section does not intersect the footprint wire at two points");
-
-    // Identify +Y and -Y crossings (use the ones with the highest/lowest Y)
-    var tPlusY  = crossings[0].t;
-    var tMinusY = crossings[0].t;
-    var maxY    = crossings[0].y;
-    var minY    = crossings[0].y;
-
-    for (var crossing in crossings)
-    {
-        if (crossing.y > maxY) { maxY = crossing.y; tPlusY  = crossing.t; }
-        if (crossing.y < minY) { minY = crossing.y; tMinusY = crossing.t; }
-    }
-
-    return { "plusY" : tPlusY, "minusY" : tMinusY };
-}
-
-
-// ─── Footprint offset sampling ────────────────────────────────────────────────
-
-/**
- * Samples n points along the footprint from paramStart to paramEnd (open arc)
- * and offsets each by shelfDepth + depthOffset along the bottom surface.
- *
- * Depth at each sample comes from projecting the footprint point onto the
- * refWire (closest-point) to get a refWire parameter, then evaluating shelfDepthAtT.
- */
-function buildFootprintOffsetPoints(context is Context, definition is map, pathInfo is map,
-    footprintPath is Path, sortedRegions is array, blendZones is array,
-    surfFaces is array, flipOutward is boolean,
-    paramStart is number, paramEnd is number,
-    depthOffset is ValueWithUnits) returns array
-{
-    var n = definition.samplingDensity;
-
-    // Uniform open range [paramStart, paramEnd]; wrap each into [0, 1) to
-    // handle the case where orientFootprintArc returned start > 1.0 or end < 0.
-    var params = [];
-    for (var i = 0; i < n; i += 1)
-    {
-        var p = paramStart + (paramEnd - paramStart) * i / (n - 1);
-        if (p > 1.0) p = p - 1.0;
-        if (p < 0.0) p = p + 1.0;
-        params = append(params, p);
-    }
-
-    var tls = evPathTangentLines(context, footprintPath, params).tangentLines;
-    var pts = [];
-
-    for (var i = 0; i < n; i += 1)
-    {
-        var footPt  = tls[i].origin;
-        var tangent = tls[i].direction;
-
-        // Surface normal at this footprint point
-        var surfNormal = surfaceNormalAt(context, surfFaces, footPt);
-
-        // Outward direction in the surface tangent plane
-        var outward = cross(surfNormal, tangent);
-        if (flipOutward) outward = -outward;
-        var outLen = norm(outward);
-        if (outLen > 1e-10)
-            outward = outward / outLen;
+        var pMid  = (pLo + pHi) / 2;
+        var ptMid = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [pMid] })[0].origin;
+        var dMid  = dot(ptMid - planeOrigin, planeNormal) / meter;
+        if (dMid * dLoSign > 0)
+            pLo = pMid;
         else
-            outward = vector(0.0, 1.0, 0.0);
-
-        // Map footprint point to refWire parameter via closest-point projection
-        var refDist = evDistancePath(context, { "side0" : pathInfo.path, "side1" : footPt });
-        var refT    = refDist.sides[0].pathParam;
-
-        var depth = shelfDepthAtT(sortedRegions, blendZones, refT) + depthOffset;
-        pts = append(pts, footPt + depth * outward);
+            pHi = pMid;
     }
-    return pts;
+    return (pLo + pHi) / 2;
+}
+
+
+/**
+ * Classifies a footprint edge against the two region boundary planes.
+ * Returns { "include" : bool, "paramStart" : number, "paramEnd" : number }.
+ *
+ * "Inside" the region means: past the start plane AND before the end plane,
+ * i.e. dot(pt - startOrigin, startNormal) >= 0 AND dot(pt - endOrigin, endNormal) <= 0.
+ *
+ * Edges fully outside are excluded.  Partial edges are clipped to the relevant
+ * plane crossing found via binary search.
+ */
+function classifyEdgeAgainstPlanes(context is Context, edge is Query,
+    startOrigin is Vector, startNormal is Vector,
+    endOrigin   is Vector, endNormal   is Vector) returns map
+{
+    var tls  = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.0, 1.0] });
+    var pt0  = tls[0].origin;
+    var pt1  = tls[1].origin;
+
+    var d0s  = dot(pt0 - startOrigin, startNormal) / meter; // + = past start
+    var d1s  = dot(pt1 - startOrigin, startNormal) / meter;
+    var d0e  = dot(pt0 - endOrigin,   endNormal)   / meter; // - = before end
+    var d1e  = dot(pt1 - endOrigin,   endNormal)   / meter;
+
+    // Quick reject: both endpoints on the same outside side
+    if (d0s < 0 && d1s < 0) return { "include" : false, "paramStart" : 0.0, "paramEnd" : 1.0 };
+    if (d0e > 0 && d1e > 0) return { "include" : false, "paramStart" : 0.0, "paramEnd" : 1.0 };
+
+    var pStart = 0.0;
+    var pEnd   = 1.0;
+
+    // Clip at start plane
+    if      (d0s < 0 && d1s >= 0) pStart = findEdgePlaneCrossing(context, edge, 0.0, 1.0, startOrigin, startNormal,  1);
+    else if (d1s < 0 && d0s >= 0) pEnd   = findEdgePlaneCrossing(context, edge, 0.0, 1.0, startOrigin, startNormal, -1);
+
+    // Clip at end plane
+    if      (d1e > 0 && d0e <= 0) pEnd   = findEdgePlaneCrossing(context, edge, pStart, 1.0, endOrigin, endNormal, -1);
+    else if (d0e > 0 && d1e <= 0) pStart = findEdgePlaneCrossing(context, edge, 0.0, pEnd,   endOrigin, endNormal,  1);
+
+    return { "include" : (pEnd > pStart + 1e-6), "paramStart" : pStart, "paramEnd" : pEnd };
 }
 
 

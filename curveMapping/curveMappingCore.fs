@@ -1012,7 +1012,9 @@ export function jostleG2Junctions(context is Context, id is Id,
             }
         }
 
-        // Adjust P_{m-2} of splineBefore (end of sj span)
+        // Adjust P_{m-2} of splineBefore (end of sj span).
+        // Keep P_{m-1} (G1 CP) fixed; solve for P_{m-2} (G2 CP only).
+        // Symmetric to the after-span: P_{m-2} = P_{m-1} + de2*(Ke - (P_m-P_{m-1})/de1)
         {
             var d2tB = kappa_target * d1B_sq + dot(d2B, T_B) * T_B;
             var dB   = splineBefore.degree;
@@ -1020,25 +1022,23 @@ export function jostleG2Junctions(context is Context, id is Id,
             var CPB  = splineBefore.controlPoints;
             var kLB  = size(knB);
             var mB   = size(CPB);
-            if (mB >= 3 && dB >= 2)
+            if (mB >= 4 && dB >= 2)
             {
                 var de1 = knB[kLB - dB - 1] - knB[kLB - dB - 2];
                 var de2 = knB[kLB - dB - 2] - knB[kLB - dB - 3];
                 if (de1 > 0 && de2 > 0)
                 {
-                    var ae  = 1 / de1;
-                    var be2 = 1 / de2;
-                    var Ke  = d2tB * (de1 + de2) / (dB * (dB - 1));
-                    var PL  = CPB[mB - 1];
-                    var PT  = CPB[mB - 3];
-                    var PSn = (ae * PL + be2 * PT - Ke) / (ae + be2);
-                    var shB = norm(PSn - CPB[mB - 2]);
-                    var scB = norm(PL - CPB[mB - 2]) * dB;
+                    var Ke   = d2tB * (de1 + de2) / (dB * (dB - 1));
+                    var Pm   = CPB[mB - 1];
+                    var Pm1  = CPB[mB - 2];
+                    var Pm2n = Pm1 + de2 * (Ke - (Pm - Pm1) / de1);
+                    var shB  = norm(Pm2n - CPB[mB - 3]);
+                    var scB  = norm(Pm - Pm1) * dB;
                     if (scB > 0 * meter && shB > 0 * meter && shB < 0.2 * scB)
                     {
                         var ncB = [];
                         for (var ci = 0; ci < mB; ci += 1)
-                            ncB = append(ncB, ci == mB - 2 ? PSn : CPB[ci]);
+                            ncB = append(ncB, ci == mB - 3 ? Pm2n : CPB[ci]);
                         var adjB = mergeMaps(splineBefore, { "controlPoints": ncB });
                         var nbB  = [];
                         for (var bi = 0; bi < numSpans; bi += 1)

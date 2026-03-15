@@ -206,7 +206,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             annotation { "Group Name" : "Details", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
+                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
                 definition.sourceSamplingMode is SamplingMode;
 
                 if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
@@ -426,7 +426,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         {
             var srcSamplingMode = (definition.sourceSamplingMode != undefined)
                 ? definition.sourceSamplingMode
-                : SamplingMode.LENGTH_BASED;
+                : SamplingMode.CP_BASED;
             var srcBSpline = (srcSamplingMode == SamplingMode.CP_BASED)
                 ? evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] })
                 : undefined;

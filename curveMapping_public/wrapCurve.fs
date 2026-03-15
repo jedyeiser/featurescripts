@@ -75,7 +75,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             annotation { "Group Name" : "Details", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.LENGTH_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
+                annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "LENGTH_BASED: sample by distance; CP_BASED: sample as multiple of source control points" }
                 definition.sourceSamplingMode is SamplingMode;
 
                 if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
