@@ -328,32 +328,62 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
 
         if (definition.debugStepThrough && definition.debugStep == 2) return;
 
-        // ── Step 3: Sample footprint, compute offset points ───────────────────
+        // ── Step 3: Find footprint extent; sample two open arcs ───────────────
         var blendZones = collectShelfBlendZones(context, id, definition, pathInfo, sortedRegions);
 
-        var shelfPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
-                            footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                            0 * meter);
-        var insidePts = buildFootprintOffsetPoints(context, definition, pathInfo,
-                            footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                            -definition.sidewallWidth);
+        // Overall region extent on the refWire
+        var tRefStart = sortedRegions[0].tStart;
+        var tRefEnd   = sortedRegions[size(sortedRegions) - 1].tEnd;
+
+        // RefWire point + tangent at each boundary
+        var startTl = evPathTangentLines(context, pathInfo.path, [tRefStart]).tangentLines[0];
+        var endTl   = evPathTangentLines(context, pathInfo.path, [tRefEnd  ]).tangentLines[0];
+
+        // Footprint cross-section parameters at each boundary
+        var startCross = findFootprintCrossSectionParams(context, footprintPath,
+                             startTl.origin, startTl.direction);
+        var endCross   = findFootprintCrossSectionParams(context, footprintPath,
+                             endTl.origin,   endTl.direction);
+
+        // +Y arc: startCross.plusY → endCross.plusY
+        // -Y arc: endCross.minusY → startCross.minusY  (CCW footprint: -Y goes tip→tail)
+        var shelfPlusPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                startCross.plusY, endCross.plusY, 0 * meter);
+        var shelfMinusPts = buildFootprintOffsetPoints(context, definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                endCross.minusY, startCross.minusY, 0 * meter);
+        var insidePlusPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                startCross.plusY, endCross.plusY, -definition.sidewallWidth);
+        var insideMinusPts = buildFootprintOffsetPoints(context, definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                endCross.minusY, startCross.minusY, -definition.sidewallWidth);
 
         if (definition.debugShowShelfPoints)
         {
-            for (var pt in shelfPts)  debug(context, pt, DebugColor.GREEN);
-            for (var pt in insidePts) debug(context, pt, DebugColor.BLUE);
+            for (var pt in shelfPlusPts)   debug(context, pt, DebugColor.GREEN);
+            for (var pt in shelfMinusPts)  debug(context, pt, DebugColor.GREEN);
+            for (var pt in insidePlusPts)  debug(context, pt, DebugColor.BLUE);
+            for (var pt in insideMinusPts) debug(context, pt, DebugColor.BLUE);
         }
 
         if (definition.debugStepThrough && definition.debugStep == 3) return;
 
         // ── Step 4: Fit and output curves ─────────────────────────────────────
-        var shelfWire  = buildShelfWire(context, id + "shelfWire",  definition, shelfPts);
-        var insideWire = buildShelfWire(context, id + "insideWire", definition, insidePts);
+        var shelfPlusWire  = buildShelfWire(context, id + "shelfPlus",  definition, shelfPlusPts);
+        var shelfMinusWire = buildShelfWire(context, id + "shelfMinus", definition, shelfMinusPts);
+        var insidePlusWire  = buildShelfWire(context, id + "insidePlus",  definition, insidePlusPts);
+        var insideMinusWire = buildShelfWire(context, id + "insideMinus", definition, insideMinusPts);
 
-        setProperty(context, { "entities" : shelfWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf wire" });
-        setProperty(context, { "entities" : insideWire,
-                                "propertyType" : PropertyType.NAME, "value" : "SW Inside wire" });
+        setProperty(context, { "entities" : shelfPlusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y wire" });
+        setProperty(context, { "entities" : shelfMinusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y wire" });
+        setProperty(context, { "entities" : insidePlusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y wire" });
+        setProperty(context, { "entities" : insideMinusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y wire" });
     });
 
 
@@ -785,29 +815,99 @@ function collectShelfBlendZones(context is Context, id is Id, definition is map,
 }
 
 
+// ─── Footprint cross-section intersection ─────────────────────────────────────
+
+/**
+ * Finds where the plane (refPt, refTangent) cuts the footprint wire, returning
+ * the footprint parameter on the +Y side and the -Y side.
+ *
+ * Method: coarse-sample the footprint, find sign changes in
+ * dot(footPt - refPt, refTangent), binary-search each crossing for precision.
+ */
+function findFootprintCrossSectionParams(context is Context, footprintPath is Path,
+    refPt is Vector, refTangent is Vector) returns map
+{
+    var coarseN = 100;
+    var coarseParams = [];
+    for (var i = 0; i < coarseN; i += 1)
+        coarseParams = append(coarseParams, i / coarseN);
+
+    var coarseTls = evPathTangentLines(context, footprintPath, coarseParams).tangentLines;
+
+    // Signed projection value (length units) at each coarse sample
+    var vals = [];
+    for (var i = 0; i < coarseN; i += 1)
+        vals = append(vals, dot(coarseTls[i].origin - refPt, refTangent));
+
+    // Find sign changes and binary-search each one
+    var crossings = [];
+    for (var i = 0; i < coarseN; i += 1)
+    {
+        var j    = (i + 1) % coarseN;
+        var vI   = vals[i] / meter;
+        var vJ   = vals[j] / meter;
+        if (vI * vJ >= 0) continue; // no sign change
+
+        var pLo  = coarseParams[i];
+        var pHi  = (j == 0) ? 1.0 : coarseParams[j];
+        var vLo  = vI;
+
+        for (var iter = 0; iter < 30; iter += 1)
+        {
+            var pMid   = (pLo + pHi) / 2;
+            var midPt  = evPathTangentLines(context, footprintPath, [pMid]).tangentLines[0].origin;
+            var midVal = dot(midPt - refPt, refTangent) / meter;
+            if (midVal * vLo > 0)
+                pLo = pMid;
+            else
+                pHi = pMid;
+        }
+
+        var tFinal  = (pLo + pHi) / 2;
+        var finalPt = evPathTangentLines(context, footprintPath, [tFinal]).tangentLines[0].origin;
+        crossings = append(crossings, { "t" : tFinal, "y" : finalPt[1] });
+    }
+
+    if (size(crossings) < 2)
+        throw regenError("Region boundary cross-section does not intersect the footprint wire at two points");
+
+    // Identify +Y and -Y crossings (use the ones with the highest/lowest Y)
+    var tPlusY  = crossings[0].t;
+    var tMinusY = crossings[0].t;
+    var maxY    = crossings[0].y;
+    var minY    = crossings[0].y;
+
+    for (var crossing in crossings)
+    {
+        if (crossing.y > maxY) { maxY = crossing.y; tPlusY  = crossing.t; }
+        if (crossing.y < minY) { minY = crossing.y; tMinusY = crossing.t; }
+    }
+
+    return { "plusY" : tPlusY, "minusY" : tMinusY };
+}
+
+
 // ─── Footprint offset sampling ────────────────────────────────────────────────
 
 /**
- * Samples n points uniformly around the closed footprint wire and offsets each
- * point outward by shelfDepth + depthOffset along the bottom surface.
+ * Samples n points along the footprint from paramStart to paramEnd (open arc)
+ * and offsets each by shelfDepth + depthOffset along the bottom surface.
  *
- * Outward direction at each sample: cross(surfaceNormal, wireTangent), with sign
- * determined by flipOutward (from determineOutwardFlip).
- *
- * Depth is found by projecting each footprint sample onto the refWire to get a
- * refWire parameter, then evaluating shelfDepthAtT.
+ * Depth at each sample comes from projecting the footprint point onto the
+ * refWire (closest-point) to get a refWire parameter, then evaluating shelfDepthAtT.
  */
 function buildFootprintOffsetPoints(context is Context, definition is map, pathInfo is map,
     footprintPath is Path, sortedRegions is array, blendZones is array,
     surfFaces is array, flipOutward is boolean,
+    paramStart is number, paramEnd is number,
     depthOffset is ValueWithUnits) returns array
 {
     var n = definition.samplingDensity;
 
-    // Sample uniformly around the closed loop, excluding the repeated endpoint
+    // Uniform open range [paramStart, paramEnd]
     var params = [];
     for (var i = 0; i < n; i += 1)
-        params = append(params, i / n);
+        params = append(params, paramStart + (paramEnd - paramStart) * i / (n - 1));
 
     var tls = evPathTangentLines(context, footprintPath, params).tangentLines;
     var pts = [];
@@ -833,9 +933,7 @@ function buildFootprintOffsetPoints(context is Context, definition is map, pathI
         var refDist = evDistancePath(context, { "side0" : pathInfo.path, "side1" : footPt });
         var refT    = refDist.sides[0].pathParam;
 
-        // Evaluate shelf depth at this refWire parameter
         var depth = shelfDepthAtT(sortedRegions, blendZones, refT) + depthOffset;
-
         pts = append(pts, footPt + depth * outward);
     }
     return pts;
@@ -846,15 +944,16 @@ function buildFootprintOffsetPoints(context is Context, definition is map, pathI
 
 function buildShelfWire(context is Context, id is Id, definition is map, pts is array) returns Query
 {
-    if (size(pts) < 3)
+    if (size(pts) < 2)
         throw regenError("Too few sample points to build a wire");
 
     var bspline = approximateSpline(context, {
-        "degree"           : definition.approxDegree,
-        "tolerance"        : definition.approxTolerance,
-        "isPeriodic"       : true,
-        "maxControlPoints" : definition.approxMaxCP,
-        "targets"          : [approximationTarget({ "positions" : pts })]
+        "degree"             : definition.approxDegree,
+        "tolerance"          : definition.approxTolerance,
+        "isPeriodic"         : false,
+        "maxControlPoints"   : definition.approxMaxCP,
+        "targets"            : [approximationTarget({ "positions" : pts })],
+        "interpolateIndices" : [0, size(pts) - 1]
     })[0];
 
     opCreateBSplineCurve(context, id + "curve", { "bSplineCurve" : bspline });

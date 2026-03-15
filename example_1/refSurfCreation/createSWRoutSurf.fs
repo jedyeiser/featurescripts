@@ -25,6 +25,8 @@ export const SWStepInBounds         = {(millimeter) : [0,    0,   3]} as LengthB
 export const cutterRadiusBounds     = {(millimeter) : [2,   10,  20]} as LengthBoundSpec;
 export const DEBUG_STEP_BOUNDS      = { (unitless) : [0, 1, 9] } as IntegerBoundSpec;
 
+const WASH_SLIVER_THRESHOLD = 1 * millimeter;
+
 annotation { "Feature Type Name" : "Sidewall rout surface", "Feature Type Description" : "Creates a SW rout surface based on inputs" }
 export const SWRout = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -126,8 +128,16 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             println("  swRoutStepin    = " ~ toString(definition.swRoutStepin));
         }
 
+        // Washed wire queries — assigned as each intersection wire is created,
+        // used in loft steps. washWire deletes the raw wire and returns a qUnion
+        // of cleaned single-edge bodies with slivers removed.
+        var washedInitialWire = undefined;
+        var washedStartWire   = undefined;
+        var washedStepInWire  = undefined;
+        var washedStopWire    = undefined;
+
         // =====================================================================
-        // Step 0: Intersect originals → initial wire, then copy both sheet bodies
+        // Step 0: Intersect originals -> initial wire, then copy both sheet bodies
         // =====================================================================
         if (stepThrough && step >= 0)
         {
@@ -135,7 +145,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : definition.bottomSheet,
                     "group2" : definition.sideSheet
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "initialWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Initial wire" });
+            washedInitialWire = washWire(context, id + "washInitial", qCreatedBy(id + "initialWire", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            setProperty(context, { "entities" : washedInitialWire, "propertyType" : PropertyType.NAME, "value" : "Initial wire" });
 
             opPattern(context, id + "bottomCopy", {
                     "entities"      : definition.bottomSheet,
@@ -169,11 +180,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 "group2" : qCreatedBy(id + "bottomCopy",  EntityType.BODY)
                 });
                 
-            setProperty(context, { "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
+            washedStartWire = washWire(context, id + "washStart", qCreatedBy(id + "startIntersect", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            setProperty(context, { "entities" : washedStartWire, "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, qCreatedBy(id + "startIntersect", EntityType.BODY), "Start wire", debugFmt);
+                debugPrintWireBSplines(context, washedStartWire, "Start wire", debugFmt);
             }
         }
 
@@ -195,11 +207,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
 
             
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInIntersection", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
+            washedStepInWire = washWire(context, id + "washStepIn", qCreatedBy(id + "stepInIntersection", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            setProperty(context, { "entities" : washedStepInWire, "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, qCreatedBy(id + "stepInIntersection", EntityType.BODY), "Step-in wire", debugFmt);
+                debugPrintWireBSplines(context, washedStepInWire, "Step-in wire", debugFmt);
             }
             
         }
@@ -302,11 +315,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : sideCopyQ,
                     "group2" : bottomCopyQ
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "stopWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
+            washedStopWire = washWire(context, id + "washStop", qCreatedBy(id + "stopWire", EntityType.BODY), WASH_SLIVER_THRESHOLD);
+            setProperty(context, { "entities" : washedStopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, qCreatedBy(id + "stopWire", EntityType.BODY), "Stop wire", debugFmt);
+                debugPrintWireBSplines(context, washedStopWire, "Stop wire", debugFmt);
             }
         }
 
@@ -315,11 +329,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 5)
         {
-            var initialWireBody = qCreatedBy(id + "initialWire",    EntityType.BODY);
-            var startWireBody   = qCreatedBy(id + "startIntersect", EntityType.BODY);
-
-            var initialEdges = qUnion([qOwnedByBody(initialWireBody, EntityType.EDGE)]);
-            var startEdges   = qUnion([qOwnedByBody(startWireBody,   EntityType.EDGE)]);
+            var initialEdges = qUnion([qOwnedByBody(washedInitialWire, EntityType.EDGE)]);
+            var startEdges   = qUnion([qOwnedByBody(washedStartWire,   EntityType.EDGE)]);
 
             var loftedSurfs = [];
             var iterEdges = evaluateQuery(context, initialEdges);
@@ -366,8 +377,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 6 && definition.swRoutStepin > 0 * millimeter)
         {
-            var startEdges  = qUnion([qCreatedBy(id + "startIntersect", EntityType.EDGE)]);
-            var stepInEdges = qUnion([qCreatedBy(id + "stepInIntersection", EntityType.EDGE)]);
+            var startEdges  = qUnion([qOwnedByBody(washedStartWire,  EntityType.EDGE)]);
+            var stepInEdges = qUnion([qOwnedByBody(washedStepInWire, EntityType.EDGE)]);
 
             var loftedSurfs = [];
             var iterEdges = evaluateQuery(context, startEdges);
@@ -413,12 +424,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 7)
         {
-            var lowerWireId = (definition.swRoutStepin > 0 * millimeter)
-                ? "stepInIntersection"
-                : "startIntersect";
-
-            var lowerEdges = qUnion([qOwnedByBody(qCreatedBy(id + lowerWireId, EntityType.BODY), EntityType.EDGE)]);
-            var stopEdges  = qUnion([qOwnedByBody(qCreatedBy(id + "stopWire",  EntityType.BODY), EntityType.EDGE)]);
+            var lowerWire  = (definition.swRoutStepin > 0 * millimeter) ? washedStepInWire : washedStartWire;
+            var lowerEdges = qUnion([qOwnedByBody(lowerWire,      EntityType.EDGE)]);
+            var stopEdges  = qUnion([qOwnedByBody(washedStopWire, EntityType.EDGE)]);
 
             var loftedSurfs = [];
             var iterEdges = evaluateQuery(context, lowerEdges);
@@ -576,6 +584,196 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     }
 
     return wireBodies[topIdx];
+}
+
+// Removes sliver edges (chord length < sliverThreshold) from a wire body.
+// For each sliver, the two neighboring real edges are re-approximated to meet at
+// the sliver midpoint. When neighbor tangents are within 5 degrees (G1), derivative
+// pinning preserves tangent continuity at the merged endpoint.
+// Returns the original wireBody unchanged if no slivers are found.
+// Otherwise deletes the original and returns a qUnion of the new edge bodies.
+function washWire(context is Context, id is Id, wireBody is Query, sliverThreshold is ValueWithUnits) returns Query
+{
+    const G1_THRESHOLD   = 5 * degree;
+    const RESAMPLE_COUNT = 20;
+    const CHAIN_TOL      = 1e-5 * meter;
+
+    var allEdges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
+    var n = size(allEdges);
+    if (n == 0) { return wireBody; }
+
+    // Collect endpoints at parameter 0 and 1 for each edge
+    var ePt0 = [];
+    var ePt1 = [];
+    for (var edge in allEdges)
+    {
+        ePt0 = append(ePt0, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.0 }).origin);
+        ePt1 = append(ePt1, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1.0 }).origin);
+    }
+
+    // Find start edge: its pt0 is not any other edge's pt1
+    var startIdx = 0;
+    for (var i = 0; i < n; i += 1)
+    {
+        var isStart = true;
+        for (var j = 0; j < n; j += 1)
+        {
+            if (i != j && norm(ePt0[i] - ePt1[j]) < CHAIN_TOL)
+            {
+                isStart = false;
+                break;
+            }
+        }
+        if (isStart) { startIdx = i; break; }
+    }
+
+    // Walk the chain in order, tracking traversal direction per edge
+    var orderedIdx = [startIdx];
+    var orderedFwd = [true];
+    var visited    = {};
+    visited[toString(startIdx)] = true;
+    var currentPt = ePt1[startIdx];
+    for (var step = 0; step < n - 1; step += 1)
+    {
+        for (var j = 0; j < n; j += 1)
+        {
+            if (visited[toString(j)] != true)
+            {
+                if (norm(ePt0[j] - currentPt) < CHAIN_TOL)
+                {
+                    orderedIdx = append(orderedIdx, j);
+                    orderedFwd = append(orderedFwd, true);
+                    visited[toString(j)] = true;
+                    currentPt = ePt1[j];
+                    break;
+                }
+                else if (norm(ePt1[j] - currentPt) < CHAIN_TOL)
+                {
+                    orderedIdx = append(orderedIdx, j);
+                    orderedFwd = append(orderedFwd, false);
+                    visited[toString(j)] = true;
+                    currentPt = ePt0[j];
+                    break;
+                }
+            }
+        }
+    }
+
+    var m = size(orderedIdx);
+
+    // Chord lengths for sliver detection
+    var chordLen = [];
+    for (var i = 0; i < m; i += 1)
+    {
+        var idx = orderedIdx[i];
+        chordLen = append(chordLen, norm(ePt1[idx] - ePt0[idx]));
+    }
+
+    // Early exit if no slivers
+    var hasSlivers = false;
+    for (var i = 0; i < m; i += 1)
+    {
+        if (chordLen[i] < sliverThreshold) { hasSlivers = true; break; }
+    }
+    if (!hasSlivers) { return wireBody; }
+
+    // Per-edge endpoint and derivative overrides
+    var startPtOverride  = [];
+    var endPtOverride    = [];
+    var startDirOverride = [];
+    var endDirOverride   = [];
+    for (var i = 0; i < m; i += 1)
+    {
+        startPtOverride  = append(startPtOverride,  undefined);
+        endPtOverride    = append(endPtOverride,    undefined);
+        startDirOverride = append(startDirOverride, undefined);
+        endDirOverride   = append(endDirOverride,   undefined);
+    }
+
+    for (var i = 0; i < m; i += 1)
+    {
+        if (chordLen[i] >= sliverThreshold) { continue; }
+
+        var prevI = i - 1;
+        var nextI = i + 1;
+        while (prevI >= 0 && chordLen[prevI] < sliverThreshold) { prevI = prevI - 1; }
+        while (nextI < m  && chordLen[nextI] < sliverThreshold) { nextI = nextI + 1; }
+        if (prevI < 0 || nextI >= m) { continue; }
+
+        // Sliver midpoint as merge target
+        var sIdx = orderedIdx[i];
+        var sFwd = orderedFwd[i];
+        var mergePoint = ((sFwd ? ePt0[sIdx] : ePt1[sIdx]) + (sFwd ? ePt1[sIdx] : ePt0[sIdx])) * 0.5;
+
+        // Tangent at end of prev real edge (pointing toward sliver)
+        var pIdx   = orderedIdx[prevI];
+        var pFwd   = orderedFwd[prevI];
+        var pLine  = evEdgeTangentLine(context, { "edge" : allEdges[pIdx], "parameter" : pFwd ? 1.0 : 0.0 });
+        var pDir   = pFwd ? pLine.direction : -pLine.direction;
+
+        // Tangent at start of next real edge (pointing away from sliver)
+        var nIdx   = orderedIdx[nextI];
+        var nFwd   = orderedFwd[nextI];
+        var nLine  = evEdgeTangentLine(context, { "edge" : allEdges[nIdx], "parameter" : nFwd ? 0.0 : 1.0 });
+        var nDir   = nFwd ? nLine.direction : -nLine.direction;
+
+        var cosA = dot(pDir, nDir);
+        if (cosA >  1.0) { cosA =  1.0; }
+        if (cosA < -1.0) { cosA = -1.0; }
+        var isG1 = acos(cosA) < G1_THRESHOLD;
+
+        endPtOverride[prevI]   = mergePoint;
+        startPtOverride[nextI] = mergePoint;
+        if (isG1)
+        {
+            var sharedDir = normalize(pDir + nDir);
+            endDirOverride[prevI]   = sharedDir;
+            startDirOverride[nextI] = sharedDir;
+        }
+    }
+
+    // Re-approximate each non-sliver edge with corrected endpoints
+    var cleanedCurves = [];
+    for (var i = 0; i < m; i += 1)
+    {
+        if (chordLen[i] < sliverThreshold) { continue; }
+
+        var idx  = orderedIdx[i];
+        var fwd  = orderedFwd[i];
+        var edge = allEdges[idx];
+
+        var pts = [];
+        for (var k = 0; k <= RESAMPLE_COUNT; k += 1)
+        {
+            var t     = k / RESAMPLE_COUNT;
+            var param = fwd ? t : (1.0 - t);
+            pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : param }).origin);
+        }
+        if (startPtOverride[i] != undefined) { pts[0] = startPtOverride[i]; }
+        if (endPtOverride[i]   != undefined) { pts[size(pts) - 1] = endPtOverride[i]; }
+
+        var targetDef = { "positions" : pts };
+        if (startDirOverride[i] != undefined) { targetDef["startDerivative"] = startDirOverride[i]; }
+        if (endDirOverride[i]   != undefined) { targetDef["endDerivative"]   = endDirOverride[i]; }
+
+        cleanedCurves = append(cleanedCurves, approximateSpline(context, {
+                "targets"          : [approximationTarget(targetDef)],
+                "degree"           : 3,
+                "tolerance"        : 1e-5 * meter,
+                "isPeriodic"       : false,
+                "maxControlPoints" : 200
+        })[0]);
+    }
+
+    opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
+
+    var edgeBodies = [];
+    for (var i = 0; i < size(cleanedCurves); i += 1)
+    {
+        opCreateBSplineCurve(context, id + ("edge" ~ i), { "bSplineCurve" : cleanedCurves[i] });
+        edgeBodies = append(edgeBodies, qCreatedBy(id + ("edge" ~ i), EntityType.BODY));
+    }
+    return qUnion(edgeBodies);
 }
 
 /**
