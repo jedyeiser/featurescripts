@@ -776,12 +776,12 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
 
     if (size(edgeBodies) > 1)
     {
-        opBoolean(context, id + "mergeWire", {
-                "tools"         : qUnion(edgeBodies),
-                "operationType" : BooleanOperationType.UNION
-        });
+        var allCleanEdges = qOwnedByBody(qUnion(edgeBodies), EntityType.EDGE);
+        opExtractWires(context, id + "mergeWire", { "edges" : allCleanEdges });
+        opDeleteBodies(context, id + "deleteEdgeBodies", { "entities" : qUnion(edgeBodies) });
+        return qCreatedBy(id + "mergeWire", EntityType.BODY);
     }
-    return qUnion(edgeBodies);
+    return edgeBodies[0];
 }
 
 /**
