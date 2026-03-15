@@ -315,49 +315,147 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 5)
         {
-            var initialWireQ = qCreatedBy(id + "initialWire",   EntityType.BODY);
-            var startWireQ   = qCreatedBy(id + "startIntersect", EntityType.BODY);
+            var initialWireBody = qCreatedBy(id + "initialWire",    EntityType.BODY);
+            var startWireBody   = qCreatedBy(id + "startIntersect", EntityType.BODY);
 
-            opLoft(context, id + "loft1", {
-                    "profileSubqueries" : [initialWireQ, startWireQ],
-                    "connections"       : buildLoftConnection(context, initialWireQ, startWireQ),
-                    "bodyType"          : ToolBodyType.SURFACE
+            var initialEdges = qUnion([qOwnedByBody(initialWireBody, EntityType.EDGE)]);
+            var startEdges   = qUnion([qOwnedByBody(startWireBody,   EntityType.EDGE)]);
+
+            var loftedSurfs = [];
+            var iterEdges = evaluateQuery(context, initialEdges);
+            for (var i = 0; i < size(iterEdges); i += 1)
+            {
+                if (definition.debugPrint)
+                {
+                    println("lofting initial->start edge " ~ i);
+                }
+                var initialEdge = iterEdges[i];
+                var midPoint = evEdgeTangentLine(context, {
+                        "edge"      : initialEdge,
+                        "parameter" : 0.5
+                }).origin;
+                var startEdge = qClosestTo(startEdges, midPoint);
+                try
+                {
+                    opLoft(context, id + ("initialStartLoft" ~ i), {
+                            "profileSubqueries" : [initialEdge, startEdge],
+                            "bodyType"          : ToolBodyType.SURFACE
+                    });
+                    loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("initialStartLoft" ~ i), EntityType.BODY));
+                }
+                catch (error)
+                {
+                    addDebugEntities(context, startEdge,   DebugColor.RED);
+                    addDebugEntities(context, initialEdge, DebugColor.GREEN);
+                }
+            }
+            opBoolean(context, id + "combineInitialLofts", {
+                    "tools"         : qUnion(loftedSurfs),
+                    "operationType" : BooleanOperationType.UNION
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "loft1", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 1 (initial → start)" });
+            setProperty(context, {
+                    "entities"     : qCreatedBy(id + "combineInitialLofts", EntityType.BODY),
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Initial to Start Surf"
+            });
         }
 
         // =====================================================================
-        // Step 6: Loft start wire → step-in wire (only if swRoutStepin > 0)
+        // Step 6: Loft start wire -> step-in wire (only if swRoutStepin > 0)
         // =====================================================================
         if (stepThrough && step >= 6 && definition.swRoutStepin > 0 * millimeter)
         {
-            var startWireQ  = qCreatedBy(id + "startIntersect",   EntityType.BODY);
-            var stepInWireQ = qCreatedBy(id + "stepInIntersection", EntityType.BODY);
+            var startEdges  = qUnion([qOwnedByBody(qCreatedBy(id + "startIntersect",     EntityType.BODY), EntityType.EDGE)]);
+            var stepInEdges = qUnion([qOwnedByBody(qCreatedBy(id + "stepInIntersection", EntityType.BODY), EntityType.EDGE)]);
 
-            opLoft(context, id + "loft2", {
-                    "profileSubqueries" : [startWireQ, stepInWireQ],
-                    "connections"       : buildLoftConnection(context, startWireQ, stepInWireQ),
-                    "bodyType"          : ToolBodyType.SURFACE
+            var loftedSurfs = [];
+            var iterEdges = evaluateQuery(context, startEdges);
+            for (var i = 0; i < size(iterEdges); i += 1)
+            {
+                if (definition.debugPrint)
+                {
+                    println("lofting start->step-in edge " ~ i);
+                }
+                var startEdge = iterEdges[i];
+                var midPoint = evEdgeTangentLine(context, {
+                        "edge"      : startEdge,
+                        "parameter" : 0.5
+                }).origin;
+                var stepInEdge = qClosestTo(stepInEdges, midPoint);
+                try
+                {
+                    opLoft(context, id + ("startStepInLoft" ~ i), {
+                            "profileSubqueries" : [startEdge, stepInEdge],
+                            "bodyType"          : ToolBodyType.SURFACE
+                    });
+                    loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("startStepInLoft" ~ i), EntityType.BODY));
+                }
+                catch (error)
+                {
+                    addDebugEntities(context, stepInEdge, DebugColor.RED);
+                    addDebugEntities(context, startEdge,  DebugColor.GREEN);
+                }
+            }
+            opBoolean(context, id + "combineStartStepInLofts", {
+                    "tools"         : qUnion(loftedSurfs),
+                    "operationType" : BooleanOperationType.UNION
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "loft2", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 2 (start → step-in)" });
+            setProperty(context, {
+                    "entities"     : qCreatedBy(id + "combineStartStepInLofts", EntityType.BODY),
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Start to Step-In Surf"
+            });
         }
 
         // =====================================================================
-        // Step 7: Loft step-in wire (or start wire if no step-in) → stop wire
+        // Step 7: Loft step-in wire (or start wire if no step-in) -> stop wire
         // =====================================================================
         if (stepThrough && step >= 7)
         {
-            var stopWireQ  = qCreatedBy(id + "stopWire", EntityType.BODY);
-            var lowerWireQ = (definition.swRoutStepin > 0 * millimeter)
-                ? qCreatedBy(id + "stepInIntersection", EntityType.BODY)
-                : qCreatedBy(id + "startIntersect",     EntityType.BODY);
+            var lowerWireId = (definition.swRoutStepin > 0 * millimeter)
+                ? "stepInIntersection"
+                : "startIntersect";
 
-            opLoft(context, id + "loft3", {
-                    "profileSubqueries" : [lowerWireQ, stopWireQ],
-                    "connections"       : buildLoftConnection(context, lowerWireQ, stopWireQ),
-                    "bodyType"          : ToolBodyType.SURFACE
+            var lowerEdges = qUnion([qOwnedByBody(qCreatedBy(id + lowerWireId, EntityType.BODY), EntityType.EDGE)]);
+            var stopEdges  = qUnion([qOwnedByBody(qCreatedBy(id + "stopWire",  EntityType.BODY), EntityType.EDGE)]);
+
+            var loftedSurfs = [];
+            var iterEdges = evaluateQuery(context, lowerEdges);
+            for (var i = 0; i < size(iterEdges); i += 1)
+            {
+                if (definition.debugPrint)
+                {
+                    println("lofting lower->stop edge " ~ i);
+                }
+                var lowerEdge = iterEdges[i];
+                var midPoint = evEdgeTangentLine(context, {
+                        "edge"      : lowerEdge,
+                        "parameter" : 0.5
+                }).origin;
+                var stopEdge = qClosestTo(stopEdges, midPoint);
+                try
+                {
+                    opLoft(context, id + ("lowerStopLoft" ~ i), {
+                            "profileSubqueries" : [lowerEdge, stopEdge],
+                            "bodyType"          : ToolBodyType.SURFACE
+                    });
+                    loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("lowerStopLoft" ~ i), EntityType.BODY));
+                }
+                catch (error)
+                {
+                    addDebugEntities(context, stopEdge,  DebugColor.RED);
+                    addDebugEntities(context, lowerEdge, DebugColor.GREEN);
+                }
+            }
+            opBoolean(context, id + "combineLowerStopLofts", {
+                    "tools"         : qUnion(loftedSurfs),
+                    "operationType" : BooleanOperationType.UNION
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "loft3", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 3 (→ stop)" });
+            setProperty(context, {
+                    "entities"     : qCreatedBy(id + "combineLowerStopLofts", EntityType.BODY),
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Lower to Stop Surf"
+            });
         }
     });
 
