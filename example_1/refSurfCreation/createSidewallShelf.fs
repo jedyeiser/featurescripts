@@ -32,11 +32,12 @@ export enum ShelfQuadraticZeroSlope
 
 export const ShelfDepthBounds           = {(millimeter) : [0,     3,  20]}  as LengthBoundSpec;
 export const SidewallWidthBounds        = {(millimeter) : [0.5,   2,  10]}  as LengthBoundSpec;
+export const SidewallHeightBounds       = {(millimeter) : [0.5,   5,  50]}  as LengthBoundSpec;
 export const ShelfSamplingDensityBounds = {(unitless)   : [5,    50, 500]}  as IntegerBoundSpec;
 export const ShelfApproxDegreeBounds    = {(unitless)   : [2,     3,   5]}  as IntegerBoundSpec;
 export const ShelfApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]} as LengthBoundSpec;
 export const ShelfApproxMaxCPBounds     = {(unitless)   : [10,  100, 500]}  as IntegerBoundSpec;
-export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   5]}  as IntegerBoundSpec;
+export const ShelfDebugStepBounds       = {(unitless)   : [1,     1,   7]}  as IntegerBoundSpec;
 
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
@@ -152,6 +153,10 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         annotation { "Name" : "Sidewall width",
                      "Description" : "Thickness of sidewall material; inside curve = shelf - sidewallWidth" }
         isLength(definition.sidewallWidth, SidewallWidthBounds);
+
+        annotation { "Name" : "Surface height",
+                     "Description" : "Height of sidewall surface above the bottom surface, along the surface normal" }
+        isLength(definition.surfaceHeight, SidewallHeightBounds);
 
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#regionName",
@@ -274,8 +279,8 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
                          "Driving Parameter" : "debugStepThrough",
                          "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1-5)", "UIHint" : UIHint.SHOW_LABEL,
-                             "Description" : "1=ref path  2=outward check  3=offset points  4=output curves  5=surfaces" }
+                annotation { "Name" : "Step (1-7)", "UIHint" : UIHint.SHOW_LABEL,
+                             "Description" : "1=ref path  2=outward  3=before curves  4=curves  5=offset wires  6=loft surfaces  7=boolean" }
                 isInteger(definition.debugStep, ShelfDebugStepBounds);
             }
 
@@ -379,8 +384,54 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
 
         if (definition.debugStepThrough && definition.debugStep == 4) return;
 
-        // ── Step 5: Surfaces ──────────────────────────────────────────────────
-        // TODO: loft shelf surface from +Y/-Y shelf wires; offset inward for inside surface
+        // ── Step 5: Offset wires (raise each wire by surfaceHeight along normal) ──
+        var offsetShelfPlusWire  = offsetWireGroup(context, id + "offSP", definition, shelfPlusWire,  surfFaces);
+        var offsetShelfMinusWire = offsetWireGroup(context, id + "offSM", definition, shelfMinusWire, surfFaces);
+        var offsetInsidePlusWire  = offsetWireGroup(context, id + "offIP", definition, insidePlusWire,  surfFaces);
+        var offsetInsideMinusWire = offsetWireGroup(context, id + "offIM", definition, insideMinusWire, surfFaces);
+
+        setProperty(context, { "entities" : offsetShelfPlusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y top" });
+        setProperty(context, { "entities" : offsetShelfMinusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y top" });
+        setProperty(context, { "entities" : offsetInsidePlusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y top" });
+        setProperty(context, { "entities" : offsetInsideMinusWire,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y top" });
+
+        if (definition.debugStepThrough && definition.debugStep == 5) return;
+
+        // ── Step 6: Loft surfaces between shelf wires and their offset tops ──
+        var shelfPlusSurfs   = loftWirePairs(context, id + "loftSP", shelfPlusWire,   offsetShelfPlusWire);
+        var shelfMinusSurfs  = loftWirePairs(context, id + "loftSM", shelfMinusWire,  offsetShelfMinusWire);
+        var insidePlusSurfs  = loftWirePairs(context, id + "loftIP", insidePlusWire,  offsetInsidePlusWire);
+        var insideMinusSurfs = loftWirePairs(context, id + "loftIM", insideMinusWire, offsetInsideMinusWire);
+
+        setProperty(context, { "entities" : shelfPlusSurfs,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y surface" });
+        setProperty(context, { "entities" : shelfMinusSurfs,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y surface" });
+        setProperty(context, { "entities" : insidePlusSurfs,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y surface" });
+        setProperty(context, { "entities" : insideMinusSurfs,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y surface" });
+
+        if (definition.debugStepThrough && definition.debugStep == 6) return;
+
+        // ── Step 7: Boolean unite each side's loft segments into one surface ──
+        var finalShelfPlus   = booleanSurfaces(context, id + "boolSP", shelfPlusSurfs);
+        var finalShelfMinus  = booleanSurfaces(context, id + "boolSM", shelfMinusSurfs);
+        var finalInsidePlus  = booleanSurfaces(context, id + "boolIP", insidePlusSurfs);
+        var finalInsideMinus = booleanSurfaces(context, id + "boolIM", insideMinusSurfs);
+
+        setProperty(context, { "entities" : finalShelfPlus,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y surface" });
+        setProperty(context, { "entities" : finalShelfMinus,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Shelf -Y surface" });
+        setProperty(context, { "entities" : finalInsidePlus,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside +Y surface" });
+        setProperty(context, { "entities" : finalInsideMinus,
+                                "propertyType" : PropertyType.NAME, "value" : "SW Inside -Y surface" });
 
     });
 
@@ -1093,6 +1144,99 @@ function buildShelfWires(context is Context, id is Id, definition is map, pathIn
     // own body but they share the same name via the setProperty call in the
     // main feature body.
     return qUnion(segWires);
+}
+
+
+// ─── Surface construction ─────────────────────────────────────────────────────
+
+/**
+ * For each body in wireGroupQuery, samples its edge at samplingDensity points,
+ * offsets each point by surfaceHeight along the bottom-surface normal (flipped
+ * to ensure positive world-Z), and fits a new BSpline with exact endpoint
+ * interpolation.  Returns a query covering all resulting offset wire bodies.
+ *
+ * G-continuity at segment boundaries is preserved to the degree that the source
+ * wire carries it: because both the original and offset endpoints at any footprint
+ * vertex are computed from the same base point, G0 is exact; G1 is inherited
+ * approximately through the dense sampling.
+ */
+function offsetWireGroup(context is Context, id is Id, definition is map,
+    wireGroupQuery is Query, surfFaces is array) returns Query
+{
+    var bodies   = evaluateQuery(context, wireGroupQuery);
+    var segWires = [];
+    for (var i = 0; i < size(bodies); i += 1)
+    {
+        var edges = evaluateQuery(context, qOwnedByBody(bodies[i], EntityType.EDGE));
+        for (var j = 0; j < size(edges); j += 1)
+        {
+            var n   = definition.samplingDensity;
+            var pts = [];
+            for (var k = 0; k < n; k += 1)
+            {
+                var t  = k / (n - 1.0);
+                var tl = evEdgeTangentLine(context, { "edge" : edges[j], "parameter" : t });
+                var pt = tl.origin;
+                var surfNormal = surfaceNormalAt(context, surfFaces, pt);
+                // Default upward direction to +Z
+                if (surfNormal[2] < 0) surfNormal = -surfNormal;
+                pts = append(pts, pt + definition.surfaceHeight * surfNormal);
+            }
+            var segId = id + ("b" ~ toString(i) ~ "e" ~ toString(j));
+            segWires  = append(segWires, buildShelfWire(context, segId, definition, pts));
+        }
+    }
+    return qUnion(segWires);
+}
+
+
+/**
+ * Lofts between corresponding body pairs from wireGroupA and wireGroupB.
+ * Each body is assumed to carry exactly one edge (as built by buildShelfWires /
+ * offsetWireGroup).  The i-th body of A is lofted with the i-th body of B.
+ * Returns a query covering all resulting surface bodies.
+ */
+function loftWirePairs(context is Context, id is Id,
+    wireGroupA is Query, wireGroupB is Query) returns Query
+{
+    var bodiesA = evaluateQuery(context, wireGroupA);
+    var bodiesB = evaluateQuery(context, wireGroupB);
+
+    if (size(bodiesA) != size(bodiesB))
+        throw regenError("Wire group size mismatch in loft: " ~
+            toString(size(bodiesA)) ~ " vs " ~ toString(size(bodiesB)));
+
+    var surfBodies = [];
+    for (var i = 0; i < size(bodiesA); i += 1)
+    {
+        var edgesA = qOwnedByBody(bodiesA[i], EntityType.EDGE);
+        var edgesB = qOwnedByBody(bodiesB[i], EntityType.EDGE);
+        var segId  = id + ("seg" ~ toString(i));
+        opLoft(context, segId, {
+            "profiles" : [edgesA, edgesB]
+        });
+        surfBodies = append(surfBodies, qCreatedBy(segId, EntityType.BODY));
+    }
+    return qUnion(surfBodies);
+}
+
+
+/**
+ * Unites all surface bodies in surfsQuery into one.  If there is only one body
+ * (single footprint-edge segment) the boolean is skipped and the query is
+ * returned as-is.
+ */
+function booleanSurfaces(context is Context, id is Id, surfsQuery is Query) returns Query
+{
+    var bodies = evaluateQuery(context, surfsQuery);
+    if (size(bodies) <= 1)
+        return surfsQuery;
+
+    opBoolean(context, id, {
+        "tools"         : surfsQuery,
+        "operationType" : BooleanOperationType.UNION
+    });
+    return qCreatedBy(id, EntityType.BODY);
 }
 
 
