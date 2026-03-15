@@ -557,7 +557,7 @@ function sampleParallelTransportFrame(context is Context, frenetPath is map, ptT
 
     // Lerp + renormalize between lo and hi
     var span    = ptTable[hi].arcLength - ptTable[lo].arcLength;
-    var alpha   = (span > TOLERANCE.zeroLength) ? (arcLength - ptTable[lo].arcLength) / span : 0.0;
+    var alpha   = (span / meter > 1e-12) ? (arcLength - ptTable[lo].arcLength) / span : 0.0;
     var x0      = ptTable[lo].xAxis;
     var x1      = ptTable[hi].xAxis;
     var xLerp   = x0 * (1 - alpha) + x1 * alpha;
