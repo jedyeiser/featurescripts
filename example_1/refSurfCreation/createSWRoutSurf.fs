@@ -159,6 +159,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             opExtractWires(context, id + "startWire", {
                     "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
             });
+            opDeleteBodies(context, id + "deleteStartIntersect", {
+                    "entities" : qCreatedBy(id + "startIntersect", EntityType.BODY)
+            });
             setProperty(context, { "entities" : qCreatedBy(id + "startWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
 
             if (definition.debugPrint)
@@ -166,7 +169,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 2: (Only if swRoutStepin > 0) offset copied side inward
+        // Step 2: (Only if swRoutStepin > 0) offset copied side inward → step-in wire
         // =====================================================================
         if (stepThrough && step >= 2 && definition.swRoutStepin > 0 * millimeter)
         {
@@ -175,6 +178,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "offsetDistance" : -sideOffsetSign * definition.swRoutStepin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Side (offset copy)" });
+
+            opIntersectFaces(context, id + "stepInIntersect", {
+                    "tools"   : qOwnedByBody(qCreatedBy(id + "sideCopy",    EntityType.BODY), EntityType.FACE),
+                    "targets" : qOwnedByBody(qCreatedBy(id + "bottomCopy",  EntityType.BODY), EntityType.FACE)
+            });
+            opExtractWires(context, id + "stepInWire", {
+                    "edges" : qCreatedBy(id + "stepInIntersect", EntityType.EDGE)
+            });
+            opDeleteBodies(context, id + "deleteStepInIntersect", {
+                    "entities" : qCreatedBy(id + "stepInIntersect", EntityType.BODY)
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stepInWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
+
+            if (definition.debugPrint)
+                debugPrintWireBSplines(context, qCreatedBy(id + "stepInWire", EntityType.BODY), "Step-in wire", debugFmt);
         }
     });
 
