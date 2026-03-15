@@ -289,21 +289,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
                 var sideQ = qCreatedBy(id + ("sideCopy" ~ r), EntityType.BODY);
 
-                // Trim to start boundary (all regions except the first)
-                if (r > 0)
-                {
-                    var startPl = createRegionBoundingPlane(context, refWirePath, region.tStart);
-                    bottomQ = splitAndKeep(context, id + ("trimBotStart" ~ r), bottomQ, startPl, probePoint);
-                    sideQ   = splitAndKeep(context, id + ("trimSideStart" ~ r), sideQ, startPl, probePoint);
-                }
+                // Trim to start boundary
+                var startPl = createRegionBoundingPlane(context, refWirePath, region.tStart);
+                bottomQ = splitAndKeep(context, id + ("trimBotStart" ~ r), bottomQ, startPl, probePoint);
+                sideQ   = splitAndKeep(context, id + ("trimSideStart" ~ r), sideQ, startPl, probePoint);
 
-                // Trim to end boundary (all regions except the last)
-                if (r < nRegions - 1)
-                {
-                    var endPl = createRegionBoundingPlane(context, refWirePath, region.tEnd);
-                    bottomQ = splitAndKeep(context, id + ("trimBotEnd" ~ r), bottomQ, endPl, probePoint);
-                    sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoint);
-                }
+                // Trim to end boundary
+                var endPl = createRegionBoundingPlane(context, refWirePath, region.tEnd);
+                bottomQ = splitAndKeep(context, id + ("trimBotEnd" ~ r), bottomQ, endPl, probePoint);
+                sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoint);
 
                 setProperty(context, {
                         "entities"     : bottomQ,
