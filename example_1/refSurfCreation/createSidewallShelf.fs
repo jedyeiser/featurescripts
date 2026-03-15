@@ -1213,7 +1213,8 @@ function loftWirePairs(context is Context, id is Id,
         var edgesB = qOwnedByBody(bodiesB[i], EntityType.EDGE);
         var segId  = id + ("seg" ~ toString(i));
         opLoft(context, segId, {
-            "profiles" : [edgesA, edgesB]
+            "profileSubqueries" : [edgesA, edgesB],
+            "bodyType"          : ToolBodyType.SURFACE
         });
         surfBodies = append(surfBodies, qCreatedBy(segId, EntityType.BODY));
     }
