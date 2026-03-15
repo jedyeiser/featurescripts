@@ -324,7 +324,8 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         }
 
         var surfFaces   = evaluateQuery(context, qOwnedByBody(definition.bottomSurface, EntityType.FACE));
-        var flipOutward = determineOutwardFlip(context, footprintPath, surfFaces);
+        var flipOutward  = determineOutwardFlip(context, footprintPath, surfFaces);
+        var vertexParams = getFootprintVertexParams(context, footprintPath, definition.footprintWire);
 
         if (definition.debugStepThrough && definition.debugStep == 2) return;
 
@@ -351,34 +352,21 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         var plusArc  = orientFootprintArc(context, footprintPath, startCross.plusY,  endCross.plusY,   1);
         var minusArc = orientFootprintArc(context, footprintPath, endCross.minusY, startCross.minusY, -1);
 
-        var shelfPlusPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                plusArc.start, plusArc.end, 0 * meter);
-        var shelfMinusPts = buildFootprintOffsetPoints(context, definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                minusArc.start, minusArc.end, 0 * meter);
-        var insidePlusPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                plusArc.start, plusArc.end, -definition.sidewallWidth);
-        var insideMinusPts = buildFootprintOffsetPoints(context, definition, pathInfo,
-                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                minusArc.start, minusArc.end, -definition.sidewallWidth);
-
-        if (definition.debugShowShelfPoints)
-        {
-            for (var pt in shelfPlusPts)   debug(context, pt, DebugColor.GREEN);
-            for (var pt in shelfMinusPts)  debug(context, pt, DebugColor.GREEN);
-            for (var pt in insidePlusPts)  debug(context, pt, DebugColor.BLUE);
-            for (var pt in insideMinusPts) debug(context, pt, DebugColor.BLUE);
-        }
-
         if (definition.debugStepThrough && definition.debugStep == 3) return;
 
-        // ── Step 4: Fit and output curves ─────────────────────────────────────
-        var shelfPlusWire  = buildShelfWire(context, id + "shelfPlus",  definition, shelfPlusPts);
-        var shelfMinusWire = buildShelfWire(context, id + "shelfMinus", definition, shelfMinusPts);
-        var insidePlusWire  = buildShelfWire(context, id + "insidePlus",  definition, insidePlusPts);
-        var insideMinusWire = buildShelfWire(context, id + "insideMinus", definition, insideMinusPts);
+        // ── Step 4: Fit and output curves (split at footprint edge vertices) ──
+        var shelfPlusWire  = buildShelfWires(context, id + "shelfPlus",  definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                plusArc,  0 * meter,                 vertexParams, DebugColor.GREEN);
+        var shelfMinusWire = buildShelfWires(context, id + "shelfMinus", definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                minusArc, 0 * meter,                 vertexParams, DebugColor.GREEN);
+        var insidePlusWire  = buildShelfWires(context, id + "insidePlus",  definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                plusArc,  -definition.sidewallWidth, vertexParams, DebugColor.BLUE);
+        var insideMinusWire = buildShelfWires(context, id + "insideMinus", definition, pathInfo,
+                                footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                                minusArc, -definition.sidewallWidth, vertexParams, DebugColor.BLUE);
 
         setProperty(context, { "entities" : shelfPlusWire,
                                 "propertyType" : PropertyType.NAME, "value" : "SW Shelf +Y wire" });
@@ -986,7 +974,133 @@ function buildFootprintOffsetPoints(context is Context, definition is map, pathI
 }
 
 
-// ─── Wire construction ────────────────────────────────────────────────────────
+// ─── Wire construction (multi-segment) ───────────────────────────────────────
+
+/**
+ * Sorts a number array ascending (selection-sort; arrays are small).
+ */
+function sortNumbers(arr is array) returns array
+{
+    var sorted    = [];
+    var remaining = arr;
+    for (var i = 0; i < size(arr); i += 1)
+    {
+        var minIdx = 0;
+        for (var j = 1; j < size(remaining); j += 1)
+        {
+            if (remaining[j] < remaining[minIdx]) minIdx = j;
+        }
+        sorted = append(sorted, remaining[minIdx]);
+        var next = [];
+        for (var j = 0; j < size(remaining); j += 1)
+        {
+            if (j != minIdx) next = append(next, remaining[j]);
+        }
+        remaining = next;
+    }
+    return sorted;
+}
+
+
+/**
+ * Returns the footprint path parameters of every inter-edge vertex on the
+ * footprint wire, sorted ascending in [0, 1).
+ */
+function getFootprintVertexParams(context is Context, footprintPath is Path,
+    footprintWire is Query) returns array
+{
+    var vertices = evaluateQuery(context, qOwnedByBody(footprintWire, EntityType.VERTEX));
+    var params   = [];
+    for (var v in vertices)
+    {
+        var vPt = evVertexPoint(context, { "vertex" : v });
+        var d   = evDistancePath(context, { "side0" : footprintPath, "side1" : vPt });
+        params  = append(params, d.sides[0].pathParam);
+    }
+    return sortNumbers(params);
+}
+
+
+/**
+ * Returns vertex params that lie strictly inside (arcStart, arcEnd), in
+ * ascending order in the "extended" parameter space (arcEnd may exceed 1.0).
+ *
+ * In the wrap case (arcEnd > 1.0), each vertex param p is also tested as
+ * p + 1.0 so wrap-around vertices are included correctly.
+ * A tolerance of 1e-6 prevents including a vertex that nearly coincides with
+ * an arc endpoint.
+ */
+function arcVertexBreakpoints(vertexParams is array, arcStart is number, arcEnd is number) returns array
+{
+    var eps    = 1e-6;
+    var result = [];
+    for (var p in vertexParams)
+    {
+        if (p > arcStart + eps && p < arcEnd - eps)
+            result = append(result, p);
+        if (arcEnd > 1.0)
+        {
+            var pWrap = p + 1.0;
+            if (pWrap > arcStart + eps && pWrap < arcEnd - eps)
+                result = append(result, pWrap);
+        }
+    }
+    return sortNumbers(result);
+}
+
+
+/**
+ * Builds one wire body for one side of the shelf.  The arc is split at every
+ * footprint edge vertex that falls within it, giving one BSpline curve per
+ * footprint-edge segment.  All segment bodies are merged via opBoolean UNION
+ * into a single wire body.
+ *
+ * If definition.debugShowShelfPoints is true, each segment's sample points are
+ * drawn in debugColor before curve fitting.
+ */
+function buildShelfWires(context is Context, id is Id, definition is map, pathInfo is map,
+    footprintPath is Path, sortedRegions is array, blendZones is array,
+    surfFaces is array, flipOutward is boolean,
+    arc is map, depthOffset is ValueWithUnits,
+    vertexParams is array, debugColor is DebugColor) returns Query
+{
+    var breakpoints = arcVertexBreakpoints(vertexParams, arc.start, arc.end);
+
+    // Sub-segment boundaries: [arc.start, bp1, bp2, ..., arc.end]
+    var boundaries = [arc.start];
+    for (var bp in breakpoints)
+        boundaries = append(boundaries, bp);
+    boundaries = append(boundaries, arc.end);
+
+    var segWires = [];
+    for (var i = 0; i < size(boundaries) - 1; i += 1)
+    {
+        var pts = buildFootprintOffsetPoints(context, definition, pathInfo,
+                      footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
+                      boundaries[i], boundaries[i + 1], depthOffset);
+
+        if (definition.debugShowShelfPoints)
+        {
+            for (var pt in pts) debug(context, pt, debugColor);
+        }
+
+        segWires = append(segWires,
+            buildShelfWire(context, id + ("seg" ~ toString(i)), definition, pts));
+    }
+
+    if (size(segWires) == 1)
+        return segWires[0];
+
+    // Merge all segment wire bodies into one wire body
+    opBoolean(context, id + "merge", {
+        "tools"         : qUnion(segWires),
+        "operationType" : BooleanType.UNION
+    });
+    return qCreatedBy(id + "merge", EntityType.BODY);
+}
+
+
+// ─── Wire construction (single segment) ──────────────────────────────────────
 
 function buildShelfWire(context is Context, id is Id, definition is map, pts is array) returns Query
 {

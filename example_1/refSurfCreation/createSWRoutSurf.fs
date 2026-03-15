@@ -656,13 +656,17 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
         }
     }
 
-    // Sample all edges in chain order into one point array
+    // Sample all edges in chain order into one point array.
+    // Skip edges shorter than MIN_CHORD -- near-duplicate points from slivers
+    // cause approximateSpline to fail with BAD_GEOMETRY.
+    const MIN_CHORD = 0.5 * millimeter;
     var allPts = [];
     for (var i = 0; i < size(orderedIdx); i += 1)
     {
-        var idx    = orderedIdx[i];
-        var fwd    = orderedFwd[i];
-        var edge   = allEdges[idx];
+        var idx  = orderedIdx[i];
+        var fwd  = orderedFwd[i];
+        var edge = allEdges[idx];
+        if (norm(ePt1[idx] - ePt0[idx]) < MIN_CHORD) { continue; }
         var kStart = (size(allPts) == 0) ? 0 : 1;
         for (var k = kStart; k <= RESAMPLE_COUNT; k += 1)
         {
