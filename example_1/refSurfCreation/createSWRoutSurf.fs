@@ -773,6 +773,14 @@ function washWire(context is Context, id is Id, wireBody is Query, sliverThresho
         opCreateBSplineCurve(context, id + ("edge" ~ i), { "bSplineCurve" : cleanedCurves[i] });
         edgeBodies = append(edgeBodies, qCreatedBy(id + ("edge" ~ i), EntityType.BODY));
     }
+
+    if (size(edgeBodies) > 1)
+    {
+        opBoolean(context, id + "mergeWire", {
+                "tools"         : qUnion(edgeBodies),
+                "operationType" : BooleanOperationType.UNION
+        });
+    }
     return qUnion(edgeBodies);
 }
 

@@ -345,20 +345,24 @@ export const generateSidewallShelf = defineFeature(function(context is Context, 
         var endCross   = findFootprintCrossSectionParams(context, footprintPath,
                              endTl.origin,   endTl.direction);
 
-        // +Y arc: startCross.plusY → endCross.plusY
-        // -Y arc: endCross.minusY → startCross.minusY  (CCW footprint: -Y goes tip→tail)
+        // Orient each arc so the midpoint is on the correct Y side.
+        // If the footprint path's 0/1 boundary lies inside the arc, direct linear
+        // interpolation crosses the other side; complement by wrapping.
+        var plusArc  = orientFootprintArc(context, footprintPath, startCross.plusY,  endCross.plusY,   1);
+        var minusArc = orientFootprintArc(context, footprintPath, endCross.minusY, startCross.minusY, -1);
+
         var shelfPlusPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
                                 footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                startCross.plusY, endCross.plusY, 0 * meter);
+                                plusArc.start, plusArc.end, 0 * meter);
         var shelfMinusPts = buildFootprintOffsetPoints(context, definition, pathInfo,
                                 footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                endCross.minusY, startCross.minusY, 0 * meter);
+                                minusArc.start, minusArc.end, 0 * meter);
         var insidePlusPts  = buildFootprintOffsetPoints(context, definition, pathInfo,
                                 footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                startCross.plusY, endCross.plusY, -definition.sidewallWidth);
+                                plusArc.start, plusArc.end, -definition.sidewallWidth);
         var insideMinusPts = buildFootprintOffsetPoints(context, definition, pathInfo,
                                 footprintPath, sortedRegions, blendZones, surfFaces, flipOutward,
-                                endCross.minusY, startCross.minusY, -definition.sidewallWidth);
+                                minusArc.start, minusArc.end, -definition.sidewallWidth);
 
         if (definition.debugShowShelfPoints)
         {
@@ -815,6 +819,36 @@ function collectShelfBlendZones(context is Context, id is Id, definition is map,
 }
 
 
+// ─── Arc orientation ──────────────────────────────────────────────────────────
+
+/**
+ * Returns the { start, end } footprint parameter pair that traces the arc
+ * between paramA and paramB on the correct Y side (ySign > 0 → +Y, < 0 → -Y).
+ *
+ * The direct arc [paramA, paramB] has its midpoint at (paramA+paramB)/2.
+ * If that midpoint is on the wrong Y side, the path's 0/1 boundary lies
+ * inside the intended arc; fix by pushing the smaller param up by 1.0 so the
+ * sampling wraps through the boundary.
+ */
+function orientFootprintArc(context is Context, footprintPath is Path,
+    paramA is number, paramB is number, ySign is number) returns map
+{
+    var midParam = (paramA + paramB) / 2;
+    var midPt    = evPathTangentLines(context, footprintPath, [midParam]).tangentLines[0].origin;
+    var midY     = midPt[1] / meter;
+
+    // Direct arc is correct
+    if (ySign > 0 && midY >= 0) return { "start" : paramA, "end" : paramB };
+    if (ySign < 0 && midY <= 0) return { "start" : paramA, "end" : paramB };
+
+    // Wrong side: complement the arc by pushing the smaller param up by 1.0
+    if (paramA <= paramB)
+        return { "start" : paramA + 1.0, "end" : paramB };
+    else
+        return { "start" : paramA, "end" : paramB + 1.0 };
+}
+
+
 // ─── Footprint cross-section intersection ─────────────────────────────────────
 
 /**
@@ -904,10 +938,16 @@ function buildFootprintOffsetPoints(context is Context, definition is map, pathI
 {
     var n = definition.samplingDensity;
 
-    // Uniform open range [paramStart, paramEnd]
+    // Uniform open range [paramStart, paramEnd]; wrap each into [0, 1) to
+    // handle the case where orientFootprintArc returned start > 1.0 or end < 0.
     var params = [];
     for (var i = 0; i < n; i += 1)
-        params = append(params, paramStart + (paramEnd - paramStart) * i / (n - 1));
+    {
+        var p = paramStart + (paramEnd - paramStart) * i / (n - 1);
+        if (p > 1.0) p = p - 1.0;
+        if (p < 0.0) p = p + 1.0;
+        params = append(params, p);
+    }
 
     var tls = evPathTangentLines(context, footprintPath, params).tangentLines;
     var pts = [];
