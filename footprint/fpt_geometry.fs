@@ -70,7 +70,7 @@ is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef
             pts = append(pts, vector(section.x[p], section.y[p], 0 * millimeter));
         }
         resultMaps = append(resultMaps, createFootprintSplineFromPoints(context, id + ('footprintSpline'~i),
-        pts, splineDef));
+        pts, section.startTheta, section.endTheta, splineDef));
     }
 
     // Refine BSplines against continuous measurement to close the
@@ -340,15 +340,19 @@ export function sampleRadiusEdges(context is Context, q is Query, samplingDef is
  * Spline creation
  * ========================= */
 
-export function createFootprintSplineFromPoints(context is Context, id is Id, pts is array, splineDef is map)
+export function createFootprintSplineFromPoints(context is Context, id is Id, pts is array,
+    startTheta is number, endTheta is number, splineDef is map)
 returns map
 {
-
     var aprx = approximateSpline(context, {
         "degree" : splineDef.targetDegree,
         "tolerance" : splineDef.tolerance,
         "maxControlPoints" : splineDef.maxCPs,
-        "targets" : [approximationTarget({ "positions" : pts })],
+        "targets" : [approximationTarget({
+            "positions" : pts,
+            "startDerivative" : vector(1, startTheta, 0),
+            "endDerivative" : vector(1, endTheta, 0)
+        })],
         "interpolateIndices" : [0, size(pts)-1]
     })[0];
 
@@ -402,7 +406,8 @@ export function solveFootprintConstraints(samples is array, integrationDef is ma
         var section = base.sections[i].baseIntegral;
         var thetaSect = evalTheta(section, theta0);
         var ySect = evalY(section, theta0, y0);
-        splineSections = append(splineSections, {'x': section.x, 'y': ySect, 'y0': y0, 'theta0': theta0});
+        splineSections = append(splineSections, {'x': section.x, 'y': ySect, 'y0': y0, 'theta0': theta0,
+            'startTheta': section.yP[0] + theta0, 'endTheta': last(section.yP) + theta0});
 
         //y0 = last(ySect);
         //theta0 = last(thetaSect);

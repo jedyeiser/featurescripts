@@ -1677,6 +1677,7 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
     var radiusTolerance = 0.01 * meter;  // 1cm tolerance (tightened to compensate for splitting error)
 
     var finalY = [];
+    var finalTheta = [];
     var newXSamples = [];
     var converged = false;
 
@@ -1805,9 +1806,11 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
 
         // Apply y0 shift
         finalY = [];
+        finalTheta = [];
         for (var i = 0; i < size(yFinal); i += 1)
         {
             finalY = append(finalY, yFinal[i] + y0);
+            finalTheta = append(finalTheta, thetaBase[i] + theta0);
         }
 
         // Build temporary curve for radius evaluation
@@ -1880,7 +1883,11 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
                 "degree" : outputDegree,
                 "tolerance" : approxTolerance,
                 "maxControlPoints" : maxControlPoints,
-                "targets" : [approximationTarget({ "positions" : segmentPoints })],
+                "targets" : [approximationTarget({
+                    "positions" : segmentPoints,
+                    "startDerivative" : vector(1, finalTheta[segmentStartIdx], 0),
+                    "endDerivative" : vector(1, finalTheta[splitIdx], 0)
+                })],
                 "interpolateIndices" : [0, size(segmentPoints) - 1]
             })[0];
 
@@ -1906,7 +1913,11 @@ function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAn
             "degree" : outputDegree,
             "tolerance" : approxTolerance,
             "maxControlPoints" : maxControlPoints,
-            "targets" : [approximationTarget({ "positions" : segmentPoints })],
+            "targets" : [approximationTarget({
+                "positions" : segmentPoints,
+                "startDerivative" : vector(1, finalTheta[segmentStartIdx], 0),
+                "endDerivative" : vector(1, last(finalTheta), 0)
+            })],
             "interpolateIndices" : [0, size(segmentPoints) - 1]
         })[0];
 

@@ -127,13 +127,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             println("  swRoutStepin    = " ~ toString(definition.swRoutStepin));
         }
 
-        // Rebuilt wire queries — assigned as each intersection wire is created,
-        // used in loft steps. rebuildWire deletes the raw multi-edge wire and
-        // returns a single-edge BSpline body.
-        var washedInitialWire = undefined;
-        var washedStartWire   = undefined;
-        var washedStepInWire  = undefined;
-        var washedStopWire    = undefined;
+        // Rebuilt wire arrays — each element is one side of the front-plane split.
+        // Index 0 = +Y side, index 1 = -Y side.
+        // rebuildWire deletes the raw multi-edge wire and returns the array.
+        var washedInitialWire = [];
+        var washedStartWire   = [];
+        var washedStepInWire  = [];
+        var washedStopWire    = [];
+
+        var sideNames = ["+Y", "-Y"];
 
         // =====================================================================
         // Step 0: Intersect originals -> initial wire, then copy both sheet bodies
@@ -145,7 +147,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group2" : definition.sideSheet
             });
             washedInitialWire = rebuildWire(context, id + "rebuildInitial", qCreatedBy(id + "initialWire", EntityType.BODY));
-            setProperty(context, { "entities" : washedInitialWire, "propertyType" : PropertyType.NAME, "value" : "Initial wire" });
+            for (var s = 0; s < size(washedInitialWire); s += 1)
+            {
+                setProperty(context, { "entities" : washedInitialWire[s], "propertyType" : PropertyType.NAME, "value" : "Initial wire " ~ sideNames[s] });
+            }
 
             opPattern(context, id + "bottomCopy", {
                     "entities"      : definition.bottomSheet,
@@ -180,11 +185,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
                 
             washedStartWire = rebuildWire(context, id + "rebuildStart", qCreatedBy(id + "startIntersect", EntityType.BODY));
-            setProperty(context, { "entities" : washedStartWire, "propertyType" : PropertyType.NAME, "value" : "SWRout start wire" });
+            for (var s = 0; s < size(washedStartWire); s += 1)
+            {
+                setProperty(context, { "entities" : washedStartWire[s], "propertyType" : PropertyType.NAME, "value" : "SWRout start wire " ~ sideNames[s] });
+            }
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, washedStartWire, "Start wire", debugFmt);
+                for (var s = 0; s < size(washedStartWire); s += 1)
+                {
+                    debugPrintWireBSplines(context, washedStartWire[s], "Start wire " ~ sideNames[s], debugFmt);
+                }
             }
         }
 
@@ -207,11 +218,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             
             washedStepInWire = rebuildWire(context, id + "rebuildStepIn", qCreatedBy(id + "stepInIntersection", EntityType.BODY));
-            setProperty(context, { "entities" : washedStepInWire, "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire" });
+            for (var s = 0; s < size(washedStepInWire); s += 1)
+            {
+                setProperty(context, { "entities" : washedStepInWire[s], "propertyType" : PropertyType.NAME, "value" : "SWRout step-in wire " ~ sideNames[s] });
+            }
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, washedStepInWire, "Step-in wire", debugFmt);
+                for (var s = 0; s < size(washedStepInWire); s += 1)
+                {
+                    debugPrintWireBSplines(context, washedStepInWire[s], "Step-in wire " ~ sideNames[s], debugFmt);
+                }
             }
             
         }
@@ -315,11 +332,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group2" : bottomCopyQ
             });
             washedStopWire = rebuildWire(context, id + "rebuildStop", qCreatedBy(id + "stopWire", EntityType.BODY));
-            setProperty(context, { "entities" : washedStopWire, "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
+            for (var s = 0; s < size(washedStopWire); s += 1)
+            {
+                setProperty(context, { "entities" : washedStopWire[s], "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire " ~ sideNames[s] });
+            }
 
             if (definition.debugPrint)
             {
-                debugPrintWireBSplines(context, washedStopWire, "Stop wire", debugFmt);
+                for (var s = 0; s < size(washedStopWire); s += 1)
+                {
+                    debugPrintWireBSplines(context, washedStopWire[s], "Stop wire " ~ sideNames[s], debugFmt);
+                }
             }
         }
 
@@ -328,47 +351,49 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 5)
         {
-            var initialEdges = qUnion([qOwnedByBody(washedInitialWire, EntityType.EDGE)]);
-            var startEdges   = qUnion([qOwnedByBody(washedStartWire,   EntityType.EDGE)]);
-
-            var loftedSurfs = [];
-            var iterEdges = evaluateQuery(context, initialEdges);
-            for (var i = 0; i < size(iterEdges); i += 1)
+            for (var s = 0; s < size(washedInitialWire); s += 1)
             {
-                if (definition.debugPrint)
+                var initialEdges = qUnion([qOwnedByBody(washedInitialWire[s], EntityType.EDGE)]);
+                var startEdges   = qUnion([qOwnedByBody(washedStartWire[s],   EntityType.EDGE)]);
+
+                var loftedSurfs = [];
+                var iterEdges = evaluateQuery(context, initialEdges);
+                for (var i = 0; i < size(iterEdges); i += 1)
                 {
-                    println("lofting initial->start edge " ~ i);
+                    if (definition.debugPrint)
+                    {
+                        println("lofting initial->start edge " ~ i ~ " side " ~ sideNames[s]);
+                    }
+                    var initialEdge = iterEdges[i];
+                    var midPoint = evEdgeTangentLine(context, {
+                            "edge"      : initialEdge,
+                            "parameter" : 0.5
+                    }).origin;
+                    var startEdge = qClosestTo(startEdges, midPoint);
+                    try
+                    {
+                        opLoft(context, id + ("initialStartLoft" ~ s ~ "_" ~ i), {
+                                "profileSubqueries" : [initialEdge, startEdge],
+                                "bodyType"          : ToolBodyType.SURFACE
+                        });
+                        loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("initialStartLoft" ~ s ~ "_" ~ i), EntityType.BODY));
+                    }
+                    catch (error)
+                    {
+                        addDebugEntities(context, startEdge,   DebugColor.RED);
+                        addDebugEntities(context, initialEdge, DebugColor.GREEN);
+                    }
                 }
-                var initialEdge = iterEdges[i];
-                var midPoint = evEdgeTangentLine(context, {
-                        "edge"      : initialEdge,
-                        "parameter" : 0.5
-                }).origin;
-                var startEdge = qClosestTo(startEdges, midPoint);
-                try
-                {
-                    opLoft(context, id + ("initialStartLoft" ~ i), {
-                            "profileSubqueries" : [initialEdge, startEdge],
-                            "bodyType"          : ToolBodyType.SURFACE
-                    });
-                    loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("initialStartLoft" ~ i), EntityType.BODY));
-                }
-                catch (error)
-                {
-                    addDebugEntities(context, startEdge,   DebugColor.RED);
-                    addDebugEntities(context, initialEdge, DebugColor.GREEN);
-                }
+                opBoolean(context, id + ("combineInitialLofts" ~ s), {
+                        "tools"         : qUnion(loftedSurfs),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                setProperty(context, {
+                        "entities"     : qUnion(loftedSurfs),
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Initial to Start Surf " ~ sideNames[s]
+                });
             }
-            opBoolean(context, id + "combineInitialLofts", {
-                    "tools"         : qUnion(loftedSurfs),
-                    "operationType" : BooleanOperationType.UNION
-            });
-            
-            setProperty(context, {
-                    "entities"     : qUnion(loftedSurfs),
-                    "propertyType" : PropertyType.NAME,
-                    "value"        : "Initial to Start Surf"
-            });
         }
 
         // =====================================================================
@@ -376,46 +401,49 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 6 && definition.swRoutStepin > 0 * millimeter)
         {
-            var startEdges  = qUnion([qOwnedByBody(washedStartWire,  EntityType.EDGE)]);
-            var stepInEdges = qUnion([qOwnedByBody(washedStepInWire, EntityType.EDGE)]);
-
-            var loftedSurfs = [];
-            var iterEdges = evaluateQuery(context, startEdges);
-            for (var i = 0; i < size(iterEdges); i += 1)
+            for (var s = 0; s < size(washedStartWire); s += 1)
             {
-                if (definition.debugPrint)
+                var startEdges  = qUnion([qOwnedByBody(washedStartWire[s],  EntityType.EDGE)]);
+                var stepInEdges = qUnion([qOwnedByBody(washedStepInWire[s], EntityType.EDGE)]);
+
+                var loftedSurfs = [];
+                var iterEdges = evaluateQuery(context, startEdges);
+                for (var i = 0; i < size(iterEdges); i += 1)
                 {
-                    println("lofting start->step-in edge " ~ i);
+                    if (definition.debugPrint)
+                    {
+                        println("lofting start->step-in edge " ~ i ~ " side " ~ sideNames[s]);
+                    }
+                    var startEdge = iterEdges[i];
+                    var midPoint = evEdgeTangentLine(context, {
+                            "edge"      : startEdge,
+                            "parameter" : 0.5
+                    }).origin;
+                    var stepInEdge = qClosestTo(stepInEdges, midPoint);
+                    try
+                    {
+                        opLoft(context, id + ("startStepInLoft" ~ s ~ "_" ~ i), {
+                                "profileSubqueries" : [startEdge, stepInEdge],
+                                "bodyType"          : ToolBodyType.SURFACE
+                        });
+                        loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("startStepInLoft" ~ s ~ "_" ~ i), EntityType.BODY));
+                    }
+                    catch (error)
+                    {
+                        addDebugEntities(context, stepInEdge, DebugColor.RED);
+                        addDebugEntities(context, startEdge,  DebugColor.GREEN);
+                    }
                 }
-                var startEdge = iterEdges[i];
-                var midPoint = evEdgeTangentLine(context, {
-                        "edge"      : startEdge,
-                        "parameter" : 0.5
-                }).origin;
-                var stepInEdge = qClosestTo(stepInEdges, midPoint);
-                try
-                {
-                    opLoft(context, id + ("startStepInLoft" ~ i), {
-                            "profileSubqueries" : [startEdge, stepInEdge],
-                            "bodyType"          : ToolBodyType.SURFACE
-                    });
-                    loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("startStepInLoft" ~ i), EntityType.BODY));
-                }
-                catch (error)
-                {
-                    addDebugEntities(context, stepInEdge, DebugColor.RED);
-                    addDebugEntities(context, startEdge,  DebugColor.GREEN);
-                }
+                opBoolean(context, id + ("combineStartStepInLofts" ~ s), {
+                        "tools"         : qUnion(loftedSurfs),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                setProperty(context, {
+                        "entities"     : qUnion(loftedSurfs),
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Start to Step-In Surf " ~ sideNames[s]
+                });
             }
-            opBoolean(context, id + "combineStartStepInLofts", {
-                    "tools"         : qUnion(loftedSurfs),
-                    "operationType" : BooleanOperationType.UNION
-            });
-            setProperty(context, {
-                    "entities"     : qUnion(loftedSurfs),
-                    "propertyType" : PropertyType.NAME,
-                    "value"        : "Start to Step-In Surf"
-            });
         }
 
         // =====================================================================
@@ -423,47 +451,50 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // =====================================================================
         if (stepThrough && step >= 7)
         {
-            var lowerWire  = (definition.swRoutStepin > 0 * millimeter) ? washedStepInWire : washedStartWire;
-            var lowerEdges = qUnion([qOwnedByBody(lowerWire,      EntityType.EDGE)]);
-            var stopEdges  = qUnion([qOwnedByBody(washedStopWire, EntityType.EDGE)]);
-
-            var loftedSurfs = [];
-            var iterEdges = evaluateQuery(context, lowerEdges);
-            for (var i = 0; i < size(iterEdges); i += 1)
+            var lowerWires = (definition.swRoutStepin > 0 * millimeter) ? washedStepInWire : washedStartWire;
+            for (var s = 0; s < size(lowerWires); s += 1)
             {
-                if (definition.debugPrint)
+                var lowerEdges = qUnion([qOwnedByBody(lowerWires[s],       EntityType.EDGE)]);
+                var stopEdges  = qUnion([qOwnedByBody(washedStopWire[s],   EntityType.EDGE)]);
+
+                var loftedSurfs = [];
+                var iterEdges = evaluateQuery(context, lowerEdges);
+                for (var i = 0; i < size(iterEdges); i += 1)
                 {
-                    println("lofting lower->stop edge " ~ i);
+                    if (definition.debugPrint)
+                    {
+                        println("lofting lower->stop edge " ~ i ~ " side " ~ sideNames[s]);
+                    }
+                    var lowerEdge = iterEdges[i];
+                    var midPoint = evEdgeTangentLine(context, {
+                            "edge"      : lowerEdge,
+                            "parameter" : 0.5
+                    }).origin;
+                    var stopEdge = qClosestTo(stopEdges, midPoint);
+                    try
+                    {
+                        opLoft(context, id + ("lowerStopLoft" ~ s ~ "_" ~ i), {
+                                "profileSubqueries" : [lowerEdge, stopEdge],
+                                "bodyType"          : ToolBodyType.SURFACE
+                        });
+                        loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("lowerStopLoft" ~ s ~ "_" ~ i), EntityType.BODY));
+                    }
+                    catch (error)
+                    {
+                        addDebugEntities(context, stopEdge,  DebugColor.RED);
+                        addDebugEntities(context, lowerEdge, DebugColor.GREEN);
+                    }
                 }
-                var lowerEdge = iterEdges[i];
-                var midPoint = evEdgeTangentLine(context, {
-                        "edge"      : lowerEdge,
-                        "parameter" : 0.5
-                }).origin;
-                var stopEdge = qClosestTo(stopEdges, midPoint);
-                try
-                {
-                    opLoft(context, id + ("lowerStopLoft" ~ i), {
-                            "profileSubqueries" : [lowerEdge, stopEdge],
-                            "bodyType"          : ToolBodyType.SURFACE
-                    });
-                    loftedSurfs = append(loftedSurfs, qCreatedBy(id + ("lowerStopLoft" ~ i), EntityType.BODY));
-                }
-                catch (error)
-                {
-                    addDebugEntities(context, stopEdge,  DebugColor.RED);
-                    addDebugEntities(context, lowerEdge, DebugColor.GREEN);
-                }
+                opBoolean(context, id + ("combineLowerStopLofts" ~ s), {
+                        "tools"         : qUnion(loftedSurfs),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                setProperty(context, {
+                        "entities"     : qUnion(loftedSurfs),
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Lower to Stop Surf " ~ sideNames[s]
+                });
             }
-            opBoolean(context, id + "combineLowerStopLofts", {
-                    "tools"         : qUnion(loftedSurfs),
-                    "operationType" : BooleanOperationType.UNION
-            });
-            setProperty(context, {
-                    "entities"     : qUnion(loftedSurfs),
-                    "propertyType" : PropertyType.NAME,
-                    "value"        : "Lower to Stop Surf"
-            });
         }
     });
 
@@ -585,19 +616,20 @@ export function generateDummyTopSurf(context is Context, id is Id, sideSheet is 
     return wireBodies[topIdx];
 }
 
-// Rebuilds a multi-edge wire as a single BSpline edge body.
-// Walks the edges in chain order, samples each one, and fits one approximateSpline
-// through the full point sequence. Slivers are absorbed naturally by the fit.
-// Returns the wire unchanged if it already has a single edge.
-// Otherwise deletes the original and returns the new single-edge wire body.
-function rebuildWire(context is Context, id is Id, wireBody is Query) returns Query
+// Rebuilds a multi-edge wire as single-edge BSpline bodies, split at the front plane (y=0).
+// Walks edges in chain order, samples each (skipping slivers), finds both y=0 crossings,
+// and creates one open arc per side with interpolated boundary points exactly at y=0.
+// Returns [posWire (+Y), negWire (-Y)].
+// If all points fall on one side, returns a single-element array.
+// Deletes the original wire body.
+function rebuildWire(context is Context, id is Id, wireBody is Query) returns array
 {
     const RESAMPLE_COUNT = 20;
     const CHAIN_TOL      = 1e-5 * meter;
+    const MIN_CHORD      = 0.5 * millimeter;
 
     var allEdges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
     var n = size(allEdges);
-    if (n <= 1) { return wireBody; }
 
     // Collect endpoints for chain walking
     var ePt0 = [];
@@ -608,7 +640,8 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
         ePt1 = append(ePt1, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1.0 }).origin);
     }
 
-    // Find start edge: its pt0 is not any other edge's pt1
+    // Find start edge: pt0 is not any other edge's pt1.
+    // For closed loops all edges are connected, so startIdx stays 0.
     var startIdx = 0;
     for (var i = 0; i < n; i += 1)
     {
@@ -624,7 +657,7 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
         if (isStart) { startIdx = i; break; }
     }
 
-    // Walk the chain
+    // Walk the chain in tip-to-tail order
     var orderedIdx = [startIdx];
     var orderedFwd = [true];
     var visited    = {};
@@ -656,8 +689,7 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
         }
     }
 
-    // Sample all edges in chain order, skipping slivers to avoid near-duplicate points
-    const MIN_CHORD = 0.5 * millimeter;
+    // Sample edges in chain order, skipping slivers
     var allPts = [];
     for (var i = 0; i < size(orderedIdx); i += 1)
     {
@@ -674,81 +706,103 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns Qu
         }
     }
 
-    // The intersection wire is a closed loop. Split at y=0, keeping only the y>=0
-    // half. Insert interpolated boundary points exactly at y=0 so the open arc
-    // has clean endpoints for approximateSpline.
+    var nPts = size(allPts);
+
+    // Check for any negative-Y points
     var hasNegY = false;
     for (var pt in allPts)
     {
         if (pt[1] < 0 * meter) { hasNegY = true; break; }
     }
 
-    if (hasNegY)
+    if (!hasNegY)
     {
-        var nPts = size(allPts);
-
-        // Find the y<0 -> y>=0 transition (with wrap-around)
-        var transitionIn = -1;
-        for (var i = 0; i < nPts; i += 1)
-        {
-            var j = i + 1;
-            if (j >= nPts) { j = 0; }
-            if (allPts[i][1] < 0 * meter && allPts[j][1] >= 0 * meter)
-            {
-                transitionIn = i;
-                break;
-            }
-        }
-
-        if (transitionIn != -1)
-        {
-            var filteredPts = [];
-
-            // Interpolated start point at y=0
-            var i0 = transitionIn;
-            var i1 = transitionIn + 1;
-            if (i1 >= nPts) { i1 = 0; }
-            var t0 = (-allPts[i0][1]) / (allPts[i1][1] - allPts[i0][1]);
-            filteredPts = append(filteredPts, allPts[i0] + t0 * (allPts[i1] - allPts[i0]));
-
-            // Collect y>=0 points until the y>=0 -> y<0 transition
-            var transitionOut = -1;
-            for (var k = 1; k <= nPts; k += 1)
-            {
-                var idx = transitionIn + k;
-                if (idx >= nPts) { idx = idx - nPts; }
-                if (allPts[idx][1] < 0 * meter)
-                {
-                    transitionOut = idx;
-                    break;
-                }
-                filteredPts = append(filteredPts, allPts[idx]);
-            }
-
-            // Interpolated end point at y=0
-            if (transitionOut != -1)
-            {
-                var lastPt = filteredPts[size(filteredPts) - 1];
-                var nextPt = allPts[transitionOut];
-                var tEnd   = lastPt[1] / (lastPt[1] - nextPt[1]);
-                filteredPts = append(filteredPts, lastPt + tEnd * (nextPt - lastPt));
-            }
-
-            allPts = filteredPts;
-        }
+        // All points on +Y side -- no split needed
+        var curve = approximateSpline(context, {
+                "targets"          : [approximationTarget({ "positions" : allPts })],
+                "degree"           : 3,
+                "tolerance"        : 1e-5 * meter,
+                "isPeriodic"       : false,
+                "maxControlPoints" : 200
+        })[0];
+        opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
+        opCreateBSplineCurve(context, id + "rebuiltWirePos", { "bSplineCurve" : curve });
+        return [qCreatedBy(id + "rebuiltWirePos", EntityType.BODY)];
     }
 
-    var curve = approximateSpline(context, {
-            "targets"          : [approximationTarget({ "positions" : allPts })],
+    // Find the two y=0 crossings with wrap-around indexing.
+    // crossingA: last y<0 point before entering +Y (y<0 -> y>=0 transition)
+    // crossingB: last y>=0 point before entering -Y (y>=0 -> y<0 transition)
+    var crossingA = -1;
+    var crossingB = -1;
+    for (var i = 0; i < nPts; i += 1)
+    {
+        var j  = i + 1;
+        if (j >= nPts) { j = 0; }
+        var yi = allPts[i][1];
+        var yj = allPts[j][1];
+        if (yi < 0 * meter && yj >= 0 * meter) { crossingA = i; }
+        else if (yi >= 0 * meter && yj < 0 * meter) { crossingB = i; }
+    }
+
+    // Interpolated boundary points exactly at y=0
+    var aNext = crossingA + 1;
+    if (aNext >= nPts) { aNext = 0; }
+    var tA  = (-allPts[crossingA][1]) / (allPts[aNext][1] - allPts[crossingA][1]);
+    var ptA = allPts[crossingA] + tA * (allPts[aNext] - allPts[crossingA]);
+
+    var bNext = crossingB + 1;
+    if (bNext >= nPts) { bNext = 0; }
+    var tB  = allPts[crossingB][1] / (allPts[crossingB][1] - allPts[bNext][1]);
+    var ptB = allPts[crossingB] + tB * (allPts[bNext] - allPts[crossingB]);
+
+    // Build +Y segment: ptA, points from aNext through crossingB, ptB
+    var posPts = [ptA];
+    for (var k = 1; k <= nPts; k += 1)
+    {
+        var idx = crossingA + k;
+        if (idx >= nPts) { idx = idx - nPts; }
+        if (idx == bNext) { break; }
+        posPts = append(posPts, allPts[idx]);
+    }
+    posPts = append(posPts, ptB);
+
+    // Build -Y segment: ptB, points from bNext through crossingA, ptA
+    var negPts = [ptB];
+    for (var k = 1; k <= nPts; k += 1)
+    {
+        var idx = crossingB + k;
+        if (idx >= nPts) { idx = idx - nPts; }
+        if (idx == aNext) { break; }
+        negPts = append(negPts, allPts[idx]);
+    }
+    negPts = append(negPts, ptA);
+
+    // Create +Y wire
+    var curvePos = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : posPts })],
             "degree"           : 3,
             "tolerance"        : 1e-5 * meter,
             "isPeriodic"       : false,
             "maxControlPoints" : 200
     })[0];
+    opCreateBSplineCurve(context, id + "rebuiltWirePos", { "bSplineCurve" : curvePos });
+
+    // Create -Y wire
+    var curveNeg = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : negPts })],
+            "degree"           : 3,
+            "tolerance"        : 1e-5 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : 200
+    })[0];
+    opCreateBSplineCurve(context, id + "rebuiltWireNeg", { "bSplineCurve" : curveNeg });
 
     opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-    opCreateBSplineCurve(context, id + "rebuiltWire", { "bSplineCurve" : curve });
-    return qCreatedBy(id + "rebuiltWire", EntityType.BODY);
+    return [
+        qCreatedBy(id + "rebuiltWirePos", EntityType.BODY),
+        qCreatedBy(id + "rebuiltWireNeg", EntityType.BODY)
+    ];
 }
 
 /**
