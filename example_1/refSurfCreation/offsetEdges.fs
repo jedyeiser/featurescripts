@@ -592,8 +592,16 @@ function processPath(context is Context, id is Id, definition is map) returns ma
     frenetPath      = fixFrenetPathSigns(frenetPath, definition.printFrameSamples);
     var totalLength = frenetPath.totalLength;
 
+    // Build parallel transport table.  Falls back to empty table (= raw Frenet frames) if any
+    // edge in the chain is a native arc/circle: evApproximateBSplineCurve returns a rational
+    // NURBS for arcs, and getFrameAtArcLength's internal evaluateSpline does not support
+    // rational BSplines.  For circular arcs, Frenet = parallel transport anyway (zero torsion).
     var numPTSamples = max([100, definition.numRegionPoints * 4]);
-    var ptTable      = buildParallelTransportTable(context, frenetPath, numPTSamples);
+    var ptTable      = [];
+    try silent
+    {
+        ptTable = buildParallelTransportTable(context, frenetPath, numPTSamples);
+    }
 
     var refPt     = getRefPoint(context, definition.referencePoint);
     var refResult = projectOntoFrenetPath(frenetPath, refPt, undefined);
