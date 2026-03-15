@@ -776,56 +776,48 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 function splitAndKeep(context is Context, id is Id, body is Query,
         boundPlane is Plane, probePoint is Vector) returns Query
 {
+    // opSplitPart requires a Query tool -- create a temporary construction plane
+    opPlane(context, id + "pl", { "plane" : boundPlane });
+    var planeQ = qCreatedBy(id + "pl", EntityType.BODY);
+
     var splitOk = false;
     try
     {
         opSplitPart(context, id + "split", {
-                "targets" : body,
-                "tool"    : boundPlane
+                "targets"    : body,
+                "tool"       : planeQ,
+                "keepTools"  : false
         });
         splitOk = true;
     }
     catch (e) {}
+
+    // opSplitPart does not delete construction planes regardless of keepTools
+    try silent(opDeleteBodies(context, id + "delPl", { "entities" : planeQ }));
 
     if (!splitOk)
     {
         return body;
     }
 
-    // opSplitPart modifies the original body and creates one new body
-    var pieceA = qModifiedBy(id + "split", EntityType.BODY);
-    var pieceB = qCreatedBy(id + "split",  EntityType.BODY);
+    var pieceA = qSplitBy(id + "split", EntityType.BODY, false);
+    var pieceB = qSplitBy(id + "split", EntityType.BODY, true);
 
-    var allPieces = evaluateQuery(context, qUnion([pieceA, pieceB]));
-    if (size(allPieces) < 2)
-    {
-        return body;
-    }
+    var bbA = evBox3d(context, { "topology" : pieceA, "tight" : true });
+    var bbB = evBox3d(context, { "topology" : pieceB, "tight" : true });
+    var cA  = (bbA.minCorner + bbA.maxCorner) / 2;
+    var cB  = (bbB.minCorner + bbB.maxCorner) / 2;
 
-    var keepIdx = 0;
-    var minDist = undefined;
-    for (var i = 0; i < size(allPieces); i += 1)
+    if (norm(cA - probePoint) <= norm(cB - probePoint))
     {
-        var bb = evBox3d(context, { "topology" : allPieces[i], "tight" : true });
-        var c  = (bb.minCorner + bb.maxCorner) / 2;
-        var d  = norm(c - probePoint);
-        if (minDist == undefined || d < minDist)
-        {
-            minDist  = d;
-            keepIdx  = i;
-        }
+        opDeleteBodies(context, id + "del", { "entities" : pieceB });
+        return pieceA;
     }
-
-    var toDelete = [];
-    for (var i = 0; i < size(allPieces); i += 1)
+    else
     {
-        if (i != keepIdx)
-        {
-            toDelete = append(toDelete, allPieces[i]);
-        }
+        opDeleteBodies(context, id + "del", { "entities" : pieceA });
+        return pieceB;
     }
-    opDeleteBodies(context, id + "del", { "entities" : qUnion(toDelete) });
-    return allPieces[keepIdx];
 }
 
 
