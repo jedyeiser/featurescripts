@@ -240,6 +240,64 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             });
             setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Stop side (offset copy)" });
         }
+
+        // =====================================================================
+        // Step 4: Ensure stop surfaces intersect — extend side copy if needed
+        //   evDistance between the two offset bodies tells us if there is a gap.
+        //   If gap > 0, find the boundary edges of sideCopy closest to bottomCopy
+        //   and extend by gapDist + 1mm so the surfaces overlap cleanly.
+        // =====================================================================
+        if (stepThrough && step >= 4)
+        {
+            var sideCopyQ   = qCreatedBy(id + "sideCopy",   EntityType.BODY);
+            var bottomCopyQ = qCreatedBy(id + "bottomCopy", EntityType.BODY);
+
+            var gapDist = evDistance(context, {
+                    "side0" : sideCopyQ,
+                    "side1" : bottomCopyQ
+            }).distance;
+
+            if (definition.debugPrint)
+            {
+                println("  stop surface gap = " ~ toString(gapDist));
+            }
+
+            if (gapDist > 0 * meter)
+            {
+                // Find the one-sided boundary edges of sideCopy nearest to bottomCopy
+                var oneSidedEdges = evaluateQuery(context, qEdgeTopologyFilter(
+                        qOwnedByBody(sideCopyQ, EntityType.EDGE), EdgeTopology.ONE_SIDED));
+
+                var minEdgeDist = 1e10 * meter;
+                for (var edge in oneSidedEdges)
+                {
+                    var d = evDistance(context, { "side0" : edge, "side1" : bottomCopyQ }).distance;
+                    if (d < minEdgeDist)
+                    {
+                        minEdgeDist = d;
+                    }
+                }
+
+                var edgesToExtend = [];
+                for (var edge in oneSidedEdges)
+                {
+                    var d = evDistance(context, { "side0" : edge, "side1" : bottomCopyQ }).distance;
+                    if (d < minEdgeDist + 1e-4 * meter)
+                    {
+                        edgesToExtend = append(edgesToExtend, edge);
+                    }
+                }
+
+                extendSurface(context, id + "extendSideToBottom", {
+                        "entities"           : qUnion(edgesToExtend),
+                        "tangentPropagation" : true,
+                        "endCondition"       : ExtendBoundingType.BLIND,
+                        "oppositeDirection"  : false,
+                        "extendDistance"     : gapDist + 1 * millimeter,
+                        "maintainCurvature"  : true
+                });
+            }
+        }
     });
 
 /**
