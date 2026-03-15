@@ -297,6 +297,67 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "maintainCurvature"  : true
                 });
             }
+
+            intersectionCurve(context, id + "stopWire", {
+                    "group1" : sideCopyQ,
+                    "group2" : bottomCopyQ
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "stopWire", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout stop wire" });
+
+            if (definition.debugPrint)
+            {
+                debugPrintWireBSplines(context, qCreatedBy(id + "stopWire", EntityType.BODY), "Stop wire", debugFmt);
+            }
+        }
+
+        // =====================================================================
+        // Step 5: Loft initial wire → start wire
+        // =====================================================================
+        if (stepThrough && step >= 5)
+        {
+            var initialWireQ = qCreatedBy(id + "initialWire",   EntityType.BODY);
+            var startWireQ   = qCreatedBy(id + "startIntersect", EntityType.BODY);
+
+            opLoft(context, id + "loft1", {
+                    "profileSubqueries" : [initialWireQ, startWireQ],
+                    "connections"       : buildLoftConnection(context, initialWireQ, startWireQ),
+                    "bodyType"          : ToolBodyType.SURFACE
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "loft1", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 1 (initial → start)" });
+        }
+
+        // =====================================================================
+        // Step 6: Loft start wire → step-in wire (only if swRoutStepin > 0)
+        // =====================================================================
+        if (stepThrough && step >= 6 && definition.swRoutStepin > 0 * millimeter)
+        {
+            var startWireQ  = qCreatedBy(id + "startIntersect",   EntityType.BODY);
+            var stepInWireQ = qCreatedBy(id + "stepInIntersection", EntityType.BODY);
+
+            opLoft(context, id + "loft2", {
+                    "profileSubqueries" : [startWireQ, stepInWireQ],
+                    "connections"       : buildLoftConnection(context, startWireQ, stepInWireQ),
+                    "bodyType"          : ToolBodyType.SURFACE
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "loft2", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 2 (start → step-in)" });
+        }
+
+        // =====================================================================
+        // Step 7: Loft step-in wire (or start wire if no step-in) → stop wire
+        // =====================================================================
+        if (stepThrough && step >= 7)
+        {
+            var stopWireQ  = qCreatedBy(id + "stopWire", EntityType.BODY);
+            var lowerWireQ = (definition.swRoutStepin > 0 * millimeter)
+                ? qCreatedBy(id + "stepInIntersection", EntityType.BODY)
+                : qCreatedBy(id + "startIntersect",     EntityType.BODY);
+
+            opLoft(context, id + "loft3", {
+                    "profileSubqueries" : [lowerWireQ, stopWireQ],
+                    "connections"       : buildLoftConnection(context, lowerWireQ, stopWireQ),
+                    "bodyType"          : ToolBodyType.SURFACE
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "loft3", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "SWRout loft 3 (→ stop)" });
         }
     });
 
