@@ -905,17 +905,15 @@ function collectShelfBlendZones(context is Context, id is Id, definition is map,
 
 /**
  * Samples n points along railPath, offsets each by shelfDepth(X) + depthOffset
- * along the per-sample outward normal of the outsideSurface.
- *
- * surfFaces: evaluateQuery result of qOwnedByBody(outsideSurface, FACE) — passed
- * in to avoid re-evaluating the query for every sample.
+ * in the outward direction — perpendicular to the rail tangent in the XY plane,
+ * pointing toward the +Y (outside) ski side.
  *
  * depthOffset: additional signed offset applied after shelfDepth (pass
  *   -sidewallWidth to get inside surface points, 0 for shelf surface points).
  */
 function buildShelfRailPoints(context is Context, definition is map, pathInfo is map,
     railPath is Path, sortedRegions is array, blendZones is array,
-    surfFaces is array, depthOffset is ValueWithUnits) returns array
+    depthOffset is ValueWithUnits) returns array
 {
     var n      = definition.samplingDensity;
     var params = range(0, 1, n);
@@ -924,47 +922,28 @@ function buildShelfRailPoints(context is Context, definition is map, pathInfo is
 
     for (var i = 0; i < n; i += 1)
     {
-        var railPt = tls[i].origin;
-        var X      = railPt[0];
+        var railPt  = tls[i].origin;
+        var tangent = tls[i].direction; // unit vector along rail
 
-        // Map rail X to bottomWire path parameter, then evaluate shelfDepth
-        var t      = findPathParamAtX(context, pathInfo.path, X);
-        var depth  = shelfDepthAtT(sortedRegions, blendZones, t) + depthOffset;
+        var X     = railPt[0];
+        var t     = findPathParamAtX(context, pathInfo.path, X);
+        var depth = shelfDepthAtT(sortedRegions, blendZones, t) + depthOffset;
 
-        // Per-sample outward normal from the closest face of the outside surface
-        var normal = outwardNormalAtPoint(context, surfFaces, railPt);
+        // Outward offset direction: perpendicular to rail tangent in XY plane,
+        // pointing toward +Y (away from ski center axis).
+        // For tangent = [tx, ty, tz], the XY-plane perpendicular is [-ty, tx, 0].
+        var perpXY  = vector(-tangent[1], tangent[0], 0.0);
+        var perpLen = norm(perpXY);
+        var outward = vector(0.0, 1.0, 0.0); // default: +Y when tangent is nearly vertical
+        if (perpLen >= 1e-8)
+        {
+            outward = perpXY / perpLen;
+            if (outward[1] < 0) outward = -outward;
+        }
 
-        pts = append(pts, railPt + depth * normal);
+        pts = append(pts, railPt + depth * outward);
     }
     return pts;
-}
-
-
-/**
- * Returns the outward-facing normal of outsideSurface at pt.
- * Finds the closest face among surfFaces, projects pt onto it to get UV,
- * evaluates the face tangent plane, then disambiguates to +Y.
- */
-function outwardNormalAtPoint(context is Context, surfFaces is array, pt is Vector) returns Vector
-{
-    var bestDist = 1e10 * meter;
-    var bestFace = surfFaces[0];
-    var bestUV   = vector(0.5, 0.5);
-
-    for (var face in surfFaces)
-    {
-        var d = evDistance(context, { "side0" : pt, "side1" : face });
-        if (d.distance < bestDist)
-        {
-            bestDist = d.distance;
-            bestFace = face;
-            bestUV   = d.sides[1].parameter;
-        }
-    }
-
-    var normal = evFaceTangentPlane(context, { "face" : bestFace, "parameter" : bestUV }).normal;
-    if (normal[1] < 0) normal = -normal;
-    return normal;
 }
 
 

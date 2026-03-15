@@ -21,7 +21,7 @@ export const SWRoutAngleBounds      = {(degree)     : [0,  20, 45]} as AngleBoun
 export const DistAboveBottomBounds  = {(millimeter) : [1,   4, 10]} as LengthBoundSpec;
 export const SWStepInBounds         = {(millimeter) : [0,   0,  3]} as LengthBoundSpec;
 export const cutterRadiusBounds     = {(millimeter) : [2,  10, 20]} as LengthBoundSpec;
-export const DEBUG_STEP_BOUNDS      = { (unitless) : [1, 1, 9] } as IntegerBoundSpec;
+export const DEBUG_STEP_BOUNDS      = { (unitless) : [0, 1, 9] } as IntegerBoundSpec;
 
 annotation { "Feature Type Name" : "Sidewall rout surface", "Feature Type Description" : "Creates a SW rout surface based on inputs" }
 export const SWRout = defineFeature(function(context is Context, id is Id, definition is map)
@@ -73,7 +73,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Group Name" : "Step through options", "Driving Parameter" : "debugStepThrough", "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Step (1-9)", "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "Step (0-9)", "UIHint" : UIHint.SHOW_LABEL }
                 isInteger(definition.debugStep, DEBUG_STEP_BOUNDS);
             }
 
@@ -122,25 +122,39 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 1: Offset bottom surface up, intersect with side → start wire
+        // Step 0: Copy both sheet bodies
         // =====================================================================
-        if (stepThrough && step >= 1)
+        if (stepThrough && step >= 0)
         {
-            opPattern(context, id + "startBottom", {
+            opPattern(context, id + "bottomCopy", {
                     "entities"      : definition.bottomSheet,
                     "transforms"    : [transform(vector(0, 0, 0) * meter)],
                     "instanceNames" : ["1"]
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (copy)" });
+            setProperty(context, { "entities" : qCreatedBy(id + "bottomCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Bottom (copy)" });
+
+            opPattern(context, id + "sideCopy", {
+                    "entities"      : definition.sideSheet,
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                    "instanceNames" : ["1"]
+            });
+            setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Side (copy)" });
+        }
+
+        // =====================================================================
+        // Step 1: Offset copied bottom, intersect with copied side → start wire
+        // =====================================================================
+        if (stepThrough && step >= 1)
+        {
             opOffsetFace(context, id + "startBottomOffset", {
-                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE)]),
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE)]),
                     "offsetDistance" : bottomOffsetSign * definition.distAboveBottom
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "startBottom", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Start bottom (offset copy)" });
+            setProperty(context, { "entities" : qCreatedBy(id + "bottomCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Bottom (offset copy)" });
 
             opIntersectFaces(context, id + "startIntersect", {
-                    "tools"   : qOwnedByBody(qCreatedBy(id + "startBottom", EntityType.BODY), EntityType.FACE),
-                    "targets" : qOwnedByBody(definition.sideSheet, EntityType.FACE)
+                    "tools"   : qOwnedByBody(qCreatedBy(id + "bottomCopy", EntityType.BODY), EntityType.FACE),
+                    "targets" : qOwnedByBody(qCreatedBy(id + "sideCopy",   EntityType.BODY), EntityType.FACE)
             });
             opExtractWires(context, id + "startWire", {
                     "edges" : qCreatedBy(id + "startIntersect", EntityType.EDGE)
@@ -152,21 +166,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         // =====================================================================
-        // Step 2: (Only if swRoutStepin > 0) copy side surface and offset inward
+        // Step 2: (Only if swRoutStepin > 0) offset copied side inward
         // =====================================================================
         if (stepThrough && step >= 2 && definition.swRoutStepin > 0 * millimeter)
         {
-            opPattern(context, id + "stepInSide", {
-                    "entities"      : definition.sideSheet,
-                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                    "instanceNames" : ["1"]
-            });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (copy)" });
             opOffsetFace(context, id + "stepInSideOffset", {
-                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "stepInSide", EntityType.BODY), EntityType.FACE)]),
+                    "moveFaces"      : qUnion([qOwnedByBody(qCreatedBy(id + "sideCopy", EntityType.BODY), EntityType.FACE)]),
                     "offsetDistance" : -sideOffsetSign * definition.swRoutStepin
             });
-            setProperty(context, { "entities" : qCreatedBy(id + "stepInSide", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Step-in side (offset copy)" });
+            setProperty(context, { "entities" : qCreatedBy(id + "sideCopy", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "Side (offset copy)" });
         }
     });
 
