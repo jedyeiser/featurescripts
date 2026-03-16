@@ -171,7 +171,10 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 
                 annotation { "Name" : "Show vertex frames" }
                 definition.showVertexFrames is boolean;
-                
+
+                annotation { "Name" : "Show offset samples", "Default" : false }
+                definition.showOffsetSamples is boolean;
+
             }
             
         }
@@ -339,8 +342,20 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }
                     }
 
+                    if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
+                    {
+                        var zeroAtStart = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        sampleEdgeOffsets(context, id + ("sampleOffsets" ~ r), regionCopy, peripheryEdges, {
+                            'startFrameOrigin' : region.startFrame.origin,
+                            'offsetType'       : definition.regions[r].offsetType,
+                            'startOffset'      : definition.regions[r].startOffset,
+                            'endOffset'        : definition.regions[r].endOffset,
+                            'zeroSlopeAtStart' : zeroAtStart
+                        }, definition.samplingDensity);
+                    }
+
                     //addDebugEntities(context, peripheryEdges, DebugColor.CYAN);
-                    
+
                     var faceFrames = processFaceFrames(context, id + ("processRef" ~ r ~"test"), regionCopy, peripheryEdges, {'samplingDensity': definition.samplingDensity, 'samplingType' : definition.samplingType, 'showFrames' : (definition.debug && definition.showVertexFrames)}, refPath);
                 }
             }
@@ -685,6 +700,135 @@ export function getWireBodyPlane(context is Context, wireBodyQuery is Query, tol
     return plane(candidatePlane.origin, alignNormalToWorldAxis(candidatePlane.normal));
 }
 
+
+// OFFSET INTERPOLATION HELPERS ************************
+
+export function linearOffset(startOff is ValueWithUnits, endOff is ValueWithUnits, t is number) returns ValueWithUnits
+{
+    return startOff + (endOff - startOff) * t;
+}
+
+export function quadraticOffset(startOff is ValueWithUnits, endOff is ValueWithUnits, t is number, zeroSlopeAtStart is boolean) returns ValueWithUnits
+{
+    if (zeroSlopeAtStart)
+    {
+        // f(t) = startOff + (endOff - startOff) * t^2  — zero slope at t=0
+        return startOff + (endOff - startOff) * t * t;
+    }
+    else
+    {
+        // f(t) = startOff + (endOff - startOff) * (2t - t^2)  — zero slope at t=1
+        return startOff + (endOff - startOff) * (2 * t - t * t);
+    }
+}
+
+export function smoothOffset(startOff is ValueWithUnits, endOff is ValueWithUnits, t is number) returns ValueWithUnits
+{
+    var s = t * t * (3 - 2 * t);
+    return startOff + (endOff - startOff) * s;
+}
+
+/**
+ * Samples N points per periphery edge for non-CONSTANT offset types and shows the
+ * offset point (edgePt + offsetMag * binormal) as a magenta debug point.
+ *
+ * offsetDef fields:
+ *   startFrameOrigin  — origin of the region start frame (for t=0 orientation)
+ *   offsetType        — RegionOffsetType (LINEAR, QUADRATIC, SMOOTH)
+ *   startOffset       — offset at t=0
+ *   endOffset         — offset at t=1
+ *   zeroSlopeAtStart  — (QUADRATIC only) boolean
+ */
+export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Query, peripheryEdges is Query, offsetDef is map, numPts is number)
+{
+    if (numPts < 2)
+    {
+        numPts = 2;
+    }
+    var edgeArray = evaluateQuery(context, peripheryEdges);
+
+    for (var ei = 0; ei < size(edgeArray); ei += 1)
+    {
+        var edge = edgeArray[ei];
+
+        // Determine which end of the edge is the start (t=0): closest to startFrameOrigin
+        var p0 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 0, "arcLengthParameterization" : false}).origin;
+        var p1 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 1, "arcLengthParameterization" : false}).origin;
+        var startAtParam0 = norm(p0 - offsetDef.startFrameOrigin) <= norm(p1 - offsetDef.startFrameOrigin);
+
+        // Face adjacent to this edge owned by sheetBody
+        var faceQ = qIntersection([
+            qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE),
+            qOwnedByBody(sheetBody, EntityType.FACE)
+        ]);
+        var faceArr = evaluateQuery(context, faceQ);
+        if (size(faceArr) == 0)
+        {
+            continue;
+        }
+        faceQ = faceArr[0];
+
+        // Face interior reference point for binormal sign check
+        var faceBox = evBox3d(context, {"topology" : faceQ, "tight" : true});
+        var faceInteriorPt = (faceBox.minCorner + faceBox.maxCorner) / 2;
+
+        // Build uniform parameter array [0, 1] with numPts samples
+        var params = [];
+        for (var i = 0; i < numPts; i += 1)
+        {
+            params = append(params, i / (numPts - 1));
+        }
+
+        var tangentLines = evEdgeTangentLines(context, {
+            "edge"                   : edge,
+            "parameters"             : params,
+            "arcLengthParameterization" : true
+        });
+
+        for (var i = 0; i < size(tangentLines); i += 1)
+        {
+            var edgePt     = tangentLines[i].origin;
+            var edgeTangent = tangentLines[i].direction;
+            var edgeParam  = params[i];
+
+            // t along the edge from region start to end
+            var t = startAtParam0 ? edgeParam : (1 - edgeParam);
+
+            // Face normal at this sample point
+            var ptUV = evDistance(context, {"side0" : faceQ, "side1" : edgePt}).sides[0].parameter;
+            var faceNormal = evFaceTangentPlane(context, {"face" : faceQ, "parameter" : ptUV}).normal;
+            if (faceNormal[2] < 0)
+            {
+                faceNormal = -1 * faceNormal;
+            }
+
+            // Outward binormal: cross(faceNormal, edgeTangent), sign away from face interior
+            var binormal = cross(faceNormal, edgeTangent);
+            if (dot(binormal, (faceInteriorPt - edgePt) / meter) > 0)
+            {
+                binormal = -1 * binormal;
+            }
+
+            // Offset magnitude at t
+            var offsetMag;
+            if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+            {
+                offsetMag = linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+            }
+            else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+            {
+                offsetMag = quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+            }
+            else
+            {
+                offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+            }
+
+            var offsetPt = edgePt + offsetMag * binormal;
+            addDebugPoint(context, offsetPt, DebugColor.MAGENTA);
+        }
+    }
+}
 
 function alignNormalToWorldAxis(normal is Vector) returns Vector
 {
