@@ -296,7 +296,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }
 
                         // Periphery edges after offset (boundary may have changed)
-                        var postOffsetPeriphery = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges), EdgeTopology.ONE_SIDED);
+                        var postOffsetPeriphery = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), qUnion([splitEdges, planeEdges])), EdgeTopology.ONE_SIDED);
 
                         if (definition.returnOffsetWires)
                         {
