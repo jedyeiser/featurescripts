@@ -57,6 +57,21 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Return offset surfaces", "Default" : false }
         definition.returnOffsetSurfaces is boolean;
 
+        if (definition.returnOffsetSurfaces)
+        {
+            annotation { "Name" : "Surface height" }
+            isLength(definition.surfaceHeight, REGION_SURFACE_HEIGHT_BOUNDS);
+
+            annotation { "Name" : "Second direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            definition.surfaceSecondDir is boolean;
+
+            if (definition.surfaceSecondDir)
+            {
+                annotation { "Name" : "Height (second dir.)" }
+                isLength(definition.surfaceHeight2, REGION_SURFACE_HEIGHT_BOUNDS);
+            }
+        }
+
         annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name" }
         definition.regions is array;
         for (var region in definition.regions)
@@ -111,20 +126,6 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 }
             }
 
-            if (definition.returnOffsetSurfaces)
-            {
-                annotation { "Name" : "Surface height" }
-                isLength(region.surfaceHeight, REGION_SURFACE_HEIGHT_BOUNDS);
-
-                annotation { "Name" : "Second direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
-                region.surfaceSecondDir is boolean;
-
-                if (region.surfaceSecondDir)
-                {
-                    annotation { "Name" : "Height (second dir.)" }
-                    isLength(region.surfaceHeight2, REGION_SURFACE_HEIGHT_BOUNDS);
-                }
-            }
 
         }
         
@@ -339,7 +340,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                                     "path"             : postOffsetPeriphery,
                                     "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
                                     "ruledDirection"   : faceNormal,
-                                    "width"            : definition.regions[r].surfaceHeight,
+                                    "width"            : definition.surfaceHeight,
                                     "angle"            : 0
                                 });
                                 setProperty(context, {
@@ -347,13 +348,13 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                                     "propertyType" : PropertyType.NAME,
                                     "value"        : definition.regions[r].name ~ " offset surface"
                                 });
-                                if (definition.regions[r].surfaceSecondDir == true)
+                                if (definition.surfaceSecondDir == true)
                                 {
                                     opRuledSurface(context, id + ("regionRuledSurface2" ~ r), {
                                         "path"             : postOffsetPeriphery,
                                         "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
                                         "ruledDirection"   : -1 * faceNormal,
-                                        "width"            : definition.regions[r].surfaceHeight2,
+                                        "width"            : definition.surfaceHeight2,
                                         "angle"            : 0
                                     });
                                     setProperty(context, {
@@ -377,9 +378,9 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
                             "regionName"        : definition.regions[r].name,
-                            "surfaceSecondDir"  : definition.regions[r].surfaceSecondDir,
-                            "surfaceHeight2"    : (definition.regions[r].surfaceSecondDir == true) ? definition.regions[r].surfaceHeight2 : (0 * millimeter)
-                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces, definition.regions[r].surfaceHeight);
+                            "surfaceSecondDir"  : definition.surfaceSecondDir,
+                            "surfaceHeight2"    : (definition.surfaceSecondDir == true) ? definition.surfaceHeight2 : (0 * millimeter)
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces, definition.surfaceHeight);
                     }
 
                     if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
