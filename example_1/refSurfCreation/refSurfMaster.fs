@@ -107,8 +107,8 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
                     "joined"           : false,
                     "startContinuity"  : IntersectionContinuityType.G0,
                     "endContinuity"    : IntersectionContinuityType.G0,
-                    "startOffset"      : 0 * millimeter,
-                    "endOffset"        : 0 * millimeter
+                    "joinStartOffset"  : 0 * millimeter,
+                    "joinEndOffset"    : 0 * millimeter
                 };
             }
             newIntersections = append(newIntersections, ixEntry);
@@ -254,10 +254,10 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 ix.endContinuity is IntersectionContinuityType;
 
                 annotation { "Name" : "Start offset" }
-                isLength(ix.startOffset, INTERSECTION_OFFSET_BOUNDS);
+                isLength(ix.joinStartOffset, INTERSECTION_OFFSET_BOUNDS);
 
                 annotation { "Name" : "End offset" }
-                isLength(ix.endOffset, INTERSECTION_OFFSET_BOUNDS);
+                isLength(ix.joinEndOffset, INTERSECTION_OFFSET_BOUNDS);
             }
         }
 
