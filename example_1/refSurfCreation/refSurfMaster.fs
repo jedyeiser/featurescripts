@@ -347,6 +347,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         var zeroAtStart = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
                         sampleEdgeOffsets(context, id + ("sampleOffsets" ~ r), regionCopy, peripheryEdges, {
                             'startFrameOrigin' : region.startFrame.origin,
+                            'endFrameOrigin'   : region.endFrame.origin,
                             'offsetType'       : definition.regions[r].offsetType,
                             'startOffset'      : definition.regions[r].startOffset,
                             'endOffset'        : definition.regions[r].endOffset,
@@ -747,14 +748,15 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
     }
     var edgeArray = evaluateQuery(context, peripheryEdges);
 
+    // Axis for projecting sample points to a region-wide t in [0,1].
+    // Strip meter units so dot products yield plain numbers.
+    var regionAxisRaw = offsetDef.endFrameOrigin - offsetDef.startFrameOrigin;
+    var regionAxis    = regionAxisRaw / meter;                      // dimensionless
+    var regionAxisLen2 = dot(regionAxis, regionAxis);               // scalar
+
     for (var ei = 0; ei < size(edgeArray); ei += 1)
     {
         var edge = edgeArray[ei];
-
-        // Determine which end of the edge is the start (t=0): closest to startFrameOrigin
-        var p0 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 0, "arcLengthParameterization" : false}).origin;
-        var p1 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 1, "arcLengthParameterization" : false}).origin;
-        var startAtParam0 = norm(p0 - offsetDef.startFrameOrigin) <= norm(p1 - offsetDef.startFrameOrigin);
 
         // Face adjacent to this edge owned by sheetBody
         var faceQ = qIntersection([
@@ -787,12 +789,14 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
 
         for (var i = 0; i < size(tangentLines); i += 1)
         {
-            var edgePt     = tangentLines[i].origin;
+            var edgePt      = tangentLines[i].origin;
             var edgeTangent = tangentLines[i].direction;
-            var edgeParam  = params[i];
 
-            // t along the edge from region start to end
-            var t = startAtParam0 ? edgeParam : (1 - edgeParam);
+            // t = projection of edgePt onto the region start→end axis, clamped to [0,1]
+            var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
+            var t = dot(disp, regionAxis) / regionAxisLen2;
+            if (t < 0) { t = 0; }
+            if (t > 1) { t = 1; }
 
             // Face normal at this sample point
             var ptUV = evDistance(context, {"side0" : faceQ, "side1" : edgePt}).sides[0].parameter;
