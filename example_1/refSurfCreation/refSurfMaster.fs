@@ -95,7 +95,6 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
                 ixEntry.intersectionNum  = i;
                 ixEntry.regionAName      = regA.name;
                 ixEntry.regionBName      = regB.name;
-                ixEntry.gapDistance      = gap;
             }
             else
             {
@@ -103,7 +102,6 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
                     "intersectionNum"  : i,
                     "regionAName"      : regA.name,
                     "regionBName"      : regB.name,
-                    "gapDistance"      : gap,
                     "joined"           : false,
                     "startContinuity"  : IntersectionContinuityType.G0,
                     "endContinuity"    : IntersectionContinuityType.G0,
@@ -236,9 +234,6 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
             annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             ix.regionBName is string;
-
-            annotation { "Name" : "Gap distance", "UIHint" : UIHint.ALWAYS_HIDDEN }
-            isLength(ix.gapDistance, REGION_OFFSET_BOUNDS);
 
             annotation { "Name" : "Joined", "Default" : false }
             ix.joined is boolean;
