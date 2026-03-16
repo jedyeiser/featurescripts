@@ -1089,12 +1089,8 @@ function joinLoftAtIntersection(context is Context, id is Id, featureId is Id,
         return;
     }
 
-    var edgesA = evaluateQuery(context, qEdgeTopologyFilter(
-            qCoincidesWithPlane(qOwnedByBody(loftBodiesA, EntityType.EDGE), boundaryPl),
-            EdgeTopology.ONE_SIDED));
-    var edgesB = evaluateQuery(context, qEdgeTopologyFilter(
-            qCoincidesWithPlane(qOwnedByBody(loftBodiesB, EntityType.EDGE), boundaryPl),
-            EdgeTopology.ONE_SIDED));
+    var edgesA = edgesNearPlane(context, loftBodiesA, boundaryPl);
+    var edgesB = edgesNearPlane(context, loftBodiesB, boundaryPl);
 
     if (size(edgesA) == 0 || size(edgesB) == 0)
     {
@@ -1319,6 +1315,33 @@ function joinWiresAtIntersection(context is Context, id is Id, featureId is Id,
 
 // Pairs edges by midpoint proximity. Returns array of
 // { "edgeA", "edgeB", "midA", "midB" }.
+// Returns all ONE_SIDED edges of bodies whose both endpoints lie within 1 mm of pl.
+// Uses endpoint sampling instead of qCoincidesWithPlane, which requires the entire
+// edge to lie exactly on the plane and fails for curved loft cap edges.
+function edgesNearPlane(context is Context, bodies is Query, pl is Plane) returns array
+{
+    const TOL = 1e-3 * meter;
+    var candidates = evaluateQuery(context, qEdgeTopologyFilter(
+            qOwnedByBody(bodies, EntityType.EDGE), EdgeTopology.ONE_SIDED));
+    var result = [];
+    for (var e in candidates)
+    {
+        var pt0 = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 0.0, "arcLengthParameterization" : true
+        }).origin;
+        var pt1 = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 1.0, "arcLengthParameterization" : true
+        }).origin;
+        if (abs(dot(pt0 - pl.origin, pl.normal)) < TOL &&
+            abs(dot(pt1 - pl.origin, pl.normal)) < TOL)
+        {
+            result = append(result, e);
+        }
+    }
+    return result;
+}
+
+
 function pairEdgesByProximity(context is Context, edgesA is array, edgesB is array) returns array
 {
     var usedB = [];
@@ -1371,9 +1394,7 @@ function pairEdgesByProximity(context is Context, edgesA is array, edgesB is arr
 function findClosestEdgeAtPlane(context is Context, bodies is Query, pl is Plane,
         nearPt is Vector) returns Query
 {
-    var candidates = evaluateQuery(context, qEdgeTopologyFilter(
-            qCoincidesWithPlane(qOwnedByBody(bodies, EntityType.EDGE), pl),
-            EdgeTopology.ONE_SIDED));
+    var candidates = edgesNearPlane(context, bodies, pl);
     if (size(candidates) == 0)
     {
         return qNothing();
