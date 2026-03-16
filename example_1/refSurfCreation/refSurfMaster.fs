@@ -95,9 +95,10 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
             {
                 ixEntry = {
                     "intersectionNum"  : i,
+                    "name"             : regA.name ~ " / " ~ regB.name,
                     "regionAName"      : regA.name,
                     "regionBName"      : regB.name,
-                    "joined"           : false,
+                    "join"             : false,
                     "startContinuity"  : IntersectionContinuityType.G0,
                     "endContinuity"    : IntersectionContinuityType.G0,
                     "joinStartOffset"  : 0 * millimeter,
@@ -158,7 +159,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             }
         }
 
-        annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name" }
+        annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name", "Collapsed By Default" : true }
         definition.regions is array;
         for (var region in definition.regions)
         {
@@ -216,7 +217,8 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         }
 
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
-                     "Item label template" : "Intersection #intersectionNum",
+                     "Item label template" : "#name",
+                     "Collapsed By Default" : true,
                      "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
         definition.intersections is array;
         for (var ix in definition.intersections)
@@ -224,23 +226,24 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Intersection number", "UIHint" : UIHint.ALWAYS_HIDDEN }
             isInteger(ix.intersectionNum, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
 
+            annotation { "Name" : "Name" }
+            ix.name is string;
+
             annotation { "Name" : "Region A", "UIHint" : UIHint.READ_ONLY }
             ix.regionAName is string;
 
             annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             ix.regionBName is string;
 
-            annotation { "Name" : "Joined", "Default" : false }
-            ix.joined is boolean;
+            annotation { "Name" : "Join", "Default" : false }
+            ix.join is boolean;
 
-            if (ix.joined)
+            if (ix.join)
             {
-                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0 }
                 ix.startContinuity is IntersectionContinuityType;
 
-                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0 }
                 ix.endContinuity is IntersectionContinuityType;
 
                 annotation { "Name" : "Start offset" }
