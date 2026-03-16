@@ -37,77 +37,94 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
     }
 
     // --- Intersection detection (ALONG_REF regions only) ---
-    // Collect sortable region entries
-    var sortable = [];
-    for (var r = 0; r < size(definition.regions); r += 1)
+    // Wrapped in try/catch so editing logic always returns a valid definition
+    // even if detection fails (ensures definition.intersections is always an array).
+    try
     {
-        var reg = definition.regions[r];
-        if (reg.extentDef == RegionExtentDef.ALONG_REF)
+        // Collect sortable region entries
+        var sortable = [];
+        for (var r = 0; r < size(definition.regions); r += 1)
         {
-            sortable = append(sortable, {
-                "name"   : reg.name,
-                "startX" : reg.startX,
-                "endX"   : reg.endX
-            });
+            var reg = definition.regions[r];
+            if (reg.extentDef == RegionExtentDef.ALONG_REF &&
+                reg.startX != undefined && reg.endX != undefined)
+            {
+                sortable = append(sortable, {
+                    "name"   : reg.name,
+                    "startX" : reg.startX,
+                    "endX"   : reg.endX
+                });
+            }
+        }
+
+        // Sort by startX ascending
+        sortable = sort(sortable, function(a, b)
+        {
+            return (a.startX - b.startX) / meter;
+        });
+
+        // Build lookup from existing intersections by name pair, to preserve user data
+        var oldIntersections = definition.intersections;
+        if (oldIntersections == undefined)
+        {
+            oldIntersections = [];
+        }
+        var oldMap = {};
+        for (var ix in oldIntersections)
+        {
+            var key = ix.regionAName ~ "|" ~ ix.regionBName;
+            oldMap = mergeMaps(oldMap, {(key) : ix});
+        }
+
+        // Walk consecutive sorted pairs and build new intersection array
+        var newIntersections = [];
+        for (var i = 0; i < size(sortable) - 1; i += 1)
+        {
+            var regA = sortable[i];
+            var regB = sortable[i + 1];
+            var gap  = regB.startX - regA.endX;
+
+            var key      = regA.name ~ "|" ~ regB.name;
+            var existing = oldMap[key];
+
+            var ixEntry;
+            if (existing != undefined)
+            {
+                // Preserve user data; refresh auto fields only
+                ixEntry                  = existing;
+                ixEntry.intersectionNum  = i;
+                ixEntry.regionAName      = regA.name;
+                ixEntry.regionBName      = regB.name;
+                ixEntry.gapDistance      = gap;
+            }
+            else
+            {
+                ixEntry = {
+                    "intersectionNum"  : i,
+                    "regionAName"      : regA.name,
+                    "regionBName"      : regB.name,
+                    "gapDistance"      : gap,
+                    "joined"           : false,
+                    "startContinuity"  : IntersectionContinuityType.G0,
+                    "endContinuity"    : IntersectionContinuityType.G0,
+                    "startOffset"      : 0 * millimeter,
+                    "endOffset"        : 0 * millimeter
+                };
+            }
+            newIntersections = append(newIntersections, ixEntry);
+        }
+
+        definition.intersections = newIntersections;
+    }
+    catch
+    {
+        // Ensure intersections is always a valid array even if detection fails
+        if (definition.intersections == undefined)
+        {
+            definition.intersections = [];
         }
     }
 
-    // Sort by startX ascending
-    sortable = sort(sortable, function(a, b)
-    {
-        return (a.startX - b.startX) / meter;
-    });
-
-    // Build lookup from existing intersections by name pair, to preserve user data
-    var oldIntersections = definition.intersections;
-    if (oldIntersections == undefined)
-    {
-        oldIntersections = [];
-    }
-    var oldMap = {};
-    for (var ix in oldIntersections)
-    {
-        var key = ix.regionAName ~ "|" ~ ix.regionBName;
-        oldMap = mergeMaps(oldMap, {(key) : ix});
-    }
-
-    // Walk consecutive sorted pairs and build new intersection array
-    var newIntersections = [];
-    for (var i = 0; i < size(sortable) - 1; i += 1)
-    {
-        var regA = sortable[i];
-        var regB = sortable[i + 1];
-        var gap  = regB.startX - regA.endX;
-
-        var key      = regA.name ~ "|" ~ regB.name;
-        var existing = oldMap[key];
-
-        var ix;
-        if (existing != undefined)
-        {
-            // Preserve user data; refresh auto fields
-            ix              = existing;
-            ix.regionAName  = regA.name;
-            ix.regionBName  = regB.name;
-            ix.gapDistance  = gap;
-        }
-        else
-        {
-            ix = {
-                "regionAName"      : regA.name,
-                "regionBName"      : regB.name,
-                "gapDistance"      : gap,
-                "joined"           : false,
-                "startContinuity"  : IntersectionContinuityType.G0,
-                "endContinuity"    : IntersectionContinuityType.G0,
-                "startOffset"      : 0 * millimeter,
-                "endOffset"        : 0 * millimeter
-            };
-        }
-        newIntersections = append(newIntersections, ix);
-    }
-
-    definition.intersections = newIntersections;
     return definition;
 }
 
@@ -206,15 +223,18 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         }
 
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
-                     "Item label template" : "#regionAName -- #regionBName",
+                     "Item label template" : "Intersection #intersectionNum",
                      "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
         definition.intersections is array;
         for (var ix in definition.intersections)
         {
-            annotation { "Name" : "Region A", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Intersection number", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isInteger(ix.intersectionNum, { (unitless) : [0, 0, 100] });
+
+            annotation { "Name" : "Region A", "UIHint" : UIHint.READ_ONLY }
             ix.regionAName is string;
 
-            annotation { "Name" : "Region B", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             ix.regionBName is string;
 
             annotation { "Name" : "Gap distance", "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -554,7 +574,7 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
         }
         faceQ = faceArray[0];
 
-        // Per-face reference normal at the face center — Z-flip applied once, then
+        // Per-face reference normal at the face center -- Z-flip applied once, then
         // per-vertex normal is dot-checked for consistency (handles curved surfaces).
         var faceBox = evBox3d(context, {"topology" : faceQ, "tight" : true});
         var faceInteriorPt = (faceBox.minCorner + faceBox.maxCorner) / 2;
@@ -592,7 +612,7 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
             }
 
             // Outward binormal: in-surface, perpendicular to edge, away from face interior.
-            // Sign check with dot product — no kernel calls needed.
+            // Sign check with dot product -- no kernel calls needed.
             var binormal = cross(faceNormal, edgeDir);
             if (dot(binormal, (faceInteriorPt - framePoint) / meter) > 0)
             {
@@ -665,7 +685,7 @@ export function processSideSurf(context is Context, id is Id, refSheetBody is Qu
 
     //addDebugEntities(context, botRefEdges, DebugColor.MAGENTA);
 
-    // bottomSurf — extrude refWire symmetrically in plane normal direction, then split with sideSurf
+    // bottomSurf -- extrude refWire symmetrically in plane normal direction, then split with sideSurf
     // Use smallest bounding box extent as the extrusion direction (wire lies in perpendicular plane)
     var refWireEdges = qOwnedByBody(refWire, EntityType.EDGE);
     var refWireBox = evBox3d(context, {"topology" : refWire, "tight" : true});
@@ -800,7 +820,7 @@ export function getWireBodyPlane(context is Context, wireBodyQuery is Query, tol
         }
     }
 
-    // --- 2. Fallback: all-line wire — find plane from vertices via cross product ---
+    // --- 2. Fallback: all-line wire -- find plane from vertices via cross product ---
     if (candidatePlane == undefined)
     {
         const points = mapArray(vertices, function(v) {
@@ -863,12 +883,12 @@ export function quadraticOffset(startOff is ValueWithUnits, endOff is ValueWithU
 {
     if (zeroSlopeAtStart)
     {
-        // f(t) = startOff + (endOff - startOff) * t^2  — zero slope at t=0
+        // f(t) = startOff + (endOff - startOff) * t^2  -- zero slope at t=0
         return startOff + (endOff - startOff) * t * t;
     }
     else
     {
-        // f(t) = startOff + (endOff - startOff) * (2t - t^2)  — zero slope at t=1
+        // f(t) = startOff + (endOff - startOff) * (2t - t^2)  -- zero slope at t=1
         return startOff + (endOff - startOff) * (2 * t - t * t);
     }
 }
@@ -904,12 +924,12 @@ function computeOffsetMag(offsetDef is map, t is number) returns ValueWithUnits
  * offsetPt = edgePt + offsetMag * outwardBinormal
  *
  * offsetDef fields:
- *   startFrameOrigin  — origin of the region start frame (for t=0 orientation)
- *   offsetType        — RegionOffsetType
- *   offset            — magnitude for CONSTANT
- *   startOffset       — magnitude at t=0 for variable types
- *   endOffset         — magnitude at t=1 for variable types
- *   zeroSlopeAtStart  — (QUADRATIC only) boolean
+ *   startFrameOrigin  -- origin of the region start frame (for t=0 orientation)
+ *   offsetType        -- RegionOffsetType
+ *   offset            -- magnitude for CONSTANT
+ *   startOffset       -- magnitude at t=0 for variable types
+ *   endOffset         -- magnitude at t=1 for variable types
+ *   zeroSlopeAtStart  -- (QUADRATIC only) boolean
  */
 export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Query, peripheryEdges is Query, offsetDef is map, numPts is number)
 {
@@ -968,7 +988,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
         {
             var edgePt = tangentLines[i].origin;
 
-            // t = projection of edgePt onto the region start→end axis, clamped to [0,1]
+            // t = projection of edgePt onto the region start->end axis, clamped to [0,1]
             var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
             var t = dot(disp, regionAxis) / regionAxisLen2;
             if (t < 0) { t = 0; }
@@ -1836,13 +1856,13 @@ export function edgeContinuity(context is Context, edgeA is Query, edgeB is Quer
     else if (norm(tA0.origin - tB1.origin) < POS_TOL) { paramA = 0.0; paramB = 1.0; tA = tA0; tB = tB1; }
     else throw regenError("edgeContinuity: edges do not share a vertex");
 
-    // G0 confirmed — shared vertex found.
+    // G0 confirmed -- shared vertex found.
 
     var outgoingA = (paramA == 0.0) ? tA.direction : -tA.direction;
     var outgoingB = (paramB == 0.0) ? tB.direction : -tB.direction;
 
     if (dot(outgoingA, outgoingB) > -(1.0 - G1_COS_TOL))
-        return GeometricContinuity.G0;  // ← was "G0"
+        return GeometricContinuity.G0;  // <- was "G0"
 
     // G1 confirmed.
 
@@ -1858,7 +1878,7 @@ export function edgeContinuity(context is Context, edgeA is Query, edgeB is Quer
         return GeometricContinuity.G1;
 
     if (abs(kA - kB) / max(abs(kA), abs(kB)) > G2_REL_TOL)
-        return GeometricContinuity.G1;  // ← was "G1"
+        return GeometricContinuity.G1;  // <- was "G1"
 
-    return GeometricContinuity.G2;  // ← was GeometricContinuity.G0 — the silent bug
+    return GeometricContinuity.G2;  // <- was GeometricContinuity.G0 -- the silent bug
 }
