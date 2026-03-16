@@ -57,6 +57,24 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Loft width" }
         isLength(definition.loftWidth, REGION_OFFSET_BOUNDS);
 
+        annotation { "Name" : "Return loft surface", "Default" : false }
+        definition.returnLoftSurface is boolean;
+
+        if (definition.returnLoftSurface)
+        {
+            annotation { "Name" : "Wall height" }
+            isLength(definition.wallHeight, REGION_SURFACE_HEIGHT_BOUNDS);
+
+            annotation { "Name" : "Second direction", "Default" : false }
+            definition.wallSecondDir is boolean;
+
+            if (definition.wallSecondDir)
+            {
+                annotation { "Name" : "Height (second dir.)" }
+                isLength(definition.wallHeight2, REGION_SURFACE_HEIGHT_BOUNDS);
+            }
+        }
+
         annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name" }
         definition.regions is array;
         for (var region in definition.regions)
@@ -175,21 +193,6 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
                 annotation { "Name" : "Show loft points", "Default" : false }
                 definition.showLoftPoints is boolean;
-
-                if (definition.showLoftPoints)
-                {
-                    annotation { "Name" : "Wall height" }
-                    isLength(definition.wallHeight, REGION_SURFACE_HEIGHT_BOUNDS);
-
-                    annotation { "Name" : "Second direction", "Default" : false }
-                    definition.wallSecondDir is boolean;
-
-                    if (definition.wallSecondDir)
-                    {
-                        annotation { "Name" : "Height (second dir.)" }
-                        isLength(definition.wallHeight2, REGION_SURFACE_HEIGHT_BOUNDS);
-                    }
-                }
 
             }
             
@@ -333,9 +336,28 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.loftWidth);
                     }
 
+                    if (definition.returnLoftSurface)
+                    {
+                        var zeroAtStartLoft = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        buildLoftSurfaces(context, id + ("loftSurf" ~ r), regionCopy, peripheryEdges, {
+                            "startFrameOrigin" : region.startFrame.origin,
+                            "endFrameOrigin"   : region.endFrame.origin,
+                            "offsetType"       : definition.regions[r].offsetType,
+                            "offset"           : (definition.regions[r].offsetType == RegionOffsetType.CONSTANT) ? definition.regions[r].offset : (0 * millimeter),
+                            "startOffset"      : definition.regions[r].startOffset,
+                            "endOffset"        : definition.regions[r].endOffset,
+                            "zeroSlopeAtStart" : zeroAtStartLoft,
+                            "regionName"       : definition.regions[r].name
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP,
+                        definition.loftWidth, definition.wallHeight,
+                        definition.wallSecondDir,
+                        definition.wallSecondDir ? definition.wallHeight2 : (0 * millimeter));
+                    }
+
                     if (definition.debug && (definition.showPointFrames || definition.showLoftPoints))
                     {
                         var zeroAtStartDbg = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        var dbgHasLoft     = definition.returnLoftSurface;
                         debugOffsetPoints(context, id + ("debugOffsetPts" ~ r), regionCopy, peripheryEdges, {
                             "startFrameOrigin" : region.startFrame.origin,
                             "endFrameOrigin"   : region.endFrame.origin,
@@ -345,10 +367,10 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartDbg,
                             "showPointFrames"  : definition.showPointFrames,
-                            "showLoftPoints"   : definition.showLoftPoints,
-                            "wallHeight"       : definition.showLoftPoints ? definition.wallHeight : (0 * millimeter),
-                            "wallSecondDir"    : definition.showLoftPoints && definition.wallSecondDir,
-                            "wallHeight2"      : (definition.showLoftPoints && definition.wallSecondDir) ? definition.wallHeight2 : (0 * millimeter)
+                            "showLoftPoints"   : definition.showLoftPoints && dbgHasLoft,
+                            "wallHeight"       : (definition.showLoftPoints && dbgHasLoft) ? definition.wallHeight : (0 * millimeter),
+                            "wallSecondDir"    : definition.showLoftPoints && dbgHasLoft && definition.wallSecondDir,
+                            "wallHeight2"      : (definition.showLoftPoints && dbgHasLoft && definition.wallSecondDir) ? definition.wallHeight2 : (0 * millimeter)
                         }, definition.samplingDensity, definition.loftWidth);
                     }
 
@@ -744,6 +766,26 @@ export function smoothOffset(startOff is ValueWithUnits, endOff is ValueWithUnit
 {
     var s = t * t * (3 - 2 * t);
     return startOff + (endOff - startOff) * s;
+}
+
+function computeOffsetMag(offsetDef is map, t is number) returns ValueWithUnits
+{
+    if (offsetDef.offsetType == RegionOffsetType.CONSTANT)
+    {
+        return offsetDef.offset;
+    }
+    else if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+    {
+        return linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+    }
+    else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+    {
+        return quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+    }
+    else
+    {
+        return smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+    }
 }
 
 /**
@@ -1150,6 +1192,371 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             "entities"     : wireBodies[wi],
             "propertyType" : PropertyType.NAME,
             "value"        : offsetDef.regionName ~ " offset wire"
+        });
+    }
+}
+
+/**
+ * Builds a lofted surface for each periphery edge of a region.
+ *
+ * For each edge:
+ *   - Samples offset points: offsetPt = edgePt + offsetMag * outwardBinormal + loftWidth * faceNormal
+ *   - Creates a "top" profile at offsetPt + wallHeight * faceNormal
+ *   - Creates a "bottom" profile at offsetPt - wallHeight2 * faceNormal (if wallSecondDir)
+ *     or at offsetPt itself (if not wallSecondDir)
+ *   - At shared vertices between adjacent edges, blends the outward binormals into a
+ *     bisector direction so adjacent patches share exact corner positions (enabling union)
+ *   - Fits BSplines through top and bottom sample arrays, snapping control point
+ *     endpoints to the computed corner positions
+ *   - Calls opLoft between the top and bottom BSpline per edge
+ *   - Unions all patches and names the result
+ *
+ * offsetDef fields (same as buildVariableOffsetCurves):
+ *   startFrameOrigin, endFrameOrigin, offsetType, offset, startOffset, endOffset,
+ *   zeroSlopeAtStart, regionName
+ */
+export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Query,
+    peripheryEdges is Query, offsetDef is map, numPts is number,
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
+    loftWidth is ValueWithUnits, wallHeight is ValueWithUnits,
+    wallSecondDir is boolean, wallHeight2 is ValueWithUnits)
+{
+    if (numPts < 2)
+    {
+        numPts = 2;
+    }
+    var edgeArray = evaluateQuery(context, peripheryEdges);
+    if (size(edgeArray) == 0)
+    {
+        return;
+    }
+
+    var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
+    var regionAxisLen2 = dot(regionAxis, regionAxis);
+    const POS_TOL      = 1e-6 * meter;
+
+    // --- Phase 1: per-edge data collection ---
+    var edgeInfo = [];
+    for (var ei = 0; ei < size(edgeArray); ei += 1)
+    {
+        var edge = edgeArray[ei];
+
+        var faceArr = evaluateQuery(context, qIntersection([
+            qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE),
+            qOwnedByBody(sheetBody, EntityType.FACE)
+        ]));
+        if (size(faceArr) == 0)
+        {
+            edgeInfo = append(edgeInfo, undefined);
+            continue;
+        }
+        var face = faceArr[0];
+
+        var faceBB        = evBox3d(context, {"topology" : face, "tight" : true});
+        var faceCenterPt  = (faceBB.minCorner + faceBB.maxCorner) / 2;
+        var faceCenterUV  = evDistance(context, {"side0" : face, "side1" : faceCenterPt}).sides[0].parameter;
+        var faceRefNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : faceCenterUV}).normal;
+        if (faceRefNormal[2] < 0)
+        {
+            faceRefNormal = -1 * faceRefNormal;
+        }
+
+        var tl0 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 0, "arcLengthParameterization" : false});
+        var tl1 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 1, "arcLengthParameterization" : false});
+        var p0  = tl0.origin;
+        var p1  = tl1.origin;
+
+        // Face normal and outward binormal at each endpoint
+        var uv0 = evDistance(context, {"side0" : face, "side1" : p0}).sides[0].parameter;
+        var fn0 = evFaceTangentPlane(context, {"face" : face, "parameter" : uv0}).normal;
+        if (dot(fn0, faceRefNormal) < 0) { fn0 = -1 * fn0; }
+        var bn0 = cross(fn0, tl0.direction);
+        if (dot(bn0, (faceCenterPt - p0) / meter) > 0) { bn0 = -1 * bn0; }
+
+        var uv1 = evDistance(context, {"side0" : face, "side1" : p1}).sides[0].parameter;
+        var fn1 = evFaceTangentPlane(context, {"face" : face, "parameter" : uv1}).normal;
+        if (dot(fn1, faceRefNormal) < 0) { fn1 = -1 * fn1; }
+        var bn1 = cross(fn1, tl1.direction);
+        if (dot(bn1, (faceCenterPt - p1) / meter) > 0) { bn1 = -1 * bn1; }
+
+        // t and offsetMag at each endpoint
+        var d0  = (p0 - offsetDef.startFrameOrigin) / meter;
+        var t0  = dot(d0, regionAxis) / regionAxisLen2;
+        if (t0 < 0) { t0 = 0; } if (t0 > 1) { t0 = 1; }
+        var d1  = (p1 - offsetDef.startFrameOrigin) / meter;
+        var t1  = dot(d1, regionAxis) / regionAxisLen2;
+        if (t1 < 0) { t1 = 0; } if (t1 > 1) { t1 = 1; }
+        var om0 = computeOffsetMag(offsetDef, t0);
+        var om1 = computeOffsetMag(offsetDef, t1);
+
+        // Interior samples
+        var params = [];
+        for (var i = 0; i < numPts; i += 1)
+        {
+            params = append(params, i / (numPts - 1));
+        }
+        var tangentLines = evEdgeTangentLines(context, {
+            "edge"                      : edge,
+            "parameters"                : params,
+            "arcLengthParameterization" : true
+        });
+
+        var topPts    = [];
+        var bottomPts = [];
+        for (var i = 0; i < size(tangentLines); i += 1)
+        {
+            var edgePt      = tangentLines[i].origin;
+            var edgeTangent = tangentLines[i].direction;
+
+            var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
+            var t    = dot(disp, regionAxis) / regionAxisLen2;
+            if (t < 0) { t = 0; } if (t > 1) { t = 1; }
+
+            var ptUV       = evDistance(context, {"side0" : face, "side1" : edgePt}).sides[0].parameter;
+            var faceNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : ptUV}).normal;
+            if (dot(faceNormal, faceRefNormal) < 0) { faceNormal = -1 * faceNormal; }
+
+            var binormal = cross(faceNormal, edgeTangent);
+            if (dot(binormal, (faceCenterPt - edgePt) / meter) > 0) { binormal = -1 * binormal; }
+
+            var offsetMag = computeOffsetMag(offsetDef, t);
+            var offsetPt  = edgePt + offsetMag * binormal + loftWidth * faceNormal;
+
+            topPts    = append(topPts,    offsetPt + wallHeight * faceNormal);
+            bottomPts = append(bottomPts, wallSecondDir ? offsetPt - wallHeight2 * faceNormal : offsetPt);
+        }
+
+        edgeInfo = append(edgeInfo, {
+            "edge"         : edge,
+            "face"         : face,
+            "faceRefNormal": faceRefNormal,
+            "faceCenterPt" : faceCenterPt,
+            "p0"           : p0,
+            "p1"           : p1,
+            "tan0"         : tl0.direction,
+            "tan1"         : tl1.direction,
+            "fn0"          : fn0,
+            "fn1"          : fn1,
+            "bn0"          : bn0,
+            "bn1"          : bn1,
+            "om0"          : om0,
+            "om1"          : om1,
+            "topPts"       : topPts,
+            "bottomPts"    : bottomPts
+        });
+    }
+
+    // --- Phase 2: corner point computation ---
+    // At each shared vertex, accumulate outward binormals from all adjacent edges.
+    // The bisector of the accumulated binormals gives a consistent outward direction
+    // that is identical for both patches sharing that corner, enabling opBoolean UNION.
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        if (edgeInfo[ei] == undefined) { continue; }
+        var ed = edgeInfo[ei];
+
+        // Corner at p0: accumulate binormals from all other edges sharing this vertex
+        var sumBn0 = ed.bn0;
+        for (var ej = 0; ej < size(edgeInfo); ej += 1)
+        {
+            if (ej == ei || edgeInfo[ej] == undefined) { continue; }
+            var eo = edgeInfo[ej];
+            if (norm(eo.p0 - ed.p0) < POS_TOL)      { sumBn0 = sumBn0 + eo.bn0; }
+            else if (norm(eo.p1 - ed.p0) < POS_TOL) { sumBn0 = sumBn0 + eo.bn1; }
+        }
+        var bisector0  = normalize(sumBn0);
+        var cornerOff0 = ed.p0 + ed.om0 * bisector0 + loftWidth * ed.fn0;
+        var ctStart    = cornerOff0 + wallHeight * ed.fn0;
+        var cbStart    = wallSecondDir ? cornerOff0 - wallHeight2 * ed.fn0 : cornerOff0;
+
+        // Corner at p1: accumulate binormals from all other edges sharing this vertex
+        var sumBn1 = ed.bn1;
+        for (var ej = 0; ej < size(edgeInfo); ej += 1)
+        {
+            if (ej == ei || edgeInfo[ej] == undefined) { continue; }
+            var eo = edgeInfo[ej];
+            if (norm(eo.p0 - ed.p1) < POS_TOL)      { sumBn1 = sumBn1 + eo.bn0; }
+            else if (norm(eo.p1 - ed.p1) < POS_TOL) { sumBn1 = sumBn1 + eo.bn1; }
+        }
+        var bisector1  = normalize(sumBn1);
+        var cornerOff1 = ed.p1 + ed.om1 * bisector1 + loftWidth * ed.fn1;
+        var ctEnd      = cornerOff1 + wallHeight * ed.fn1;
+        var cbEnd      = wallSecondDir ? cornerOff1 - wallHeight2 * ed.fn1 : cornerOff1;
+
+        var edCopy        = edgeInfo[ei];
+        edCopy.ctStart    = ctStart;
+        edCopy.cbStart    = cbStart;
+        edCopy.ctEnd      = ctEnd;
+        edCopy.cbEnd      = cbEnd;
+        edgeInfo[ei]      = edCopy;
+    }
+
+    // --- Phase 3: G1 junction detection (same criterion as buildVariableOffsetCurves) ---
+    const G1_COS = cos(0.5 * degree);
+    var derivConstraint = [];
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        derivConstraint = append(derivConstraint, {"startDeriv" : undefined, "endDeriv" : undefined});
+    }
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        if (edgeInfo[ei] == undefined) { continue; }
+        var eA = edgeInfo[ei];
+        for (var ej = ei + 1; ej < size(edgeInfo); ej += 1)
+        {
+            if (edgeInfo[ej] == undefined) { continue; }
+            var eB = edgeInfo[ej];
+            if (norm(eA.p1 - eB.p0) < POS_TOL && dot(-1 * eA.tan1, eB.tan0) < -G1_COS)
+            {
+                var dcA = derivConstraint[ei]; dcA.endDeriv   = eA.tan1; derivConstraint[ei] = dcA;
+                var dcB = derivConstraint[ej]; dcB.startDeriv = eB.tan0; derivConstraint[ej] = dcB;
+            }
+            else if (norm(eA.p0 - eB.p1) < POS_TOL && dot(eA.tan0, -1 * eB.tan1) < -G1_COS)
+            {
+                var dcA = derivConstraint[ei]; dcA.startDeriv = eA.tan0; derivConstraint[ei] = dcA;
+                var dcB = derivConstraint[ej]; dcB.endDeriv   = eB.tan1; derivConstraint[ej] = dcB;
+            }
+            else if (norm(eA.p1 - eB.p1) < POS_TOL && dot(-1 * eA.tan1, -1 * eB.tan1) < -G1_COS)
+            {
+                var dcA = derivConstraint[ei]; dcA.endDeriv = eA.tan1; derivConstraint[ei] = dcA;
+                var dcB = derivConstraint[ej]; dcB.endDeriv = eB.tan1; derivConstraint[ej] = dcB;
+            }
+            else if (norm(eA.p0 - eB.p0) < POS_TOL && dot(eA.tan0, eB.tan0) < -G1_COS)
+            {
+                var dcA = derivConstraint[ei]; dcA.startDeriv = eA.tan0; derivConstraint[ei] = dcA;
+                var dcB = derivConstraint[ej]; dcB.startDeriv = eB.tan0; derivConstraint[ej] = dcB;
+            }
+        }
+    }
+
+    // --- Phase 4: fit BSplines, loft each edge pair, collect patch bodies ---
+    var loftBodyQueries = [];
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        if (edgeInfo[ei] == undefined) { continue; }
+        var ed = edgeInfo[ei];
+        var dc = derivConstraint[ei];
+
+        var edgeLen    = evLength(context, {"entities" : ed.edge});
+        var derivScale = edgeLen / 3;
+
+        // Snap sample endpoints to computed corner positions before fitting
+        var topPts    = ed.topPts;
+        var bottomPts = ed.bottomPts;
+        topPts[0]     = ed.ctStart;
+        topPts[-1]    = ed.ctEnd;
+        bottomPts[0]  = ed.cbStart;
+        bottomPts[-1] = ed.cbEnd;
+
+        // Fit top BSpline
+        var topTargetDef = {"positions" : topPts};
+        if (dc.startDeriv != undefined) { topTargetDef = mergeMaps(topTargetDef, {"startDerivative" : dc.startDeriv * derivScale}); }
+        if (dc.endDeriv   != undefined) { topTargetDef = mergeMaps(topTargetDef, {"endDerivative"   : dc.endDeriv   * derivScale}); }
+
+        var topSpline;
+        try
+        {
+            var topResults = approximateSpline(context, {
+                "isPeriodic"       : false,
+                "degree"           : splineDegree,
+                "tolerance"        : tolerance,
+                "maxControlPoints" : maxCP,
+                "targets"          : [approximationTarget(topTargetDef)]
+            });
+            topSpline = topResults[0];
+            var topCPs    = topSpline.controlPoints;
+            topCPs[0]     = ed.ctStart;
+            topCPs[-1]    = ed.ctEnd;
+            topSpline     = mergeMaps(topSpline, {"controlPoints" : topCPs});
+        }
+        catch
+        {
+            continue;
+        }
+
+        // Fit bottom BSpline
+        var botTargetDef = {"positions" : bottomPts};
+        if (dc.startDeriv != undefined) { botTargetDef = mergeMaps(botTargetDef, {"startDerivative" : dc.startDeriv * derivScale}); }
+        if (dc.endDeriv   != undefined) { botTargetDef = mergeMaps(botTargetDef, {"endDerivative"   : dc.endDeriv   * derivScale}); }
+
+        var bottomSpline;
+        try
+        {
+            var botResults = approximateSpline(context, {
+                "isPeriodic"       : false,
+                "degree"           : splineDegree,
+                "tolerance"        : tolerance,
+                "maxControlPoints" : maxCP,
+                "targets"          : [approximationTarget(botTargetDef)]
+            });
+            bottomSpline = botResults[0];
+            var botCPs   = bottomSpline.controlPoints;
+            botCPs[0]    = ed.cbStart;
+            botCPs[-1]   = ed.cbEnd;
+            bottomSpline = mergeMaps(bottomSpline, {"controlPoints" : botCPs});
+        }
+        catch
+        {
+            continue;
+        }
+
+        // Create curve bodies
+        var topCurveId    = id + ("loftTopCurve"    ~ ei);
+        var bottomCurveId = id + ("loftBottomCurve" ~ ei);
+        try
+        {
+            opCreateBSplineCurve(context, topCurveId,    {"bSplineCurve" : topSpline});
+            opCreateBSplineCurve(context, bottomCurveId, {"bSplineCurve" : bottomSpline});
+        }
+        catch
+        {
+            continue;
+        }
+
+        var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
+        var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+
+        // Loft between top and bottom profiles
+        var loftId = id + ("loftPatch" ~ ei);
+        try
+        {
+            opLoft(context, loftId, {
+                "bodyType"          : ToolBodyType.SURFACE,
+                "profileSubqueries" : [topBody, bottomBody]
+            });
+            loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+        }
+        catch
+        {
+        }
+
+        // Clean up intermediate curve bodies regardless of loft success
+        try { opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), {"entities" : qUnion([topBody, bottomBody])}); }
+        catch { }
+    }
+
+    // --- Phase 5: union all patches into one body ---
+    if (size(loftBodyQueries) > 1)
+    {
+        try
+        {
+            opBoolean(context, id + "unionLoftPatches", {
+                "operationType" : BooleanOperationType.UNION,
+                "tools"         : qUnion(loftBodyQueries)
+            });
+        }
+        catch
+        {
+        }
+    }
+
+    // Name the result
+    if (size(loftBodyQueries) > 0)
+    {
+        setProperty(context, {
+            "entities"     : qUnion(loftBodyQueries),
+            "propertyType" : PropertyType.NAME,
+            "value"        : offsetDef.regionName ~ " loft surface"
         });
     }
 }
