@@ -229,7 +229,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         for (var ix in definition.intersections)
         {
             annotation { "Name" : "Intersection number", "UIHint" : UIHint.ALWAYS_HIDDEN }
-            isInteger(ix.intersectionNum, { (unitless) : [0, 0, 100] });
+            isInteger(ix.intersectionNum, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
 
             annotation { "Name" : "Region A", "UIHint" : UIHint.READ_ONLY }
             ix.regionAName is string;
