@@ -100,6 +100,12 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
                 annotation { "Name" : "End offset" }
                 isLength(region.endOffset, REGION_OFFSET_BOUNDS);
+
+                if (region.offsetType == RegionOffsetType.QUADRATIC)
+                {
+                    annotation { "Name" : "Zero slope at start", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+                    region.zeroSlopeAtStart is boolean;
+                }
             }
 
         }
