@@ -1113,8 +1113,8 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
                 try
                 {
                     opLoft(context, id + ("offSurf" ~ ei), {
-                        "profiles"  : [ed.edge, qOwnedByBody(wireBody, EntityType.EDGE)],
-                        "isSurface" : true
+                        "profileSubqueries" : [ed.edge, qOwnedByBody(wireBody, EntityType.EDGE)],
+                        "bodyType"          : ToolBodyType.SURFACE
                     });
                     surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf" ~ ei), EntityType.BODY));
                 }
