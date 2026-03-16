@@ -1,6 +1,7 @@
 FeatureScript 2909;
 import(path : "onshape/std/common.fs", version : "2909.0");
 import(path : "onshape/std/extend.fs", version : "2909.0");
+import(path : "onshape/std/ruledSurface.fs", version : "2909.0");
 
 //import pathProcessing
 import(path : "e9dd34f07820388a202cb620", version : "c1ce0c99dcc25d3d7e2b0bb7");
@@ -16,6 +17,7 @@ export import(path : "828cc4108f1c8683bc0e59cf", version : "decdb33da99d8a1fe538
 export enum RegionOffsetType { CONSTANT, LINEAR, QUADRATIC, SMOOTH }
 
 export const REGION_OFFSET_BOUNDS = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
+export const REGION_SURFACE_HEIGHT_BOUNDS = { (millimeter) : [0, 1, 500] } as LengthBoundSpec;
 
 export function regionExplorerEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
@@ -107,6 +109,12 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     annotation { "Name" : "Zero slope at start", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION }
                     region.zeroSlopeAtStart is boolean;
                 }
+            }
+
+            if (definition.returnOffsetSurfaces && region.offsetType == RegionOffsetType.CONSTANT)
+            {
+                annotation { "Name" : "Surface height" }
+                isLength(region.surfaceHeight, REGION_SURFACE_HEIGHT_BOUNDS);
             }
 
         }
@@ -276,6 +284,58 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                                 "offset"                 : 0 * meter
                             });
                         }
+
+                        // Periphery edges after offset (boundary may have changed)
+                        var postOffsetPeriphery = qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges);
+
+                        if (definition.returnOffsetWires)
+                        {
+                            opPattern(context, id + ("regionWireCopy" ~ r), {
+                                "entities"      : regionCopy,
+                                "transforms"    : [identityTransform()],
+                                "instanceNames" : ["wire"]
+                            });
+                            var wireCopyBody = qCreatedBy(id + ("regionWireCopy" ~ r), EntityType.BODY);
+                            opDeleteFace(context, id + ("regionWireFace" ~ r), {
+                                "deleteFaces"   : qOwnedByBody(wireCopyBody, EntityType.FACE),
+                                "includeFillet" : false,
+                                "capVoid"       : false,
+                                "leaveOpen"     : true
+                            });
+                            setProperty(context, {
+                                "entities"     : wireCopyBody,
+                                "propertyType" : PropertyType.NAME,
+                                "value"        : definition.regions[r].name ~ " offset wire"
+                            });
+                        }
+
+                        if (definition.returnOffsetSurfaces)
+                        {
+                            var faceArr = evaluateQuery(context, qOwnedByBody(regionCopy, EntityType.FACE));
+                            if (size(faceArr) > 0)
+                            {
+                                var faceBox = evBox3d(context, {"topology" : faceArr[0], "tight" : true});
+                                var faceCenterPt = (faceBox.minCorner + faceBox.maxCorner) / 2;
+                                var faceUV = evDistance(context, {"side0" : faceArr[0], "side1" : faceCenterPt}).sides[0].parameter;
+                                var faceNormal = evFaceTangentPlane(context, {"face" : faceArr[0], "parameter" : faceUV}).normal;
+                                if (faceNormal[2] < 0)
+                                {
+                                    faceNormal = -1 * faceNormal;
+                                }
+                                opRuledSurface(context, id + ("regionRuledSurface" ~ r), {
+                                    "path"             : postOffsetPeriphery,
+                                    "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
+                                    "ruledDirection"   : faceNormal,
+                                    "width"            : definition.regions[r].surfaceHeight,
+                                    "angle"            : 0
+                                });
+                                setProperty(context, {
+                                    "entities"     : qCreatedBy(id + ("regionRuledSurface" ~ r), EntityType.BODY),
+                                    "propertyType" : PropertyType.NAME,
+                                    "value"        : definition.regions[r].name ~ " offset surface"
+                                });
+                            }
+                        }
                     }
 
                     //addDebugEntities(context, peripheryEdges, DebugColor.CYAN);
@@ -435,18 +495,56 @@ export function processSideSurf(context is Context, id is Id, refSheetBody is Qu
     });
     
     var botRefEdges = qUnion([qOwnedByBody(retMap.bottomWire, EntityType.EDGE)]);
-    
+
     //addDebugEntities(context, botRefEdges, DebugColor.MAGENTA);
-    
-    //bottomSurf
-    opFillSurface(context, id + "fillRefBottom", {
-            "edgesG0" : botRefEdges,
-            "edgesG1" : qNothing(),
-            "edgesG2" : qNothing(),
-            "guideVertices" : qNothing()
+
+    // bottomSurf — extrude wire symmetrically in plane normal direction, then split with sideSurf
+    var botWirePlane = getWireBodyPlane(context, retMap.bottomWire, 1e-6 * meter);
+    var extrudeDir = botWirePlane.normal;
+
+    // Ensure halfWidth exceeds sideSurf Y-extent by at least 10mm
+    var sideSurfBox = evBox3d(context, {"topology" : refSheetBody, "tight" : true});
+    var sideSurfHalfExtent = norm(sideSurfBox.maxCorner - sideSurfBox.minCorner) / 2;
+    var halfWidth = max(175 * millimeter, sideSurfHalfExtent + 10 * millimeter);
+
+    opExtrude(context, id + "extrudeRefBottom", {
+        "entities"   : botRefEdges,
+        "direction"  : extrudeDir,
+        "endBound"   : BoundingType.BLIND,
+        "endDepth"   : halfWidth,
+        "startBound" : BoundingType.BLIND,
+        "startDepth" : halfWidth
     });
-    
-    retMap['refBottomSurf'] = qCreatedBy(id + "fillRefBottom", EntityType.BODY);
+
+    var extrudedBottomBody = qCreatedBy(id + "extrudeRefBottom", EntityType.BODY);
+
+    // Split with the side surface
+    opSplitPart(context, id + "splitRefBottom", {
+        "targets" : extrudedBottomBody,
+        "tool"    : refSheetBody
+    });
+
+    // Keep the piece closest to the side surface centroid (the inner bottom piece)
+    var sideSurfCenter = (sideSurfBox.minCorner + sideSurfBox.maxCorner) / 2;
+    var bottomPieces = evaluateQuery(context, extrudedBottomBody);
+    var keepBottomBody = bottomPieces[0];
+    var minDist = evDistance(context, {"side0" : keepBottomBody, "side1" : sideSurfCenter}).distance;
+    for (var i = 1; i < size(bottomPieces); i += 1)
+    {
+        var d = evDistance(context, {"side0" : bottomPieces[i], "side1" : sideSurfCenter}).distance;
+        if (d < minDist)
+        {
+            minDist = d;
+            keepBottomBody = bottomPieces[i];
+        }
+    }
+    var deleteBottomPieces = qSubtraction(extrudedBottomBody, keepBottomBody);
+    if (!isQueryEmpty(context, deleteBottomPieces))
+    {
+        opDeleteBodies(context, id + "deleteBottomTrim", {"entities" : deleteBottomPieces});
+    }
+
+    retMap['refBottomSurf'] = extrudedBottomBody;
     setProperty(context, {
             "entities" : retMap['refBottomSurf'],
             "propertyType" : PropertyType.NAME,
