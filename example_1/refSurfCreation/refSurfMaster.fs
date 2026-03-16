@@ -14,9 +14,9 @@ export import(path : "828cc4108f1c8683bc0e59cf", version : "decdb33da99d8a1fe538
 
 //Testbed for implementing better and more robust 'region' logic for other tools.
 
-export enum RegionOffsetType { CONSTANT, LINEAR, QUADRATIC, SMOOTH }
+export enum RegionReachType { CONSTANT, LINEAR, QUADRATIC, SMOOTH }
 
-export const REGION_OFFSET_BOUNDS = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
+export const REGION_REACH_BOUNDS  = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
 export const REGION_SURFACE_HEIGHT_BOUNDS = { (millimeter) : [0, 1, 500] } as LengthBoundSpec;
 
 export function regionExplorerEditingLogic(context is Context, id is Id,
@@ -103,23 +103,23 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 region.endPoint is Query;
             }
             
-            annotation { "Name" : "Offset type", "Default" : RegionOffsetType.CONSTANT, "UIHint" : UIHint.HORIZONTAL_ENUM }
-            region.offsetType is RegionOffsetType;
+            annotation { "Name" : "Reach type", "Default" : RegionReachType.CONSTANT, "UIHint" : UIHint.HORIZONTAL_ENUM }
+            region.reachType is RegionReachType;
 
-            if (region.offsetType == RegionOffsetType.CONSTANT)
+            if (region.reachType == RegionReachType.CONSTANT)
             {
-                annotation { "Name" : "Offset" }
-                isLength(region.offset, REGION_OFFSET_BOUNDS);
+                annotation { "Name" : "Reach" }
+                isLength(region.reach, REGION_REACH_BOUNDS);
             }
             else
             {
-                annotation { "Name" : "Start offset" }
-                isLength(region.startOffset, REGION_OFFSET_BOUNDS);
+                annotation { "Name" : "Start reach" }
+                isLength(region.startReach, REGION_REACH_BOUNDS);
 
-                annotation { "Name" : "End offset" }
-                isLength(region.endOffset, REGION_OFFSET_BOUNDS);
+                annotation { "Name" : "End reach" }
+                isLength(region.endReach, REGION_REACH_BOUNDS);
 
-                if (region.offsetType == RegionOffsetType.QUADRATIC)
+                if (region.reachType == RegionReachType.QUADRATIC)
                 {
                     annotation { "Name" : "Zero slope at start", "Default" : true }
                     region.zeroSlopeAtStart is boolean;
@@ -290,9 +290,9 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     ]);
                     var peripheryEdges = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), qUnion([splitEdges, planeEdges])), EdgeTopology.ONE_SIDED);
 
-                    if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT)
+                    if (definition.regions[r].reachType == RegionReachType.CONSTANT)
                     {
-                        var offsetDist = definition.regions[r].offset;
+                        var offsetDist = definition.regions[r].reach;
                         if (offsetDist != 0 * meter)
                         {
                             try
@@ -373,29 +373,29 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }
                     }
 
-                    if (definition.regions[r].offsetType != RegionOffsetType.CONSTANT && (definition.returnOffsetWires || definition.returnOffsetSurfaces))
+                    if (definition.regions[r].reachType != RegionReachType.CONSTANT && (definition.returnOffsetWires || definition.returnOffsetSurfaces))
                     {
-                        var zeroAtStartBuild = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        var zeroAtStartBuild = (definition.regions[r].reachType == RegionReachType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
                         buildVariableOffsetCurves(context, id + ("varOffset" ~ r), regionCopy, peripheryEdges, {
                             "startFrameOrigin" : region.startFrame.origin,
                             "endFrameOrigin"   : region.endFrame.origin,
-                            "offsetType"       : definition.regions[r].offsetType,
-                            "startOffset"      : definition.regions[r].startOffset,
-                            "endOffset"        : definition.regions[r].endOffset,
+                            "reachType"       : definition.regions[r].reachType,
+                            "startReach"      : definition.regions[r].startReach,
+                            "endReach"        : definition.regions[r].endReach,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
                             "regionName"       : definition.regions[r].name
                         }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
                     }
 
-                    if (definition.debug && (definition.showPointFrames || definition.showLoftPoints) && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
+                    if (definition.debug && (definition.showPointFrames || definition.showLoftPoints) && definition.regions[r].reachType != RegionReachType.CONSTANT)
                     {
-                        var zeroAtStartDbg = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        var zeroAtStartDbg = (definition.regions[r].reachType == RegionReachType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
                         debugOffsetPoints(context, id + ("debugOffsetPts" ~ r), regionCopy, peripheryEdges, {
                             "startFrameOrigin" : region.startFrame.origin,
                             "endFrameOrigin"   : region.endFrame.origin,
-                            "offsetType"       : definition.regions[r].offsetType,
-                            "startOffset"      : definition.regions[r].startOffset,
-                            "endOffset"        : definition.regions[r].endOffset,
+                            "reachType"       : definition.regions[r].reachType,
+                            "startReach"      : definition.regions[r].startReach,
+                            "endReach"        : definition.regions[r].endReach,
                             "zeroSlopeAtStart" : zeroAtStartDbg,
                             "showPointFrames"  : definition.showPointFrames,
                             "showLoftPoints"   : definition.showLoftPoints,
@@ -405,15 +405,15 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }, definition.samplingDensity);
                     }
 
-                    if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
+                    if (definition.debug && definition.showOffsetSamples && definition.regions[r].reachType != RegionReachType.CONSTANT)
                     {
-                        var zeroAtStart = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        var zeroAtStart = (definition.regions[r].reachType == RegionReachType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
                         sampleEdgeOffsets(context, id + ("sampleOffsets" ~ r), regionCopy, peripheryEdges, {
                             'startFrameOrigin' : region.startFrame.origin,
                             'endFrameOrigin'   : region.endFrame.origin,
-                            'offsetType'       : definition.regions[r].offsetType,
-                            'startOffset'      : definition.regions[r].startOffset,
-                            'endOffset'        : definition.regions[r].endOffset,
+                            'reachType'       : definition.regions[r].reachType,
+                            'startReach'      : definition.regions[r].startReach,
+                            'endReach'        : definition.regions[r].endReach,
                             'zeroSlopeAtStart' : zeroAtStart
                         }, definition.samplingDensity);
                     }
@@ -798,9 +798,9 @@ export function smoothOffset(startOff is ValueWithUnits, endOff is ValueWithUnit
  *
  * offsetDef fields:
  *   startFrameOrigin  — origin of the region start frame (for t=0 orientation)
- *   offsetType        — RegionOffsetType (LINEAR, QUADRATIC, SMOOTH)
- *   startOffset       — offset at t=0
- *   endOffset         — offset at t=1
+ *   reachType         — RegionReachType (LINEAR, QUADRATIC, SMOOTH)
+ *   startReach        — reach at t=0
+ *   endReach          — reach at t=1
  *   zeroSlopeAtStart  — (QUADRATIC only) boolean
  */
 export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Query, peripheryEdges is Query, offsetDef is map, numPts is number)
@@ -876,17 +876,17 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
 
             // Offset magnitude at t
             var offsetMag;
-            if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+            if (offsetDef.reachType == RegionReachType.LINEAR)
             {
-                offsetMag = linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+                offsetMag = linearOffset(offsetDef.startReach, offsetDef.endReach, t);
             }
-            else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+            else if (offsetDef.reachType == RegionReachType.QUADRATIC)
             {
-                offsetMag = quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+                offsetMag = quadraticOffset(offsetDef.startReach, offsetDef.endReach, t, offsetDef.zeroSlopeAtStart);
             }
             else
             {
-                offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+                offsetMag = smoothOffset(offsetDef.startReach, offsetDef.endReach, t);
             }
 
             var offsetPt = edgePt + offsetMag * faceNormal;
@@ -905,8 +905,8 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
  *
  * offsetDef fields:
  *   startFrameOrigin, endFrameOrigin  -- region extent for t projection
- *   offsetType                        -- RegionOffsetType (LINEAR, QUADRATIC, SMOOTH)
- *   startOffset, endOffset            -- ValueWithUnits
+ *   reachType                         -- RegionReachType (LINEAR, QUADRATIC, SMOOTH)
+ *   startReach, endReach              -- ValueWithUnits
  *   zeroSlopeAtStart                  -- boolean (QUADRATIC only)
  *   regionName                        -- string for wire body naming
  */
@@ -994,17 +994,17 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             }
 
             var offsetMag;
-            if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+            if (offsetDef.reachType == RegionReachType.LINEAR)
             {
-                offsetMag = linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+                offsetMag = linearOffset(offsetDef.startReach, offsetDef.endReach, t);
             }
-            else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+            else if (offsetDef.reachType == RegionReachType.QUADRATIC)
             {
-                offsetMag = quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+                offsetMag = quadraticOffset(offsetDef.startReach, offsetDef.endReach, t, offsetDef.zeroSlopeAtStart);
             }
             else
             {
-                offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+                offsetMag = smoothOffset(offsetDef.startReach, offsetDef.endReach, t);
             }
 
             offPts = append(offPts, edgePt + offsetMag * faceNormal);
@@ -1251,17 +1251,17 @@ export function debugOffsetPoints(context is Context, id is Id, sheetBody is Que
             }
 
             var offsetMag;
-            if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+            if (offsetDef.reachType == RegionReachType.LINEAR)
             {
-                offsetMag = linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+                offsetMag = linearOffset(offsetDef.startReach, offsetDef.endReach, t);
             }
-            else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+            else if (offsetDef.reachType == RegionReachType.QUADRATIC)
             {
-                offsetMag = quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+                offsetMag = quadraticOffset(offsetDef.startReach, offsetDef.endReach, t, offsetDef.zeroSlopeAtStart);
             }
             else
             {
-                offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+                offsetMag = smoothOffset(offsetDef.startReach, offsetDef.endReach, t);
             }
 
             var offsetPt = edgePt + offsetMag * faceNormal;
