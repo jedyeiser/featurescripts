@@ -694,7 +694,14 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 
 
 // ─── Region processing ────────────────────────────────────────────────────────
-
+/**
+ * Region processing
+ * @param context {Context} : context
+ * @param definition {{
+ *      @field regions {array} : regions from defi
+ *          }}
+ * @param pathInfo {map} : frenetPath
+ */
 function processRegions(context is Context, definition is map, pathInfo is map) returns array
 {
     var processed = [];

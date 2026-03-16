@@ -7,7 +7,7 @@ import(path : "onshape/std/faceIntersection.fs", version : "2892.0");
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
 // import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
-export import(path : "7e3b271854475bf6cf878b2b", version : "3203c87d6d93f0d21693ccd1");
+export import(path : "7e3b271854475bf6cf878b2b", version : "22a85c0a8c8d1d0455f5d336");
 
 
 export const DEBUG_STEP_BOUNDS  = { (unitless)  : [0,    1,   9]} as IntegerBoundSpec;
