@@ -62,7 +62,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Surface height" }
             isLength(definition.surfaceHeight, REGION_SURFACE_HEIGHT_BOUNDS);
 
-            annotation { "Name" : "Second direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            annotation { "Name" : "Second direction", "Default" : false }
             definition.surfaceSecondDir is boolean;
 
             if (definition.surfaceSecondDir)
@@ -121,7 +121,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
                 if (region.offsetType == RegionOffsetType.QUADRATIC)
                 {
-                    annotation { "Name" : "Zero slope at start", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+                    annotation { "Name" : "Zero slope at start", "Default" : true }
                     region.zeroSlopeAtStart is boolean;
                 }
             }
@@ -811,10 +811,6 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
         }
         faceQ = faceArr[0];
 
-        // Face interior reference point for binormal sign check
-        var faceBox = evBox3d(context, {"topology" : faceQ, "tight" : true});
-        var faceInteriorPt = (faceBox.minCorner + faceBox.maxCorner) / 2;
-
         // Build uniform parameter array [0, 1] with numPts samples
         var params = [];
         for (var i = 0; i < numPts; i += 1)
@@ -830,8 +826,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
 
         for (var i = 0; i < size(tangentLines); i += 1)
         {
-            var edgePt      = tangentLines[i].origin;
-            var edgeTangent = tangentLines[i].direction;
+            var edgePt = tangentLines[i].origin;
 
             // t = projection of edgePt onto the region start→end axis, clamped to [0,1]
             var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
@@ -845,13 +840,6 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
             if (faceNormal[2] < 0)
             {
                 faceNormal = -1 * faceNormal;
-            }
-
-            // Outward binormal: cross(faceNormal, edgeTangent), sign away from face interior
-            var binormal = cross(faceNormal, edgeTangent);
-            if (dot(binormal, (faceInteriorPt - edgePt) / meter) > 0)
-            {
-                binormal = -1 * binormal;
             }
 
             // Offset magnitude at t
@@ -869,7 +857,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
                 offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
             }
 
-            var offsetPt = edgePt + offsetMag * binormal;
+            var offsetPt = edgePt + offsetMag * faceNormal;
             addDebugPoint(context, offsetPt, DebugColor.MAGENTA);
         }
     }
@@ -928,9 +916,6 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         }
         var face = faceArr[0];
 
-        var faceBB         = evBox3d(context, {"topology" : face, "tight" : true});
-        var faceInteriorPt = (faceBB.minCorner + faceBB.maxCorner) / 2;
-
         var params = [];
         for (var i = 0; i < numPts; i += 1)
         {
@@ -945,8 +930,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         var offPts = [];
         for (var i = 0; i < size(tangentLines); i += 1)
         {
-            var edgePt      = tangentLines[i].origin;
-            var edgeTangent = tangentLines[i].direction;
+            var edgePt = tangentLines[i].origin;
 
             var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
             var t    = dot(disp, regionAxis) / regionAxisLen2;
@@ -966,12 +950,6 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
                 faceNormal = -1 * faceNormal;
             }
 
-            var binormal = cross(faceNormal, edgeTangent);
-            if (dot(binormal, (faceInteriorPt - edgePt) / meter) > 0)
-            {
-                binormal = -1 * binormal;
-            }
-
             var offsetMag;
             if (offsetDef.offsetType == RegionOffsetType.LINEAR)
             {
@@ -986,7 +964,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
                 offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
             }
 
-            offPts = append(offPts, edgePt + offsetMag * binormal);
+            offPts = append(offPts, edgePt + offsetMag * faceNormal);
         }
 
         edgeInfo = append(edgeInfo, {
