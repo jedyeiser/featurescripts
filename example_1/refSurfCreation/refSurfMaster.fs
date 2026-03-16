@@ -1,5 +1,6 @@
 FeatureScript 2909;
 import(path : "onshape/std/common.fs", version : "2909.0");
+import(path : "onshape/std/extend.fs", version : "2909.0");
 
 //import pathProcessing
 import(path : "e9dd34f07820388a202cb620", version : "c1ce0c99dcc25d3d7e2b0bb7");
