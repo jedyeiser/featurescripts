@@ -265,9 +265,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         {
                             opExtendSheetBody(context, id + ("regionOffset" ~ r), {
                                 "entities" : peripheryEdges,
-                                "endCondition" : ExtendEndType.EXTEND_BLIND,
-                                "extendDistance" : offsetDist,
-                                "extensionShape" : ExtendSheetShapeType.LINEAR
+                                "extendDistance" : offsetDist
                             });
                         }
                         else if (offsetDist < 0 * meter)
