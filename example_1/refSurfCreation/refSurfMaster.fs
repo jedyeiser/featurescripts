@@ -15,14 +15,17 @@ export import(path : "828cc4108f1c8683bc0e59cf", version : "decdb33da99d8a1fe538
 //Testbed for implementing better and more robust 'region' logic for other tools.
 
 export enum RegionOffsetType { CONSTANT, LINEAR, QUADRATIC, SMOOTH }
+export enum IntersectionContinuityType { G0, G1 }
 
-export const REGION_OFFSET_BOUNDS = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
-export const REGION_SURFACE_HEIGHT_BOUNDS = { (millimeter) : [0, 1, 500] } as LengthBoundSpec;
+export const REGION_OFFSET_BOUNDS        = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
+export const REGION_SURFACE_HEIGHT_BOUNDS = { (millimeter) : [0, 1, 500] }  as LengthBoundSpec;
+export const INTERSECTION_OFFSET_BOUNDS  = { (millimeter) : [0, 0, 500] }   as LengthBoundSpec;
 
 export function regionExplorerEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
+    // --- Region defaults ---
     for (var r = 0; r < size(definition.regions); r += 1)
     {
         var region = definition.regions[r];
@@ -32,6 +35,79 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
             definition.regions[r].name = "Region " ~ r;
         }
     }
+
+    // --- Intersection detection (ALONG_REF regions only) ---
+    // Collect sortable region entries
+    var sortable = [];
+    for (var r = 0; r < size(definition.regions); r += 1)
+    {
+        var reg = definition.regions[r];
+        if (reg.extentDef == RegionExtentDef.ALONG_REF)
+        {
+            sortable = append(sortable, {
+                "name"   : reg.name,
+                "startX" : reg.startX,
+                "endX"   : reg.endX
+            });
+        }
+    }
+
+    // Sort by startX ascending
+    sortable = sort(sortable, function(a, b)
+    {
+        return (a.startX - b.startX) / meter;
+    });
+
+    // Build lookup from existing intersections by name pair, to preserve user data
+    var oldIntersections = definition.intersections;
+    if (oldIntersections == undefined)
+    {
+        oldIntersections = [];
+    }
+    var oldMap = {};
+    for (var ix in oldIntersections)
+    {
+        var key = ix.regionAName ~ "|" ~ ix.regionBName;
+        oldMap = mergeMaps(oldMap, {(key) : ix});
+    }
+
+    // Walk consecutive sorted pairs and build new intersection array
+    var newIntersections = [];
+    for (var i = 0; i < size(sortable) - 1; i += 1)
+    {
+        var regA = sortable[i];
+        var regB = sortable[i + 1];
+        var gap  = regB.startX - regA.endX;
+
+        var key      = regA.name ~ "|" ~ regB.name;
+        var existing = oldMap[key];
+
+        var ix;
+        if (existing != undefined)
+        {
+            // Preserve user data; refresh auto fields
+            ix              = existing;
+            ix.regionAName  = regA.name;
+            ix.regionBName  = regB.name;
+            ix.gapDistance  = gap;
+        }
+        else
+        {
+            ix = {
+                "regionAName"      : regA.name,
+                "regionBName"      : regB.name,
+                "gapDistance"      : gap,
+                "joined"           : false,
+                "startContinuity"  : IntersectionContinuityType.G0,
+                "endContinuity"    : IntersectionContinuityType.G0,
+                "startOffset"      : 0 * millimeter,
+                "endOffset"        : 0 * millimeter
+            };
+        }
+        newIntersections = append(newIntersections, ix);
+    }
+
+    definition.intersections = newIntersections;
     return definition;
 }
 
@@ -128,7 +204,43 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
 
         }
-        
+
+        annotation { "Name" : "Intersections", "Item name" : "Intersection",
+                     "Item label template" : "#regionAName -- #regionBName",
+                     "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
+        definition.intersections is array;
+        for (var ix in definition.intersections)
+        {
+            annotation { "Name" : "Region A", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            ix.regionAName is string;
+
+            annotation { "Name" : "Region B", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            ix.regionBName is string;
+
+            annotation { "Name" : "Gap distance", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isLength(ix.gapDistance, REGION_OFFSET_BOUNDS);
+
+            annotation { "Name" : "Joined", "Default" : false }
+            ix.joined is boolean;
+
+            if (ix.joined)
+            {
+                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                ix.startContinuity is IntersectionContinuityType;
+
+                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                ix.endContinuity is IntersectionContinuityType;
+
+                annotation { "Name" : "Start offset" }
+                isLength(ix.startOffset, INTERSECTION_OFFSET_BOUNDS);
+
+                annotation { "Name" : "End offset" }
+                isLength(ix.endOffset, INTERSECTION_OFFSET_BOUNDS);
+            }
+        }
+
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Sampling density", "Description" : "Points sampled per region (and per blend)" }
@@ -219,6 +331,34 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             }, {});
         */
         
+        // Overlap validation: sort ALONG_REF regions by startX, error if any pair overlaps.
+        var regionsForOverlapCheck = [];
+        for (var r = 0; r < size(definition.regions); r += 1)
+        {
+            var reg = definition.regions[r];
+            if (reg.extentDef == RegionExtentDef.ALONG_REF)
+            {
+                regionsForOverlapCheck = append(regionsForOverlapCheck, {
+                    "name"   : reg.name,
+                    "startX" : reg.startX,
+                    "endX"   : reg.endX
+                });
+            }
+        }
+        regionsForOverlapCheck = sort(regionsForOverlapCheck, function(a, b)
+        {
+            return (a.startX - b.startX) / meter;
+        });
+        for (var i = 0; i < size(regionsForOverlapCheck) - 1; i += 1)
+        {
+            var gap = regionsForOverlapCheck[i + 1].startX - regionsForOverlapCheck[i].endX;
+            if (gap < -1e-6 * meter)
+            {
+                throw regenError("Regions overlap: \"" ~ regionsForOverlapCheck[i].name ~
+                                 "\" and \"" ~ regionsForOverlapCheck[i + 1].name ~ "\"");
+            }
+        }
+
         //region processing logic
         var processRegionsBool = true;
         
