@@ -16,7 +16,6 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
-    return definition;
     for (var r = 0; r < size(definition.regions); r += 1)
     {
         var region = definition.regions[r];
@@ -26,6 +25,7 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
             definition.regions[r].name = "Region " ~ r;
         }
     }
+    return definition;
 }
 
 annotation { "Feature Type Name" : "Region explorer", "Feature Type Description" : "" }
@@ -261,7 +261,7 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
         vertexData['continuity'] = GeometricContinuity.G0;
         if (size(vertexData.adjacentEdges) > 1)
         {
-            vertexData['continuity'] = edgeContinuity(context, vertexData['adjacentEdges'][0], vertexData['adjacentEdges'][0]);
+            vertexData['continuity'] = edgeContinuity(context, vertexData['adjacentEdges'][0], vertexData['adjacentEdges'][1]);
         }
         
         var edge0Param = evDistance(context, {
@@ -272,19 +272,23 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
         println('iteration ' ~ i);
         
         var edgeQ = vertexData['adjacentEdges'][0];
-        //addDebugEntities(context, qOwnedByBody(sheetBody, EntityType.FACE), DebugColor.GREEN);
-        var faceQ = qOwnedByBody(sheetBody, EntityType.FACE); //qClosestTo(qOwnedByBody(sheetBody, EntityType.FACE), vertexData.point);
-        
-        //addDebugEntities(context, edgeQ, DebugColor.MAGENTA);
-        //addDebugEntities(context, faceQ, DebugColor.CYAN);
-        
+        var vertexAdjEdges = qAdjacent(vertexData.query, AdjacencyType.VERTEX, EntityType.EDGE);
+        var vertexAdjFaces = qAdjacent(vertexAdjEdges, AdjacencyType.EDGE, EntityType.FACE);
+        var faceQ = qIntersection([vertexAdjFaces, qOwnedByBody(sheetBody, EntityType.FACE)]);
+        var faceArray = evaluateQuery(context, faceQ);
+        if (size(faceArray) == 0)
+        {
+            throw regenError("processFaceFrames: no face found adjacent to vertex");
+        }
+        faceQ = faceArray[0];
+
         var faceDist = evDistance(context, {
                 "side0" : faceQ,
                 "side1" : vertexData.point
         });
-        
+
         var faceUVParam = faceDist.sides[0].parameter;
-        
+
         var faceTangentPlane = evFaceTangentPlane(context, {
                 "face" : faceQ,
                 "parameter" : faceUVParam

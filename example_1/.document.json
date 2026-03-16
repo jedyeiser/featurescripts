@@ -4,11 +4,9 @@
   "document_name": "example_1",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/7183868d32cdc7a6ad14410d/w/a3ea9a8cd3639eb3be0528c6",
-  "last_sync": "2026-03-16T04:12:16.657889+00:00",
+  "last_sync": "2026-03-16T04:36:01.545399+00:00",
   "feature_studios": {
-    "refSurfMaster": "a94d1ee80740b95e024f5a1c",
-    "regionProcessing": "d1cf8af3d05964b44c3ab4c0",
-    "refSurfCore": "828cc4108f1c8683bc0e59cf"
+    "pathProcessing": "e9dd34f07820388a202cb620"
   },
   "tab_folders": {}
 }
