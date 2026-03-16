@@ -1072,25 +1072,26 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         var edgeLen    = evLength(context, {"entities" : ed.edge});
         var derivScale = edgeLen / 3;
 
-        var approxDef = {
-            "isPeriodic"       : false,
-            "degree"           : splineDegree,
-            "points"           : ed.points,
-            "tolerance"        : tolerance,
-            "maxControlPoints" : maxCP
-        };
+        var targetDef = {"positions" : ed.points};
         if (dc.startDeriv != undefined)
         {
-            approxDef = mergeMaps(approxDef, {"startDerivative" : dc.startDeriv * derivScale});
+            targetDef = mergeMaps(targetDef, {"startDerivative" : dc.startDeriv * derivScale});
         }
         if (dc.endDeriv != undefined)
         {
-            approxDef = mergeMaps(approxDef, {"endDerivative" : dc.endDeriv * derivScale});
+            targetDef = mergeMaps(targetDef, {"endDerivative" : dc.endDeriv * derivScale});
         }
 
         try
         {
-            var splineData = approximateSpline(approxDef);
+            var splineResults = approximateSpline(context, {
+                "isPeriodic"       : false,
+                "degree"           : splineDegree,
+                "tolerance"        : tolerance,
+                "maxControlPoints" : maxCP,
+                "targets"          : [approximationTarget(targetDef)]
+            });
+            var splineData = splineResults[0];
             opCreateBSplineCurve(context, id + ("offCurve" ~ ei), {"bSplineCurve" : splineData});
             curveBodies = append(curveBodies, qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY));
         }
