@@ -865,7 +865,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
  */
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
-    degree is number, tolerance is ValueWithUnits, maxCP is number)
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number)
 {
     if (numPts < 2)
     {
@@ -1074,7 +1074,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 
         var approxDef = {
             "isPeriodic"       : false,
-            "degree"           : degree,
+            "degree"           : splineDegree,
             "points"           : ed.points,
             "tolerance"        : tolerance,
             "maxControlPoints" : maxCP
