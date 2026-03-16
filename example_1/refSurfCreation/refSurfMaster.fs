@@ -182,7 +182,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         
     }
     {
-        var refGeo = processSideSurf(context, id + "getRefWires", definition.sideSurfBody);
+        var refGeo = processSideSurf(context, id + "getRefWires", definition.sideSurfBody, definition.refWire);
         
         var refPath = processPath(context, id, {'userSelection' : definition.refWire, "flipDirection" : definition.flipDirection, "referencePoint" : definition.refPoint, 'numPoints' : max(20, definition.samplingDensity)});
         
@@ -464,7 +464,7 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
  * takes a surface body. returns a wire body for any closed loop of one sided edges along with information
  * that could be used to select these wire bodies. 
  */
-export function processSideSurf(context is Context, id is Id, refSheetBody is Query) returns map
+export function processSideSurf(context is Context, id is Id, refSheetBody is Query, refWire is Query) returns map
 {
     var bodyEdges = qEdgeTopologyFilter(qUnion([qOwnedByBody(refSheetBody, EntityType.EDGE)]), EdgeTopology.ONE_SIDED);
     //addDebugEntities(context, bodyEdges, DebugColor.CYAN);
@@ -498,17 +498,32 @@ export function processSideSurf(context is Context, id is Id, refSheetBody is Qu
 
     //addDebugEntities(context, botRefEdges, DebugColor.MAGENTA);
 
-    // bottomSurf — extrude wire symmetrically in plane normal direction, then split with sideSurf
-    var botWirePlane = getWireBodyPlane(context, retMap.bottomWire, 1e-6 * meter);
-    var extrudeDir = botWirePlane.normal;
+    // bottomSurf — extrude refWire symmetrically in plane normal direction, then split with sideSurf
+    // Use smallest bounding box extent as the extrusion direction (wire lies in perpendicular plane)
+    var refWireEdges = qOwnedByBody(refWire, EntityType.EDGE);
+    var refWireBox = evBox3d(context, {"topology" : refWire, "tight" : true});
+    var refExtents = refWireBox.maxCorner - refWireBox.minCorner;
+    var extrudeDir;
+    if (refExtents[0] <= refExtents[1] && refExtents[0] <= refExtents[2])
+    {
+        extrudeDir = vector(1, 0, 0);
+    }
+    else if (refExtents[1] <= refExtents[0] && refExtents[1] <= refExtents[2])
+    {
+        extrudeDir = vector(0, 1, 0);
+    }
+    else
+    {
+        extrudeDir = vector(0, 0, 1);
+    }
 
-    // Ensure halfWidth exceeds sideSurf Y-extent by at least 10mm
+    // Ensure halfWidth exceeds sideSurf extent in extrusion direction by at least 10mm
     var sideSurfBox = evBox3d(context, {"topology" : refSheetBody, "tight" : true});
     var sideSurfHalfExtent = norm(sideSurfBox.maxCorner - sideSurfBox.minCorner) / 2;
     var halfWidth = max(175 * millimeter, sideSurfHalfExtent + 10 * millimeter);
 
     opExtrude(context, id + "extrudeRefBottom", {
-        "entities"   : botRefEdges,
+        "entities"   : refWireEdges,
         "direction"  : extrudeDir,
         "endBound"   : BoundingType.BLIND,
         "endDepth"   : halfWidth,
