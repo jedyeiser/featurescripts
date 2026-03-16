@@ -185,6 +185,12 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Show offset samples", "Default" : false }
                 definition.showOffsetSamples is boolean;
 
+                annotation { "Name" : "Show point frames", "Default" : false }
+                definition.showPointFrames is boolean;
+
+                annotation { "Name" : "Show loft points", "Default" : false }
+                definition.showLoftPoints is boolean;
+
             }
             
         }
@@ -377,10 +383,26 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "startOffset"      : definition.regions[r].startOffset,
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
-                            "regionName"        : definition.regions[r].name,
-                            "surfaceSecondDir"  : definition.surfaceSecondDir,
-                            "surfaceHeight2"    : (definition.surfaceSecondDir == true) ? definition.surfaceHeight2 : (0 * millimeter)
-                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces, definition.surfaceHeight);
+                            "regionName"       : definition.regions[r].name
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
+                    }
+
+                    if (definition.debug && (definition.showPointFrames || definition.showLoftPoints) && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
+                    {
+                        var zeroAtStartDbg = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        debugOffsetPoints(context, id + ("debugOffsetPts" ~ r), regionCopy, peripheryEdges, {
+                            "startFrameOrigin" : region.startFrame.origin,
+                            "endFrameOrigin"   : region.endFrame.origin,
+                            "offsetType"       : definition.regions[r].offsetType,
+                            "startOffset"      : definition.regions[r].startOffset,
+                            "endOffset"        : definition.regions[r].endOffset,
+                            "zeroSlopeAtStart" : zeroAtStartDbg,
+                            "showPointFrames"  : definition.showPointFrames,
+                            "showLoftPoints"   : definition.showLoftPoints,
+                            "surfaceHeight"    : definition.returnOffsetSurfaces ? definition.surfaceHeight : (0 * millimeter),
+                            "surfaceSecondDir" : definition.returnOffsetSurfaces && definition.surfaceSecondDir,
+                            "surfaceHeight2"   : (definition.returnOffsetSurfaces && definition.surfaceSecondDir) ? definition.surfaceHeight2 : (0 * millimeter)
+                        }, definition.samplingDensity);
                     }
 
                     if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
@@ -890,8 +912,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
  */
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
-    splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    buildSurface is boolean, surfaceHeight is ValueWithUnits)
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number)
 {
     if (numPts < 2)
     {
@@ -1088,11 +1109,8 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         }
     }
 
-    // --- Fit BSpline per edge; extract wire and optionally loft surface per edge ---
-    // Processing per-edge (rather than batched) preserves the 1-to-1 correspondence
-    // between each original periphery edge and its offset wire, which is required for lofting.
+    // --- Fit BSpline per edge and extract wire ---
     var wireBodies = [];
-    var surfBodies = [];
 
     for (var ei = 0; ei < size(edgeInfo); ei += 1)
     {
@@ -1136,36 +1154,6 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 
             var wireBody = qCreatedBy(id + ("offWire" ~ ei), EntityType.BODY);
             wireBodies = append(wireBodies, wireBody);
-
-            if (buildSurface)
-            {
-                try
-                {
-                    var ruledNormal = ed.faceRefNormal;
-                    opRuledSurface(context, id + ("offSurf" ~ ei), {
-                        "path"             : qOwnedByBody(wireBody, EntityType.EDGE),
-                        "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
-                        "ruledDirection"   : ruledNormal,
-                        "width"            : surfaceHeight,
-                        "angle"            : 0
-                    });
-                    surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf" ~ ei), EntityType.BODY));
-                    if (offsetDef.surfaceSecondDir == true)
-                    {
-                        opRuledSurface(context, id + ("offSurf2" ~ ei), {
-                            "path"             : qOwnedByBody(wireBody, EntityType.EDGE),
-                            "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
-                            "ruledDirection"   : -1 * ruledNormal,
-                            "width"            : offsetDef.surfaceHeight2,
-                            "angle"            : 0
-                        });
-                        surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf2" ~ ei), EntityType.BODY));
-                    }
-                }
-                catch
-                {
-                }
-            }
         }
         catch
         {
@@ -1180,14 +1168,121 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             "value"        : offsetDef.regionName ~ " offset wire"
         });
     }
+}
 
-    for (var si = 0; si < size(surfBodies); si += 1)
+/**
+ * Debug visualization for variable-offset points.
+ *
+ * offsetDef fields (in addition to the standard offset fields):
+ *   showPointFrames  -- draw a frame at each offset point
+ *                       RED   = face normal
+ *                       BLUE  = edge tangent
+ *                       GREEN = binormal (cross of normal x tangent)
+ *   showLoftPoints   -- draw points further offset by surfaceHeight (CYAN)
+ *                       and surfaceHeight2 in the opposite direction (YELLOW) if surfaceSecondDir
+ *   surfaceHeight    -- ValueWithUnits, distance for loft point (dir 1)
+ *   surfaceSecondDir -- boolean
+ *   surfaceHeight2   -- ValueWithUnits, distance for loft point (dir 2)
+ */
+export function debugOffsetPoints(context is Context, id is Id, sheetBody is Query,
+    peripheryEdges is Query, offsetDef is map, numPts is number)
+{
+    if (numPts < 2)
     {
-        setProperty(context, {
-            "entities"     : surfBodies[si],
-            "propertyType" : PropertyType.NAME,
-            "value"        : offsetDef.regionName ~ " offset surface"
+        numPts = 2;
+    }
+    var edgeArray = evaluateQuery(context, peripheryEdges);
+    var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
+    var regionAxisLen2 = dot(regionAxis, regionAxis);
+
+    for (var ei = 0; ei < size(edgeArray); ei += 1)
+    {
+        var edge = edgeArray[ei];
+
+        var faceArr = evaluateQuery(context, qIntersection([
+            qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE),
+            qOwnedByBody(sheetBody, EntityType.FACE)
+        ]));
+        if (size(faceArr) == 0)
+        {
+            continue;
+        }
+        var face = faceArr[0];
+
+        var faceBB = evBox3d(context, {"topology" : face, "tight" : true});
+        var faceCenterPt = (faceBB.minCorner + faceBB.maxCorner) / 2;
+        var faceCenterUV = evDistance(context, {"side0" : face, "side1" : faceCenterPt}).sides[0].parameter;
+        var faceRefNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : faceCenterUV}).normal;
+        if (faceRefNormal[2] < 0)
+        {
+            faceRefNormal = -1 * faceRefNormal;
+        }
+
+        var edgeLen  = evLength(context, {"entities" : edge});
+        var arrowLen = edgeLen / numPts;
+        var arrowRad = arrowLen * 0.05;
+
+        var params = [];
+        for (var i = 0; i < numPts; i += 1)
+        {
+            params = append(params, i / (numPts - 1));
+        }
+        var tangentLines = evEdgeTangentLines(context, {
+            "edge"                      : edge,
+            "parameters"                : params,
+            "arcLengthParameterization" : true
         });
+
+        for (var i = 0; i < size(tangentLines); i += 1)
+        {
+            var edgePt      = tangentLines[i].origin;
+            var edgeTangent = tangentLines[i].direction;
+
+            var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
+            var t    = dot(disp, regionAxis) / regionAxisLen2;
+            if (t < 0) { t = 0; }
+            if (t > 1) { t = 1; }
+
+            var ptUV       = evDistance(context, {"side0" : face, "side1" : edgePt}).sides[0].parameter;
+            var faceNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : ptUV}).normal;
+            if (dot(faceNormal, faceRefNormal) < 0)
+            {
+                faceNormal = -1 * faceNormal;
+            }
+
+            var offsetMag;
+            if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+            {
+                offsetMag = linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+            }
+            else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+            {
+                offsetMag = quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+            }
+            else
+            {
+                offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+            }
+
+            var offsetPt = edgePt + offsetMag * faceNormal;
+
+            if (offsetDef.showPointFrames)
+            {
+                var binormal = cross(faceNormal, edgeTangent);
+                addDebugArrow(context, offsetPt, offsetPt + arrowLen * faceNormal,  arrowRad,        DebugColor.RED);
+                addDebugArrow(context, offsetPt, offsetPt + arrowLen * edgeTangent, arrowRad * 0.8,  DebugColor.BLUE);
+                addDebugArrow(context, offsetPt, offsetPt + arrowLen * binormal,    arrowRad * 0.8,  DebugColor.GREEN);
+            }
+
+            if (offsetDef.showLoftPoints)
+            {
+                addDebugPoint(context, offsetPt + offsetDef.surfaceHeight * faceNormal, DebugColor.CYAN);
+                if (offsetDef.surfaceSecondDir == true)
+                {
+                    addDebugPoint(context, offsetPt - offsetDef.surfaceHeight2 * faceNormal, DebugColor.YELLOW);
+                }
+            }
+        }
     }
 }
 
