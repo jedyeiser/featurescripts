@@ -272,17 +272,23 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         var offsetDist = definition.regions[r].offset;
                         if (offsetDist != 0 * meter)
                         {
-                            extendSurface(context, id + ("regionOffset" ~ r), {
-                                "entities"               : peripheryEdges,
-                                "endCondition"           : ExtendBoundingType.BLIND,
-                                "oppositeDirection"      : offsetDist < 0 * meter,
-                                "extendDistance"         : abs(offsetDist),
-                                "tangentPropagation"     : false,
-                                "maintainCurvature"      : false,
-                                "hasOffset"              : false,
-                                "offsetOppositeDirection": false,
-                                "offset"                 : 0 * meter
-                            });
+                            try
+                            {
+                                extendSurface(context, id + ("regionOffset" ~ r), {
+                                    "entities"               : peripheryEdges,
+                                    "endCondition"           : ExtendBoundingType.BLIND,
+                                    "oppositeDirection"      : offsetDist < 0 * meter,
+                                    "extendDistance"         : abs(offsetDist),
+                                    "tangentPropagation"     : false,
+                                    "maintainCurvature"      : false,
+                                    "hasOffset"              : false,
+                                    "offsetOppositeDirection": false,
+                                    "offset"                 : 0 * meter
+                                });
+                            }
+                            catch
+                            {
+                            }
                         }
 
                         // Periphery edges after offset (boundary may have changed)
@@ -290,20 +296,11 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
                         if (definition.returnOffsetWires)
                         {
-                            opPattern(context, id + ("regionWireCopy" ~ r), {
-                                "entities"      : regionCopy,
-                                "transforms"    : [identityTransform()],
-                                "instanceNames" : ["wire"]
-                            });
-                            var wireCopyBody = qCreatedBy(id + ("regionWireCopy" ~ r), EntityType.BODY);
-                            opDeleteFace(context, id + ("regionWireFace" ~ r), {
-                                "deleteFaces"   : qOwnedByBody(wireCopyBody, EntityType.FACE),
-                                "includeFillet" : false,
-                                "capVoid"       : false,
-                                "leaveOpen"     : true
+                            opExtractWires(context, id + ("regionWire" ~ r), {
+                                "edges" : postOffsetPeriphery
                             });
                             setProperty(context, {
-                                "entities"     : wireCopyBody,
+                                "entities"     : qCreatedBy(id + ("regionWire" ~ r), EntityType.BODY),
                                 "propertyType" : PropertyType.NAME,
                                 "value"        : definition.regions[r].name ~ " offset wire"
                             });
