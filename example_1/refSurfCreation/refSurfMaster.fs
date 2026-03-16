@@ -258,11 +258,10 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     var splitEdges = qUnion([qCreatedBy(id + ("region" ~ r ~ "startSplit"), EntityType.EDGE), qCreatedBy(id + ("region" ~ r ~ "endSplit"), EntityType.EDGE)]);
                     var peripheryEdges = qUnion([qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges)]);
 
-                    if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT &&
-                        abs(definition.regions[r].offset) > TOLERANCE.zeroLength)
+                    if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT)
                     {
                         var offsetDist = definition.regions[r].offset;
-                        if (offsetDist > 0)
+                        if (offsetDist > 0 * meter)
                         {
                             opExtendSheetBody(context, id + ("regionOffset" ~ r), {
                                 "entities" : peripheryEdges,
@@ -271,7 +270,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                                 "extensionShape" : ExtendSheetShapeType.LINEAR
                             });
                         }
-                        else
+                        else if (offsetDist < 0 * meter)
                         {
                             var edgeArray = evaluateQuery(context, peripheryEdges);
                             var edgeChangeOptions = [];
