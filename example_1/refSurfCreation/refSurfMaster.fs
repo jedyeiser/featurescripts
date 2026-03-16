@@ -320,7 +320,7 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
                 "side1" : framePoint - binormal * 2 * millimeter
         }).distance;
         
-        var correctBinormal = binormalPlusDist > binormalMinusDist ? -1 * binormal : binormal;
+        var correctBinormal = binormalPlusDist > binormalMinusDist ? binormal : -1 * binormal;
         
         var solvedZ = cross(normalVector, correctBinormal);
         
@@ -357,7 +357,7 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
                     "side1" : framePoint - edge1Binormal * 2 * millimeter
             }).distance;
             
-            var correctEdge1Binormal = binormalPlusDist > binormalMinusDist ? -1 * edge1Binormal : edge1Binormal;
+            var correctEdge1Binormal = binormalPlusDist > binormalMinusDist ? edge1Binormal : -1 * edge1Binormal;
             solvedZ = cross(normalVector, correctEdge1Binormal);
             
             vertexFrames = mergeMaps(vertexFrames, {(vertexData.adjacentEdges[1]) : coordSystem(framePoint, normalVector, solvedZ)});
