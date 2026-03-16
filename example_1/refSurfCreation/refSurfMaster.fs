@@ -264,11 +264,16 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         var offsetDist = definition.regions[r].offset;
                         if (offsetDist != 0 * meter)
                         {
-                            opExtendSheetBody(context, id + ("regionOffset" ~ r), {
-                                "entities" : peripheryEdges,
-                                "extendDistance" : offsetDist,
-                                "extensionShape" : ExtendSheetShapeType.LINEAR,
-                                "endCondition" : ExtendEndType.EXTEND_BLIND
+                            extendSurface(context, id + ("regionOffset" ~ r), {
+                                "entities"               : peripheryEdges,
+                                "endCondition"           : ExtendBoundingType.BLIND,
+                                "oppositeDirection"      : offsetDist < 0 * meter,
+                                "extendDistance"         : abs(offsetDist),
+                                "tangentPropagation"     : false,
+                                "maintainCurvature"      : false,
+                                "hasOffset"              : false,
+                                "offsetOppositeDirection": false,
+                                "offset"                 : 0 * meter
                             });
                         }
                     }
