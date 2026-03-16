@@ -257,7 +257,36 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     
                     var splitEdges = qUnion([qCreatedBy(id + ("region" ~ r ~ "startSplit"), EntityType.EDGE), qCreatedBy(id + ("region" ~ r ~ "endSplit"), EntityType.EDGE)]);
                     var peripheryEdges = qUnion([qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges)]);
-                    
+
+                    if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT &&
+                        abs(definition.regions[r].offset) > TOLERANCE.zeroLength)
+                    {
+                        var offsetDist = definition.regions[r].offset;
+                        if (offsetDist > 0)
+                        {
+                            opExtendSheetBody(context, id + ("regionOffset" ~ r), {
+                                "entities" : peripheryEdges,
+                                "endCondition" : ExtendEndType.EXTEND_BLIND,
+                                "extendDistance" : offsetDist,
+                                "extensionShape" : ExtendSheetShapeType.LINEAR
+                            });
+                        }
+                        else
+                        {
+                            var edgeArray = evaluateQuery(context, peripheryEdges);
+                            var edgeChangeOptions = [];
+                            for (var i = 0; i < size(edgeArray); i += 1)
+                            {
+                                edgeChangeOptions = append(edgeChangeOptions, {
+                                    "edge" : edgeArray[i],
+                                    "face" : qAdjacent(edgeArray[i], AdjacencyType.EDGE, EntityType.FACE),
+                                    "offset" : offsetDist
+                                });
+                            }
+                            trimEdges(context, id + ("regionOffset" ~ r), edgeChangeOptions);
+                        }
+                    }
+
                     //addDebugEntities(context, peripheryEdges, DebugColor.CYAN);
                     
                     var faceFrames = processFaceFrames(context, id + ("processRef" ~ r ~"test"), regionCopy, peripheryEdges, {'samplingDensity': definition.samplingDensity, 'samplingType' : definition.samplingType, 'showFrames' : (definition.debug && definition.showVertexFrames)}, refPath);
