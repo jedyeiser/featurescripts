@@ -1011,3 +1011,499 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         });
     }
 }
+
+
+// =====================================================================
+// INTERSECTION JOINING
+// =====================================================================
+
+/**
+ * Post-processes joined intersections: trims loft surfaces and offset wires
+ * back by joinStartOffset/joinEndOffset, then bridges the gap with a loft
+ * surface or bridging spline.  Call this after the region loop.
+ */
+export function buildIntersectionJoins(context is Context, id is Id,
+        definition is map, processedRegions is array)
+{
+    var regionIndex = {};
+    for (var r = 0; r < size(processedRegions); r += 1)
+    {
+        regionIndex = mergeMaps(regionIndex, { (processedRegions[r].name) : r });
+    }
+
+    for (var i = 0; i < size(definition.intersections); i += 1)
+    {
+        var ix = definition.intersections[i];
+        if (!ix.join)
+        {
+            continue;
+        }
+
+        var rA = regionIndex[ix.regionAName];
+        var rB = regionIndex[ix.regionBName];
+        if (rA == undefined || rB == undefined)
+        {
+            continue;
+        }
+
+        var regionA    = processedRegions[rA];
+        var boundaryPl = plane(regionA.endFrame.origin, regionA.endFrame.zAxis);
+
+        if (definition.returnLoftSurface)
+        {
+            try
+            {
+                joinLoftAtIntersection(context, id + ("ixLoft" ~ i), id, ix,
+                        rA, rB, boundaryPl);
+            }
+            catch { }
+        }
+
+        if (definition.returnOffsetWires)
+        {
+            try
+            {
+                joinWiresAtIntersection(context, id + ("ixWire" ~ i), id, ix,
+                        rA, rB, boundaryPl);
+            }
+            catch { }
+        }
+    }
+}
+
+
+// --- Loft surface joining ---------------------------------------------------
+
+function joinLoftAtIntersection(context is Context, id is Id, featureId is Id,
+        ix is map, rA is number, rB is number, boundaryPl is Plane)
+{
+    var loftBodiesA = qCreatedBy(featureId + ("loftSurf" ~ rA), EntityType.BODY);
+    var loftBodiesB = qCreatedBy(featureId + ("loftSurf" ~ rB), EntityType.BODY);
+
+    if (isQueryEmpty(context, loftBodiesA) || isQueryEmpty(context, loftBodiesB))
+    {
+        return;
+    }
+
+    var edgesA = evaluateQuery(context, qEdgeTopologyFilter(
+            qCoincidesWithPlane(qOwnedByBody(loftBodiesA, EntityType.EDGE), boundaryPl),
+            EdgeTopology.ONE_SIDED));
+    var edgesB = evaluateQuery(context, qEdgeTopologyFilter(
+            qCoincidesWithPlane(qOwnedByBody(loftBodiesB, EntityType.EDGE), boundaryPl),
+            EdgeTopology.ONE_SIDED));
+
+    if (size(edgesA) == 0 || size(edgesB) == 0)
+    {
+        return;
+    }
+
+    // Pair edges and capture midpoints before any trimming.
+    var pairs = pairEdgesByProximity(context, edgesA, edgesB);
+    if (size(pairs) == 0)
+    {
+        return;
+    }
+
+    var hasOffsetA = ix.joinStartOffset > 1e-6 * meter;
+    var hasOffsetB = ix.joinEndOffset   > 1e-6 * meter;
+
+    // Trim A back into region A if needed.
+    var trimPlA = boundaryPl;
+    if (hasOffsetA)
+    {
+        trimPlA = plane(boundaryPl.origin - ix.joinStartOffset * boundaryPl.normal,
+                        boundaryPl.normal);
+        opSplitPart(context, id + "splitA", {
+            "targets" : loftBodiesA,
+            "tool"    : trimPlA
+        });
+        var stubA = qIntersectsPlane(
+                qUnion([loftBodiesA, qCreatedBy(id + "splitA", EntityType.BODY)]),
+                boundaryPl);
+        opDeleteBodies(context, id + "deleteStubA", { "entities" : stubA });
+    }
+
+    // Trim B forward into region B if needed.
+    var trimPlB = boundaryPl;
+    if (hasOffsetB)
+    {
+        trimPlB = plane(boundaryPl.origin + ix.joinEndOffset * boundaryPl.normal,
+                        boundaryPl.normal);
+        opSplitPart(context, id + "splitB", {
+            "targets" : loftBodiesB,
+            "tool"    : trimPlB
+        });
+        var stubB = qIntersectsPlane(
+                qUnion([loftBodiesB, qCreatedBy(id + "splitB", EntityType.BODY)]),
+                boundaryPl);
+        opDeleteBodies(context, id + "deleteStubB", { "entities" : stubB });
+    }
+
+    // Bridge each paired edge set.
+    for (var p = 0; p < size(pairs); p += 1)
+    {
+        var pr = pairs[p];
+
+        // Skip if already touching and no offsets applied.
+        if (norm(pr.midA - pr.midB) < 1e-4 * meter && !hasOffsetA && !hasOffsetB)
+        {
+            continue;
+        }
+
+        // Find the surviving edge closest to the original midpoint at each trim plane.
+        var activeEdgeA = findClosestEdgeAtPlane(context, loftBodiesA, trimPlA, pr.midA);
+        var activeEdgeB = findClosestEdgeAtPlane(context, loftBodiesB, trimPlB, pr.midB);
+
+        if (isQueryEmpty(context, activeEdgeA) || isQueryEmpty(context, activeEdgeB))
+        {
+            continue;
+        }
+
+        // Build derivativeInfo for continuity.
+        var derivInfo = [];
+        if (ix.startContinuity == IntersectionContinuityType.G1)
+        {
+            derivInfo = append(derivInfo, {
+                "profileIndex"             : 0,
+                "magnitude"                : 1.0,
+                "matchCurvature"           : false,
+                "adjacentFaces"            : qAdjacent(activeEdgeA, AdjacencyType.EDGE, EntityType.FACE),
+                "userDefinedAdjacentFaces" : false
+            });
+        }
+        if (ix.endContinuity == IntersectionContinuityType.G1)
+        {
+            derivInfo = append(derivInfo, {
+                "profileIndex"             : 1,
+                "magnitude"                : 1.0,
+                "matchCurvature"           : false,
+                "adjacentFaces"            : qAdjacent(activeEdgeB, AdjacencyType.EDGE, EntityType.FACE),
+                "userDefinedAdjacentFaces" : false
+            });
+        }
+
+        var loftDef = {
+            "bodyType"          : ToolBodyType.SURFACE,
+            "profileSubqueries" : [activeEdgeA, activeEdgeB]
+        };
+        if (size(derivInfo) > 0)
+        {
+            loftDef = mergeMaps(loftDef, { "derivativeInfo" : derivInfo });
+        }
+
+        try
+        {
+            opLoft(context, id + ("bridge" ~ p), loftDef);
+        }
+        catch { }
+    }
+}
+
+
+// --- Offset wire joining ----------------------------------------------------
+
+function joinWiresAtIntersection(context is Context, id is Id, featureId is Id,
+        ix is map, rA is number, rB is number, boundaryPl is Plane)
+{
+    var wireBodiesA = qCreatedBy(featureId + ("varOffset" ~ rA), EntityType.BODY);
+    var wireBodiesB = qCreatedBy(featureId + ("varOffset" ~ rB), EntityType.BODY);
+
+    if (isQueryEmpty(context, wireBodiesA) || isQueryEmpty(context, wireBodiesB))
+    {
+        return;
+    }
+
+    var vtxDataA = wireVerticesAtPlane(context, wireBodiesA, boundaryPl);
+    var vtxDataB = wireVerticesAtPlane(context, wireBodiesB, boundaryPl);
+
+    if (size(vtxDataA) == 0 || size(vtxDataB) == 0)
+    {
+        return;
+    }
+
+    var pairs = pairVerticesByProximity(vtxDataA, vtxDataB);
+    if (size(pairs) == 0)
+    {
+        return;
+    }
+
+    var hasOffsetA = ix.joinStartOffset > 1e-6 * meter;
+    var hasOffsetB = ix.joinEndOffset   > 1e-6 * meter;
+
+    var trimPlA = boundaryPl;
+    if (hasOffsetA)
+    {
+        trimPlA = plane(boundaryPl.origin - ix.joinStartOffset * boundaryPl.normal,
+                        boundaryPl.normal);
+        opSplitPart(context, id + "splitA", {
+            "targets" : wireBodiesA,
+            "tool"    : trimPlA
+        });
+        var stubA = qIntersectsPlane(
+                qUnion([wireBodiesA, qCreatedBy(id + "splitA", EntityType.BODY)]),
+                boundaryPl);
+        opDeleteBodies(context, id + "deleteStubA", { "entities" : stubA });
+    }
+
+    var trimPlB = boundaryPl;
+    if (hasOffsetB)
+    {
+        trimPlB = plane(boundaryPl.origin + ix.joinEndOffset * boundaryPl.normal,
+                        boundaryPl.normal);
+        opSplitPart(context, id + "splitB", {
+            "targets" : wireBodiesB,
+            "tool"    : trimPlB
+        });
+        var stubB = qIntersectsPlane(
+                qUnion([wireBodiesB, qCreatedBy(id + "splitB", EntityType.BODY)]),
+                boundaryPl);
+        opDeleteBodies(context, id + "deleteStubB", { "entities" : stubB });
+    }
+
+    for (var p = 0; p < size(pairs); p += 1)
+    {
+        var pr = pairs[p];
+
+        if (norm(pr.ptA - pr.ptB) < 1e-4 * meter && !hasOffsetA && !hasOffsetB)
+        {
+            continue;
+        }
+
+        // Find updated endpoint positions after trim.
+        var updatedA = wireVerticesAtPlane(context, wireBodiesA, trimPlA);
+        var updatedB = wireVerticesAtPlane(context, wireBodiesB, trimPlB);
+        var ptA      = closestVtxPoint(updatedA, pr.ptA);
+        var ptB      = closestVtxPoint(updatedB, pr.ptB);
+
+        if (ptA == undefined || ptB == undefined)
+        {
+            continue;
+        }
+
+        var bridgeLen = norm(ptA - ptB);
+        var fitDef    = { "points" : [ptA, ptB] };
+
+        if (ix.startContinuity == IntersectionContinuityType.G1)
+        {
+            var tangA = wireEndTangent(context, wireBodiesA, ptA, boundaryPl.normal);
+            if (tangA != undefined)
+            {
+                fitDef = mergeMaps(fitDef, { "startDerivative" : tangA * bridgeLen });
+            }
+        }
+        if (ix.endContinuity == IntersectionContinuityType.G1)
+        {
+            var tangB = wireEndTangent(context, wireBodiesB, ptB, -1 * boundaryPl.normal);
+            if (tangB != undefined)
+            {
+                fitDef = mergeMaps(fitDef, { "endDerivative" : tangB * bridgeLen });
+            }
+        }
+
+        try
+        {
+            opFitSpline(context, id + ("bridge" ~ p), fitDef);
+        }
+        catch { }
+    }
+}
+
+
+// --- Shared helpers ---------------------------------------------------------
+
+// Pairs edges by midpoint proximity. Returns array of
+// { "edgeA", "edgeB", "midA", "midB" }.
+function pairEdgesByProximity(context is Context, edgesA is array, edgesB is array) returns array
+{
+    var usedB = [];
+    for (var j = 0; j < size(edgesB); j += 1)
+    {
+        usedB = append(usedB, false);
+    }
+
+    var pairs = [];
+    for (var i = 0; i < size(edgesA); i += 1)
+    {
+        var midA = evEdgeTangentLine(context, {
+            "edge" : edgesA[i], "parameter" : 0.5, "arcLengthParameterization" : false
+        }).origin;
+
+        var bestJ    = -1;
+        var bestDist = undefined;
+        for (var j = 0; j < size(edgesB); j += 1)
+        {
+            if (usedB[j])
+            {
+                continue;
+            }
+            var midB = evEdgeTangentLine(context, {
+                "edge" : edgesB[j], "parameter" : 0.5, "arcLengthParameterization" : false
+            }).origin;
+            var d = norm(midA - midB);
+            if (bestDist == undefined || d < bestDist)
+            {
+                bestDist = d;
+                bestJ    = j;
+            }
+        }
+
+        if (bestJ >= 0)
+        {
+            var midB = evEdgeTangentLine(context, {
+                "edge" : edgesB[bestJ], "parameter" : 0.5, "arcLengthParameterization" : false
+            }).origin;
+            pairs        = append(pairs, { "edgeA" : edgesA[i], "edgeB" : edgesB[bestJ],
+                                           "midA"  : midA,      "midB"  : midB });
+            usedB[bestJ] = true;
+        }
+    }
+    return pairs;
+}
+
+
+// Returns the one-sided edge at pl whose midpoint is closest to nearPt.
+function findClosestEdgeAtPlane(context is Context, bodies is Query, pl is Plane,
+        nearPt is Vector) returns Query
+{
+    var candidates = evaluateQuery(context, qEdgeTopologyFilter(
+            qCoincidesWithPlane(qOwnedByBody(bodies, EntityType.EDGE), pl),
+            EdgeTopology.ONE_SIDED));
+    if (size(candidates) == 0)
+    {
+        return qNothing();
+    }
+
+    var bestQ    = candidates[0];
+    var bestMid  = evEdgeTangentLine(context, {
+        "edge" : bestQ, "parameter" : 0.5, "arcLengthParameterization" : false
+    }).origin;
+    var bestDist = norm(bestMid - nearPt);
+
+    for (var i = 1; i < size(candidates); i += 1)
+    {
+        var mid = evEdgeTangentLine(context, {
+            "edge" : candidates[i], "parameter" : 0.5, "arcLengthParameterization" : false
+        }).origin;
+        var d = norm(mid - nearPt);
+        if (d < bestDist)
+        {
+            bestDist = d;
+            bestQ    = candidates[i];
+        }
+    }
+    return bestQ;
+}
+
+
+// Returns array of { "vertex", "point" } for wire body vertices on pl.
+function wireVerticesAtPlane(context is Context, wireBodies is Query, pl is Plane) returns array
+{
+    var allVtx = evaluateQuery(context, qOwnedByBody(wireBodies, EntityType.VERTEX));
+    var result = [];
+    for (var v in allVtx)
+    {
+        var pt = evVertexPoint(context, { "vertex" : v });
+        if (abs(dot(pt - pl.origin, pl.normal)) < 1e-4 * meter)
+        {
+            result = append(result, { "vertex" : v, "point" : pt });
+        }
+    }
+    return result;
+}
+
+
+// Pairs vertex data by proximity. Returns array of { "ptA", "ptB" }.
+function pairVerticesByProximity(vtxDataA is array, vtxDataB is array) returns array
+{
+    var usedB = [];
+    for (var j = 0; j < size(vtxDataB); j += 1)
+    {
+        usedB = append(usedB, false);
+    }
+
+    var pairs = [];
+    for (var i = 0; i < size(vtxDataA); i += 1)
+    {
+        var ptA      = vtxDataA[i].point;
+        var bestJ    = -1;
+        var bestDist = undefined;
+        for (var j = 0; j < size(vtxDataB); j += 1)
+        {
+            if (usedB[j])
+            {
+                continue;
+            }
+            var d = norm(ptA - vtxDataB[j].point);
+            if (bestDist == undefined || d < bestDist)
+            {
+                bestDist = d;
+                bestJ    = j;
+            }
+        }
+        if (bestJ >= 0)
+        {
+            pairs        = append(pairs, { "ptA" : ptA, "ptB" : vtxDataB[bestJ].point });
+            usedB[bestJ] = true;
+        }
+    }
+    return pairs;
+}
+
+
+// Returns the point from vtxData closest to targetPt, or undefined if vtxData is empty.
+function closestVtxPoint(vtxData is array, targetPt is Vector)
+{
+    if (size(vtxData) == 0)
+    {
+        return undefined;
+    }
+    var bestPt   = vtxData[0].point;
+    var bestDist = norm(bestPt - targetPt);
+    for (var i = 1; i < size(vtxData); i += 1)
+    {
+        var d = norm(vtxData[i].point - targetPt);
+        if (d < bestDist)
+        {
+            bestDist = d;
+            bestPt   = vtxData[i].point;
+        }
+    }
+    return bestPt;
+}
+
+
+// Returns the outward unit tangent direction at a wire endpoint near targetPt.
+// outwardRef is the expected bridge direction; used to orient the result correctly.
+function wireEndTangent(context is Context, wireBodies is Query, targetPt is Vector,
+        outwardRef is Vector)
+{
+    var edges = evaluateQuery(context, qOwnedByBody(wireBodies, EntityType.EDGE));
+    for (var e in edges)
+    {
+        var tl0 = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 0, "arcLengthParameterization" : false
+        });
+        var tl1 = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 1, "arcLengthParameterization" : false
+        });
+        if (norm(tl0.origin - targetPt) < 1e-4 * meter)
+        {
+            var dir = -tl0.direction;
+            if (dot(dir, outwardRef) < 0)
+            {
+                dir = -dir;
+            }
+            return dir;
+        }
+        if (norm(tl1.origin - targetPt) < 1e-4 * meter)
+        {
+            var dir = tl1.direction;
+            if (dot(dir, outwardRef) < 0)
+            {
+                dir = -dir;
+            }
+            return dir;
+        }
+    }
+    return undefined;
+}

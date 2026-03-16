@@ -124,7 +124,7 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
     return definition;
 }
 
-annotation { "Feature Type Name" : "Region explorer", "Feature Type Description" : "" }
+annotation { "Feature Type Name" : "Region explorer", "Feature Type Description" : "", "Editing Logic Function" : "regionExplorerEditingLogic" }
 export const regionExplorer = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -161,7 +161,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             }
         }
 
-        annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name", "Collapsed By Default" : true }
+        annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name", "Collapsed By Default" : true, "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.regions is array;
         for (var region in definition.regions)
         {
@@ -221,7 +221,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
                      "Item label template" : "#name",
                      "Collapsed By Default" : true,
-                     "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
+                     "UIHint" : UIHint.PREVENT_ARRAY_REORDER && UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.intersections is array;
         for (var ix in definition.intersections)
         {
@@ -229,7 +229,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             isInteger(ix.intersectionNum, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
 
             annotation { "Name" : "Name" }
-            ix.name is string;
+            ix.intersectionName is string;
 
             annotation { "Name" : "Region A", "UIHint" : UIHint.READ_ONLY }
             ix.regionAName is string;
@@ -242,10 +242,10 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
             if (ix.join)
             {
-                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0 }
+                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0, "UIHint" : UIHint.SHOW_LABEL }
                 ix.startContinuity is IntersectionContinuityType;
 
-                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0 }
+                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0, "UIHint" : UIHint.SHOW_LABEL }
                 ix.endContinuity is IntersectionContinuityType;
 
                 annotation { "Name" : "Start offset" }
@@ -476,10 +476,19 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 sampleEdgeOffsets(context, id + ("sampleOffsets" ~ r), regionCopy, peripheryEdges, offsetDef, definition.samplingDensity);
             }
 
-            var faceFrames = processFaceFrames(context, id + ("processRef" ~ r ~ "test"), regionCopy, peripheryEdges, {
-                "samplingDensity" : definition.samplingDensity,
-                "samplingType"    : definition.samplingType,
-                "showFrames"      : definition.debug && definition.showVertexFrames
-            }, refPath);
+            if (definition.debug && definition.showVertexFrames)
+            {
+                processFaceFrames(context, id + ("processRef" ~ r ~ "test"), regionCopy, peripheryEdges, {
+                    "samplingDensity" : definition.samplingDensity,
+                    "samplingType"    : definition.samplingType,
+                    "showFrames"      : true
+                }, refPath);
+            }
+        }
+
+        if (size(definition.intersections) > 0 &&
+            (definition.returnLoftSurface || definition.returnOffsetWires))
+        {
+            buildIntersectionJoins(context, id, definition, processedRegions);
         }
     });
