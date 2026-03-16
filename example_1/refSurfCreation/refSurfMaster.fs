@@ -54,9 +54,6 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Return offset wires", "Default" : false }
         definition.returnOffsetWires is boolean;
 
-        annotation { "Name" : "Loft width" }
-        isLength(definition.loftWidth, REGION_OFFSET_BOUNDS);
-
         annotation { "Name" : "Return loft surface", "Default" : false }
         definition.returnLoftSurface is boolean;
 
@@ -293,34 +290,8 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     ]);
                     var peripheryEdges = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), qUnion([splitEdges, planeEdges])), EdgeTopology.ONE_SIDED);
 
-                    // For CONSTANT offset: extend the region copy laterally for visualization.
-                    if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT)
-                    {
-                        var offsetDist = definition.regions[r].offset;
-                        if (offsetDist != 0 * meter)
-                        {
-                            try
-                            {
-                                extendSurface(context, id + ("regionOffset" ~ r), {
-                                    "entities"               : peripheryEdges,
-                                    "endCondition"           : ExtendBoundingType.BLIND,
-                                    "oppositeDirection"      : offsetDist < 0 * meter,
-                                    "extendDistance"         : abs(offsetDist),
-                                    "tangentPropagation"     : false,
-                                    "maintainCurvature"      : false,
-                                    "hasOffset"              : false,
-                                    "offsetOppositeDirection": false,
-                                    "offset"                 : 0 * meter
-                                });
-                            }
-                            catch
-                            {
-                            }
-                        }
-                    }
-
                     // Build offset wires for all offset types via unified BSpline sampling.
-                    // Per-sample: offsetPt = edgePt + offsetMag * outwardBinormal + loftWidth * faceNormal
+                    // Per-sample: offsetPt = edgePt + offsetMag * outwardBinormal
                     if (definition.returnOffsetWires)
                     {
                         var zeroAtStartBuild = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
@@ -333,7 +304,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
                             "regionName"       : definition.regions[r].name
-                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.loftWidth);
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
                     }
 
                     if (definition.returnLoftSurface)
@@ -349,7 +320,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "zeroSlopeAtStart" : zeroAtStartLoft,
                             "regionName"       : definition.regions[r].name
                         }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP,
-                        definition.loftWidth, definition.wallHeight,
+                        definition.wallHeight,
                         definition.wallSecondDir,
                         definition.wallSecondDir ? definition.wallHeight2 : (0 * millimeter));
                     }
@@ -371,7 +342,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "wallHeight"       : (definition.showLoftPoints && dbgHasLoft) ? definition.wallHeight : (0 * millimeter),
                             "wallSecondDir"    : definition.showLoftPoints && dbgHasLoft && definition.wallSecondDir,
                             "wallHeight2"      : (definition.showLoftPoints && dbgHasLoft && definition.wallSecondDir) ? definition.wallHeight2 : (0 * millimeter)
-                        }, definition.samplingDensity, definition.loftWidth);
+                        }, definition.samplingDensity);
                     }
 
                     if (definition.debug && definition.showOffsetSamples)
@@ -385,7 +356,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             'startOffset'      : definition.regions[r].startOffset,
                             'endOffset'        : definition.regions[r].endOffset,
                             'zeroSlopeAtStart' : zeroAtStart
-                        }, definition.samplingDensity, definition.loftWidth);
+                        }, definition.samplingDensity);
                     }
 
                     //addDebugEntities(context, peripheryEdges, DebugColor.CYAN);
@@ -790,7 +761,7 @@ function computeOffsetMag(offsetDef is map, t is number) returns ValueWithUnits
 
 /**
  * Samples N points per periphery edge and shows each offset point as a magenta debug point.
- * offsetPt = edgePt + offsetMag * outwardBinormal + loftWidth * faceNormal
+ * offsetPt = edgePt + offsetMag * outwardBinormal
  *
  * offsetDef fields:
  *   startFrameOrigin  — origin of the region start frame (for t=0 orientation)
@@ -800,7 +771,7 @@ function computeOffsetMag(offsetDef is map, t is number) returns ValueWithUnits
  *   endOffset         — magnitude at t=1 for variable types
  *   zeroSlopeAtStart  — (QUADRATIC only) boolean
  */
-export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Query, peripheryEdges is Query, offsetDef is map, numPts is number, loftWidth is ValueWithUnits)
+export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Query, peripheryEdges is Query, offsetDef is map, numPts is number)
 {
     if (numPts < 2)
     {
@@ -898,7 +869,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
                 offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
             }
 
-            var offsetPt = edgePt + offsetMag * binormal + loftWidth * faceNormal;
+            var offsetPt = edgePt + offsetMag * binormal;
             addDebugPoint(context, offsetPt, DebugColor.MAGENTA);
         }
     }
@@ -920,12 +891,11 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
  *   zeroSlopeAtStart                  -- boolean (QUADRATIC only)
  *   regionName                        -- string for wire body naming
  *
- * offsetPt = edgePt + offsetMag * outwardBinormal + loftWidth * faceNormal
+ * offsetPt = edgePt + offsetMag * outwardBinormal
  */
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
-    splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    loftWidth is ValueWithUnits)
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number)
 {
     if (numPts < 2)
     {
@@ -1033,7 +1003,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
                 offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
             }
 
-            offPts = append(offPts, edgePt + offsetMag * binormal + loftWidth * faceNormal);
+            offPts = append(offPts, edgePt + offsetMag * binormal);
         }
 
         edgeInfo = append(edgeInfo, {
@@ -1200,7 +1170,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
  * Builds a lofted surface for each periphery edge of a region.
  *
  * For each edge:
- *   - Samples offset points: offsetPt = edgePt + offsetMag * outwardBinormal + loftWidth * faceNormal
+ *   - Samples offset points: offsetPt = edgePt + offsetMag * outwardBinormal
  *   - Creates a "top" profile at offsetPt + wallHeight * faceNormal
  *   - Creates a "bottom" profile at offsetPt - wallHeight2 * faceNormal (if wallSecondDir)
  *     or at offsetPt itself (if not wallSecondDir)
@@ -1218,8 +1188,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    loftWidth is ValueWithUnits, wallHeight is ValueWithUnits,
-    wallSecondDir is boolean, wallHeight2 is ValueWithUnits)
+    wallHeight is ValueWithUnits, wallSecondDir is boolean, wallHeight2 is ValueWithUnits)
 {
     if (numPts < 2)
     {
@@ -1320,7 +1289,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             if (dot(binormal, (faceCenterPt - edgePt) / meter) > 0) { binormal = -1 * binormal; }
 
             var offsetMag = computeOffsetMag(offsetDef, t);
-            var offsetPt  = edgePt + offsetMag * binormal + loftWidth * faceNormal;
+            var offsetPt  = edgePt + offsetMag * binormal;
 
             topPts    = append(topPts,    offsetPt + wallHeight * faceNormal);
             bottomPts = append(bottomPts, wallSecondDir ? offsetPt - wallHeight2 * faceNormal : offsetPt);
@@ -1365,7 +1334,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             else if (norm(eo.p1 - ed.p0) < POS_TOL) { sumBn0 = sumBn0 + eo.bn1; }
         }
         var bisector0  = normalize(sumBn0);
-        var cornerOff0 = ed.p0 + ed.om0 * bisector0 + loftWidth * ed.fn0;
+        var cornerOff0 = ed.p0 + ed.om0 * bisector0;
         var ctStart    = cornerOff0 + wallHeight * ed.fn0;
         var cbStart    = wallSecondDir ? cornerOff0 - wallHeight2 * ed.fn0 : cornerOff0;
 
@@ -1379,7 +1348,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             else if (norm(eo.p1 - ed.p1) < POS_TOL) { sumBn1 = sumBn1 + eo.bn1; }
         }
         var bisector1  = normalize(sumBn1);
-        var cornerOff1 = ed.p1 + ed.om1 * bisector1 + loftWidth * ed.fn1;
+        var cornerOff1 = ed.p1 + ed.om1 * bisector1;
         var ctEnd      = cornerOff1 + wallHeight * ed.fn1;
         var cbEnd      = wallSecondDir ? cornerOff1 - wallHeight2 * ed.fn1 : cornerOff1;
 
@@ -1443,10 +1412,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         // Snap sample endpoints to computed corner positions before fitting
         var topPts    = ed.topPts;
         var bottomPts = ed.bottomPts;
-        topPts[0]     = ed.ctStart;
-        topPts[-1]    = ed.ctEnd;
-        bottomPts[0]  = ed.cbStart;
-        bottomPts[-1] = ed.cbEnd;
+        topPts[0]                    = ed.ctStart;
+        topPts[size(topPts) - 1]     = ed.ctEnd;
+        bottomPts[0]                 = ed.cbStart;
+        bottomPts[size(bottomPts) - 1] = ed.cbEnd;
 
         // Fit top BSpline
         var topTargetDef = {"positions" : topPts};
@@ -1464,10 +1433,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 "targets"          : [approximationTarget(topTargetDef)]
             });
             topSpline = topResults[0];
-            var topCPs    = topSpline.controlPoints;
-            topCPs[0]     = ed.ctStart;
-            topCPs[-1]    = ed.ctEnd;
-            topSpline     = mergeMaps(topSpline, {"controlPoints" : topCPs});
+            var topCPs                  = topSpline.controlPoints;
+            topCPs[0]                   = ed.ctStart;
+            topCPs[size(topCPs) - 1]    = ed.ctEnd;
+            topSpline                   = mergeMaps(topSpline, {"controlPoints" : topCPs});
         }
         catch
         {
@@ -1490,10 +1459,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 "targets"          : [approximationTarget(botTargetDef)]
             });
             bottomSpline = botResults[0];
-            var botCPs   = bottomSpline.controlPoints;
-            botCPs[0]    = ed.cbStart;
-            botCPs[-1]   = ed.cbEnd;
-            bottomSpline = mergeMaps(bottomSpline, {"controlPoints" : botCPs});
+            var botCPs                  = bottomSpline.controlPoints;
+            botCPs[0]                   = ed.cbStart;
+            botCPs[size(botCPs) - 1]    = ed.cbEnd;
+            bottomSpline                = mergeMaps(bottomSpline, {"controlPoints" : botCPs});
         }
         catch
         {
@@ -1576,7 +1545,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
  *   wallHeight2      -- ValueWithUnits, distance for loft point (dir 2)
  */
 export function debugOffsetPoints(context is Context, id is Id, sheetBody is Query,
-    peripheryEdges is Query, offsetDef is map, numPts is number, loftWidth is ValueWithUnits)
+    peripheryEdges is Query, offsetDef is map, numPts is number)
 {
     if (numPts < 2)
     {
@@ -1665,7 +1634,7 @@ export function debugOffsetPoints(context is Context, id is Id, sheetBody is Que
                 offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
             }
 
-            var offsetPt = edgePt + offsetMag * binormal + loftWidth * faceNormal;
+            var offsetPt = edgePt + offsetMag * binormal;
 
             if (offsetDef.showPointFrames)
             {
