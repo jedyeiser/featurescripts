@@ -261,26 +261,14 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT)
                     {
                         var offsetDist = definition.regions[r].offset;
-                        if (offsetDist > 0 * meter)
+                        if (offsetDist != 0 * meter)
                         {
                             opExtendSheetBody(context, id + ("regionOffset" ~ r), {
                                 "entities" : peripheryEdges,
-                                "extendDistance" : offsetDist
+                                "extendDistance" : offsetDist,
+                                "extensionShape" : ExtendSheetShapeType.LINEAR,
+                                "endCondition" : ExtendEndType.EXTEND_BLIND
                             });
-                        }
-                        else if (offsetDist < 0 * meter)
-                        {
-                            var edgeArray = evaluateQuery(context, peripheryEdges);
-                            var edgeChangeOptions = [];
-                            for (var i = 0; i < size(edgeArray); i += 1)
-                            {
-                                edgeChangeOptions = append(edgeChangeOptions, {
-                                    "edge" : edgeArray[i],
-                                    "face" : qAdjacent(edgeArray[i], AdjacencyType.EDGE, EntityType.FACE),
-                                    "offset" : offsetDist
-                                });
-                            }
-                            trimEdges(context, id + ("regionOffset" ~ r), edgeChangeOptions);
                         }
                     }
 
