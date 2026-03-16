@@ -246,35 +246,35 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
  
 export function processFaceFrames(context is Context, id is Id, sheetBody is Query, frameEdges is Query, samplingDef is map, refWireMap is map) returns array
 {
-    // process verticies. Edge adjacency. Continuity at vertex
-    var keyVerticies = qUnion([qAdjacent(frameEdges, AdjacencyType.VERTEX, EntityType.VERTEX)]);
-    
+    var keyVerticies = qAdjacent(frameEdges, AdjacencyType.VERTEX, EntityType.VERTEX);
     var vertexArray = evaluateQuery(context, keyVerticies);
-    vertexArray = mapArray(vertexArray, function(x) {return {'query' : x, 'point' : evVertexPoint(context, {"vertex" : x})};});
-    
+    vertexArray = mapArray(vertexArray, function(v) {
+        return {'query' : v, 'point' : evVertexPoint(context, {"vertex" : v})};
+    });
+
     for (var i = 0; i < size(vertexArray); i += 1)
     {
-        addDebugPoint(context, vertexArray[i].point, DebugColor.RED);
         var vertexData = vertexArray[i];
-        vertexData['adjacentEdges'] = evaluateQuery(context, qAdjacent(vertexData.query, AdjacencyType.VERTEX, EntityType.EDGE));
-        vertexData['numAdjacent'] = size(vertexData.adjacentEdges);
-        vertexData['continuity'] = GeometricContinuity.G0;
-        if (size(vertexData.adjacentEdges) > 1)
+        var framePoint = vertexData.point;
+
+        // Periphery edges at this vertex only (filter out split edges)
+        vertexData['adjacentEdges'] = evaluateQuery(context, qIntersection([
+            qAdjacent(vertexData.query, AdjacencyType.VERTEX, EntityType.EDGE),
+            frameEdges
+        ]));
+        if (size(vertexData.adjacentEdges) == 0)
         {
-            vertexData['continuity'] = edgeContinuity(context, vertexData['adjacentEdges'][0], vertexData['adjacentEdges'][1]);
+            vertexArray[i] = vertexData;
+            continue;
         }
-        
-        var edge0Param = evDistance(context, {
-                "side0" : vertexData['adjacentEdges'][0],
-                "side1" : vertexArray[i].point
-        }).sides[0].parameter;
-        
-        println('iteration ' ~ i);
-        
-        var edgeQ = vertexData['adjacentEdges'][0];
-        var vertexAdjEdges = qAdjacent(vertexData.query, AdjacencyType.VERTEX, EntityType.EDGE);
-        var vertexAdjFaces = qAdjacent(vertexAdjEdges, AdjacencyType.EDGE, EntityType.FACE);
-        var faceQ = qIntersection([vertexAdjFaces, qOwnedByBody(sheetBody, EntityType.FACE)]);
+
+        // Face on sheetBody adjacent to this vertex
+        var faceQ = qIntersection([
+            qAdjacent(
+                qAdjacent(vertexData.query, AdjacencyType.VERTEX, EntityType.EDGE),
+                AdjacencyType.EDGE, EntityType.FACE),
+            qOwnedByBody(sheetBody, EntityType.FACE)
+        ]);
         var faceArray = evaluateQuery(context, faceQ);
         if (size(faceArray) == 0)
         {
@@ -282,112 +282,70 @@ export function processFaceFrames(context is Context, id is Id, sheetBody is Que
         }
         faceQ = faceArray[0];
 
-        var faceDist = evDistance(context, {
-                "side0" : faceQ,
-                "side1" : vertexData.point
-        });
-
-        var faceUVParam = faceDist.sides[0].parameter;
-
-        var faceTangentPlane = evFaceTangentPlane(context, {
-                "face" : faceQ,
-                "parameter" : faceUVParam
-        });
-        
-        var normalVector = faceTangentPlane.normal;
-        
-        var framePoint = vertexData['point'];
-        
-        if (normalVector[2] < 0) // if the z component is facing down
+        // Face normal at vertex: one evDistance for UV, one evFaceTangentPlane
+        var faceUV = evDistance(context, {"side0" : faceQ, "side1" : framePoint}).sides[0].parameter;
+        var faceNormal = evFaceTangentPlane(context, {"face" : faceQ, "parameter" : faceUV}).normal;
+        if (faceNormal[2] < 0)
         {
-            normalVector = -1 * faceTangentPlane.normal;
+            faceNormal = -1 * faceNormal;
         }
-        
-        var edgeDir = evEdgeTangentLine(context, {
-                "edge" : vertexData['adjacentEdges'][0],
-                "parameter" : edge0Param
-        }).direction;
-        
-        var binormal = cross(normalVector, edgeDir);
-        
-        var binormalPlusDist = evDistance(context, {
-                "side0" : sheetBody,
-                "side1" : framePoint + binormal * 2 * millimeter
-        }).distance;
-        
-        var binormalMinusDist = evDistance(context, {
-                "side0" : sheetBody,
-                "side1" : framePoint - binormal * 2 * millimeter
-        }).distance;
-        
-        var correctBinormal = binormalPlusDist > binormalMinusDist ? binormal : -1 * binormal;
-        
-        var solvedZ = cross(normalVector, correctBinormal);
-        
-        var vertexFrame = coordSystem(framePoint, normalVector, solvedZ);
-        
-        var vertexFrames = {(vertexData.adjacentEdges[0]) : vertexFrame};
-        
-        if (size(vertexData.adjacentEdges) > 1)
+
+        // Face interior reference point — one evBox3d replaces two evDistance probe calls per edge
+        var faceBox = evBox3d(context, {"topology" : faceQ, "tight" : true});
+        var faceInteriorPt = (faceBox.minCorner + faceBox.maxCorner) / 2;
+
+        // Build one frame per adjacent periphery edge
+        var vertexFrames = {};
+        for (var j = 0; j < size(vertexData.adjacentEdges); j += 1)
         {
-            vertexFrames = mergeMaps(vertexFrames, {(vertexData.adjacentEdges[1]) : vertexFrame});
-        }
-        
-        if (vertexData.continuity == GeometricContinuity.G0 && size(vertexData['adjacentEdges']) > 1)
-        {
-            var edge1Param = evDistance(context, {
-                    "side0" : vertexData['adjacentEdges'][1],
-                    "side1" : framePoint
-            }).sides[0].parameter;
-            
-            var edge1Line = evEdgeTangentLine(context, {
-                    "edge" : vertexData['adjacentEdges'][1],
-                    "parameter" : edge1Param
+            var edge = vertexData.adjacentEdges[j];
+
+            // Edge tangent at the endpoint that lies at this vertex.
+            // Two cheap evEdgeTangentLine calls replace one evDistance + one evEdgeTangentLine.
+            var startLine = evEdgeTangentLine(context, {
+                "edge" : edge, "parameter" : 0, "arcLengthParameterization" : false
             });
-            
-            var edge1Binormal = cross(normalVector, edge1Line.direction);
-            
-            binormalPlusDist = evDistance(context, {
-                "side0" : sheetBody,
-                "side1" : framePoint + edge1Binormal * 2 * millimeter
-            }).distance;
-            
-            binormalMinusDist = evDistance(context, {
-                    "side0" : sheetBody,
-                    "side1" : framePoint - edge1Binormal * 2 * millimeter
-            }).distance;
-            
-            var correctEdge1Binormal = binormalPlusDist > binormalMinusDist ? edge1Binormal : -1 * edge1Binormal;
-            solvedZ = cross(normalVector, correctEdge1Binormal);
-            
-            vertexFrames = mergeMaps(vertexFrames, {(vertexData.adjacentEdges[1]) : coordSystem(framePoint, normalVector, solvedZ)});
+            var edgeDir = startLine.direction;
+            if (norm(startLine.origin - framePoint) > 1e-5 * meter)
+            {
+                edgeDir = evEdgeTangentLine(context, {
+                    "edge" : edge, "parameter" : 1, "arcLengthParameterization" : false
+                }).direction;
+            }
+
+            // Outward binormal: in-surface, perpendicular to edge, away from face interior.
+            // Sign check with dot product — no kernel calls needed.
+            var binormal = cross(faceNormal, edgeDir);
+            if (dot(binormal, (faceInteriorPt - framePoint) / meter) > 0)
+            {
+                binormal = -1 * binormal;
+            }
+
+            // Frame: xAxis = faceNormal, zAxis = along edge, yAxis = outward binormal (derived)
+            // yAxis(frame) = cross(zAxis, xAxis) = cross(cross(N,B), N) = B  (since B perp N)
+            var frameZAxis = cross(faceNormal, binormal);
+            var vertexFrame = coordSystem(framePoint, faceNormal, frameZAxis);
+            vertexFrames = mergeMaps(vertexFrames, {(edge) : vertexFrame});
+
+            if (samplingDef.showFrames)
+            {
+                var arrowLen = evLength(context, {"entities" : edge}) / 3;
+                var arrowRad = arrowLen * 0.02;
+                var xColor = j == 0 ? DebugColor.RED : DebugColor.ORANGE;
+                var yColor = j == 0 ? DebugColor.GREEN : DebugColor.YELLOW;
+                var zColor = j == 0 ? DebugColor.BLUE : DebugColor.CYAN;
+                // RED/ORANGE  = xAxis = face normal (normal to surface and edge)
+                // GREEN/YELLOW = yAxis = outward binormal (away from surface interior)
+                // BLUE/CYAN   = zAxis = edge tangent
+                addDebugArrow(context, framePoint, framePoint + arrowLen * vertexFrame.xAxis,  arrowRad,         xColor);
+                addDebugArrow(context, framePoint, framePoint + arrowLen * yAxis(vertexFrame), arrowRad * 0.75, yColor);
+                addDebugArrow(context, framePoint, framePoint + arrowLen * vertexFrame.zAxis,  arrowRad * 0.5,  zColor);
+            }
         }
-        
+
         vertexData['vertexFrames'] = vertexFrames;
         vertexArray[i] = vertexData;
-        
-        if (samplingDef.showFrames)
-        {
-            var edgeLength = evLength(context, {
-                        "entities" : qUnion(vertexData['adjacentEdges'])
-                });
-                
-            if (vertexData['continuity'] == GeometricContinuity.G0)
-            {
-                
-                showTransportFrames(context, vertexFrames[(vertexData.adjacentEdges[0])], DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, edgeLength);
-                if (size(vertexData.adjacentEdges) > 1)
-                {
-                    showTransportFrames(context, vertexFrames[(vertexData.adjacentEdges[1])], DebugColor.ORANGE, DebugColor.YELLOW, DebugColor.CYAN, edgeLength);   
-                }
-            }
-            else
-            {
-                showTransportFrames(context, vertexFrames[(vertexData.adjacentEdges[0])], DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, edgeLength);
-            }
-        }
     }
-    //for each vertex, 
     return vertexArray;
 }
     
