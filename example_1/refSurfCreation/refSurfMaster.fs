@@ -111,7 +111,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 }
             }
 
-            if (definition.returnOffsetSurfaces && region.offsetType == RegionOffsetType.CONSTANT)
+            if (definition.returnOffsetSurfaces)
             {
                 annotation { "Name" : "Surface height" }
                 isLength(region.surfaceHeight, REGION_SURFACE_HEIGHT_BOUNDS);
@@ -353,7 +353,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
                             "regionName"       : definition.regions[r].name
-                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces);
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces, definition.regions[r].surfaceHeight);
                     }
 
                     if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
@@ -866,7 +866,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    buildSurface is boolean)
+    buildSurface is boolean, surfaceHeight is ValueWithUnits)
 {
     if (numPts < 2)
     {
@@ -964,6 +964,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 
         edgeInfo = append(edgeInfo, {
             "edge"  : edge,
+            "face"  : face,
             "points": offPts,
             "p0"    : tl0.origin,
             "p1"    : tl1.origin,
@@ -1112,9 +1113,20 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             {
                 try
                 {
-                    opLoft(context, id + ("offSurf" ~ ei), {
-                        "profileSubqueries" : [ed.edge, qOwnedByBody(wireBody, EntityType.EDGE)],
-                        "bodyType"          : ToolBodyType.SURFACE
+                    var faceBB2      = evBox3d(context, {"topology" : ed.face, "tight" : true});
+                    var faceCenterPt = (faceBB2.minCorner + faceBB2.maxCorner) / 2;
+                    var faceUV2      = evDistance(context, {"side0" : ed.face, "side1" : faceCenterPt}).sides[0].parameter;
+                    var ruledNormal  = evFaceTangentPlane(context, {"face" : ed.face, "parameter" : faceUV2}).normal;
+                    if (ruledNormal[2] < 0)
+                    {
+                        ruledNormal = -1 * ruledNormal;
+                    }
+                    opRuledSurface(context, id + ("offSurf" ~ ei), {
+                        "path"             : qOwnedByBody(wireBody, EntityType.EDGE),
+                        "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
+                        "ruledDirection"   : ruledNormal,
+                        "width"            : surfaceHeight,
+                        "angle"            : 0
                     });
                     surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf" ~ ei), EntityType.BODY));
                 }
