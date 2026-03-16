@@ -978,7 +978,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
     //   if E.p1 == V: outgoing = -tan1 (param increases into V, so reversed)
     // G1: dot(outgoing_A, outgoing_B) < -cos(0.5 deg)
     // Derivative constraint: natural edge tangent direction at that endpoint.
-    const G1_COS  = cos(0.5 * PI / 180);
+    const G1_COS  = cos(0.5 * degree);
     const POS_TOL = 1e-6 * meter;
 
     var derivConstraint = [];
