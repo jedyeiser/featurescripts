@@ -353,7 +353,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
                             "regionName"       : definition.regions[r].name
-                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces);
                     }
 
                     if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
@@ -865,7 +865,8 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
  */
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
-    splineDegree is number, tolerance is ValueWithUnits, maxCP is number)
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
+    buildSurface is boolean)
 {
     if (numPts < 2)
     {
@@ -1058,8 +1059,12 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         }
     }
 
-    // --- Fit BSpline per edge, create geometry, extract wires ---
-    var curveBodies = [];
+    // --- Fit BSpline per edge; extract wire and optionally loft surface per edge ---
+    // Processing per-edge (rather than batched) preserves the 1-to-1 correspondence
+    // between each original periphery edge and its offset wire, which is required for lofting.
+    var wireBodies = [];
+    var surfBodies = [];
+
     for (var ei = 0; ei < size(edgeInfo); ei += 1)
     {
         if (edgeInfo[ei] == undefined)
@@ -1093,30 +1098,53 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             });
             var splineData = splineResults[0];
             opCreateBSplineCurve(context, id + ("offCurve" ~ ei), {"bSplineCurve" : splineData});
-            curveBodies = append(curveBodies, qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY));
+            var curveBody = qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY);
+
+            opExtractWires(context, id + ("offWire" ~ ei), {
+                "edges" : qOwnedByBody(curveBody, EntityType.EDGE)
+            });
+            opDeleteBodies(context, id + ("deleteOffCurve" ~ ei), {"entities" : curveBody});
+
+            var wireBody = qCreatedBy(id + ("offWire" ~ ei), EntityType.BODY);
+            wireBodies = append(wireBodies, wireBody);
+
+            if (buildSurface)
+            {
+                try
+                {
+                    opLoft(context, id + ("offSurf" ~ ei), {
+                        "profiles"  : [ed.edge, qOwnedByBody(wireBody, EntityType.EDGE)],
+                        "isSurface" : true
+                    });
+                    surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf" ~ ei), EntityType.BODY));
+                }
+                catch
+                {
+                }
+            }
         }
         catch
         {
         }
     }
 
-    if (size(curveBodies) == 0)
+    for (var wi = 0; wi < size(wireBodies); wi += 1)
     {
-        return;
+        setProperty(context, {
+            "entities"     : wireBodies[wi],
+            "propertyType" : PropertyType.NAME,
+            "value"        : offsetDef.regionName ~ " offset wire"
+        });
     }
 
-    var allCurveBodies = qUnion(curveBodies);
-
-    opExtractWires(context, id + "offWires", {
-        "edges" : qOwnedByBody(allCurveBodies, EntityType.EDGE)
-    });
-    opDeleteBodies(context, id + "deleteOffCurves", {"entities" : allCurveBodies});
-
-    setProperty(context, {
-        "entities"     : qCreatedBy(id + "offWires", EntityType.BODY),
-        "propertyType" : PropertyType.NAME,
-        "value"        : offsetDef.regionName ~ " offset wire"
-    });
+    for (var si = 0; si < size(surfBodies); si += 1)
+    {
+        setProperty(context, {
+            "entities"     : surfBodies[si],
+            "propertyType" : PropertyType.NAME,
+            "value"        : offsetDef.regionName ~ " offset surface"
+        });
+    }
 }
 
 function alignNormalToWorldAxis(normal is Vector) returns Vector
