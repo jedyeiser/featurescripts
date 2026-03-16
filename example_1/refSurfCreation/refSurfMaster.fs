@@ -265,7 +265,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                     });
                     
                     var splitEdges = qUnion([qCreatedBy(id + ("region" ~ r ~ "startSplit"), EntityType.EDGE), qCreatedBy(id + ("region" ~ r ~ "endSplit"), EntityType.EDGE)]);
-                    var peripheryEdges = qUnion([qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges)]);
+                    var peripheryEdges = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges), EdgeTopology.ONE_SIDED);
 
                     if (definition.regions[r].offsetType == RegionOffsetType.CONSTANT)
                     {
@@ -292,7 +292,7 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }
 
                         // Periphery edges after offset (boundary may have changed)
-                        var postOffsetPeriphery = qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges);
+                        var postOffsetPeriphery = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), splitEdges), EdgeTopology.ONE_SIDED);
 
                         if (definition.returnOffsetWires)
                         {
