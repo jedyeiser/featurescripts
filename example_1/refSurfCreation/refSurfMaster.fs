@@ -10,7 +10,11 @@ import(path : "d1cf8af3d05964b44c3ab4c0", version : "0cfec2c414434510e6694ac4");
 //export import refSurfCore
 export import(path : "828cc4108f1c8683bc0e59cf", version : "decdb33da99d8a1fe538479c");
 
-//Testbed for implementing better and more robust 'region' logic for other tools. 
+//Testbed for implementing better and more robust 'region' logic for other tools.
+
+export enum RegionOffsetType { CONSTANT, LINEAR, QUADRATIC, SMOOTH }
+
+export const REGION_OFFSET_BOUNDS = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
 
 export function regionExplorerEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
@@ -43,7 +47,13 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
         
         annotation { "Name" : "Ref. point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
         definition.refPoint is Query;
-        
+
+        annotation { "Name" : "Return offset wires", "Default" : false }
+        definition.returnOffsetWires is boolean;
+
+        annotation { "Name" : "Return offset surfaces", "Default" : false }
+        definition.returnOffsetSurfaces is boolean;
+
         annotation { "Name" : "Regions", "Item name" : "Region", "Item label template" : "#name" }
         definition.regions is array;
         for (var region in definition.regions)
@@ -75,8 +85,23 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                 region.endPoint is Query;
             }
             
-            //add additional capability later
-            
+            annotation { "Name" : "Offset type", "Default" : RegionOffsetType.CONSTANT, "UIHint" : UIHint.HORIZONTAL_ENUM }
+            region.offsetType is RegionOffsetType;
+
+            if (region.offsetType == RegionOffsetType.CONSTANT)
+            {
+                annotation { "Name" : "Offset" }
+                isLength(region.offset, REGION_OFFSET_BOUNDS);
+            }
+            else
+            {
+                annotation { "Name" : "Start offset" }
+                isLength(region.startOffset, REGION_OFFSET_BOUNDS);
+
+                annotation { "Name" : "End offset" }
+                isLength(region.endOffset, REGION_OFFSET_BOUNDS);
+            }
+
         }
         
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
