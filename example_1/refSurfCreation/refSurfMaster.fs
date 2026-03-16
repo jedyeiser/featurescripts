@@ -115,6 +115,15 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
             {
                 annotation { "Name" : "Surface height" }
                 isLength(region.surfaceHeight, REGION_SURFACE_HEIGHT_BOUNDS);
+
+                annotation { "Name" : "Second direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+                region.surfaceSecondDir is boolean;
+
+                if (region.surfaceSecondDir)
+                {
+                    annotation { "Name" : "Height (second dir.)" }
+                    isLength(region.surfaceHeight2, REGION_SURFACE_HEIGHT_BOUNDS);
+                }
             }
 
         }
@@ -338,6 +347,21 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                                     "propertyType" : PropertyType.NAME,
                                     "value"        : definition.regions[r].name ~ " offset surface"
                                 });
+                                if (definition.regions[r].surfaceSecondDir == true)
+                                {
+                                    opRuledSurface(context, id + ("regionRuledSurface2" ~ r), {
+                                        "path"             : postOffsetPeriphery,
+                                        "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
+                                        "ruledDirection"   : -1 * faceNormal,
+                                        "width"            : definition.regions[r].surfaceHeight2,
+                                        "angle"            : 0
+                                    });
+                                    setProperty(context, {
+                                        "entities"     : qCreatedBy(id + ("regionRuledSurface2" ~ r), EntityType.BODY),
+                                        "propertyType" : PropertyType.NAME,
+                                        "value"        : definition.regions[r].name ~ " offset surface (back)"
+                                    });
+                                }
                             }
                         }
                     }
@@ -352,7 +376,9 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                             "startOffset"      : definition.regions[r].startOffset,
                             "endOffset"        : definition.regions[r].endOffset,
                             "zeroSlopeAtStart" : zeroAtStartBuild,
-                            "regionName"       : definition.regions[r].name
+                            "regionName"        : definition.regions[r].name,
+                            "surfaceSecondDir"  : definition.regions[r].surfaceSecondDir,
+                            "surfaceHeight2"    : (definition.regions[r].surfaceSecondDir == true) ? definition.regions[r].surfaceHeight2 : (0 * millimeter)
                         }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP, definition.returnOffsetSurfaces, definition.regions[r].surfaceHeight);
                     }
 
@@ -1129,6 +1155,17 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
                         "angle"            : 0
                     });
                     surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf" ~ ei), EntityType.BODY));
+                    if (offsetDef.surfaceSecondDir == true)
+                    {
+                        opRuledSurface(context, id + ("offSurf2" ~ ei), {
+                            "path"             : qOwnedByBody(wireBody, EntityType.EDGE),
+                            "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
+                            "ruledDirection"   : -1 * ruledNormal,
+                            "width"            : offsetDef.surfaceHeight2,
+                            "angle"            : 0
+                        });
+                        surfBodies = append(surfBodies, qCreatedBy(id + ("offSurf2" ~ ei), EntityType.BODY));
+                    }
                 }
                 catch
                 {
