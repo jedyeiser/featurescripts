@@ -811,6 +811,16 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
         }
         faceQ = faceArr[0];
 
+        // Compute one stable reference normal per face at its center.
+        var faceQBB = evBox3d(context, {"topology" : faceQ, "tight" : true});
+        var faceQCenterPt = (faceQBB.minCorner + faceQBB.maxCorner) / 2;
+        var faceQCenterUV = evDistance(context, {"side0" : faceQ, "side1" : faceQCenterPt}).sides[0].parameter;
+        var faceRefNormal = evFaceTangentPlane(context, {"face" : faceQ, "parameter" : faceQCenterUV}).normal;
+        if (faceRefNormal[2] < 0)
+        {
+            faceRefNormal = -1 * faceRefNormal;
+        }
+
         // Build uniform parameter array [0, 1] with numPts samples
         var params = [];
         for (var i = 0; i < numPts; i += 1)
@@ -834,10 +844,10 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
             if (t < 0) { t = 0; }
             if (t > 1) { t = 1; }
 
-            // Face normal at this sample point
+            // Face normal at this sample point, consistent with the per-edge reference normal
             var ptUV = evDistance(context, {"side0" : faceQ, "side1" : edgePt}).sides[0].parameter;
             var faceNormal = evFaceTangentPlane(context, {"face" : faceQ, "parameter" : ptUV}).normal;
-            if (faceNormal[2] < 0)
+            if (dot(faceNormal, faceRefNormal) < 0)
             {
                 faceNormal = -1 * faceNormal;
             }
@@ -916,6 +926,18 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         }
         var face = faceArr[0];
 
+        // Compute one stable reference normal per face at its center.
+        // All per-point normals are then flipped to match this reference via dot product,
+        // ensuring consistency across the whole edge even on curved surfaces.
+        var faceBB = evBox3d(context, {"topology" : face, "tight" : true});
+        var faceCenterPt = (faceBB.minCorner + faceBB.maxCorner) / 2;
+        var faceCenterUV = evDistance(context, {"side0" : face, "side1" : faceCenterPt}).sides[0].parameter;
+        var faceRefNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : faceCenterUV}).normal;
+        if (faceRefNormal[2] < 0)
+        {
+            faceRefNormal = -1 * faceRefNormal;
+        }
+
         var params = [];
         for (var i = 0; i < numPts; i += 1)
         {
@@ -945,7 +967,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 
             var ptUV       = evDistance(context, {"side0" : face, "side1" : edgePt}).sides[0].parameter;
             var faceNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : ptUV}).normal;
-            if (faceNormal[2] < 0)
+            if (dot(faceNormal, faceRefNormal) < 0)
             {
                 faceNormal = -1 * faceNormal;
             }
@@ -968,13 +990,14 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         }
 
         edgeInfo = append(edgeInfo, {
-            "edge"  : edge,
-            "face"  : face,
-            "points": offPts,
-            "p0"    : tl0.origin,
-            "p1"    : tl1.origin,
-            "tan0"  : tl0.direction,
-            "tan1"  : tl1.direction
+            "edge"         : edge,
+            "face"         : face,
+            "points"       : offPts,
+            "p0"           : tl0.origin,
+            "p1"           : tl1.origin,
+            "tan0"         : tl0.direction,
+            "tan1"         : tl1.direction,
+            "faceRefNormal": faceRefNormal
         });
     }
 
@@ -1118,14 +1141,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             {
                 try
                 {
-                    var faceBB2      = evBox3d(context, {"topology" : ed.face, "tight" : true});
-                    var faceCenterPt = (faceBB2.minCorner + faceBB2.maxCorner) / 2;
-                    var faceUV2      = evDistance(context, {"side0" : ed.face, "side1" : faceCenterPt}).sides[0].parameter;
-                    var ruledNormal  = evFaceTangentPlane(context, {"face" : ed.face, "parameter" : faceUV2}).normal;
-                    if (ruledNormal[2] < 0)
-                    {
-                        ruledNormal = -1 * ruledNormal;
-                    }
+                    var ruledNormal = ed.faceRefNormal;
                     opRuledSurface(context, id + ("offSurf" ~ ei), {
                         "path"             : qOwnedByBody(wireBody, EntityType.EDGE),
                         "ruledSurfaceType" : RuledSurfaceType.ALIGNED_WITH_VECTOR,
