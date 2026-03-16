@@ -342,6 +342,20 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
                         }
                     }
 
+                    if (definition.regions[r].offsetType != RegionOffsetType.CONSTANT && (definition.returnOffsetWires || definition.returnOffsetSurfaces))
+                    {
+                        var zeroAtStartBuild = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
+                        buildVariableOffsetCurves(context, id + ("varOffset" ~ r), regionCopy, peripheryEdges, {
+                            "startFrameOrigin" : region.startFrame.origin,
+                            "endFrameOrigin"   : region.endFrame.origin,
+                            "offsetType"       : definition.regions[r].offsetType,
+                            "startOffset"      : definition.regions[r].startOffset,
+                            "endOffset"        : definition.regions[r].endOffset,
+                            "zeroSlopeAtStart" : zeroAtStartBuild,
+                            "regionName"       : definition.regions[r].name
+                        }, definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
+                    }
+
                     if (definition.debug && definition.showOffsetSamples && definition.regions[r].offsetType != RegionOffsetType.CONSTANT)
                     {
                         var zeroAtStart = (definition.regions[r].offsetType == RegionOffsetType.QUADRATIC) ? definition.regions[r].zeroSlopeAtStart : true;
@@ -832,6 +846,276 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
             addDebugPoint(context, offsetPt, DebugColor.MAGENTA);
         }
     }
+}
+
+/**
+ * Builds a BSpline offset curve for each periphery edge of a variable-offset region.
+ * At junctions between nearly-G1 edges (turning angle < 0.5 deg), enforces G1
+ * continuity by constraining the BSpline endpoint derivatives to match the
+ * original edge tangent direction.
+ * Extracts wire bodies from the created BSpline curves and deletes the raw
+ * BSpline bodies. Does not yet generate offset surfaces.
+ *
+ * offsetDef fields:
+ *   startFrameOrigin, endFrameOrigin  -- region extent for t projection
+ *   offsetType                        -- RegionOffsetType (LINEAR, QUADRATIC, SMOOTH)
+ *   startOffset, endOffset            -- ValueWithUnits
+ *   zeroSlopeAtStart                  -- boolean (QUADRATIC only)
+ *   regionName                        -- string for wire body naming
+ */
+export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
+    peripheryEdges is Query, offsetDef is map, numPts is number,
+    degree is number, tolerance is ValueWithUnits, maxCP is number)
+{
+    if (numPts < 2)
+    {
+        numPts = 2;
+    }
+    var edgeArray = evaluateQuery(context, peripheryEdges);
+    if (size(edgeArray) == 0)
+    {
+        return;
+    }
+
+    var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
+    var regionAxisLen2 = dot(regionAxis, regionAxis);
+
+    // --- Per-edge: sample offset points and record endpoint geometry ---
+    var edgeInfo = [];
+    for (var ei = 0; ei < size(edgeArray); ei += 1)
+    {
+        var edge = edgeArray[ei];
+
+        var tl0 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 0, "arcLengthParameterization" : false});
+        var tl1 = evEdgeTangentLine(context, {"edge" : edge, "parameter" : 1, "arcLengthParameterization" : false});
+
+        var faceArr = evaluateQuery(context, qIntersection([
+            qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE),
+            qOwnedByBody(sheetBody, EntityType.FACE)
+        ]));
+        if (size(faceArr) == 0)
+        {
+            edgeInfo = append(edgeInfo, undefined);
+            continue;
+        }
+        var face = faceArr[0];
+
+        var faceBB         = evBox3d(context, {"topology" : face, "tight" : true});
+        var faceInteriorPt = (faceBB.minCorner + faceBB.maxCorner) / 2;
+
+        var params = [];
+        for (var i = 0; i < numPts; i += 1)
+        {
+            params = append(params, i / (numPts - 1));
+        }
+        var tangentLines = evEdgeTangentLines(context, {
+            "edge"                      : edge,
+            "parameters"                : params,
+            "arcLengthParameterization" : true
+        });
+
+        var offPts = [];
+        for (var i = 0; i < size(tangentLines); i += 1)
+        {
+            var edgePt      = tangentLines[i].origin;
+            var edgeTangent = tangentLines[i].direction;
+
+            var disp = (edgePt - offsetDef.startFrameOrigin) / meter;
+            var t    = dot(disp, regionAxis) / regionAxisLen2;
+            if (t < 0)
+            {
+                t = 0;
+            }
+            if (t > 1)
+            {
+                t = 1;
+            }
+
+            var ptUV       = evDistance(context, {"side0" : face, "side1" : edgePt}).sides[0].parameter;
+            var faceNormal = evFaceTangentPlane(context, {"face" : face, "parameter" : ptUV}).normal;
+            if (faceNormal[2] < 0)
+            {
+                faceNormal = -1 * faceNormal;
+            }
+
+            var binormal = cross(faceNormal, edgeTangent);
+            if (dot(binormal, (faceInteriorPt - edgePt) / meter) > 0)
+            {
+                binormal = -1 * binormal;
+            }
+
+            var offsetMag;
+            if (offsetDef.offsetType == RegionOffsetType.LINEAR)
+            {
+                offsetMag = linearOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+            }
+            else if (offsetDef.offsetType == RegionOffsetType.QUADRATIC)
+            {
+                offsetMag = quadraticOffset(offsetDef.startOffset, offsetDef.endOffset, t, offsetDef.zeroSlopeAtStart);
+            }
+            else
+            {
+                offsetMag = smoothOffset(offsetDef.startOffset, offsetDef.endOffset, t);
+            }
+
+            offPts = append(offPts, edgePt + offsetMag * binormal);
+        }
+
+        edgeInfo = append(edgeInfo, {
+            "edge"  : edge,
+            "points": offPts,
+            "p0"    : tl0.origin,
+            "p1"    : tl1.origin,
+            "tan0"  : tl0.direction,
+            "tan1"  : tl1.direction
+        });
+    }
+
+    // --- Identify G1 junctions and assign derivative constraints ---
+    // G1 criterion: outgoing-from-vertex directions are anti-parallel within 0.5 degrees.
+    // outgoing from V along edge E:
+    //   if E.p0 == V: outgoing = tan0  (param increases away from V)
+    //   if E.p1 == V: outgoing = -tan1 (param increases into V, so reversed)
+    // G1: dot(outgoing_A, outgoing_B) < -cos(0.5 deg)
+    // Derivative constraint: natural edge tangent direction at that endpoint.
+    const G1_COS  = cos(0.5 * PI / 180);
+    const POS_TOL = 1e-6 * meter;
+
+    var derivConstraint = [];
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        derivConstraint = append(derivConstraint, {"startDeriv" : undefined, "endDeriv" : undefined});
+    }
+
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        if (edgeInfo[ei] == undefined)
+        {
+            continue;
+        }
+        var eA = edgeInfo[ei];
+
+        for (var ej = ei + 1; ej < size(edgeInfo); ej += 1)
+        {
+            if (edgeInfo[ej] == undefined)
+            {
+                continue;
+            }
+            var eB = edgeInfo[ej];
+
+            // Case: A.p1 at V, B.p0 at V  (outgoing: -tan1_A, tan0_B)
+            if (norm(eA.p1 - eB.p0) < POS_TOL)
+            {
+                if (dot(-1 * eA.tan1, eB.tan0) < -G1_COS)
+                {
+                    var dcA = derivConstraint[ei];
+                    dcA.endDeriv = eA.tan1;
+                    derivConstraint[ei] = dcA;
+                    var dcB = derivConstraint[ej];
+                    dcB.startDeriv = eB.tan0;
+                    derivConstraint[ej] = dcB;
+                }
+            }
+            // Case: A.p0 at V, B.p1 at V  (outgoing: tan0_A, -tan1_B)
+            else if (norm(eA.p0 - eB.p1) < POS_TOL)
+            {
+                if (dot(eA.tan0, -1 * eB.tan1) < -G1_COS)
+                {
+                    var dcA = derivConstraint[ei];
+                    dcA.startDeriv = eA.tan0;
+                    derivConstraint[ei] = dcA;
+                    var dcB = derivConstraint[ej];
+                    dcB.endDeriv = eB.tan1;
+                    derivConstraint[ej] = dcB;
+                }
+            }
+            // Case: A.p1 at V, B.p1 at V  (outgoing: -tan1_A, -tan1_B)
+            else if (norm(eA.p1 - eB.p1) < POS_TOL)
+            {
+                if (dot(-1 * eA.tan1, -1 * eB.tan1) < -G1_COS)
+                {
+                    var dcA = derivConstraint[ei];
+                    dcA.endDeriv = eA.tan1;
+                    derivConstraint[ei] = dcA;
+                    var dcB = derivConstraint[ej];
+                    dcB.endDeriv = eB.tan1;
+                    derivConstraint[ej] = dcB;
+                }
+            }
+            // Case: A.p0 at V, B.p0 at V  (outgoing: tan0_A, tan0_B)
+            else if (norm(eA.p0 - eB.p0) < POS_TOL)
+            {
+                if (dot(eA.tan0, eB.tan0) < -G1_COS)
+                {
+                    var dcA = derivConstraint[ei];
+                    dcA.startDeriv = eA.tan0;
+                    derivConstraint[ei] = dcA;
+                    var dcB = derivConstraint[ej];
+                    dcB.startDeriv = eB.tan0;
+                    derivConstraint[ej] = dcB;
+                }
+            }
+        }
+    }
+
+    // --- Fit BSpline per edge, create geometry, extract wires ---
+    var curveBodies = [];
+    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+    {
+        if (edgeInfo[ei] == undefined)
+        {
+            continue;
+        }
+        var ed = edgeInfo[ei];
+        var dc = derivConstraint[ei];
+
+        var edgeLen    = evLength(context, {"entities" : ed.edge});
+        var derivScale = edgeLen / 3;
+
+        var approxDef = {
+            "isPeriodic"       : false,
+            "degree"           : degree,
+            "points"           : ed.points,
+            "tolerance"        : tolerance,
+            "maxControlPoints" : maxCP
+        };
+        if (dc.startDeriv != undefined)
+        {
+            approxDef = mergeMaps(approxDef, {"startDerivative" : dc.startDeriv * derivScale});
+        }
+        if (dc.endDeriv != undefined)
+        {
+            approxDef = mergeMaps(approxDef, {"endDerivative" : dc.endDeriv * derivScale});
+        }
+
+        try
+        {
+            var splineData = approximateSpline(approxDef);
+            opCreateBSplineCurve(context, id + ("offCurve" ~ ei), {"bSplineCurve" : splineData});
+            curveBodies = append(curveBodies, qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY));
+        }
+        catch
+        {
+        }
+    }
+
+    if (size(curveBodies) == 0)
+    {
+        return;
+    }
+
+    var allCurveBodies = qUnion(curveBodies);
+
+    opExtractWires(context, id + "offWires", {
+        "edges" : qOwnedByBody(allCurveBodies, EntityType.EDGE)
+    });
+    opDeleteBodies(context, id + "deleteOffCurves", {"entities" : allCurveBodies});
+
+    setProperty(context, {
+        "entities"     : qCreatedBy(id + "offWires", EntityType.BODY),
+        "propertyType" : PropertyType.NAME,
+        "value"        : offsetDef.regionName ~ " offset wire"
+    });
 }
 
 function alignNormalToWorldAxis(normal is Vector) returns Vector
