@@ -97,7 +97,7 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
             {
                 ixEntry = {
                     "intersectionNum"  : i,
-                    "name"             : regA.name ~ " / " ~ regB.name,
+                    "name"             : "Intersection " ~ (i + 1),
                     "regionAName"      : regA.name,
                     "regionBName"      : regB.name,
                     "join"             : false,
@@ -446,17 +446,19 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
             if (definition.returnOffsetWires)
             {
-                buildVariableOffsetCurves(context, id + ("varOffset" ~ r), regionCopy, peripheryEdges, offsetDef,
+                var wireBodyQ = buildVariableOffsetCurves(context, id + ("varOffset" ~ r), regionCopy, peripheryEdges, offsetDef,
                     definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
+                processedRegions[r] = mergeMaps(processedRegions[r], { "wireBodyQuery" : wireBodyQ });
             }
 
             if (definition.returnLoftSurface)
             {
-                buildLoftSurfaces(context, id + ("loftSurf" ~ r), regionCopy, peripheryEdges, offsetDef,
+                var loftBodyQ = buildLoftSurfaces(context, id + ("loftSurf" ~ r), regionCopy, peripheryEdges, offsetDef,
                     definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP,
                     definition.wallHeight,
                     definition.wallSecondDir,
                     definition.wallSecondDir ? definition.wallHeight2 : (0 * millimeter));
+                processedRegions[r] = mergeMaps(processedRegions[r], { "loftBodyQuery" : loftBodyQ });
             }
 
             if (definition.debug && (definition.showPointFrames || definition.showLoftPoints))

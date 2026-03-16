@@ -709,7 +709,7 @@ function detectG1Junctions(edgeInfo is array) returns array
  */
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
-    splineDegree is number, tolerance is ValueWithUnits, maxCP is number)
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number) returns Query
 {
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
@@ -790,6 +790,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             "value"        : offsetDef.regionName ~ " offset wire"
         });
     }
+    return size(wireBodies) > 0 ? qUnion(wireBodies) : qNothing();
 }
 
 
@@ -809,7 +810,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    wallHeight is ValueWithUnits, wallSecondDir is boolean, wallHeight2 is ValueWithUnits)
+    wallHeight is ValueWithUnits, wallSecondDir is boolean, wallHeight2 is ValueWithUnits) returns Query
 {
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
@@ -1010,6 +1011,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             "value"        : offsetDef.regionName ~ " loft surface"
         });
     }
+    return size(loftBodyQueries) > 0 ? qUnion(loftBodyQueries) : qNothing();
 }
 
 
@@ -1054,7 +1056,7 @@ export function buildIntersectionJoins(context is Context, id is Id,
             try
             {
                 joinLoftAtIntersection(context, id + ("ixLoft" ~ i), id, ix,
-                        rA, rB, boundaryPl);
+                        rA, rB, boundaryPl, processedRegions);
             }
             catch { }
         }
@@ -1064,7 +1066,7 @@ export function buildIntersectionJoins(context is Context, id is Id,
             try
             {
                 joinWiresAtIntersection(context, id + ("ixWire" ~ i), id, ix,
-                        rA, rB, boundaryPl);
+                        rA, rB, boundaryPl, processedRegions);
             }
             catch { }
         }
@@ -1075,10 +1077,12 @@ export function buildIntersectionJoins(context is Context, id is Id,
 // --- Loft surface joining ---------------------------------------------------
 
 function joinLoftAtIntersection(context is Context, id is Id, featureId is Id,
-        ix is map, rA is number, rB is number, boundaryPl is Plane)
+        ix is map, rA is number, rB is number, boundaryPl is Plane,
+        processedRegions is array)
 {
-    var loftBodiesA = qCreatedBy(featureId + ("loftSurf" ~ rA), EntityType.BODY);
-    var loftBodiesB = qCreatedBy(featureId + ("loftSurf" ~ rB), EntityType.BODY);
+    var loftBodiesA = processedRegions[rA].loftBodyQuery;
+    var loftBodiesB = processedRegions[rB].loftBodyQuery;
+    if (loftBodiesA == undefined || loftBodiesB == undefined) { return; }
 
     if (isQueryEmpty(context, loftBodiesA) || isQueryEmpty(context, loftBodiesB))
     {
@@ -1203,10 +1207,12 @@ function joinLoftAtIntersection(context is Context, id is Id, featureId is Id,
 // --- Offset wire joining ----------------------------------------------------
 
 function joinWiresAtIntersection(context is Context, id is Id, featureId is Id,
-        ix is map, rA is number, rB is number, boundaryPl is Plane)
+        ix is map, rA is number, rB is number, boundaryPl is Plane,
+        processedRegions is array)
 {
-    var wireBodiesA = qCreatedBy(featureId + ("varOffset" ~ rA), EntityType.BODY);
-    var wireBodiesB = qCreatedBy(featureId + ("varOffset" ~ rB), EntityType.BODY);
+    var wireBodiesA = processedRegions[rA].wireBodyQuery;
+    var wireBodiesB = processedRegions[rB].wireBodyQuery;
+    if (wireBodiesA == undefined || wireBodiesB == undefined) { return; }
 
     if (isQueryEmpty(context, wireBodiesA) || isQueryEmpty(context, wireBodiesB))
     {
