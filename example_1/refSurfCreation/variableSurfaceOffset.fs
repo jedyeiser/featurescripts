@@ -7,13 +7,13 @@ import(path : "onshape/std/ruledSurface.fs", version : "2909.0");
 import(path : "e9dd34f07820388a202cb620", version : "803c9b9c6666ac121062742e");
 
 //import regionProcessing
-import(path : "d1cf8af3d05964b44c3ab4c0", version : "4b56d4b1ea249169ecaeb337");
+import(path : "d1cf8af3d05964b44c3ab4c0", version : "c8cd4291669fa60ee8974016");
 
 //export import refSurfCore
-export import(path : "828cc4108f1c8683bc0e59cf", version : "3b549ecb97dfe5ff5a7a7bce");
+export import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
 
 // IMPORT: refSurfUtils.fs
-import(path : "d41884a96244793beb462449", version : "c0ecf34ba435e00b59ecd92a");
+import(path : "d41884a96244793beb462449", version : "fc8a6dfccab240021ff23696");
 
 
 //Testbed for implementing better and more robust 'region' logic for other tools.
@@ -22,105 +22,106 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
-    // --- Region defaults ---
-    for (var r = 0; r < size(definition.regions); r += 1)
+    // --- Region defaults --
+    
+    if (size(definition.regions) > 0)
     {
-        var region = definition.regions[r];
-        definition.regions[r].regionNum = r;
-        if (length(region.name) == 0)
-        {
-            definition.regions[r].name = "Region " ~ r;
-        }
-    }
-
-    // --- Intersection detection (ALONG_REF regions only) ---
-    // Wrapped in try/catch so editing logic always returns a valid definition
-    // even if detection fails (ensures definition.intersections is always an array).
-    try
-    {
-        // Collect sortable region entries
         var sortable = [];
+        var unsortable = [];
+        var processedPath = processPath(context, id + "editingLogic", {'userSelection' : definition.refWire, "flipDirection" : definition.flipDirection, "referencePoint" : definition.refPoint, 'numPoints' : max(20, definition.samplingDensity)});
+
         for (var r = 0; r < size(definition.regions); r += 1)
         {
             var reg = definition.regions[r];
-            if (reg.extentDef == RegionExtentDef.ALONG_REF &&
-                reg.startX != undefined && reg.endX != undefined)
+            if (reg.extentDef == RegionExtentDef.ALONG_REF && reg.startX != undefined && reg.endX != undefined)
             {
-                sortable = append(sortable, {
-                    "name"   : reg.name,
-                    "startX" : reg.startX,
-                    "endX"   : reg.endX
-                });
+                sortable = append(sortable, reg);
             }
-        }
-
-        // Sort by startX ascending
-        sortable = sort(sortable, function(a, b)
-        {
-            return (a.startX - b.startX) / meter;
-        });
-
-        // Build lookup from existing intersections by name pair, to preserve user data
-        var oldIntersections = definition.intersections;
-        if (oldIntersections == undefined)
-        {
-            oldIntersections = [];
-        }
-        var oldMap = {};
-        for (var ix in oldIntersections)
-        {
-            var key = ix.regionAName ~ "|" ~ ix.regionBName;
-            oldMap = mergeMaps(oldMap, {(key) : ix});
-        }
-
-        // Walk consecutive sorted pairs and build new intersection array
-        var newIntersections = [];
-        for (var i = 0; i < size(sortable) - 1; i += 1)
-        {
-            var regA = sortable[i];
-            var regB = sortable[i + 1];
-            var gap  = regB.startX - regA.endX;
-
-            var key      = regA.name ~ "|" ~ regB.name;
-            var existing = oldMap[key];
-
-            var ixEntry;
-            if (existing != undefined)
+            if (reg.extentDef == RegionExtentDef.QUERY)
             {
-                // Preserve user data; refresh auto fields only
-                ixEntry                  = existing;
-                ixEntry.intersectionNum  = i;
-                ixEntry.regionAName      = regA.name;
-                ixEntry.regionBName      = regB.name;
+                //get startX and endX
+                //var startX = findPathParamAtX(context, path, targetX);
             }
             else
             {
-                ixEntry = {
-                    "intersectionNum"  : i,
-                    "intersectionName" : length(ixEntry.intersectionName) == 0 ? "Intersection " ~ (i + 1) : ixEntry.intersectionName,
-                    "regionAName"      : regA.name,
-                    "regionBName"      : regB.name,
-                    "join"             : false,
-                    "startContinuity"  : IntersectionContinuityType.G0,
-                    "endContinuity"    : IntersectionContinuityType.G0,
-                    "joinStartOffset"  : 0 * millimeter,
-                    "joinEndOffset"    : 0 * millimeter
-                };
+                unsortable = append(unsortable, reg);
             }
-            ixEntry.intersectionName = length(ixEntry.intersectionName) == 0 ? "Intersection " ~ (i + 1) : ixEntry.intersectionName;
-            newIntersections = append(newIntersections, ixEntry);
         }
-
+        
+        sortable = sort(sortable, function(a, b) {return (a.startX + a.endX)/2 - (b.startX + b.endX)/2;});
+        var sizeCounter = 0;
+        var newRegions = [];
+        for (var i = 0; i < size(sortable); i += 1)
+        {
+            var region = sortable[i];
+            region.regionNum = sizeCounter;
+            if (length(region.name) == 0 || region.name == undefined)
+            {
+                region.needsDefaultName = true;   
+            }
+            else
+            {
+                region.needsDefaultName = startsWith(region.name, "Region") ? true : false;
+            }
+            
+            if (region.needsDefaultName)
+            {
+                region.name = "Region " ~ sizeCounter;
+            }
+            newRegions = append(newRegions, region);
+            sizeCounter += 1;
+        }
+        for (var i = 0; i < size(unsortable); i += 1)
+        {
+            var region = unsortable[i];
+            region.regionNum = sizeCounter;
+            if (length(region.name) == 0 || region.name == undefined)
+            {
+                region.needsDefaultName = true;   
+            }
+            else
+            {
+                region.needsDefaultName = false;
+            }
+            
+            if (region.needsDefaultName)
+            {
+                region.name = "Region " ~ sizeCounter;
+            }
+            newRegions = append(newRegions, region);
+            sizeCounter += 1;
+        }
+        
+        definition.regions = newRegions;
+        var oldIntersections = definition.intersections;
+        var newIntersections = [];
+        for (var i = 0; i < size(newRegions) - 1; i += 1)
+        {
+            var intersection = oldIntersections[i];
+            intersection.intersectionNum = i;
+            intersection.needsIntersectionName = (length(intersection.intersectionName) == 0 || intersection.inersectionName == undefined || startsWith(intersection.intersectionName, "Intersection "));
+            if (intersection.needsIntersectionName)
+            {
+                intersection.intersectionName = "Intersection " ~ i;
+            }
+            
+            intersection.regionANum = i;
+            intersection.regionBNum = i + 1;
+            
+            intersection.regionAName = newRegions[i].name;
+            intersection.regionBName = newRegions[i+1].name;
+            
+            newIntersections = append(newIntersections, intersection);
+        }
+        
         definition.intersections = newIntersections;
     }
-    catch
+    else
     {
-        // Ensure intersections is always a valid array even if detection fails
-        if (definition.intersections == undefined)
-        {
-            definition.intersections = [];
-        }
+        definition.intersections =[];
     }
+
+    
 
     return definition;
 }
@@ -175,6 +176,8 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
             annotation { "Name" : "Name" }
             region.name is string;
             
+            annotation { "Name" : "needsDefaultName", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            region.needsDefaultName is boolean;
             
             if (region.extentDef == RegionExtentDef.ALONG_REF)
             {
@@ -228,10 +231,19 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
 
             annotation { "Name" : "Name" }
             ix.intersectionName is string;
-
+            
+            annotation { "Name" : "needsDefaultName", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            ix.needsIntersectionName is boolean;
+            
+            annotation { "Name" : "RegionANum", "UIHint" : UIHint.ALWAYS_HIDDEN}
+            isInteger(ix.regionANum, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
+            
             annotation { "Name" : "Region A", "UIHint" : UIHint.READ_ONLY }
             ix.regionAName is string;
-
+            
+            annotation { "Name" : "RegionBNum", "UIHint" : UIHint.ALWAYS_HIDDEN}
+            isInteger(ix.regionBNum, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
+            
             annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             ix.regionBName is string;
 

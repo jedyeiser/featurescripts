@@ -24,5 +24,5 @@ export enum RegionOffsetType { CONSTANT, LINEAR, QUADRATIC, SMOOTH }
 export enum IntersectionContinuityType { G0, G1 }
 
 export const REGION_OFFSET_BOUNDS         = { (millimeter) : [-500, 0, 500] } as LengthBoundSpec;
-export const REGION_SURFACE_HEIGHT_BOUNDS = { (millimeter) : [0, 1, 500] }   as LengthBoundSpec;
+export const REGION_SURFACE_HEIGHT_BOUNDS = { (millimeter) : [0, 20, 100] }   as LengthBoundSpec;
 export const INTERSECTION_OFFSET_BOUNDS   = { (millimeter) : [0, 0, 500] }   as LengthBoundSpec;

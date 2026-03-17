@@ -5,7 +5,7 @@ import(path : "onshape/std/bridgingCurve.fs", version : "2909.0");
 import(path : "onshape/std/loft.fs", version : "2909.0");
 
 //import refSurfCore
-import(path : "828cc4108f1c8683bc0e59cf", version : "3b549ecb97dfe5ff5a7a7bce");
+import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
 
 
 // =====================================================================
@@ -1030,12 +1030,6 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
 export function buildIntersectionJoins(context is Context, id is Id,
         definition is map, processedRegions is array)
 {
-    var regionIndex = {};
-    for (var r = 0; r < size(processedRegions); r += 1)
-    {
-        regionIndex = mergeMaps(regionIndex, { (processedRegions[r].name) : r });
-    }
-
     for (var i = 0; i < size(definition.intersections); i += 1)
     {
         var ix = definition.intersections[i];
@@ -1043,10 +1037,9 @@ export function buildIntersectionJoins(context is Context, id is Id,
         {
             continue;
         }
-        println('processing intersection ' ~ i);
-        var rA = regionIndex[ix.regionAName];
-        var rB = regionIndex[ix.regionBName];
-        if (rA == undefined || rB == undefined)
+        var rA = ix.regionANum;
+        var rB = ix.regionBNum;
+        if (rA == undefined || rB == undefined || rA >= size(processedRegions) || rB >= size(processedRegions))
         {
             continue;
         }
