@@ -37,10 +37,12 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
             {
                 sortable = append(sortable, reg);
             }
-            if (reg.extentDef == RegionExtentDef.QUERY)
+            else if (reg.extentDef == RegionExtentDef.QUERY)
             {
-                //get startX and endX
-                //var startX = findPathParamAtX(context, path, targetX);
+                var extents = queryRegionExtents(context, processedPath, reg.startPoint, reg.endPoint);
+                reg.startX = extents.startX;
+                reg.endX   = extents.endX;
+                sortable = append(sortable, reg);
             }
             else
             {
@@ -97,12 +99,21 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
         var newIntersections = [];
         for (var i = 0; i < size(newRegions) - 1; i += 1)
         {
-            var intersection = oldIntersections[i];
+            var intersection = (i < size(oldIntersections)) ? oldIntersections[i] : {
+                "intersectionNum"       : i,
+                "intersectionName"      : "Intersection " ~ (i + 1),
+                "needsIntersectionName" : true,
+                "join"                  : false,
+                "startContinuity"       : IntersectionContinuityType.G0,
+                "endContinuity"         : IntersectionContinuityType.G0,
+                "joinStartOffset"       : 0 * millimeter,
+                "joinEndOffset"         : 0 * millimeter
+            };
             intersection.intersectionNum = i;
-            intersection.needsIntersectionName = (length(intersection.intersectionName) == 0 || intersection.inersectionName == undefined || startsWith(intersection.intersectionName, "Intersection "));
+            intersection.needsIntersectionName = (length(intersection.intersectionName) == 0 || intersection.intersectionName == undefined || startsWith(intersection.intersectionName, "Intersection "));
             if (intersection.needsIntersectionName)
             {
-                intersection.intersectionName = "Intersection " ~ i;
+                intersection.intersectionName = "Intersection " ~ (i + 1);
             }
             
             intersection.regionANum = i;
