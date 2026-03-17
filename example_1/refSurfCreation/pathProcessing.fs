@@ -295,6 +295,26 @@ export function processPath(context is Context, id is Id, definition is map) ret
     };
 }
 
+/**
+ * Projects two point queries onto processedPath and returns their equivalent
+ * startX / endX — signed arc-length distances from the reference point,
+ * matching the coordinate used by ALONG_REF regions.
+ */
+export function queryRegionExtents(context is Context, processedPath is map,
+        startQuery is Query, endQuery is Query) returns map
+{
+    var pt0 = getRefPoint(context, startQuery);
+    var pt1 = getRefPoint(context, endQuery);
+    var r0 = projectOntoFrenetPath(processedPath.frenetPath, pt0, undefined);
+    var r1 = projectOntoFrenetPath(processedPath.frenetPath, pt1, undefined);
+    var refArcLength = processedPath.refParam * processedPath.totalLength;
+    return {
+        "startX" : min(r0.arcLength, r1.arcLength) - refArcLength,
+        "endX"   : max(r0.arcLength, r1.arcLength) - refArcLength
+    };
+}
+
+
 export function showRefFrames(context is Context, refPath is map, flipNormal is boolean, flipBinormal is boolean)
 {
 
