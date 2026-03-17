@@ -13,12 +13,12 @@ import(path : "d1cf8af3d05964b44c3ab4c0", version : "4b56d4b1ea249169ecaeb337");
 export import(path : "828cc4108f1c8683bc0e59cf", version : "3b549ecb97dfe5ff5a7a7bce");
 
 // IMPORT: refSurfUtils.fs
-import(path : "d41884a96244793beb462449", version : "eca1e03f5dff49ce70481921");
+import(path : "d41884a96244793beb462449", version : "c0ecf34ba435e00b59ecd92a");
 
 
 //Testbed for implementing better and more robust 'region' logic for other tools.
 
-export function regionExplorerEditingLogic(context is Context, id is Id,
+export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
@@ -97,7 +97,7 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
             {
                 ixEntry = {
                     "intersectionNum"  : i,
-                    "name"             : "Intersection " ~ (i + 1),
+                    "intersectionName" : length(ixEntry.intersectionName) == 0 ? "Intersection " ~ (i + 1) : ixEntry.intersectionName,
                     "regionAName"      : regA.name,
                     "regionBName"      : regB.name,
                     "join"             : false,
@@ -107,6 +107,7 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
                     "joinEndOffset"    : 0 * millimeter
                 };
             }
+            ixEntry.intersectionName = length(ixEntry.intersectionName) == 0 ? "Intersection " ~ (i + 1) : ixEntry.intersectionName;
             newIntersections = append(newIntersections, ixEntry);
         }
 
@@ -124,8 +125,8 @@ export function regionExplorerEditingLogic(context is Context, id is Id,
     return definition;
 }
 
-annotation { "Feature Type Name" : "Region explorer", "Feature Type Description" : "", "Editing Logic Function" : "regionExplorerEditingLogic" }
-export const regionExplorer = defineFeature(function(context is Context, id is Id, definition is map)
+annotation { "Feature Type Name" : "Variable surface offset", "Feature Type Description" : "", "Editing Logic Function" : "variableSurfaceOffsetEditingLogic" }
+export const variableSurfaceOffset = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
         annotation { "Name" : "Side surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
@@ -218,14 +219,11 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
 
         }
 
-        annotation { "Name" : "Intersections", "Item name" : "Intersection",
-                     "Item label template" : "#name",
-                     "Collapsed By Default" : true,
-                     "UIHint" : UIHint.PREVENT_ARRAY_REORDER && UIHint.COLLAPSE_ARRAY_ITEMS }
+        annotation { "Name" : "Intersections", "Item name" : "Intersection", "Item label template" : "#intersectionName", "Collapsed By Default" : true, "UIHint" : UIHint.PREVENT_ARRAY_REORDER && UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.intersections is array;
         for (var ix in definition.intersections)
         {
-            annotation { "Name" : "Intersection number", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Intersection number", "UIHint" : UIHint.ALWAYS_HIDDEN}
             isInteger(ix.intersectionNum, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
 
             annotation { "Name" : "Name" }
@@ -329,6 +327,10 @@ export const regionExplorer = defineFeature(function(context is Context, id is I
     }
     {
         var refGeo = processSideSurf(context, id + "getRefWires", definition.sideSurfBody, definition.refWire);
+        
+        opDeleteBodies(context, id + "deleteDummyTop", {
+                "entities" : refGeo.refTopSurf
+        });
         
         var refPath = processPath(context, id, {'userSelection' : definition.refWire, "flipDirection" : definition.flipDirection, "referencePoint" : definition.refPoint, 'numPoints' : max(20, definition.samplingDensity)});
         
