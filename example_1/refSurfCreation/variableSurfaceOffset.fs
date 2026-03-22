@@ -34,7 +34,8 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
         {
             var reg = definition.regions[r];
             // Initialize fields added after initial feature creation to prevent precondition failures.
-            if (reg.singleCurve == undefined) { reg = mergeMaps(reg, { "singleCurve" : false }); }
+            if (reg.singleCurve  == undefined) { reg = mergeMaps(reg, { "singleCurve"  : false }); }
+            if (reg.debugRegion  == undefined) { reg = mergeMaps(reg, { "debugRegion"  : false }); }
             if (reg.extentDef == RegionExtentDef.ALONG_REF && reg.startX != undefined && reg.endX != undefined)
             {
                 sortable = append(sortable, reg);
@@ -235,25 +236,22 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
             annotation { "Name" : "Single curve", "Default" : false }
             region.singleCurve is boolean;
 
-            if (definition.debug)
+            annotation { "Name" : "Debug this region", "Default" : false }
+            region.debugRegion is boolean;
+
+            if (region.debugRegion)
             {
-                annotation { "Name" : "Debug this region", "Default" : false }
-                region.debugRegion is boolean;
+                annotation { "Name" : "Log normals/binormals", "Default" : false }
+                region.logNormals is boolean;
 
-                if (region.debugRegion)
-                {
-                    annotation { "Name" : "Log normals/binormals", "Default" : false }
-                    region.logNormals is boolean;
+                annotation { "Name" : "Log spline metadata", "Default" : false }
+                region.logSplineMeta is boolean;
 
-                    annotation { "Name" : "Log spline metadata", "Default" : false }
-                    region.logSplineMeta is boolean;
+                annotation { "Name" : "Show offset samples", "Default" : false }
+                region.showRegionSamples is boolean;
 
-                    annotation { "Name" : "Show offset samples", "Default" : false }
-                    region.showRegionSamples is boolean;
-
-                    annotation { "Name" : "Show binormal arrows", "Default" : false }
-                    region.showRegionBinormals is boolean;
-                }
+                annotation { "Name" : "Show binormal arrows", "Default" : false }
+                region.showRegionBinormals is boolean;
             }
 
         }
@@ -495,7 +493,7 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                 "singleCurve"      : reg.singleCurve == true
             };
 
-            var isRegionDebug = definition.debug && reg.debugRegion == true;
+            var isRegionDebug = reg.debugRegion == true;
             var debugDef = {
                 "logNormals"    : isRegionDebug && reg.logNormals    == true,
                 "logSplineMeta" : isRegionDebug && reg.logSplineMeta == true
