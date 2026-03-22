@@ -484,21 +484,18 @@ export function computeOffsetMag(offsetDef is map, t is number) returns ValueWit
 }
 
 /**
- * Evaluates a stable outward face normal and binormal at a point on a face edge.
- * faceRefNormal is used to flip the per-point normal for consistency.
- * faceCenterPt is used to determine the outward direction of the binormal.
+ * Evaluates the outward face normal and binormal at a point on a face edge.
+ * faceNormalRaw is the topological normal from evFaceTangentPlane — trusted directly,
+ * no reference-normal alignment (which breaks on concave faces).
+ * faceCenterPt (on-surface) determines which side of the edge is interior.
  */
 function edgeOffsetFrame(faceNormalRaw is Vector, faceRefNormal is Vector, edgeTangent is Vector, edgePt is Vector, faceCenterPt is Vector) returns map
 {
-    var faceNormal = faceNormalRaw;
-    if (dot(faceNormal, faceRefNormal) < 0)
-        faceNormal = -1 * faceNormal;
-
-    var binormal = cross(faceNormal, edgeTangent);
+    var binormal = cross(faceNormalRaw, edgeTangent);
     if (dot(binormal, (faceCenterPt - edgePt) / meter) > 0)
         binormal = -1 * binormal;
 
-    return { "faceNormal" : faceNormal, "binormal" : binormal };
+    return { "faceNormal" : faceNormalRaw, "binormal" : binormal };
 }
 
 /**
