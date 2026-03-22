@@ -1307,14 +1307,6 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) });
     }
 
-    if (size(loftBodyQueries) > 1)
-    {
-        opBoolean(context, id + "unionLoftPatches", {
-            "operationType" : BooleanOperationType.UNION,
-            "tools"         : qUnion(loftBodyQueries)
-        });
-    }
-
     if (size(loftBodyQueries) > 0)
     {
         setProperty(context, {
