@@ -1229,82 +1229,160 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         edgeInfo[ei]   = edCopy;
     }
 
-    // --- Phase 3: G1/G2 junction detection ---
-    var constraints = detectContinuityConstraints(context, edgeInfo);
-
-    // --- Phase 4: fit BSplines, loft, collect patches ---
+    // --- Phase 3+4: fit BSplines, loft, collect patches ---
     var loftBodyQueries = [];
-    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+
+    if (offsetDef.singleCurve == true)
     {
-        if (edgeInfo[ei] == undefined) { continue; }
-        var ed = edgeInfo[ei];
-        var dc = constraints[ei];
-
-        var derivScale = evLength(context, { "entities" : ed.edge }) / 3;
-
-        var topPts    = ed.topPts;
-        var bottomPts = ed.bottomPts;
-        topPts[0]                      = ed.ctStart;
-        topPts[size(topPts) - 1]       = ed.ctEnd;
-        bottomPts[0]                   = ed.cbStart;
-        bottomPts[size(bottomPts) - 1] = ed.cbEnd;
-
-        var topTargetDef = { "positions" : topPts };
-        var botTargetDef = { "positions" : bottomPts };
-        if (dc.startDeriv   != undefined)
+        // Single-curve mode: chain all connected edges, concatenate top/bottom points,
+        // fit one spline pair per chain, produce one loft surface per chain.
+        var chains = chainEdges(edgeInfo);
+        for (var ci = 0; ci < size(chains); ci += 1)
         {
-            topTargetDef = mergeMaps(topTargetDef, { "startDerivative" : dc.startDeriv * derivScale });
-            botTargetDef = mergeMaps(botTargetDef, { "startDerivative" : dc.startDeriv * derivScale });
+            var chain    = chains[ci];
+            var chainTop = [];
+            var chainBot = [];
+            for (var li = 0; li < size(chain); li += 1)
+            {
+                var link = chain[li];
+                if (edgeInfo[link.edgeIndex] == undefined) { continue; }
+                var ed = edgeInfo[link.edgeIndex];
+
+                // Apply corner snapping to this edge's raw point arrays.
+                var topPts    = ed.topPts;
+                var bottomPts = ed.bottomPts;
+                topPts[0]                      = ed.ctStart;
+                topPts[size(topPts) - 1]       = ed.ctEnd;
+                bottomPts[0]                   = ed.cbStart;
+                bottomPts[size(bottomPts) - 1] = ed.cbEnd;
+
+                if (link.reversed)
+                {
+                    // Traverse p1->p0: read arrays in reverse.
+                    // For li>0 the junction point is topPts[size-1]; skip it.
+                    var startPi = (li == 0) ? size(topPts) - 1 : size(topPts) - 2;
+                    for (var pi = startPi; pi >= 0; pi -= 1)
+                    {
+                        chainTop = append(chainTop, topPts[pi]);
+                        chainBot = append(chainBot, bottomPts[pi]);
+                    }
+                }
+                else
+                {
+                    // Traverse p0->p1: read arrays forward.
+                    // For li>0 the junction point is topPts[0]; skip it.
+                    var startIdx = (li == 0) ? 0 : 1;
+                    for (var pi = startIdx; pi < size(topPts); pi += 1)
+                    {
+                        chainTop = append(chainTop, topPts[pi]);
+                        chainBot = append(chainBot, bottomPts[pi]);
+                    }
+                }
+            }
+            if (size(chainTop) < 2) { continue; }
+
+            var topSpline = approximateSpline(context, {
+                "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
+                "maxControlPoints" : maxCP, "targets" : [approximationTarget({ "positions" : chainTop })]
+            })[0];
+            var bottomSpline = approximateSpline(context, {
+                "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
+                "maxControlPoints" : maxCP, "targets" : [approximationTarget({ "positions" : chainBot })]
+            })[0];
+
+            var topCurveId    = id + ("loftTopChain"    ~ ci);
+            var bottomCurveId = id + ("loftBottomChain" ~ ci);
+            opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
+            opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
+
+            var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
+            var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+
+            var loftId = id + ("loftChain" ~ ci);
+            opLoft(context, loftId, {
+                "bodyType"          : ToolBodyType.SURFACE,
+                "profileSubqueries" : [topBody, bottomBody]
+            });
+            loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+            opDeleteBodies(context, id + ("deleteLoftChainCurves" ~ ci), { "entities" : qUnion([topBody, bottomBody]) });
         }
-        if (dc.endDeriv     != undefined)
+    }
+    else
+    {
+        // Per-edge mode: one loft patch per edge with G1/G2 junction constraints.
+        var constraints = detectContinuityConstraints(context, edgeInfo);
+        for (var ei = 0; ei < size(edgeInfo); ei += 1)
         {
-            topTargetDef = mergeMaps(topTargetDef, { "endDerivative" : dc.endDeriv * derivScale });
-            botTargetDef = mergeMaps(botTargetDef, { "endDerivative" : dc.endDeriv * derivScale });
+            if (edgeInfo[ei] == undefined) { continue; }
+            var ed = edgeInfo[ei];
+            var dc = constraints[ei];
+
+            var derivScale = evLength(context, { "entities" : ed.edge }) / 3;
+
+            var topPts    = ed.topPts;
+            var bottomPts = ed.bottomPts;
+            topPts[0]                      = ed.ctStart;
+            topPts[size(topPts) - 1]       = ed.ctEnd;
+            bottomPts[0]                   = ed.cbStart;
+            bottomPts[size(bottomPts) - 1] = ed.cbEnd;
+
+            var topTargetDef = { "positions" : topPts };
+            var botTargetDef = { "positions" : bottomPts };
+            if (dc.startDeriv   != undefined)
+            {
+                topTargetDef = mergeMaps(topTargetDef, { "startDerivative" : dc.startDeriv * derivScale });
+                botTargetDef = mergeMaps(botTargetDef, { "startDerivative" : dc.startDeriv * derivScale });
+            }
+            if (dc.endDeriv     != undefined)
+            {
+                topTargetDef = mergeMaps(topTargetDef, { "endDerivative" : dc.endDeriv * derivScale });
+                botTargetDef = mergeMaps(botTargetDef, { "endDerivative" : dc.endDeriv * derivScale });
+            }
+            if (dc.startCurvVec != undefined)
+            {
+                topTargetDef = mergeMaps(topTargetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale });
+                botTargetDef = mergeMaps(botTargetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale });
+            }
+            if (dc.endCurvVec   != undefined)
+            {
+                topTargetDef = mergeMaps(topTargetDef, { "endSecondDerivative" : dc.endCurvVec * derivScale * derivScale });
+                botTargetDef = mergeMaps(botTargetDef, { "endSecondDerivative" : dc.endCurvVec * derivScale * derivScale });
+            }
+
+            var topSpline = approximateSpline(context, {
+                "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
+                "maxControlPoints" : maxCP, "targets" : [approximationTarget(topTargetDef)]
+            })[0];
+            var topCPs               = topSpline.controlPoints;
+            topCPs[0]                = ed.ctStart;
+            topCPs[size(topCPs) - 1] = ed.ctEnd;
+            topSpline                = mergeMaps(topSpline, { "controlPoints" : topCPs });
+
+            var bottomSpline = approximateSpline(context, {
+                "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
+                "maxControlPoints" : maxCP, "targets" : [approximationTarget(botTargetDef)]
+            })[0];
+            var botCPs                = bottomSpline.controlPoints;
+            botCPs[0]                 = ed.cbStart;
+            botCPs[size(botCPs) - 1]  = ed.cbEnd;
+            bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
+
+            var topCurveId    = id + ("loftTopCurve"    ~ ei);
+            var bottomCurveId = id + ("loftBottomCurve" ~ ei);
+            opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
+            opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
+
+            var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
+            var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+
+            var loftId = id + ("loftPatch" ~ ei);
+            opLoft(context, loftId, {
+                "bodyType"          : ToolBodyType.SURFACE,
+                "profileSubqueries" : [topBody, bottomBody]
+            });
+            loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) });
         }
-        if (dc.startCurvVec != undefined)
-        {
-            topTargetDef = mergeMaps(topTargetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale });
-            botTargetDef = mergeMaps(botTargetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale });
-        }
-        if (dc.endCurvVec   != undefined)
-        {
-            topTargetDef = mergeMaps(topTargetDef, { "endSecondDerivative" : dc.endCurvVec * derivScale * derivScale });
-            botTargetDef = mergeMaps(botTargetDef, { "endSecondDerivative" : dc.endCurvVec * derivScale * derivScale });
-        }
-
-        var topSpline = approximateSpline(context, {
-            "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
-            "maxControlPoints" : maxCP, "targets" : [approximationTarget(topTargetDef)]
-        })[0];
-        var topCPs               = topSpline.controlPoints;
-        topCPs[0]                = ed.ctStart;
-        topCPs[size(topCPs) - 1] = ed.ctEnd;
-        topSpline                = mergeMaps(topSpline, { "controlPoints" : topCPs });
-
-        var bottomSpline = approximateSpline(context, {
-            "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
-            "maxControlPoints" : maxCP, "targets" : [approximationTarget(botTargetDef)]
-        })[0];
-        var botCPs                = bottomSpline.controlPoints;
-        botCPs[0]                 = ed.cbStart;
-        botCPs[size(botCPs) - 1]  = ed.cbEnd;
-        bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
-
-        var topCurveId    = id + ("loftTopCurve"    ~ ei);
-        var bottomCurveId = id + ("loftBottomCurve" ~ ei);
-        opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
-        opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
-
-        var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
-        var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
-
-        var loftId = id + ("loftPatch" ~ ei);
-        opLoft(context, loftId, {
-            "bodyType"          : ToolBodyType.SURFACE,
-            "profileSubqueries" : [topBody, bottomBody]
-        });
-        loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
-        opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) });
     }
 
     if (size(loftBodyQueries) > 0)
