@@ -3,6 +3,7 @@ import(path : "onshape/std/common.fs", version : "2909.0");
 import(path : "onshape/std/extend.fs", version : "2909.0");
 import(path : "onshape/std/bridgingCurve.fs", version : "2909.0");
 import(path : "onshape/std/loft.fs", version : "2909.0");
+import(path : "onshape/std/offsetcurvetype.gen.fs", version : "2909.0");
 
 //import refSurfCore
 import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
@@ -714,6 +715,43 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number) returns Query
 {
+    // Constant offset: use the native kernel op for an exact geodesic result —
+    // no sampling or approximation needed.
+    if (offsetDef.offsetType == RegionOffsetType.CONSTANT)
+    {
+        var dist = offsetDef.offset;
+        var flip = dist < 0 * millimeter;
+        if (flip) { dist = -dist; }
+        if (dist < TOLERANCE.zeroLength * meter) { return qNothing(); }
+
+        try
+        {
+            @opOffsetCurveOnFace(context, id + "constOff", {
+                "edges"             : peripheryEdges,
+                "distance"          : dist,
+                "oppositeDirection" : flip,
+                "offsetType"        : OffsetCurveType.GEODESIC,
+                "targets"           : qOwnedByBody(sheetBody, EntityType.FACE),
+                "extend"            : false,
+                "imprint"           : false,
+                "roundedCorners"    : false
+            });
+        }
+        catch { return qNothing(); }
+
+        var wireBodies = evaluateQuery(context, qCreatedBy(id + "constOff", EntityType.BODY));
+        for (var wi = 0; wi < size(wireBodies); wi += 1)
+        {
+            setProperty(context, {
+                "entities"     : wireBodies[wi],
+                "propertyType" : PropertyType.NAME,
+                "value"        : offsetDef.regionName ~ " offset wire"
+            });
+        }
+        return size(wireBodies) > 0 ? qUnion(wireBodies) : qNothing();
+    }
+
+    // Variable offset types (LINEAR, QUADRATIC, SMOOTH): sample → fit spline → extract wire.
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
     if (size(edgeArray) == 0) { return; }
@@ -1021,6 +1059,33 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
 // =====================================================================
 // INTERSECTION JOINING
 // =====================================================================
+
+// Returns all ONE_SIDED edges of bodies whose both endpoints lie within
+// 1 mm of pl.  Uses endpoint sampling rather than qCoincidesWithPlane,
+// which requires the entire edge to be exactly on the plane and fails
+// for curved loft cap edges.
+function edgesNearPlane(context is Context, bodies is Query, pl is Plane) returns array
+{
+    const TOL = 1e-3 * meter;
+    var candidates = evaluateQuery(context, qEdgeTopologyFilter(
+            qOwnedByBody(bodies, EntityType.EDGE), EdgeTopology.ONE_SIDED));
+    var result = [];
+    for (var e in candidates)
+    {
+        var pt0 = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 0.0, "arcLengthParameterization" : true
+        }).origin;
+        var pt1 = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 1.0, "arcLengthParameterization" : true
+        }).origin;
+        if (abs(dot(pt0 - pl.origin, pl.normal)) < TOL &&
+            abs(dot(pt1 - pl.origin, pl.normal)) < TOL)
+        {
+            result = append(result, e);
+        }
+    }
+    return result;
+}
 
 /**
  * Post-processes joined intersections: trims loft surfaces and offset wires
