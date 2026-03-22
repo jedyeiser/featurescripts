@@ -738,7 +738,7 @@ function detectG1Junctions(edgeInfo is array) returns array
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    debug is boolean) returns Query
+    debugDef is map) returns Query
 {
     // Constant offset: use the native kernel op for an exact geodesic result —
     // no sampling or approximation needed.
@@ -796,7 +796,10 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         var rfUV  = evDistance(context, { "side0" : regionFaces[0], "side1" : rfMid }).sides[0].parameter;
         regionRefNormal = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : rfUV }).normal;
     }
-    if (debug) { println("buildVariableOffsetCurves: regionRefNormal = " ~ regionRefNormal); }
+    if (debugDef.logNormals || debugDef.logSplineMeta)
+    {
+        println("buildVariableOffsetCurves [" ~ offsetDef.regionName ~ "]: regionRefNormal=" ~ regionRefNormal);
+    }
 
     var edgeInfo = [];
     for (var ei = 0; ei < size(edgeArray); ei += 1)
@@ -809,11 +812,35 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         var tl1 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1, "arcLengthParameterization" : false });
         var ref = faceReferenceFrame(context, face);
 
+        // Log source edge BSpline metadata
+        if (debugDef.logSplineMeta)
+        {
+            var curveDef = evCurveDefinition(context, { "edge" : edge });
+            var edgeLen  = evLength(context, { "entities" : edge });
+            println("  src edge " ~ ei ~ ": type=" ~ curveDef.curveType ~ " len=" ~ edgeLen / meter ~ "m");
+            if (curveDef.curveType == CurveType.CIRCLE)
+            {
+                println("    circle radius=" ~ curveDef.radius / meter ~ "m");
+            }
+            else
+            {
+                try
+                {
+                    var bs = evApproximateBSplineCurve(context, { "edge" : edge });
+                    println("    bspline deg=" ~ bs.degree ~ " CPs=" ~ size(bs.controlPoints) ~ " knots=" ~ size(bs.knots));
+                }
+                catch { println("    (evApproximateBSplineCurve unavailable for this edge type)"); }
+            }
+        }
+
         var tangentLines = evEdgeTangentLines(context, {
             "edge" : edge, "parameters" : uniformParams(numPts), "arcLengthParameterization" : true
         });
 
-        if (debug) { println("  edge " ~ ei ~ ": faceRefNormal=" ~ ref.faceRefNormal ~ " dot(faceRef,regionRef)=" ~ dot(ref.faceRefNormal, regionRefNormal)); }
+        if (debugDef.logNormals)
+        {
+            println("  edge " ~ ei ~ ": faceRefNormal=" ~ ref.faceRefNormal ~ " dot(faceRef,regionRef)=" ~ dot(ref.faceRefNormal, regionRefNormal));
+        }
 
         var offPts = [];
         for (var i = 0; i < size(tangentLines); i += 1)
@@ -823,10 +850,10 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             var ptUV     = evDistance(context, { "side0" : face, "side1" : edgePt }).sides[0].parameter;
             var ptNormal = evFaceTangentPlane(context, { "face" : face, "parameter" : ptUV }).normal;
             var fr       = edgeOffsetFrame(ptNormal, regionRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
-            if (debug)
+            if (debugDef.logNormals)
             {
                 var dotVal = dot(ptNormal, regionRefNormal);
-                println("    samp " ~ i ~ " t=" ~ t ~ " dot(ptNormal,regionRef)=" ~ dotVal ~ " mag=" ~ computeOffsetMag(offsetDef, t) / meter);
+                println("    samp " ~ i ~ " t=" ~ t ~ " dot(ptNormal,regionRef)=" ~ dotVal ~ " mag=" ~ computeOffsetMag(offsetDef, t) / meter ~ "m");
                 if (dotVal < 0) { println("    *** NORMAL FLIP at edge " ~ ei ~ " sample " ~ i); }
                 println("    binormal=" ~ fr.binormal);
             }
@@ -862,6 +889,13 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
                 "tolerance" : tolerance, "maxControlPoints" : maxCP,
                 "targets" : [approximationTarget(targetDef)]
             })[0];
+            if (debugDef.logSplineMeta)
+            {
+                println("  offset spline edge " ~ ei ~ ": deg=" ~ splineData.degree ~
+                    " CPs=" ~ size(splineData.controlPoints) ~ " knots=" ~ size(splineData.knots));
+                if (dc.startDeriv != undefined) { println("    startDeriv constraint applied"); }
+                if (dc.endDeriv   != undefined) { println("    endDeriv constraint applied"); }
+            }
             opCreateBSplineCurve(context, id + ("offCurve" ~ ei), { "bSplineCurve" : splineData });
             var curveBody = qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY);
             opExtractWires(context, id + ("offWire" ~ ei), { "edges" : qOwnedByBody(curveBody, EntityType.EDGE) });
@@ -900,7 +934,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
     wallHeight is ValueWithUnits, wallSecondDir is boolean, wallHeight2 is ValueWithUnits,
-    debug is boolean) returns Query
+    debugDef is map) returns Query
 {
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
@@ -920,7 +954,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         var rfUV  = evDistance(context, { "side0" : regionFaces[0], "side1" : rfMid }).sides[0].parameter;
         regionRefNormal = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : rfUV }).normal;
     }
-    if (debug) { println("buildLoftSurfaces: regionRefNormal = " ~ regionRefNormal); }
+    if (debugDef.logNormals || debugDef.logSplineMeta)
+    {
+        println("buildLoftSurfaces [" ~ offsetDef.regionName ~ "]: regionRefNormal=" ~ regionRefNormal);
+    }
 
     // --- Phase 1: per-edge data collection ---
     var edgeInfo = [];
@@ -933,6 +970,27 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         var ref = faceReferenceFrame(context, face);
         var tl0 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0, "arcLengthParameterization" : false });
         var tl1 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1, "arcLengthParameterization" : false });
+
+        // Log source edge BSpline metadata
+        if (debugDef.logSplineMeta)
+        {
+            var curveDef = evCurveDefinition(context, { "edge" : edge });
+            var edgeLen  = evLength(context, { "entities" : edge });
+            println("  src edge " ~ ei ~ ": type=" ~ curveDef.curveType ~ " len=" ~ edgeLen / meter ~ "m");
+            if (curveDef.curveType == CurveType.CIRCLE)
+            {
+                println("    circle radius=" ~ curveDef.radius / meter ~ "m");
+            }
+            else
+            {
+                try
+                {
+                    var bs = evApproximateBSplineCurve(context, { "edge" : edge });
+                    println("    bspline deg=" ~ bs.degree ~ " CPs=" ~ size(bs.controlPoints) ~ " knots=" ~ size(bs.knots));
+                }
+                catch { println("    (evApproximateBSplineCurve unavailable for this edge type)"); }
+            }
+        }
 
         var uv0 = evDistance(context, { "side0" : face, "side1" : tl0.origin }).sides[0].parameter;
         var fr0 = edgeOffsetFrame(evFaceTangentPlane(context, { "face" : face, "parameter" : uv0 }).normal, regionRefNormal, tl0.direction, tl0.origin, ref.faceCenterPt);
@@ -947,7 +1005,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             "edge" : edge, "parameters" : uniformParams(numPts), "arcLengthParameterization" : true
         });
 
-        if (debug) { println("  edge " ~ ei ~ ": dot(faceRef,regionRef)=" ~ dot(ref.faceRefNormal, regionRefNormal)); }
+        if (debugDef.logNormals)
+        {
+            println("  edge " ~ ei ~ ": faceRefNormal=" ~ ref.faceRefNormal ~ " dot(faceRef,regionRef)=" ~ dot(ref.faceRefNormal, regionRefNormal));
+        }
 
         var topPts    = [];
         var bottomPts = [];
@@ -958,7 +1019,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             var ptUV        = evDistance(context, { "side0" : face, "side1" : edgePt }).sides[0].parameter;
             var ptNormal    = evFaceTangentPlane(context, { "face" : face, "parameter" : ptUV }).normal;
             var fr          = edgeOffsetFrame(ptNormal, regionRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
-            if (debug)
+            if (debugDef.logNormals)
             {
                 var dotVal = dot(ptNormal, regionRefNormal);
                 if (dotVal < 0) { println("  *** NORMAL FLIP loft edge " ~ ei ~ " sample " ~ i); }

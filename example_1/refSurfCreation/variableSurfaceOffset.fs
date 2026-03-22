@@ -230,6 +230,26 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                 }
             }
 
+            if (definition.debug)
+            {
+                annotation { "Name" : "Debug this region", "Default" : false }
+                region.debugRegion is boolean;
+
+                if (region.debugRegion)
+                {
+                    annotation { "Name" : "Log normals/binormals", "Default" : false }
+                    region.logNormals is boolean;
+
+                    annotation { "Name" : "Log spline metadata", "Default" : false }
+                    region.logSplineMeta is boolean;
+
+                    annotation { "Name" : "Show offset samples", "Default" : false }
+                    region.showRegionSamples is boolean;
+
+                    annotation { "Name" : "Show binormal arrows", "Default" : false }
+                    region.showRegionBinormals is boolean;
+                }
+            }
 
         }
 
@@ -469,11 +489,17 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                 "regionName"       : reg.name
             };
 
+            var isRegionDebug = definition.debug && reg.debugRegion == true;
+            var debugDef = {
+                "logNormals"    : isRegionDebug && reg.logNormals    == true,
+                "logSplineMeta" : isRegionDebug && reg.logSplineMeta == true
+            };
+
             if (definition.returnOffsetWires)
             {
                 var wireBodyQ = buildVariableOffsetCurves(context, id + ("varOffset" ~ r), regionCopy, peripheryEdges, offsetDef,
                     definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP,
-                    definition.debug);
+                    debugDef);
                 processedRegions[r] = mergeMaps(processedRegions[r], { "wireBodyQuery" : wireBodyQ });
             }
 
@@ -484,10 +510,11 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                     definition.wallHeight,
                     definition.wallSecondDir,
                     definition.wallSecondDir ? definition.wallHeight2 : (0 * millimeter),
-                    definition.debug);
+                    debugDef);
                 processedRegions[r] = mergeMaps(processedRegions[r], { "loftBodyQuery" : loftBodyQ });
             }
 
+            // Global debug visualizations (all regions)
             if (definition.debug && (definition.showPointFrames || definition.showLoftPoints))
             {
                 var dbgHasLoft = definition.returnLoftSurface;
@@ -503,6 +530,20 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
             if (definition.debug && definition.showOffsetSamples)
             {
                 sampleEdgeOffsets(context, id + ("sampleOffsets" ~ r), regionCopy, peripheryEdges, offsetDef, definition.samplingDensity);
+            }
+
+            // Per-region debug visualizations
+            if (isRegionDebug && reg.showRegionSamples == true)
+            {
+                sampleEdgeOffsets(context, id + ("regDbgSamp" ~ r), regionCopy, peripheryEdges, offsetDef, definition.samplingDensity);
+            }
+
+            if (isRegionDebug && reg.showRegionBinormals == true)
+            {
+                debugOffsetPoints(context, id + ("regDbgBin" ~ r), regionCopy, peripheryEdges, mergeMaps(offsetDef, {
+                    "showPointFrames" : true,
+                    "showLoftPoints"  : false
+                }), definition.samplingDensity);
             }
 
             if (definition.debug && definition.showVertexFrames)
