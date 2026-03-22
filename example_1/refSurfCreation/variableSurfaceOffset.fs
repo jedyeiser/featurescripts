@@ -33,6 +33,8 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
         for (var r = 0; r < size(definition.regions); r += 1)
         {
             var reg = definition.regions[r];
+            // Initialize fields added after initial feature creation to prevent precondition failures.
+            if (reg.singleCurve == undefined) { reg = mergeMaps(reg, { "singleCurve" : false }); }
             if (reg.extentDef == RegionExtentDef.ALONG_REF && reg.startX != undefined && reg.endX != undefined)
             {
                 sortable = append(sortable, reg);
