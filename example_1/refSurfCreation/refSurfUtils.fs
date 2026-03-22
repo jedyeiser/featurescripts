@@ -749,20 +749,16 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         if (flip) { dist = -dist; }
         if (dist < TOLERANCE.zeroLength * meter) { return qNothing(); }
 
-        try
-        {
-            @opOffsetCurveOnFace(context, id + "constOff", {
-                "edges"             : peripheryEdges,
-                "distance"          : dist,
-                "oppositeDirection" : flip,
-                "offsetType"        : OffsetCurveType.GEODESIC,
-                "targets"           : qOwnedByBody(sheetBody, EntityType.FACE),
-                "extend"            : false,
-                "imprint"           : false,
-                "roundedCorners"    : false
-            });
-        }
-        catch { return qNothing(); }
+        @opOffsetCurveOnFace(context, id + "constOff", {
+            "edges"             : peripheryEdges,
+            "distance"          : dist,
+            "oppositeDirection" : flip,
+            "offsetType"        : OffsetCurveType.GEODESIC,
+            "targets"           : qOwnedByBody(sheetBody, EntityType.FACE),
+            "extend"            : false,
+            "imprint"           : false,
+            "roundedCorners"    : false
+        });
 
         var wireBodies = evaluateQuery(context, qCreatedBy(id + "constOff", EntityType.BODY));
         for (var wi = 0; wi < size(wireBodies); wi += 1)
@@ -882,27 +878,23 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         if (dc.startDeriv != undefined) { targetDef = mergeMaps(targetDef, { "startDerivative" : dc.startDeriv * derivScale }); }
         if (dc.endDeriv   != undefined) { targetDef = mergeMaps(targetDef, { "endDerivative"   : dc.endDeriv   * derivScale }); }
 
-        try
+        var splineData = approximateSpline(context, {
+            "isPeriodic" : false, "degree" : splineDegree,
+            "tolerance" : tolerance, "maxControlPoints" : maxCP,
+            "targets" : [approximationTarget(targetDef)]
+        })[0];
+        if (debugDef.logSplineMeta)
         {
-            var splineData = approximateSpline(context, {
-                "isPeriodic" : false, "degree" : splineDegree,
-                "tolerance" : tolerance, "maxControlPoints" : maxCP,
-                "targets" : [approximationTarget(targetDef)]
-            })[0];
-            if (debugDef.logSplineMeta)
-            {
-                println("  offset spline edge " ~ ei ~ ": deg=" ~ splineData.degree ~
-                    " CPs=" ~ size(splineData.controlPoints) ~ " knots=" ~ size(splineData.knots));
-                if (dc.startDeriv != undefined) { println("    startDeriv constraint applied"); }
-                if (dc.endDeriv   != undefined) { println("    endDeriv constraint applied"); }
-            }
-            opCreateBSplineCurve(context, id + ("offCurve" ~ ei), { "bSplineCurve" : splineData });
-            var curveBody = qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY);
-            opExtractWires(context, id + ("offWire" ~ ei), { "edges" : qOwnedByBody(curveBody, EntityType.EDGE) });
-            opDeleteBodies(context, id + ("deleteOffCurve" ~ ei), { "entities" : curveBody });
-            wireBodies = append(wireBodies, qCreatedBy(id + ("offWire" ~ ei), EntityType.BODY));
+            println("  offset spline edge " ~ ei ~ ": deg=" ~ splineData.degree ~
+                " CPs=" ~ size(splineData.controlPoints) ~ " knots=" ~ size(splineData.knots));
+            if (dc.startDeriv != undefined) { println("    startDeriv constraint applied"); }
+            if (dc.endDeriv   != undefined) { println("    endDeriv constraint applied"); }
         }
-        catch { }
+        opCreateBSplineCurve(context, id + ("offCurve" ~ ei), { "bSplineCurve" : splineData });
+        var curveBody = qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY);
+        opExtractWires(context, id + ("offWire" ~ ei), { "edges" : qOwnedByBody(curveBody, EntityType.EDGE) });
+        opDeleteBodies(context, id + ("deleteOffCurve" ~ ei), { "entities" : curveBody });
+        wireBodies = append(wireBodies, qCreatedBy(id + ("offWire" ~ ei), EntityType.BODY));
     }
 
     for (var wi = 0; wi < size(wireBodies); wi += 1)
@@ -1395,8 +1387,8 @@ function surfaceLofter(context is Context, id is Id,
         "bodyType"               : ExtendedToolBodyType.SURFACE,
         "surfaceOperationType"   : NewSurfaceOperationType.NEW,
         "wireProfilesArray"      : [
-            { "wireProfileEntities" : edgeA },
-            { "wireProfileEntities" : edgeB }
+            { "wireProfileEntities" : qUnion([edgeA]) },
+            { "wireProfileEntities" : qUnion([edgeB]) }
         ],
         "startCondition"         : (rAContinuity == IntersectionContinuityType.G1) ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.DEFAULT,
         "endCondition"           : (rBContinuity == IntersectionContinuityType.G1) ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.DEFAULT,
@@ -1417,10 +1409,7 @@ function surfaceLofter(context is Context, id is Id,
         loftDef = mergeMaps(loftDef, { "adjacentFacesEnd" : faceB, "endMagnitude" : 1.0 });
     }
 
-    try
-    {
-        loft(context, id, loftDef);
-    }
+    loft(context, id, loftDef);
 }
 
 
