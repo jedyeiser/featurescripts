@@ -502,18 +502,18 @@ function edgeOffsetFrame(faceNormalRaw is Vector, faceRefNormal is Vector, edgeT
 }
 
 /**
- * Returns { faceRefNormal, faceCenterPt, faceCenterUV } for a face.
- * faceRefNormal is Z-up consistent (flipped if Z < 0).
+ * Returns { faceRefNormal, faceCenterPt } for a face.
+ * faceCenterPt is the on-surface point closest to the bounding box midpoint,
+ * guaranteed to lie on the face regardless of concavity.
+ * faceRefNormal is the topological face normal at that point — no Z-up heuristic.
  */
 function faceReferenceFrame(context is Context, face is Query) returns map
 {
     var faceBB        = evBox3d(context, { "topology" : face, "tight" : true });
-    var faceCenterPt  = (faceBB.minCorner + faceBB.maxCorner) / 2;
-    var faceCenterUV  = evDistance(context, { "side0" : face, "side1" : faceCenterPt }).sides[0].parameter;
-    var faceRefNormal = evFaceTangentPlane(context, { "face" : face, "parameter" : faceCenterUV }).normal;
-    if (faceRefNormal[2] < 0)
-        faceRefNormal = -1 * faceRefNormal;
-    return { "faceRefNormal" : faceRefNormal, "faceCenterPt" : faceCenterPt };
+    var bbMid         = (faceBB.minCorner + faceBB.maxCorner) / 2;
+    var faceCenterUV  = evDistance(context, { "side0" : face, "side1" : bbMid }).sides[0].parameter;
+    var faceTangentPl = evFaceTangentPlane(context, { "face" : face, "parameter" : faceCenterUV });
+    return { "faceRefNormal" : faceTangentPl.normal, "faceCenterPt" : faceTangentPl.origin };
 }
 
 /**
