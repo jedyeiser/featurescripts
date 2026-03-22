@@ -472,7 +472,8 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
             if (definition.returnOffsetWires)
             {
                 var wireBodyQ = buildVariableOffsetCurves(context, id + ("varOffset" ~ r), regionCopy, peripheryEdges, offsetDef,
-                    definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP);
+                    definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP,
+                    definition.debug);
                 processedRegions[r] = mergeMaps(processedRegions[r], { "wireBodyQuery" : wireBodyQ });
             }
 
@@ -482,7 +483,8 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                     definition.samplingDensity, definition.approxDegree, definition.approxTolerance, definition.approxMaxCP,
                     definition.wallHeight,
                     definition.wallSecondDir,
-                    definition.wallSecondDir ? definition.wallHeight2 : (0 * millimeter));
+                    definition.wallSecondDir ? definition.wallHeight2 : (0 * millimeter),
+                    definition.debug);
                 processedRegions[r] = mergeMaps(processedRegions[r], { "loftBodyQuery" : loftBodyQ });
             }
 

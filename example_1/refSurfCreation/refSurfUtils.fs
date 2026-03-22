@@ -485,17 +485,24 @@ export function computeOffsetMag(offsetDef is map, t is number) returns ValueWit
 
 /**
  * Evaluates the outward face normal and binormal at a point on a face edge.
- * faceNormalRaw is the topological normal from evFaceTangentPlane — trusted directly,
- * no reference-normal alignment (which breaks on concave faces).
+ * faceNormalRaw is the topological normal from evFaceTangentPlane.
+ * faceRefNormal is a single consistent region-level reference normal used to
+ * align faceNormalRaw across faces (different faces may have opposite winding).
  * faceCenterPt (on-surface) determines which side of the edge is interior.
  */
 function edgeOffsetFrame(faceNormalRaw is Vector, faceRefNormal is Vector, edgeTangent is Vector, edgePt is Vector, faceCenterPt is Vector) returns map
 {
-    var binormal = cross(faceNormalRaw, edgeTangent);
+    var faceNormal = faceNormalRaw;
+    if (dot(faceNormal, faceRefNormal) < 0)
+    {
+        faceNormal = -1 * faceNormal;
+    }
+    var binormal = cross(faceNormal, edgeTangent);
     if (dot(binormal, (faceCenterPt - edgePt) / meter) > 0)
+    {
         binormal = -1 * binormal;
-
-    return { "faceNormal" : faceNormalRaw, "binormal" : binormal };
+    }
+    return { "faceNormal" : faceNormal, "binormal" : binormal };
 }
 
 /**
@@ -567,6 +574,16 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
     var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
     var regionAxisLen2 = dot(regionAxis, regionAxis);
 
+    var regionRefNormal = vector(0, 0, 1);
+    var regionFaces = evaluateQuery(context, qOwnedByBody(sheetBody, EntityType.FACE));
+    if (size(regionFaces) > 0)
+    {
+        var rfBB  = evBox3d(context, { "topology" : regionFaces[0], "tight" : true });
+        var rfMid = (rfBB.minCorner + rfBB.maxCorner) / 2;
+        var rfUV  = evDistance(context, { "side0" : regionFaces[0], "side1" : rfMid }).sides[0].parameter;
+        regionRefNormal = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : rfUV }).normal;
+    }
+
     for (var ei = 0; ei < size(edgeArray); ei += 1)
     {
         var edge = edgeArray[ei];
@@ -584,7 +601,7 @@ export function sampleEdgeOffsets(context is Context, id is Id, sheetBody is Que
             var t        = regionT(edgePt, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2);
             var ptUV     = evDistance(context, { "side0" : face, "side1" : edgePt }).sides[0].parameter;
             var ptNormal = evFaceTangentPlane(context, { "face" : face, "parameter" : ptUV }).normal;
-            var fr       = edgeOffsetFrame(ptNormal, ref.faceRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
+            var fr       = edgeOffsetFrame(ptNormal, regionRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
 
             var offsetPt = edgePt + computeOffsetMag(offsetDef, t) * fr.binormal;
             addDebugPoint(context, offsetPt, DebugColor.MAGENTA);
@@ -604,6 +621,16 @@ export function debugOffsetPoints(context is Context, id is Id, sheetBody is Que
     var edgeArray      = evaluateQuery(context, peripheryEdges);
     var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
     var regionAxisLen2 = dot(regionAxis, regionAxis);
+
+    var regionRefNormal = vector(0, 0, 1);
+    var regionFaces = evaluateQuery(context, qOwnedByBody(sheetBody, EntityType.FACE));
+    if (size(regionFaces) > 0)
+    {
+        var rfBB  = evBox3d(context, { "topology" : regionFaces[0], "tight" : true });
+        var rfMid = (rfBB.minCorner + rfBB.maxCorner) / 2;
+        var rfUV  = evDistance(context, { "side0" : regionFaces[0], "side1" : rfMid }).sides[0].parameter;
+        regionRefNormal = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : rfUV }).normal;
+    }
 
     for (var ei = 0; ei < size(edgeArray); ei += 1)
     {
@@ -627,7 +654,7 @@ export function debugOffsetPoints(context is Context, id is Id, sheetBody is Que
             var t           = regionT(edgePt, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2);
             var ptUV        = evDistance(context, { "side0" : face, "side1" : edgePt }).sides[0].parameter;
             var ptNormal    = evFaceTangentPlane(context, { "face" : face, "parameter" : ptUV }).normal;
-            var fr          = edgeOffsetFrame(ptNormal, ref.faceRefNormal, edgeTangent, edgePt, ref.faceCenterPt);
+            var fr          = edgeOffsetFrame(ptNormal, regionRefNormal, edgeTangent, edgePt, ref.faceCenterPt);
 
             var offsetPt = edgePt + computeOffsetMag(offsetDef, t) * fr.binormal;
 
@@ -710,7 +737,8 @@ function detectG1Junctions(edgeInfo is array) returns array
  */
 export function buildVariableOffsetCurves(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
-    splineDegree is number, tolerance is ValueWithUnits, maxCP is number) returns Query
+    splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
+    debug is boolean) returns Query
 {
     // Constant offset: use the native kernel op for an exact geodesic result —
     // no sampling or approximation needed.
@@ -748,13 +776,27 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         return size(wireBodies) > 0 ? qUnion(wireBodies) : qNothing();
     }
 
-    // Variable offset types (LINEAR, QUADRATIC, SMOOTH): sample → fit spline → extract wire.
+    // Variable offset types (LINEAR, QUADRATIC, SMOOTH): sample -> fit spline -> extract wire.
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
     if (size(edgeArray) == 0) { return; }
 
     var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
     var regionAxisLen2 = dot(regionAxis, regionAxis);
+
+    // Compute a single region-level reference normal from the first face of sheetBody.
+    // All per-edge face normals are aligned to this reference so that faces with opposite
+    // topological winding (concave swallowtail geometry) are treated consistently.
+    var regionRefNormal = vector(0, 0, 1);
+    var regionFaces = evaluateQuery(context, qOwnedByBody(sheetBody, EntityType.FACE));
+    if (size(regionFaces) > 0)
+    {
+        var rfBB  = evBox3d(context, { "topology" : regionFaces[0], "tight" : true });
+        var rfMid = (rfBB.minCorner + rfBB.maxCorner) / 2;
+        var rfUV  = evDistance(context, { "side0" : regionFaces[0], "side1" : rfMid }).sides[0].parameter;
+        regionRefNormal = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : rfUV }).normal;
+    }
+    if (debug) { println("buildVariableOffsetCurves: regionRefNormal = " ~ regionRefNormal); }
 
     var edgeInfo = [];
     for (var ei = 0; ei < size(edgeArray); ei += 1)
@@ -771,6 +813,8 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             "edge" : edge, "parameters" : uniformParams(numPts), "arcLengthParameterization" : true
         });
 
+        if (debug) { println("  edge " ~ ei ~ ": faceRefNormal=" ~ ref.faceRefNormal ~ " dot(faceRef,regionRef)=" ~ dot(ref.faceRefNormal, regionRefNormal)); }
+
         var offPts = [];
         for (var i = 0; i < size(tangentLines); i += 1)
         {
@@ -778,7 +822,14 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             var t        = regionT(edgePt, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2);
             var ptUV     = evDistance(context, { "side0" : face, "side1" : edgePt }).sides[0].parameter;
             var ptNormal = evFaceTangentPlane(context, { "face" : face, "parameter" : ptUV }).normal;
-            var fr       = edgeOffsetFrame(ptNormal, ref.faceRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
+            var fr       = edgeOffsetFrame(ptNormal, regionRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
+            if (debug)
+            {
+                var dotVal = dot(ptNormal, regionRefNormal);
+                println("    samp " ~ i ~ " t=" ~ t ~ " dot(ptNormal,regionRef)=" ~ dotVal ~ " mag=" ~ computeOffsetMag(offsetDef, t) / meter);
+                if (dotVal < 0) { println("    *** NORMAL FLIP at edge " ~ ei ~ " sample " ~ i); }
+                println("    binormal=" ~ fr.binormal);
+            }
             offPts = append(offPts, edgePt + computeOffsetMag(offsetDef, t) * fr.binormal);
         }
 
@@ -848,7 +899,8 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
 export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Query,
     peripheryEdges is Query, offsetDef is map, numPts is number,
     splineDegree is number, tolerance is ValueWithUnits, maxCP is number,
-    wallHeight is ValueWithUnits, wallSecondDir is boolean, wallHeight2 is ValueWithUnits) returns Query
+    wallHeight is ValueWithUnits, wallSecondDir is boolean, wallHeight2 is ValueWithUnits,
+    debug is boolean) returns Query
 {
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
@@ -857,6 +909,18 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
     var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
     var regionAxisLen2 = dot(regionAxis, regionAxis);
     const POS_TOL      = 1e-6 * meter;
+
+    // Compute a single region-level reference normal from the first face of sheetBody.
+    var regionRefNormal = vector(0, 0, 1);
+    var regionFaces = evaluateQuery(context, qOwnedByBody(sheetBody, EntityType.FACE));
+    if (size(regionFaces) > 0)
+    {
+        var rfBB  = evBox3d(context, { "topology" : regionFaces[0], "tight" : true });
+        var rfMid = (rfBB.minCorner + rfBB.maxCorner) / 2;
+        var rfUV  = evDistance(context, { "side0" : regionFaces[0], "side1" : rfMid }).sides[0].parameter;
+        regionRefNormal = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : rfUV }).normal;
+    }
+    if (debug) { println("buildLoftSurfaces: regionRefNormal = " ~ regionRefNormal); }
 
     // --- Phase 1: per-edge data collection ---
     var edgeInfo = [];
@@ -871,10 +935,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         var tl1 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1, "arcLengthParameterization" : false });
 
         var uv0 = evDistance(context, { "side0" : face, "side1" : tl0.origin }).sides[0].parameter;
-        var fr0 = edgeOffsetFrame(evFaceTangentPlane(context, { "face" : face, "parameter" : uv0 }).normal, ref.faceRefNormal, tl0.direction, tl0.origin, ref.faceCenterPt);
+        var fr0 = edgeOffsetFrame(evFaceTangentPlane(context, { "face" : face, "parameter" : uv0 }).normal, regionRefNormal, tl0.direction, tl0.origin, ref.faceCenterPt);
 
         var uv1 = evDistance(context, { "side0" : face, "side1" : tl1.origin }).sides[0].parameter;
-        var fr1 = edgeOffsetFrame(evFaceTangentPlane(context, { "face" : face, "parameter" : uv1 }).normal, ref.faceRefNormal, tl1.direction, tl1.origin, ref.faceCenterPt);
+        var fr1 = edgeOffsetFrame(evFaceTangentPlane(context, { "face" : face, "parameter" : uv1 }).normal, regionRefNormal, tl1.direction, tl1.origin, ref.faceCenterPt);
 
         var om0 = computeOffsetMag(offsetDef, regionT(tl0.origin, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2));
         var om1 = computeOffsetMag(offsetDef, regionT(tl1.origin, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2));
@@ -882,6 +946,8 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         var tangentLines = evEdgeTangentLines(context, {
             "edge" : edge, "parameters" : uniformParams(numPts), "arcLengthParameterization" : true
         });
+
+        if (debug) { println("  edge " ~ ei ~ ": dot(faceRef,regionRef)=" ~ dot(ref.faceRefNormal, regionRefNormal)); }
 
         var topPts    = [];
         var bottomPts = [];
@@ -891,7 +957,13 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             var t           = regionT(edgePt, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2);
             var ptUV        = evDistance(context, { "side0" : face, "side1" : edgePt }).sides[0].parameter;
             var ptNormal    = evFaceTangentPlane(context, { "face" : face, "parameter" : ptUV }).normal;
-            var fr          = edgeOffsetFrame(ptNormal, ref.faceRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
+            var fr          = edgeOffsetFrame(ptNormal, regionRefNormal, tangentLines[i].direction, edgePt, ref.faceCenterPt);
+            if (debug)
+            {
+                var dotVal = dot(ptNormal, regionRefNormal);
+                if (dotVal < 0) { println("  *** NORMAL FLIP loft edge " ~ ei ~ " sample " ~ i); }
+                println("    loft samp " ~ i ~ " t=" ~ t ~ " binormal=" ~ fr.binormal);
+            }
             var offsetPt    = edgePt + computeOffsetMag(offsetDef, t) * fr.binormal;
             topPts    = append(topPts,    offsetPt + wallHeight * fr.faceNormal);
             bottomPts = append(bottomPts, wallSecondDir ? offsetPt - wallHeight2 * fr.faceNormal : offsetPt);
