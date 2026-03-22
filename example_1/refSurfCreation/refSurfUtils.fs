@@ -663,19 +663,55 @@ export function debugOffsetPoints(context is Context, id is Id, sheetBody is Que
 // OFFSET CURVE BUILDING
 // =====================================================================
 
-/**
- * Detects G1 junctions between adjacent edges (turning angle < 0.5 deg).
- * Returns an array of { startDeriv, endDeriv } per entry in edgeInfo.
- * edgeInfo entries must have: p0, p1, tan0, tan1 fields (or be undefined).
- */
-function detectG1Junctions(edgeInfo is array) returns array
+// Estimates the curvature vector (kappa * normal = dT/ds) at an edge endpoint
+// via a forward finite difference on arc-length-parameterized tangents.
+// atStart=true: compute at parameter 0; atStart=false: compute at parameter 1.
+// Returns a vector with units 1/meter.
+function edgeCurvatureVec(context is Context, edge is Query, atStart is boolean) returns Vector
 {
-    const G1_COS  = cos(0.5 * degree);
-    const POS_TOL = 1e-6 * meter;
+    const DP = 0.02;
+    var T0;
+    var T1;
+    if (atStart)
+    {
+        T0 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.0, "arcLengthParameterization" : true }).direction;
+        T1 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : DP,  "arcLengthParameterization" : true }).direction;
+    }
+    else
+    {
+        T0 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1.0 - DP, "arcLengthParameterization" : true }).direction;
+        T1 = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1.0,      "arcLengthParameterization" : true }).direction;
+    }
+    var edgeLen = evLength(context, { "entities" : edge });
+    return (T1 - T0) / (DP * edgeLen);
+}
 
-    var derivConstraint = [];
+/**
+ * Detects G1 and G2 continuity junctions between adjacent edges.
+ * G1: turning angle < 0.5 deg at shared endpoint.
+ * G2: G1 + curvature vectors agree within G2_REL_TOL relative tolerance.
+ *
+ * Returns array (one entry per edgeInfo element):
+ *   { startDeriv, endDeriv, startCurvVec, endCurvVec }
+ * Defined fields indicate a junction of that type.
+ * startDeriv/endDeriv: tangent at junction (units: unitless direction).
+ * startCurvVec/endCurvVec: curvature vector at G2 junction (units: 1/meter).
+ * edgeInfo entries must have: p0, p1, tan0, tan1, edge fields (or be undefined).
+ */
+function detectContinuityConstraints(context is Context, edgeInfo is array) returns array
+{
+    const G1_COS     = cos(0.5 * degree);
+    const POS_TOL    = 1e-6 * meter;
+    const G2_REL_TOL = 0.20;
+
+    var constraints = [];
     for (var ei = 0; ei < size(edgeInfo); ei += 1)
-        derivConstraint = append(derivConstraint, { "startDeriv" : undefined, "endDeriv" : undefined });
+    {
+        constraints = append(constraints, {
+            "startDeriv"   : undefined, "endDeriv"   : undefined,
+            "startCurvVec" : undefined, "endCurvVec" : undefined
+        });
+    }
 
     for (var ei = 0; ei < size(edgeInfo); ei += 1)
     {
@@ -686,29 +722,168 @@ function detectG1Junctions(edgeInfo is array) returns array
             if (edgeInfo[ej] == undefined) { continue; }
             var eB = edgeInfo[ej];
 
+            // Config 1: eA.p1 -- eB.p0
             if (norm(eA.p1 - eB.p0) < POS_TOL && dot(-1 * eA.tan1, eB.tan0) < -G1_COS)
             {
-                var dcA = derivConstraint[ei]; dcA.endDeriv   = eA.tan1; derivConstraint[ei] = dcA;
-                var dcB = derivConstraint[ej]; dcB.startDeriv = eB.tan0; derivConstraint[ej] = dcB;
+                var cA = constraints[ei]; cA.endDeriv   = eA.tan1; constraints[ei] = cA;
+                var cB = constraints[ej]; cB.startDeriv = eB.tan0; constraints[ej] = cB;
+                var cvA    = edgeCurvatureVec(context, eA.edge, false);
+                var cvB    = edgeCurvatureVec(context, eB.edge, true);
+                var cvAMag = norm(cvA);
+                var cvBMag = norm(cvB);
+                var cvAvg  = cvAMag > cvBMag ? cvAMag : cvBMag;
+                if (cvAvg * meter > 1e-4 && norm(cvA - cvB) / cvAvg < G2_REL_TOL)
+                {
+                    cA = constraints[ei]; cA.endCurvVec   = cvA; constraints[ei] = cA;
+                    cB = constraints[ej]; cB.startCurvVec = cvB; constraints[ej] = cB;
+                }
             }
+            // Config 2: eA.p0 -- eB.p1
             else if (norm(eA.p0 - eB.p1) < POS_TOL && dot(eA.tan0, -1 * eB.tan1) < -G1_COS)
             {
-                var dcA = derivConstraint[ei]; dcA.startDeriv = eA.tan0; derivConstraint[ei] = dcA;
-                var dcB = derivConstraint[ej]; dcB.endDeriv   = eB.tan1; derivConstraint[ej] = dcB;
+                var cA = constraints[ei]; cA.startDeriv = eA.tan0; constraints[ei] = cA;
+                var cB = constraints[ej]; cB.endDeriv   = eB.tan1; constraints[ej] = cB;
+                var cvA    = edgeCurvatureVec(context, eA.edge, true);
+                var cvB    = edgeCurvatureVec(context, eB.edge, false);
+                var cvAMag = norm(cvA);
+                var cvBMag = norm(cvB);
+                var cvAvg  = cvAMag > cvBMag ? cvAMag : cvBMag;
+                if (cvAvg * meter > 1e-4 && norm(cvA - cvB) / cvAvg < G2_REL_TOL)
+                {
+                    cA = constraints[ei]; cA.startCurvVec = cvA; constraints[ei] = cA;
+                    cB = constraints[ej]; cB.endCurvVec   = cvB; constraints[ej] = cB;
+                }
             }
+            // Config 3: eA.p1 -- eB.p1
             else if (norm(eA.p1 - eB.p1) < POS_TOL && dot(-1 * eA.tan1, -1 * eB.tan1) < -G1_COS)
             {
-                var dcA = derivConstraint[ei]; dcA.endDeriv = eA.tan1; derivConstraint[ei] = dcA;
-                var dcB = derivConstraint[ej]; dcB.endDeriv = eB.tan1; derivConstraint[ej] = dcB;
+                var cA = constraints[ei]; cA.endDeriv = eA.tan1; constraints[ei] = cA;
+                var cB = constraints[ej]; cB.endDeriv = eB.tan1; constraints[ej] = cB;
+                var cvA    = edgeCurvatureVec(context, eA.edge, false);
+                var cvB    = edgeCurvatureVec(context, eB.edge, false);
+                var cvAMag = norm(cvA);
+                var cvBMag = norm(cvB);
+                var cvAvg  = cvAMag > cvBMag ? cvAMag : cvBMag;
+                if (cvAvg * meter > 1e-4 && norm(cvA - cvB) / cvAvg < G2_REL_TOL)
+                {
+                    cA = constraints[ei]; cA.endCurvVec = cvA; constraints[ei] = cA;
+                    cB = constraints[ej]; cB.endCurvVec = cvB; constraints[ej] = cB;
+                }
             }
+            // Config 4: eA.p0 -- eB.p0
             else if (norm(eA.p0 - eB.p0) < POS_TOL && dot(eA.tan0, eB.tan0) < -G1_COS)
             {
-                var dcA = derivConstraint[ei]; dcA.startDeriv = eA.tan0; derivConstraint[ei] = dcA;
-                var dcB = derivConstraint[ej]; dcB.startDeriv = eB.tan0; derivConstraint[ej] = dcB;
+                var cA = constraints[ei]; cA.startDeriv = eA.tan0; constraints[ei] = cA;
+                var cB = constraints[ej]; cB.startDeriv = eB.tan0; constraints[ej] = cB;
+                var cvA    = edgeCurvatureVec(context, eA.edge, true);
+                var cvB    = edgeCurvatureVec(context, eB.edge, true);
+                var cvAMag = norm(cvA);
+                var cvBMag = norm(cvB);
+                var cvAvg  = cvAMag > cvBMag ? cvAMag : cvBMag;
+                if (cvAvg * meter > 1e-4 && norm(cvA - cvB) / cvAvg < G2_REL_TOL)
+                {
+                    cA = constraints[ei]; cA.startCurvVec = cvA; constraints[ei] = cA;
+                    cB = constraints[ej]; cB.startCurvVec = cvB; constraints[ej] = cB;
+                }
             }
         }
     }
-    return derivConstraint;
+    return constraints;
+}
+
+// Groups edgeInfo entries into connected chains via endpoint matching.
+// Returns an array of chains; each chain is an array of { edgeIndex, reversed }.
+// reversed=true means traverse that edge p1->p0 in the chain.
+function chainEdges(edgeInfo is array) returns array
+{
+    const POS_TOL = 1e-6 * meter;
+    var n       = size(edgeInfo);
+    var inChain = [];
+    for (var i = 0; i < n; i += 1)
+    {
+        inChain = append(inChain, false);
+    }
+
+    var chains = [];
+
+    for (var si = 0; si < n; si += 1)
+    {
+        if (inChain[si] || edgeInfo[si] == undefined) { continue; }
+        inChain[si] = true;
+
+        // Forward chain: start with si (not reversed), extend from si.p1
+        var fwdChain = [{ "edgeIndex" : si, "reversed" : false }];
+        var endPt    = edgeInfo[si].p1;
+        var growing  = true;
+        while (growing)
+        {
+            growing = false;
+            for (var j = 0; j < n; j += 1)
+            {
+                if (inChain[j] || edgeInfo[j] == undefined) { continue; }
+                if (norm(edgeInfo[j].p0 - endPt) < POS_TOL)
+                {
+                    fwdChain   = append(fwdChain, { "edgeIndex" : j, "reversed" : false });
+                    inChain[j] = true;
+                    endPt      = edgeInfo[j].p1;
+                    growing    = true;
+                    break;
+                }
+                else if (norm(edgeInfo[j].p1 - endPt) < POS_TOL)
+                {
+                    fwdChain   = append(fwdChain, { "edgeIndex" : j, "reversed" : true });
+                    inChain[j] = true;
+                    endPt      = edgeInfo[j].p0;
+                    growing    = true;
+                    break;
+                }
+            }
+        }
+
+        // Backward chain: extend from si.p0
+        var bwdChain = [];
+        var startPt  = edgeInfo[si].p0;
+        var goBack   = true;
+        while (goBack)
+        {
+            goBack = false;
+            for (var j = 0; j < n; j += 1)
+            {
+                if (inChain[j] || edgeInfo[j] == undefined) { continue; }
+                if (norm(edgeInfo[j].p1 - startPt) < POS_TOL)
+                {
+                    bwdChain   = append(bwdChain, { "edgeIndex" : j, "reversed" : false });
+                    inChain[j] = true;
+                    startPt    = edgeInfo[j].p0;
+                    goBack     = true;
+                    break;
+                }
+                else if (norm(edgeInfo[j].p0 - startPt) < POS_TOL)
+                {
+                    bwdChain   = append(bwdChain, { "edgeIndex" : j, "reversed" : true });
+                    inChain[j] = true;
+                    startPt    = edgeInfo[j].p1;
+                    goBack     = true;
+                    break;
+                }
+            }
+        }
+
+        // Full chain: bwdChain in reverse order (traversal flags preserved) + fwdChain
+        var fullChain = [];
+        for (var bi = size(bwdChain) - 1; bi >= 0; bi -= 1)
+        {
+            fullChain = append(fullChain, bwdChain[bi]);
+        }
+        for (var fi = 0; fi < size(fwdChain); fi += 1)
+        {
+            fullChain = append(fullChain, fwdChain[fi]);
+        }
+
+        chains = append(chains, fullChain);
+    }
+
+    return chains;
 }
 
 /**
@@ -756,14 +931,14 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
             {
                 println("    circle radius=" ~ curveDef.radius / meter ~ "m");
             }
+            else if (curveDef.curveType == CurveType.SPLINE)
+            {
+                var bs = evApproximateBSplineCurve(context, { "edge" : edge });
+                println("    bspline deg=" ~ bs.degree ~ " CPs=" ~ size(bs.controlPoints) ~ " knots=" ~ size(bs.knots));
+            }
             else
             {
-                try
-                {
-                    var bs = evApproximateBSplineCurve(context, { "edge" : edge });
-                    println("    bspline deg=" ~ bs.degree ~ " CPs=" ~ size(bs.controlPoints) ~ " knots=" ~ size(bs.knots));
-                }
-                catch { println("    (evApproximateBSplineCurve unavailable for this edge type)"); }
+                println("    type=" ~ curveDef.curveType);
             }
         }
 
@@ -804,37 +979,96 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
         });
     }
 
-    var derivConstraint = detectG1Junctions(edgeInfo);
-
     var wireBodies = [];
-    for (var ei = 0; ei < size(edgeInfo); ei += 1)
+
+    if (offsetDef.singleCurve == true)
     {
-        if (edgeInfo[ei] == undefined) { continue; }
-        var ed = edgeInfo[ei];
-        var dc = derivConstraint[ei];
-
-        var derivScale   = evLength(context, { "entities" : ed.edge }) / 3;
-        var targetDef    = { "positions" : ed.points };
-        if (dc.startDeriv != undefined) { targetDef = mergeMaps(targetDef, { "startDerivative" : dc.startDeriv * derivScale }); }
-        if (dc.endDeriv   != undefined) { targetDef = mergeMaps(targetDef, { "endDerivative"   : dc.endDeriv   * derivScale }); }
-
-        var splineData = approximateSpline(context, {
-            "isPeriodic" : false, "degree" : splineDegree,
-            "tolerance" : tolerance, "maxControlPoints" : maxCP,
-            "targets" : [approximationTarget(targetDef)]
-        })[0];
-        if (debugDef.logSplineMeta)
+        // Single-curve mode: chain all connected edges and fit one spline per chain.
+        var chains = chainEdges(edgeInfo);
+        for (var ci = 0; ci < size(chains); ci += 1)
         {
-            println("  offset spline edge " ~ ei ~ ": deg=" ~ splineData.degree ~
-                " CPs=" ~ size(splineData.controlPoints) ~ " knots=" ~ size(splineData.knots));
-            if (dc.startDeriv != undefined) { println("    startDeriv constraint applied"); }
-            if (dc.endDeriv   != undefined) { println("    endDeriv constraint applied"); }
+            var chain    = chains[ci];
+            var chainPts = [];
+            for (var li = 0; li < size(chain); li += 1)
+            {
+                var link = chain[li];
+                if (edgeInfo[link.edgeIndex] == undefined) { continue; }
+                var pts = edgeInfo[link.edgeIndex].points;
+                if (link.reversed)
+                {
+                    var endIdx = (li == 0) ? size(pts) - 1 : size(pts) - 2;
+                    for (var pi = endIdx; pi >= 0; pi -= 1)
+                    {
+                        chainPts = append(chainPts, pts[pi]);
+                    }
+                }
+                else
+                {
+                    var startIdx = (li == 0) ? 0 : 1;
+                    for (var pi = startIdx; pi < size(pts); pi += 1)
+                    {
+                        chainPts = append(chainPts, pts[pi]);
+                    }
+                }
+            }
+            if (size(chainPts) < 2) { continue; }
+            if (debugDef.logSplineMeta)
+            {
+                println("  single-curve chain " ~ ci ~ ": " ~ size(chain) ~ " edges, " ~ size(chainPts) ~ " pts");
+            }
+            var splineData = approximateSpline(context, {
+                "isPeriodic" : false, "degree" : splineDegree,
+                "tolerance" : tolerance, "maxControlPoints" : maxCP,
+                "targets" : [approximationTarget({ "positions" : chainPts })]
+            })[0];
+            if (debugDef.logSplineMeta)
+            {
+                println("    chain " ~ ci ~ " spline: deg=" ~ splineData.degree ~ " CPs=" ~ size(splineData.controlPoints));
+            }
+            opCreateBSplineCurve(context, id + ("singleCurve" ~ ci), { "bSplineCurve" : splineData });
+            var curveBody = qCreatedBy(id + ("singleCurve" ~ ci), EntityType.BODY);
+            opExtractWires(context, id + ("singleWire" ~ ci), { "edges" : qOwnedByBody(curveBody, EntityType.EDGE) });
+            opDeleteBodies(context, id + ("deleteSingleCurve" ~ ci), { "entities" : curveBody });
+            wireBodies = append(wireBodies, qCreatedBy(id + ("singleWire" ~ ci), EntityType.BODY));
         }
-        opCreateBSplineCurve(context, id + ("offCurve" ~ ei), { "bSplineCurve" : splineData });
-        var curveBody = qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY);
-        opExtractWires(context, id + ("offWire" ~ ei), { "edges" : qOwnedByBody(curveBody, EntityType.EDGE) });
-        opDeleteBodies(context, id + ("deleteOffCurve" ~ ei), { "entities" : curveBody });
-        wireBodies = append(wireBodies, qCreatedBy(id + ("offWire" ~ ei), EntityType.BODY));
+    }
+    else
+    {
+        // Per-edge mode: fit one spline per edge with G1/G2 junction constraints.
+        var constraints = detectContinuityConstraints(context, edgeInfo);
+        for (var ei = 0; ei < size(edgeInfo); ei += 1)
+        {
+            if (edgeInfo[ei] == undefined) { continue; }
+            var ed = edgeInfo[ei];
+            var dc = constraints[ei];
+
+            var derivScale = evLength(context, { "entities" : ed.edge }) / 3;
+            var targetDef  = { "positions" : ed.points };
+            if (dc.startDeriv   != undefined) { targetDef = mergeMaps(targetDef, { "startDerivative"       : dc.startDeriv   * derivScale }); }
+            if (dc.endDeriv     != undefined) { targetDef = mergeMaps(targetDef, { "endDerivative"         : dc.endDeriv     * derivScale }); }
+            if (dc.startCurvVec != undefined) { targetDef = mergeMaps(targetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale }); }
+            if (dc.endCurvVec   != undefined) { targetDef = mergeMaps(targetDef, { "endSecondDerivative"   : dc.endCurvVec   * derivScale * derivScale }); }
+
+            var splineData = approximateSpline(context, {
+                "isPeriodic" : false, "degree" : splineDegree,
+                "tolerance" : tolerance, "maxControlPoints" : maxCP,
+                "targets" : [approximationTarget(targetDef)]
+            })[0];
+            if (debugDef.logSplineMeta)
+            {
+                println("  offset spline edge " ~ ei ~ ": deg=" ~ splineData.degree ~
+                    " CPs=" ~ size(splineData.controlPoints) ~ " knots=" ~ size(splineData.knots));
+                if (dc.startDeriv   != undefined) { println("    startDeriv constraint applied"); }
+                if (dc.endDeriv     != undefined) { println("    endDeriv constraint applied"); }
+                if (dc.startCurvVec != undefined) { println("    startG2 constraint applied"); }
+                if (dc.endCurvVec   != undefined) { println("    endG2 constraint applied"); }
+            }
+            opCreateBSplineCurve(context, id + ("offCurve" ~ ei), { "bSplineCurve" : splineData });
+            var curveBody = qCreatedBy(id + ("offCurve" ~ ei), EntityType.BODY);
+            opExtractWires(context, id + ("offWire" ~ ei), { "edges" : qOwnedByBody(curveBody, EntityType.EDGE) });
+            opDeleteBodies(context, id + ("deleteOffCurve" ~ ei), { "entities" : curveBody });
+            wireBodies = append(wireBodies, qCreatedBy(id + ("offWire" ~ ei), EntityType.BODY));
+        }
     }
 
     for (var wi = 0; wi < size(wireBodies); wi += 1)
@@ -897,14 +1131,14 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             {
                 println("    circle radius=" ~ curveDef.radius / meter ~ "m");
             }
+            else if (curveDef.curveType == CurveType.SPLINE)
+            {
+                var bs = evApproximateBSplineCurve(context, { "edge" : edge });
+                println("    bspline deg=" ~ bs.degree ~ " CPs=" ~ size(bs.controlPoints) ~ " knots=" ~ size(bs.knots));
+            }
             else
             {
-                try
-                {
-                    var bs = evApproximateBSplineCurve(context, { "edge" : edge });
-                    println("    bspline deg=" ~ bs.degree ~ " CPs=" ~ size(bs.controlPoints) ~ " knots=" ~ size(bs.knots));
-                }
-                catch { println("    (evApproximateBSplineCurve unavailable for this edge type)"); }
+                println("    type=" ~ curveDef.curveType);
             }
         }
 
@@ -995,8 +1229,8 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         edgeInfo[ei]   = edCopy;
     }
 
-    // --- Phase 3: G1 junction detection ---
-    var derivConstraint = detectG1Junctions(edgeInfo);
+    // --- Phase 3: G1/G2 junction detection ---
+    var constraints = detectContinuityConstraints(context, edgeInfo);
 
     // --- Phase 4: fit BSplines, loft, collect patches ---
     var loftBodyQueries = [];
@@ -1004,7 +1238,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
     {
         if (edgeInfo[ei] == undefined) { continue; }
         var ed = edgeInfo[ei];
-        var dc = derivConstraint[ei];
+        var dc = constraints[ei];
 
         var derivScale = evLength(context, { "entities" : ed.edge }) / 3;
 
@@ -1017,80 +1251,68 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
 
         var topTargetDef = { "positions" : topPts };
         var botTargetDef = { "positions" : bottomPts };
-        if (dc.startDeriv != undefined)
+        if (dc.startDeriv   != undefined)
         {
             topTargetDef = mergeMaps(topTargetDef, { "startDerivative" : dc.startDeriv * derivScale });
             botTargetDef = mergeMaps(botTargetDef, { "startDerivative" : dc.startDeriv * derivScale });
         }
-        if (dc.endDeriv != undefined)
+        if (dc.endDeriv     != undefined)
         {
             topTargetDef = mergeMaps(topTargetDef, { "endDerivative" : dc.endDeriv * derivScale });
             botTargetDef = mergeMaps(botTargetDef, { "endDerivative" : dc.endDeriv * derivScale });
         }
-
-        var topSpline;
-        var bottomSpline;
-        try
+        if (dc.startCurvVec != undefined)
         {
-            topSpline = approximateSpline(context, {
-                "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
-                "maxControlPoints" : maxCP, "targets" : [approximationTarget(topTargetDef)]
-            })[0];
-            var topCPs              = topSpline.controlPoints;
-            topCPs[0]               = ed.ctStart;
-            topCPs[size(topCPs) - 1] = ed.ctEnd;
-            topSpline               = mergeMaps(topSpline, { "controlPoints" : topCPs });
+            topTargetDef = mergeMaps(topTargetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale });
+            botTargetDef = mergeMaps(botTargetDef, { "startSecondDerivative" : dc.startCurvVec * derivScale * derivScale });
         }
-        catch { continue; }
-
-        try
+        if (dc.endCurvVec   != undefined)
         {
-            bottomSpline = approximateSpline(context, {
-                "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
-                "maxControlPoints" : maxCP, "targets" : [approximationTarget(botTargetDef)]
-            })[0];
-            var botCPs                = bottomSpline.controlPoints;
-            botCPs[0]                 = ed.cbStart;
-            botCPs[size(botCPs) - 1]  = ed.cbEnd;
-            bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
+            topTargetDef = mergeMaps(topTargetDef, { "endSecondDerivative" : dc.endCurvVec * derivScale * derivScale });
+            botTargetDef = mergeMaps(botTargetDef, { "endSecondDerivative" : dc.endCurvVec * derivScale * derivScale });
         }
-        catch { continue; }
+
+        var topSpline = approximateSpline(context, {
+            "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
+            "maxControlPoints" : maxCP, "targets" : [approximationTarget(topTargetDef)]
+        })[0];
+        var topCPs               = topSpline.controlPoints;
+        topCPs[0]                = ed.ctStart;
+        topCPs[size(topCPs) - 1] = ed.ctEnd;
+        topSpline                = mergeMaps(topSpline, { "controlPoints" : topCPs });
+
+        var bottomSpline = approximateSpline(context, {
+            "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
+            "maxControlPoints" : maxCP, "targets" : [approximationTarget(botTargetDef)]
+        })[0];
+        var botCPs                = bottomSpline.controlPoints;
+        botCPs[0]                 = ed.cbStart;
+        botCPs[size(botCPs) - 1]  = ed.cbEnd;
+        bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
 
         var topCurveId    = id + ("loftTopCurve"    ~ ei);
         var bottomCurveId = id + ("loftBottomCurve" ~ ei);
-        try { opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    }); }
-        catch { continue; }
-        try { opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline }); }
-        catch { continue; }
+        opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
+        opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
 
         var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
         var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
 
         var loftId = id + ("loftPatch" ~ ei);
-        try
-        {
-            opLoft(context, loftId, {
-                "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [topBody, bottomBody]
-            });
-            loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
-        }
-        catch { }
-
-        try { opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) }); }
-        catch { }
+        opLoft(context, loftId, {
+            "bodyType"          : ToolBodyType.SURFACE,
+            "profileSubqueries" : [topBody, bottomBody]
+        });
+        loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+        opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) });
     }
 
     if (size(loftBodyQueries) > 1)
     {
-        try
-        {
-            opBoolean(context, id + "unionLoftPatches", {
-                "operationType" : BooleanOperationType.UNION,
-                "tools"         : qUnion(loftBodyQueries)
-            });
-        }
-        catch { }
+        opBoolean(context, id + "unionLoftPatches", {
+            "operationType" : BooleanOperationType.UNION,
+            "tools"         : qUnion(loftBodyQueries)
+        });
     }
 
     if (size(loftBodyQueries) > 0)

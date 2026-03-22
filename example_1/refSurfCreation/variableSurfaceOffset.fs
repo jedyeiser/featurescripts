@@ -230,6 +230,9 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                 }
             }
 
+            annotation { "Name" : "Single curve", "Default" : false }
+            region.singleCurve is boolean;
+
             if (definition.debug)
             {
                 annotation { "Name" : "Debug this region", "Default" : false }
@@ -486,7 +489,8 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                 "startOffset"      : reg.startOffset,
                 "endOffset"        : reg.endOffset,
                 "zeroSlopeAtStart" : zeroAtStart,
-                "regionName"       : reg.name
+                "regionName"       : reg.name,
+                "singleCurve"      : reg.singleCurve == true
             };
 
             var isRegionDebug = definition.debug && reg.debugRegion == true;
