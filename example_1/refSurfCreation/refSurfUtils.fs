@@ -1285,10 +1285,19 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
                 "maxControlPoints" : maxCP, "targets" : [approximationTarget({ "positions" : chainTop })]
             })[0];
+            var topCPs               = topSpline.controlPoints;
+            topCPs[0]                = chainTop[0];
+            topCPs[size(topCPs) - 1] = chainTop[size(chainTop) - 1];
+            topSpline                = mergeMaps(topSpline, { "controlPoints" : topCPs });
+
             var bottomSpline = approximateSpline(context, {
                 "isPeriodic" : false, "degree" : splineDegree, "tolerance" : tolerance,
                 "maxControlPoints" : maxCP, "targets" : [approximationTarget({ "positions" : chainBot })]
             })[0];
+            var botCPs               = bottomSpline.controlPoints;
+            botCPs[0]                = chainBot[0];
+            botCPs[size(botCPs) - 1] = chainBot[size(chainBot) - 1];
+            bottomSpline             = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
 
             var topCurveId    = id + ("loftTopChain"    ~ ci);
             var bottomCurveId = id + ("loftBottomChain" ~ ci);
