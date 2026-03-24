@@ -1385,6 +1385,37 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             botCPs[size(botCPs) - 1]  = ed.cbEnd;
             bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
 
+            // Ensure both BSplines run in the same direction before creating bodies.
+            // opCreateBSplineCurve preserves parameterization exactly; we fix any
+            // direction mismatch here using the pinned endpoint control points so
+            // opLoft never sees anti-parallel profiles (LOFT_DIRECTION_ERROR).
+            var topCPsDir = topSpline.controlPoints;
+            var botCPsDir = bottomSpline.controlPoints;
+            var topVec    = (topCPsDir[size(topCPsDir) - 1] - topCPsDir[0]) / meter;
+            var botVec    = (botCPsDir[size(botCPsDir) - 1] - botCPsDir[0]) / meter;
+            if (dot(topVec, botVec) < 0)
+            {
+                var curKnots  = bottomSpline.knots;
+                var kLo       = curKnots[0];
+                var kHi       = curKnots[size(curKnots) - 1];
+                var botCPsRev   = [];
+                var botKnotsRev = [];
+                for (var k = size(botCPsDir) - 1; k >= 0; k -= 1)
+                {
+                    botCPsRev = append(botCPsRev, botCPsDir[k]);
+                }
+                for (var k = size(curKnots) - 1; k >= 0; k -= 1)
+                {
+                    botKnotsRev = append(botKnotsRev, kLo + kHi - curKnots[k]);
+                }
+                bottomSpline = mergeMaps(bottomSpline, {
+                    "controlPoints" : botCPsRev,
+                    "knots"         : botKnotsRev
+                });
+            }
+
+            // Create wire bodies directly from BSpline — skip opExtractWires so
+            // that parameterization (and therefore loft direction) is preserved.
             var topCurveId    = id + ("loftTopCurve"    ~ ei);
             var bottomCurveId = id + ("loftBottomCurve" ~ ei);
             opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
@@ -1393,72 +1424,13 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             var topCurveBody    = qCreatedBy(topCurveId,    EntityType.BODY);
             var bottomCurveBody = qCreatedBy(bottomCurveId, EntityType.BODY);
 
-            var topWireId    = id + ("loftTopWire"    ~ ei);
-            var bottomWireId = id + ("loftBottomWire" ~ ei);
-            opExtractWires(context, topWireId,    { "edges" : qOwnedByBody(topCurveBody,    EntityType.EDGE) });
-            opExtractWires(context, bottomWireId, { "edges" : qOwnedByBody(bottomCurveBody, EntityType.EDGE) });
-            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
-
-            var topWireBody    = qCreatedBy(topWireId,    EntityType.BODY);
-            var bottomWireBody = qCreatedBy(bottomWireId, EntityType.BODY);
-
-            // opExtractWires can silently flip a wire's parameter direction relative
-            // to the BSpline we supplied.  Check the actual wire tangents at parameter 0
-            // and reverse the bottom wire if they are anti-parallel — this directly
-            // prevents LOFT_DIRECTION_ERROR regardless of what opExtractWires does.
-            try
-            {
-                var topTang0 = evEdgeTangentLine(context, {
-                    "edge"      : qOwnedByBody(topWireBody,    EntityType.EDGE),
-                    "parameter" : 0
-                }).direction;
-                var botTang0 = evEdgeTangentLine(context, {
-                    "edge"      : qOwnedByBody(bottomWireBody, EntityType.EDGE),
-                    "parameter" : 0
-                }).direction;
-                if (dot(topTang0, botTang0) < 0)
-                {
-                    // Rebuild bottom wire with reversed BSpline.
-                    var curCPs    = bottomSpline.controlPoints;
-                    var curKnots  = bottomSpline.knots;
-                    var kLo       = curKnots[0];
-                    var kHi       = curKnots[size(curKnots) - 1];
-                    var botCPsRev   = [];
-                    var botKnotsRev = [];
-                    for (var k = size(curCPs)   - 1; k >= 0; k -= 1)
-                    {
-                        botCPsRev   = append(botCPsRev,   curCPs[k]);
-                    }
-                    for (var k = size(curKnots) - 1; k >= 0; k -= 1)
-                    {
-                        botKnotsRev = append(botKnotsRev, kLo + kHi - curKnots[k]);
-                    }
-                    var revBotSpline    = mergeMaps(bottomSpline, {
-                        "controlPoints" : botCPsRev,
-                        "knots"         : botKnotsRev
-                    });
-                    var revBotCurveId   = id + ("loftBotRevCurve" ~ ei);
-                    var revBotWireId    = id + ("loftBotRevWire"   ~ ei);
-                    opCreateBSplineCurve(context, revBotCurveId, { "bSplineCurve" : revBotSpline });
-                    var revBotCurveBody = qCreatedBy(revBotCurveId, EntityType.BODY);
-                    opExtractWires(context, revBotWireId,
-                            { "edges" : qOwnedByBody(revBotCurveBody, EntityType.EDGE) });
-                    opDeleteBodies(context, id + ("delRevBotCurve" ~ ei),
-                            { "entities" : revBotCurveBody });
-                    opDeleteBodies(context, id + ("delBotWireOld"  ~ ei),
-                            { "entities" : bottomWireBody });
-                    bottomWireBody = qCreatedBy(revBotWireId, EntityType.BODY);
-                }
-            }
-            catch {}
-
             var loftId   = id + ("loftPatch" ~ ei);
             var loftMade = false;
             try
             {
                 opLoft(context, loftId, {
                     "bodyType"          : ToolBodyType.SURFACE,
-                    "profileSubqueries" : [topWireBody, bottomWireBody]
+                    "profileSubqueries" : [topCurveBody, bottomCurveBody]
                 });
                 loftMade = true;
             }
@@ -1468,16 +1440,16 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 // Top profile = RED, bottom profile = GREEN.
                 // Magenta points = top wall corners (ctStart/ctEnd).
                 // Yellow points  = bottom wall corners (cbStart/cbEnd).
-                addDebugEntities(context, topWireBody,    DebugColor.RED);
-                addDebugEntities(context, bottomWireBody, DebugColor.GREEN);
+                addDebugEntities(context, topCurveBody,    DebugColor.RED);
+                addDebugEntities(context, bottomCurveBody, DebugColor.GREEN);
                 debug(context, ed.ctStart, DebugColor.MAGENTA);
                 debug(context, ed.ctEnd,   DebugColor.MAGENTA);
                 debug(context, ed.cbStart, DebugColor.YELLOW);
                 debug(context, ed.cbEnd,   DebugColor.YELLOW);
             }
+            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
             if (loftMade)
             {
-                opDeleteBodies(context, id + ("deleteLoftWires" ~ ei), { "entities" : qUnion([topWireBody, bottomWireBody]) });
                 loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
             }
         }
