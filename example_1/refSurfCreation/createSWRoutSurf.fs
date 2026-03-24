@@ -879,7 +879,7 @@ function splitAndKeep(context is Context, id is Id, body is Query,
         });
         splitOk = true;
     }
-    catch (e) {}
+    catch {}
 
     // opSplitPart does not delete construction planes regardless of keepTools
     try silent(opDeleteBodies(context, id + "delPl", { "entities" : planeQ }));

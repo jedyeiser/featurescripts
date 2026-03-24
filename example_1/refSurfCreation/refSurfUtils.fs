@@ -7,8 +7,6 @@ import(path : "onshape/std/loft.fs", version : "2909.0");
 //import refSurfCore
 import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
 
-// IMPORT: pathProcessing.fs
-
 
 // =====================================================================
 // PATH UTILITIES
@@ -1472,7 +1470,7 @@ function splitAndKeepLocal(context is Context, id is Id, body is Query,
         });
         splitOk = true;
     }
-    catch (e) {}
+    catch {}
     try silent(opDeleteBodies(context, id + "delPl", { "entities" : planeQ }));
 
     if (!splitOk)
@@ -1509,7 +1507,7 @@ function splitAndKeepLocal(context is Context, id is Id, body is Query,
  * splitting is performed.  Call this after the region loop.
  */
 export function buildIntersectionJoins(context is Context, id is Id,
-        definition is map, processedRegions is array, refPath is map)
+        definition is map, processedRegions is array)
 {
     for (var i = 0; i < size(definition.intersections); i += 1)
     {
@@ -1532,11 +1530,9 @@ export function buildIntersectionJoins(context is Context, id is Id,
         var rBContinuity = ix.endContinuity;
         var rAOffset     = ix.joinStartOffset;
         var rBOffset     = ix.joinEndOffset;
-        var totalLength  = refPath.totalLength;
 
-        // Boundary arc-length and plane (normal to ref wire at regionA end).
-        var boundaryArc = regionA.tEnd * totalLength;
-        var boundaryPl  = plane(regionA.endFrame.origin, regionA.endFrame.zAxis);
+        // Boundary plane — normal to ref wire at regionA's end frame.
+        var boundaryPl = plane(regionA.endFrame.origin, regionA.endFrame.zAxis);
 
         if (definition.returnLoftSurface)
         {
@@ -1548,34 +1544,39 @@ export function buildIntersectionJoins(context is Context, id is Id,
             }
 
             // Trim region A back from the boundary by rAOffset along the ref wire.
+            // Plane position is interpolated between the region's end and start frames,
+            // so it remains normal to the wire (not a Euclidean offset of boundaryPl).
             var capPlaneA = boundaryPl;
             if (rAOffset > 0 * millimeter)
             {
-                var trimArcA   = max(regionA.tStart * totalLength, boundaryArc - rAOffset);
-                var trimFrA    = evalNativeFrame(context, refPath.frenetPath, trimArcA);
-                var trimPlA    = plane(trimFrA.frame.origin, trimFrA.frame.zAxis);
-                // Probe: midpoint of the keep portion (toward tStart).
-                var probeArcA  = (regionA.tStart * totalLength + trimArcA) / 2;
-                var probeFrA   = evalNativeFrame(context, refPath.frenetPath, probeArcA);
-                rASurf         = splitAndKeepLocal(context, id + ("trimA" ~ i),
-                        rASurf, trimPlA, probeFrA.frame.origin);
-                capPlaneA      = trimPlA;
+                var rALen       = regionA.length;
+                var rAFrac      = (rALen > 0 * meter) ? min(rAOffset / rALen, 1) : 0;
+                var trimOriginA = regionA.endFrame.origin +
+                        rAFrac * (regionA.startFrame.origin - regionA.endFrame.origin);
+                var trimNormA   = normalize((1 - rAFrac) * regionA.endFrame.zAxis +
+                        rAFrac * regionA.startFrame.zAxis);
+                var trimPlA     = plane(trimOriginA, trimNormA);
+                var probeA      = (regionA.startFrame.origin + trimOriginA) / 2;
+                rASurf          = splitAndKeepLocal(context, id + ("trimA" ~ i),
+                        rASurf, trimPlA, probeA);
+                capPlaneA       = trimPlA;
             }
 
-            // Trim region B back from the boundary by rBOffset along the ref wire.
+            // Trim region B forward from the boundary by rBOffset along the ref wire.
             var capPlaneB = boundaryPl;
             if (rBOffset > 0 * millimeter)
             {
-                var trimArcB   = min(regionB.tEnd * totalLength,
-                        regionB.tStart * totalLength + rBOffset);
-                var trimFrB    = evalNativeFrame(context, refPath.frenetPath, trimArcB);
-                var trimPlB    = plane(trimFrB.frame.origin, trimFrB.frame.zAxis);
-                // Probe: midpoint of the keep portion (toward tEnd).
-                var probeArcB  = (trimArcB + regionB.tEnd * totalLength) / 2;
-                var probeFrB   = evalNativeFrame(context, refPath.frenetPath, probeArcB);
-                rBSurf         = splitAndKeepLocal(context, id + ("trimB" ~ i),
-                        rBSurf, trimPlB, probeFrB.frame.origin);
-                capPlaneB      = trimPlB;
+                var rBLen       = regionB.length;
+                var rBFrac      = (rBLen > 0 * meter) ? min(rBOffset / rBLen, 1) : 0;
+                var trimOriginB = regionB.startFrame.origin +
+                        rBFrac * (regionB.endFrame.origin - regionB.startFrame.origin);
+                var trimNormB   = normalize(rBFrac * regionB.endFrame.zAxis +
+                        (1 - rBFrac) * regionB.startFrame.zAxis);
+                var trimPlB     = plane(trimOriginB, trimNormB);
+                var probeB      = (trimOriginB + regionB.endFrame.origin) / 2;
+                rBSurf          = splitAndKeepLocal(context, id + ("trimB" ~ i),
+                        rBSurf, trimPlB, probeB);
+                capPlaneB       = trimPlB;
             }
 
             // Find cap edges at each region's (possibly trimmed) end plane.
@@ -1616,7 +1617,7 @@ export function buildIntersectionJoins(context is Context, id is Id,
                     surfaceLofter(context, id + ("loftIx" ~ i ~ "e" ~ b),
                             rACapEdges[b], faceA, bEdge, faceB, rAContinuity, rBContinuity);
                 }
-                catch (e) {}
+                catch {}
             }
         }
 

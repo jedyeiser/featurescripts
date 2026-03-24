@@ -563,6 +563,6 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
         if (size(definition.intersections) > 0 &&
             (definition.returnLoftSurface || definition.returnOffsetWires))
         {
-            buildIntersectionJoins(context, id, definition, processedRegions, refPath);
+            buildIntersectionJoins(context, id, definition, processedRegions);
         }
     });
