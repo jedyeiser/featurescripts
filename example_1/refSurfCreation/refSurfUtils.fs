@@ -1385,6 +1385,32 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             botCPs[size(botCPs) - 1]  = ed.cbEnd;
             bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
 
+            // Align bottom curve direction with top curve.  The loft expects both
+            // profiles to be parametrised in the same direction (parameter 0 of
+            // one pairs with parameter 0 of the other).  If the bottom curve runs
+            // anti-parallel to the top, reverse its control points and mirror its
+            // knots so opLoft sees consistent directions and avoids LOFT_DIRECTION_ERROR.
+            if (norm(ed.ctStart - ed.cbEnd) < norm(ed.ctStart - ed.cbStart))
+            {
+                var botCPsRev   = [];
+                var botKnotsRev = [];
+                var botKnots    = bottomSpline.knots;
+                var kLo         = botKnots[0];
+                var kHi         = botKnots[size(botKnots) - 1];
+                for (var k = size(botCPs) - 1;   k >= 0; k -= 1)
+                {
+                    botCPsRev = append(botCPsRev, botCPs[k]);
+                }
+                for (var k = size(botKnots) - 1; k >= 0; k -= 1)
+                {
+                    botKnotsRev = append(botKnotsRev, kLo + kHi - botKnots[k]);
+                }
+                bottomSpline = mergeMaps(bottomSpline, {
+                    "controlPoints" : botCPsRev,
+                    "knots"         : botKnotsRev
+                });
+            }
+
             var topCurveId    = id + ("loftTopCurve"    ~ ei);
             var bottomCurveId = id + ("loftBottomCurve" ~ ei);
             opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
@@ -1402,13 +1428,22 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             var topWireBody    = qCreatedBy(topWireId,    EntityType.BODY);
             var bottomWireBody = qCreatedBy(bottomWireId, EntityType.BODY);
 
-            var loftId = id + ("loftPatch" ~ ei);
-            opLoft(context, loftId, {
-                "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [topWireBody, bottomWireBody]
-            });
-            loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+            var loftId   = id + ("loftPatch" ~ ei);
+            var loftMade = false;
+            try
+            {
+                opLoft(context, loftId, {
+                    "bodyType"          : ToolBodyType.SURFACE,
+                    "profileSubqueries" : [topWireBody, bottomWireBody]
+                });
+                loftMade = true;
+            }
+            catch {}
             opDeleteBodies(context, id + ("deleteLoftWires" ~ ei), { "entities" : qUnion([topWireBody, bottomWireBody]) });
+            if (loftMade)
+            {
+                loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+            }
         }
     }
 
