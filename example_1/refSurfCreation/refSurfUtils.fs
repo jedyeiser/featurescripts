@@ -1304,16 +1304,25 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
             opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
 
-            var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
-            var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+            var topCurveBody    = qCreatedBy(topCurveId,    EntityType.BODY);
+            var bottomCurveBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+
+            var topWireId    = id + ("loftTopChainWire"    ~ ci);
+            var bottomWireId = id + ("loftBottomChainWire" ~ ci);
+            opExtractWires(context, topWireId,    { "edges" : qOwnedByBody(topCurveBody,    EntityType.EDGE) });
+            opExtractWires(context, bottomWireId, { "edges" : qOwnedByBody(bottomCurveBody, EntityType.EDGE) });
+            opDeleteBodies(context, id + ("deleteLoftChainCurves" ~ ci), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
+
+            var topWireBody    = qCreatedBy(topWireId,    EntityType.BODY);
+            var bottomWireBody = qCreatedBy(bottomWireId, EntityType.BODY);
 
             var loftId = id + ("loftChain" ~ ci);
             opLoft(context, loftId, {
                 "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [qOwnedByBody(topBody, EntityType.EDGE), qOwnedByBody(bottomBody, EntityType.EDGE)]
+                "profileSubqueries" : [topWireBody, bottomWireBody]
             });
             loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
-            opDeleteBodies(context, id + ("deleteLoftChainCurves" ~ ci), { "entities" : qUnion([topBody, bottomBody]) });
+            opDeleteBodies(context, id + ("deleteLoftChainWires" ~ ci), { "entities" : qUnion([topWireBody, bottomWireBody]) });
         }
     }
     else
@@ -1381,16 +1390,25 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
             opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
 
-            var topBody    = qCreatedBy(topCurveId,    EntityType.BODY);
-            var bottomBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+            var topCurveBody    = qCreatedBy(topCurveId,    EntityType.BODY);
+            var bottomCurveBody = qCreatedBy(bottomCurveId, EntityType.BODY);
+
+            var topWireId    = id + ("loftTopWire"    ~ ei);
+            var bottomWireId = id + ("loftBottomWire" ~ ei);
+            opExtractWires(context, topWireId,    { "edges" : qOwnedByBody(topCurveBody,    EntityType.EDGE) });
+            opExtractWires(context, bottomWireId, { "edges" : qOwnedByBody(bottomCurveBody, EntityType.EDGE) });
+            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
+
+            var topWireBody    = qCreatedBy(topWireId,    EntityType.BODY);
+            var bottomWireBody = qCreatedBy(bottomWireId, EntityType.BODY);
 
             var loftId = id + ("loftPatch" ~ ei);
             opLoft(context, loftId, {
                 "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [qOwnedByBody(topBody, EntityType.EDGE), qOwnedByBody(bottomBody, EntityType.EDGE)]
+                "profileSubqueries" : [topWireBody, bottomWireBody]
             });
             loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
-            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) });
+            opDeleteBodies(context, id + ("deleteLoftWires" ~ ei), { "entities" : qUnion([topWireBody, bottomWireBody]) });
         }
     }
 
