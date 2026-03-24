@@ -1772,14 +1772,19 @@ export function buildIntersectionJoins(context is Context, id is Id,
     // them as-is so partially-connected sets still get merged where possible.
     if (definition.returnLoftSurface)
     {
-        var allSurfs  = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
-        var surfCount = size(evaluateQuery(context, allSurfs));
-        if (surfCount > 1)
+        var surfBodies = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET));
+        if (size(surfBodies) > 1)
         {
+            var surfTools = [];
+            for (var k = 1; k < size(surfBodies); k += 1)
+            {
+                surfTools = append(surfTools, surfBodies[k]);
+            }
             try
             {
                 opBoolean(context, id + "collectSurfs", {
-                    "operands"      : allSurfs,
+                    "targets"       : surfBodies[0],
+                    "tools"         : qUnion(surfTools),
                     "operationType" : BooleanOperationType.UNION
                 });
             }
@@ -1788,32 +1793,27 @@ export function buildIntersectionJoins(context is Context, id is Id,
     }
 
     // --- Collect all wires into as few bodies as possible ---
-    // opCompositeCurve joins connected edge sets into individual wire bodies.
-    // Disconnected groups each become their own wire body (correct behavior).
-    // Original wire bodies are deleted after the composite is built.
+    // opBoolean UNION on wire bodies merges connected segments; disconnected
+    // sets will throw and the catch leaves them as separate wire bodies.
     if (definition.returnOffsetWires)
     {
-        var allWireBodies = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE);
-        var allWireEdges  = qOwnedByBody(allWireBodies, EntityType.EDGE);
-        if (size(evaluateQuery(context, allWireEdges)) > 0)
+        var wireBodies = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE));
+        if (size(wireBodies) > 1)
         {
-            var wireMade = false;
+            var wireTools = [];
+            for (var k = 1; k < size(wireBodies); k += 1)
+            {
+                wireTools = append(wireTools, wireBodies[k]);
+            }
             try
             {
-                opCompositeCurve(context, id + "collectWires", {
-                    "entities" : allWireEdges
+                opBoolean(context, id + "collectWires", {
+                    "targets"       : wireBodies[0],
+                    "tools"         : qUnion(wireTools),
+                    "operationType" : BooleanOperationType.UNION
                 });
-                wireMade = true;
             }
             catch {}
-            if (wireMade)
-            {
-                try
-                {
-                    opDeleteBodies(context, id + "delOldWires", { "entities" : allWireBodies });
-                }
-                catch {}
-            }
         }
     }
 }
