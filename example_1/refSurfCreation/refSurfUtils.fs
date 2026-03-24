@@ -1637,19 +1637,54 @@ export function buildIntersectionJoins(context is Context, id is Id,
                 continue;
             }
 
-            // Find wire endpoints near the boundary plane.
+            // Trim region A's wire back from the boundary by rAOffset (same
+            // interpolated-frame logic as the surface section).
+            var wireCapPlaneA = boundaryPl;
+            if (rAOffset > 0 * millimeter)
+            {
+                var rALen       = regionA.length;
+                var rAFrac      = (rALen > 0 * meter) ? min(rAOffset / rALen, 1) : 0;
+                var trimOriginA = regionA.endFrame.origin +
+                        rAFrac * (regionA.startFrame.origin - regionA.endFrame.origin);
+                var trimNormA   = normalize((1 - rAFrac) * regionA.endFrame.zAxis +
+                        rAFrac * regionA.startFrame.zAxis);
+                var trimPlA     = plane(trimOriginA, trimNormA);
+                var probeA      = (regionA.startFrame.origin + trimOriginA) / 2;
+                wireA           = splitAndKeepLocal(context, id + ("trimWireA" ~ i),
+                        wireA, trimPlA, probeA);
+                wireCapPlaneA   = trimPlA;
+            }
+
+            // Trim region B's wire forward from the boundary by rBOffset.
+            var wireCapPlaneB = boundaryPl;
+            if (rBOffset > 0 * millimeter)
+            {
+                var rBLen       = regionB.length;
+                var rBFrac      = (rBLen > 0 * meter) ? min(rBOffset / rBLen, 1) : 0;
+                var trimOriginB = regionB.startFrame.origin +
+                        rBFrac * (regionB.endFrame.origin - regionB.startFrame.origin);
+                var trimNormB   = normalize(rBFrac * regionB.endFrame.zAxis +
+                        (1 - rBFrac) * regionB.startFrame.zAxis);
+                var trimPlB     = plane(trimOriginB, trimNormB);
+                var probeB      = (trimOriginB + regionB.endFrame.origin) / 2;
+                wireB           = splitAndKeepLocal(context, id + ("trimWireB" ~ i),
+                        wireB, trimPlB, probeB);
+                wireCapPlaneB   = trimPlB;
+            }
+
+            // Find wire endpoints near each region's (possibly trimmed) cap plane.
             var wireAVerts = evaluateQuery(context, qOwnedByBody(wireA, EntityType.VERTEX));
             var wireBVerts = evaluateQuery(context, qOwnedByBody(wireB, EntityType.VERTEX));
 
             wireAVerts = filter(wireAVerts, function(v)
             {
-                return abs(dot(evVertexPoint(context, { "vertex" : v }) - boundaryPl.origin,
-                               boundaryPl.normal)) < 1e-3 * meter;
+                return abs(dot(evVertexPoint(context, { "vertex" : v }) - wireCapPlaneA.origin,
+                               wireCapPlaneA.normal)) < 1e-3 * meter;
             });
             wireBVerts = filter(wireBVerts, function(v)
             {
-                return abs(dot(evVertexPoint(context, { "vertex" : v }) - boundaryPl.origin,
-                               boundaryPl.normal)) < 1e-3 * meter;
+                return abs(dot(evVertexPoint(context, { "vertex" : v }) - wireCapPlaneB.origin,
+                               wireCapPlaneB.normal)) < 1e-3 * meter;
             });
 
             for (var a = 0; a < size(wireAVerts); a += 1)
