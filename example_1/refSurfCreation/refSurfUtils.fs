@@ -7,6 +7,8 @@ import(path : "onshape/std/loft.fs", version : "2909.0");
 //import refSurfCore
 import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
 
+// IMPORT: pathProcessing.fs
+
 
 // =====================================================================
 // PATH UTILITIES
@@ -1428,10 +1430,9 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
 // INTERSECTION JOINING
 // =====================================================================
 
-// Returns all ONE_SIDED edges of bodies whose both endpoints lie within
-// 1 mm of pl.  Uses endpoint sampling rather than qCoincidesWithPlane,
-// which requires the entire edge to be exactly on the plane and fails
-// for curved loft cap edges.
+// Returns all ONE_SIDED edges of bodies whose base endpoint (parameter 0.0)
+// lies within 1 mm of pl.  Only the base endpoint is checked — the far end
+// of a tall/curved cap edge may deviate from the plane while the foot stays on it.
 function edgesNearPlane(context is Context, bodies is Query, pl is Plane) returns array
 {
     const TOL = 1e-3 * meter;
@@ -1443,11 +1444,7 @@ function edgesNearPlane(context is Context, bodies is Query, pl is Plane) return
         var pt0 = evEdgeTangentLine(context, {
             "edge" : e, "parameter" : 0.0, "arcLengthParameterization" : true
         }).origin;
-        var pt1 = evEdgeTangentLine(context, {
-            "edge" : e, "parameter" : 1.0, "arcLengthParameterization" : true
-        }).origin;
-        if (abs(dot(pt0 - pl.origin, pl.normal)) < TOL &&
-            abs(dot(pt1 - pl.origin, pl.normal)) < TOL)
+        if (abs(dot(pt0 - pl.origin, pl.normal)) < TOL)
         {
             result = append(result, e);
         }
@@ -1456,12 +1453,63 @@ function edgesNearPlane(context is Context, bodies is Query, pl is Plane) return
 }
 
 /**
+ * Splits body at boundPlane, keeps the piece whose bounding-box center is
+ * closest to probePoint, deletes the other.  Returns the kept body query.
+ * If the plane does not intersect the body, returns body unchanged.
+ */
+function splitAndKeepLocal(context is Context, id is Id, body is Query,
+        boundPlane is Plane, probePoint is Vector) returns Query
+{
+    opPlane(context, id + "pl", { "plane" : boundPlane });
+    var planeQ  = qCreatedBy(id + "pl", EntityType.BODY);
+    var splitOk = false;
+    try
+    {
+        opSplitPart(context, id + "split", {
+            "targets"   : body,
+            "tool"      : planeQ,
+            "keepTools" : false
+        });
+        splitOk = true;
+    }
+    catch (e) {}
+    try silent(opDeleteBodies(context, id + "delPl", { "entities" : planeQ }));
+
+    if (!splitOk)
+    {
+        return body;
+    }
+
+    var pieceA = qSplitBy(id + "split", EntityType.BODY, false);
+    var pieceB = qSplitBy(id + "split", EntityType.BODY, true);
+    var bbA    = evBox3d(context, { "topology" : pieceA, "tight" : true });
+    var bbB    = evBox3d(context, { "topology" : pieceB, "tight" : true });
+    var cA     = (bbA.minCorner + bbA.maxCorner) / 2;
+    var cB     = (bbB.minCorner + bbB.maxCorner) / 2;
+
+    if (norm(cA - probePoint) <= norm(cB - probePoint))
+    {
+        opDeleteBodies(context, id + "del", { "entities" : pieceB });
+        return pieceA;
+    }
+    else
+    {
+        opDeleteBodies(context, id + "del", { "entities" : pieceA });
+        return pieceB;
+    }
+}
+
+
+/**
  * Post-processes joined intersections: trims loft surfaces and offset wires
- * back by joinStartOffset/joinEndOffset, then bridges the gap with a loft
- * surface or bridging spline.  Call this after the region loop.
+ * back by joinStartOffset/joinEndOffset (measured as arc-length along the ref
+ * wire), then bridges the gap with a loft surface or bridging spline.
+ * Trim planes are placed normal to the ref wire at the offset position, not
+ * as Euclidean offsets of the boundary plane.  When an offset is zero no
+ * splitting is performed.  Call this after the region loop.
  */
 export function buildIntersectionJoins(context is Context, id is Id,
-        definition is map, processedRegions is array)
+        definition is map, processedRegions is array, refPath is map)
 {
     for (var i = 0; i < size(definition.intersections); i += 1)
     {
@@ -1472,7 +1520,8 @@ export function buildIntersectionJoins(context is Context, id is Id,
         }
         var rA = ix.regionANum;
         var rB = ix.regionBNum;
-        if (rA == undefined || rB == undefined || rA >= size(processedRegions) || rB >= size(processedRegions))
+        if (rA == undefined || rB == undefined ||
+                rA >= size(processedRegions) || rB >= size(processedRegions))
         {
             continue;
         }
@@ -1483,7 +1532,11 @@ export function buildIntersectionJoins(context is Context, id is Id,
         var rBContinuity = ix.endContinuity;
         var rAOffset     = ix.joinStartOffset;
         var rBOffset     = ix.joinEndOffset;
-        var boundaryPl   = plane(regionA.endFrame.origin, regionA.endFrame.zAxis);
+        var totalLength  = refPath.totalLength;
+
+        // Boundary arc-length and plane (normal to ref wire at regionA end).
+        var boundaryArc = regionA.tEnd * totalLength;
+        var boundaryPl  = plane(regionA.endFrame.origin, regionA.endFrame.zAxis);
 
         if (definition.returnLoftSurface)
         {
@@ -1494,61 +1547,63 @@ export function buildIntersectionJoins(context is Context, id is Id,
                 continue;
             }
 
-            // Find cap edges at the boundary using endpoint proximity.
-            var rACapEdges = edgesNearPlane(context, rASurf, boundaryPl);
-            var rBCapEdges = edgesNearPlane(context, rBSurf, boundaryPl);
+            // Trim region A back from the boundary by rAOffset along the ref wire.
+            var capPlaneA = boundaryPl;
+            if (rAOffset > 0 * millimeter)
+            {
+                var trimArcA   = max(regionA.tStart * totalLength, boundaryArc - rAOffset);
+                var trimFrA    = evalNativeFrame(context, refPath.frenetPath, trimArcA);
+                var trimPlA    = plane(trimFrA.frame.origin, trimFrA.frame.zAxis);
+                // Probe: midpoint of the keep portion (toward tStart).
+                var probeArcA  = (regionA.tStart * totalLength + trimArcA) / 2;
+                var probeFrA   = evalNativeFrame(context, refPath.frenetPath, probeArcA);
+                rASurf         = splitAndKeepLocal(context, id + ("trimA" ~ i),
+                        rASurf, trimPlA, probeFrA.frame.origin);
+                capPlaneA      = trimPlA;
+            }
+
+            // Trim region B back from the boundary by rBOffset along the ref wire.
+            var capPlaneB = boundaryPl;
+            if (rBOffset > 0 * millimeter)
+            {
+                var trimArcB   = min(regionB.tEnd * totalLength,
+                        regionB.tStart * totalLength + rBOffset);
+                var trimFrB    = evalNativeFrame(context, refPath.frenetPath, trimArcB);
+                var trimPlB    = plane(trimFrB.frame.origin, trimFrB.frame.zAxis);
+                // Probe: midpoint of the keep portion (toward tEnd).
+                var probeArcB  = (trimArcB + regionB.tEnd * totalLength) / 2;
+                var probeFrB   = evalNativeFrame(context, refPath.frenetPath, probeArcB);
+                rBSurf         = splitAndKeepLocal(context, id + ("trimB" ~ i),
+                        rBSurf, trimPlB, probeFrB.frame.origin);
+                capPlaneB      = trimPlB;
+            }
+
+            // Find cap edges at each region's (possibly trimmed) end plane.
+            var rACapEdges = edgesNearPlane(context, rASurf, capPlaneA);
+            var rBCapEdges = edgesNearPlane(context, rBSurf, capPlaneB);
             if (size(rACapEdges) == 0 || size(rBCapEdges) == 0)
             {
                 continue;
             }
 
-            // Track edges through any extension so we always have the current cap edge.
-            const trackerA = startTracking(context, qUnion(rACapEdges));
-            const trackerB = startTracking(context, qUnion(rBCapEdges));
-
-            if (rAOffset > 0 * millimeter)
+            // Bridge each A cap edge to its closest B cap edge.
+            for (var b = 0; b < size(rACapEdges); b += 1)
             {
-                extendSurface(context, id + ("extendIxA" ~ i), {
-                    "entities"          : qUnion(rACapEdges),
-                    "endCondition"      : ExtendBoundingType.BLIND,
-                    "oppositeDirection" : true,
-                    "extendDistance"    : rAOffset
-                });
-            }
-
-            if (rBOffset > 0 * millimeter)
-            {
-                extendSurface(context, id + ("extendIxB" ~ i), {
-                    "entities"          : qUnion(rBCapEdges),
-                    "endCondition"      : ExtendBoundingType.BLIND,
-                    "oppositeDirection" : false,
-                    "extendDistance"    : rBOffset
-                });
-            }
-
-            var bodyAEdges = evaluateQuery(context, trackerA);
-            var bodyBEdges = evaluateQuery(context, trackerB);
-
-            for (var b = 0; b < size(bodyAEdges); b += 1)
-            {
-                var midA = evEdgeTangentLine(context, {
-                    "edge" : bodyAEdges[b], "parameter" : 0.5
+                var midA  = evEdgeTangentLine(context, {
+                    "edge" : rACapEdges[b], "parameter" : 0.5
                 }).origin;
-
-                var bEdge = qClosestTo(qUnion(bodyBEdges), midA);
-
-                var midB = evEdgeTangentLine(context, {
+                var bEdge = qClosestTo(qUnion(rBCapEdges), midA);
+                var midB  = evEdgeTangentLine(context, {
                     "edge" : bEdge, "parameter" : 0.5
                 }).origin;
 
-                // Skip if edges are already coincident — no gap to bridge.
                 if (norm(midA - midB) < 0.01 * millimeter)
                 {
                     continue;
                 }
 
                 var faceA = qIntersection([
-                    qAdjacent(bodyAEdges[b], AdjacencyType.EDGE, EntityType.FACE),
+                    qAdjacent(rACapEdges[b], AdjacencyType.EDGE, EntityType.FACE),
                     qOwnedByBody(rASurf, EntityType.FACE)
                 ]);
                 var faceB = qIntersection([
@@ -1556,8 +1611,12 @@ export function buildIntersectionJoins(context is Context, id is Id,
                     qOwnedByBody(rBSurf, EntityType.FACE)
                 ]);
 
-                surfaceLofter(context, id + ("loftIx" ~ i ~ "e" ~ b),
-                        bodyAEdges[b], faceA, bEdge, faceB, rAContinuity, rBContinuity);
+                try
+                {
+                    surfaceLofter(context, id + ("loftIx" ~ i ~ "e" ~ b),
+                            rACapEdges[b], faceA, bEdge, faceB, rAContinuity, rBContinuity);
+                }
+                catch (e) {}
             }
         }
 
@@ -1576,25 +1635,24 @@ export function buildIntersectionJoins(context is Context, id is Id,
 
             wireAVerts = filter(wireAVerts, function(v)
             {
-                return abs(dot(evVertexPoint(context, {"vertex" : v}) - boundaryPl.origin,
+                return abs(dot(evVertexPoint(context, { "vertex" : v }) - boundaryPl.origin,
                                boundaryPl.normal)) < 1e-3 * meter;
             });
             wireBVerts = filter(wireBVerts, function(v)
             {
-                return abs(dot(evVertexPoint(context, {"vertex" : v}) - boundaryPl.origin,
+                return abs(dot(evVertexPoint(context, { "vertex" : v }) - boundaryPl.origin,
                                boundaryPl.normal)) < 1e-3 * meter;
             });
 
             for (var a = 0; a < size(wireAVerts); a += 1)
             {
-                var ptA = evVertexPoint(context, {"vertex" : wireAVerts[a]});
+                var ptA = evVertexPoint(context, { "vertex" : wireAVerts[a] });
 
-                // Find the closest B vertex to this A vertex.
-                var bestBVert = wireAVerts[a]; // fallback
+                var bestBVert = wireAVerts[a];
                 var bestDist  = undefined;
                 for (var bb = 0; bb < size(wireBVerts); bb += 1)
                 {
-                    var ptB = evVertexPoint(context, {"vertex" : wireBVerts[bb]});
+                    var ptB = evVertexPoint(context, { "vertex" : wireBVerts[bb] });
                     var d   = norm(ptA - ptB);
                     if (bestDist == undefined || d < bestDist)
                     {
@@ -1603,21 +1661,22 @@ export function buildIntersectionJoins(context is Context, id is Id,
                     }
                 }
 
-                // Skip coincident endpoints.
                 if (bestDist != undefined && bestDist < 0.01 * millimeter)
                 {
                     continue;
                 }
 
                 var wireAEdgeQ = qClosestTo(qOwnedByBody(wireA, EntityType.EDGE), ptA);
-                var ptBVec     = evVertexPoint(context, {"vertex" : bestBVert});
+                var ptBVec     = evVertexPoint(context, { "vertex" : bestBVert });
                 var wireBEdgeQ = qClosestTo(qOwnedByBody(wireB, EntityType.EDGE), ptBVec);
 
                 bridgingCurve(context, id + ("bridgeIx" ~ i ~ "v" ~ a), {
                     "side1"  : qUnion([wireAVerts[a], wireAEdgeQ]),
-                    "match1" : (rAContinuity == IntersectionContinuityType.G1) ? BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION,
+                    "match1" : (rAContinuity == IntersectionContinuityType.G1) ?
+                            BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION,
                     "side2"  : qUnion([bestBVert, wireBEdgeQ]),
-                    "match2" : (rBContinuity == IntersectionContinuityType.G1) ? BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION
+                    "match2" : (rBContinuity == IntersectionContinuityType.G1) ?
+                            BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION
                 });
             }
         }
