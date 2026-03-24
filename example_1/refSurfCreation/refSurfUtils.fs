@@ -1429,8 +1429,11 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
 // =====================================================================
 
 // Returns all ONE_SIDED edges of bodies whose base endpoint (parameter 0.0)
-// lies within 1 mm of pl.  Only the base endpoint is checked — the far end
-// of a tall/curved cap edge may deviate from the plane while the foot stays on it.
+// AND midpoint (parameter 0.5) both lie within 1 mm of pl.
+// Checking pt0 alone admits rail/side edges that terminate at the plane but
+// run away from it.  Adding the midpoint check filters those out while still
+// accepting true cap edges (which lie in the plane throughout their length),
+// including the tall-wall case where pt1 may deviate from the plane.
 function edgesNearPlane(context is Context, bodies is Query, pl is Plane) returns array
 {
     const TOL = 1e-3 * meter;
@@ -1439,10 +1442,14 @@ function edgesNearPlane(context is Context, bodies is Query, pl is Plane) return
     var result = [];
     for (var e in candidates)
     {
-        var pt0 = evEdgeTangentLine(context, {
+        var pt0  = evEdgeTangentLine(context, {
             "edge" : e, "parameter" : 0.0, "arcLengthParameterization" : true
         }).origin;
-        if (abs(dot(pt0 - pl.origin, pl.normal)) < TOL)
+        var ptMid = evEdgeTangentLine(context, {
+            "edge" : e, "parameter" : 0.5, "arcLengthParameterization" : true
+        }).origin;
+        if (abs(dot(pt0  - pl.origin, pl.normal)) < TOL &&
+            abs(dot(ptMid - pl.origin, pl.normal)) < TOL)
         {
             result = append(result, e);
         }
