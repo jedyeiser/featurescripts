@@ -1310,7 +1310,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             var loftId = id + ("loftChain" ~ ci);
             opLoft(context, loftId, {
                 "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [topBody, bottomBody]
+                "profileSubqueries" : [qOwnedByBody(topBody, EntityType.EDGE), qOwnedByBody(bottomBody, EntityType.EDGE)]
             });
             loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
             opDeleteBodies(context, id + ("deleteLoftChainCurves" ~ ci), { "entities" : qUnion([topBody, bottomBody]) });
@@ -1387,7 +1387,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             var loftId = id + ("loftPatch" ~ ei);
             opLoft(context, loftId, {
                 "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [topBody, bottomBody]
+                "profileSubqueries" : [qOwnedByBody(topBody, EntityType.EDGE), qOwnedByBody(bottomBody, EntityType.EDGE)]
             });
             loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
             opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topBody, bottomBody]) });
