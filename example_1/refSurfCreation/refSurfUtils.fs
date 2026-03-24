@@ -1438,10 +1438,22 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 });
                 loftMade = true;
             }
-            catch {}
-            opDeleteBodies(context, id + ("deleteLoftWires" ~ ei), { "entities" : qUnion([topWireBody, bottomWireBody]) });
+            catch (loftErr)
+            {
+                // Diagnostic: show the failing profiles and wall corner points.
+                // Top profile = RED, bottom profile = GREEN.
+                // Magenta points = top wall corners (ctStart/ctEnd).
+                // Yellow points  = bottom wall corners (cbStart/cbEnd).
+                addDebugEntities(context, topWireBody,    DebugColor.RED);
+                addDebugEntities(context, bottomWireBody, DebugColor.GREEN);
+                debug(context, ed.ctStart, DebugColor.MAGENTA);
+                debug(context, ed.ctEnd,   DebugColor.MAGENTA);
+                debug(context, ed.cbStart, DebugColor.YELLOW);
+                debug(context, ed.cbEnd,   DebugColor.YELLOW);
+            }
             if (loftMade)
             {
+                opDeleteBodies(context, id + ("deleteLoftWires" ~ ei), { "entities" : qUnion([topWireBody, bottomWireBody]) });
                 loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
             }
         }
