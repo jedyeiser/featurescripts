@@ -906,7 +906,7 @@ export function buildVariableOffsetCurves(context is Context, id is Id, sheetBod
     // All offset types use the sampling pipeline.
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
-    if (size(edgeArray) == 0) { return; }
+    if (size(edgeArray) == 0) { return qNothing(); }
 
     var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
     var regionAxisLen2 = dot(regionAxis, regionAxis);
@@ -1104,7 +1104,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
 {
     if (numPts < 2) { numPts = 2; }
     var edgeArray = evaluateQuery(context, peripheryEdges);
-    if (size(edgeArray) == 0) { return; }
+    if (size(edgeArray) == 0) { return qNothing(); }
 
     var regionAxis     = (offsetDef.endFrameOrigin - offsetDef.startFrameOrigin) / meter;
     var regionAxisLen2 = dot(regionAxis, regionAxis);

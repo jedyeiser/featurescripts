@@ -181,7 +181,7 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
         definition.regions is array;
         for (var region in definition.regions)
         {
-            annotation { "Name" : "regionNUm", "UIHint" : UIHint.ALWAYS_HIDDEN } // use to default name
+            annotation { "Name" : "regionNum", "UIHint" : UIHint.ALWAYS_HIDDEN } // use to default name
             isInteger(region.regionNum, RegionNumBounds);
             
             annotation { "Name" : "Extents from", "Default" : RegionExtentDef.ALONG_REF, "UIHint" : UIHint.HORIZONTAL_ENUM }
@@ -435,30 +435,30 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                     "value" : "region" ~ r ~ "copy"
             });
             //create planes on ref wire
-            var startPlane = plane(region.startFrame.origin, region.startFrame.zAxis);
-            var endPlane = plane(region.endFrame.origin, region.endFrame.zAxis);
+            var startPl = plane(region.startFrame.origin, region.startFrame.zAxis);
+            var endPl = plane(region.endFrame.origin, region.endFrame.zAxis);
 
-            var startTrims = qIntersectsPlane(regionCopy, startPlane);
-            var endTrims = qIntersectsPlane(regionCopy, endPlane);
+            var startTrims = qIntersectsPlane(regionCopy, startPl);
+            var endTrims = qIntersectsPlane(regionCopy, endPl);
             //split if intersected
             if (!isQueryEmpty(context, startTrims))
             {
                 opSplitPart(context, id + ("region" ~ r ~ "startSplit"), {
                         "targets" : qUnion([startTrims]),
-                        "tool" : startPlane
+                        "tool" : startPl
                 });
             }
             if (!isQueryEmpty(context, endTrims))
             {
                 opSplitPart(context, id + ("region" ~ r ~ "endSplit"), {
                         "targets" : qUnion([endTrims]),
-                        "tool" : endPlane
+                        "tool" : endPl
                 });
             }
             //delete appropriate body
             var midpoint = (region.startFrame.origin + region.endFrame.origin) / 2;
-            var midpointPlane = plane(midpoint, normalize((region.startFrame.origin - region.endFrame.origin) / millimeter));
-            var deleteBodies = qSubtraction(regionCopy, qIntersectsPlane(regionCopy, midpointPlane));
+            var midPl = plane(midpoint, normalize((region.startFrame.origin - region.endFrame.origin) / millimeter));
+            var deleteBodies = qSubtraction(regionCopy, qIntersectsPlane(regionCopy, midPl));
 
             opDeleteBodies(context, id + ("deleteTrimmedBits" ~ r), {
                     "entities" : qUnion([deleteBodies])
@@ -472,11 +472,11 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
             });
 
             var splitEdges = qUnion([qCreatedBy(id + ("region" ~ r ~ "startSplit"), EntityType.EDGE), qCreatedBy(id + ("region" ~ r ~ "endSplit"), EntityType.EDGE)]);
-            var planeEdges = qUnion([
-                qCoincidesWithPlane(qOwnedByBody(regionCopy, EntityType.EDGE), startPlane),
-                qCoincidesWithPlane(qOwnedByBody(regionCopy, EntityType.EDGE), endPlane)
+            var boundaryPlaneEdges = qUnion([
+                qCoincidesWithPlane(qOwnedByBody(regionCopy, EntityType.EDGE), startPl),
+                qCoincidesWithPlane(qOwnedByBody(regionCopy, EntityType.EDGE), endPl)
             ]);
-            var peripheryEdges = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), qUnion([splitEdges, planeEdges])), EdgeTopology.ONE_SIDED);
+            var peripheryEdges = qEdgeTopologyFilter(qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE), qUnion([splitEdges, boundaryPlaneEdges])), EdgeTopology.ONE_SIDED);
 
             var reg = definition.regions[r];
             var isConstant = reg.offsetType == RegionOffsetType.CONSTANT;
