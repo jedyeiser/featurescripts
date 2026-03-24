@@ -1713,13 +1713,52 @@ export function buildIntersectionJoins(context is Context, id is Id,
                 var ptBVec     = evVertexPoint(context, { "vertex" : bestBVert });
                 var wireBEdgeQ = qClosestTo(qOwnedByBody(wireB, EntityType.EDGE), ptBVec);
 
+                // Bridge direction: from A vertex toward B vertex.
+                var bridgeDir = normalize((ptBVec - ptA) / millimeter);
+
+                // In FS >= V2744_BRIDGING_CURVE_FLIP, parameter-based auto-flip is
+                // disabled and qUnion([vertex, edge]) also disables editing-logic flip.
+                // Compute flip explicitly: flip if edge tangent at the vertex is
+                // anti-parallel to bridgeDir (i.e. points away from the gap).
+                var match1 = (rAContinuity == IntersectionContinuityType.G1) ?
+                        BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION;
+                var match2 = (rBContinuity == IntersectionContinuityType.G1) ?
+                        BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION;
+
+                var flip1 = false;
+                var flip2 = false;
+                if (match1 == BridgingCurveMatchType.TANGENCY)
+                {
+                    var paramA = evDistance(context, {
+                            "side0" : wireAEdgeQ,
+                            "side1" : ptA
+                    }).sides[0].parameter;
+                    var tangA = evEdgeTangentLine(context, {
+                            "edge"      : wireAEdgeQ,
+                            "parameter" : paramA
+                    }).direction;
+                    flip1 = dot(tangA, bridgeDir) < 0;
+                }
+                if (match2 == BridgingCurveMatchType.TANGENCY)
+                {
+                    var paramB = evDistance(context, {
+                            "side0" : wireBEdgeQ,
+                            "side1" : ptBVec
+                    }).sides[0].parameter;
+                    var tangB = evEdgeTangentLine(context, {
+                            "edge"      : wireBEdgeQ,
+                            "parameter" : paramB
+                    }).direction;
+                    flip2 = dot(tangB, bridgeDir) > 0;
+                }
+
                 bridgingCurve(context, id + ("bridgeIx" ~ i ~ "v" ~ a), {
                     "side1"             : qUnion([wireAVerts[a], wireAEdgeQ]),
-                    "match1"            : (rAContinuity == IntersectionContinuityType.G1) ?
-                            BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION,
+                    "match1"            : match1,
+                    "flip1"             : flip1,
                     "side2"             : qUnion([bestBVert, wireBEdgeQ]),
-                    "match2"            : (rBContinuity == IntersectionContinuityType.G1) ?
-                            BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION,
+                    "match2"            : match2,
+                    "flip2"             : flip2,
                     "method"            : BridgingCurveMethod.CONTROL_POINTS,
                     "editControlPoints" : false
                 });
