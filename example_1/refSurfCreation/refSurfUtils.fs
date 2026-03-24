@@ -1765,6 +1765,57 @@ export function buildIntersectionJoins(context is Context, id is Id,
             }
         }
     }
+
+    // --- Collect all surfaces into as few bodies as possible ---
+    // opBoolean UNION merges sheet bodies that share boundary edges.
+    // Disconnected surfaces cannot be merged and will throw; the catch leaves
+    // them as-is so partially-connected sets still get merged where possible.
+    if (definition.returnLoftSurface)
+    {
+        var allSurfs  = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
+        var surfCount = size(evaluateQuery(context, allSurfs));
+        if (surfCount > 1)
+        {
+            try
+            {
+                opBoolean(context, id + "collectSurfs", {
+                    "operands"      : allSurfs,
+                    "operationType" : BooleanOperationType.UNION
+                });
+            }
+            catch {}
+        }
+    }
+
+    // --- Collect all wires into as few bodies as possible ---
+    // opCompositeCurve joins connected edge sets into individual wire bodies.
+    // Disconnected groups each become their own wire body (correct behavior).
+    // Original wire bodies are deleted after the composite is built.
+    if (definition.returnOffsetWires)
+    {
+        var allWireBodies = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE);
+        var allWireEdges  = qOwnedByBody(allWireBodies, EntityType.EDGE);
+        if (size(evaluateQuery(context, allWireEdges)) > 0)
+        {
+            var wireMade = false;
+            try
+            {
+                opCompositeCurve(context, id + "collectWires", {
+                    "entities" : allWireEdges
+                });
+                wireMade = true;
+            }
+            catch {}
+            if (wireMade)
+            {
+                try
+                {
+                    opDeleteBodies(context, id + "delOldWires", { "entities" : allWireBodies });
+                }
+                catch {}
+            }
+        }
+    }
 }
 
 
