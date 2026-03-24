@@ -10,7 +10,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b2
 export import(path : "7e3b271854475bf6cf878b2b", version : "fc5e7fa037480fd2cbb69c0a");
 
 
-export const DEBUG_STEP_BOUNDS  = { (unitless)  : [0,    1,   9]} as IntegerBoundSpec;
+export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 9]} as IntegerBoundSpec;
 
 
 // --- Editing logic -----------------------------------------------------------
@@ -19,47 +19,133 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
         oldDefinition is map, definition is map, isCreating is boolean,
         specifiedParameters is map, hiddenBodies is Query) returns map
 {
-    // Auto-name blank regions
-    var namedRegions = [];
+    // Migrate legacy fields: regionName -> name, X_EXTENTS -> ALONG_REF
+    var migratedRegions = [];
     for (var i = 0; i < size(definition.swRoutRegions); i += 1)
     {
         var reg = definition.swRoutRegions[i];
-        if (reg.regionName == "" || reg.regionName == undefined)
+        if ((reg.name == undefined || reg.name == "") && reg.regionName != undefined)
         {
-            reg.regionName = "Region " ~ toString(i + 1);
+            reg = mergeMaps(reg, { "name" : reg.regionName });
         }
-        namedRegions = append(namedRegions, reg);
-    }
-    definition.swRoutRegions = namedRegions;
-
-    // Process regions to compute tStart/tEnd and write back regionLength
-    var sortedRegions = [];
-    try silent
-    {
-        var refWirePath = constructPath(context,
-                qOwnedByBody(definition.refWire, EntityType.EDGE));
-        var processed = processSwRoutRegions(context, id, definition, refWirePath);
-
-        var newRegions = [];
-        for (var i = 0; i < size(definition.swRoutRegions); i += 1)
+        if (reg.extentType == undefined)
         {
-            var reg = definition.swRoutRegions[i];
-            for (var pr in processed)
+            reg = mergeMaps(reg, { "extentType" : SWRoutExtentType.ALONG_REF });
+        }
+        migratedRegions = append(migratedRegions, reg);
+    }
+    definition.swRoutRegions = migratedRegions;
+
+    if (size(definition.swRoutRegions) > 0)
+    {
+        var sortable   = [];
+        var unsortable = [];
+
+        try silent
+        {
+            var refWirePath = constructPath(context,
+                    qOwnedByBody(definition.refWire, EntityType.EDGE));
+            var totalLength = 0 * meter;
+            for (var edge in refWirePath.edges)
             {
-                if (pr.regionNum == i)
+                totalLength += evLength(context, { "entities" : edge });
+            }
+
+            for (var i = 0; i < size(definition.swRoutRegions); i += 1)
+            {
+                var reg = definition.swRoutRegions[i];
+                if (reg.extentType == SWRoutExtentType.ALONG_REF &&
+                        reg.startX != undefined && reg.endX != undefined)
                 {
-                    reg.regionLength = pr.regionLength;
-                    break;
+                    reg.tStart       = min(max(reg.startX / totalLength, 0), 1);
+                    reg.tEnd         = min(max(reg.endX   / totalLength, 0), 1);
+                    reg.regionLength = (reg.tEnd - reg.tStart) * totalLength;
+                    sortable = append(sortable, reg);
+                }
+                else if (reg.extentType == SWRoutExtentType.QUERY)
+                {
+                    var resolvedOk = false;
+                    try silent
+                    {
+                        var queryPts = evaluateQuery(context, reg.extentQueries);
+                        if (size(queryPts) == 2)
+                        {
+                            var t0 = evDistancePath(context, {
+                                    "side0" : refWirePath,
+                                    "side1" : queryPts[0]
+                            }).sides[0].pathParam;
+                            var t1 = evDistancePath(context, {
+                                    "side0" : refWirePath,
+                                    "side1" : queryPts[1]
+                            }).sides[0].pathParam;
+                            reg.tStart       = min(t0, t1);
+                            reg.tEnd         = max(t0, t1);
+                            reg.regionLength = (reg.tEnd - reg.tStart) * totalLength;
+                            sortable = append(sortable, reg);
+                            resolvedOk = true;
+                        }
+                    }
+                    if (!resolvedOk)
+                    {
+                        unsortable = append(unsortable, reg);
+                    }
+                }
+                else
+                {
+                    unsortable = append(unsortable, reg);
                 }
             }
-            newRegions = append(newRegions, reg);
-        }
-        definition.swRoutRegions = newRegions;
-        sortedRegions = sortSwRoutRegions(processed);
-    }
 
-    definition.swRoutIntersections =
-            rebuildSwRoutIntersections(definition, sortedRegions);
+            sortable = sort(sortable, function(a, b)
+            {
+                return ((a.tStart + a.tEnd) / 2) - ((b.tStart + b.tEnd) / 2);
+            });
+        }
+
+        // If outer try silent failed, nothing was sorted -- fall back
+        if (size(sortable) == 0 && size(unsortable) == 0)
+        {
+            unsortable = definition.swRoutRegions;
+        }
+
+        // Assign regionNum and auto-names in sorted order
+        var sizeCounter = 0;
+        var newRegions  = [];
+
+        for (var i = 0; i < size(sortable); i += 1)
+        {
+            var reg = sortable[i];
+            reg.regionNum = sizeCounter;
+            var nm = reg.name;
+            reg.needsDefaultName = (nm == undefined || nm == "" || startsWith(nm, "Region "));
+            if (reg.needsDefaultName)
+            {
+                reg.name = "Region " ~ sizeCounter;
+            }
+            newRegions = append(newRegions, reg);
+            sizeCounter += 1;
+        }
+        for (var i = 0; i < size(unsortable); i += 1)
+        {
+            var reg = unsortable[i];
+            reg.regionNum = sizeCounter;
+            var nm = reg.name;
+            reg.needsDefaultName = (nm == undefined || nm == "");
+            if (reg.needsDefaultName)
+            {
+                reg.name = "Region " ~ sizeCounter;
+            }
+            newRegions = append(newRegions, reg);
+            sizeCounter += 1;
+        }
+
+        definition.swRoutRegions       = newRegions;
+        definition.swRoutIntersections = rebuildSwRoutIntersections(definition, newRegions);
+    }
+    else
+    {
+        definition.swRoutIntersections = [];
+    }
 
     return definition;
 }
@@ -95,18 +181,22 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         definition.refWireOrigin is Query;
 
         annotation { "Name" : "Regions", "Item name" : "Region",
-                     "Item label template" : "#regionName",
+                     "Item label template" : "#name",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.swRoutRegions is array;
         for (var region in definition.swRoutRegions)
         {
             annotation { "Name" : "Region number", "UIHint" : UIHint.ALWAYS_HIDDEN }
-            isInteger(region.regionNum, POSITIVE_COUNT_BOUNDS);
+            isInteger(region.regionNum, RegionNumBounds);
 
-            annotation { "Name" : "Region name" }
-            region.regionName is string;
+            annotation { "Name" : "Name" }
+            region.name is string;
 
-            annotation { "Name" : "Extent type", "Default" : SWRoutExtentType.X_EXTENTS }
+            annotation { "Name" : "needsDefaultName", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            region.needsDefaultName is boolean;
+
+            annotation { "Name" : "Extent type", "Default" : SWRoutExtentType.ALONG_REF,
+                         "UIHint" : UIHint.HORIZONTAL_ENUM }
             region.extentType is SWRoutExtentType;
 
             if (region.extentType == SWRoutExtentType.QUERY)
@@ -117,15 +207,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 region.extentQueries is Query;
             }
 
-            if (region.extentType == SWRoutExtentType.X_EXTENTS)
+            if (region.extentType == SWRoutExtentType.ALONG_REF)
             {
-                annotation { "Name" : "Region start",
-                             "Description" : "World X coordinate of region start" }
-                isLength(region.regionStart, LENGTH_BOUNDS);
+                annotation { "Name" : "Start",
+                             "Description" : "Arc-length distance from ref wire origin to region start" }
+                isLength(region.startX, LENGTH_BOUNDS);
 
-                annotation { "Name" : "Region end",
-                             "Description" : "World X coordinate of region end" }
-                isLength(region.regionEnd, LENGTH_BOUNDS);
+                annotation { "Name" : "End",
+                             "Description" : "Arc-length distance from ref wire origin to region end" }
+                isLength(region.endX, LENGTH_BOUNDS);
             }
 
             annotation { "Name" : "Sidewall rout angle" }
@@ -145,23 +235,31 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         }
 
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
-                     "Item label template" : "#intersectionNum",
-                     "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
+                     "Item label template" : "#intersectionName",
+                     "UIHint" : [UIHint.PREVENT_ARRAY_REORDER, UIHint.COLLAPSE_ARRAY_ITEMS] }
         definition.swRoutIntersections is array;
         for (var intr in definition.swRoutIntersections)
         {
-            annotation { "Name" : "Is valid", "Default" : false,
-                         "UIHint" : UIHint.ALWAYS_HIDDEN }
-            intr.isValid is boolean;
+            annotation { "Name" : "Intersection number", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isInteger(intr.intersectionNum, RegionNumBounds);
 
-            annotation { "Name" : "Intersection number", "UIHint" : UIHint.READ_ONLY }
-            isInteger(intr.intersectionNum, POSITIVE_COUNT_BOUNDS);
+            annotation { "Name" : "Name" }
+            intr.intersectionName is string;
 
-            annotation { "Name" : "Region 1", "UIHint" : UIHint.READ_ONLY }
-            intr.region1 is string;
+            annotation { "Name" : "needsIntersectionName", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            intr.needsIntersectionName is boolean;
 
-            annotation { "Name" : "Region 2", "UIHint" : UIHint.READ_ONLY }
-            intr.region2 is string;
+            annotation { "Name" : "RegionANum", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isInteger(intr.regionANum, RegionNumBounds);
+
+            annotation { "Name" : "Region A", "UIHint" : UIHint.READ_ONLY }
+            intr.regionAName is string;
+
+            annotation { "Name" : "RegionBNum", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isInteger(intr.regionBNum, RegionNumBounds);
+
+            annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
+            intr.regionBName is string;
 
             annotation { "Name" : "Blend regions?", "Default" : false }
             intr.blend is boolean;
@@ -227,542 +325,533 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             throw regenError("Add at least one region to define the sidewall rout.");
         }
 
-        // Normal directions for offset sign (global -- same surfaces for all regions)
-        var bottomNormal = evFaceTangentPlane(context, {
-                "face"      : qNthElement(qOwnedByBody(definition.bottomSheet, EntityType.FACE), 0),
-                "parameter" : vector(0.5, 0.5)
-        }).normal;
-        var sideNormal = evFaceTangentPlane(context, {
-                "face"      : qNthElement(qOwnedByBody(definition.sideSheet, EntityType.FACE), 0),
-                "parameter" : vector(0.5, 0.5)
-        }).normal;
-        const bottomOffsetSign = bottomNormal[2] >= 0 ? 1 : -1;
-        const sideOffsetSign   = sideNormal[1]   >= 0 ? 1 : -1;
-        if (bottomNormal[2] < 0) { bottomNormal = -bottomNormal; }
-        if (sideNormal[1]   < 0) { sideNormal   = -sideNormal; }
-
         if (definition.debugPrint)
         {
             println("=== SWRout debug ===");
-            println("  nRegions        = " ~ toString(nRegions));
-            println("  bottomOffsetSign= " ~ toString(bottomOffsetSign));
-            println("  sideOffsetSign  = " ~ toString(sideOffsetSign));
+            println("  nRegions = " ~ toString(nRegions));
         }
 
-        // State maps keyed by toString(regionIndex)
-        var regionBottomCopyQ  = {};  // Query for each region's bottom copy
-        var regionSideCopyQ    = {};  // Query for each region's side copy
-        var washedInitialWires = {};  // array of side wires per region
+        // State maps keyed by toString(region index)
+        var regionBottomCopyQ  = {};
+        var regionSideCopyQ    = {};
+        var regionBottomSign   = {};  // per-region bottomOffsetSign
+        var regionSideSign     = {};  // per-region sideOffsetSign
+        var washedInitialWires = {};
         var washedStartWires   = {};
         var washedStepInWires  = {};
         var washedStopWires    = {};
 
         // =====================================================================
-        // Step 0: per region -- copy and trim bottom and side surfaces
+        // Step 0: per region -- copy and trim bottom and side surfaces,
+        //         compute per-region offset signs from trimmed copies.
         // =====================================================================
-        if (stepThrough && step >= 0)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
+            var region = sortedRegions[r];
+            var rName  = region.name;
+            var rKey   = toString(r);
+
+            var tMid       = (region.tStart + region.tEnd) / 2;
+            var midTL      = evPathTangentLines(context, refWirePath, [tMid]);
+            var probePoint = midTL.tangentLines[0].origin;
+
+            opPattern(context, id + ("bottomCopy" ~ r), {
+                    "entities"      : definition.bottomSheet,
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                    "instanceNames" : ["1"]
+            });
+            var bottomQ = qCreatedBy(id + ("bottomCopy" ~ r), EntityType.BODY);
+
+            opPattern(context, id + ("sideCopy" ~ r), {
+                    "entities"      : definition.sideSheet,
+                    "transforms"    : [transform(vector(0, 0, 0) * meter)],
+                    "instanceNames" : ["1"]
+            });
+            var sideQ = qCreatedBy(id + ("sideCopy" ~ r), EntityType.BODY);
+
+            var startPl = createRegionBoundingPlane(context, refWirePath, region.tStart);
+            bottomQ = splitAndKeep(context, id + ("trimBotStart" ~ r), bottomQ, startPl, probePoint);
+            sideQ   = splitAndKeep(context, id + ("trimSideStart" ~ r), sideQ, startPl, probePoint);
+
+            var endPl = createRegionBoundingPlane(context, refWirePath, region.tEnd);
+            bottomQ = splitAndKeep(context, id + ("trimBotEnd" ~ r), bottomQ, endPl, probePoint);
+            sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoint);
+
+            // Compute offset signs from the trimmed copies for this region.
+            // Using the trimmed geometry is more reliable than querying the full
+            // surface at a fixed UV midpoint, especially for curved ski geometry.
+            var bFace   = qNthElement(qOwnedByBody(bottomQ, EntityType.FACE), 0);
+            var bNormal = evFaceTangentPlane(context, {
+                    "face" : bFace, "parameter" : vector(0.5, 0.5) }).normal;
+            regionBottomSign[rKey] = bNormal[2] >= 0 ? 1 : -1;
+
+            var sFace   = qNthElement(qOwnedByBody(sideQ, EntityType.FACE), 0);
+            var sNormal = evFaceTangentPlane(context, {
+                    "face" : sFace, "parameter" : vector(0.5, 0.5) }).normal;
+            regionSideSign[rKey] = sNormal[1] >= 0 ? 1 : -1;
+
+            if (definition.debugPrint)
             {
-                var region = sortedRegions[r];
-                var rName  = region.regionName;
-                var rKey   = toString(r);
-
-                // Midpoint on refWire -- used to select the correct split piece
-                var tMid       = (region.tStart + region.tEnd) / 2;
-                var midTL      = evPathTangentLines(context, refWirePath, [tMid]);
-                var probePoint = midTL.tangentLines[0].origin;
-
-                // Copy bottom surface for this region
-                opPattern(context, id + ("bottomCopy" ~ r), {
-                        "entities"      : definition.bottomSheet,
-                        "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                        "instanceNames" : ["1"]
-                });
-                var bottomQ = qCreatedBy(id + ("bottomCopy" ~ r), EntityType.BODY);
-
-                // Copy side surface for this region
-                opPattern(context, id + ("sideCopy" ~ r), {
-                        "entities"      : definition.sideSheet,
-                        "transforms"    : [transform(vector(0, 0, 0) * meter)],
-                        "instanceNames" : ["1"]
-                });
-                var sideQ = qCreatedBy(id + ("sideCopy" ~ r), EntityType.BODY);
-
-                // Trim to start boundary
-                var startPl = createRegionBoundingPlane(context, refWirePath, region.tStart);
-                bottomQ = splitAndKeep(context, id + ("trimBotStart" ~ r), bottomQ, startPl, probePoint);
-                sideQ   = splitAndKeep(context, id + ("trimSideStart" ~ r), sideQ, startPl, probePoint);
-
-                // Trim to end boundary
-                var endPl = createRegionBoundingPlane(context, refWirePath, region.tEnd);
-                bottomQ = splitAndKeep(context, id + ("trimBotEnd" ~ r), bottomQ, endPl, probePoint);
-                sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoint);
-
-                setProperty(context, {
-                        "entities"     : bottomQ,
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : "Bottom copy [" ~ rName ~ "]"
-                });
-                setProperty(context, {
-                        "entities"     : sideQ,
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : "Side copy [" ~ rName ~ "]"
-                });
-
-                regionBottomCopyQ[rKey] = bottomQ;
-                regionSideCopyQ[rKey]   = sideQ;
+                println("  [" ~ rName ~ "] bottomSign=" ~ toString(regionBottomSign[rKey]) ~
+                        " sideSign=" ~ toString(regionSideSign[rKey]));
             }
+
+            setProperty(context, {
+                    "entities"     : bottomQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Bottom copy [" ~ rName ~ "]"
+            });
+            setProperty(context, {
+                    "entities"     : sideQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Side copy [" ~ rName ~ "]"
+            });
+
+            regionBottomCopyQ[rKey] = bottomQ;
+            regionSideCopyQ[rKey]   = sideQ;
         }
+
+        if (stepThrough && step == 0) { return; }
 
         // =====================================================================
         // Step 1: per region -- intersect surfaces -> initial wire
         // =====================================================================
-        if (stepThrough && step >= 1)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
-            {
-                var region  = sortedRegions[r];
-                var rName   = region.regionName;
-                var rKey    = toString(r);
-                var bottomQ = regionBottomCopyQ[rKey];
-                var sideQ   = regionSideCopyQ[rKey];
+            var region  = sortedRegions[r];
+            var rName   = region.name;
+            var rKey    = toString(r);
+            var bottomQ = regionBottomCopyQ[rKey];
+            var sideQ   = regionSideCopyQ[rKey];
 
-                intersectionCurve(context, id + ("initialWire" ~ r), {
-                        "group1" : bottomQ,
-                        "group2" : sideQ
+            intersectionCurve(context, id + ("initialWire" ~ r), {
+                    "group1" : bottomQ,
+                    "group2" : sideQ
+            });
+            var wires = rebuildWire(context, id + ("rebuildInitial" ~ r),
+                    qCreatedBy(id + ("initialWire" ~ r), EntityType.BODY));
+            for (var s = 0; s < size(wires); s += 1)
+            {
+                setProperty(context, {
+                        "entities"     : wires[s],
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Initial wire [" ~ rName ~ "] " ~ sideNames[s]
                 });
-                var wires = rebuildWire(context, id + ("rebuildInitial" ~ r),
-                        qCreatedBy(id + ("initialWire" ~ r), EntityType.BODY));
-                for (var s = 0; s < size(wires); s += 1)
-                {
-                    setProperty(context, {
-                            "entities"     : wires[s],
-                            "propertyType" : PropertyType.NAME,
-                            "value"        : "Initial wire [" ~ rName ~ "] " ~ sideNames[s]
-                    });
-                }
-                washedInitialWires[rKey] = wires;
             }
+            washedInitialWires[rKey] = wires;
         }
+
+        if (stepThrough && step == 1) { return; }
 
         // =====================================================================
         // Step 2: per region -- offset bottom copy, intersect -> start wire
         // =====================================================================
-        if (stepThrough && step >= 2)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
-            {
-                var region  = sortedRegions[r];
-                var rName   = region.regionName;
-                var rKey    = toString(r);
-                var bottomQ = regionBottomCopyQ[rKey];
-                var sideQ   = regionSideCopyQ[rKey];
+            var region  = sortedRegions[r];
+            var rName   = region.name;
+            var rKey    = toString(r);
+            var bottomQ = regionBottomCopyQ[rKey];
+            var sideQ   = regionSideCopyQ[rKey];
+            var bSign   = regionBottomSign[rKey];
 
-                opOffsetFace(context, id + ("startBottomOffset" ~ r), {
-                        "moveFaces"      : qUnion([qOwnedByBody(bottomQ, EntityType.FACE)]),
-                        "offsetDistance" : bottomOffsetSign * region.distAboveBottom
+            opOffsetFace(context, id + ("startBottomOffset" ~ r), {
+                    "moveFaces"      : qUnion([qOwnedByBody(bottomQ, EntityType.FACE)]),
+                    "offsetDistance" : bSign * region.distAboveBottom
+            });
+            setProperty(context, {
+                    "entities"     : bottomQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Bottom (offset) [" ~ rName ~ "]"
+            });
+
+            intersectionCurve(context, id + ("startIntersect" ~ r), {
+                    "group1" : sideQ,
+                    "group2" : bottomQ
+            });
+            var wires = rebuildWire(context, id + ("rebuildStart" ~ r),
+                    qCreatedBy(id + ("startIntersect" ~ r), EntityType.BODY));
+            for (var s = 0; s < size(wires); s += 1)
+            {
+                setProperty(context, {
+                        "entities"     : wires[s],
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Start wire [" ~ rName ~ "] " ~ sideNames[s]
+                });
+            }
+            washedStartWires[rKey] = wires;
+
+            if (definition.debugPrint)
+            {
+                for (var s = 0; s < size(wires); s += 1)
+                {
+                    debugPrintWireBSplines(context, wires[s],
+                            "Start wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
+                }
+            }
+        }
+
+        if (stepThrough && step == 2) { return; }
+
+        // =====================================================================
+        // Step 3: per region -- offset side copy (if stepIn > 0) -> step-in wire
+        // =====================================================================
+        for (var r = 0; r < nRegions; r += 1)
+        {
+            var region = sortedRegions[r];
+            var rName  = region.name;
+            var rKey   = toString(r);
+            var sSign  = regionSideSign[rKey];
+
+            if (region.swRoutStepin > 0 * millimeter)
+            {
+                var sideQ = regionSideCopyQ[rKey];
+
+                opOffsetFace(context, id + ("stepInSideOffset" ~ r), {
+                        "moveFaces"      : qUnion([qOwnedByBody(sideQ, EntityType.FACE)]),
+                        "offsetDistance" : -sSign * region.swRoutStepin
                 });
                 setProperty(context, {
-                        "entities"     : bottomQ,
+                        "entities"     : sideQ,
                         "propertyType" : PropertyType.NAME,
-                        "value"        : "Bottom (offset) [" ~ rName ~ "]"
+                        "value"        : "Side (offset) [" ~ rName ~ "]"
                 });
 
-                intersectionCurve(context, id + ("startIntersect" ~ r), {
+                intersectionCurve(context, id + ("stepInIntersect" ~ r), {
                         "group1" : sideQ,
-                        "group2" : bottomQ
+                        "group2" : regionBottomCopyQ[rKey]
                 });
-                var wires = rebuildWire(context, id + ("rebuildStart" ~ r),
-                        qCreatedBy(id + ("startIntersect" ~ r), EntityType.BODY));
+                var wires = rebuildWire(context, id + ("rebuildStepIn" ~ r),
+                        qCreatedBy(id + ("stepInIntersect" ~ r), EntityType.BODY));
                 for (var s = 0; s < size(wires); s += 1)
                 {
                     setProperty(context, {
                             "entities"     : wires[s],
                             "propertyType" : PropertyType.NAME,
-                            "value"        : "Start wire [" ~ rName ~ "] " ~ sideNames[s]
+                            "value"        : "Step-in wire [" ~ rName ~ "] " ~ sideNames[s]
                     });
                 }
-                washedStartWires[rKey] = wires;
+                washedStepInWires[rKey] = wires;
 
                 if (definition.debugPrint)
                 {
                     for (var s = 0; s < size(wires); s += 1)
                     {
                         debugPrintWireBSplines(context, wires[s],
-                                "Start wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
+                                "Step-in wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
                     }
                 }
             }
         }
 
-        // =====================================================================
-        // Step 3: per region -- offset side copy (if stepIn > 0) -> step-in wire
-        // =====================================================================
-        if (stepThrough && step >= 3)
-        {
-            for (var r = 0; r < nRegions; r += 1)
-            {
-                var region = sortedRegions[r];
-                var rName  = region.regionName;
-                var rKey   = toString(r);
-
-                if (region.swRoutStepin > 0 * millimeter)
-                {
-                    var sideQ = regionSideCopyQ[rKey];
-
-                    opOffsetFace(context, id + ("stepInSideOffset" ~ r), {
-                            "moveFaces"      : qUnion([qOwnedByBody(sideQ, EntityType.FACE)]),
-                            "offsetDistance" : -sideOffsetSign * region.swRoutStepin
-                    });
-                    setProperty(context, {
-                            "entities"     : sideQ,
-                            "propertyType" : PropertyType.NAME,
-                            "value"        : "Side (offset) [" ~ rName ~ "]"
-                    });
-
-                    intersectionCurve(context, id + ("stepInIntersect" ~ r), {
-                            "group1" : sideQ,
-                            "group2" : regionBottomCopyQ[rKey]
-                    });
-                    var wires = rebuildWire(context, id + ("rebuildStepIn" ~ r),
-                            qCreatedBy(id + ("stepInIntersect" ~ r), EntityType.BODY));
-                    for (var s = 0; s < size(wires); s += 1)
-                    {
-                        setProperty(context, {
-                                "entities"     : wires[s],
-                                "propertyType" : PropertyType.NAME,
-                                "value"        : "Step-in wire [" ~ rName ~ "] " ~ sideNames[s]
-                        });
-                    }
-                    washedStepInWires[rKey] = wires;
-
-                    if (definition.debugPrint)
-                    {
-                        for (var s = 0; s < size(wires); s += 1)
-                        {
-                            debugPrintWireBSplines(context, wires[s],
-                                    "Step-in wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
-                        }
-                    }
-                }
-            }
-        }
+        if (stepThrough && step == 3) { return; }
 
         // =====================================================================
         // Step 4: per region -- offset copies to stop position
         //   routSpanHeight = swRoutHeight - distAboveBottom
         //   routSpanSide   = routSpanHeight * tan(swRoutAngle)
         //   bottomCopy is at distAboveBottom; add routSpanHeight to reach swRoutHeight
-        //   sideCopy is at swRoutStepin (or 0); add routSpanSide
+        //   sideCopy is at swRoutStepin (or 0); add routSpanSide inward
         // =====================================================================
-        if (stepThrough && step >= 4)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
+            var region  = sortedRegions[r];
+            var rName   = region.name;
+            var rKey    = toString(r);
+            var bottomQ = regionBottomCopyQ[rKey];
+            var sideQ   = regionSideCopyQ[rKey];
+            var bSign   = regionBottomSign[rKey];
+            var sSign   = regionSideSign[rKey];
+
+            var routSpanHeight = region.swRoutHeight - region.distAboveBottom;
+            var routSpanSide   = routSpanHeight * tan(region.swRoutAngle);
+
+            if (definition.debugPrint)
             {
-                var region = sortedRegions[r];
-                var rName  = region.regionName;
-                var rKey   = toString(r);
-                var bottomQ = regionBottomCopyQ[rKey];
-                var sideQ   = regionSideCopyQ[rKey];
-
-                var routSpanHeight = region.swRoutHeight - region.distAboveBottom;
-                var routSpanSide   = routSpanHeight * tan(region.swRoutAngle);
-
-                if (definition.debugPrint)
-                {
-                    println("  [" ~ rName ~ "] routSpanHeight = " ~ toString(routSpanHeight));
-                    println("  [" ~ rName ~ "] routSpanSide   = " ~ toString(routSpanSide));
-                }
-
-                opOffsetFace(context, id + ("stopBottomOffset" ~ r), {
-                        "moveFaces"      : qUnion([qOwnedByBody(bottomQ, EntityType.FACE)]),
-                        "offsetDistance" : bottomOffsetSign * routSpanHeight
-                });
-                setProperty(context, {
-                        "entities"     : bottomQ,
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : "Stop bottom [" ~ rName ~ "]"
-                });
-
-                opOffsetFace(context, id + ("stopSideOffset" ~ r), {
-                        "moveFaces"      : qUnion([qOwnedByBody(sideQ, EntityType.FACE)]),
-                        "offsetDistance" : -sideOffsetSign * routSpanSide
-                });
-                setProperty(context, {
-                        "entities"     : sideQ,
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : "Stop side [" ~ rName ~ "]"
-                });
+                println("  [" ~ rName ~ "] routSpanHeight = " ~ toString(routSpanHeight));
+                println("  [" ~ rName ~ "] routSpanSide   = " ~ toString(routSpanSide));
             }
+
+            opOffsetFace(context, id + ("stopBottomOffset" ~ r), {
+                    "moveFaces"      : qUnion([qOwnedByBody(bottomQ, EntityType.FACE)]),
+                    "offsetDistance" : bSign * routSpanHeight
+            });
+            setProperty(context, {
+                    "entities"     : bottomQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Stop bottom [" ~ rName ~ "]"
+            });
+
+            opOffsetFace(context, id + ("stopSideOffset" ~ r), {
+                    "moveFaces"      : qUnion([qOwnedByBody(sideQ, EntityType.FACE)]),
+                    "offsetDistance" : -sSign * routSpanSide
+            });
+            setProperty(context, {
+                    "entities"     : sideQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value"        : "Stop side [" ~ rName ~ "]"
+            });
         }
+
+        if (stepThrough && step == 4) { return; }
 
         // =====================================================================
         // Step 5: per region -- extend stop side if gap, intersect -> stop wire
         // =====================================================================
-        if (stepThrough && step >= 5)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
+            var region  = sortedRegions[r];
+            var rName   = region.name;
+            var rKey    = toString(r);
+            var bottomQ = regionBottomCopyQ[rKey];
+            var sideQ   = regionSideCopyQ[rKey];
+
+            var gapDist = evDistance(context, {
+                    "side0" : sideQ,
+                    "side1" : bottomQ
+            }).distance;
+
+            if (definition.debugPrint)
             {
-                var region  = sortedRegions[r];
-                var rName   = region.regionName;
-                var rKey    = toString(r);
-                var bottomQ = regionBottomCopyQ[rKey];
-                var sideQ   = regionSideCopyQ[rKey];
+                println("  [" ~ rName ~ "] stop surface gap = " ~ toString(gapDist));
+            }
 
-                var gapDist = evDistance(context, {
-                        "side0" : sideQ,
-                        "side1" : bottomQ
-                }).distance;
+            if (gapDist > 0 * meter)
+            {
+                var oneSidedEdges = evaluateQuery(context,
+                        qEdgeTopologyFilter(qOwnedByBody(sideQ, EntityType.EDGE),
+                        EdgeTopology.ONE_SIDED));
 
-                if (definition.debugPrint)
+                var minEdgeDist = 1e10 * meter;
+                for (var edge in oneSidedEdges)
                 {
-                    println("  [" ~ rName ~ "] stop surface gap = " ~ toString(gapDist));
+                    var dd = evDistance(context, { "side0" : edge, "side1" : bottomQ }).distance;
+                    if (dd < minEdgeDist) { minEdgeDist = dd; }
                 }
 
-                if (gapDist > 0 * meter)
+                var edgesToExtend = [];
+                for (var edge in oneSidedEdges)
                 {
-                    var oneSidedEdges = evaluateQuery(context,
-                            qEdgeTopologyFilter(qOwnedByBody(sideQ, EntityType.EDGE),
-                            EdgeTopology.ONE_SIDED));
-
-                    var minEdgeDist = 1e10 * meter;
-                    for (var edge in oneSidedEdges)
+                    var dd = evDistance(context, { "side0" : edge, "side1" : bottomQ }).distance;
+                    if (dd < minEdgeDist + 1e-4 * meter)
                     {
-                        var dd = evDistance(context, { "side0" : edge, "side1" : bottomQ }).distance;
-                        if (dd < minEdgeDist) { minEdgeDist = dd; }
+                        edgesToExtend = append(edgesToExtend, edge);
                     }
-
-                    var edgesToExtend = [];
-                    for (var edge in oneSidedEdges)
-                    {
-                        var dd = evDistance(context, { "side0" : edge, "side1" : bottomQ }).distance;
-                        if (dd < minEdgeDist + 1e-4 * meter)
-                        {
-                            edgesToExtend = append(edgesToExtend, edge);
-                        }
-                    }
-
-                    extendSurface(context, id + ("extendStopSide" ~ r), {
-                            "entities"           : qUnion(edgesToExtend),
-                            "tangentPropagation" : true,
-                            "endCondition"       : ExtendBoundingType.BLIND,
-                            "oppositeDirection"  : false,
-                            "extendDistance"     : gapDist + 1 * millimeter,
-                            "maintainCurvature"  : true
-                    });
                 }
 
-                intersectionCurve(context, id + ("stopWire" ~ r), {
-                        "group1" : sideQ,
-                        "group2" : bottomQ
+                extendSurface(context, id + ("extendStopSide" ~ r), {
+                        "entities"           : qUnion(edgesToExtend),
+                        "tangentPropagation" : true,
+                        "endCondition"       : ExtendBoundingType.BLIND,
+                        "oppositeDirection"  : false,
+                        "extendDistance"     : gapDist + 1 * millimeter,
+                        "maintainCurvature"  : true
                 });
-                var wires = rebuildWire(context, id + ("rebuildStop" ~ r),
-                        qCreatedBy(id + ("stopWire" ~ r), EntityType.BODY));
+            }
+
+            intersectionCurve(context, id + ("stopWire" ~ r), {
+                    "group1" : sideQ,
+                    "group2" : bottomQ
+            });
+            var wires = rebuildWire(context, id + ("rebuildStop" ~ r),
+                    qCreatedBy(id + ("stopWire" ~ r), EntityType.BODY));
+            for (var s = 0; s < size(wires); s += 1)
+            {
+                setProperty(context, {
+                        "entities"     : wires[s],
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Stop wire [" ~ rName ~ "] " ~ sideNames[s]
+                });
+            }
+            washedStopWires[rKey] = wires;
+
+            if (definition.debugPrint)
+            {
                 for (var s = 0; s < size(wires); s += 1)
                 {
-                    setProperty(context, {
-                            "entities"     : wires[s],
-                            "propertyType" : PropertyType.NAME,
-                            "value"        : "Stop wire [" ~ rName ~ "] " ~ sideNames[s]
-                    });
-                }
-                washedStopWires[rKey] = wires;
-
-                if (definition.debugPrint)
-                {
-                    for (var s = 0; s < size(wires); s += 1)
-                    {
-                        debugPrintWireBSplines(context, wires[s],
-                                "Stop wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
-                    }
+                    debugPrintWireBSplines(context, wires[s],
+                            "Stop wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
                 }
             }
         }
+
+        if (stepThrough && step == 5) { return; }
 
         // =====================================================================
         // Step 6: per region -- loft initial wire -> start wire
         // =====================================================================
-        if (stepThrough && step >= 6)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
+            var region     = sortedRegions[r];
+            var rName      = region.name;
+            var rKey       = toString(r);
+            var initWires  = washedInitialWires[rKey];
+            var startWires = washedStartWires[rKey];
+
+            for (var s = 0; s < size(initWires); s += 1)
             {
-                var region     = sortedRegions[r];
-                var rName      = region.regionName;
-                var rKey       = toString(r);
-                var initWires  = washedInitialWires[rKey];
-                var startWires = washedStartWires[rKey];
+                var initialEdges = qUnion([qOwnedByBody(initWires[s],  EntityType.EDGE)]);
+                var startEdges   = qUnion([qOwnedByBody(startWires[s], EntityType.EDGE)]);
+                var loftedSurfs  = [];
+                var iterEdges    = evaluateQuery(context, initialEdges);
 
-                for (var s = 0; s < size(initWires); s += 1)
+                for (var i = 0; i < size(iterEdges); i += 1)
                 {
-                    var initialEdges = qUnion([qOwnedByBody(initWires[s],  EntityType.EDGE)]);
-                    var startEdges   = qUnion([qOwnedByBody(startWires[s], EntityType.EDGE)]);
-                    var loftedSurfs  = [];
-                    var iterEdges    = evaluateQuery(context, initialEdges);
-
-                    for (var i = 0; i < size(iterEdges); i += 1)
+                    var initialEdge = iterEdges[i];
+                    var midPoint = evEdgeTangentLine(context, {
+                            "edge"      : initialEdge,
+                            "parameter" : 0.5
+                    }).origin;
+                    var startEdge = qClosestTo(startEdges, midPoint);
+                    try
                     {
-                        var initialEdge = iterEdges[i];
-                        var midPoint = evEdgeTangentLine(context, {
-                                "edge"      : initialEdge,
-                                "parameter" : 0.5
-                        }).origin;
-                        var startEdge = qClosestTo(startEdges, midPoint);
-                        try
-                        {
-                            opLoft(context, id + ("initStartLoft" ~ r ~ "_" ~ s ~ "_" ~ i), {
-                                    "profileSubqueries" : [initialEdge, startEdge],
-                                    "bodyType"          : ToolBodyType.SURFACE
-                            });
-                            loftedSurfs = append(loftedSurfs,
-                                    qCreatedBy(id + ("initStartLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
-                        }
-                        catch (error)
-                        {
-                            addDebugEntities(context, startEdge,   DebugColor.RED);
-                            addDebugEntities(context, initialEdge, DebugColor.GREEN);
-                        }
+                        opLoft(context, id + ("initStartLoft" ~ r ~ "_" ~ s ~ "_" ~ i), {
+                                "profileSubqueries" : [initialEdge, startEdge],
+                                "bodyType"          : ToolBodyType.SURFACE
+                        });
+                        loftedSurfs = append(loftedSurfs,
+                                qCreatedBy(id + ("initStartLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
                     }
-                    opBoolean(context, id + ("combineInitStart" ~ r ~ "_" ~ s), {
-                            "tools"         : qUnion(loftedSurfs),
-                            "operationType" : BooleanOperationType.UNION
-                    });
-                    setProperty(context, {
-                            "entities"     : qUnion(loftedSurfs),
-                            "propertyType" : PropertyType.NAME,
-                            "value"        : "Initial to Start [" ~ rName ~ "] " ~ sideNames[s]
-                    });
+                    catch (error)
+                    {
+                        addDebugEntities(context, startEdge,   DebugColor.RED);
+                        addDebugEntities(context, initialEdge, DebugColor.GREEN);
+                    }
                 }
+                opBoolean(context, id + ("combineInitStart" ~ r ~ "_" ~ s), {
+                        "tools"         : qUnion(loftedSurfs),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                setProperty(context, {
+                        "entities"     : qUnion(loftedSurfs),
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Initial to Start [" ~ rName ~ "] " ~ sideNames[s]
+                });
             }
         }
+
+        if (stepThrough && step == 6) { return; }
 
         // =====================================================================
         // Step 7: per region -- loft start -> step-in wire (if stepIn > 0)
         // =====================================================================
-        if (stepThrough && step >= 7)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            for (var r = 0; r < nRegions; r += 1)
+            var region = sortedRegions[r];
+            var rName  = region.name;
+            var rKey   = toString(r);
+
+            if (region.swRoutStepin > 0 * millimeter)
             {
-                var region = sortedRegions[r];
-                var rName  = region.regionName;
-                var rKey   = toString(r);
+                var startWires  = washedStartWires[rKey];
+                var stepInWires = washedStepInWires[rKey];
 
-                if (region.swRoutStepin > 0 * millimeter)
+                for (var s = 0; s < size(startWires); s += 1)
                 {
-                    var startWires  = washedStartWires[rKey];
-                    var stepInWires = washedStepInWires[rKey];
-
-                    for (var s = 0; s < size(startWires); s += 1)
-                    {
-                        var startEdges  = qUnion([qOwnedByBody(startWires[s],  EntityType.EDGE)]);
-                        var stepInEdges = qUnion([qOwnedByBody(stepInWires[s], EntityType.EDGE)]);
-                        var loftedSurfs = [];
-                        var iterEdges   = evaluateQuery(context, startEdges);
-
-                        for (var i = 0; i < size(iterEdges); i += 1)
-                        {
-                            var startEdge = iterEdges[i];
-                            var midPoint  = evEdgeTangentLine(context, {
-                                    "edge"      : startEdge,
-                                    "parameter" : 0.5
-                            }).origin;
-                            var stepInEdge = qClosestTo(stepInEdges, midPoint);
-                            try
-                            {
-                                opLoft(context, id + ("startStepInLoft" ~ r ~ "_" ~ s ~ "_" ~ i), {
-                                        "profileSubqueries" : [startEdge, stepInEdge],
-                                        "bodyType"          : ToolBodyType.SURFACE
-                                });
-                                loftedSurfs = append(loftedSurfs,
-                                        qCreatedBy(id + ("startStepInLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
-                            }
-                            catch (error)
-                            {
-                                addDebugEntities(context, stepInEdge, DebugColor.RED);
-                                addDebugEntities(context, startEdge,  DebugColor.GREEN);
-                            }
-                        }
-                        opBoolean(context, id + ("combineStartStepIn" ~ r ~ "_" ~ s), {
-                                "tools"         : qUnion(loftedSurfs),
-                                "operationType" : BooleanOperationType.UNION
-                        });
-                        setProperty(context, {
-                                "entities"     : qUnion(loftedSurfs),
-                                "propertyType" : PropertyType.NAME,
-                                "value"        : "Start to Step-In [" ~ rName ~ "] " ~ sideNames[s]
-                        });
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // Step 8: per region -- loft lower wire (step-in or start) -> stop wire
-        // =====================================================================
-        if (stepThrough && step >= 8)
-        {
-            for (var r = 0; r < nRegions; r += 1)
-            {
-                var region     = sortedRegions[r];
-                var rName      = region.regionName;
-                var rKey       = toString(r);
-                var lowerWires = (region.swRoutStepin > 0 * millimeter) ?
-                        washedStepInWires[rKey] : washedStartWires[rKey];
-                var stopWires  = washedStopWires[rKey];
-
-                for (var s = 0; s < size(lowerWires); s += 1)
-                {
-                    var lowerEdges = qUnion([qOwnedByBody(lowerWires[s], EntityType.EDGE)]);
-                    var stopEdges  = qUnion([qOwnedByBody(stopWires[s],  EntityType.EDGE)]);
+                    var startEdges  = qUnion([qOwnedByBody(startWires[s],  EntityType.EDGE)]);
+                    var stepInEdges = qUnion([qOwnedByBody(stepInWires[s], EntityType.EDGE)]);
                     var loftedSurfs = [];
-                    var iterEdges   = evaluateQuery(context, lowerEdges);
+                    var iterEdges   = evaluateQuery(context, startEdges);
 
                     for (var i = 0; i < size(iterEdges); i += 1)
                     {
-                        var lowerEdge = iterEdges[i];
+                        var startEdge = iterEdges[i];
                         var midPoint  = evEdgeTangentLine(context, {
-                                "edge"      : lowerEdge,
+                                "edge"      : startEdge,
                                 "parameter" : 0.5
                         }).origin;
-                        var stopEdge = qClosestTo(stopEdges, midPoint);
+                        var stepInEdge = qClosestTo(stepInEdges, midPoint);
                         try
                         {
-                            opLoft(context, id + ("lowerStopLoft" ~ r ~ "_" ~ s ~ "_" ~ i), {
-                                    "profileSubqueries" : [lowerEdge, stopEdge],
+                            opLoft(context, id + ("startStepInLoft" ~ r ~ "_" ~ s ~ "_" ~ i), {
+                                    "profileSubqueries" : [startEdge, stepInEdge],
                                     "bodyType"          : ToolBodyType.SURFACE
                             });
                             loftedSurfs = append(loftedSurfs,
-                                    qCreatedBy(id + ("lowerStopLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
+                                    qCreatedBy(id + ("startStepInLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
                         }
                         catch (error)
                         {
-                            addDebugEntities(context, stopEdge,  DebugColor.RED);
-                            addDebugEntities(context, lowerEdge, DebugColor.GREEN);
+                            addDebugEntities(context, stepInEdge, DebugColor.RED);
+                            addDebugEntities(context, startEdge,  DebugColor.GREEN);
                         }
                     }
-                    opBoolean(context, id + ("combineLowerStop" ~ r ~ "_" ~ s), {
+                    opBoolean(context, id + ("combineStartStepIn" ~ r ~ "_" ~ s), {
                             "tools"         : qUnion(loftedSurfs),
                             "operationType" : BooleanOperationType.UNION
                     });
                     setProperty(context, {
                             "entities"     : qUnion(loftedSurfs),
                             "propertyType" : PropertyType.NAME,
-                            "value"        : "Lower to Stop [" ~ rName ~ "] " ~ sideNames[s]
+                            "value"        : "Start to Step-In [" ~ rName ~ "] " ~ sideNames[s]
                     });
                 }
             }
         }
 
+        if (stepThrough && step == 7) { return; }
+
         // =====================================================================
-        // Step 9: blend between adjacent region surfaces
-        //   G0: surfaces already meet at the shared boundary plane -- no work.
-        //   G1/G2: trim each region back by startDist/endDist and loft with
-        //          tangency constraints (not yet implemented).
+        // Step 8: per region -- loft lower wire (step-in or start) -> stop wire
         // =====================================================================
-        if (stepThrough && step >= 9)
+        for (var r = 0; r < nRegions; r += 1)
         {
-            // TODO: implement G1/G2 blending between region rout surfaces
+            var region     = sortedRegions[r];
+            var rName      = region.name;
+            var rKey       = toString(r);
+            var lowerWires = (region.swRoutStepin > 0 * millimeter) ?
+                    washedStepInWires[rKey] : washedStartWires[rKey];
+            var stopWires  = washedStopWires[rKey];
+
+            for (var s = 0; s < size(lowerWires); s += 1)
+            {
+                var lowerEdges = qUnion([qOwnedByBody(lowerWires[s], EntityType.EDGE)]);
+                var stopEdges  = qUnion([qOwnedByBody(stopWires[s],  EntityType.EDGE)]);
+                var loftedSurfs = [];
+                var iterEdges   = evaluateQuery(context, lowerEdges);
+
+                for (var i = 0; i < size(iterEdges); i += 1)
+                {
+                    var lowerEdge = iterEdges[i];
+                    var midPoint  = evEdgeTangentLine(context, {
+                            "edge"      : lowerEdge,
+                            "parameter" : 0.5
+                    }).origin;
+                    var stopEdge = qClosestTo(stopEdges, midPoint);
+                    try
+                    {
+                        opLoft(context, id + ("lowerStopLoft" ~ r ~ "_" ~ s ~ "_" ~ i), {
+                                "profileSubqueries" : [lowerEdge, stopEdge],
+                                "bodyType"          : ToolBodyType.SURFACE
+                        });
+                        loftedSurfs = append(loftedSurfs,
+                                qCreatedBy(id + ("lowerStopLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
+                    }
+                    catch (error)
+                    {
+                        addDebugEntities(context, stopEdge,  DebugColor.RED);
+                        addDebugEntities(context, lowerEdge, DebugColor.GREEN);
+                    }
+                }
+                opBoolean(context, id + ("combineLowerStop" ~ r ~ "_" ~ s), {
+                        "tools"         : qUnion(loftedSurfs),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                setProperty(context, {
+                        "entities"     : qUnion(loftedSurfs),
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "Lower to Stop [" ~ rName ~ "] " ~ sideNames[s]
+                });
+            }
         }
+
+        if (stepThrough && step == 8) { return; }
+
+        // =====================================================================
+        // Step 9: blend between adjacent region surfaces (placeholder)
+        //   G0: regions already share boundary planes -- no work needed.
+        //   G1/G2: trim each region back by startDist/endDist and bridge.
+        // =====================================================================
     });
 
 
@@ -1144,10 +1233,10 @@ export function generateDummyTopSurf(context is Context, id is Id,
     var wireBodies = evaluateQuery(context,
             qCreatedBy(id + "extractBoundaryWires", EntityType.BODY));
 
-    var box0  = evBox3d(context, { "topology" : wireBodies[0], "tight" : true });
-    var box1  = evBox3d(context, { "topology" : wireBodies[1], "tight" : true });
-    var midZ0 = (box0.minCorner[2] + box0.maxCorner[2]) / 2;
-    var midZ1 = (box1.minCorner[2] + box1.maxCorner[2]) / 2;
+    var bb0   = evBox3d(context, { "topology" : wireBodies[0], "tight" : true });
+    var bb1   = evBox3d(context, { "topology" : wireBodies[1], "tight" : true });
+    var midZ0 = (bb0.minCorner[2] + bb0.maxCorner[2]) / 2;
+    var midZ1 = (bb1.minCorner[2] + bb1.maxCorner[2]) / 2;
     var topIdx    = (midZ0 > midZ1) ? 0 : 1;
     var bottomIdx = (midZ0 > midZ1) ? 1 : 0;
 

@@ -11,7 +11,7 @@ import(path : "d41884a96244793beb462449", version : "fc8a6dfccab240021ff23696");
 export enum SWRoutExtentType
 {
     QUERY,
-    X_EXTENTS
+    ALONG_REF
 }
 
 
@@ -21,6 +21,7 @@ export const SWRoutAngleBounds     = {(degree)     : [0,   20,  45]} as AngleBou
 export const DistAboveBottomBounds = {(millimeter) : [1,    4,  10]} as LengthBoundSpec;
 export const SWRoutHeightBounds    = {(millimeter) : [5,   30, 100]} as LengthBoundSpec;
 export const SWStepInBounds        = {(millimeter) : [0,    0,   3]} as LengthBoundSpec;
+export const RegionNumBounds       = { (unitless)  : [0,    0, 100]} as IntegerBoundSpec;
 
 
 // --- Region processing -------------------------------------------------------
@@ -29,6 +30,8 @@ export const SWStepInBounds        = {(millimeter) : [0,    0,   3]} as LengthBo
  * Converts definition.swRoutRegions extents to tStart/tEnd [0,1] arc-length
  * parameters along refWirePath.  Assigns regionNum and computes regionLength.
  * refWirePath must be a Path built from definition.refWire by the caller.
+ * ALONG_REF: startX/endX are arc-length distances from the wire origin.
+ * QUERY:     extentQueries must resolve to exactly 2 points.
  */
 export function processSwRoutRegions(context is Context, id is Id,
         definition is map, refWirePath is Path) returns array
@@ -48,17 +51,17 @@ export function processSwRoutRegions(context is Context, id is Id,
         var tStart;
         var tEnd;
 
-        if (region.extentType == SWRoutExtentType.X_EXTENTS)
+        if (region.extentType == SWRoutExtentType.ALONG_REF)
         {
-            tStart = findPathParamAtX(context, refWirePath, region.regionStart);
-            tEnd   = findPathParamAtX(context, refWirePath, region.regionEnd);
+            tStart = region.startX / totalLength;
+            tEnd   = region.endX   / totalLength;
         }
         else // QUERY
         {
             var queryPts = evaluateQuery(context, region.extentQueries);
             if (size(queryPts) != 2)
             {
-                throw regenError("Region '" ~ region.regionName ~
+                throw regenError("Region '" ~ region.name ~
                         "': extent query must resolve to exactly 2 points.");
             }
             var t0 = evDistancePath(context, {
@@ -134,8 +137,8 @@ export function validateSwRoutRegionsNoOverlap(regions is array)
             var b = regions[j];
             if (a.tStart < b.tEnd - eps && b.tStart < a.tEnd - eps)
             {
-                throw regenError("Regions '" ~ a.regionName ~ "' and '" ~
-                        b.regionName ~ "' overlap.");
+                throw regenError("Regions '" ~ a.name ~ "' and '" ~
+                        b.name ~ "' overlap.");
             }
         }
     }
@@ -144,8 +147,8 @@ export function validateSwRoutRegionsNoOverlap(regions is array)
 
 /**
  * Auto-generates one intersection entry per consecutive sorted region pair.
- * Preserves user-configured blend settings from definition.swRoutIntersections
- * via mergeMaps.
+ * Preserves user-configured blend settings from definition.swRoutIntersections,
+ * matching by regionAName/regionBName or legacy region1/region2 field names.
  */
 export function rebuildSwRoutIntersections(definition is map,
         sortedRegions is array) returns array
@@ -157,25 +160,35 @@ export function rebuildSwRoutIntersections(definition is map,
         var regB = sortedRegions[i + 1];
 
         var entry = {
-            "isValid"         : true,
-            "intersectionNum" : i + 1,
-            "region1"         : regA.regionName,
-            "region2"         : regB.regionName,
-            "blend"           : false,
-            "startContinuity" : GeometricContinuity.G0,
-            "startDist"       : 10 * millimeter,
-            "endContinuity"   : GeometricContinuity.G0,
-            "endDist"         : 10 * millimeter
+            "intersectionNum"       : i,
+            "intersectionName"      : "Intersection " ~ (i + 1),
+            "needsIntersectionName" : true,
+            "regionANum"            : regA.regionNum,
+            "regionBNum"            : regB.regionNum,
+            "regionAName"           : regA.name,
+            "regionBName"           : regB.name,
+            "blend"                 : false,
+            "startContinuity"       : GeometricContinuity.G0,
+            "startDist"             : 10 * millimeter,
+            "endContinuity"         : GeometricContinuity.G0,
+            "endDist"               : 10 * millimeter
         };
 
         for (var existing in definition.swRoutIntersections)
         {
-            if (existing.region1 == regA.regionName &&
-                existing.region2 == regB.regionName)
+            var nameMatch   = (existing.regionAName == regA.name && existing.regionBName == regB.name);
+            var legacyMatch = (existing.region1     == regA.name && existing.region2     == regB.name);
+            if (nameMatch || legacyMatch)
             {
                 entry = mergeMaps(entry, existing);
-                entry.isValid         = true;
-                entry.intersectionNum = i + 1;
+                entry.intersectionNum       = i;
+                entry.regionANum            = regA.regionNum;
+                entry.regionBNum            = regB.regionNum;
+                entry.regionAName           = regA.name;
+                entry.regionBName           = regB.name;
+                entry.needsIntersectionName = (entry.intersectionName == undefined ||
+                        entry.intersectionName == "" ||
+                        startsWith(entry.intersectionName, "Intersection "));
                 break;
             }
         }
