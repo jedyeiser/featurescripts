@@ -1679,12 +1679,14 @@ export function buildIntersectionJoins(context is Context, id is Id,
                 var wireBEdgeQ = qClosestTo(qOwnedByBody(wireB, EntityType.EDGE), ptBVec);
 
                 bridgingCurve(context, id + ("bridgeIx" ~ i ~ "v" ~ a), {
-                    "side1"  : qUnion([wireAVerts[a], wireAEdgeQ]),
-                    "match1" : (rAContinuity == IntersectionContinuityType.G1) ?
+                    "side1"             : qUnion([wireAVerts[a], wireAEdgeQ]),
+                    "match1"            : (rAContinuity == IntersectionContinuityType.G1) ?
                             BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION,
-                    "side2"  : qUnion([bestBVert, wireBEdgeQ]),
-                    "match2" : (rBContinuity == IntersectionContinuityType.G1) ?
-                            BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION
+                    "side2"             : qUnion([bestBVert, wireBEdgeQ]),
+                    "match2"            : (rBContinuity == IntersectionContinuityType.G1) ?
+                            BridgingCurveMatchType.TANGENCY : BridgingCurveMatchType.POSITION,
+                    "method"            : BridgingCurveMethod.CONTROL_POINTS,
+                    "editControlPoints" : false
                 });
             }
         }
