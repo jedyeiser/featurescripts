@@ -391,7 +391,6 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
         if (definition.showRefFrames)
         {
-            var axisLen = 20 * millimeter;
             for (var reg in sortedRegions)
             {
                 for (var tp in [reg.tStart, reg.tEnd])
@@ -418,7 +417,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
     {
         refPath = constructPath(context, pathEdges);
     }
-    catch (error)
+    catch
     {
         throw regenError("Reference wire edges must form a continuous path");
     }

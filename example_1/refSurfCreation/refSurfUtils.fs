@@ -1775,16 +1775,10 @@ export function buildIntersectionJoins(context is Context, id is Id,
         var surfBodies = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET));
         if (size(surfBodies) > 1)
         {
-            var surfTools = [];
-            for (var k = 1; k < size(surfBodies); k += 1)
-            {
-                surfTools = append(surfTools, surfBodies[k]);
-            }
             try
             {
                 opBoolean(context, id + "collectSurfs", {
-                    "targets"       : surfBodies[0],
-                    "tools"         : qUnion(surfTools),
+                    "tools"         : qUnion(surfBodies),
                     "operationType" : BooleanOperationType.UNION
                 });
             }
@@ -1800,20 +1794,22 @@ export function buildIntersectionJoins(context is Context, id is Id,
         var wireBodies = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE));
         if (size(wireBodies) > 1)
         {
-            var wireTools = [];
-            for (var k = 1; k < size(wireBodies); k += 1)
-            {
-                wireTools = append(wireTools, wireBodies[k]);
-            }
+            var allWireEdges = qOwnedByBody(qUnion(wireBodies), EntityType.EDGE);
+            var wireMade = false;
             try
             {
-                opBoolean(context, id + "collectWires", {
-                    "targets"       : wireBodies[0],
-                    "tools"         : qUnion(wireTools),
-                    "operationType" : BooleanOperationType.UNION
-                });
+                opExtractWires(context, id + "collectWires", { "edges" : allWireEdges });
+                wireMade = true;
             }
             catch {}
+            if (wireMade)
+            {
+                try
+                {
+                    opDeleteBodies(context, id + "delOldWires", { "entities" : qUnion(wireBodies) });
+                }
+                catch {}
+            }
         }
     }
 }

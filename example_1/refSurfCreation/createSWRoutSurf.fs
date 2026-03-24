@@ -70,14 +70,42 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                         var queryPts = evaluateQuery(context, reg.extentQueries);
                         if (size(queryPts) == 2)
                         {
-                            var t0 = evDistancePath(context, {
-                                    "side0" : refWirePath,
-                                    "side1" : queryPts[0]
-                            }).sides[0].pathParam;
-                            var t1 = evDistancePath(context, {
-                                    "side0" : refWirePath,
-                                    "side1" : queryPts[1]
-                            }).sides[0].pathParam;
+                            // Project each query point onto the path by finding the closest
+                            // edge, then computing arc-length to the closest point on it.
+                            var t0Len  = 0 * meter;
+                            var t1Len  = 0 * meter;
+                            var best0  = undefined;
+                            var best1  = undefined;
+                            var cumLen = 0 * meter;
+                            for (var ei = 0; ei < size(refWirePath.edges); ei += 1)
+                            {
+                                var eLen = evLength(context, { "entities" : refWirePath.edges[ei] });
+                                var dr0  = evDistance(context, {
+                                        "side0" : refWirePath.edges[ei],
+                                        "side1" : queryPts[0]
+                                });
+                                var ep0 = dr0.sides[0].parameter;
+                                if (refWirePath.flipped[ei]) { ep0 = 1 - ep0; }
+                                if (best0 == undefined || dr0.distance < best0)
+                                {
+                                    best0 = dr0.distance;
+                                    t0Len = cumLen + ep0 * eLen;
+                                }
+                                var dr1 = evDistance(context, {
+                                        "side0" : refWirePath.edges[ei],
+                                        "side1" : queryPts[1]
+                                });
+                                var ep1 = dr1.sides[0].parameter;
+                                if (refWirePath.flipped[ei]) { ep1 = 1 - ep1; }
+                                if (best1 == undefined || dr1.distance < best1)
+                                {
+                                    best1 = dr1.distance;
+                                    t1Len = cumLen + ep1 * eLen;
+                                }
+                                cumLen += eLen;
+                            }
+                            var t0 = t0Len / totalLength;
+                            var t1 = t1Len / totalLength;
                             reg.tStart       = min(t0, t1);
                             reg.tEnd         = max(t0, t1);
                             reg.regionLength = (reg.tEnd - reg.tStart) * totalLength;
@@ -712,7 +740,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         loftedSurfs = append(loftedSurfs,
                                 qCreatedBy(id + ("initStartLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
                     }
-                    catch (error)
+                    catch
                     {
                         addDebugEntities(context, startEdge,   DebugColor.RED);
                         addDebugEntities(context, initialEdge, DebugColor.GREEN);
@@ -770,7 +798,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             loftedSurfs = append(loftedSurfs,
                                     qCreatedBy(id + ("startStepInLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
                         }
-                        catch (error)
+                        catch
                         {
                             addDebugEntities(context, stepInEdge, DebugColor.RED);
                             addDebugEntities(context, startEdge,  DebugColor.GREEN);
@@ -827,7 +855,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         loftedSurfs = append(loftedSurfs,
                                 qCreatedBy(id + ("lowerStopLoft" ~ r ~ "_" ~ s ~ "_" ~ i), EntityType.BODY));
                     }
-                    catch (error)
+                    catch
                     {
                         addDebugEntities(context, stopEdge,  DebugColor.RED);
                         addDebugEntities(context, lowerEdge, DebugColor.GREEN);
