@@ -1696,6 +1696,12 @@ function surfaceLofter(context is Context, id is Id,
         edgeA is Query, faceA is Query, edgeB is Query, faceB is Query,
         rAContinuity is IntersectionContinuityType, rBContinuity is IntersectionContinuityType)
 {
+    // Only apply MATCH_TANGENT when the adjacent face is confirmed non-empty.
+    // If the face is missing, loft throws LOFT_NO_FACE_FOR_START/END_CLAMP even
+    // when auto-detect is attempted — fall back to G0 for that end instead.
+    var useG1A = (rAContinuity == IntersectionContinuityType.G1) && !isQueryEmpty(context, faceA);
+    var useG1B = (rBContinuity == IntersectionContinuityType.G1) && !isQueryEmpty(context, faceB);
+
     var loftDef = {
         "bodyType"               : ExtendedToolBodyType.SURFACE,
         "surfaceOperationType"   : NewSurfaceOperationType.NEW,
@@ -1703,8 +1709,8 @@ function surfaceLofter(context is Context, id is Id,
             { "wireProfileEntities" : qUnion([edgeA]) },
             { "wireProfileEntities" : qUnion([edgeB]) }
         ],
-        "startCondition"         : (rAContinuity == IntersectionContinuityType.G1) ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.DEFAULT,
-        "endCondition"           : (rBContinuity == IntersectionContinuityType.G1) ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.DEFAULT,
+        "startCondition"         : useG1A ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.DEFAULT,
+        "endCondition"           : useG1B ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.DEFAULT,
         "trimProfiles"           : false,
         "makePeriodic"           : false,
         "showIsocurves"          : false,
@@ -1713,16 +1719,32 @@ function surfaceLofter(context is Context, id is Id,
         "addGuides"              : false
     };
 
-    if (rAContinuity == IntersectionContinuityType.G1 && !isQueryEmpty(context, faceA))
+    if (useG1A)
     {
         loftDef = mergeMaps(loftDef, { "adjacentFacesStart" : faceA, "startMagnitude" : 1.0 });
     }
-    if (rBContinuity == IntersectionContinuityType.G1 && !isQueryEmpty(context, faceB))
+    if (useG1B)
     {
         loftDef = mergeMaps(loftDef, { "adjacentFacesEnd" : faceB, "endMagnitude" : 1.0 });
     }
 
-    loft(context, id, loftDef);
+    // Try the requested continuity first; if that fails, retry as G0.
+    var succeeded = false;
+    try
+    {
+        loft(context, id, loftDef);
+        succeeded = true;
+    }
+    catch {}
+
+    if (!succeeded && (useG1A || useG1B))
+    {
+        var g0Def = mergeMaps(loftDef, {
+            "startCondition" : LoftEndDerivativeType.DEFAULT,
+            "endCondition"   : LoftEndDerivativeType.DEFAULT
+        });
+        loft(context, id + "g0", g0Def);
+    }
 }
 
 
