@@ -1306,6 +1306,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 for (var j = 0; j < size(capEdgesB); j += 1)
                 {
                     if (usedBIdx[toString(j)] != undefined) { continue; }
+                    if (size(capEdgesA) == 0) { continue; }
                     var edgeB = capEdgesB[j];
                     var midB  = bMids[j];
                     var bestI = 0;
@@ -1627,10 +1628,10 @@ function tryFillBoundaryGaps(context is Context, id is Id, mergedBody is Query,
     }
     if (size(gapEdges) == 0) { return mergedBody; }
 
-    // opFill requires the edges to form a closed loop; silently skip if they do not.
+    // opFillSurface requires the edges to form a closed loop; silently skip if not.
     try
     {
-        opFill(context, id + "fill", { "entities" : qUnion(gapEdges) });
+        opFillSurface(context, id + "fill", { "edgesG0" : qUnion(gapEdges) });
         var fillBody = qCreatedBy(id + "fill", EntityType.BODY);
         if (!isQueryEmpty(context, fillBody))
         {
