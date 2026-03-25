@@ -77,6 +77,7 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                     cumLenOrig += eLen;
                 }
             }
+            var dirSign = (definition.flipRefWire == true) ? -1 : 1;
 
             for (var i = 0; i < size(definition.swRoutRegions); i += 1)
             {
@@ -84,8 +85,8 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                 if (reg.extentType == SWRoutExtentType.ALONG_REF &&
                         reg.startX != undefined && reg.endX != undefined)
                 {
-                    reg.tStart       = min(max(tOrigin + reg.startX / totalLength, 0), 1);
-                    reg.tEnd         = min(max(tOrigin + reg.endX   / totalLength, 0), 1);
+                    reg.tStart       = min(max(tOrigin + dirSign * reg.startX / totalLength, 0), 1);
+                    reg.tEnd         = min(max(tOrigin + dirSign * reg.endX   / totalLength, 0), 1);
                     reg.regionLength = (reg.tEnd - reg.tStart) * totalLength;
                     sortable = append(sortable, reg);
                 }
@@ -235,6 +236,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                      "Description" : "Reference point defining t=0 (arc-length origin) along the reference wire." }
         definition.refWireOrigin is Query;
 
+        annotation { "Name" : "Flip wire direction", "Default" : false,
+                     "UIHint" : UIHint.OPPOSITE_DIRECTION,
+                     "Description" : "Reverses the sign convention for startX/endX along the reference wire." }
+        definition.flipRefWire is boolean;
+
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -373,7 +379,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 { "referenceGeometry" : definition.refWireOrigin }).path;
 
         // Process and sort regions
-        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin);
+        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin, definition.flipRefWire);
         validateSwRoutRegionsNoOverlap(sortedRegions);
         var nRegions = size(sortedRegions);
 
@@ -1271,116 +1277,21 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
         return result;
     }
 
-    // --- Single chain: split at y=0 crossings if the curve wraps both sides ---
+    // --- Single chain: return as one wire (tip wrap or single-sided section) ---
     var allPts = (size(chainPts) > 0) ? chainPts[0] : [];
     var nPts   = size(allPts);
 
-    var hasNegY = false;
-    for (var pt in allPts)
-    {
-        if (pt[1] < 0 * meter) { hasNegY = true; break; }
-    }
+    if (nPts < MIN_PTS) { return []; }
 
-    if (!hasNegY)
-    {
-        if (nPts < MIN_PTS) { return []; }
-        var curve = approximateSpline(context, {
-                "targets"          : [approximationTarget({ "positions" : allPts })],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : false,
-                "maxControlPoints" : 200
-        })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
-        return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
-    }
-
-    // Find y=0 crossings
-    var crossingA = -1;
-    var crossingB = -1;
-    for (var i = 0; i < nPts; i += 1)
-    {
-        var j  = i + 1;
-        if (j >= nPts) { j = 0; }
-        var yi = allPts[i][1];
-        var yj = allPts[j][1];
-        if (yi < 0 * meter && yj >= 0 * meter) { crossingA = i; }
-        else if (yi >= 0 * meter && yj < 0 * meter) { crossingB = i; }
-    }
-
-    if (crossingA == -1 || crossingB == -1)
-    {
-        if (nPts < MIN_PTS) { return []; }
-        var curve = approximateSpline(context, {
-                "targets"          : [approximationTarget({ "positions" : allPts })],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : false,
-                "maxControlPoints" : 200
-        })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
-        return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
-    }
-
-    var aNext = crossingA + 1;
-    if (aNext >= nPts) { aNext = 0; }
-    var tA  = (-allPts[crossingA][1]) / (allPts[aNext][1] - allPts[crossingA][1]);
-    var ptA = allPts[crossingA] + tA * (allPts[aNext] - allPts[crossingA]);
-
-    var bNext = crossingB + 1;
-    if (bNext >= nPts) { bNext = 0; }
-    var tB  = allPts[crossingB][1] / (allPts[crossingB][1] - allPts[bNext][1]);
-    var ptB = allPts[crossingB] + tB * (allPts[bNext] - allPts[crossingB]);
-
-    var posPts = [ptA];
-    for (var k = 1; k <= nPts; k += 1)
-    {
-        var idx = crossingA + k;
-        if (idx >= nPts) { idx = idx - nPts; }
-        if (idx == bNext) { break; }
-        posPts = append(posPts, allPts[idx]);
-    }
-    posPts = append(posPts, ptB);
-
-    var negPts = [ptB];
-    for (var k = 1; k <= nPts; k += 1)
-    {
-        var idx = crossingB + k;
-        if (idx >= nPts) { idx = idx - nPts; }
-        if (idx == aNext) { break; }
-        negPts = append(negPts, allPts[idx]);
-    }
-    negPts = append(negPts, ptA);
-
-    var result = [];
-
-    if (size(posPts) >= MIN_PTS)
-    {
-        var curvePos = approximateSpline(context, {
-                "targets"          : [approximationTarget({ "positions" : posPts })],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : false,
-                "maxControlPoints" : 200
-        })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curvePos });
-        result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
-    }
-
-    if (size(negPts) >= MIN_PTS)
-    {
-        var curveNeg = approximateSpline(context, {
-                "targets"          : [approximationTarget({ "positions" : negPts })],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : false,
-                "maxControlPoints" : 200
-        })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : curveNeg });
-        result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
-    }
-
-    return result;
+    var curve = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : allPts })],
+            "degree"           : 3,
+            "tolerance"        : 1e-5 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : 200
+    })[0];
+    opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
+    return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
 }
 
 
