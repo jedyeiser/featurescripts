@@ -890,7 +890,7 @@ function chainEdges(edgeInfo is array) returns array
  * Builds a BSpline offset wire for each periphery edge.
  * offsetPt = edgePt + offsetMag * outwardBinormal
  *
- * All offset types — including CONSTANT — use the same sampling pipeline so that
+ * All offset types -- including CONSTANT -- use the same sampling pipeline so that
  * direction is always determined by a geometric probe (binormalNeedsFlip).
  * This avoids the direction ambiguity of @opOffsetCurveOnFace, whose oppositeDirection
  * flag depends on face orientation x edge orientation rather than user sign convention.
@@ -1208,7 +1208,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         // dot product with this edge's binormal is > -0.5 (within 120 deg).  When a
         // G0 boundary has edges with nearly-opposite binormals, the unclamped sum can
         // cancel to near-zero and then normalize() points in an arbitrary direction,
-        // causing corner points to land on the wrong side — especially with negative
+        // causing corner points to land on the wrong side -- especially with negative
         // offset where the error is amplified into a visible loop.
         var sumBn0 = ed.bn0;
         for (var ej = 0; ej < size(edgeInfo); ej += 1)
@@ -1344,31 +1344,33 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         // Per-edge mode: one loft patch per edge with G1/G2 junction constraints.
         var constraints = detectContinuityConstraints(context, edgeInfo);
 
-        // Post-pass: pin the spline derivative at region split-plane boundaries.
-        // When a G0 junction leaves an endpoint unconstrained, approximateSpline
-        // is free to wander there, producing wobble on edges that should be straight.
-        // Pinning to the source edge tangent prevents this without imposing G1 across
-        // regions (only applies if detectContinuityConstraints did not already set a
-        // derivative constraint for that end).
-        //
-        // TSPAN_TOL: skip edges whose regionT span is near zero (nearly tangent to
-        // the split plane — tangential trims produce degenerate offset profiles).
+        // Post-pass: pin the spline derivative for edges that run ALONG the region
+        // split plane (both endpoints project to T~0 or both to T~1).  These are
+        // the straight boundary edges created by the trim; without a derivative
+        // constraint their free endpoints allow approximateSpline to wander, producing
+        // wobble on walls that should be flat.  Edges that merely MEET the boundary
+        // at one vertex (swallowtail inner curves, etc.) are excluded from this
+        // post-pass to avoid forcing their profiles in the wrong direction.
         var BOUND_TOL = 0.02;
-        var TSPAN_TOL = 0.01;
         for (var bi = 0; bi < size(edgeInfo); bi += 1)
         {
             if (edgeInfo[bi] == undefined) { continue; }
-            var eBnd = edgeInfo[bi];
-            var cBnd = constraints[bi];
-            if ((eBnd.t0 < BOUND_TOL || eBnd.t0 > 1 - BOUND_TOL) && cBnd.startDeriv == undefined)
+            var eBnd    = edgeInfo[bi];
+            var cBnd    = constraints[bi];
+            var atStart = eBnd.t0 < BOUND_TOL     && eBnd.t1 < BOUND_TOL;
+            var atEnd   = eBnd.t0 > 1 - BOUND_TOL && eBnd.t1 > 1 - BOUND_TOL;
+            if (atStart || atEnd)
             {
-                cBnd.startDeriv = eBnd.tan0;
-                constraints[bi] = cBnd;
-            }
-            if ((eBnd.t1 < BOUND_TOL || eBnd.t1 > 1 - BOUND_TOL) && cBnd.endDeriv == undefined)
-            {
-                cBnd.endDeriv = eBnd.tan1;
-                constraints[bi] = cBnd;
+                if (cBnd.startDeriv == undefined)
+                {
+                    cBnd.startDeriv = eBnd.tan0;
+                    constraints[bi] = cBnd;
+                }
+                if (cBnd.endDeriv == undefined)
+                {
+                    cBnd.endDeriv = eBnd.tan1;
+                    constraints[bi] = cBnd;
+                }
             }
         }
 
@@ -1428,12 +1430,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             botCPs[size(botCPs) - 1]  = ed.cbEnd;
             bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
 
-            // Skip edges that are very short or whose endpoints project to nearly
-            // the same region-T value (edge nearly tangent to the split plane).
-            // These arise from tangential trims at region boundaries and produce
-            // degenerate offset profiles, particularly with negative offset.
+            // Skip edges that are very short -- these are tangential-trim artifacts
+            // at region boundaries and produce degenerate offset profiles.
             var edgeLen = evLength(context, { "entities" : ed.edge });
-            if (edgeLen < 0.5 * millimeter || abs(ed.t1 - ed.t0) < TSPAN_TOL)
+            if (edgeLen < 0.5 * millimeter)
             {
                 continue;
             }
@@ -1479,38 +1479,81 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 });
             }
 
-            // Create wire bodies directly from BSpline — skip opExtractWires so
+            // Create wire bodies directly from BSpline -- skip opExtractWires so
             // that parameterization (and therefore loft direction) is preserved.
+            // opCreateBSplineCurve is inside the try/catch so that a failure on
+            // a degenerate or self-intersecting spline (e.g. concave inner edge
+            // where offset > curvature radius) degrades gracefully rather than
+            // aborting regeneration.
             var topCurveId    = id + ("loftTopCurve"    ~ ei);
             var bottomCurveId = id + ("loftBottomCurve" ~ ei);
-            opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
-            opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
-
-            var topCurveBody    = qCreatedBy(topCurveId,    EntityType.BODY);
-            var bottomCurveBody = qCreatedBy(bottomCurveId, EntityType.BODY);
-
-            var loftId   = id + ("loftPatch" ~ ei);
-            var loftMade = false;
+            var loftId        = id + ("loftPatch"       ~ ei);
+            var loftMade      = false;
             try
             {
+                opCreateBSplineCurve(context, topCurveId,    { "bSplineCurve" : topSpline    });
+                opCreateBSplineCurve(context, bottomCurveId, { "bSplineCurve" : bottomSpline });
                 opLoft(context, loftId, {
                     "bodyType"          : ToolBodyType.SURFACE,
                     "profileSubqueries" : [
-                        qOwnedByBody(topCurveBody,    EntityType.EDGE),
-                        qOwnedByBody(bottomCurveBody, EntityType.EDGE)
+                        qOwnedByBody(qCreatedBy(topCurveId,    EntityType.BODY), EntityType.EDGE),
+                        qOwnedByBody(qCreatedBy(bottomCurveId, EntityType.BODY), EntityType.EDGE)
                     ]
                 });
                 loftMade = true;
-            }
-            catch {}
-            if (loftMade)
-            {
-                opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
                 loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
             }
-            else
+            catch {}
+            // Clean up spline curve bodies.  qCreatedBy returns an empty query if
+            // opCreateBSplineCurve never ran; opDeleteBodies no-ops on empty queries.
+            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), {
+                "entities" : qUnion([
+                    qCreatedBy(topCurveId,    EntityType.BODY),
+                    qCreatedBy(bottomCurveId, EntityType.BODY)
+                ])
+            });
+
+            // Fallback: when the spline loft fails (e.g. concave edge with offset
+            // exceeding curvature radius produces self-intersecting profiles), retry
+            // with degree-1 (linear) profiles through the four corner points.  This
+            // creates a flat ruled patch instead of leaving the face absent.
+            if (!loftMade)
             {
-                opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
+                var fbTopId  = id + ("loftFbTop" ~ ei);
+                var fbBotId  = id + ("loftFbBot" ~ ei);
+                var fbLoftId = id + ("loftFb"    ~ ei);
+                try
+                {
+                    opCreateBSplineCurve(context, fbTopId, {
+                        "bSplineCurve" : bSplineCurve({
+                            "degree" : 1, "isPeriodic" : false,
+                            "controlPoints" : [ed.ctStart, ed.ctEnd],
+                            "knots" : [0, 0, 1, 1]
+                        })
+                    });
+                    opCreateBSplineCurve(context, fbBotId, {
+                        "bSplineCurve" : bSplineCurve({
+                            "degree" : 1, "isPeriodic" : false,
+                            "controlPoints" : [ed.cbStart, ed.cbEnd],
+                            "knots" : [0, 0, 1, 1]
+                        })
+                    });
+                    opLoft(context, fbLoftId, {
+                        "bodyType"          : ToolBodyType.SURFACE,
+                        "profileSubqueries" : [
+                            qOwnedByBody(qCreatedBy(fbTopId, EntityType.BODY), EntityType.EDGE),
+                            qOwnedByBody(qCreatedBy(fbBotId, EntityType.BODY), EntityType.EDGE)
+                        ]
+                    });
+                    loftBodyQueries = append(loftBodyQueries, qCreatedBy(fbLoftId, EntityType.BODY));
+                }
+                catch {}
+                opDeleteBodies(context, id + ("deleteLoftFb" ~ ei), {
+                    "entities" : qUnion([
+                        qCreatedBy(fbTopId, EntityType.BODY),
+                        qCreatedBy(fbBotId, EntityType.BODY)
+                    ])
+                });
             }
         }
     }
@@ -1641,7 +1684,7 @@ export function buildIntersectionJoins(context is Context, id is Id,
         var rAOffset     = ix.joinStartOffset;
         var rBOffset     = ix.joinEndOffset;
 
-        // Boundary plane — normal to ref wire at regionA's end frame.
+        // Boundary plane -- normal to ref wire at regionA's end frame.
         var boundaryPl = plane(regionA.endFrame.origin, regionA.endFrame.zAxis);
 
         if (definition.returnLoftSurface)
@@ -1924,7 +1967,7 @@ function surfaceLofter(context is Context, id is Id,
 {
     // Only apply MATCH_TANGENT when the adjacent face is confirmed non-empty.
     // If the face is missing, loft throws LOFT_NO_FACE_FOR_START/END_CLAMP even
-    // when auto-detect is attempted — fall back to G0 for that end instead.
+    // when auto-detect is attempted -- fall back to G0 for that end instead.
     var useG1A = (rAContinuity == IntersectionContinuityType.G1) && !isQueryEmpty(context, faceA);
     var useG1B = (rBContinuity == IntersectionContinuityType.G1) && !isQueryEmpty(context, faceB);
 
