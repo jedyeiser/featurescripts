@@ -1451,11 +1451,37 @@ function rebuildWire(context is Context, id is Id, wireBody is Query,
     // A U-shaped tip wrap has points with both positive and negative Y; split
     // it into port (+Y) and starboard (-Y) halves so each step returns the
     // same wire count.  A single-sided chain (e.g. one arm only) is returned
-    // as-is.
+    // as-is.  A CLOSED LOOP (first point == last point, tip/tail perimeter) is
+    // returned as a single periodic wire without splitting.
     var allPts = (size(chainPts) > 0) ? chainPts[0] : [];
     var nPts   = size(allPts);
 
     if (nPts < MIN_PTS) { return []; }
+
+    // Closed-loop check: last sampled point is the same Onshape vertex as the
+    // first (within CHAIN_TOL).  Fit a periodic spline and return without split.
+    if (norm(allPts[0] - allPts[nPts - 1]) < CHAIN_TOL)
+    {
+        if (debug)
+        {
+            println("  rebuildWire [" ~ debugLabel ~ "]: single closed loop -- periodic fit");
+        }
+        // Drop the repeated last point before the periodic approximation.
+        var closedPts = [];
+        for (var k = 0; k < nPts - 1; k += 1)
+        {
+            closedPts = append(closedPts, allPts[k]);
+        }
+        var curve = approximateSpline(context, {
+                "targets"          : [approximationTarget({ "positions" : closedPts })],
+                "degree"           : 3,
+                "tolerance"        : 1e-5 * meter,
+                "isPeriodic"       : true,
+                "maxControlPoints" : 200
+        })[0];
+        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
+        return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
+    }
 
     // Check whether the chain crosses y=0
     var hasPos = false;
