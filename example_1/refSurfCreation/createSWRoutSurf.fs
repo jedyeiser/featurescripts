@@ -1185,9 +1185,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 var probeB = evPathTangentLines(context, refWirePath,
                         [(regB.tStart + regB.tEnd) / 2]).tangentLines[0].origin;
 
-                // Trim all A bodies and collect their cap edges.
+                // Trim all A bodies, collect cap edges and their single adjacent face.
+                // Each cap edge is naked (1 adjacent face) so the G1 reference is
+                // unambiguous -- we collect it here alongside the edge.
                 var trimmedA  = [];
                 var capEdgesA = [];
+                var capFacesA = [];
                 for (var ai = 0; ai < size(bodiesA); ai += 1)
                 {
                     var ba = bodiesA[ai];
@@ -1195,12 +1198,19 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     catch {}
                     trimmedA = append(trimmedA, ba);
                     var ces = evaluateQuery(context, edgesNearPlane(context, ba, trimPlA, BLEND_TOL));
-                    for (var ce in ces) { capEdgesA = append(capEdgesA, ce); }
+                    for (var ce in ces)
+                    {
+                        capEdgesA = append(capEdgesA, ce);
+                        var adjF = evaluateQuery(context,
+                                qAdjacent(ce, AdjacencyType.EDGE, EntityType.FACE));
+                        if (size(adjF) == 1) { capFacesA = append(capFacesA, adjF[0]); }
+                    }
                 }
 
-                // Trim all B bodies and collect their cap edges.
+                // Trim all B bodies, collect cap edges and their single adjacent face.
                 var trimmedB  = [];
                 var capEdgesB = [];
+                var capFacesB = [];
                 for (var bi = 0; bi < size(bodiesB); bi += 1)
                 {
                     var bb = bodiesB[bi];
@@ -1208,70 +1218,70 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     catch {}
                     trimmedB = append(trimmedB, bb);
                     var ces = evaluateQuery(context, edgesNearPlane(context, bb, trimPlB, BLEND_TOL));
-                    for (var ce in ces) { capEdgesB = append(capEdgesB, ce); }
+                    for (var ce in ces)
+                    {
+                        capEdgesB = append(capEdgesB, ce);
+                        var adjF = evaluateQuery(context,
+                                qAdjacent(ce, AdjacencyType.EDGE, EntityType.FACE));
+                        if (size(adjF) == 1) { capFacesB = append(capFacesB, adjF[0]); }
+                    }
                 }
 
-                // Bridge the gap with a boundary fill surface.
-                // Each cap edge has exactly one adjacent face, so G1 tangency
-                // reference is unambiguous.  All A-side cap edges get startContinuity;
-                // all B-side cap edges get endContinuity.  opFillSurface creates one
-                // patch spanning the full gap in one shot, which handles step-riser
-                // geometry correctly without any per-edge pairing logic.
-                // If opFillSurface fails (edges not a closed boundary), fall back to
-                // the iterate-larger-set per-edge loft approach.
-                var blendSurfs  = [];
-                var fillSuccess = false;
+                // Bridge the gap with opBoundarySurface.
+                // uProfileSubqueries[0] = all A-side cap edges (at trimPlA),
+                // uProfileSubqueries[1] = all B-side cap edges (at trimPlB).
+                // uDerivativeInfo provides G1 tangency via the adjacent faces
+                // collected above -- each cap edge has exactly one adjacent face
+                // so the reference is unambiguous.
+                // Fall back to per-edge opLoft if the boundary surface fails.
+                var blendSurfs   = [];
+                var boundSuccess = false;
 
                 if (size(capEdgesA) > 0 && size(capEdgesB) > 0)
                 {
-                    var capG0 = [];
-                    var capG1 = [];
-                    for (var ce in capEdgesA)
+                    var uDerivInfo = [];
+                    if (intr.startContinuity == SWRoutContinuityType.G1 &&
+                            size(capFacesA) > 0)
                     {
-                        if (intr.startContinuity == SWRoutContinuityType.G1)
-                        {
-                            capG1 = append(capG1, ce);
-                        }
-                        else
-                        {
-                            capG0 = append(capG0, ce);
-                        }
+                        uDerivInfo = append(uDerivInfo, {
+                                "profileIndex"  : 0,
+                                "magnitude"     : 1.0,
+                                "adjacentFaces" : qUnion(capFacesA)
+                        });
                     }
-                    for (var ce in capEdgesB)
+                    if (intr.endContinuity == SWRoutContinuityType.G1 &&
+                            size(capFacesB) > 0)
                     {
-                        if (intr.endContinuity == SWRoutContinuityType.G1)
-                        {
-                            capG1 = append(capG1, ce);
-                        }
-                        else
-                        {
-                            capG0 = append(capG0, ce);
-                        }
+                        uDerivInfo = append(uDerivInfo, {
+                                "profileIndex"  : 1,
+                                "magnitude"     : 1.0,
+                                "adjacentFaces" : qUnion(capFacesB)
+                        });
                     }
 
-                    var fillDef = {};
-                    if (size(capG1) > 0) { fillDef.edgesG1 = qUnion(capG1); }
-                    if (size(capG0) > 0) { fillDef.edgesG0 = qUnion(capG0); }
+                    var boundDef = {
+                            "uProfileSubqueries" : [qUnion(capEdgesA), qUnion(capEdgesB)]
+                    };
+                    if (size(uDerivInfo) > 0) { boundDef.uDerivativeInfo = uDerivInfo; }
 
-                    var fillId = id + ("blFill" ~ ix);
+                    var boundId = id + ("blBound" ~ ix);
                     try
                     {
-                        opFillSurface(context, fillId, fillDef);
-                        var fillBody = qCreatedBy(fillId, EntityType.BODY);
-                        if (!isQueryEmpty(context, fillBody))
+                        opBoundarySurface(context, boundId, boundDef);
+                        var boundBody = qCreatedBy(boundId, EntityType.BODY);
+                        if (!isQueryEmpty(context, boundBody))
                         {
-                            blendSurfs  = append(blendSurfs, fillBody);
-                            fillSuccess = true;
+                            blendSurfs   = append(blendSurfs, boundBody);
+                            boundSuccess = true;
                         }
                     }
                     catch {}
                 }
 
-                if (!fillSuccess)
+                if (!boundSuccess)
                 {
                     // Fall back: iterate the larger cap-edge set and find the nearest
-                    // match in the smaller set via qClosestTo.  Step-riser is naturally
-                    // iterated when its region is the larger set.
+                    // match in the smaller set via qClosestTo.
                     var iterEdges   = capEdgesA;
                     var matchEdgesQ = qUnion(capEdgesB);
                     var iterIsA     = true;
@@ -1289,17 +1299,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                 { "edge" : iterEdge, "parameter" : 0.5 }).origin;
                         var matchEdge = qClosestTo(matchEdgesQ, midPt);
 
-                        // Keep loft profiles in A->B order so derivativeInfo
-                        // profileIndex 0 = A-side and 1 = B-side regardless of
-                        // which set was iterated.
                         var edgeA = iterIsA ? iterEdge : matchEdge;
                         var edgeB = iterIsA ? matchEdge : iterEdge;
 
-                        var blId      = id + ("blLoft" ~ ix ~ "_" ~ i);
-                        var lSuccess  = false;
+                        // Two distinct ids: a failed opLoft still registers its id
+                        // in context, so the G0 retry needs a fresh id.
+                        var blId   = id + ("blLoft"   ~ ix ~ "_" ~ i);
+                        var blIdG0 = id + ("blLoftG0" ~ ix ~ "_" ~ i);
 
-                        // opLoft reads "derivativeInfo" for G1; "startCondition"/
-                        // "endCondition" are feature-wrapper only, not the kernel.
+                        // opLoft reads "derivativeInfo" for G1 tangency.
                         var derivInfo = [];
                         if (intr.startContinuity == SWRoutContinuityType.G1)
                         {
@@ -1328,20 +1336,25 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                 "bodyType"          : ToolBodyType.SURFACE
                         };
                         if (size(derivInfo) > 0) { loftDef.derivativeInfo = derivInfo; }
+
+                        var lSuccess = false;
                         try { opLoft(context, blId, loftDef); lSuccess = true; }
                         catch {}
                         if (!lSuccess)
                         {
                             try
                             {
-                                opLoft(context, blId, {
+                                opLoft(context, blIdG0, {
                                         "profileSubqueries" : [edgeA, edgeB],
                                         "bodyType"          : ToolBodyType.SURFACE
                                 });
                             }
                             catch {}
                         }
-                        var blBody = qCreatedBy(blId, EntityType.BODY);
+
+                        var blBody = lSuccess
+                                ? qCreatedBy(blId,   EntityType.BODY)
+                                : qCreatedBy(blIdG0, EntityType.BODY);
                         if (!isQueryEmpty(context, blBody))
                         {
                             blendSurfs = append(blendSurfs, blBody);
