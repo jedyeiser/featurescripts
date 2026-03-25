@@ -12,6 +12,14 @@ export import(path : "7e3b271854475bf6cf878b2b", version : "fc5e7fa037480fd2cbb6
 
 export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 10]} as IntegerBoundSpec;
 
+export enum SWRoutContinuityType
+{
+    annotation { "Name" : "G0" }
+    G0,
+    annotation { "Name" : "G1" }
+    G1
+}
+
 
 // --- Editing logic -----------------------------------------------------------
 
@@ -333,13 +341,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             if (intr.blend)
             {
                 annotation { "Name" : "Start continuity", "UIHint" : UIHint.SHOW_LABEL }
-                intr.startContinuity is GeometricContinuity;
+                intr.startContinuity is SWRoutContinuityType;
 
                 annotation { "Name" : "Start distance" }
                 isLength(intr.startDist, LENGTH_BOUNDS);
 
                 annotation { "Name" : "End continuity", "UIHint" : UIHint.SHOW_LABEL }
-                intr.endContinuity is GeometricContinuity;
+                intr.endContinuity is SWRoutContinuityType;
 
                 annotation { "Name" : "End distance" }
                 isLength(intr.endDist, LENGTH_BOUNDS);
@@ -1212,28 +1220,43 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     var blId    = id + ("blLoft" ~ ix ~ "_" ~ i);
                     var success = false;
 
+                    // Build derivativeInfo entries for any requested continuity.
+                    // opLoft reads "derivativeInfo" (array of per-profile condition
+                    // maps); "startCondition"/"endCondition" are only understood by
+                    // the loft *feature* wrapper, not the kernel op.
+                    var derivInfo = [];
+                    if (intr.startContinuity == SWRoutContinuityType.G1)
+                    {
+                        derivInfo = append(derivInfo, {
+                                "profileIndex"             : 0,
+                                "magnitude"                : 1.0,
+                                "matchCurvature"           : false,
+                                "adjacentFaces"            : qEdgeAdjacent(edgeA, EntityType.FACE),
+                                "userDefinedAdjacentFaces" : true
+                        });
+                    }
+                    if (intr.endContinuity == SWRoutContinuityType.G1)
+                    {
+                        derivInfo = append(derivInfo, {
+                                "profileIndex"             : 1,
+                                "magnitude"                : 1.0,
+                                "matchCurvature"           : false,
+                                "adjacentFaces"            : qEdgeAdjacent(edgeB, EntityType.FACE),
+                                "userDefinedAdjacentFaces" : true
+                        });
+                    }
+
+                    var loftDef = {
+                            "profileSubqueries" : [edgeA, edgeB],
+                            "bodyType"          : ToolBodyType.SURFACE
+                    };
+                    if (size(derivInfo) > 0)
+                    {
+                        loftDef.derivativeInfo = derivInfo;
+                    }
+
                     try
                     {
-                        var loftDef = {
-                                "profileSubqueries" : [edgeA, edgeB],
-                                "bodyType"          : ToolBodyType.SURFACE
-                        };
-                        if (intr.startContinuity == GeometricContinuity.G1)
-                        {
-                            loftDef.startCondition = {
-                                    "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
-                                    "adjacentFaces" : qEdgeAdjacent(edgeA, EntityType.FACE),
-                                    "magnitude"     : 1.0
-                            };
-                        }
-                        if (intr.endContinuity == GeometricContinuity.G1)
-                        {
-                            loftDef.endCondition = {
-                                    "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
-                                    "adjacentFaces" : qEdgeAdjacent(edgeB, EntityType.FACE),
-                                    "magnitude"     : 1.0
-                            };
-                        }
                         opLoft(context, blId, loftDef);
                         success = true;
                     }
@@ -1241,6 +1264,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
                     if (!success)
                     {
+                        // Geometry may be incompatible with continuity; fall back to G0.
                         try
                         {
                             opLoft(context, blId, {

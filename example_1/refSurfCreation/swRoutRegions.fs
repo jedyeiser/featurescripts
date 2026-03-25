@@ -1,6 +1,5 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
-export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2892.0");
 
 // IMPORT: refSurfUtils.fs
 import(path : "d41884a96244793beb462449", version : "fc8a6dfccab240021ff23696");
@@ -177,9 +176,9 @@ export function rebuildSwRoutIntersections(definition is map,
             "regionAName"           : regA.name,
             "regionBName"           : regB.name,
             "blend"                 : false,
-            "startContinuity"       : GeometricContinuity.G0,
+            "startContinuity"       : "G0",
             "startDist"             : 10 * millimeter,
-            "endContinuity"         : GeometricContinuity.G0,
+            "endContinuity"         : "G0",
             "endDist"               : 10 * millimeter
         };
 
