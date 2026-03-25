@@ -644,8 +644,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
 
             // Pre-extend the side surface BEFORE offsetting so large offsets don't
-            // create discontinuous geometry.  Extend all one-sided edges by
-            // routSpanHeight plus current gap plus a small buffer.
+            // create discontinuous geometry.  Extend only the natural free edges
+            // (those running ALONG the ski path), not the region-boundary cut edges
+            // (which are perpendicular to the path).  Filter by aligning the edge
+            // midpoint tangent with the path tangent at the region midpoint.
             var preGapDist = evDistance(context, {
                     "side0" : sideQ,
                     "side1" : bottomQ
@@ -653,12 +655,24 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var preExtendDist = routSpanHeight + preGapDist + 2 * millimeter;
             var preFreeEdges  = qEdgeTopologyFilter(qOwnedByBody(sideQ, EntityType.EDGE),
                     EdgeTopology.ONE_SIDED);
-            if (!isQueryEmpty(context, preFreeEdges) && preExtendDist > 0 * meter)
+            var tMid4     = (region.tStart + region.tEnd) / 2;
+            var pathTang  = evPathTangentLines(context, refWirePath, [tMid4]).tangentLines[0].direction;
+            var freeList  = evaluateQuery(context, preFreeEdges);
+            var naturalQs = [];
+            for (var e in freeList)
+            {
+                var eTang = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).direction;
+                if (abs(dot(eTang, pathTang)) > 0.3)
+                {
+                    naturalQs = append(naturalQs, e);
+                }
+            }
+            if (size(naturalQs) > 0 && preExtendDist > 0 * meter)
             {
                 try
                 {
                     extendSurface(context, id + ("preExtendStopSide" ~ r), {
-                            "entities"           : preFreeEdges,
+                            "entities"           : qUnion(naturalQs),
                             "tangentPropagation" : true,
                             "endCondition"       : ExtendBoundingType.BLIND,
                             "oppositeDirection"  : false,
@@ -775,10 +789,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var initWires  = washedInitialWires[rKey];
             var startWires = washedStartWires[rKey];
 
-            for (var s = 0; s < size(initWires); s += 1)
+            var step6Pairs = pairWiresByMeanY(context, initWires, startWires);
+            for (var p in step6Pairs)
             {
-                var initialEdges = qUnion([qOwnedByBody(initWires[s],  EntityType.EDGE)]);
-                var startEdges   = qUnion([qOwnedByBody(startWires[s], EntityType.EDGE)]);
+                var s            = p.a;
+                var initialEdges = qUnion([qOwnedByBody(initWires[p.a],  EntityType.EDGE)]);
+                var startEdges   = qUnion([qOwnedByBody(startWires[p.b], EntityType.EDGE)]);
                 var loftedSurfs  = [];
                 var iterEdges    = evaluateQuery(context, initialEdges);
 
@@ -842,10 +858,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 var startWires  = washedStartWires[rKey];
                 var stepInWires = washedStepInWires[rKey];
 
-                for (var s = 0; s < size(startWires); s += 1)
+                var step7Pairs = pairWiresByMeanY(context, startWires, stepInWires);
+                for (var p in step7Pairs)
                 {
-                    var startEdges  = qUnion([qOwnedByBody(startWires[s],  EntityType.EDGE)]);
-                    var stepInEdges = qUnion([qOwnedByBody(stepInWires[s], EntityType.EDGE)]);
+                    var s          = p.a;
+                    var startEdges  = qUnion([qOwnedByBody(startWires[p.a],  EntityType.EDGE)]);
+                    var stepInEdges = qUnion([qOwnedByBody(stepInWires[p.b], EntityType.EDGE)]);
                     var loftedSurfs = [];
                     var iterEdges   = evaluateQuery(context, startEdges);
 
@@ -908,10 +926,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     washedStepInWires[rKey] : washedStartWires[rKey];
             var stopWires  = washedStopWires[rKey];
 
-            for (var s = 0; s < size(lowerWires); s += 1)
+            var step8Pairs = pairWiresByMeanY(context, lowerWires, stopWires);
+            for (var p in step8Pairs)
             {
-                var lowerEdges = qUnion([qOwnedByBody(lowerWires[s], EntityType.EDGE)]);
-                var stopEdges  = qUnion([qOwnedByBody(stopWires[s],  EntityType.EDGE)]);
+                var s           = p.a;
+                var lowerEdges  = qUnion([qOwnedByBody(lowerWires[p.a], EntityType.EDGE)]);
+                var stopEdges   = qUnion([qOwnedByBody(stopWires[p.b],  EntityType.EDGE)]);
                 var loftedSurfs = [];
                 var iterEdges   = evaluateQuery(context, lowerEdges);
 
@@ -1121,6 +1141,62 @@ function splitAndKeep(context is Context, id is Id, body is Query,
 }
 
 
+// Returns the mean Y coordinate of all edge midpoints of a wire body.
+function wireMeanY(context is Context, wire is Query) returns ValueWithUnits
+{
+    var edges = evaluateQuery(context, qOwnedByBody(wire, EntityType.EDGE));
+    if (size(edges) == 0) { return 0 * meter; }
+    var sum = 0 * meter;
+    for (var e in edges)
+    {
+        sum += evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin[1];
+    }
+    return sum / size(edges);
+}
+
+
+/**
+ * Pairs each wire in wiresA with the closest unmatched wire in wiresB by
+ * mean Y.  Returns an array of {"a":i, "b":j} index maps.
+ * Wires in wiresA that have no unmatched counterpart in wiresB are skipped.
+ * When counts match this is equivalent to index pairing (both arrays are
+ * sorted highest-Y-first by rebuildWire); when counts differ it gracefully
+ * handles the case where one arm of a tip U-shape disappears after an offset.
+ */
+function pairWiresByMeanY(context is Context, wiresA is array, wiresB is array) returns array
+{
+    var yA = [];
+    for (var w in wiresA) { yA = append(yA, wireMeanY(context, w)); }
+    var yB = [];
+    for (var w in wiresB) { yB = append(yB, wireMeanY(context, w)); }
+
+    var pairs = [];
+    var usedB = {};
+    for (var i = 0; i < size(yA); i += 1)
+    {
+        var bestJ    = -1;
+        var bestSq   = undefined;
+        for (var j = 0; j < size(yB); j += 1)
+        {
+            if (usedB[toString(j)] == true) { continue; }
+            var d  = yA[i] - yB[j];
+            var sq = d * d;
+            if (bestSq == undefined || sq < bestSq)
+            {
+                bestSq = sq;
+                bestJ  = j;
+            }
+        }
+        if (bestJ >= 0)
+        {
+            usedB[toString(bestJ)] = true;
+            pairs = append(pairs, { "a" : i, "b" : bestJ });
+        }
+    }
+    return pairs;
+}
+
+
 /**
  * Rebuilds a multi-edge wire as single-edge BSpline bodies, split at the
  * front plane (y=0) if the wire spans both sides.
@@ -1298,12 +1374,83 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
         return result;
     }
 
-    // --- Single chain: return as one wire (tip wrap or single-sided section) ---
+    // --- Single chain: split at y=0 if the chain wraps across both sides ------
+    // A U-shaped tip wrap has points with both positive and negative Y; split
+    // it into port (+Y) and starboard (-Y) halves so each step returns the
+    // same wire count.  A single-sided chain (e.g. one arm only) is returned
+    // as-is.
     var allPts = (size(chainPts) > 0) ? chainPts[0] : [];
     var nPts   = size(allPts);
 
     if (nPts < MIN_PTS) { return []; }
 
+    // Check whether the chain crosses y=0
+    var hasPos = false;
+    var hasNeg = false;
+    for (var pt in allPts)
+    {
+        if (pt[1] > 0 * meter) { hasPos = true; }
+        if (pt[1] < 0 * meter) { hasNeg = true; }
+    }
+
+    if (hasPos && hasNeg)
+    {
+        // Find the split index closest to the y=0 crossing
+        var splitIdx = 0;
+        var minAbsY  = undefined;
+        for (var k = 0; k < nPts; k += 1)
+        {
+            var ay = abs(allPts[k][1] / meter) * meter;
+            if (minAbsY == undefined || ay < minAbsY)
+            {
+                minAbsY  = ay;
+                splitIdx = k;
+            }
+        }
+
+        // Build two halves: [0..splitIdx] and [splitIdx..nPts-1]
+        var halfA = [];
+        for (var k = 0; k <= splitIdx; k += 1) { halfA = append(halfA, allPts[k]); }
+        var halfB = [];
+        for (var k = splitIdx; k < nPts; k += 1) { halfB = append(halfB, allPts[k]); }
+
+        // Determine which half is +Y and which is -Y by meanY
+        var sumA = 0 * meter;
+        for (var pt in halfA) { sumA += pt[1]; }
+        var meanA = sumA / max(size(halfA), 1);
+
+        var ptsPos = (meanA > 0 * meter) ? halfA : halfB;
+        var ptsNeg = (meanA > 0 * meter) ? halfB : halfA;
+
+        var result = [];
+        if (size(ptsPos) >= MIN_PTS)
+        {
+            var crvPos = approximateSpline(context, {
+                    "targets"          : [approximationTarget({ "positions" : ptsPos })],
+                    "degree"           : 3,
+                    "tolerance"        : 1e-5 * meter,
+                    "isPeriodic"       : false,
+                    "maxControlPoints" : 200
+            })[0];
+            opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : crvPos });
+            result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
+        }
+        if (size(ptsNeg) >= MIN_PTS)
+        {
+            var crvNeg = approximateSpline(context, {
+                    "targets"          : [approximationTarget({ "positions" : ptsNeg })],
+                    "degree"           : 3,
+                    "tolerance"        : 1e-5 * meter,
+                    "isPeriodic"       : false,
+                    "maxControlPoints" : 200
+            })[0];
+            opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : crvNeg });
+            result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
+        }
+        return result;
+    }
+
+    // Single-sided chain -- return as one wire
     var curve = approximateSpline(context, {
             "targets"          : [approximationTarget({ "positions" : allPts })],
             "degree"           : 3,
