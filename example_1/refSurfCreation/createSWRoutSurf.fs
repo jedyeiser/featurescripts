@@ -345,7 +345,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // specified origin end and startX/endX distances are measured correctly.
         var refWirePath = constructPath(context,
                 qOwnedByBody(definition.refWire, EntityType.EDGE),
-                { "referenceGeometry" : definition.refWireOrigin });
+                { "referenceGeometry" : definition.refWireOrigin }).path;
 
         // Process and sort regions
         var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath);
