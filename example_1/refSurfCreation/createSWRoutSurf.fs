@@ -746,15 +746,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         addDebugEntities(context, initialEdge, DebugColor.GREEN);
                     }
                 }
-                opBoolean(context, id + ("combineInitStart" ~ r ~ "_" ~ s), {
-                        "tools"         : qUnion(loftedSurfs),
-                        "operationType" : BooleanOperationType.UNION
-                });
-                setProperty(context, {
-                        "entities"     : qUnion(loftedSurfs),
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : "Initial to Start [" ~ rName ~ "] " ~ sideNames[s]
-                });
+                if (size(loftedSurfs) > 1)
+                {
+                    opBoolean(context, id + ("combineInitStart" ~ r ~ "_" ~ s), {
+                            "tools"         : qUnion(loftedSurfs),
+                            "operationType" : BooleanOperationType.UNION
+                    });
+                }
+                if (size(loftedSurfs) > 0)
+                {
+                    setProperty(context, {
+                            "entities"     : qUnion(loftedSurfs),
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : "Initial to Start [" ~ rName ~ "] " ~ sideNames[s]
+                    });
+                }
             }
         }
 
@@ -804,15 +810,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             addDebugEntities(context, startEdge,  DebugColor.GREEN);
                         }
                     }
-                    opBoolean(context, id + ("combineStartStepIn" ~ r ~ "_" ~ s), {
-                            "tools"         : qUnion(loftedSurfs),
-                            "operationType" : BooleanOperationType.UNION
-                    });
-                    setProperty(context, {
-                            "entities"     : qUnion(loftedSurfs),
-                            "propertyType" : PropertyType.NAME,
-                            "value"        : "Start to Step-In [" ~ rName ~ "] " ~ sideNames[s]
-                    });
+                    if (size(loftedSurfs) > 1)
+                    {
+                        opBoolean(context, id + ("combineStartStepIn" ~ r ~ "_" ~ s), {
+                                "tools"         : qUnion(loftedSurfs),
+                                "operationType" : BooleanOperationType.UNION
+                        });
+                    }
+                    if (size(loftedSurfs) > 0)
+                    {
+                        setProperty(context, {
+                                "entities"     : qUnion(loftedSurfs),
+                                "propertyType" : PropertyType.NAME,
+                                "value"        : "Start to Step-In [" ~ rName ~ "] " ~ sideNames[s]
+                        });
+                    }
                 }
             }
         }
@@ -861,15 +873,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         addDebugEntities(context, lowerEdge, DebugColor.GREEN);
                     }
                 }
-                opBoolean(context, id + ("combineLowerStop" ~ r ~ "_" ~ s), {
-                        "tools"         : qUnion(loftedSurfs),
-                        "operationType" : BooleanOperationType.UNION
-                });
-                setProperty(context, {
-                        "entities"     : qUnion(loftedSurfs),
-                        "propertyType" : PropertyType.NAME,
-                        "value"        : "Lower to Stop [" ~ rName ~ "] " ~ sideNames[s]
-                });
+                if (size(loftedSurfs) > 1)
+                {
+                    opBoolean(context, id + ("combineLowerStop" ~ r ~ "_" ~ s), {
+                            "tools"         : qUnion(loftedSurfs),
+                            "operationType" : BooleanOperationType.UNION
+                    });
+                }
+                if (size(loftedSurfs) > 0)
+                {
+                    setProperty(context, {
+                            "entities"     : qUnion(loftedSurfs),
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : "Lower to Stop [" ~ rName ~ "] " ~ sideNames[s]
+                    });
+                }
             }
         }
 
@@ -919,6 +937,14 @@ function splitAndKeep(context is Context, id is Id, body is Query,
 
     var pieceA = qSplitBy(id + "split", EntityType.BODY, false);
     var pieceB = qSplitBy(id + "split", EntityType.BODY, true);
+
+    var aEmpty = isQueryEmpty(context, pieceA);
+    var bEmpty = isQueryEmpty(context, pieceB);
+
+    // If the plane only grazed the body (one piece is empty), keep the non-empty piece.
+    if (aEmpty && bEmpty) { return body; }
+    if (aEmpty) { return pieceB; }
+    if (bEmpty) { return pieceA; }
 
     var bbA = evBox3d(context, { "topology" : pieceA, "tight" : true });
     var bbB = evBox3d(context, { "topology" : pieceB, "tight" : true });
