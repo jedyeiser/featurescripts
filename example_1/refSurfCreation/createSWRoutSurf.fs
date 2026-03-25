@@ -43,9 +43,10 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
 
         try silent
         {
+            // Use natural edge ordering -- no referenceGeometry -- to match the
+            // feature body's constructPath call and keep dirSign consistent.
             var refWirePath = constructPath(context,
-                    qOwnedByBody(definition.refWire, EntityType.EDGE),
-                    { "referenceGeometry" : definition.refWireOrigin }).path;
+                    qOwnedByBody(definition.refWire, EntityType.EDGE));
 
             var totalLength = 0 * meter;
             for (var edge in refWirePath.edges)
@@ -53,7 +54,7 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                 totalLength += evLength(context, { "entities" : edge });
             }
 
-            // Project refWireOrigin onto path using same edge-walk as QUERY case.
+            // Project refWireOrigin onto path via edge-walk.
             var tOrigin     = 0;
             var bestOrigin  = undefined;
             var cumLenOrig  = 0 * meter;
@@ -77,31 +78,8 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                     cumLenOrig += eLen;
                 }
             }
-            // Determine dirSign from refWirePositiveEnd using same edge-walk.
-            var tPositiveEnd = 1;
-            var bestPos      = undefined;
-            var cumLenPos    = 0 * meter;
-            var posPts       = evaluateQuery(context, definition.refWirePositiveEnd);
-            if (size(posPts) > 0)
-            {
-                for (var ei = 0; ei < size(refWirePath.edges); ei += 1)
-                {
-                    var eLen = evLength(context, { "entities" : refWirePath.edges[ei] });
-                    var drP  = evDistance(context, {
-                            "side0" : refWirePath.edges[ei],
-                            "side1" : posPts[0]
-                    });
-                    var epP = drP.sides[0].parameter;
-                    if (refWirePath.flipped[ei]) { epP = 1 - epP; }
-                    if (bestPos == undefined || drP.distance < bestPos)
-                    {
-                        bestPos      = drP.distance;
-                        tPositiveEnd = (cumLenPos + epP * eLen) / totalLength;
-                    }
-                    cumLenPos += eLen;
-                }
-            }
-            var dirSign = (tPositiveEnd > tOrigin) ? 1 : -1;
+            // dirSign matches the feature body: flipRefWire inverts the convention.
+            var dirSign = (definition.flipRefWire == true) ? -1 : 1;
 
             for (var i = 0; i < size(definition.swRoutRegions); i += 1)
             {
@@ -260,11 +238,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                      "Description" : "Reference point defining t=0 (arc-length origin) along the reference wire." }
         definition.refWireOrigin is Query;
 
-        annotation { "Name" : "Positive end",
-                     "Filter" : EntityType.VERTEX || (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR,
-                     "MaxNumberOfPicks" : 1,
-                     "Description" : "A point at the positive-X end of the reference wire. Determines the sign convention for startX/endX." }
-        definition.refWirePositiveEnd is Query;
+        annotation { "Name" : "Flip wire direction", "Default" : false,
+                     "UIHint" : UIHint.OPPOSITE_DIRECTION }
+        definition.flipRefWire is boolean;
 
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
@@ -397,62 +373,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var debugFmt    = definition.debugDetailedBSplines ?
                 PrintFormat.DETAILS : PrintFormat.METADATA;
 
-        // Build refWire path anchored at refWireOrigin so t=0 is the user-
-        // specified origin end and startX/endX distances are measured correctly.
+        // Build path using natural edge ordering -- same convention as
+        // variableSurfaceOffset's buildFrenetPath with flipDirection=false.
+        // Do NOT pass referenceGeometry: when the origin is near the centre the
+        // two endpoints are equidistant and constructPath picks an arbitrary end,
+        // which breaks the startX/endX sign convention.
         var refWirePath = constructPath(context,
-                qOwnedByBody(definition.refWire, EntityType.EDGE),
-                { "referenceGeometry" : definition.refWireOrigin }).path;
+                qOwnedByBody(definition.refWire, EntityType.EDGE));
 
-        // Determine sign convention using edge-walk projection (evDistancePath not
-        // available here -- reuse the same pattern as the editing logic).
-        var dirSign = 1;
-        {
-            var totalLengthSign = 0 * meter;
-            for (var edge in refWirePath.edges)
-            {
-                totalLengthSign += evLength(context, { "entities" : edge });
-            }
-
-            var tOrig = 0;
-            var tPos  = 1;
-            var bestO = undefined;
-            var bestP = undefined;
-            var cumO  = 0 * meter;
-            var cumP  = 0 * meter;
-            var origPts = evaluateQuery(context, definition.refWireOrigin);
-            var posPts  = evaluateQuery(context, definition.refWirePositiveEnd);
-            for (var ei = 0; ei < size(refWirePath.edges); ei += 1)
-            {
-                var eLen = evLength(context, { "entities" : refWirePath.edges[ei] });
-                if (size(origPts) > 0)
-                {
-                    var drO = evDistance(context, {
-                            "side0" : refWirePath.edges[ei], "side1" : origPts[0] });
-                    var epO = drO.sides[0].parameter;
-                    if (refWirePath.flipped[ei]) { epO = 1 - epO; }
-                    if (bestO == undefined || drO.distance < bestO)
-                    {
-                        bestO = drO.distance;
-                        tOrig = (cumO + epO * eLen) / totalLengthSign;
-                    }
-                }
-                if (size(posPts) > 0)
-                {
-                    var drP = evDistance(context, {
-                            "side0" : refWirePath.edges[ei], "side1" : posPts[0] });
-                    var epP = drP.sides[0].parameter;
-                    if (refWirePath.flipped[ei]) { epP = 1 - epP; }
-                    if (bestP == undefined || drP.distance < bestP)
-                    {
-                        bestP = drP.distance;
-                        tPos  = (cumP + epP * eLen) / totalLengthSign;
-                    }
-                }
-                cumO += eLen;
-                cumP += eLen;
-            }
-            dirSign = (tPos > tOrig) ? 1 : -1;
-        }
+        var dirSign = definition.flipRefWire ? -1 : 1;
 
         // Process and sort regions
         var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin, dirSign);
