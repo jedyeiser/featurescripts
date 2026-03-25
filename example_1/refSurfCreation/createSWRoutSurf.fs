@@ -1175,11 +1175,22 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     });
                 }
                 catch {}
-                var joinedQ = qCreatedBy(id + ("joinG0" ~ ix), EntityType.BODY);
-                if (!isQueryEmpty(context, joinedQ))
+                // opBoolean UNION on surfaces may merge into an existing body rather
+                // than creating a new one, so qCreatedBy may return empty.  Check
+                // both: prefer the created body, fall back to whichever original
+                // body survived (the union target that was extended in-place).
+                var g0Result = qCreatedBy(id + ("joinG0" ~ ix), EntityType.BODY);
+                if (isQueryEmpty(context, g0Result))
                 {
-                    regionMergedBody[toString(rAIdx)] = joinedQ;
-                    regionMergedBody[toString(rBIdx)] = joinedQ;
+                    for (var b in allBodies)
+                    {
+                        if (!isQueryEmpty(context, b)) { g0Result = b; break; }
+                    }
+                }
+                if (!isQueryEmpty(context, g0Result))
+                {
+                    regionMergedBody[toString(rAIdx)] = g0Result;
+                    regionMergedBody[toString(rBIdx)] = g0Result;
                 }
             }
             else
@@ -1260,7 +1271,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                 "profileIndex"             : 0,
                                 "magnitude"                : 1.0,
                                 "matchCurvature"           : false,
-                                "adjacentFaces"            : qEdgeAdjacent(edgeA, EntityType.FACE),
+                                "adjacentFaces"            : qAdjacent(edgeA, AdjacencyType.EDGE, EntityType.FACE),
                                 "userDefinedAdjacentFaces" : true
                         });
                     }
@@ -1270,7 +1281,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                 "profileIndex"             : 1,
                                 "magnitude"                : 1.0,
                                 "matchCurvature"           : false,
-                                "adjacentFaces"            : qEdgeAdjacent(edgeB, EntityType.FACE),
+                                "adjacentFaces"            : qAdjacent(edgeB, AdjacencyType.EDGE, EntityType.FACE),
                                 "userDefinedAdjacentFaces" : true
                         });
                     }
@@ -1325,11 +1336,18 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         });
                     }
                     catch {}
-                    var blendedQ = qCreatedBy(id + ("blendUnion" ~ ix), EntityType.BODY);
-                    if (!isQueryEmpty(context, blendedQ))
+                    var blendResult = qCreatedBy(id + ("blendUnion" ~ ix), EntityType.BODY);
+                    if (isQueryEmpty(context, blendResult))
                     {
-                        regionMergedBody[toString(rAIdx)] = blendedQ;
-                        regionMergedBody[toString(rBIdx)] = blendedQ;
+                        for (var b in toUnion)
+                        {
+                            if (!isQueryEmpty(context, b)) { blendResult = b; break; }
+                        }
+                    }
+                    if (!isQueryEmpty(context, blendResult))
+                    {
+                        regionMergedBody[toString(rAIdx)] = blendResult;
+                        regionMergedBody[toString(rBIdx)] = blendResult;
                     }
                 }
             }
