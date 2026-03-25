@@ -771,7 +771,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     if (size(edgesAi) == 0) { continue; }
 
                     // Mean Y of A body's cap edge midpoints.
-                    var meanYA = 0;
+                    var meanYA = 0 * meter;
                     for (var e in edgesAi)
                     {
                         meanYA += evEdgeTangentLine(context,
@@ -786,7 +786,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     {
                         var edgesBi = capEdgesPerB[bi];
                         if (size(edgesBi) == 0) { continue; }
-                        var meanYB = 0;
+                        var meanYB = 0 * meter;
                         for (var e in edgesBi)
                         {
                             meanYB += evEdgeTangentLine(context,
