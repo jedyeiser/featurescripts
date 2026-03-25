@@ -1159,8 +1159,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         var uv1 = evDistance(context, { "side0" : face, "side1" : tl1.origin }).sides[0].parameter;
         var fr1 = edgeOffsetFrame(evFaceTangentPlane(context, { "face" : face, "parameter" : uv1 }).normal, tl1.direction, flip);
 
-        var om0 = computeOffsetMag(offsetDef, regionT(tl0.origin, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2));
-        var om1 = computeOffsetMag(offsetDef, regionT(tl1.origin, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2));
+        var t0  = regionT(tl0.origin, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2);
+        var t1  = regionT(tl1.origin, offsetDef.startFrameOrigin, regionAxis, regionAxisLen2);
+        var om0 = computeOffsetMag(offsetDef, t0);
+        var om1 = computeOffsetMag(offsetDef, t1);
 
         var tangentLines = evEdgeTangentLines(context, {
             "edge" : edge, "parameters" : uniformParams(numPts), "arcLengthParameterization" : true
@@ -1191,6 +1193,7 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             "fn0" : fr0.faceNormal, "fn1" : fr1.faceNormal,
             "bn0" : fr0.binormal,   "bn1" : fr1.binormal,
             "om0" : om0, "om1" : om1,
+            "t0"  : t0,  "t1"  : t1,
             "topPts" : topPts, "bottomPts" : bottomPts
         });
     }
@@ -1201,23 +1204,34 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
         if (edgeInfo[ei] == undefined) { continue; }
         var ed = edgeInfo[ei];
 
+        // Miter bisector for start vertex.  Only accumulate adjacent binormals whose
+        // dot product with this edge's binormal is > -0.5 (within 120 deg).  When a
+        // G0 boundary has edges with nearly-opposite binormals, the unclamped sum can
+        // cancel to near-zero and then normalize() points in an arbitrary direction,
+        // causing corner points to land on the wrong side — especially with negative
+        // offset where the error is amplified into a visible loop.
         var sumBn0 = ed.bn0;
         for (var ej = 0; ej < size(edgeInfo); ej += 1)
         {
             if (ej == ei || edgeInfo[ej] == undefined) { continue; }
             var eo = edgeInfo[ej];
-            if      (norm(eo.p0 - ed.p0) < POS_TOL) { sumBn0 = sumBn0 + eo.bn0; }
-            else if (norm(eo.p1 - ed.p0) < POS_TOL) { sumBn0 = sumBn0 + eo.bn1; }
+            if (norm(eo.p0 - ed.p0) < POS_TOL && dot(eo.bn0, ed.bn0) > -0.5)
+                { sumBn0 = sumBn0 + eo.bn0; }
+            else if (norm(eo.p1 - ed.p0) < POS_TOL && dot(eo.bn1, ed.bn0) > -0.5)
+                { sumBn0 = sumBn0 + eo.bn1; }
         }
         var cornerOff0 = ed.p0 + ed.om0 * normalize(sumBn0);
 
+        // Miter bisector for end vertex (same filter logic).
         var sumBn1 = ed.bn1;
         for (var ej = 0; ej < size(edgeInfo); ej += 1)
         {
             if (ej == ei || edgeInfo[ej] == undefined) { continue; }
             var eo = edgeInfo[ej];
-            if      (norm(eo.p0 - ed.p1) < POS_TOL) { sumBn1 = sumBn1 + eo.bn0; }
-            else if (norm(eo.p1 - ed.p1) < POS_TOL) { sumBn1 = sumBn1 + eo.bn1; }
+            if (norm(eo.p0 - ed.p1) < POS_TOL && dot(eo.bn0, ed.bn1) > -0.5)
+                { sumBn1 = sumBn1 + eo.bn0; }
+            else if (norm(eo.p1 - ed.p1) < POS_TOL && dot(eo.bn1, ed.bn1) > -0.5)
+                { sumBn1 = sumBn1 + eo.bn1; }
         }
         var cornerOff1 = ed.p1 + ed.om1 * normalize(sumBn1);
 
@@ -1329,6 +1343,35 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
     {
         // Per-edge mode: one loft patch per edge with G1/G2 junction constraints.
         var constraints = detectContinuityConstraints(context, edgeInfo);
+
+        // Post-pass: pin the spline derivative at region split-plane boundaries.
+        // When a G0 junction leaves an endpoint unconstrained, approximateSpline
+        // is free to wander there, producing wobble on edges that should be straight.
+        // Pinning to the source edge tangent prevents this without imposing G1 across
+        // regions (only applies if detectContinuityConstraints did not already set a
+        // derivative constraint for that end).
+        //
+        // TSPAN_TOL: skip edges whose regionT span is near zero (nearly tangent to
+        // the split plane — tangential trims produce degenerate offset profiles).
+        var BOUND_TOL = 0.02;
+        var TSPAN_TOL = 0.01;
+        for (var bi = 0; bi < size(edgeInfo); bi += 1)
+        {
+            if (edgeInfo[bi] == undefined) { continue; }
+            var eBnd = edgeInfo[bi];
+            var cBnd = constraints[bi];
+            if ((eBnd.t0 < BOUND_TOL || eBnd.t0 > 1 - BOUND_TOL) && cBnd.startDeriv == undefined)
+            {
+                cBnd.startDeriv = eBnd.tan0;
+                constraints[bi] = cBnd;
+            }
+            if ((eBnd.t1 < BOUND_TOL || eBnd.t1 > 1 - BOUND_TOL) && cBnd.endDeriv == undefined)
+            {
+                cBnd.endDeriv = eBnd.tan1;
+                constraints[bi] = cBnd;
+            }
+        }
+
         for (var ei = 0; ei < size(edgeInfo); ei += 1)
         {
             if (edgeInfo[ei] == undefined) { continue; }
@@ -1384,6 +1427,16 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             botCPs[0]                 = ed.cbStart;
             botCPs[size(botCPs) - 1]  = ed.cbEnd;
             bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
+
+            // Skip edges that are very short or whose endpoints project to nearly
+            // the same region-T value (edge nearly tangent to the split plane).
+            // These arise from tangential trims at region boundaries and produce
+            // degenerate offset profiles, particularly with negative offset.
+            var edgeLen = evLength(context, { "entities" : ed.edge });
+            if (edgeLen < 0.5 * millimeter || abs(ed.t1 - ed.t0) < TSPAN_TOL)
+            {
+                continue;
+            }
 
             // Skip degenerate patches where either wall endpoint has zero height
             // (cbStart == ctStart or cbEnd == ctEnd).  When the profiles share a
