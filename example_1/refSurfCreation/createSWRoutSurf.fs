@@ -1211,44 +1211,38 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     for (var ce in ces) { capEdgesB = append(capEdgesB, ce); }
                 }
 
-                // Pair A and B cap edges by nearest midpoint.  Track which B edges
-                // are consumed so that any extra B edges (e.g. the step-riser on RSL
-                // when Tail is on the A side) get a symmetric B->A pass instead of
-                // silently becoming orphans or stealing a match from an A edge.
+                // Always iterate the LARGER cap-edge set and find the nearest match
+                // in the smaller set via qClosestTo.  This guarantees the step-riser
+                // is naturally iterated regardless of which region it is on, producing
+                // the same topology that was already correct at the Tip intersection.
                 var blendSurfs  = [];
-                var usedBIdx    = {};
-
-                // Build B midpoint cache once.
-                var bMids = [];
-                for (var j = 0; j < size(capEdgesB); j += 1)
+                var iterEdges   = capEdgesA;
+                var matchEdgesQ = qUnion(capEdgesB);
+                var iterIsA     = true;
+                if (size(capEdgesB) > size(capEdgesA))
                 {
-                    bMids = append(bMids, evEdgeTangentLine(context,
-                            { "edge" : capEdgesB[j], "parameter" : 0.5 }).origin);
+                    iterEdges   = capEdgesB;
+                    matchEdgesQ = qUnion(capEdgesA);
+                    iterIsA     = false;
                 }
 
-                // Helper: loft two cap edges with requested continuity.
-                // Returns the created body Query or an empty Query on failure.
-                // (Inline function not available in FS; code repeated for A->B and B->A.)
-
-                // A->B pass.
-                for (var i = 0; i < size(capEdgesA); i += 1)
+                for (var i = 0; i < size(iterEdges); i += 1)
                 {
-                    var edgeA = capEdgesA[i];
-                    var midA  = evEdgeTangentLine(context,
-                            { "edge" : edgeA, "parameter" : 0.5 }).origin;
-                    var bestJ = 0;
-                    var bestD = -1;
-                    for (var j = 0; j < size(capEdgesB); j += 1)
-                    {
-                        var d = norm(midA - bMids[j]);
-                        if (bestD < 0 || d < bestD) { bestD = d; bestJ = j; }
-                    }
-                    usedBIdx[toString(bestJ)] = true;
-                    var edgeB  = capEdgesB[bestJ];
-                    var blId   = id + ("blLoft" ~ ix ~ "_" ~ i);
+                    var iterEdge  = iterEdges[i];
+                    var midPt     = evEdgeTangentLine(context,
+                            { "edge" : iterEdge, "parameter" : 0.5 }).origin;
+                    var matchEdge = qClosestTo(matchEdgesQ, midPt);
+
+                    // Keep loft profiles in A->B order so derivativeInfo profileIndex
+                    // 0 = A-side (start) and 1 = B-side (end) regardless of which set
+                    // was iterated.
+                    var edgeA = iterIsA ? iterEdge : matchEdge;
+                    var edgeB = iterIsA ? matchEdge : iterEdge;
+
+                    var blId    = id + ("blLoft" ~ ix ~ "_" ~ i);
                     var success = false;
 
-                    // Build derivativeInfo entries for any requested continuity.
+                    // Build derivativeInfo for any requested G1 continuity.
                     // opLoft reads "derivativeInfo"; "startCondition"/"endCondition"
                     // are only understood by the loft feature wrapper, not the kernel.
                     var derivInfo = [];
@@ -1294,42 +1288,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     if (!isQueryEmpty(context, blBody)) { blendSurfs = append(blendSurfs, blBody); }
                 }
 
-                // B->A pass: loft any B edges not consumed above (e.g. step-riser
-                // on the B-side region) to their nearest A edge.  These use G0 only
-                // since they represent structural gap-fills, not profile transitions.
-                var aMids = [];
-                for (var i = 0; i < size(capEdgesA); i += 1)
-                {
-                    aMids = append(aMids, evEdgeTangentLine(context,
-                            { "edge" : capEdgesA[i], "parameter" : 0.5 }).origin);
-                }
-                for (var j = 0; j < size(capEdgesB); j += 1)
-                {
-                    if (usedBIdx[toString(j)] != undefined) { continue; }
-                    if (size(capEdgesA) == 0) { continue; }
-                    var edgeB = capEdgesB[j];
-                    var midB  = bMids[j];
-                    var bestI = 0;
-                    var bestD = -1;
-                    for (var i = 0; i < size(capEdgesA); i += 1)
-                    {
-                        var d = norm(midB - aMids[i]);
-                        if (bestD < 0 || d < bestD) { bestD = d; bestI = i; }
-                    }
-                    var edgeA  = capEdgesA[bestI];
-                    var blId   = id + ("blLoftB" ~ ix ~ "_" ~ j);
-                    try
-                    {
-                        opLoft(context, blId, {
-                                "profileSubqueries" : [edgeB, edgeA],
-                                "bodyType"          : ToolBodyType.SURFACE
-                        });
-                        var blBody = qCreatedBy(blId, EntityType.BODY);
-                        if (!isQueryEmpty(context, blBody)) { blendSurfs = append(blendSurfs, blBody); }
-                    }
-                    catch {}
-                }
-
                 // Union all trimmed A, trimmed B, and blend loft bodies.
                 var toUnion = blendSurfs;
                 for (var ba in trimmedA) { toUnion = append(toUnion, ba); }
@@ -1352,14 +1310,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             if (!isQueryEmpty(context, b)) { blendResult = b; break; }
                         }
                     }
-                    // The step-riser orphan lives near trimPlA or trimPlB (offset from
-                    // boundaryPlane by blend distances), not at boundaryPlane itself.
-                    // Check all three planes so the fill catches whichever side the
-                    // extra edge is on.
-                    blendResult = tryFillBoundaryGaps(context,
-                            id + ("blGapA" ~ ix), blendResult, trimPlA, BLEND_TOL);
-                    blendResult = tryFillBoundaryGaps(context,
-                            id + ("blGapB" ~ ix), blendResult, trimPlB, BLEND_TOL);
                     blendResult = tryFillBoundaryGaps(context,
                             id + ("blGap" ~ ix), blendResult, boundaryPlane, BLEND_TOL);
                     if (!isQueryEmpty(context, blendResult))
