@@ -1085,125 +1085,189 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var pathTang = evPathTangentLines(context, refWirePath,
                     [regA.tEnd]).tangentLines[0].direction;
 
+            // Collect ALL valid bodies from region A and region B across all sides.
+            // A region with one U-shape body only has s=0; a two-body region has s=0
+            // and s=1.  Iterating by side index causes mismatches (e.g. Tip s=1 is
+            // undefined while RSL s=1 is valid).  Instead, gather flat arrays and
+            // process them together.
+            var bodiesA = [];
+            var bodiesB = [];
             for (var s = 0; s < size(sideNames); s += 1)
             {
-                var rAKey = toString(rAIdx) ~ "_" ~ toString(s);
-                var rBKey = toString(rBIdx) ~ "_" ~ toString(s);
-                var bodyA = regionFinalSurfs[rAKey];
-                var bodyB = regionFinalSurfs[rBKey];
-                if (bodyA == undefined || bodyB == undefined) { continue; }
+                var ba = regionFinalSurfs[toString(rAIdx) ~ "_" ~ toString(s)];
+                var bb = regionFinalSurfs[toString(rBIdx) ~ "_" ~ toString(s)];
+                if (ba != undefined) { bodiesA = append(bodiesA, ba); }
+                if (bb != undefined) { bodiesB = append(bodiesB, bb); }
+            }
+            if (size(bodiesA) == 0 || size(bodiesB) == 0) { continue; }
 
-                if (!intr.blend)
+            if (!intr.blend)
+            {
+                // G0 -- union all A and B bodies.  Also find any cap edges at the
+                // shared boundary that have no coincident partner (e.g. the step-in
+                // face on RSL has no matching face on the Tip) and loft each such
+                // orphan edge to the nearest endpoint vertex on the opposing side.
+                const G0_TOL = 1e-3 * meter;
+
+                var capEdgesAg0 = [];
+                for (var ba in bodiesA)
                 {
-                    // G0 -- attempt a simple union; surfaces share a boundary edge
-                    // when the wires from adjacent regions are coincident.
+                    var ces = evaluateQuery(context,
+                            edgesNearPlane(context, ba, boundaryPlane, G0_TOL));
+                    for (var ce in ces) { capEdgesAg0 = append(capEdgesAg0, ce); }
+                }
+                var capEdgesBg0 = [];
+                for (var bb in bodiesB)
+                {
+                    var ces = evaluateQuery(context,
+                            edgesNearPlane(context, bb, boundaryPlane, G0_TOL));
+                    for (var ce in ces) { capEdgesBg0 = append(capEdgesBg0, ce); }
+                }
+
+                var orphFillsAB = buildOrphanFills(context,
+                        id + ("g0OrphAB" ~ ix), capEdgesAg0, capEdgesBg0);
+                var orphFillsBA = buildOrphanFills(context,
+                        id + ("g0OrphBA" ~ ix), capEdgesBg0, capEdgesAg0);
+
+                var allBodies = bodiesA;
+                for (var bb in bodiesB)       { allBodies = append(allBodies, bb); }
+                for (var of in orphFillsAB)   { allBodies = append(allBodies, of); }
+                for (var of in orphFillsBA)   { allBodies = append(allBodies, of); }
+
+                try
+                {
+                    opBoolean(context, id + ("joinG0" ~ ix), {
+                            "tools"         : qUnion(allBodies),
+                            "operationType" : BooleanOperationType.UNION
+                    });
+                }
+                catch {}
+            }
+            else
+            {
+                // Blend -- trim each body back, bridge all cap-edge pairs with lofts.
+                const BLEND_TOL = 1e-3 * meter;
+
+                var trimPlA = plane(
+                        boundaryPlane.origin - intr.startDist * pathTang,
+                        boundaryPlane.normal);
+                var trimPlB = plane(
+                        boundaryPlane.origin + intr.endDist  * pathTang,
+                        boundaryPlane.normal);
+
+                var probeA = evPathTangentLines(context, refWirePath,
+                        [(regA.tStart + regA.tEnd) / 2]).tangentLines[0].origin;
+                var probeB = evPathTangentLines(context, refWirePath,
+                        [(regB.tStart + regB.tEnd) / 2]).tangentLines[0].origin;
+
+                // Trim all A bodies and collect their cap edges.
+                var trimmedA  = [];
+                var capEdgesA = [];
+                for (var ai = 0; ai < size(bodiesA); ai += 1)
+                {
+                    var ba = bodiesA[ai];
+                    try { ba = splitAndKeep(context, id + ("blTrimA" ~ ix ~ "_" ~ ai), ba, trimPlA, probeA); }
+                    catch {}
+                    trimmedA = append(trimmedA, ba);
+                    var ces = evaluateQuery(context, edgesNearPlane(context, ba, trimPlA, BLEND_TOL));
+                    for (var ce in ces) { capEdgesA = append(capEdgesA, ce); }
+                }
+
+                // Trim all B bodies and collect their cap edges.
+                var trimmedB  = [];
+                var capEdgesB = [];
+                for (var bi = 0; bi < size(bodiesB); bi += 1)
+                {
+                    var bb = bodiesB[bi];
+                    try { bb = splitAndKeep(context, id + ("blTrimB" ~ ix ~ "_" ~ bi), bb, trimPlB, probeB); }
+                    catch {}
+                    trimmedB = append(trimmedB, bb);
+                    var ces = evaluateQuery(context, edgesNearPlane(context, bb, trimPlB, BLEND_TOL));
+                    for (var ce in ces) { capEdgesB = append(capEdgesB, ce); }
+                }
+
+                // Loft any orphan cap edges (e.g. the step-in face edge that has no
+                // matching face on the adjacent region) to the nearest endpoint vertex
+                // on the opposing side.  Both directions are checked symmetrically.
+                var orphFillsAB = buildOrphanFills(context,
+                        id + ("blOrphAB" ~ ix), capEdgesA, capEdgesB);
+                var orphFillsBA = buildOrphanFills(context,
+                        id + ("blOrphBA" ~ ix), capEdgesB, capEdgesA);
+
+                // Pair each A cap edge with the closest B cap edge and loft.
+                var blendSurfs = [];
+                for (var of in orphFillsAB) { blendSurfs = append(blendSurfs, of); }
+                for (var of in orphFillsBA) { blendSurfs = append(blendSurfs, of); }
+                var capEdgesBQ = qUnion(capEdgesB);
+                for (var i = 0; i < size(capEdgesA); i += 1)
+                {
+                    var edgeA   = capEdgesA[i];
+                    var midPt   = evEdgeTangentLine(context,
+                            { "edge" : edgeA, "parameter" : 0.5 }).origin;
+                    var edgeB   = qClosestTo(capEdgesBQ, midPt);
+                    var blId    = id + ("blLoft" ~ ix ~ "_" ~ i);
+                    var success = false;
+
                     try
                     {
-                        opBoolean(context, id + ("joinG0" ~ ix ~ "_" ~ s), {
-                                "tools"         : qUnion([bodyA, bodyB]),
-                                "operationType" : BooleanOperationType.UNION
-                        });
+                        var loftDef = {
+                                "profileSubqueries" : [edgeA, edgeB],
+                                "bodyType"          : ToolBodyType.SURFACE
+                        };
+                        if (intr.startContinuity == GeometricContinuity.G1)
+                        {
+                            loftDef.startCondition = {
+                                    "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
+                                    "adjacentFaces" : qEdgeAdjacent(edgeA, EntityType.FACE),
+                                    "magnitude"     : 1.0
+                            };
+                        }
+                        if (intr.endContinuity == GeometricContinuity.G1)
+                        {
+                            loftDef.endCondition = {
+                                    "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
+                                    "adjacentFaces" : qEdgeAdjacent(edgeB, EntityType.FACE),
+                                    "magnitude"     : 1.0
+                            };
+                        }
+                        opLoft(context, blId, loftDef);
+                        success = true;
                     }
                     catch {}
-                }
-                else
-                {
-                    // Blend -- trim each surface back, bridge with continuity loft.
-                    const BLEND_TOL = 1e-3 * meter;
 
-                    var trimPlA = plane(
-                            boundaryPlane.origin - intr.startDist * pathTang,
-                            boundaryPlane.normal);
-                    var trimPlB = plane(
-                            boundaryPlane.origin + intr.endDist  * pathTang,
-                            boundaryPlane.normal);
-
-                    // Probe points: interior of each region (bounding box centre proxy)
-                    var probeA = evPathTangentLines(context, refWirePath,
-                            [(regA.tStart + regA.tEnd) / 2]).tangentLines[0].origin;
-                    var probeB = evPathTangentLines(context, refWirePath,
-                            [(regB.tStart + regB.tEnd) / 2]).tangentLines[0].origin;
-
-                    try { bodyA = splitAndKeep(context, id + ("blTrimA" ~ ix ~ "_" ~ s), bodyA, trimPlA, probeA); }
-                    catch {}
-                    try { bodyB = splitAndKeep(context, id + ("blTrimB" ~ ix ~ "_" ~ s), bodyB, trimPlB, probeB); }
-                    catch {}
-
-                    var capEdgesA  = edgesNearPlane(context, bodyA, trimPlA, BLEND_TOL);
-                    var capEdgesB  = edgesNearPlane(context, bodyB, trimPlB, BLEND_TOL);
-                    var iterEdgesA = evaluateQuery(context, capEdgesA);
-
-                    var blendSurfs = [];
-                    for (var i = 0; i < size(iterEdgesA); i += 1)
+                    if (!success)
                     {
-                        var edgeA   = iterEdgesA[i];
-                        var midPt   = evEdgeTangentLine(context,
-                                { "edge" : edgeA, "parameter" : 0.5 }).origin;
-                        var edgeB   = qClosestTo(capEdgesB, midPt);
-                        var blId    = id + ("blLoft" ~ ix ~ "_" ~ s ~ "_" ~ i);
-                        var success = false;
-
-                        // Try with requested continuity first; fall back to G0
                         try
                         {
-                            var loftDef = {
+                            opLoft(context, blId, {
                                     "profileSubqueries" : [edgeA, edgeB],
                                     "bodyType"          : ToolBodyType.SURFACE
-                            };
-                            if (intr.startContinuity == GeometricContinuity.G1)
-                            {
-                                loftDef.startCondition = {
-                                        "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
-                                        "adjacentFaces" : qEdgeAdjacent(edgeA, EntityType.FACE),
-                                        "magnitude"     : 1.0
-                                };
-                            }
-                            if (intr.endContinuity == GeometricContinuity.G1)
-                            {
-                                loftDef.endCondition = {
-                                        "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
-                                        "adjacentFaces" : qEdgeAdjacent(edgeB, EntityType.FACE),
-                                        "magnitude"     : 1.0
-                                };
-                            }
-                            opLoft(context, blId, loftDef);
-                            success = true;
-                        }
-                        catch {}
-
-                        if (!success)
-                        {
-                            try
-                            {
-                                opLoft(context, blId, {
-                                        "profileSubqueries" : [edgeA, edgeB],
-                                        "bodyType"          : ToolBodyType.SURFACE
-                                });
-                            }
-                            catch {}
-                        }
-
-                        var blBody = qCreatedBy(blId, EntityType.BODY);
-                        if (!isQueryEmpty(context, blBody))
-                        {
-                            blendSurfs = append(blendSurfs, blBody);
-                        }
-                    }
-
-                    // Union trimmed A + trimmed B + all blend lofts
-                    var toUnion = append(blendSurfs, bodyA);
-                    toUnion = append(toUnion, bodyB);
-                    if (size(toUnion) > 1)
-                    {
-                        try
-                        {
-                            opBoolean(context, id + ("blendUnion" ~ ix ~ "_" ~ s), {
-                                    "tools"         : qUnion(toUnion),
-                                    "operationType" : BooleanOperationType.UNION
                             });
                         }
                         catch {}
                     }
+
+                    var blBody = qCreatedBy(blId, EntityType.BODY);
+                    if (!isQueryEmpty(context, blBody))
+                    {
+                        blendSurfs = append(blendSurfs, blBody);
+                    }
+                }
+
+                // Union all trimmed A, trimmed B, and blend loft bodies.
+                var toUnion = blendSurfs;
+                for (var ba in trimmedA) { toUnion = append(toUnion, ba); }
+                for (var bb in trimmedB) { toUnion = append(toUnion, bb); }
+                if (size(toUnion) > 1)
+                {
+                    try
+                    {
+                        opBoolean(context, id + ("blendUnion" ~ ix), {
+                                "tools"         : qUnion(toUnion),
+                                "operationType" : BooleanOperationType.UNION
+                        });
+                    }
+                    catch {}
                 }
             }
         }
@@ -1459,6 +1523,68 @@ function edgesNearPlane(context is Context, surfBody is Query, pl is Plane,
     }
     if (size(matching) == 0) { return qNothing(); }
     return qUnion(matching);
+}
+
+
+// Finds cap edges in orphanSourceEdges that are never the closest match to any
+// edge in selectorEdges (matched by midpoint proximity).  For each such orphan,
+// lofts it to the nearest endpoint vertex on selectorEdges, bridging the gap
+// left when one region has a step-in face that the adjacent region lacks.
+// Returns an array of newly created surface body Queries.
+function buildOrphanFills(context is Context, id is Id,
+        selectorEdges is array, orphanSourceEdges is array) returns array
+{
+    if (size(selectorEdges) == 0 || size(orphanSourceEdges) == 0) { return []; }
+
+    // Record which orphanSourceEdges indices are claimed by a selectorEdge.
+    var usedIdx = [];
+    for (var ea in selectorEdges)
+    {
+        var midA  = evEdgeTangentLine(context, { "edge" : ea, "parameter" : 0.5 }).origin;
+        var bestJ = 0;
+        var bestD = -1;
+        for (var j = 0; j < size(orphanSourceEdges); j += 1)
+        {
+            var midB = evEdgeTangentLine(context,
+                    { "edge" : orphanSourceEdges[j], "parameter" : 0.5 }).origin;
+            var d    = norm(midA - midB);
+            if (bestD < 0 || d < bestD) { bestD = d; bestJ = j; }
+        }
+        var alreadyClaimed = false;
+        for (var u in usedIdx) { if (u == bestJ) { alreadyClaimed = true; break; } }
+        if (!alreadyClaimed) { usedIdx = append(usedIdx, bestJ); }
+    }
+
+    // Collect all endpoint vertices from selectorEdges.
+    var selectorVerts = qNothing();
+    for (var ea in selectorEdges)
+    {
+        selectorVerts = qUnion([selectorVerts, qEdgeAdjacent(ea, EntityType.VERTEX)]);
+    }
+
+    var filled = [];
+    for (var j = 0; j < size(orphanSourceEdges); j += 1)
+    {
+        var claimed = false;
+        for (var u in usedIdx) { if (u == j) { claimed = true; break; } }
+        if (claimed) { continue; }
+
+        var eb     = orphanSourceEdges[j];
+        var midB   = evEdgeTangentLine(context, { "edge" : eb, "parameter" : 0.5 }).origin;
+        var vtx    = qClosestTo(selectorVerts, midB);
+        var fillId = id + ("f" ~ j);
+        try
+        {
+            opLoft(context, fillId, {
+                    "profileSubqueries" : [eb, vtx],
+                    "bodyType"          : ToolBodyType.SURFACE
+            });
+            var fb = qCreatedBy(fillId, EntityType.BODY);
+            if (!isQueryEmpty(context, fb)) { filled = append(filled, fb); }
+        }
+        catch {}
+    }
+    return filled;
 }
 
 
