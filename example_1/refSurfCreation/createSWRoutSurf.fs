@@ -45,6 +45,23 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
         {
             var refWirePath = constructPath(context,
                     qOwnedByBody(definition.refWire, EntityType.EDGE));
+
+            var ePt0      = evPathTangentLines(context, refWirePath, [0]).tangentLines[0].origin;
+            var ePt1      = evPathTangentLines(context, refWirePath, [1]).tangentLines[0].origin;
+            var oBox      = evBox3d(context, { "topology" : definition.refWireOrigin, "tight" : true });
+            var oPt       = (oBox.minCorner + oBox.maxCorner) / 2;
+            if (norm(ePt1 - oPt) < norm(ePt0 - oPt))
+            {
+                var rEdges = [];
+                var rFlip  = [];
+                for (var k = size(refWirePath.edges) - 1; k >= 0; k -= 1)
+                {
+                    rEdges = append(rEdges, refWirePath.edges[k]);
+                    rFlip  = append(rFlip,  !refWirePath.flipped[k]);
+                }
+                refWirePath = { "edges" : rEdges, "flipped" : rFlip, "closed" : refWirePath.closed };
+            }
+
             var totalLength = 0 * meter;
             for (var edge in refWirePath.edges)
             {
@@ -339,9 +356,27 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var debugFmt    = definition.debugDetailedBSplines ?
                 PrintFormat.DETAILS : PrintFormat.METADATA;
 
-        // Build refWire path for region parameterization and bounding planes
+        // Build refWire path for region parameterization and bounding planes.
+        // constructPath chains edges in arbitrary order; use refWireOrigin to
+        // ensure t=0 is at the user-specified origin end of the wire.
         var refWirePath = constructPath(context,
                 qOwnedByBody(definition.refWire, EntityType.EDGE));
+
+        var pathPt0    = evPathTangentLines(context, refWirePath, [0]).tangentLines[0].origin;
+        var pathPt1    = evPathTangentLines(context, refWirePath, [1]).tangentLines[0].origin;
+        var originBox  = evBox3d(context, { "topology" : definition.refWireOrigin, "tight" : true });
+        var originPt   = (originBox.minCorner + originBox.maxCorner) / 2;
+        if (norm(pathPt1 - originPt) < norm(pathPt0 - originPt))
+        {
+            var revEdges   = [];
+            var revFlipped = [];
+            for (var k = size(refWirePath.edges) - 1; k >= 0; k -= 1)
+            {
+                revEdges   = append(revEdges,   refWirePath.edges[k]);
+                revFlipped = append(revFlipped, !refWirePath.flipped[k]);
+            }
+            refWirePath = { "edges" : revEdges, "flipped" : revFlipped, "closed" : refWirePath.closed };
+        }
 
         // Process and sort regions
         var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath);
