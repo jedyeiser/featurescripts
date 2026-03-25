@@ -1078,6 +1078,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         //   For each intersection entry, either merge the surfaces (G0) or trim
         //   each region back and bridge the gap with a continuity loft (G1).
         // =====================================================================
+        // regionMergedBody[toString(rIdx)] tracks the single merged body produced
+        // when a region's surfaces were unioned with an adjacent region.  Subsequent
+        // intersections must use this updated query instead of the original
+        // regionFinalSurfs entries, which become stale once consumed by a union.
+        var regionMergedBody = {};
+
         for (var ix = 0; ix < size(definition.swRoutIntersections); ix += 1)
         {
             var intr  = definition.swRoutIntersections[ix];
@@ -1093,19 +1099,36 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var pathTang = evPathTangentLines(context, refWirePath,
                     [regA.tEnd]).tangentLines[0].direction;
 
-            // Collect ALL valid bodies from region A and region B across all sides.
-            // A region with one U-shape body only has s=0; a two-body region has s=0
-            // and s=1.  Iterating by side index causes mismatches (e.g. Tip s=1 is
-            // undefined while RSL s=1 is valid).  Instead, gather flat arrays and
-            // process them together.
+            // Collect bodies for each region.  If a prior intersection already
+            // merged this region into a single body, use that merged body directly
+            // to avoid stale queries from consumed originals.
             var bodiesA = [];
             var bodiesB = [];
-            for (var s = 0; s < size(sideNames); s += 1)
+            var priorA  = regionMergedBody[toString(rAIdx)];
+            var priorB  = regionMergedBody[toString(rBIdx)];
+            if (priorA != undefined)
             {
-                var ba = regionFinalSurfs[toString(rAIdx) ~ "_" ~ toString(s)];
-                var bb = regionFinalSurfs[toString(rBIdx) ~ "_" ~ toString(s)];
-                if (ba != undefined) { bodiesA = append(bodiesA, ba); }
-                if (bb != undefined) { bodiesB = append(bodiesB, bb); }
+                bodiesA = [priorA];
+            }
+            else
+            {
+                for (var s = 0; s < size(sideNames); s += 1)
+                {
+                    var ba = regionFinalSurfs[toString(rAIdx) ~ "_" ~ toString(s)];
+                    if (ba != undefined) { bodiesA = append(bodiesA, ba); }
+                }
+            }
+            if (priorB != undefined)
+            {
+                bodiesB = [priorB];
+            }
+            else
+            {
+                for (var s = 0; s < size(sideNames); s += 1)
+                {
+                    var bb = regionFinalSurfs[toString(rBIdx) ~ "_" ~ toString(s)];
+                    if (bb != undefined) { bodiesB = append(bodiesB, bb); }
+                }
             }
             if (size(bodiesA) == 0 || size(bodiesB) == 0) { continue; }
 
@@ -1152,6 +1175,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     });
                 }
                 catch {}
+                var joinedQ = qCreatedBy(id + ("joinG0" ~ ix), EntityType.BODY);
+                if (!isQueryEmpty(context, joinedQ))
+                {
+                    regionMergedBody[toString(rAIdx)] = joinedQ;
+                    regionMergedBody[toString(rBIdx)] = joinedQ;
+                }
             }
             else
             {
@@ -1296,6 +1325,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         });
                     }
                     catch {}
+                    var blendedQ = qCreatedBy(id + ("blendUnion" ~ ix), EntityType.BODY);
+                    if (!isQueryEmpty(context, blendedQ))
+                    {
+                        regionMergedBody[toString(rAIdx)] = blendedQ;
+                        regionMergedBody[toString(rBIdx)] = blendedQ;
+                    }
                 }
             }
         }
