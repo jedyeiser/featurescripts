@@ -1051,12 +1051,12 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
     const RESAMPLE_COUNT = 20;
     const CHAIN_TOL      = 1e-5 * meter;
     const MIN_CHORD      = 0.5 * millimeter;
-    const MIN_PTS        = 4;  // minimum points for a valid approximateSpline
+    const MIN_PTS        = 4;
 
     var allEdges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
     var n = size(allEdges);
 
-    // Collect edge endpoints for chain walking
+    // --- Collect edge endpoints -------------------------------------------------
     var ePt0 = [];
     var ePt1 = [];
     for (var edge in allEdges)
@@ -1065,78 +1065,161 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
         ePt1 = append(ePt1, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1.0 }).origin);
     }
 
-    // Find start edge: pt0 not matched by any other edge's pt1.
-    // For closed loops, all edges connect so startIdx stays 0.
-    var startIdx = 0;
-    for (var i = 0; i < n; i += 1)
+    // --- Walk ALL disconnected chains ------------------------------------------
+    // Each chain is an array of {idx, fwd} maps.
+    var visited = {};
+    var chains  = [];
+
+    for (var seed = 0; seed < n; seed += 1)
     {
-        var isStart = true;
-        for (var j = 0; j < n; j += 1)
+        if (visited[toString(seed)] == true) { continue; }
+
+        // Find the actual start of this chain (the end with no predecessor).
+        var chainStart = seed;
+        for (var i = 0; i < n; i += 1)
         {
-            if (i != j && norm(ePt0[i] - ePt1[j]) < CHAIN_TOL)
+            if (visited[toString(i)] == true) { continue; }
+            var hasPred = false;
+            for (var j = 0; j < n; j += 1)
             {
-                isStart = false;
+                if (j == i || visited[toString(j)] == true) { continue; }
+                if (norm(ePt0[i] - ePt1[j]) < CHAIN_TOL ||
+                    norm(ePt0[i] - ePt0[j]) < CHAIN_TOL)
+                {
+                    hasPred = true;
+                    break;
+                }
+            }
+            if (!hasPred)
+            {
+                chainStart = i;
                 break;
             }
         }
-        if (isStart) { startIdx = i; break; }
-    }
 
-    // Chain-walk the edges tip-to-tail
-    var orderedIdx = [startIdx];
-    var orderedFwd = [true];
-    var visited    = {};
-    visited[toString(startIdx)] = true;
-    var currentPt = ePt1[startIdx];
-    for (var step = 0; step < n - 1; step += 1)
-    {
-        for (var j = 0; j < n; j += 1)
+        // Walk from chainStart
+        var chainIdx = [chainStart];
+        var chainFwd = [true];
+        visited[toString(chainStart)] = true;
+        var currentPt = ePt1[chainStart];
+
+        var keepWalking = true;
+        while (keepWalking)
         {
-            if (visited[toString(j)] != true)
+            keepWalking = false;
+            for (var j = 0; j < n; j += 1)
             {
+                if (visited[toString(j)] == true) { continue; }
                 if (norm(ePt0[j] - currentPt) < CHAIN_TOL)
                 {
-                    orderedIdx = append(orderedIdx, j);
-                    orderedFwd = append(orderedFwd, true);
+                    chainIdx   = append(chainIdx, j);
+                    chainFwd   = append(chainFwd, true);
                     visited[toString(j)] = true;
-                    currentPt = ePt1[j];
+                    currentPt  = ePt1[j];
+                    keepWalking = true;
                     break;
                 }
                 else if (norm(ePt1[j] - currentPt) < CHAIN_TOL)
                 {
-                    orderedIdx = append(orderedIdx, j);
-                    orderedFwd = append(orderedFwd, false);
+                    chainIdx   = append(chainIdx, j);
+                    chainFwd   = append(chainFwd, false);
                     visited[toString(j)] = true;
-                    currentPt = ePt0[j];
+                    currentPt  = ePt0[j];
+                    keepWalking = true;
                     break;
                 }
             }
         }
+
+        chains = append(chains, { "idx" : chainIdx, "fwd" : chainFwd });
     }
 
-    // Sample edges in order, skipping slivers
-    var allPts = [];
-    for (var i = 0; i < size(orderedIdx); i += 1)
+    // --- Sample each chain into a point array ----------------------------------
+    var chainPts = [];
+    for (var c = 0; c < size(chains); c += 1)
     {
-        var idx  = orderedIdx[i];
-        var fwd  = orderedFwd[i];
-        var edge = allEdges[idx];
-        if (norm(ePt1[idx] - ePt0[idx]) < MIN_CHORD) { continue; }
-        var kStart = (size(allPts) == 0) ? 0 : 1;
-        for (var k = kStart; k <= RESAMPLE_COUNT; k += 1)
+        var chain = chains[c];
+        var pts   = [];
+        for (var i = 0; i < size(chain.idx); i += 1)
         {
-            var t     = k / RESAMPLE_COUNT;
-            var param = fwd ? t : (1.0 - t);
-            allPts = append(allPts, evEdgeTangentLine(context, {
-                    "edge"      : edge,
-                    "parameter" : param
-            }).origin);
+            var ei  = chain.idx[i];
+            var fwd = chain.fwd[i];
+            var edge = allEdges[ei];
+            if (norm(ePt1[ei] - ePt0[ei]) < MIN_CHORD) { continue; }
+            var kStart = (size(pts) == 0) ? 0 : 1;
+            for (var k = kStart; k <= RESAMPLE_COUNT; k += 1)
+            {
+                var t     = k / RESAMPLE_COUNT;
+                var param = fwd ? t : (1.0 - t);
+                pts = append(pts, evEdgeTangentLine(context, {
+                        "edge" : edge, "parameter" : param
+                }).origin);
+            }
         }
+        chainPts = append(chainPts, pts);
     }
 
-    var nPts = size(allPts);
+    opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
 
-    // Check for any negative-Y points
+    // --- If more than one chain, treat each as a separate side wire ------------
+    // Sort: highest mean Y first (+Y side = index 0, -Y side = index 1).
+    if (size(chains) > 1)
+    {
+        var meanY = [];
+        for (var c = 0; c < size(chainPts); c += 1)
+        {
+            var sum = 0 * meter;
+            for (var pt in chainPts[c]) { sum = sum + pt[1]; }
+            meanY = append(meanY, sum / max(size(chainPts[c]), 1));
+        }
+        // Insertion-sort chains by meanY descending
+        var sortedPts  = [];
+        var remaining  = chainPts;
+        var remainingY = meanY;
+        while (size(remaining) > 0)
+        {
+            var best = 0;
+            for (var i = 1; i < size(remainingY); i += 1)
+            {
+                if (remainingY[i] > remainingY[best]) { best = i; }
+            }
+            sortedPts  = append(sortedPts, remaining[best]);
+            var newRem = [];
+            var newY   = [];
+            for (var i = 0; i < size(remaining); i += 1)
+            {
+                if (i != best)
+                {
+                    newRem = append(newRem, remaining[i]);
+                    newY   = append(newY,   remainingY[i]);
+                }
+            }
+            remaining  = newRem;
+            remainingY = newY;
+        }
+
+        var result = [];
+        for (var c = 0; c < size(sortedPts); c += 1)
+        {
+            var pts = sortedPts[c];
+            if (size(pts) < MIN_PTS) { continue; }
+            var curve = approximateSpline(context, {
+                    "targets"          : [approximationTarget({ "positions" : pts })],
+                    "degree"           : 3,
+                    "tolerance"        : 1e-5 * meter,
+                    "isPeriodic"       : false,
+                    "maxControlPoints" : 200
+            })[0];
+            opCreateBSplineCurve(context, id + ("rebuiltWire" ~ c), { "bSplineCurve" : curve });
+            result = append(result, qCreatedBy(id + ("rebuiltWire" ~ c), EntityType.BODY));
+        }
+        return result;
+    }
+
+    // --- Single chain: split at y=0 crossings if the curve wraps both sides ---
+    var allPts = (size(chainPts) > 0) ? chainPts[0] : [];
+    var nPts   = size(allPts);
+
     var hasNegY = false;
     for (var pt in allPts)
     {
@@ -1145,12 +1228,7 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
 
     if (!hasNegY)
     {
-        // Single side -- no split needed
-        if (nPts < MIN_PTS)
-        {
-            opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-            return [];
-        }
+        if (nPts < MIN_PTS) { return []; }
         var curve = approximateSpline(context, {
                 "targets"          : [approximationTarget({ "positions" : allPts })],
                 "degree"           : 3,
@@ -1158,14 +1236,13 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
                 "isPeriodic"       : false,
                 "maxControlPoints" : 200
         })[0];
-        opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-        opCreateBSplineCurve(context, id + "rebuiltWirePos", { "bSplineCurve" : curve });
-        return [qCreatedBy(id + "rebuiltWirePos", EntityType.BODY)];
+        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
+        return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
     }
 
-    // Find both y=0 crossings (wrap-around)
-    var crossingA = -1;  // last y<0 before y>=0
-    var crossingB = -1;  // last y>=0 before y<0
+    // Find y=0 crossings
+    var crossingA = -1;
+    var crossingB = -1;
     for (var i = 0; i < nPts; i += 1)
     {
         var j  = i + 1;
@@ -1176,14 +1253,9 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
         else if (yi >= 0 * meter && yj < 0 * meter) { crossingB = i; }
     }
 
-    // If only one crossing found, fall back to single wire
     if (crossingA == -1 || crossingB == -1)
     {
-        if (nPts < MIN_PTS)
-        {
-            opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-            return [];
-        }
+        if (nPts < MIN_PTS) { return []; }
         var curve = approximateSpline(context, {
                 "targets"          : [approximationTarget({ "positions" : allPts })],
                 "degree"           : 3,
@@ -1191,12 +1263,10 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
                 "isPeriodic"       : false,
                 "maxControlPoints" : 200
         })[0];
-        opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-        opCreateBSplineCurve(context, id + "rebuiltWirePos", { "bSplineCurve" : curve });
-        return [qCreatedBy(id + "rebuiltWirePos", EntityType.BODY)];
+        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
+        return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
     }
 
-    // Interpolated y=0 boundary points
     var aNext = crossingA + 1;
     if (aNext >= nPts) { aNext = 0; }
     var tA  = (-allPts[crossingA][1]) / (allPts[aNext][1] - allPts[crossingA][1]);
@@ -1207,7 +1277,6 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
     var tB  = allPts[crossingB][1] / (allPts[crossingB][1] - allPts[bNext][1]);
     var ptB = allPts[crossingB] + tB * (allPts[bNext] - allPts[crossingB]);
 
-    // Build +Y segment: ptA -> points from aNext through crossingB -> ptB
     var posPts = [ptA];
     for (var k = 1; k <= nPts; k += 1)
     {
@@ -1218,7 +1287,6 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
     }
     posPts = append(posPts, ptB);
 
-    // Build -Y segment: ptB -> points from bNext through crossingA -> ptA
     var negPts = [ptB];
     for (var k = 1; k <= nPts; k += 1)
     {
@@ -1228,8 +1296,6 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
         negPts = append(negPts, allPts[idx]);
     }
     negPts = append(negPts, ptA);
-
-    opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
 
     var result = [];
 
@@ -1242,8 +1308,8 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
                 "isPeriodic"       : false,
                 "maxControlPoints" : 200
         })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWirePos", { "bSplineCurve" : curvePos });
-        result = append(result, qCreatedBy(id + "rebuiltWirePos", EntityType.BODY));
+        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curvePos });
+        result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
     }
 
     if (size(negPts) >= MIN_PTS)
@@ -1255,8 +1321,8 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
                 "isPeriodic"       : false,
                 "maxControlPoints" : 200
         })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWireNeg", { "bSplineCurve" : curveNeg });
-        result = append(result, qCreatedBy(id + "rebuiltWireNeg", EntityType.BODY));
+        opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : curveNeg });
+        result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
     }
 
     return result;
