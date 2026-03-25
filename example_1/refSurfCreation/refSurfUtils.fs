@@ -1430,7 +1430,10 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             {
                 opLoft(context, loftId, {
                     "bodyType"          : ToolBodyType.SURFACE,
-                    "profileSubqueries" : [topCurveBody, bottomCurveBody]
+                    "profileSubqueries" : [
+                        qOwnedByBody(topCurveBody,    EntityType.EDGE),
+                        qOwnedByBody(bottomCurveBody, EntityType.EDGE)
+                    ]
                 });
                 loftMade = true;
             }
