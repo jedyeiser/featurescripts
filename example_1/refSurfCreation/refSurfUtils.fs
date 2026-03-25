@@ -185,8 +185,9 @@ export function processSideSurf(context is Context, id is Id, refSheetBody is Qu
     var extrudedBottomBody = qCreatedBy(id + "extrudeRefBottom", EntityType.BODY);
 
     opSplitPart(context, id + "splitRefBottom", {
-        "targets" : extrudedBottomBody,
-        "tool"    : refSheetBody
+        "targets"   : extrudedBottomBody,
+        "tool"      : refSheetBody,
+        "keepTools" : true
     });
 
     // Keep the piece closest to the side surface centroid
@@ -1929,6 +1930,17 @@ export function buildIntersectionJoins(context is Context, id is Id,
                 });
             }
             catch {}
+        }
+        // Name all remaining sheet bodies (one per disconnected region group).
+        var finalSurfs = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET));
+        for (var fi = 0; fi < size(finalSurfs); fi += 1)
+        {
+            var nm = size(finalSurfs) == 1 ? "variableLoftSurface" : ("variableLoftSurface " ~ (fi + 1));
+            setProperty(context, {
+                "entities"     : finalSurfs[fi],
+                "propertyType" : PropertyType.NAME,
+                "value"        : nm
+            });
         }
     }
 
