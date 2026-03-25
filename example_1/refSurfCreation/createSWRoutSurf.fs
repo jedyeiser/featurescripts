@@ -1208,6 +1208,48 @@ function pairWiresByMeanY(context is Context, wiresA is array, wiresB is array) 
  * Returns [posWire] if all points are on one side, or [posWire, negWire]
  * if the wire crosses y=0.  Deletes the original wire body.
  */
+// Returns the longest contiguous run of pts that lies on the requested Y side.
+// wantPos=true  -> longest run where pt[1] > 0 (port/+Y)
+// wantPos=false -> longest run where pt[1] < 0 (starboard/-Y)
+// Returns [] if no such run has >= minPts points.
+function longestSegOnSide(pts is array, wantPos is boolean, minPts is number) returns array
+{
+    var bestStart = -1;
+    var bestEnd   = -1;
+    var bestLen   = 0;
+    var curStart  = -1;
+
+    for (var k = 0; k < size(pts); k += 1)
+    {
+        var onSide = wantPos ? (pts[k][1] > 0 * meter) : (pts[k][1] < 0 * meter);
+        if (onSide)
+        {
+            if (curStart < 0) { curStart = k; }
+        }
+        else
+        {
+            if (curStart >= 0)
+            {
+                var len = k - curStart;
+                if (len > bestLen) { bestLen = len; bestStart = curStart; bestEnd = k - 1; }
+                curStart = -1;
+            }
+        }
+    }
+    if (curStart >= 0)
+    {
+        var len = size(pts) - curStart;
+        if (len > bestLen) { bestLen = len; bestStart = curStart; bestEnd = size(pts) - 1; }
+    }
+
+    if (bestStart < 0 || bestLen < minPts) { return []; }
+
+    var result = [];
+    for (var k = bestStart; k <= bestEnd; k += 1) { result = append(result, pts[k]); }
+    return result;
+}
+
+
 function rebuildWire(context is Context, id is Id, wireBody is Query,
         debugLabel is string, debug is boolean) returns array
 {
@@ -1374,11 +1416,23 @@ function rebuildWire(context is Context, id is Id, wireBody is Query,
             remainingY = newY;
         }
 
-        var result = [];
+        // For each sorted chain, clip to only the longest contiguous run on
+        // its expected side (based on mean Y sign).  This removes tail/tip
+        // end-cap geometry that straddles y=0 and would otherwise cause
+        // mismatched wire extents across steps.
+        var result    = [];
+        var wireIndex = 0;
         for (var c = 0; c < size(sortedPts); c += 1)
         {
-            var pts = sortedPts[c];
-            if (size(pts) < MIN_PTS) { continue; }
+            var rawPts  = sortedPts[c];
+            var rawMean = 0 * meter;
+            for (var pt in rawPts) { rawMean += pt[1]; }
+            rawMean = rawMean / max(size(rawPts), 1);
+
+            var wantPos = (rawMean > 0 * meter);
+            var pts     = longestSegOnSide(rawPts, wantPos, MIN_PTS);
+            if (size(pts) == 0) { continue; }
+
             var curve = approximateSpline(context, {
                     "targets"          : [approximationTarget({ "positions" : pts })],
                     "degree"           : 3,
@@ -1386,8 +1440,9 @@ function rebuildWire(context is Context, id is Id, wireBody is Query,
                     "isPeriodic"       : false,
                     "maxControlPoints" : 200
             })[0];
-            opCreateBSplineCurve(context, id + ("rebuiltWire" ~ c), { "bSplineCurve" : curve });
-            result = append(result, qCreatedBy(id + ("rebuiltWire" ~ c), EntityType.BODY));
+            opCreateBSplineCurve(context, id + ("rebuiltWire" ~ wireIndex), { "bSplineCurve" : curve });
+            result = append(result, qCreatedBy(id + ("rebuiltWire" ~ wireIndex), EntityType.BODY));
+            wireIndex += 1;
         }
         return result;
     }
@@ -1413,113 +1468,42 @@ function rebuildWire(context is Context, id is Id, wireBody is Query,
 
     if (hasPos && hasNeg)
     {
-        // Walk the chain and collect all contiguous segments on each side.
-        // At each y=0 sign change we start a new segment.  This correctly
-        // handles chains with fillet excursions (multiple y=0 crossings) by
-        // keeping only the LONGEST contiguous segment per side.
-        var segsPos  = [];  // [{start, end}] for +Y segments
-        var segsNeg  = [];  // [{start, end}] for -Y segments
-        var segSide  = (allPts[0][1] > 0 * meter) ? 1 : -1;
-        var segStart = 0;
-
-        for (var k = 1; k < nPts; k += 1)
-        {
-            var ptY     = allPts[k][1];
-            var newSide = (ptY > 0 * meter) ? 1 : ((ptY < 0 * meter) ? -1 : segSide);
-            if (newSide != segSide)
-            {
-                if (segSide == 1)
-                {
-                    segsPos = append(segsPos, { "start" : segStart, "end" : k - 1 });
-                }
-                else
-                {
-                    segsNeg = append(segsNeg, { "start" : segStart, "end" : k - 1 });
-                }
-                segStart = k;
-                segSide  = newSide;
-            }
-        }
-        // Flush the final segment
-        if (segSide == 1)
-        {
-            segsPos = append(segsPos, { "start" : segStart, "end" : nPts - 1 });
-        }
-        else
-        {
-            segsNeg = append(segsNeg, { "start" : segStart, "end" : nPts - 1 });
-        }
+        var ptsPos = longestSegOnSide(allPts, true,  MIN_PTS);
+        var ptsNeg = longestSegOnSide(allPts, false, MIN_PTS);
 
         if (debug)
         {
             println("  rebuildWire [" ~ debugLabel ~ "]: single-chain y=0 split");
-            println("    +Y segments: " ~ toString(size(segsPos)));
-            for (var seg in segsPos)
-            {
-                println("      len=" ~ toString(seg.end - seg.start + 1));
-            }
-            println("    -Y segments: " ~ toString(size(segsNeg)));
-            for (var seg in segsNeg)
-            {
-                println("      len=" ~ toString(seg.end - seg.start + 1));
-            }
-        }
-
-        // Pick the longest segment from each side
-        var bestPosStart = -1;
-        var bestPosEnd   = -1;
-        var bestPosLen   = 0;
-        for (var seg in segsPos)
-        {
-            var len = seg.end - seg.start + 1;
-            if (len > bestPosLen) { bestPosLen = len; bestPosStart = seg.start; bestPosEnd = seg.end; }
-        }
-
-        var bestNegStart = -1;
-        var bestNegEnd   = -1;
-        var bestNegLen   = 0;
-        for (var seg in segsNeg)
-        {
-            var len = seg.end - seg.start + 1;
-            if (len > bestNegLen) { bestNegLen = len; bestNegStart = seg.start; bestNegEnd = seg.end; }
+            println("    +Y longest seg: " ~ toString(size(ptsPos)));
+            println("    -Y longest seg: " ~ toString(size(ptsNeg)));
         }
 
         var result = [];
 
-        if (bestPosStart >= 0)
+        if (size(ptsPos) >= MIN_PTS)
         {
-            var ptsPos = [];
-            for (var k = bestPosStart; k <= bestPosEnd; k += 1) { ptsPos = append(ptsPos, allPts[k]); }
-            if (size(ptsPos) >= MIN_PTS)
-            {
-                var crvPos = approximateSpline(context, {
-                        "targets"          : [approximationTarget({ "positions" : ptsPos })],
-                        "degree"           : 3,
-                        "tolerance"        : 1e-5 * meter,
-                        "isPeriodic"       : false,
-                        "maxControlPoints" : 200
-                })[0];
-                opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : crvPos });
-                result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
-            }
+            var crvPos = approximateSpline(context, {
+                    "targets"          : [approximationTarget({ "positions" : ptsPos })],
+                    "degree"           : 3,
+                    "tolerance"        : 1e-5 * meter,
+                    "isPeriodic"       : false,
+                    "maxControlPoints" : 200
+            })[0];
+            opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : crvPos });
+            result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
         }
 
-        if (bestNegStart >= 0)
+        if (size(ptsNeg) >= MIN_PTS)
         {
-            var ptsNeg = [];
-            for (var k = bestNegStart; k <= bestNegEnd; k += 1) { ptsNeg = append(ptsNeg, allPts[k]); }
-            if (size(ptsNeg) >= MIN_PTS)
-            {
-                var crvNeg = approximateSpline(context, {
-                        "targets"          : [approximationTarget({ "positions" : ptsNeg })],
-                        "degree"           : 3,
-                        "tolerance"        : 1e-5 * meter,
-                        "isPeriodic"       : false,
-                        "maxControlPoints" : 200
-                })[0];
-                opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : crvNeg });
-                result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
-            }
+            var crvNeg = approximateSpline(context, {
+                    "targets"          : [approximationTarget({ "positions" : ptsNeg })],
+                    "degree"           : 3,
+                    "tolerance"        : 1e-5 * meter,
+                    "isPeriodic"       : false,
+                    "maxControlPoints" : 200
+            })[0];
+            opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : crvNeg });
+            result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
         }
 
         return result;
