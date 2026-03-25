@@ -1436,20 +1436,39 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             }
             catch (loftErr)
             {
-                // Diagnostic: show the failing profiles and wall corner points.
-                // Top profile = RED, bottom profile = GREEN.
-                // Magenta points = top wall corners (ctStart/ctEnd).
-                // Yellow points  = bottom wall corners (cbStart/cbEnd).
-                addDebugEntities(context, topCurveBody,    DebugColor.RED);
-                addDebugEntities(context, bottomCurveBody, DebugColor.GREEN);
+                // Diagnostic: show BSpline CPs (RED = top, GREEN = bot) and corner vectors.
+                // Bodies are NOT deleted on failure so they remain visible in the model.
+                for (var cp in topCPsDir)
+                {
+                    debug(context, cp, DebugColor.RED);
+                }
+                for (var cp in bottomSpline.controlPoints)
+                {
+                    debug(context, cp, DebugColor.GREEN);
+                }
                 debug(context, ed.ctStart, DebugColor.MAGENTA);
                 debug(context, ed.ctEnd,   DebugColor.MAGENTA);
                 debug(context, ed.cbStart, DebugColor.YELLOW);
                 debug(context, ed.cbEnd,   DebugColor.YELLOW);
+                // Also show actual wire tangent direction at t=0 (RED tip = top, GREEN tip = bot)
+                try
+                {
+                    var tl0 = evEdgeTangentLine(context, {
+                        "edge"      : qOwnedByBody(topCurveBody,    EntityType.EDGE),
+                        "parameter" : 0
+                    });
+                    var bl0 = evEdgeTangentLine(context, {
+                        "edge"      : qOwnedByBody(bottomCurveBody, EntityType.EDGE),
+                        "parameter" : 0
+                    });
+                    debug(context, tl0.origin + tl0.direction * (5 * millimeter), DebugColor.RED);
+                    debug(context, bl0.origin + bl0.direction * (5 * millimeter), DebugColor.GREEN);
+                }
+                catch {}
             }
-            opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
             if (loftMade)
             {
+                opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
                 loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
             }
         }
