@@ -1385,6 +1385,18 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
             botCPs[size(botCPs) - 1]  = ed.cbEnd;
             bottomSpline              = mergeMaps(bottomSpline, { "controlPoints" : botCPs });
 
+            // Skip degenerate patches where either wall endpoint has zero height
+            // (cbStart == ctStart or cbEnd == ctEnd).  When the profiles share a
+            // point, opLoft cannot establish a cross-section direction and throws
+            // LOFT_DIRECTION_ERROR.  Zero-height endpoints produce zero-area
+            // surfaces, so omitting them is visually correct.
+            var startH = norm((ed.ctStart - ed.cbStart) / meter);
+            var endH   = norm((ed.ctEnd   - ed.cbEnd)   / meter);
+            if (startH < 1e-3 || endH < 1e-3)
+            {
+                continue;
+            }
+
             // Ensure both BSplines run in the same direction before creating bodies.
             // opCreateBSplineCurve preserves parameterization exactly; we fix any
             // direction mismatch here using the pinned endpoint control points so
@@ -1437,42 +1449,15 @@ export function buildLoftSurfaces(context is Context, id is Id, sheetBody is Que
                 });
                 loftMade = true;
             }
-            catch (loftErr)
-            {
-                // Diagnostic: show BSpline CPs (RED = top, GREEN = bot) and corner vectors.
-                // Bodies are NOT deleted on failure so they remain visible in the model.
-                for (var cp in topCPsDir)
-                {
-                    debug(context, cp, DebugColor.RED);
-                }
-                for (var cp in bottomSpline.controlPoints)
-                {
-                    debug(context, cp, DebugColor.GREEN);
-                }
-                debug(context, ed.ctStart, DebugColor.MAGENTA);
-                debug(context, ed.ctEnd,   DebugColor.MAGENTA);
-                debug(context, ed.cbStart, DebugColor.YELLOW);
-                debug(context, ed.cbEnd,   DebugColor.YELLOW);
-                // Also show actual wire tangent direction at t=0 (RED tip = top, GREEN tip = bot)
-                try
-                {
-                    var tl0 = evEdgeTangentLine(context, {
-                        "edge"      : qOwnedByBody(topCurveBody,    EntityType.EDGE),
-                        "parameter" : 0
-                    });
-                    var bl0 = evEdgeTangentLine(context, {
-                        "edge"      : qOwnedByBody(bottomCurveBody, EntityType.EDGE),
-                        "parameter" : 0
-                    });
-                    debug(context, tl0.origin + tl0.direction * (5 * millimeter), DebugColor.RED);
-                    debug(context, bl0.origin + bl0.direction * (5 * millimeter), DebugColor.GREEN);
-                }
-                catch {}
-            }
+            catch {}
             if (loftMade)
             {
                 opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
                 loftBodyQueries = append(loftBodyQueries, qCreatedBy(loftId, EntityType.BODY));
+            }
+            else
+            {
+                opDeleteBodies(context, id + ("deleteLoftCurves" ~ ei), { "entities" : qUnion([topCurveBody, bottomCurveBody]) });
             }
         }
     }
