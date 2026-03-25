@@ -59,7 +59,7 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                     rEdges = append(rEdges, refWirePath.edges[k]);
                     rFlip  = append(rFlip,  !refWirePath.flipped[k]);
                 }
-                refWirePath = { "edges" : rEdges, "flipped" : rFlip, "closed" : refWirePath.closed };
+                refWirePath = path(rEdges, rFlip, refWirePath.closed);
             }
 
             var totalLength = 0 * meter;
@@ -375,7 +375,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 revEdges   = append(revEdges,   refWirePath.edges[k]);
                 revFlipped = append(revFlipped, !refWirePath.flipped[k]);
             }
-            refWirePath = { "edges" : revEdges, "flipped" : revFlipped, "closed" : refWirePath.closed };
+            refWirePath = path(revEdges, revFlipped, refWirePath.closed);
         }
 
         // Process and sort regions
