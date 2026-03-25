@@ -53,10 +53,30 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                 totalLength += evLength(context, { "entities" : edge });
             }
 
-            var tOrigin = evDistancePath(context, {
-                    "side0" : refWirePath,
-                    "side1" : definition.refWireOrigin
-            }).sides[0].pathParam;
+            // Project refWireOrigin onto path using same edge-walk as QUERY case.
+            var tOrigin     = 0;
+            var bestOrigin  = undefined;
+            var cumLenOrig  = 0 * meter;
+            var originPts   = evaluateQuery(context, definition.refWireOrigin);
+            if (size(originPts) > 0)
+            {
+                for (var ei = 0; ei < size(refWirePath.edges); ei += 1)
+                {
+                    var eLen = evLength(context, { "entities" : refWirePath.edges[ei] });
+                    var drO  = evDistance(context, {
+                            "side0" : refWirePath.edges[ei],
+                            "side1" : originPts[0]
+                    });
+                    var epO = drO.sides[0].parameter;
+                    if (refWirePath.flipped[ei]) { epO = 1 - epO; }
+                    if (bestOrigin == undefined || drO.distance < bestOrigin)
+                    {
+                        bestOrigin = drO.distance;
+                        tOrigin    = (cumLenOrig + epO * eLen) / totalLength;
+                    }
+                    cumLenOrig += eLen;
+                }
+            }
 
             for (var i = 0; i < size(definition.swRoutRegions); i += 1)
             {
@@ -352,15 +372,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 qOwnedByBody(definition.refWire, EntityType.EDGE),
                 { "referenceGeometry" : definition.refWireOrigin }).path;
 
-        // Compute fractional position of refWireOrigin along the path so that
-        // startX/endX (signed arc-length offsets from the origin) map correctly.
-        var tOrigin = evDistancePath(context, {
-                "side0" : refWirePath,
-                "side1" : definition.refWireOrigin
-        }).sides[0].pathParam;
-
         // Process and sort regions
-        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, tOrigin);
+        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin);
         validateSwRoutRegionsNoOverlap(sortedRegions);
         var nRegions = size(sortedRegions);
 

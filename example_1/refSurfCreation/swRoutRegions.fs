@@ -34,13 +34,20 @@ export const RegionNumBounds       = { (unitless)  : [0,    0, 100]} as IntegerB
  * QUERY:     extentQueries must resolve to exactly 2 points.
  */
 export function processSwRoutRegions(context is Context, id is Id,
-        definition is map, refWirePath is Path, tOrigin is number) returns array
+        definition is map, refWirePath is Path, originQuery is Query) returns array
 {
     var totalLength = 0 * meter;
     for (var edge in refWirePath.edges)
     {
         totalLength += evLength(context, { "entities" : edge });
     }
+
+    // Fractional arc-length position of the user-defined origin on the path.
+    // startX/endX are signed distances from this origin.
+    var tOrigin = evDistancePath(context, {
+            "side0" : refWirePath,
+            "side1" : originQuery
+    }).sides[0].pathParam;
 
     var processed = [];
     for (var i = 0; i < size(definition.swRoutRegions); i += 1)
