@@ -499,9 +499,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : bottomQ,
                     "group2" : sideQ
             });
-            var wires = rebuildWire(context, id + ("rebuildInitial" ~ r),
-                    qCreatedBy(id + ("initialWire" ~ r), EntityType.BODY),
-                    "initial[" ~ rName ~ "]", definition.debugPrint);
+            var wires = sortBodiesByMeanY(context, evaluateQuery(context,
+                    qCreatedBy(id + ("initialWire" ~ r), EntityType.BODY)));
             for (var s = 0; s < size(wires); s += 1)
             {
                 setProperty(context, {
@@ -541,9 +540,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : sideQ,
                     "group2" : bottomQ
             });
-            var wires = rebuildWire(context, id + ("rebuildStart" ~ r),
-                    qCreatedBy(id + ("startIntersect" ~ r), EntityType.BODY),
-                    "start[" ~ rName ~ "]", definition.debugPrint);
+            var wires = sortBodiesByMeanY(context, evaluateQuery(context,
+                    qCreatedBy(id + ("startIntersect" ~ r), EntityType.BODY)));
             for (var s = 0; s < size(wires); s += 1)
             {
                 setProperty(context, {
@@ -594,9 +592,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "group1" : sideQ,
                         "group2" : regionBottomCopyQ[rKey]
                 });
-                var wires = rebuildWire(context, id + ("rebuildStepIn" ~ r),
-                        qCreatedBy(id + ("stepInIntersect" ~ r), EntityType.BODY),
-                        "stepIn[" ~ rName ~ "]", definition.debugPrint);
+                var wires = sortBodiesByMeanY(context, evaluateQuery(context,
+                        qCreatedBy(id + ("stepInIntersect" ~ r), EntityType.BODY)));
                 for (var s = 0; s < size(wires); s += 1)
                 {
                     setProperty(context, {
@@ -757,9 +754,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group1" : sideQ,
                     "group2" : bottomQ
             });
-            var wires = rebuildWire(context, id + ("rebuildStop" ~ r),
-                    qCreatedBy(id + ("stopWire" ~ r), EntityType.BODY),
-                    "stop[" ~ rName ~ "]", definition.debugPrint);
+            var wires = sortBodiesByMeanY(context, evaluateQuery(context,
+                    qCreatedBy(id + ("stopWire" ~ r), EntityType.BODY)));
             for (var s = 0; s < size(wires); s += 1)
             {
                 setProperty(context, {
@@ -1164,7 +1160,7 @@ function wireMeanY(context is Context, wire is Query) returns ValueWithUnits
  * mean Y.  Returns an array of {"a":i, "b":j} index maps.
  * Wires in wiresA that have no unmatched counterpart in wiresB are skipped.
  * When counts match this is equivalent to index pairing (both arrays are
- * sorted highest-Y-first by rebuildWire); when counts differ it gracefully
+ * sorted highest-Y-first by sortBodiesByMeanY); when counts differ it gracefully
  * handles the case where one arm of a tip U-shape disappears after an offset.
  */
 function pairWiresByMeanY(context is Context, wiresA is array, wiresB is array) returns array
@@ -1201,299 +1197,34 @@ function pairWiresByMeanY(context is Context, wiresA is array, wiresB is array) 
 }
 
 
-/**
- * Rebuilds a multi-edge wire as single-edge BSpline bodies, split at the
- * front plane (y=0) if the wire spans both sides.
- *
- * Returns [posWire] if all points are on one side, or [posWire, negWire]
- * if the wire crosses y=0.  Deletes the original wire body.
- */
-// Returns the longest contiguous run of pts that lies on the requested Y side.
-// wantPos=true  -> longest run where pt[1] > 0 (port/+Y)
-// wantPos=false -> longest run where pt[1] < 0 (starboard/-Y)
-// Returns [] if no such run has >= minPts points.
-function longestSegOnSide(pts is array, wantPos is boolean, minPts is number) returns array
+// Sorts an array of wire body queries by mean Y descending (+Y first).
+function sortBodiesByMeanY(context is Context, bodies is array) returns array
 {
-    var bestStart = -1;
-    var bestEnd   = -1;
-    var bestLen   = 0;
-    var curStart  = -1;
-
-    for (var k = 0; k < size(pts); k += 1)
+    var sorted    = [];
+    var remaining = bodies;
+    while (size(remaining) > 0)
     {
-        var onSide = wantPos ? (pts[k][1] > 0 * meter) : (pts[k][1] < 0 * meter);
-        if (onSide)
+        var best     = 0;
+        var bestMean = wireMeanY(context, remaining[0]);
+        for (var i = 1; i < size(remaining); i += 1)
         {
-            if (curStart < 0) { curStart = k; }
+            var m = wireMeanY(context, remaining[i]);
+            if (m > bestMean) { bestMean = m; best = i; }
         }
-        else
+        sorted = append(sorted, remaining[best]);
+        var newRem = [];
+        for (var i = 0; i < size(remaining); i += 1)
         {
-            if (curStart >= 0)
-            {
-                var len = k - curStart;
-                if (len > bestLen) { bestLen = len; bestStart = curStart; bestEnd = k - 1; }
-                curStart = -1;
-            }
+            if (i != best) { newRem = append(newRem, remaining[i]); }
         }
+        remaining = newRem;
     }
-    if (curStart >= 0)
-    {
-        var len = size(pts) - curStart;
-        if (len > bestLen) { bestLen = len; bestStart = curStart; bestEnd = size(pts) - 1; }
-    }
-
-    if (bestStart < 0 || bestLen < minPts) { return []; }
-
-    var result = [];
-    for (var k = bestStart; k <= bestEnd; k += 1) { result = append(result, pts[k]); }
-    return result;
+    return sorted;
 }
 
 
-function rebuildWire(context is Context, id is Id, wireBody is Query,
-        debugLabel is string, debug is boolean) returns array
-{
-    const RESAMPLE_COUNT = 20;
-    const CHAIN_TOL      = 1e-5 * meter;
-    const MIN_CHORD      = 0.5 * millimeter;
-    const MIN_PTS        = 4;
 
-    var allEdges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
-    var n = size(allEdges);
 
-    // --- Collect edge endpoints -------------------------------------------------
-    var ePt0 = [];
-    var ePt1 = [];
-    for (var edge in allEdges)
-    {
-        ePt0 = append(ePt0, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.0 }).origin);
-        ePt1 = append(ePt1, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1.0 }).origin);
-    }
-
-    // --- Walk ALL disconnected chains ------------------------------------------
-    // Each chain is an array of {idx, fwd} maps.
-    var visited = {};
-    var chains  = [];
-
-    for (var seed = 0; seed < n; seed += 1)
-    {
-        if (visited[toString(seed)] == true) { continue; }
-
-        // Find the actual start of this chain (the end with no predecessor).
-        var chainStart = seed;
-        for (var i = 0; i < n; i += 1)
-        {
-            if (visited[toString(i)] == true) { continue; }
-            var hasPred = false;
-            for (var j = 0; j < n; j += 1)
-            {
-                if (j == i || visited[toString(j)] == true) { continue; }
-                if (norm(ePt0[i] - ePt1[j]) < CHAIN_TOL ||
-                    norm(ePt0[i] - ePt0[j]) < CHAIN_TOL)
-                {
-                    hasPred = true;
-                    break;
-                }
-            }
-            if (!hasPred)
-            {
-                chainStart = i;
-                break;
-            }
-        }
-
-        // Walk from chainStart
-        var chainIdx = [chainStart];
-        var chainFwd = [true];
-        visited[toString(chainStart)] = true;
-        var currentPt = ePt1[chainStart];
-
-        var keepWalking = true;
-        while (keepWalking)
-        {
-            keepWalking = false;
-            for (var j = 0; j < n; j += 1)
-            {
-                if (visited[toString(j)] == true) { continue; }
-                if (norm(ePt0[j] - currentPt) < CHAIN_TOL)
-                {
-                    chainIdx   = append(chainIdx, j);
-                    chainFwd   = append(chainFwd, true);
-                    visited[toString(j)] = true;
-                    currentPt  = ePt1[j];
-                    keepWalking = true;
-                    break;
-                }
-                else if (norm(ePt1[j] - currentPt) < CHAIN_TOL)
-                {
-                    chainIdx   = append(chainIdx, j);
-                    chainFwd   = append(chainFwd, false);
-                    visited[toString(j)] = true;
-                    currentPt  = ePt0[j];
-                    keepWalking = true;
-                    break;
-                }
-            }
-        }
-
-        chains = append(chains, { "idx" : chainIdx, "fwd" : chainFwd });
-    }
-
-    // --- Sample each chain into a point array ----------------------------------
-    var chainPts = [];
-    for (var c = 0; c < size(chains); c += 1)
-    {
-        var chain = chains[c];
-        var pts   = [];
-        for (var i = 0; i < size(chain.idx); i += 1)
-        {
-            var ei  = chain.idx[i];
-            var fwd = chain.fwd[i];
-            var edge = allEdges[ei];
-            if (norm(ePt1[ei] - ePt0[ei]) < MIN_CHORD) { continue; }
-            var kStart = (size(pts) == 0) ? 0 : 1;
-            for (var k = kStart; k <= RESAMPLE_COUNT; k += 1)
-            {
-                var t     = k / RESAMPLE_COUNT;
-                var param = fwd ? t : (1.0 - t);
-                pts = append(pts, evEdgeTangentLine(context, {
-                        "edge" : edge, "parameter" : param
-                }).origin);
-            }
-        }
-        chainPts = append(chainPts, pts);
-    }
-
-    opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
-
-    if (debug)
-    {
-        println("  rebuildWire [" ~ debugLabel ~ "]: " ~ toString(size(chains)) ~ " chain(s)");
-        for (var c = 0; c < size(chainPts); c += 1)
-        {
-            var sumY = 0 * meter;
-            for (var pt in chainPts[c]) { sumY += pt[1]; }
-            var mY = sumY / max(size(chainPts[c]), 1);
-            println("    chain " ~ toString(c) ~ ": " ~ toString(size(chainPts[c])) ~
-                    " pts, meanY=" ~ toString(mY / millimeter) ~ "mm");
-        }
-    }
-
-    // --- If more than one chain, treat each as a separate side wire ------------
-    // Sort: highest mean Y first (+Y side = index 0, -Y side = index 1).
-    if (size(chains) > 1)
-    {
-        var meanY = [];
-        for (var c = 0; c < size(chainPts); c += 1)
-        {
-            var sum = 0 * meter;
-            for (var pt in chainPts[c]) { sum = sum + pt[1]; }
-            meanY = append(meanY, sum / max(size(chainPts[c]), 1));
-        }
-        // Insertion-sort chains by meanY descending
-        var sortedPts  = [];
-        var remaining  = chainPts;
-        var remainingY = meanY;
-        while (size(remaining) > 0)
-        {
-            var best = 0;
-            for (var i = 1; i < size(remainingY); i += 1)
-            {
-                if (remainingY[i] > remainingY[best]) { best = i; }
-            }
-            sortedPts  = append(sortedPts, remaining[best]);
-            var newRem = [];
-            var newY   = [];
-            for (var i = 0; i < size(remaining); i += 1)
-            {
-                if (i != best)
-                {
-                    newRem = append(newRem, remaining[i]);
-                    newY   = append(newY,   remainingY[i]);
-                }
-            }
-            remaining  = newRem;
-            remainingY = newY;
-        }
-
-        // For each sorted chain, clip to only the longest contiguous run on
-        // its expected side (based on mean Y sign).  This removes tail/tip
-        // end-cap geometry that straddles y=0 and would otherwise cause
-        // mismatched wire extents across steps.
-        var result    = [];
-        var wireIndex = 0;
-        for (var c = 0; c < size(sortedPts); c += 1)
-        {
-            var rawPts  = sortedPts[c];
-            var rawMean = 0 * meter;
-            for (var pt in rawPts) { rawMean += pt[1]; }
-            rawMean = rawMean / max(size(rawPts), 1);
-
-            var wantPos = (rawMean > 0 * meter);
-            var pts     = longestSegOnSide(rawPts, wantPos, MIN_PTS);
-            if (size(pts) == 0) { continue; }
-
-            var curve = approximateSpline(context, {
-                    "targets"          : [approximationTarget({ "positions" : pts })],
-                    "degree"           : 3,
-                    "tolerance"        : 1e-5 * meter,
-                    "isPeriodic"       : false,
-                    "maxControlPoints" : 200
-            })[0];
-            opCreateBSplineCurve(context, id + ("rebuiltWire" ~ wireIndex), { "bSplineCurve" : curve });
-            result = append(result, qCreatedBy(id + ("rebuiltWire" ~ wireIndex), EntityType.BODY));
-            wireIndex += 1;
-        }
-        return result;
-    }
-
-    // --- Single chain: split at y=0 if the chain wraps across both sides ------
-    // A U-shaped tip wrap has points with both positive and negative Y; split
-    // it into port (+Y) and starboard (-Y) halves so each step returns the
-    // same wire count.  A single-sided chain (e.g. one arm only) is returned
-    // as-is.  A CLOSED LOOP (first point == last point, tip/tail perimeter) is
-    // returned as a single periodic wire without splitting.
-    var allPts = (size(chainPts) > 0) ? chainPts[0] : [];
-    var nPts   = size(allPts);
-
-    if (nPts < MIN_PTS) { return []; }
-
-    // Closed-loop check: last sampled point is the same Onshape vertex as the
-    // first (within CHAIN_TOL).  Fit a periodic spline and return without split.
-    if (norm(allPts[0] - allPts[nPts - 1]) < CHAIN_TOL)
-    {
-        if (debug)
-        {
-            println("  rebuildWire [" ~ debugLabel ~ "]: single closed loop -- periodic fit");
-        }
-        // Drop the repeated last point before the periodic approximation.
-        var closedPts = [];
-        for (var k = 0; k < nPts - 1; k += 1)
-        {
-            closedPts = append(closedPts, allPts[k]);
-        }
-        var curve = approximateSpline(context, {
-                "targets"          : [approximationTarget({ "positions" : closedPts })],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : true,
-                "maxControlPoints" : 200
-        })[0];
-        opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
-        return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
-    }
-
-    // Single chain (open, any orientation) -- return as one wire.
-    var curve = approximateSpline(context, {
-            "targets"          : [approximationTarget({ "positions" : allPts })],
-            "degree"           : 3,
-            "tolerance"        : 1e-5 * meter,
-            "isPeriodic"       : false,
-            "maxControlPoints" : 200
-    })[0];
-    opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : curve });
-    return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
-}
 
 
 /**
