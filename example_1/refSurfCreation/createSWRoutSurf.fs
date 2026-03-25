@@ -2,12 +2,13 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/extend.fs", version : "2892.0");
 import(path : "onshape/std/faceIntersection.fs", version : "2892.0");
+import(path : "onshape/std/loft.fs", version : "2892.0");
 
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
 // import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
-export import(path : "7e3b271854475bf6cf878b2b", version : "fc5e7fa037480fd2cbb69c0a");
+export import(path : "7e3b271854475bf6cf878b2b", version : "7a7ace076afa389075c27fee");
 
 
 export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 10]} as IntegerBoundSpec;
@@ -207,12 +208,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             {
                 annotation { "Name" : "Start continuity", "UIHint" : UIHint.SHOW_LABEL }
                 intr.startContinuity is SWRoutContinuityType;
+                
+                annotation { "Name" : "End continuity", "UIHint" : UIHint.SHOW_LABEL }
+                intr.endContinuity is SWRoutContinuityType;
 
                 annotation { "Name" : "Start distance" }
                 isLength(intr.startDist, LENGTH_BOUNDS);
-
-                annotation { "Name" : "End continuity", "UIHint" : UIHint.SHOW_LABEL }
-                intr.endContinuity is SWRoutContinuityType;
 
                 annotation { "Name" : "End distance" }
                 isLength(intr.endDist, LENGTH_BOUNDS);
@@ -245,10 +246,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
     }
     {
         var stepThrough = definition.debugStepThrough;
-        var step        = definition.debugStep;
-        var sideNames   = ["+Y", "-Y"];
-        var debugFmt    = definition.debugDetailedBSplines ?
-                PrintFormat.DETAILS : PrintFormat.METADATA;
+        var step = definition.debugStep;
+        var sideNames = ["+Y", "-Y"];
+        var debugFmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
 
         // Build path using natural edge ordering -- same convention as
         // variableSurfaceOffset's buildFrenetPath with flipDirection=false.
@@ -560,12 +560,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         {
             var region     = sortedRegions[r];
             var rKey       = toString(r);
-            var lowerWires = (region.swRoutStepin > 0 * millimeter) ?
-                    washedStepInWires[rKey] : washedStartWires[rKey];
-            regionSurfBodies = loftWireStep(context, id,
-                    lowerWires, washedStopWires[rKey],
-                    "lowerStopLoft", r, rKey, region.name, sideNames,
-                    "Lower to Stop [", regionSurfBodies);
+            var lowerWires = (region.swRoutStepin > 0 * millimeter) ? washedStepInWires[rKey] : washedStartWires[rKey];
+            regionSurfBodies = loftWireStep(context, id,lowerWires, washedStopWires[rKey], "lowerStopLoft", r, rKey, region.name, sideNames, "Lower to Stop [", regionSurfBodies);
         }
 
         if (stepThrough && step == 8) { return; }
@@ -632,7 +628,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // intersections must use this updated query instead of the original
         // regionFinalSurfs entries, which become stale once consumed by a union.
         var regionMergedBody = {};
-
+        
         for (var ix = 0; ix < size(definition.swRoutIntersections); ix += 1)
         {
             var intr  = definition.swRoutIntersections[ix];
@@ -651,322 +647,121 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var bodiesA = getBodiesForRegion(rAIdx, regionMergedBody, regionFinalSurfs, sideNames);
             var bodiesB = getBodiesForRegion(rBIdx, regionMergedBody, regionFinalSurfs, sideNames);
 
-            if (size(bodiesA) == 0 || size(bodiesB) == 0) { continue; }
+            var edgesA = mapArray(bodiesA, function(x) {return qEdgeTopologyFilter(qOwnedByBody(x, EntityType.EDGE), EdgeTopology.ONE_SIDED);});
+            var edgesB = mapArray(bodiesB, function(x) {return qEdgeTopologyFilter(qOwnedByBody(x, EntityType.EDGE), EdgeTopology.ONE_SIDED);});
+            
+            edgesA = mapArray(edgesA, function(x) {return qEdgesOnPlane(context, x, boundaryPlane, false, 3 * millimeter);});
+            edgesB = mapArray(edgesB, function(x) {return qEdgesOnPlane(context, x, boundaryPlane, false, 3 * millimeter);});
 
-            if (!intr.join)
+            var aTrackers = mapArray(edgesA, function(x) {return startTracking(context, x);});
+            var bTrackers = mapArray(edgesB, function(x) {return startTracking(context, x);});
+            
+
+            
+            //addDebugEntities(context, qUnion(edgesA), DebugColor.RED);
+            //addDebugEntities(context, qUnion(edgesB), DebugColor.BLUE);
+            
+            if (intr.startDist > 0 * millimeter)
             {
-                // Direct boolean union -- no transition geometry.
-                const G0_TOL = 1e-3 * meter;
+                extendSurface(context, id + ("extendAIntersection" ~ ix), {
+                    "entities"           : qUnion(edgesA),
+                    "tangentPropagation" : true,
+                    "endCondition"       : ExtendBoundingType.BLIND,
+                    "oppositeDirection"  : true,
+                    "extendDistance"     : intr.startDist,
+                    "maintainCurvature"  : true
+                });
+            }
 
-                var allBodies = bodiesA;
-                for (var bb in bodiesB) { allBodies = append(allBodies, bb); }
+            if (intr.endDist > 0 * millimeter)
+            {
+                extendSurface(context, id + ("extendBIntersection" ~ ix), {
+                    "entities"           : qUnion(edgesB),
+                    "tangentPropagation" : true,
+                    "endCondition"       : ExtendBoundingType.BLIND,
+                    "oppositeDirection"  : true,
+                    "extendDistance"     : intr.endDist,
+                    "maintainCurvature"  : true
+                });
+            }
 
+            var loftPairs   = buildLoftPairs(context, aTrackers, bTrackers);
+            var bridgeSurfs = [];
+
+            for (var lp = 0; lp < size(loftPairs); lp += 1)
+            {
+                var loftPairA = loftPairs[lp].a;
+                var loftPairB = loftPairs[lp].b;
+
+                var bsurfDef = {
+                    "uProfileSubqueries" : [loftPairA, loftPairB]
+                };
+
+                var uDeriv = [];
+                if (intr.startContinuity == SWRoutContinuityType.G1)
+                {
+                    uDeriv = append(uDeriv, {
+                        "profileIndex"  : 0,
+                        "magnitude"     : 1.0,
+                        "adjacentFaces" : qAdjacent(loftPairA, AdjacencyType.EDGE, EntityType.FACE)
+                    });
+                }
+                if (intr.endContinuity == SWRoutContinuityType.G1)
+                {
+                    uDeriv = append(uDeriv, {
+                        "profileIndex"  : 1,
+                        "magnitude"     : 1.0,
+                        "adjacentFaces" : qAdjacent(loftPairB, AdjacencyType.EDGE, EntityType.FACE)
+                    });
+                }
+                if (size(uDeriv) > 0) { bsurfDef.uDerivativeInfo = uDeriv; }
+
+                var bsurfId = id + ("bsurf" ~ lp ~ "intersection" ~ ix);
                 try
                 {
-                    opBoolean(context, id + ("joinG0" ~ ix), {
-                            "tools"         : qUnion(allBodies),
-                            "operationType" : BooleanOperationType.UNION
+                    opBoundarySurface(context, bsurfId, bsurfDef);
+                    var bsurfBody = qCreatedBy(bsurfId, EntityType.BODY);
+                    if (!isQueryEmpty(context, bsurfBody))
+                    {
+                        bridgeSurfs = append(bridgeSurfs, bsurfBody);
+                    }
+                }
+                catch {}
+            }
+
+            // Union the trimmed-back A bodies, trimmed-back B bodies, and bridge surfaces.
+            var toUnion = bridgeSurfs;
+            for (var ba in bodiesA) { toUnion = append(toUnion, ba); }
+            for (var bb in bodiesB) { toUnion = append(toUnion, bb); }
+            if (size(toUnion) > 1)
+            {
+                var unionId = id + ("blendUnion" ~ ix);
+                try
+                {
+                    opBoolean(context, unionId, {
+                        "tools"         : qUnion(toUnion),
+                        "operationType" : BooleanOperationType.UNION
                     });
                 }
                 catch {}
-                // opBoolean UNION on surfaces may merge into an existing body rather
-                // than creating a new one, so qCreatedBy may return empty.  Check
-                // both: prefer the created body, fall back to whichever original
-                // body survived (the union target that was extended in-place).
-                var g0Result = qCreatedBy(id + ("joinG0" ~ ix), EntityType.BODY);
-                if (isQueryEmpty(context, g0Result))
+                var blendResult = qCreatedBy(unionId, EntityType.BODY);
+                if (isQueryEmpty(context, blendResult))
                 {
-                    for (var b in allBodies)
+                    for (var b in toUnion)
                     {
-                        if (!isQueryEmpty(context, b)) { g0Result = b; break; }
+                        if (!isQueryEmpty(context, b)) { blendResult = b; break; }
                     }
                 }
-                g0Result = tryFillBoundaryGaps(context,
-                        id + ("g0Gap" ~ ix), g0Result, boundaryPlane, G0_TOL);
-                if (!isQueryEmpty(context, g0Result))
+                if (!isQueryEmpty(context, blendResult))
                 {
-                    regionMergedBody[toString(rAIdx)] = g0Result;
-                    regionMergedBody[toString(rBIdx)] = g0Result;
+                    regionMergedBody[toString(rAIdx)] = blendResult;
+                    regionMergedBody[toString(rBIdx)] = blendResult;
                 }
             }
-            else
+            else if (size(toUnion) == 1)
             {
-                // Join -- trim each region back and bridge the gap with lofts (G0 or G1).
-                const BLEND_TOL = 1e-3 * meter;
-
-                var trimPlA = plane(
-                        boundaryPlane.origin - intr.startDist * pathTang,
-                        boundaryPlane.normal);
-                var trimPlB = plane(
-                        boundaryPlane.origin + intr.endDist  * pathTang,
-                        boundaryPlane.normal);
-
-                var probeA = evPathTangentLines(context, refWirePath,
-                        [(regA.tStart + regA.tEnd) / 2]).tangentLines[0].origin;
-                var probeB = evPathTangentLines(context, refWirePath,
-                        [(regB.tStart + regB.tEnd) / 2]).tangentLines[0].origin;
-
-                // Trim all A bodies; collect cap edges and their adjacent face PER BODY.
-                // Keeping per-body arrays is critical: opBoundarySurface requires each
-                // U-profile to be a single connected chain.  Mixing edges from separate
-                // bodies (+Y and -Y) into one qUnion creates a disconnected set and
-                // causes BSURF_OPEN_CHAIN.  Pairing one A body to one B body ensures
-                // each profile is a connected chain through a single surface body.
-                var trimmedA     = [];
-                var capEdgesPerA = [];
-                var capFacesPerA = [];
-                for (var ai = 0; ai < size(bodiesA); ai += 1)
-                {
-                    var ba = bodiesA[ai];
-                    try { ba = splitAndKeep(context, id + ("blTrimA" ~ ix ~ "_" ~ ai), ba, trimPlA, probeA); }
-                    catch {}
-                    trimmedA = append(trimmedA, ba);
-                    var cesAi = [];
-                    var cfAi  = [];
-                    var ces = evaluateQuery(context, edgesNearPlane(context, ba, trimPlA, BLEND_TOL));
-                    for (var ce in ces)
-                    {
-                        cesAi = append(cesAi, ce);
-                        var adjF = evaluateQuery(context,
-                                qAdjacent(ce, AdjacencyType.EDGE, EntityType.FACE));
-                        if (size(adjF) == 1) { cfAi = append(cfAi, adjF[0]); }
-                    }
-                    capEdgesPerA = append(capEdgesPerA, cesAi);
-                    capFacesPerA = append(capFacesPerA, cfAi);
-                }
-
-                // Trim all B bodies; same per-body collection.
-                var trimmedB     = [];
-                var capEdgesPerB = [];
-                var capFacesPerB = [];
-                for (var bi = 0; bi < size(bodiesB); bi += 1)
-                {
-                    var bb = bodiesB[bi];
-                    try { bb = splitAndKeep(context, id + ("blTrimB" ~ ix ~ "_" ~ bi), bb, trimPlB, probeB); }
-                    catch {}
-                    trimmedB = append(trimmedB, bb);
-                    var cesBi = [];
-                    var cfBi  = [];
-                    var ces = evaluateQuery(context, edgesNearPlane(context, bb, trimPlB, BLEND_TOL));
-                    for (var ce in ces)
-                    {
-                        cesBi = append(cesBi, ce);
-                        var adjF = evaluateQuery(context,
-                                qAdjacent(ce, AdjacencyType.EDGE, EntityType.FACE));
-                        if (size(adjF) == 1) { cfBi = append(cfBi, adjF[0]); }
-                    }
-                    capEdgesPerB = append(capEdgesPerB, cesBi);
-                    capFacesPerB = append(capFacesPerB, cfBi);
-                }
-
-                // Bridge each A body to its closest B body (matched by mean-Y of cap
-                // edge midpoints).  For each pair, try opBoundarySurface first (handles
-                // step-riser topology differences naturally); fall back to per-edge loft.
-                var blendSurfs = [];
-
-                for (var ai = 0; ai < size(trimmedA); ai += 1)
-                {
-                    var edgesAi = capEdgesPerA[ai];
-                    var facesAi = capFacesPerA[ai];
-                    if (size(edgesAi) == 0) { continue; }
-
-                    // Mean Y of A body's cap edge midpoints.
-                    var meanYA = 0 * meter;
-                    for (var e in edgesAi)
-                    {
-                        meanYA += evEdgeTangentLine(context,
-                                { "edge" : e, "parameter" : 0.5 }).origin[1];
-                    }
-                    meanYA = meanYA / size(edgesAi);
-
-                    // Find the B body whose cap edges are closest in Y.
-                    var bestBi  = -1;
-                    var bestDif = undefined;
-                    for (var bi = 0; bi < size(trimmedB); bi += 1)
-                    {
-                        var edgesBi = capEdgesPerB[bi];
-                        if (size(edgesBi) == 0) { continue; }
-                        var meanYB = 0 * meter;
-                        for (var e in edgesBi)
-                        {
-                            meanYB += evEdgeTangentLine(context,
-                                    { "edge" : e, "parameter" : 0.5 }).origin[1];
-                        }
-                        meanYB = meanYB / size(edgesBi);
-                        var dif = abs(meanYA - meanYB);
-                        if (bestDif == undefined || dif < bestDif)
-                        {
-                            bestDif = dif;
-                            bestBi  = bi;
-                        }
-                    }
-                    if (bestBi < 0) { continue; }
-
-                    var edgesBj = capEdgesPerB[bestBi];
-                    var facesBj = capFacesPerB[bestBi];
-
-                    // Build G1 derivative info for this A-B pair.
-                    var uDerivPair = [];
-                    if (intr.startContinuity == SWRoutContinuityType.G1 &&
-                            size(facesAi) > 0)
-                    {
-                        uDerivPair = append(uDerivPair, {
-                                "profileIndex"  : 0,
-                                "magnitude"     : 1.0,
-                                "adjacentFaces" : qUnion(facesAi)
-                        });
-                    }
-                    if (intr.endContinuity == SWRoutContinuityType.G1 &&
-                            size(facesBj) > 0)
-                    {
-                        uDerivPair = append(uDerivPair, {
-                                "profileIndex"  : 1,
-                                "magnitude"     : 1.0,
-                                "adjacentFaces" : qUnion(facesBj)
-                        });
-                    }
-
-                    // Try opBoundarySurface for this body pair.
-                    var pairBoundDef = {
-                            "uProfileSubqueries" : [qUnion(edgesAi), qUnion(edgesBj)]
-                    };
-                    if (size(uDerivPair) > 0) { pairBoundDef.uDerivativeInfo = uDerivPair; }
-
-                    var pairBoundId  = id + ("blBound" ~ ix ~ "_" ~ ai);
-                    var pairSuccess  = false;
-                    try
-                    {
-                        opBoundarySurface(context, pairBoundId, pairBoundDef);
-                        var pairBody = qCreatedBy(pairBoundId, EntityType.BODY);
-                        if (!isQueryEmpty(context, pairBody))
-                        {
-                            blendSurfs  = append(blendSurfs, pairBody);
-                            pairSuccess = true;
-                        }
-                    }
-                    catch {}
-
-                    if (!pairSuccess)
-                    {
-                        // Per-pair loft fallback.  Iterate the larger edge set; match
-                        // each edge to the nearest in the smaller set.  Loft failures
-                        // (e.g. incompatible step-riser edges) are silently skipped;
-                        // any remaining open edges are caught by tryFillBoundaryGaps.
-                        var iterEdges   = edgesAi;
-                        var matchEdgesQ = qUnion(edgesBj);
-                        var iterIsA     = true;
-                        if (size(edgesBj) > size(edgesAi))
-                        {
-                            iterEdges   = edgesBj;
-                            matchEdgesQ = qUnion(edgesAi);
-                            iterIsA     = false;
-                        }
-
-                        for (var i = 0; i < size(iterEdges); i += 1)
-                        {
-                            var iterEdge  = iterEdges[i];
-                            var midPt     = evEdgeTangentLine(context,
-                                    { "edge" : iterEdge, "parameter" : 0.5 }).origin;
-                            var matchEdge = qClosestTo(matchEdgesQ, midPt);
-
-                            var edgeA = iterIsA ? iterEdge : matchEdge;
-                            var edgeB = iterIsA ? matchEdge : iterEdge;
-
-                            var blId   = id + ("blLoft"   ~ ix ~ "_" ~ ai ~ "_" ~ i);
-                            var blIdG0 = id + ("blLoftG0" ~ ix ~ "_" ~ ai ~ "_" ~ i);
-
-                            var derivInfo = [];
-                            if (intr.startContinuity == SWRoutContinuityType.G1)
-                            {
-                                derivInfo = append(derivInfo, {
-                                        "profileIndex"             : 0,
-                                        "magnitude"                : 1.0,
-                                        "matchCurvature"           : false,
-                                        "adjacentFaces"            : qAdjacent(edgeA,
-                                                AdjacencyType.EDGE, EntityType.FACE),
-                                        "userDefinedAdjacentFaces" : true
-                                });
-                            }
-                            if (intr.endContinuity == SWRoutContinuityType.G1)
-                            {
-                                derivInfo = append(derivInfo, {
-                                        "profileIndex"             : 1,
-                                        "magnitude"                : 1.0,
-                                        "matchCurvature"           : false,
-                                        "adjacentFaces"            : qAdjacent(edgeB,
-                                                AdjacencyType.EDGE, EntityType.FACE),
-                                        "userDefinedAdjacentFaces" : true
-                                });
-                            }
-                            var loftDef = {
-                                    "profileSubqueries" : [edgeA, edgeB],
-                                    "bodyType"          : ToolBodyType.SURFACE
-                            };
-                            if (size(derivInfo) > 0) { loftDef.derivativeInfo = derivInfo; }
-
-                            var lSuccess = false;
-                            try { opLoft(context, blId, loftDef); lSuccess = true; }
-                            catch {}
-                            if (!lSuccess)
-                            {
-                                try
-                                {
-                                    opLoft(context, blIdG0, {
-                                            "profileSubqueries" : [edgeA, edgeB],
-                                            "bodyType"          : ToolBodyType.SURFACE
-                                    });
-                                }
-                                catch {}
-                            }
-
-                            var blBody = lSuccess
-                                    ? qCreatedBy(blId,   EntityType.BODY)
-                                    : qCreatedBy(blIdG0, EntityType.BODY);
-                            if (!isQueryEmpty(context, blBody))
-                            {
-                                blendSurfs = append(blendSurfs, blBody);
-                            }
-                        }
-                    }
-                }
-
-                // Union all trimmed A, trimmed B, and blend surfaces.
-                var toUnion = blendSurfs;
-                for (var ba in trimmedA) { toUnion = append(toUnion, ba); }
-                for (var bb in trimmedB) { toUnion = append(toUnion, bb); }
-                if (size(toUnion) > 1)
-                {
-                    try
-                    {
-                        opBoolean(context, id + ("blendUnion" ~ ix), {
-                                "tools"         : qUnion(toUnion),
-                                "operationType" : BooleanOperationType.UNION
-                        });
-                    }
-                    catch {}
-                    var blendResult = qCreatedBy(id + ("blendUnion" ~ ix), EntityType.BODY);
-                    if (isQueryEmpty(context, blendResult))
-                    {
-                        for (var b in toUnion)
-                        {
-                            if (!isQueryEmpty(context, b)) { blendResult = b; break; }
-                        }
-                    }
-                    // Fill any remaining open edges at each trim plane and at the
-                    // boundary.  Step-riser cap edges that had no loft partner survive
-                    // the union as naked edges; tryFillBoundaryGaps closes them.
-                    blendResult = tryFillBoundaryGaps(context,
-                            id + ("blGapA" ~ ix), blendResult, trimPlA, BLEND_TOL);
-                    blendResult = tryFillBoundaryGaps(context,
-                            id + ("blGapB" ~ ix), blendResult, trimPlB, BLEND_TOL);
-                    blendResult = tryFillBoundaryGaps(context,
-                            id + ("blGap"  ~ ix), blendResult, boundaryPlane, BLEND_TOL);
-                    if (!isQueryEmpty(context, blendResult))
-                    {
-                        regionMergedBody[toString(rAIdx)] = blendResult;
-                        regionMergedBody[toString(rBIdx)] = blendResult;
-                    }
-                }
+                regionMergedBody[toString(rAIdx)] = toUnion[0];
+                regionMergedBody[toString(rBIdx)] = toUnion[0];
             }
         }
 
@@ -1028,6 +823,221 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
 
 // --- Helpers -----------------------------------------------------------------
+
+// ─── Encode a 3D point as a string key for vertex hashing ───────────────────
+function positionKey(pt is Vector) returns string
+{
+    const nm = 1e9; // meters → nanometers for integer rounding
+    const ix = round(pt[0] / meter * nm);
+    const iy = round(pt[1] / meter * nm);
+    const iz = round(pt[2] / meter * nm);
+    return toString(ix) ~ "_" ~ toString(iy) ~ "_" ~ toString(iz);
+}
+
+// ─── Get both endpoint positions of an edge (parameter 0 and 1) ─────────────
+function edgeEndpoints(context is Context, edge is Query) returns array
+{
+    return [
+        evEdgeTangentLine(context, { "edge": edge, "parameter": 0 }).origin,
+        evEdgeTangentLine(context, { "edge": edge, "parameter": 1 }).origin
+    ];
+}
+
+// ─── Centroid of a chain — average of each edge's midpoint ──────────────────
+function chainCenter(context is Context, chain is Query) returns Vector
+{
+    var boundingBox = evBox3d(context, {
+            "topology" : chain,
+            "tight" : true
+    });
+    
+    return (boundingBox.minCorner + boundingBox.maxCorner)/2;
+}
+
+// ─── BFS connected-component chain builder ──────────────────────────────────
+function buildChains(context is Context, edges is array) returns array
+{
+    const n = size(edges);
+    if (n == 0) return [];
+
+    // Collect endpoint positions and build: posKey → [edgeIndices]
+    var endPts = [];
+    var vertexMap = {};
+
+    for (var i = 0; i < n; i += 1)
+    {
+        const pts = edgeEndpoints(context, edges[i]);
+        endPts = append(endPts, pts);
+
+        for (var pt in pts)
+        {
+            const key = positionKey(pt);
+            if (vertexMap[key] == undefined)
+                vertexMap[key] = [];
+            vertexMap[key] = append(vertexMap[key], i);
+        }
+    }
+
+    // BFS over unvisited edges — each component becomes one chain
+    var visited = makeArray(n, false);
+    var chains = [];
+
+    for (var start = 0; start < n; start += 1)
+    {
+        if (visited[start]) continue;
+
+        // Head-pointer BFS avoids O(n²) array copies from repeated slicing
+        var queue = [start];
+        var head = 0;
+        var component = [];
+
+        while (head < size(queue))
+        {
+            const idx = queue[head];
+            head += 1;
+
+            if (visited[idx]) continue;
+            visited[idx] = true;
+            component = append(component, idx);
+
+            for (var pt in endPts[idx])
+            {
+                const key = positionKey(pt);
+                for (var neighborIdx in vertexMap[key])
+                {
+                    if (!visited[neighborIdx])
+                        queue = append(queue, neighborIdx);
+                }
+            }
+        }
+
+        var chainEdges = [];
+        for (var idx in component)
+            chainEdges = append(chainEdges, edges[idx]);
+
+        chains = append(chains, qUnion(chainEdges));
+    }
+
+    return chains; // array of Query, one per connected open chain
+}
+
+// ─── Greedy 1-to-1 pairing by centroid distance ─────────────────────────────
+function pairChains(context is Context, aChains is array, bChains is array) returns array
+{
+    var bCenters = [];
+    for (var bc in bChains)
+        bCenters = append(bCenters, chainCenter(context, bc));
+
+    var bUsed = makeArray(size(bChains), false);
+    var pairs = [];
+
+    for (var ac in aChains)
+    {
+        const aCenter = chainCenter(context, ac);
+        var bestDist = undefined;
+        var bestJ = -1;
+
+        for (var j = 0; j < size(bChains); j += 1)
+        {
+            if (bUsed[j]) continue;
+            const d = norm(aCenter - bCenters[j]);
+            if (bestDist == undefined || d < bestDist)
+            {
+                bestDist = d;
+                bestJ = j;
+            }
+        }
+
+        if (bestJ >= 0)
+        {
+            bUsed[bestJ] = true;
+            pairs = append(pairs, { "a": ac, "b": bChains[bestJ] });
+        }
+        // If aChains > bChains, unmatched a's are silently dropped here.
+        // Add an error/warning here if that's unexpected in your context.
+    }
+
+    return pairs; // array of { "a": Query, "b": Query }
+}
+
+// ─── Top-level entry point ───────────────────────────────────────────────────
+function buildLoftPairs(context is Context, aTrackers is array, bTrackers is array) returns array
+{
+    var aEdges = [];
+    for (var q in aTrackers)
+    {
+        for (var e in evaluateQuery(context, q))
+        {
+            aEdges = append(aEdges, e);
+        }
+    }
+    
+    var bEdges = [];
+    
+    for (var q in bTrackers)
+    {
+        for (var e in evaluateQuery(context, q))
+        {
+            bEdges = append(bEdges, e);
+        }
+    }
+    const aChains = buildChains(context, aEdges);
+    const bChains = buildChains(context, bEdges);
+
+    return pairChains(context, aChains, bChains);
+}
+
+/**
+ * Returns the signed distance from a point to a plane.
+ * Positive = same side as normal, negative = opposite, zero = on plane.
+ */
+function pointToPlaneDistance(pt is Vector, plane is Plane) returns ValueWithUnits
+{
+    return dot(pt - plane.origin, plane.normal);
+}
+
+/**
+ * Filter a pre-evaluated edge query to those lying on a given plane.
+ *
+ * @param edges      : Query  — already-filtered edge candidates
+ * @param testPlane  : Plane  — plane(origin, normal)
+ * @param coplanar   : boolean — true = all sampled points must be on plane
+ *                               false = midpoint only
+ * @param tolerance  : ValueWithUnits — distance tolerance (e.g. 1e-8 * meter)
+ */
+function qEdgesOnPlane(context is Context, edges is Query, testPlane is Plane,
+                       coplanar is boolean, tolerance is ValueWithUnits) returns Query
+{
+    // Sample parameters: midpoint-only uses just [0.5];
+    // coplanar check uses 5 points to catch curved edges
+    const params = coplanar ? [0, 0.25, 0.5, 0.75, 1.0] : [0.5];
+
+    var result = qNothing();
+
+    for (var edge in evaluateQuery(context, edges))
+    {
+        var onPlane = true;
+
+        for (var t in params)
+        {
+            const tangentLine = evEdgeTangentLine(context, {
+                "edge"      : edge,
+                "parameter" : t
+            });
+
+            if (abs(pointToPlaneDistance(tangentLine.origin, testPlane)) > tolerance)
+            {
+                onPlane = false;
+                break;  // early exit — no need to check remaining samples
+            }
+        }
+
+        if (onPlane)
+            result = qUnion([result, edge]);
+    }
+
+    return result;
+}
 
 /**
  * Splits body with boundPlane, keeps the piece whose bounding-box center is
@@ -1202,79 +1212,6 @@ function combineWireEdges(context is Context, id is Id, wireBody is Query) retur
     {
         return wireBody;
     }
-}
-
-
-// Returns a query for all edges of surfBody whose midpoints are within tol of pl.
-// After joining two region surfaces, finds any open (single-face) boundary edges
-// on mergedBody that are near the junction plane and fills them with opFill.
-// This closes gaps left by step-in faces on one region that the adjacent region
-// lacks (e.g. RSL has a step riser; Tip/Tail do not).  Returns the final body
-// query, which may be updated if a fill+union succeeded.
-function tryFillBoundaryGaps(context is Context, id is Id, mergedBody is Query,
-        pl is Plane, tol is ValueWithUnits) returns Query
-{
-    if (isQueryEmpty(context, mergedBody)) { return mergedBody; }
-
-    var candidates = evaluateQuery(context, edgesNearPlane(context, mergedBody, pl, tol));
-    var gapEdges   = [];
-    for (var e in candidates)
-    {
-        // An edge adjacent to exactly one face is an open (naked) boundary edge.
-        var adjFaces = evaluateQuery(context,
-                qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE));
-        if (size(adjFaces) == 1) { gapEdges = append(gapEdges, e); }
-    }
-    if (size(gapEdges) == 0) { return mergedBody; }
-
-    // Each naked gap edge has exactly one adjacent face, so G1 tangency reference
-    // is unambiguous.  Use edgesG1 for a smoother closure than edgesG0.
-    // opFillSurface requires a closed loop; silently skip if not.
-    try
-    {
-        opFillSurface(context, id + "fill", { "edgesG1" : qUnion(gapEdges) });
-        var fillBody = qCreatedBy(id + "fill", EntityType.BODY);
-        if (!isQueryEmpty(context, fillBody))
-        {
-            try
-            {
-                opBoolean(context, id + "fillUnion", {
-                        "tools"         : qUnion([mergedBody, fillBody]),
-                        "operationType" : BooleanOperationType.UNION
-                });
-            }
-            catch {}
-            var result = qCreatedBy(id + "fillUnion", EntityType.BODY);
-            if (isQueryEmpty(context, result))
-            {
-                for (var b in [mergedBody, fillBody])
-                {
-                    if (!isQueryEmpty(context, b)) { result = b; break; }
-                }
-            }
-            if (!isQueryEmpty(context, result)) { return result; }
-        }
-    }
-    catch {}
-    return mergedBody;
-}
-
-
-function edgesNearPlane(context is Context, surfBody is Query, pl is Plane,
-        tol is ValueWithUnits) returns Query
-{
-    var allEdges = evaluateQuery(context, qOwnedByBody(surfBody, EntityType.EDGE));
-    var matching = [];
-    for (var e in allEdges)
-    {
-        var mid = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
-        if (abs(dot(mid - pl.origin, pl.normal)) < tol)
-        {
-            matching = append(matching, e);
-        }
-    }
-    if (size(matching) == 0) { return qNothing(); }
-    return qUnion(matching);
 }
 
 

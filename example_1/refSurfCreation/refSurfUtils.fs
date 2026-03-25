@@ -5,7 +5,7 @@ import(path : "onshape/std/bridgingCurve.fs", version : "2909.0");
 import(path : "onshape/std/loft.fs", version : "2909.0");
 
 //import refSurfCore
-import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
+import(path : "828cc4108f1c8683bc0e59cf", version : "19939e975eb473ccfc23a8be");
 
 
 // =====================================================================

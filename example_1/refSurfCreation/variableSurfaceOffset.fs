@@ -4,16 +4,16 @@ import(path : "onshape/std/extend.fs", version : "2909.0");
 import(path : "onshape/std/ruledSurface.fs", version : "2909.0");
 
 //import pathProcessing
-import(path : "e9dd34f07820388a202cb620", version : "803c9b9c6666ac121062742e");
+import(path : "e9dd34f07820388a202cb620", version : "898e58fde362b6c6f8f75fe3");
 
 //import regionProcessing
-import(path : "d1cf8af3d05964b44c3ab4c0", version : "c8cd4291669fa60ee8974016");
+import(path : "d1cf8af3d05964b44c3ab4c0", version : "fc74ed801a7519c4afb0e485");
 
 //export import refSurfCore
-export import(path : "828cc4108f1c8683bc0e59cf", version : "7cd2de6ce6e8a2f5a4f0da71");
+export import(path : "828cc4108f1c8683bc0e59cf", version : "19939e975eb473ccfc23a8be");
 
 // IMPORT: refSurfUtils.fs
-import(path : "d41884a96244793beb462449", version : "fc8a6dfccab240021ff23696");
+import(path : "d41884a96244793beb462449", version : "2311652bc87faaf67ce79c7d");
 
 
 //Testbed for implementing better and more robust 'region' logic for other tools.
@@ -46,6 +46,7 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
                 reg.startX = extents.startX;
                 reg.endX   = extents.endX;
                 sortable = append(sortable, reg);
+                
             }
             else
             {
@@ -256,7 +257,7 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
 
         }
 
-        annotation { "Name" : "Intersections", "Item name" : "Intersection", "Item label template" : "#intersectionName", "Collapsed By Default" : true, "UIHint" : UIHint.PREVENT_ARRAY_REORDER && UIHint.COLLAPSE_ARRAY_ITEMS }
+        annotation { "Name" : "Intersections", "Item name" : "Intersection", "Item label template" : "#intersectionName", "Collapsed By Default" : true, "UIHint" : [UIHint.PREVENT_ARRAY_REORDER, UIHint.COLLAPSE_ARRAY_ITEMS] }
         definition.intersections is array;
         for (var ix in definition.intersections)
         {
