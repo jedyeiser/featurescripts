@@ -1134,36 +1134,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             if (!intr.blend)
             {
-                // G0 -- union all A and B bodies.  Also find any cap edges at the
-                // shared boundary that have no coincident partner (e.g. the step-in
-                // face on RSL has no matching face on the Tip) and loft each such
-                // orphan edge to the nearest endpoint vertex on the opposing side.
+                // G0 -- union all A and B bodies, then fill any open boundary gaps.
                 const G0_TOL = 1e-3 * meter;
 
-                var capEdgesAg0 = [];
-                for (var ba in bodiesA)
-                {
-                    var ces = evaluateQuery(context,
-                            edgesNearPlane(context, ba, boundaryPlane, G0_TOL));
-                    for (var ce in ces) { capEdgesAg0 = append(capEdgesAg0, ce); }
-                }
-                var capEdgesBg0 = [];
-                for (var bb in bodiesB)
-                {
-                    var ces = evaluateQuery(context,
-                            edgesNearPlane(context, bb, boundaryPlane, G0_TOL));
-                    for (var ce in ces) { capEdgesBg0 = append(capEdgesBg0, ce); }
-                }
-
-                var orphFillsAB = buildOrphanFills(context,
-                        id + ("g0OrphAB" ~ ix), capEdgesAg0, capEdgesBg0);
-                var orphFillsBA = buildOrphanFills(context,
-                        id + ("g0OrphBA" ~ ix), capEdgesBg0, capEdgesAg0);
-
                 var allBodies = bodiesA;
-                for (var bb in bodiesB)       { allBodies = append(allBodies, bb); }
-                for (var of in orphFillsAB)   { allBodies = append(allBodies, of); }
-                for (var of in orphFillsBA)   { allBodies = append(allBodies, of); }
+                for (var bb in bodiesB) { allBodies = append(allBodies, bb); }
 
                 try
                 {
@@ -1185,6 +1160,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         if (!isQueryEmpty(context, b)) { g0Result = b; break; }
                     }
                 }
+                g0Result = tryFillBoundaryGaps(context,
+                        id + ("g0Gap" ~ ix), g0Result, boundaryPlane, G0_TOL);
                 if (!isQueryEmpty(context, g0Result))
                 {
                     regionMergedBody[toString(rAIdx)] = g0Result;
@@ -1234,18 +1211,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     for (var ce in ces) { capEdgesB = append(capEdgesB, ce); }
                 }
 
-                // Loft any orphan cap edges (e.g. the step-in face edge that has no
-                // matching face on the adjacent region) to the nearest endpoint vertex
-                // on the opposing side.  Both directions are checked symmetrically.
-                var orphFillsAB = buildOrphanFills(context,
-                        id + ("blOrphAB" ~ ix), capEdgesA, capEdgesB);
-                var orphFillsBA = buildOrphanFills(context,
-                        id + ("blOrphBA" ~ ix), capEdgesB, capEdgesA);
-
                 // Pair each A cap edge with the closest B cap edge and loft.
                 var blendSurfs = [];
-                for (var of in orphFillsAB) { blendSurfs = append(blendSurfs, of); }
-                for (var of in orphFillsBA) { blendSurfs = append(blendSurfs, of); }
                 var capEdgesBQ = qUnion(capEdgesB);
                 for (var i = 0; i < size(capEdgesA); i += 1)
                 {
@@ -1340,6 +1307,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             if (!isQueryEmpty(context, b)) { blendResult = b; break; }
                         }
                     }
+                    blendResult = tryFillBoundaryGaps(context,
+                            id + ("blGap" ~ ix), blendResult, boundaryPlane, BLEND_TOL);
                     if (!isQueryEmpty(context, blendResult))
                     {
                         regionMergedBody[toString(rAIdx)] = blendResult;
@@ -1585,6 +1554,58 @@ function combineWireEdges(context is Context, id is Id, wireBody is Query) retur
 
 
 // Returns a query for all edges of surfBody whose midpoints are within tol of pl.
+// After joining two region surfaces, finds any open (single-face) boundary edges
+// on mergedBody that are near the junction plane and fills them with opFill.
+// This closes gaps left by step-in faces on one region that the adjacent region
+// lacks (e.g. RSL has a step riser; Tip/Tail do not).  Returns the final body
+// query, which may be updated if a fill+union succeeded.
+function tryFillBoundaryGaps(context is Context, id is Id, mergedBody is Query,
+        pl is Plane, tol is ValueWithUnits) returns Query
+{
+    if (isQueryEmpty(context, mergedBody)) { return mergedBody; }
+
+    var candidates = evaluateQuery(context, edgesNearPlane(context, mergedBody, pl, tol));
+    var gapEdges   = [];
+    for (var e in candidates)
+    {
+        // An edge adjacent to exactly one face is an open (naked) boundary edge.
+        var adjFaces = evaluateQuery(context,
+                qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE));
+        if (size(adjFaces) == 1) { gapEdges = append(gapEdges, e); }
+    }
+    if (size(gapEdges) == 0) { return mergedBody; }
+
+    // opFill requires the edges to form a closed loop; silently skip if they do not.
+    try
+    {
+        opFill(context, id + "fill", { "entities" : qUnion(gapEdges) });
+        var fillBody = qCreatedBy(id + "fill", EntityType.BODY);
+        if (!isQueryEmpty(context, fillBody))
+        {
+            try
+            {
+                opBoolean(context, id + "fillUnion", {
+                        "tools"         : qUnion([mergedBody, fillBody]),
+                        "operationType" : BooleanOperationType.UNION
+                });
+            }
+            catch {}
+            var result = qCreatedBy(id + "fillUnion", EntityType.BODY);
+            if (isQueryEmpty(context, result))
+            {
+                for (var b in [mergedBody, fillBody])
+                {
+                    if (!isQueryEmpty(context, b)) { result = b; break; }
+                }
+            }
+            if (!isQueryEmpty(context, result)) { return result; }
+        }
+    }
+    catch {}
+    return mergedBody;
+}
+
+
 function edgesNearPlane(context is Context, surfBody is Query, pl is Plane,
         tol is ValueWithUnits) returns Query
 {
@@ -1600,75 +1621,6 @@ function edgesNearPlane(context is Context, surfBody is Query, pl is Plane,
     }
     if (size(matching) == 0) { return qNothing(); }
     return qUnion(matching);
-}
-
-
-// Finds cap edges in orphanSourceEdges that are never the closest match to any
-// edge in selectorEdges (matched by midpoint proximity).  For each such orphan,
-// lofts it edge-to-edge to the nearest selector cap edge, bridging the gap left
-// when one region has a step-in face that the adjacent region lacks.
-// Edge-to-edge produces a clean quadrilateral patch; edge-to-vertex produced a
-// stretched triangle that looked wrong when the target vertex was a distant corner.
-// Returns an array of newly created surface body Queries.
-function buildOrphanFills(context is Context, id is Id,
-        selectorEdges is array, orphanSourceEdges is array) returns array
-{
-    if (size(selectorEdges) == 0 || size(orphanSourceEdges) == 0) { return []; }
-
-    // Record which orphanSourceEdges indices are claimed by a selectorEdge.
-    var usedIdx = [];
-    for (var ea in selectorEdges)
-    {
-        var midA  = evEdgeTangentLine(context, { "edge" : ea, "parameter" : 0.5 }).origin;
-        var bestJ = 0;
-        var bestD = -1;
-        for (var j = 0; j < size(orphanSourceEdges); j += 1)
-        {
-            var midB = evEdgeTangentLine(context,
-                    { "edge" : orphanSourceEdges[j], "parameter" : 0.5 }).origin;
-            var d    = norm(midA - midB);
-            if (bestD < 0 || d < bestD) { bestD = d; bestJ = j; }
-        }
-        var alreadyClaimed = false;
-        for (var u in usedIdx) { if (u == bestJ) { alreadyClaimed = true; break; } }
-        if (!alreadyClaimed) { usedIdx = append(usedIdx, bestJ); }
-    }
-
-    var filled = [];
-    for (var j = 0; j < size(orphanSourceEdges); j += 1)
-    {
-        var claimed = false;
-        for (var u in usedIdx) { if (u == j) { claimed = true; break; } }
-        if (claimed) { continue; }
-
-        var eb   = orphanSourceEdges[j];
-        var midB = evEdgeTangentLine(context, { "edge" : eb, "parameter" : 0.5 }).origin;
-
-        // Find the selector cap edge whose midpoint is closest to this orphan edge
-        // and loft directly edge-to-edge.  Both edges typically run parallel (e.g.
-        // both along Z at different Y offsets), producing a flat quadrilateral patch.
-        var nearSelEdge = selectorEdges[0];
-        var nearSelD    = -1;
-        for (var ea in selectorEdges)
-        {
-            var mA = evEdgeTangentLine(context, { "edge" : ea, "parameter" : 0.5 }).origin;
-            var d  = norm(midB - mA);
-            if (nearSelD < 0 || d < nearSelD) { nearSelD = d; nearSelEdge = ea; }
-        }
-
-        var fillId = id + ("f" ~ j);
-        try
-        {
-            opLoft(context, fillId, {
-                    "profileSubqueries" : [eb, nearSelEdge],
-                    "bodyType"          : ToolBodyType.SURFACE
-            });
-            var fb = qCreatedBy(fillId, EntityType.BODY);
-            if (!isQueryEmpty(context, fb)) { filled = append(filled, fb); }
-        }
-        catch {}
-    }
-    return filled;
 }
 
 
