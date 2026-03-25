@@ -397,6 +397,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var washedStartWires   = {};
         var washedStepInWires  = {};
         var washedStopWires    = {};
+        // Per (region, side): array of loft body Queries accumulated across steps 6-8.
+        // Key: rKey ~ "_" ~ toString(s).  Used in step 9 to union into final surfaces.
+        var regionSurfBodies   = {};
 
         // =====================================================================
         // Step 0: per region -- copy and trim bottom and side surfaces,
@@ -789,6 +792,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             "propertyType" : PropertyType.NAME,
                             "value"        : "Initial to Start [" ~ rName ~ "] " ~ sideNames[s]
                     });
+                    var rsKey = rKey ~ "_" ~ toString(s);
+                    var prev  = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
+                    regionSurfBodies[rsKey] = append(prev, loftedSurfs[0]);
                 }
             }
         }
@@ -853,6 +859,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                                 "propertyType" : PropertyType.NAME,
                                 "value"        : "Start to Step-In [" ~ rName ~ "] " ~ sideNames[s]
                         });
+                        var rsKey = rKey ~ "_" ~ toString(s);
+                        var prev  = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
+                        regionSurfBodies[rsKey] = append(prev, loftedSurfs[0]);
                     }
                 }
             }
@@ -916,6 +925,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             "propertyType" : PropertyType.NAME,
                             "value"        : "Lower to Stop [" ~ rName ~ "] " ~ sideNames[s]
                     });
+                    var rsKey = rKey ~ "_" ~ toString(s);
+                    var prev  = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
+                    regionSurfBodies[rsKey] = append(prev, loftedSurfs[0]);
                 }
             }
         }
@@ -923,10 +935,44 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         if (stepThrough && step == 8) { return; }
 
         // =====================================================================
-        // Step 9: blend between adjacent region surfaces (placeholder)
-        //   G0: regions already share boundary planes -- no work needed.
-        //   G1/G2: trim each region back by startDist/endDist and bridge.
+        // Step 9: combine per-step lofts into one final surface per (region, side)
+        //   Union the step-6, step-7, and step-8 bodies for each (r, s) pair.
+        //   These share edges so they form one connected body per side.
         // =====================================================================
+        var regionFinalSurfs = {};
+        for (var r = 0; r < nRegions; r += 1)
+        {
+            var region = sortedRegions[r];
+            var rName  = region.name;
+            var rKey   = toString(r);
+
+            for (var s = 0; s < size(sideNames); s += 1)
+            {
+                var rsKey  = rKey ~ "_" ~ toString(s);
+                var bodies = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
+
+                if (size(bodies) == 0)
+                {
+                    continue;
+                }
+
+                if (size(bodies) > 1)
+                {
+                    opBoolean(context, id + ("combineFinal" ~ r ~ "_" ~ s), {
+                            "tools"         : qUnion(bodies),
+                            "operationType" : BooleanOperationType.UNION
+                    });
+                }
+
+                var finalBody = bodies[0];
+                setProperty(context, {
+                        "entities"     : finalBody,
+                        "propertyType" : PropertyType.NAME,
+                        "value"        : "SW Rout [" ~ rName ~ "] " ~ sideNames[s]
+                });
+                regionFinalSurfs[rsKey] = finalBody;
+            }
+        }
     });
 
 
