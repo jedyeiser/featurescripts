@@ -403,16 +403,56 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 qOwnedByBody(definition.refWire, EntityType.EDGE),
                 { "referenceGeometry" : definition.refWireOrigin }).path;
 
-        // Determine sign convention: positive direction = toward refWirePositiveEnd.
-        var tPositiveEnd = evDistancePath(context, {
-                "side0" : refWirePath,
-                "side1" : definition.refWirePositiveEnd
-        }).sides[0].pathParam;
-        var tOriginForSign = evDistancePath(context, {
-                "side0" : refWirePath,
-                "side1" : definition.refWireOrigin
-        }).sides[0].pathParam;
-        var dirSign = (tPositiveEnd > tOriginForSign) ? 1 : -1;
+        // Determine sign convention using edge-walk projection (evDistancePath not
+        // available here -- reuse the same pattern as the editing logic).
+        var dirSign = 1;
+        {
+            var totalLengthSign = 0 * meter;
+            for (var edge in refWirePath.edges)
+            {
+                totalLengthSign += evLength(context, { "entities" : edge });
+            }
+
+            var tOrig = 0;
+            var tPos  = 1;
+            var bestO = undefined;
+            var bestP = undefined;
+            var cumO  = 0 * meter;
+            var cumP  = 0 * meter;
+            var origPts = evaluateQuery(context, definition.refWireOrigin);
+            var posPts  = evaluateQuery(context, definition.refWirePositiveEnd);
+            for (var ei = 0; ei < size(refWirePath.edges); ei += 1)
+            {
+                var eLen = evLength(context, { "entities" : refWirePath.edges[ei] });
+                if (size(origPts) > 0)
+                {
+                    var drO = evDistance(context, {
+                            "side0" : refWirePath.edges[ei], "side1" : origPts[0] });
+                    var epO = drO.sides[0].parameter;
+                    if (refWirePath.flipped[ei]) { epO = 1 - epO; }
+                    if (bestO == undefined || drO.distance < bestO)
+                    {
+                        bestO = drO.distance;
+                        tOrig = (cumO + epO * eLen) / totalLengthSign;
+                    }
+                }
+                if (size(posPts) > 0)
+                {
+                    var drP = evDistance(context, {
+                            "side0" : refWirePath.edges[ei], "side1" : posPts[0] });
+                    var epP = drP.sides[0].parameter;
+                    if (refWirePath.flipped[ei]) { epP = 1 - epP; }
+                    if (bestP == undefined || drP.distance < bestP)
+                    {
+                        bestP = drP.distance;
+                        tPos  = (cumP + epP * eLen) / totalLengthSign;
+                    }
+                }
+                cumO += eLen;
+                cumP += eLen;
+            }
+            dirSign = (tPos > tOrig) ? 1 : -1;
+        }
 
         // Process and sort regions
         var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin, dirSign);
