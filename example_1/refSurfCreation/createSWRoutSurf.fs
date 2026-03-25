@@ -928,7 +928,6 @@ function pairChains(context is Context, aChains is array, bChains is array) retu
     for (var bc in bChains)
         bCenters = append(bCenters, chainCenter(context, bc));
 
-    var bUsed = makeArray(size(bChains), false);
     var pairs = [];
 
     for (var ac in aChains)
@@ -939,7 +938,6 @@ function pairChains(context is Context, aChains is array, bChains is array) retu
 
         for (var j = 0; j < size(bChains); j += 1)
         {
-            if (bUsed[j]) continue;
             const d = norm(aCenter - bCenters[j]);
             if (bestDist == undefined || d < bestDist)
             {
@@ -950,11 +948,8 @@ function pairChains(context is Context, aChains is array, bChains is array) retu
 
         if (bestJ >= 0)
         {
-            bUsed[bestJ] = true;
             pairs = append(pairs, { "a": ac, "b": bChains[bestJ] });
         }
-        // If aChains > bChains, unmatched a's are silently dropped here.
-        // Add an error/warning here if that's unexpected in your context.
     }
 
     return pairs; // array of { "a": Query, "b": Query }
