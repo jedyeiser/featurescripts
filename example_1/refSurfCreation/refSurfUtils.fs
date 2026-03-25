@@ -225,6 +225,10 @@ export function processSideSurf(context is Context, id is Id, refSheetBody is Qu
     setProperty(context, { "entities" : retMap["refTopSurf"], "propertyType" : PropertyType.NAME,       "value" : "refTopSurf" });
     setProperty(context, { "entities" : retMap["refTopSurf"], "propertyType" : PropertyType.APPEARANCE, "value" : color(234/255, 185/255, 125/255) });
 
+    opDeleteBodies(context, id + "deleteRefWires", {
+        "entities" : qUnion([retMap["topWire"], retMap["bottomWire"]])
+    });
+
     return retMap;
 }
 
