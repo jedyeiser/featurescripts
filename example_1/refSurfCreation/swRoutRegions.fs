@@ -35,7 +35,7 @@ export const RegionNumBounds       = { (unitless)  : [0,    0, 100]} as IntegerB
  */
 export function processSwRoutRegions(context is Context, id is Id,
         definition is map, refWirePath is Path, originQuery is Query,
-        flipDir is boolean) returns array
+        dirSign is number) returns array
 {
     var totalLength = 0 * meter;
     for (var edge in refWirePath.edges)
@@ -45,12 +45,11 @@ export function processSwRoutRegions(context is Context, id is Id,
 
     // Fractional arc-length position of the user-defined origin on the path.
     // startX/endX are signed distances from this origin.
-    // flipDir reverses the sign so the user can correct path direction.
+    // dirSign (+1 or -1) maps positive startX toward the positive-end reference.
     var tOrigin = evDistancePath(context, {
             "side0" : refWirePath,
             "side1" : originQuery
     }).sides[0].pathParam;
-    var dirSign = flipDir ? -1 : 1;
 
     var processed = [];
     for (var i = 0; i < size(definition.swRoutRegions); i += 1)

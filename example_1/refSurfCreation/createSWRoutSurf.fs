@@ -77,7 +77,31 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                     cumLenOrig += eLen;
                 }
             }
-            var dirSign = (definition.flipRefWire == true) ? -1 : 1;
+            // Determine dirSign from refWirePositiveEnd using same edge-walk.
+            var tPositiveEnd = 1;
+            var bestPos      = undefined;
+            var cumLenPos    = 0 * meter;
+            var posPts       = evaluateQuery(context, definition.refWirePositiveEnd);
+            if (size(posPts) > 0)
+            {
+                for (var ei = 0; ei < size(refWirePath.edges); ei += 1)
+                {
+                    var eLen = evLength(context, { "entities" : refWirePath.edges[ei] });
+                    var drP  = evDistance(context, {
+                            "side0" : refWirePath.edges[ei],
+                            "side1" : posPts[0]
+                    });
+                    var epP = drP.sides[0].parameter;
+                    if (refWirePath.flipped[ei]) { epP = 1 - epP; }
+                    if (bestPos == undefined || drP.distance < bestPos)
+                    {
+                        bestPos      = drP.distance;
+                        tPositiveEnd = (cumLenPos + epP * eLen) / totalLength;
+                    }
+                    cumLenPos += eLen;
+                }
+            }
+            var dirSign = (tPositiveEnd > tOrigin) ? 1 : -1;
 
             for (var i = 0; i < size(definition.swRoutRegions); i += 1)
             {
@@ -236,10 +260,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                      "Description" : "Reference point defining t=0 (arc-length origin) along the reference wire." }
         definition.refWireOrigin is Query;
 
-        annotation { "Name" : "Flip wire direction", "Default" : false,
-                     "UIHint" : UIHint.OPPOSITE_DIRECTION,
-                     "Description" : "Reverses the sign convention for startX/endX along the reference wire." }
-        definition.flipRefWire is boolean;
+        annotation { "Name" : "Positive end",
+                     "Filter" : EntityType.VERTEX || (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR,
+                     "MaxNumberOfPicks" : 1,
+                     "Description" : "A point at the positive-X end of the reference wire. Determines the sign convention for startX/endX." }
+        definition.refWirePositiveEnd is Query;
 
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
@@ -378,8 +403,19 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 qOwnedByBody(definition.refWire, EntityType.EDGE),
                 { "referenceGeometry" : definition.refWireOrigin }).path;
 
+        // Determine sign convention: positive direction = toward refWirePositiveEnd.
+        var tPositiveEnd = evDistancePath(context, {
+                "side0" : refWirePath,
+                "side1" : definition.refWirePositiveEnd
+        }).sides[0].pathParam;
+        var tOriginForSign = evDistancePath(context, {
+                "side0" : refWirePath,
+                "side1" : definition.refWireOrigin
+        }).sides[0].pathParam;
+        var dirSign = (tPositiveEnd > tOriginForSign) ? 1 : -1;
+
         // Process and sort regions
-        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin, definition.flipRefWire);
+        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin, dirSign);
         validateSwRoutRegionsNoOverlap(sortedRegions);
         var nRegions = size(sortedRegions);
 
