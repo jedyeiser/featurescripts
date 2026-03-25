@@ -10,7 +10,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b2
 export import(path : "7e3b271854475bf6cf878b2b", version : "fc5e7fa037480fd2cbb69c0a");
 
 
-export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 9]} as IntegerBoundSpec;
+export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 10]} as IntegerBoundSpec;
 
 
 // --- Editing logic -----------------------------------------------------------
@@ -972,6 +972,61 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
                 regionFinalSurfs[rsKey] = finalBody;
             }
+        }
+
+        if (stepThrough && step == 9) { return; }
+
+        // =====================================================================
+        // Step 10: delete all reference bodies (copies and wires)
+        // =====================================================================
+        var refBodiesToDelete = [];
+        for (var r = 0; r < nRegions; r += 1)
+        {
+            var rKey = toString(r);
+
+            if (regionBottomCopyQ[rKey] != undefined)
+            {
+                refBodiesToDelete = append(refBodiesToDelete, regionBottomCopyQ[rKey]);
+            }
+            if (regionSideCopyQ[rKey] != undefined)
+            {
+                refBodiesToDelete = append(refBodiesToDelete, regionSideCopyQ[rKey]);
+            }
+            if (washedInitialWires[rKey] != undefined)
+            {
+                for (var wire in washedInitialWires[rKey])
+                {
+                    refBodiesToDelete = append(refBodiesToDelete, wire);
+                }
+            }
+            if (washedStartWires[rKey] != undefined)
+            {
+                for (var wire in washedStartWires[rKey])
+                {
+                    refBodiesToDelete = append(refBodiesToDelete, wire);
+                }
+            }
+            if (washedStepInWires[rKey] != undefined)
+            {
+                for (var wire in washedStepInWires[rKey])
+                {
+                    refBodiesToDelete = append(refBodiesToDelete, wire);
+                }
+            }
+            if (washedStopWires[rKey] != undefined)
+            {
+                for (var wire in washedStopWires[rKey])
+                {
+                    refBodiesToDelete = append(refBodiesToDelete, wire);
+                }
+            }
+        }
+
+        if (size(refBodiesToDelete) > 0)
+        {
+            opDeleteBodies(context, id + "deleteRefBodies", {
+                    "entities" : qUnion(refBodiesToDelete)
+            });
         }
     });
 
