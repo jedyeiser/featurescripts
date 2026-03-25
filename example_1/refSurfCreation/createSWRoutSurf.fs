@@ -1156,11 +1156,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 }
 
                 var orphFillsAB = buildOrphanFills(context,
-                        id + ("g0OrphAB" ~ ix), capEdgesAg0, capEdgesBg0,
-                        qUnion(bodiesA));
+                        id + ("g0OrphAB" ~ ix), capEdgesAg0, capEdgesBg0);
                 var orphFillsBA = buildOrphanFills(context,
-                        id + ("g0OrphBA" ~ ix), capEdgesBg0, capEdgesAg0,
-                        qUnion(bodiesB));
+                        id + ("g0OrphBA" ~ ix), capEdgesBg0, capEdgesAg0);
 
                 var allBodies = bodiesA;
                 for (var bb in bodiesB)       { allBodies = append(allBodies, bb); }
@@ -1240,11 +1238,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 // matching face on the adjacent region) to the nearest endpoint vertex
                 // on the opposing side.  Both directions are checked symmetrically.
                 var orphFillsAB = buildOrphanFills(context,
-                        id + ("blOrphAB" ~ ix), capEdgesA, capEdgesB,
-                        qUnion(trimmedA));
+                        id + ("blOrphAB" ~ ix), capEdgesA, capEdgesB);
                 var orphFillsBA = buildOrphanFills(context,
-                        id + ("blOrphBA" ~ ix), capEdgesB, capEdgesA,
-                        qUnion(trimmedB));
+                        id + ("blOrphBA" ~ ix), capEdgesB, capEdgesA);
 
                 // Pair each A cap edge with the closest B cap edge and loft.
                 var blendSurfs = [];
@@ -1609,13 +1605,13 @@ function edgesNearPlane(context is Context, surfBody is Query, pl is Plane,
 
 // Finds cap edges in orphanSourceEdges that are never the closest match to any
 // edge in selectorEdges (matched by midpoint proximity).  For each such orphan,
-// lofts it to the nearest vertex on selectorBodiesQ, bridging the gap left when
-// one region has a step-in face that the adjacent region lacks.
-// selectorBodiesQ: query for all bodies on the selector side (used to find vertices).
+// lofts it edge-to-edge to the nearest selector cap edge, bridging the gap left
+// when one region has a step-in face that the adjacent region lacks.
+// Edge-to-edge produces a clean quadrilateral patch; edge-to-vertex produced a
+// stretched triangle that looked wrong when the target vertex was a distant corner.
 // Returns an array of newly created surface body Queries.
 function buildOrphanFills(context is Context, id is Id,
-        selectorEdges is array, orphanSourceEdges is array,
-        selectorBodiesQ is Query) returns array
+        selectorEdges is array, orphanSourceEdges is array) returns array
 {
     if (size(selectorEdges) == 0 || size(orphanSourceEdges) == 0) { return []; }
 
@@ -1638,9 +1634,6 @@ function buildOrphanFills(context is Context, id is Id,
         if (!alreadyClaimed) { usedIdx = append(usedIdx, bestJ); }
     }
 
-    // All vertices on the selector side -- used to resolve the final vertex query.
-    var selectorVerts = qOwnedByBody(selectorBodiesQ, EntityType.VERTEX);
-
     var filled = [];
     for (var j = 0; j < size(orphanSourceEdges); j += 1)
     {
@@ -1651,10 +1644,9 @@ function buildOrphanFills(context is Context, id is Id,
         var eb   = orphanSourceEdges[j];
         var midB = evEdgeTangentLine(context, { "edge" : eb, "parameter" : 0.5 }).origin;
 
-        // Find the selector cap edge whose midpoint is closest to this orphan edge.
-        // The step-in face terminates at one endpoint of that adjacent matched edge,
-        // so lofting to that endpoint vertex gives a much tighter transition than
-        // searching all vertices on the body.
+        // Find the selector cap edge whose midpoint is closest to this orphan edge
+        // and loft directly edge-to-edge.  Both edges typically run parallel (e.g.
+        // both along Z at different Y offsets), producing a flat quadrilateral patch.
         var nearSelEdge = selectorEdges[0];
         var nearSelD    = -1;
         for (var ea in selectorEdges)
@@ -1664,16 +1656,11 @@ function buildOrphanFills(context is Context, id is Id,
             if (nearSelD < 0 || d < nearSelD) { nearSelD = d; nearSelEdge = ea; }
         }
 
-        // Of the two endpoints of that selector edge, pick the one nearest to midB.
-        var ep0      = evEdgeTangentLine(context, { "edge" : nearSelEdge, "parameter" : 0.0 }).origin;
-        var ep1      = evEdgeTangentLine(context, { "edge" : nearSelEdge, "parameter" : 1.0 }).origin;
-        var targetPt = (norm(ep0 - midB) <= norm(ep1 - midB)) ? ep0 : ep1;
-        var vtx      = qClosestTo(selectorVerts, targetPt);
         var fillId = id + ("f" ~ j);
         try
         {
             opLoft(context, fillId, {
-                    "profileSubqueries" : [eb, vtx],
+                    "profileSubqueries" : [eb, nearSelEdge],
                     "bodyType"          : ToolBodyType.SURFACE
             });
             var fb = qCreatedBy(fillId, EntityType.BODY);
