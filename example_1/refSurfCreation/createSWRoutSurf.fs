@@ -45,7 +45,7 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
         {
             var refWirePath = constructPath(context,
                     qOwnedByBody(definition.refWire, EntityType.EDGE),
-                    { "referenceGeometry" : definition.refWireOrigin });
+                    { "referenceGeometry" : definition.refWireOrigin }).path;
 
             var totalLength = 0 * meter;
             for (var edge in refWirePath.edges)
