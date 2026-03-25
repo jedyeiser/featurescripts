@@ -1395,58 +1395,100 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
 
     if (hasPos && hasNeg)
     {
-        // Find the split index closest to the y=0 crossing
-        var splitIdx = 0;
-        var minAbsY  = undefined;
-        for (var k = 0; k < nPts; k += 1)
+        // Walk the chain and collect all contiguous segments on each side.
+        // At each y=0 sign change we start a new segment.  This correctly
+        // handles chains with fillet excursions (multiple y=0 crossings) by
+        // keeping only the LONGEST contiguous segment per side.
+        var segsPos  = [];  // [{start, end}] for +Y segments
+        var segsNeg  = [];  // [{start, end}] for -Y segments
+        var segSide  = (allPts[0][1] > 0 * meter) ? 1 : -1;
+        var segStart = 0;
+
+        for (var k = 1; k < nPts; k += 1)
         {
-            var ay = abs(allPts[k][1] / meter) * meter;
-            if (minAbsY == undefined || ay < minAbsY)
+            var ptY     = allPts[k][1];
+            var newSide = (ptY > 0 * meter) ? 1 : ((ptY < 0 * meter) ? -1 : segSide);
+            if (newSide != segSide)
             {
-                minAbsY  = ay;
-                splitIdx = k;
+                if (segSide == 1)
+                {
+                    segsPos = append(segsPos, { "start" : segStart, "end" : k - 1 });
+                }
+                else
+                {
+                    segsNeg = append(segsNeg, { "start" : segStart, "end" : k - 1 });
+                }
+                segStart = k;
+                segSide  = newSide;
+            }
+        }
+        // Flush the final segment
+        if (segSide == 1)
+        {
+            segsPos = append(segsPos, { "start" : segStart, "end" : nPts - 1 });
+        }
+        else
+        {
+            segsNeg = append(segsNeg, { "start" : segStart, "end" : nPts - 1 });
+        }
+
+        // Pick the longest segment from each side
+        var bestPosStart = -1;
+        var bestPosEnd   = -1;
+        var bestPosLen   = 0;
+        for (var seg in segsPos)
+        {
+            var len = seg.end - seg.start + 1;
+            if (len > bestPosLen) { bestPosLen = len; bestPosStart = seg.start; bestPosEnd = seg.end; }
+        }
+
+        var bestNegStart = -1;
+        var bestNegEnd   = -1;
+        var bestNegLen   = 0;
+        for (var seg in segsNeg)
+        {
+            var len = seg.end - seg.start + 1;
+            if (len > bestNegLen) { bestNegLen = len; bestNegStart = seg.start; bestNegEnd = seg.end; }
+        }
+
+        var result = [];
+
+        if (bestPosStart >= 0)
+        {
+            var ptsPos = [];
+            for (var k = bestPosStart; k <= bestPosEnd; k += 1) { ptsPos = append(ptsPos, allPts[k]); }
+            if (size(ptsPos) >= MIN_PTS)
+            {
+                var crvPos = approximateSpline(context, {
+                        "targets"          : [approximationTarget({ "positions" : ptsPos })],
+                        "degree"           : 3,
+                        "tolerance"        : 1e-5 * meter,
+                        "isPeriodic"       : false,
+                        "maxControlPoints" : 200
+                })[0];
+                opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : crvPos });
+                result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
             }
         }
 
-        // Build two halves: [0..splitIdx] and [splitIdx..nPts-1]
-        var halfA = [];
-        for (var k = 0; k <= splitIdx; k += 1) { halfA = append(halfA, allPts[k]); }
-        var halfB = [];
-        for (var k = splitIdx; k < nPts; k += 1) { halfB = append(halfB, allPts[k]); }
-
-        // Determine which half is +Y and which is -Y by meanY
-        var sumA = 0 * meter;
-        for (var pt in halfA) { sumA += pt[1]; }
-        var meanA = sumA / max(size(halfA), 1);
-
-        var ptsPos = (meanA > 0 * meter) ? halfA : halfB;
-        var ptsNeg = (meanA > 0 * meter) ? halfB : halfA;
-
-        var result = [];
-        if (size(ptsPos) >= MIN_PTS)
+        if (bestNegStart >= 0)
         {
-            var crvPos = approximateSpline(context, {
-                    "targets"          : [approximationTarget({ "positions" : ptsPos })],
-                    "degree"           : 3,
-                    "tolerance"        : 1e-5 * meter,
-                    "isPeriodic"       : false,
-                    "maxControlPoints" : 200
-            })[0];
-            opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : crvPos });
-            result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
+            var ptsNeg = [];
+            for (var k = bestNegStart; k <= bestNegEnd; k += 1) { ptsNeg = append(ptsNeg, allPts[k]); }
+            if (size(ptsNeg) >= MIN_PTS)
+            {
+                var crvNeg = approximateSpline(context, {
+                        "targets"          : [approximationTarget({ "positions" : ptsNeg })],
+                        "degree"           : 3,
+                        "tolerance"        : 1e-5 * meter,
+                        "isPeriodic"       : false,
+                        "maxControlPoints" : 200
+                })[0];
+                opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : crvNeg });
+                result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
+            }
         }
-        if (size(ptsNeg) >= MIN_PTS)
-        {
-            var crvNeg = approximateSpline(context, {
-                    "targets"          : [approximationTarget({ "positions" : ptsNeg })],
-                    "degree"           : 3,
-                    "tolerance"        : 1e-5 * meter,
-                    "isPeriodic"       : false,
-                    "maxControlPoints" : 200
-            })[0];
-            opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : crvNeg });
-            result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
-        }
+
         return result;
     }
 
