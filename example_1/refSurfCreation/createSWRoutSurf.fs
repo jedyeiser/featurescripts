@@ -292,6 +292,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "SW rout step-in" }
             isLength(region.swRoutStepin, SWStepInBounds);
 
+            annotation { "Name" : "Combine curves", "Default" : false,
+                         "Description" : "Fit a single BSpline through all intersection edges per wire (smooths over face boundaries)" }
+            region.combineCurves is boolean;
+
             annotation { "Name" : "Region length", "UIHint" : UIHint.READ_ONLY }
             isLength(region.regionLength, LENGTH_BOUNDS);
         }
@@ -509,6 +513,16 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "value"        : "Initial wire [" ~ rName ~ "] " ~ sideNames[s]
                 });
             }
+            if (region.combineCurves == true)
+            {
+                var combined0 = [];
+                for (var ci = 0; ci < size(wires); ci += 1)
+                {
+                    combined0 = append(combined0, combineWireEdges(context,
+                            id + ("combineInit" ~ r ~ "_" ~ ci), wires[ci]));
+                }
+                wires = combined0;
+            }
             washedInitialWires[rKey] = wires;
         }
 
@@ -549,6 +563,16 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "propertyType" : PropertyType.NAME,
                         "value"        : "Start wire [" ~ rName ~ "] " ~ sideNames[s]
                 });
+            }
+            if (region.combineCurves == true)
+            {
+                var combined1 = [];
+                for (var ci = 0; ci < size(wires); ci += 1)
+                {
+                    combined1 = append(combined1, combineWireEdges(context,
+                            id + ("combineSt" ~ r ~ "_" ~ ci), wires[ci]));
+                }
+                wires = combined1;
             }
             washedStartWires[rKey] = wires;
 
@@ -601,6 +625,16 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                             "propertyType" : PropertyType.NAME,
                             "value"        : "Step-in wire [" ~ rName ~ "] " ~ sideNames[s]
                     });
+                }
+                if (region.combineCurves == true)
+                {
+                    var combined2 = [];
+                    for (var ci = 0; ci < size(wires); ci += 1)
+                    {
+                        combined2 = append(combined2, combineWireEdges(context,
+                                id + ("combineSI" ~ r ~ "_" ~ ci), wires[ci]));
+                    }
+                    wires = combined2;
                 }
                 washedStepInWires[rKey] = wires;
 
@@ -763,6 +797,16 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "propertyType" : PropertyType.NAME,
                         "value"        : "Stop wire [" ~ rName ~ "] " ~ sideNames[s]
                 });
+            }
+            if (region.combineCurves == true)
+            {
+                var combined3 = [];
+                for (var ci = 0; ci < size(wires); ci += 1)
+                {
+                    combined3 = append(combined3, combineWireEdges(context,
+                            id + ("combineStop" ~ r ~ "_" ~ ci), wires[ci]));
+                }
+                wires = combined3;
             }
             washedStopWires[rKey] = wires;
 
@@ -1021,6 +1065,149 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
+        // =====================================================================
+        // Step 9.5: join / blend adjacent region surfaces at their shared boundary
+        //   For each intersection entry, either merge the surfaces (G0) or trim
+        //   each region back and bridge the gap with a continuity loft (G1).
+        // =====================================================================
+        for (var ix = 0; ix < size(definition.swRoutIntersections); ix += 1)
+        {
+            var intr  = definition.swRoutIntersections[ix];
+            var rAIdx = intr.intersectionNum;
+            var rBIdx = intr.intersectionNum + 1;
+            if (rAIdx < 0 || rBIdx >= nRegions) { continue; }
+
+            var regA = sortedRegions[rAIdx];
+            var regB = sortedRegions[rBIdx];
+
+            // Boundary plane at end of region A (== start of region B)
+            var boundaryPlane = createRegionBoundingPlane(context, refWirePath, regA.tEnd);
+            var pathTang = evPathTangentLines(context, refWirePath,
+                    [regA.tEnd]).tangentLines[0].direction;
+
+            for (var s = 0; s < size(sideNames); s += 1)
+            {
+                var rAKey = toString(rAIdx) ~ "_" ~ toString(s);
+                var rBKey = toString(rBIdx) ~ "_" ~ toString(s);
+                var bodyA = regionFinalSurfs[rAKey];
+                var bodyB = regionFinalSurfs[rBKey];
+                if (bodyA == undefined || bodyB == undefined) { continue; }
+
+                if (!intr.blend)
+                {
+                    // G0 -- attempt a simple union; surfaces share a boundary edge
+                    // when the wires from adjacent regions are coincident.
+                    try
+                    {
+                        opBoolean(context, id + ("joinG0" ~ ix ~ "_" ~ s), {
+                                "tools"         : qUnion([bodyA, bodyB]),
+                                "operationType" : BooleanOperationType.UNION
+                        });
+                    }
+                    catch {}
+                }
+                else
+                {
+                    // Blend -- trim each surface back, bridge with continuity loft.
+                    const BLEND_TOL = 1e-3 * meter;
+
+                    var trimPlA = plane(
+                            boundaryPlane.origin - intr.startDist * pathTang,
+                            boundaryPlane.normal);
+                    var trimPlB = plane(
+                            boundaryPlane.origin + intr.endDist  * pathTang,
+                            boundaryPlane.normal);
+
+                    // Probe points: interior of each region (bounding box centre proxy)
+                    var probeA = evPathTangentLines(context, refWirePath,
+                            [(regA.tStart + regA.tEnd) / 2]).tangentLines[0].origin;
+                    var probeB = evPathTangentLines(context, refWirePath,
+                            [(regB.tStart + regB.tEnd) / 2]).tangentLines[0].origin;
+
+                    try { bodyA = splitAndKeep(context, id + ("blTrimA" ~ ix ~ "_" ~ s), bodyA, trimPlA, probeA); }
+                    catch {}
+                    try { bodyB = splitAndKeep(context, id + ("blTrimB" ~ ix ~ "_" ~ s), bodyB, trimPlB, probeB); }
+                    catch {}
+
+                    var capEdgesA  = edgesNearPlane(context, bodyA, trimPlA, BLEND_TOL);
+                    var capEdgesB  = edgesNearPlane(context, bodyB, trimPlB, BLEND_TOL);
+                    var iterEdgesA = evaluateQuery(context, capEdgesA);
+
+                    var blendSurfs = [];
+                    for (var i = 0; i < size(iterEdgesA); i += 1)
+                    {
+                        var edgeA   = iterEdgesA[i];
+                        var midPt   = evEdgeTangentLine(context,
+                                { "edge" : edgeA, "parameter" : 0.5 }).origin;
+                        var edgeB   = qClosestTo(capEdgesB, midPt);
+                        var blId    = id + ("blLoft" ~ ix ~ "_" ~ s ~ "_" ~ i);
+                        var success = false;
+
+                        // Try with requested continuity first; fall back to G0
+                        try
+                        {
+                            var loftDef = {
+                                    "profileSubqueries" : [edgeA, edgeB],
+                                    "bodyType"          : ToolBodyType.SURFACE
+                            };
+                            if (intr.startContinuity == GeometricContinuity.G1)
+                            {
+                                loftDef.startCondition = {
+                                        "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
+                                        "adjacentFaces" : qEdgeAdjacent(edgeA, EntityType.FACE),
+                                        "magnitude"     : 1.0
+                                };
+                            }
+                            if (intr.endContinuity == GeometricContinuity.G1)
+                            {
+                                loftDef.endCondition = {
+                                        "derivative"    : LoftEndDerivativeType.MATCH_TANGENT,
+                                        "adjacentFaces" : qEdgeAdjacent(edgeB, EntityType.FACE),
+                                        "magnitude"     : 1.0
+                                };
+                            }
+                            opLoft(context, blId, loftDef);
+                            success = true;
+                        }
+                        catch {}
+
+                        if (!success)
+                        {
+                            try
+                            {
+                                opLoft(context, blId, {
+                                        "profileSubqueries" : [edgeA, edgeB],
+                                        "bodyType"          : ToolBodyType.SURFACE
+                                });
+                            }
+                            catch {}
+                        }
+
+                        var blBody = qCreatedBy(blId, EntityType.BODY);
+                        if (!isQueryEmpty(context, blBody))
+                        {
+                            blendSurfs = append(blendSurfs, blBody);
+                        }
+                    }
+
+                    // Union trimmed A + trimmed B + all blend lofts
+                    var toUnion = append(blendSurfs, bodyA);
+                    toUnion = append(toUnion, bodyB);
+                    if (size(toUnion) > 1)
+                    {
+                        try
+                        {
+                            opBoolean(context, id + ("blendUnion" ~ ix ~ "_" ~ s), {
+                                    "tools"         : qUnion(toUnion),
+                                    "operationType" : BooleanOperationType.UNION
+                            });
+                        }
+                        catch {}
+                    }
+                }
+            }
+        }
+
         if (stepThrough && step == 9) { return; }
 
         // =====================================================================
@@ -1223,6 +1410,56 @@ function sortBodiesByMeanY(context is Context, bodies is array) returns array
 }
 
 
+// Combines all edges of a wire body into a single approximated BSpline.
+// Uses constructPath to order the edges and evPathTangentLines for uniform
+// arc-length sampling.  Returns the new single-edge wire body; the original
+// wireBody is deleted.  Falls back to returning the original on any failure.
+function combineWireEdges(context is Context, id is Id, wireBody is Query) returns Query
+{
+    try
+    {
+        var pl = constructPath(context, qOwnedByBody(wireBody, EntityType.EDGE));
+        const N = 60;
+        var pts = [];
+        for (var k = 0; k <= N; k += 1)
+        {
+            pts = append(pts, evPathTangentLines(context, pl, [k / N]).tangentLines[0].origin);
+        }
+        var curve = approximateSpline(context, {
+                "targets"          : [approximationTarget({ "positions" : pts })],
+                "degree"           : 3,
+                "tolerance"        : 1e-5 * meter,
+                "isPeriodic"       : false,
+                "maxControlPoints" : 200
+        })[0];
+        opDeleteBodies(context, id + "Del", { "entities" : wireBody });
+        opCreateBSplineCurve(context, id + "Crv", { "bSplineCurve" : curve });
+        return qCreatedBy(id + "Crv", EntityType.BODY);
+    }
+    catch
+    {
+        return wireBody;
+    }
+}
+
+
+// Returns a query for all edges of surfBody whose midpoints are within tol of pl.
+function edgesNearPlane(context is Context, surfBody is Query, pl is Plane,
+        tol is ValueWithUnits) returns Query
+{
+    var allEdges = evaluateQuery(context, qOwnedByBody(surfBody, EntityType.EDGE));
+    var matching = [];
+    for (var e in allEdges)
+    {
+        var mid = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
+        if (abs(dot(mid - pl.origin, pl.normal)) < tol)
+        {
+            matching = append(matching, e);
+        }
+    }
+    if (size(matching) == 0) { return qNothing(); }
+    return qUnion(matching);
+}
 
 
 
