@@ -1638,7 +1638,7 @@ function buildOrphanFills(context is Context, id is Id,
         if (!alreadyClaimed) { usedIdx = append(usedIdx, bestJ); }
     }
 
-    // All vertices on the selector side -- used to find the nearest loft target.
+    // All vertices on the selector side -- used to resolve the final vertex query.
     var selectorVerts = qOwnedByBody(selectorBodiesQ, EntityType.VERTEX);
 
     var filled = [];
@@ -1648,9 +1648,27 @@ function buildOrphanFills(context is Context, id is Id,
         for (var u in usedIdx) { if (u == j) { claimed = true; break; } }
         if (claimed) { continue; }
 
-        var eb     = orphanSourceEdges[j];
-        var midB   = evEdgeTangentLine(context, { "edge" : eb, "parameter" : 0.5 }).origin;
-        var vtx    = qClosestTo(selectorVerts, midB);
+        var eb   = orphanSourceEdges[j];
+        var midB = evEdgeTangentLine(context, { "edge" : eb, "parameter" : 0.5 }).origin;
+
+        // Find the selector cap edge whose midpoint is closest to this orphan edge.
+        // The step-in face terminates at one endpoint of that adjacent matched edge,
+        // so lofting to that endpoint vertex gives a much tighter transition than
+        // searching all vertices on the body.
+        var nearSelEdge = selectorEdges[0];
+        var nearSelD    = -1;
+        for (var ea in selectorEdges)
+        {
+            var mA = evEdgeTangentLine(context, { "edge" : ea, "parameter" : 0.5 }).origin;
+            var d  = norm(midB - mA);
+            if (nearSelD < 0 || d < nearSelD) { nearSelD = d; nearSelEdge = ea; }
+        }
+
+        // Of the two endpoints of that selector edge, pick the one nearest to midB.
+        var ep0      = evEdgeTangentLine(context, { "edge" : nearSelEdge, "parameter" : 0.0 }).origin;
+        var ep1      = evEdgeTangentLine(context, { "edge" : nearSelEdge, "parameter" : 1.0 }).origin;
+        var targetPt = (norm(ep0 - midB) <= norm(ep1 - midB)) ? ep0 : ep1;
+        var vtx      = qClosestTo(selectorVerts, targetPt);
         var fillId = id + ("f" ~ j);
         try
         {
