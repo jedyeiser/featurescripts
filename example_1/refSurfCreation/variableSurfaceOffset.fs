@@ -564,6 +564,10 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
             opDeleteBodies(context, id + ("deleteRegionCopy" ~ r), { "entities" : regionCopy });
         }
 
+        // refBottomSurf was only needed as the opPattern source for region copies.
+        // Delete it now so it is not included in the final boolean assembly.
+        opDeleteBodies(context, id + "deleteRefBottomSurf", { "entities" : refGeo.refBottomSurf });
+
         if (size(definition.intersections) > 0 &&
             (definition.returnLoftSurface || definition.returnOffsetWires))
         {
