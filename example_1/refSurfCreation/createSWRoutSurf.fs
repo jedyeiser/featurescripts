@@ -500,7 +500,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group2" : sideQ
             });
             var wires = rebuildWire(context, id + ("rebuildInitial" ~ r),
-                    qCreatedBy(id + ("initialWire" ~ r), EntityType.BODY));
+                    qCreatedBy(id + ("initialWire" ~ r), EntityType.BODY),
+                    "initial[" ~ rName ~ "]", definition.debugPrint);
             for (var s = 0; s < size(wires); s += 1)
             {
                 setProperty(context, {
@@ -541,7 +542,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group2" : bottomQ
             });
             var wires = rebuildWire(context, id + ("rebuildStart" ~ r),
-                    qCreatedBy(id + ("startIntersect" ~ r), EntityType.BODY));
+                    qCreatedBy(id + ("startIntersect" ~ r), EntityType.BODY),
+                    "start[" ~ rName ~ "]", definition.debugPrint);
             for (var s = 0; s < size(wires); s += 1)
             {
                 setProperty(context, {
@@ -593,7 +595,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "group2" : regionBottomCopyQ[rKey]
                 });
                 var wires = rebuildWire(context, id + ("rebuildStepIn" ~ r),
-                        qCreatedBy(id + ("stepInIntersect" ~ r), EntityType.BODY));
+                        qCreatedBy(id + ("stepInIntersect" ~ r), EntityType.BODY),
+                        "stepIn[" ~ rName ~ "]", definition.debugPrint);
                 for (var s = 0; s < size(wires); s += 1)
                 {
                     setProperty(context, {
@@ -755,7 +758,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "group2" : bottomQ
             });
             var wires = rebuildWire(context, id + ("rebuildStop" ~ r),
-                    qCreatedBy(id + ("stopWire" ~ r), EntityType.BODY));
+                    qCreatedBy(id + ("stopWire" ~ r), EntityType.BODY),
+                    "stop[" ~ rName ~ "]", definition.debugPrint);
             for (var s = 0; s < size(wires); s += 1)
             {
                 setProperty(context, {
@@ -1204,7 +1208,8 @@ function pairWiresByMeanY(context is Context, wiresA is array, wiresB is array) 
  * Returns [posWire] if all points are on one side, or [posWire, negWire]
  * if the wire crosses y=0.  Deletes the original wire body.
  */
-function rebuildWire(context is Context, id is Id, wireBody is Query) returns array
+function rebuildWire(context is Context, id is Id, wireBody is Query,
+        debugLabel is string, debug is boolean) returns array
 {
     const RESAMPLE_COUNT = 20;
     const CHAIN_TOL      = 1e-5 * meter;
@@ -1319,6 +1324,19 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
 
     opDeleteBodies(context, id + "deleteWire", { "entities" : wireBody });
 
+    if (debug)
+    {
+        println("  rebuildWire [" ~ debugLabel ~ "]: " ~ toString(size(chains)) ~ " chain(s)");
+        for (var c = 0; c < size(chainPts); c += 1)
+        {
+            var sumY = 0 * meter;
+            for (var pt in chainPts[c]) { sumY += pt[1]; }
+            var mY = sumY / max(size(chainPts[c]), 1);
+            println("    chain " ~ toString(c) ~ ": " ~ toString(size(chainPts[c])) ~
+                    " pts, meanY=" ~ toString(mY / millimeter) ~ "mm");
+        }
+    }
+
     // --- If more than one chain, treat each as a separate side wire ------------
     // Sort: highest mean Y first (+Y side = index 0, -Y side = index 1).
     if (size(chains) > 1)
@@ -1430,6 +1448,21 @@ function rebuildWire(context is Context, id is Id, wireBody is Query) returns ar
         else
         {
             segsNeg = append(segsNeg, { "start" : segStart, "end" : nPts - 1 });
+        }
+
+        if (debug)
+        {
+            println("  rebuildWire [" ~ debugLabel ~ "]: single-chain y=0 split");
+            println("    +Y segments: " ~ toString(size(segsPos)));
+            for (var seg in segsPos)
+            {
+                println("      len=" ~ toString(seg.end - seg.start + 1));
+            }
+            println("    -Y segments: " ~ toString(size(segsNeg)));
+            for (var seg in segsNeg)
+            {
+                println("      len=" ~ toString(seg.end - seg.start + 1));
+            }
         }
 
         // Pick the longest segment from each side
