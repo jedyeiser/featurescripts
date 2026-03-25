@@ -638,6 +638,32 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 println("  [" ~ rName ~ "] routSpanSide   = " ~ toString(routSpanSide));
             }
 
+            // Pre-extend the side surface BEFORE offsetting so large offsets don't
+            // create discontinuous geometry.  Extend all one-sided edges by
+            // routSpanHeight plus current gap plus a small buffer.
+            var preGapDist = evDistance(context, {
+                    "side0" : sideQ,
+                    "side1" : bottomQ
+            }).distance;
+            var preExtendDist = routSpanHeight + preGapDist + 2 * millimeter;
+            var preFreeEdges  = qEdgeTopologyFilter(qOwnedByBody(sideQ, EntityType.EDGE),
+                    EdgeTopology.ONE_SIDED);
+            if (!isQueryEmpty(context, preFreeEdges) && preExtendDist > 0 * meter)
+            {
+                try
+                {
+                    extendSurface(context, id + ("preExtendStopSide" ~ r), {
+                            "entities"           : preFreeEdges,
+                            "tangentPropagation" : true,
+                            "endCondition"       : ExtendBoundingType.BLIND,
+                            "oppositeDirection"  : false,
+                            "extendDistance"     : preExtendDist,
+                            "maintainCurvature"  : true
+                    });
+                }
+                catch {}
+            }
+
             opOffsetFace(context, id + ("stopBottomOffset" ~ r), {
                     "moveFaces"      : qUnion([qOwnedByBody(bottomQ, EntityType.FACE)]),
                     "offsetDistance" : bSign * routSpanHeight
@@ -682,37 +708,27 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 println("  [" ~ rName ~ "] stop surface gap = " ~ toString(gapDist));
             }
 
+            // Fallback: if a gap still exists after the pre-extension and stop offsets,
+            // extend all remaining free edges to close it.
             if (gapDist > 0 * meter)
             {
-                var oneSidedEdges = evaluateQuery(context,
-                        qEdgeTopologyFilter(qOwnedByBody(sideQ, EntityType.EDGE),
-                        EdgeTopology.ONE_SIDED));
-
-                var minEdgeDist = 1e10 * meter;
-                for (var edge in oneSidedEdges)
+                var fallbackEdges = qEdgeTopologyFilter(qOwnedByBody(sideQ, EntityType.EDGE),
+                        EdgeTopology.ONE_SIDED);
+                if (!isQueryEmpty(context, fallbackEdges))
                 {
-                    var dd = evDistance(context, { "side0" : edge, "side1" : bottomQ }).distance;
-                    if (dd < minEdgeDist) { minEdgeDist = dd; }
-                }
-
-                var edgesToExtend = [];
-                for (var edge in oneSidedEdges)
-                {
-                    var dd = evDistance(context, { "side0" : edge, "side1" : bottomQ }).distance;
-                    if (dd < minEdgeDist + 1e-4 * meter)
+                    try
                     {
-                        edgesToExtend = append(edgesToExtend, edge);
+                        extendSurface(context, id + ("extendStopSide" ~ r), {
+                                "entities"           : fallbackEdges,
+                                "tangentPropagation" : true,
+                                "endCondition"       : ExtendBoundingType.BLIND,
+                                "oppositeDirection"  : false,
+                                "extendDistance"     : gapDist + 1 * millimeter,
+                                "maintainCurvature"  : true
+                        });
                     }
+                    catch {}
                 }
-
-                extendSurface(context, id + ("extendStopSide" ~ r), {
-                        "entities"           : qUnion(edgesToExtend),
-                        "tangentPropagation" : true,
-                        "endCondition"       : ExtendBoundingType.BLIND,
-                        "oppositeDirection"  : false,
-                        "extendDistance"     : gapDist + 1 * millimeter,
-                        "maintainCurvature"  : true
-                });
             }
 
             intersectionCurve(context, id + ("stopWire" ~ r), {
