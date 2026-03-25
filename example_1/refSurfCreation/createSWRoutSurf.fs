@@ -335,10 +335,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             intr.regionBName is string;
 
-            annotation { "Name" : "Blend regions?", "Default" : false }
-            intr.blend is boolean;
+            annotation { "Name" : "Join regions?", "Default" : false }
+            intr.join is boolean;
 
-            if (intr.blend)
+            if (intr.join)
             {
                 annotation { "Name" : "Start continuity", "UIHint" : UIHint.SHOW_LABEL }
                 intr.startContinuity is SWRoutContinuityType;
@@ -1132,9 +1132,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
             if (size(bodiesA) == 0 || size(bodiesB) == 0) { continue; }
 
-            if (!intr.blend)
+            if (!intr.join)
             {
-                // G0 -- union all A and B bodies, then fill any open boundary gaps.
+                // Direct boolean union -- no transition geometry.
                 const G0_TOL = 1e-3 * meter;
 
                 var allBodies = bodiesA;
@@ -1170,7 +1170,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
             else
             {
-                // Blend -- trim each body back, bridge all cap-edge pairs with lofts.
+                // Join -- trim each region back and bridge the gap with lofts (G0 or G1).
                 const BLEND_TOL = 1e-3 * meter;
 
                 var trimPlA = plane(
