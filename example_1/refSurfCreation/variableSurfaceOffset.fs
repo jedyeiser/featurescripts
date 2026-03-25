@@ -558,6 +558,10 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
                     "showFrames"      : true
                 }, refPath);
             }
+
+            // Reference surface copy has served its purpose -- delete it so it
+            // does not participate in the final surface boolean assembly.
+            opDeleteBodies(context, id + ("deleteRegionCopy" ~ r), { "entities" : regionCopy });
         }
 
         if (size(definition.intersections) > 0 &&
