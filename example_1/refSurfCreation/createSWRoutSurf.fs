@@ -685,17 +685,81 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
             }
 
-            var loftPairs   = buildLoftPairs(context, aTrackers, bTrackers);
-            var bridgeSurfs = [];
-
-            for (var lp = 0; lp < size(loftPairs); lp += 1)
+            // Resolve trackers to post-extend edges, one array per source body.
+            var aEdgesPerBody = [];
+            for (var q in aTrackers)
             {
-                var loftPairA = loftPairs[lp].a;
-                var loftPairB = loftPairs[lp].b;
+                aEdgesPerBody = append(aEdgesPerBody, evaluateQuery(context, q));
+            }
+            var bEdgesPerBody = [];
+            for (var q in bTrackers)
+            {
+                bEdgesPerBody = append(bEdgesPerBody, evaluateQuery(context, q));
+            }
 
+            var bridgeSurfs = [];
+            var guideBodies = [];
+
+            for (var ai = 0; ai < size(aEdgesPerBody); ai += 1)
+            {
+                var aEdges = aEdgesPerBody[ai];
+                if (size(aEdges) == 0) { continue; }
+
+                // Match this A body to the nearest B body by mean-Y of cap edge midpoints.
+                var meanYA = 0 * meter;
+                for (var e in aEdges)
+                {
+                    meanYA += evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin[1];
+                }
+                meanYA = meanYA / size(aEdges);
+
+                var bestBi  = -1;
+                var bestDif = undefined;
+                for (var bi = 0; bi < size(bEdgesPerBody); bi += 1)
+                {
+                    var bCand = bEdgesPerBody[bi];
+                    if (size(bCand) == 0) { continue; }
+                    var meanYB = 0 * meter;
+                    for (var e in bCand)
+                    {
+                        meanYB += evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin[1];
+                    }
+                    meanYB = meanYB / size(bCand);
+                    var dif = abs(meanYA - meanYB);
+                    if (bestDif == undefined || dif < bestDif) { bestDif = dif; bestBi = bi; }
+                }
+                if (bestBi < 0) { continue; }
+                var bEdges = bEdgesPerBody[bestBi];
+
+                // Classify vertices of each profile by degree (number of cap edges sharing them).
+                // Degree 1 = endpoint (free end of chain); degree 2+ = interior junction.
+                var aVerts = collectVertexDegrees(context, aEdges);
+                var bVerts = collectVertexDegrees(context, bEdges);
+
+                // Pair vertices: A endpoints to nearest unused B endpoints first,
+                // then remaining A vertices to nearest any B vertex.
+                var vPairs = pairVerticesByDegree(aVerts, bVerts);
+
+                // Create a straight-line guide wire for each vertex pair.
+                // Where two A vertices converge to the same B vertex the surface
+                // naturally collapses to a point (correct step-in behaviour).
+                var guideQueries = [];
+                for (var vpi = 0; vpi < size(vPairs); vpi += 1)
+                {
+                    var gId = id + ("guide" ~ ix ~ "_" ~ ai ~ "_" ~ vpi);
+                    createGuideLine(context, gId, vPairs[vpi].a, vPairs[vpi].b);
+                    var gBody = qCreatedBy(gId, EntityType.BODY);
+                    guideQueries = append(guideQueries,
+                            qOwnedByBody(gBody, EntityType.EDGE));
+                    guideBodies = append(guideBodies, gBody);
+                }
+
+                // Build boundary surface: A/B cap edges as U-profiles,
+                // guide wires as V-profiles to direct topology flow.
                 var bsurfDef = {
-                    "uProfileSubqueries" : [loftPairA, loftPairB]
+                    "uProfileSubqueries" : [qUnion(aEdges), qUnion(bEdges)]
                 };
+                if (size(guideQueries) > 0) { bsurfDef.vProfileSubqueries = guideQueries; }
 
                 var uDeriv = [];
                 if (intr.startContinuity == SWRoutContinuityType.G1)
@@ -703,7 +767,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     uDeriv = append(uDeriv, {
                         "profileIndex"  : 0,
                         "magnitude"     : 1.0,
-                        "adjacentFaces" : qAdjacent(loftPairA, AdjacencyType.EDGE, EntityType.FACE)
+                        "adjacentFaces" : qAdjacent(qUnion(aEdges), AdjacencyType.EDGE, EntityType.FACE)
                     });
                 }
                 if (intr.endContinuity == SWRoutContinuityType.G1)
@@ -711,12 +775,12 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     uDeriv = append(uDeriv, {
                         "profileIndex"  : 1,
                         "magnitude"     : 1.0,
-                        "adjacentFaces" : qAdjacent(loftPairB, AdjacencyType.EDGE, EntityType.FACE)
+                        "adjacentFaces" : qAdjacent(qUnion(bEdges), AdjacencyType.EDGE, EntityType.FACE)
                     });
                 }
                 if (size(uDeriv) > 0) { bsurfDef.uDerivativeInfo = uDeriv; }
 
-                var bsurfId = id + ("bsurf" ~ lp ~ "intersection" ~ ix);
+                var bsurfId = id + ("bsurf" ~ ix ~ "_" ~ ai);
                 try
                 {
                     opBoundarySurface(context, bsurfId, bsurfDef);
@@ -727,6 +791,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     }
                 }
                 catch {}
+            }
+
+            // Delete guide wires — they are intermediate geometry only.
+            if (size(guideBodies) > 0)
+            {
+                try silent(opDeleteBodies(context, id + ("delGuides" ~ ix), {
+                        "entities" : qUnion(guideBodies)
+                }));
             }
 
             // Union the trimmed-back A bodies, trimmed-back B bodies, and bridge surfaces.
@@ -834,152 +906,104 @@ function positionKey(pt is Vector) returns string
     return toString(ix) ~ "_" ~ toString(iy) ~ "_" ~ toString(iz);
 }
 
-// ─── Get both endpoint positions of an edge (parameter 0 and 1) ─────────────
-function edgeEndpoints(context is Context, edge is Query) returns array
+// Returns array of {pos, degree} for all vertices in the edge set.
+// Degree = number of cap edges that share that vertex position.
+// Degree 1 = free endpoint; degree 2+ = interior junction (e.g. step-riser bend).
+function collectVertexDegrees(context is Context, edges is array) returns array
 {
-    return [
-        evEdgeTangentLine(context, { "edge": edge, "parameter": 0 }).origin,
-        evEdgeTangentLine(context, { "edge": edge, "parameter": 1 }).origin
-    ];
-}
-
-// ─── Centroid of a chain — average of each edge's midpoint ──────────────────
-function chainCenter(context is Context, chain is Query) returns Vector
-{
-    var boundingBox = evBox3d(context, {
-            "topology" : chain,
-            "tight" : true
-    });
-    
-    return (boundingBox.minCorner + boundingBox.maxCorner)/2;
-}
-
-// ─── BFS connected-component chain builder ──────────────────────────────────
-function buildChains(context is Context, edges is array) returns array
-{
-    const n = size(edges);
-    if (n == 0) return [];
-
-    // Collect endpoint positions and build: posKey → [edgeIndices]
-    var endPts = [];
-    var vertexMap = {};
-
-    for (var i = 0; i < n; i += 1)
+    var vertMap = {};
+    for (var e in edges)
     {
-        const pts = edgeEndpoints(context, edges[i]);
-        endPts = append(endPts, pts);
-
-        for (var pt in pts)
+        for (var t in [0, 1])
         {
-            const key = positionKey(pt);
-            if (vertexMap[key] == undefined)
-                vertexMap[key] = [];
-            vertexMap[key] = append(vertexMap[key], i);
-        }
-    }
-
-    // BFS over unvisited edges — each component becomes one chain
-    var visited = makeArray(n, false);
-    var chains = [];
-
-    for (var start = 0; start < n; start += 1)
-    {
-        if (visited[start]) continue;
-
-        // Head-pointer BFS avoids O(n²) array copies from repeated slicing
-        var queue = [start];
-        var head = 0;
-        var component = [];
-
-        while (head < size(queue))
-        {
-            const idx = queue[head];
-            head += 1;
-
-            if (visited[idx]) continue;
-            visited[idx] = true;
-            component = append(component, idx);
-
-            for (var pt in endPts[idx])
+            var pt  = evEdgeTangentLine(context, { "edge" : e, "parameter" : t }).origin;
+            var key = positionKey(pt);
+            if (vertMap[key] == undefined)
             {
-                const key = positionKey(pt);
-                for (var neighborIdx in vertexMap[key])
-                {
-                    if (!visited[neighborIdx])
-                        queue = append(queue, neighborIdx);
-                }
+                vertMap[key] = { "pos" : pt, "degree" : 0 };
             }
+            vertMap[key] = { "pos" : vertMap[key].pos, "degree" : vertMap[key].degree + 1 };
         }
-
-        var chainEdges = [];
-        for (var idx in component)
-            chainEdges = append(chainEdges, edges[idx]);
-
-        chains = append(chains, qUnion(chainEdges));
     }
-
-    return chains; // array of Query, one per connected open chain
+    var result = [];
+    for (var key, val in vertMap)
+    {
+        result = append(result, val);
+    }
+    return result;
 }
 
-// ─── Greedy 1-to-1 pairing by centroid distance ─────────────────────────────
-function pairChains(context is Context, aChains is array, bChains is array) returns array
+
+// Pairs each A vertex to a B vertex.
+// Degree-1 A vertices (endpoints) pair greedily to nearest unused degree-1 B vertex.
+// Remaining A vertices (interior junctions) pair to nearest any B vertex.
+// Where multiple A vertices map to the same B vertex, the bridge surface collapses
+// to a point there — this is the correct behaviour for step-in geometry.
+function pairVerticesByDegree(aVerts is array, bVerts is array) returns array
 {
-    var bCenters = [];
-    for (var bc in bChains)
-        bCenters = append(bCenters, chainCenter(context, bc));
+    var bEndpoints    = [];
+    var bEndpointUsed = [];
+    var bAll          = [];
+    for (var v in bVerts)
+    {
+        bAll = append(bAll, v.pos);
+        if (v.degree == 1)
+        {
+            bEndpoints    = append(bEndpoints, v.pos);
+            bEndpointUsed = append(bEndpointUsed, false);
+        }
+    }
 
     var pairs = [];
-
-    for (var ac in aChains)
+    for (var av in aVerts)
     {
-        const aCenter = chainCenter(context, ac);
-        var bestDist = undefined;
-        var bestJ = -1;
+        var bestPt = undefined;
 
-        for (var j = 0; j < size(bChains); j += 1)
+        if (av.degree == 1 && size(bEndpoints) > 0)
         {
-            const d = norm(aCenter - bCenters[j]);
-            if (bestDist == undefined || d < bestDist)
+            var bestDist = undefined;
+            var bestJ    = -1;
+            for (var j = 0; j < size(bEndpoints); j += 1)
             {
-                bestDist = d;
-                bestJ = j;
+                if (bEndpointUsed[j]) { continue; }
+                var d = norm(av.pos - bEndpoints[j]);
+                if (bestDist == undefined || d < bestDist) { bestDist = d; bestJ = j; }
+            }
+            if (bestJ >= 0)
+            {
+                bEndpointUsed[bestJ] = true;
+                bestPt = bEndpoints[bestJ];
             }
         }
 
-        if (bestJ >= 0)
+        if (bestPt == undefined)
         {
-            pairs = append(pairs, { "a": ac, "b": bChains[bestJ] });
+            var bestDist = undefined;
+            for (var bp in bAll)
+            {
+                var d = norm(av.pos - bp);
+                if (bestDist == undefined || d < bestDist) { bestDist = d; bestPt = bp; }
+            }
         }
-    }
 
-    return pairs; // array of { "a": Query, "b": Query }
+        if (bestPt != undefined) { pairs = append(pairs, { "a" : av.pos, "b" : bestPt }); }
+    }
+    return pairs;
 }
 
-// ─── Top-level entry point ───────────────────────────────────────────────────
-function buildLoftPairs(context is Context, aTrackers is array, bTrackers is array) returns array
-{
-    var aEdges = [];
-    for (var q in aTrackers)
-    {
-        for (var e in evaluateQuery(context, q))
-        {
-            aEdges = append(aEdges, e);
-        }
-    }
-    
-    var bEdges = [];
-    
-    for (var q in bTrackers)
-    {
-        for (var e in evaluateQuery(context, q))
-        {
-            bEdges = append(bEdges, e);
-        }
-    }
-    const aChains = buildChains(context, aEdges);
-    const bChains = buildChains(context, bEdges);
 
-    return pairChains(context, aChains, bChains);
+// Creates a degree-1 BSpline wire (straight line) between two points.
+function createGuideLine(context is Context, id is Id, ptA is Vector, ptB is Vector)
+{
+    opCreateBSplineCurve(context, id, {
+        "bSplineCurve" : bSplineCurve({
+            "degree"        : 1,
+            "isPeriodic"    : false,
+            "isRational"    : false,
+            "controlPoints" : [ptA, ptB],
+            "knots"         : [0, 0, 1, 1]
+        })
+    });
 }
 
 /**
