@@ -34,7 +34,7 @@ export const RegionNumBounds       = { (unitless)  : [0,    0, 100]} as IntegerB
  * QUERY:     extentQueries must resolve to exactly 2 points.
  */
 export function processSwRoutRegions(context is Context, id is Id,
-        definition is map, refWirePath is Path) returns array
+        definition is map, refWirePath is Path, tOrigin is number) returns array
 {
     var totalLength = 0 * meter;
     for (var edge in refWirePath.edges)
@@ -53,8 +53,8 @@ export function processSwRoutRegions(context is Context, id is Id,
 
         if (region.extentType == SWRoutExtentType.ALONG_REF)
         {
-            tStart = region.startX / totalLength;
-            tEnd   = region.endX   / totalLength;
+            tStart = tOrigin + region.startX / totalLength;
+            tEnd   = tOrigin + region.endX   / totalLength;
         }
         else // QUERY
         {

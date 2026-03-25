@@ -53,14 +53,19 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                 totalLength += evLength(context, { "entities" : edge });
             }
 
+            var tOrigin = evDistancePath(context, {
+                    "side0" : refWirePath,
+                    "side1" : definition.refWireOrigin
+            }).sides[0].pathParam;
+
             for (var i = 0; i < size(definition.swRoutRegions); i += 1)
             {
                 var reg = definition.swRoutRegions[i];
                 if (reg.extentType == SWRoutExtentType.ALONG_REF &&
                         reg.startX != undefined && reg.endX != undefined)
                 {
-                    reg.tStart       = min(max(reg.startX / totalLength, 0), 1);
-                    reg.tEnd         = min(max(reg.endX   / totalLength, 0), 1);
+                    reg.tStart       = min(max(tOrigin + reg.startX / totalLength, 0), 1);
+                    reg.tEnd         = min(max(tOrigin + reg.endX   / totalLength, 0), 1);
                     reg.regionLength = (reg.tEnd - reg.tStart) * totalLength;
                     sortable = append(sortable, reg);
                 }
@@ -347,8 +352,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 qOwnedByBody(definition.refWire, EntityType.EDGE),
                 { "referenceGeometry" : definition.refWireOrigin }).path;
 
+        // Compute fractional position of refWireOrigin along the path so that
+        // startX/endX (signed arc-length offsets from the origin) map correctly.
+        var tOrigin = evDistancePath(context, {
+                "side0" : refWirePath,
+                "side1" : definition.refWireOrigin
+        }).sides[0].pathParam;
+
         // Process and sort regions
-        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath);
+        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, tOrigin);
         validateSwRoutRegionsNoOverlap(sortedRegions);
         var nRegions = size(sortedRegions);
 
