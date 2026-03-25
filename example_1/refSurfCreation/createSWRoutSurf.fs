@@ -1483,59 +1483,7 @@ function rebuildWire(context is Context, id is Id, wireBody is Query,
         return [qCreatedBy(id + "rebuiltWire0", EntityType.BODY)];
     }
 
-    // Check whether the chain crosses y=0
-    var hasPos = false;
-    var hasNeg = false;
-    for (var pt in allPts)
-    {
-        if (pt[1] > 0 * meter) { hasPos = true; }
-        if (pt[1] < 0 * meter) { hasNeg = true; }
-    }
-
-    if (hasPos && hasNeg)
-    {
-        var ptsPos = longestSegOnSide(allPts, true,  MIN_PTS);
-        var ptsNeg = longestSegOnSide(allPts, false, MIN_PTS);
-
-        if (debug)
-        {
-            println("  rebuildWire [" ~ debugLabel ~ "]: single-chain y=0 split");
-            println("    +Y longest seg: " ~ toString(size(ptsPos)));
-            println("    -Y longest seg: " ~ toString(size(ptsNeg)));
-        }
-
-        var result = [];
-
-        if (size(ptsPos) >= MIN_PTS)
-        {
-            var crvPos = approximateSpline(context, {
-                    "targets"          : [approximationTarget({ "positions" : ptsPos })],
-                    "degree"           : 3,
-                    "tolerance"        : 1e-5 * meter,
-                    "isPeriodic"       : false,
-                    "maxControlPoints" : 200
-            })[0];
-            opCreateBSplineCurve(context, id + "rebuiltWire0", { "bSplineCurve" : crvPos });
-            result = append(result, qCreatedBy(id + "rebuiltWire0", EntityType.BODY));
-        }
-
-        if (size(ptsNeg) >= MIN_PTS)
-        {
-            var crvNeg = approximateSpline(context, {
-                    "targets"          : [approximationTarget({ "positions" : ptsNeg })],
-                    "degree"           : 3,
-                    "tolerance"        : 1e-5 * meter,
-                    "isPeriodic"       : false,
-                    "maxControlPoints" : 200
-            })[0];
-            opCreateBSplineCurve(context, id + "rebuiltWire1", { "bSplineCurve" : crvNeg });
-            result = append(result, qCreatedBy(id + "rebuiltWire1", EntityType.BODY));
-        }
-
-        return result;
-    }
-
-    // Single-sided chain -- return as one wire
+    // Single chain (open, any orientation) -- return as one wire.
     var curve = approximateSpline(context, {
             "targets"          : [approximationTarget({ "positions" : allPts })],
             "degree"           : 3,
