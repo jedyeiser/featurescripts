@@ -629,7 +629,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // regionFinalSurfs entries, which become stale once consumed by a union.
         var regionMergedBody = {};
         
-        var blendedBodies = [];
+        var blendedBodies = {};
         
         
         for (var ix = 0; ix < size(definition.swRoutIntersections); ix += 1)
@@ -706,8 +706,22 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     addDebugEntities(context, qUnion(aChain.edgeArray), DebugColor.MAGENTA);
                     addDebugEntities(context, qUnion(bChain.edgeArray), DebugColor.CYAN);
                     
-                    var adjStart = qAdjacent(aChain.edgeArray[0], AdjacencyType.EDGE, EntityType.FACE);
-                    var adjEnd   = qAdjacent(bChain.edgeArray[0], AdjacencyType.EDGE, EntityType.FACE);
+                    var aTangentEdge = aChain.edgeArray[0];
+                    var aMaxLen = evLength(context, { "entities" : aTangentEdge });
+                    for (var i = 1; i < size(aChain.edgeArray); i += 1)
+                    {
+                        var l = evLength(context, { "entities" : aChain.edgeArray[i] });
+                        if (l > aMaxLen) { aMaxLen = l; aTangentEdge = aChain.edgeArray[i]; }
+                    }
+                    var bTangentEdge = bChain.edgeArray[0];
+                    var bMaxLen = evLength(context, { "entities" : bTangentEdge });
+                    for (var i = 1; i < size(bChain.edgeArray); i += 1)
+                    {
+                        var l = evLength(context, { "entities" : bChain.edgeArray[i] });
+                        if (l > bMaxLen) { bMaxLen = l; bTangentEdge = bChain.edgeArray[i]; }
+                    }
+                    var adjStart = qAdjacent(aTangentEdge, AdjacencyType.EDGE, EntityType.FACE);
+                    var adjEnd   = qAdjacent(bTangentEdge, AdjacencyType.EDGE, EntityType.FACE);
 
                     loft(context, id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), {
                         "bodyType" : ExtendedToolBodyType.SURFACE,
@@ -724,7 +738,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         "showIsocurves" : false
                         });
                         
-                        blendedBodies = append(blendedBodies, qCreatedBy(id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), EntityType.BODY));
+                        var ixKey = toString(ix);
+                        var prevBB = (blendedBodies[ixKey] != undefined) ? blendedBodies[ixKey] : [];
+                        blendedBodies[ixKey] = append(prevBB, qCreatedBy(id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), EntityType.BODY));
                 }
                 else //need to establish connections. 
                 {
@@ -847,7 +863,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     });
                     
                     
-                    blendedBodies = append(blendedBodies, qCreatedBy(id + ("intr" ~ ix ~ "ch" ~ ch ~ "fill"), EntityType.BODY));
+                    var ixKey = toString(ix);
+                    var prevBB = (blendedBodies[ixKey] != undefined) ? blendedBodies[ixKey] : [];
+                    blendedBodies[ixKey] = append(prevBB, qCreatedBy(id + ("intr" ~ ix ~ "ch" ~ ch ~ "fill"), EntityType.BODY));
                         
                         
 
@@ -856,7 +874,40 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         }
 
-        // Step 9.6: region surfaces and blended bridges are output as separate bodies.
+        // =====================================================================
+        // Step 9.6: union each blended bridge with the two region surfaces it connects
+        // =====================================================================
+        for (var ix = 0; ix < size(definition.swRoutIntersections); ix += 1)
+        {
+            var intr  = definition.swRoutIntersections[ix];
+            if (!intr.join) { continue; }
+            var rAIdx = intr.intersectionNum;
+            var rBIdx = intr.intersectionNum + 1;
+            if (rAIdx < 0 || rBIdx >= nRegions) { continue; }
+
+            var ixKey       = toString(ix);
+            var bridgeBodies = blendedBodies[ixKey];
+            if (bridgeBodies == undefined || size(bridgeBodies) == 0) { continue; }
+
+            var bodiesA = getBodiesForRegion(rAIdx, regionMergedBody, regionFinalSurfs, sideNames);
+            var bodiesB = getBodiesForRegion(rBIdx, regionMergedBody, regionFinalSurfs, sideNames);
+
+            var toUnion = bridgeBodies;
+            for (var b in bodiesA) { toUnion = append(toUnion, b); }
+            for (var b in bodiesB) { toUnion = append(toUnion, b); }
+
+            if (size(toUnion) > 1)
+            {
+                var unionId = id + ("joinUnion" ~ ix);
+                opBoolean(context, unionId, {
+                        "tools"         : qUnion(toUnion),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                var mergedQ = qCreatedBy(unionId, EntityType.BODY);
+                regionMergedBody[toString(rAIdx)] = mergedQ;
+                regionMergedBody[toString(rBIdx)] = mergedQ;
+            }
+        }
 
         if (stepThrough && step == 9) { return; }
 
