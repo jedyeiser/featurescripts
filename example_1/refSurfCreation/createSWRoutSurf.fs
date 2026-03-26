@@ -628,9 +628,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
-        if (!definition.routFacesOnly)
-        {
-
         // =====================================================================
         // Step 9.5: join / blend adjacent region surfaces at their shared boundary
         //   For each intersection entry, either merge the surfaces (G0) or trim
@@ -923,8 +920,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 setBodyName(context, bodiesA[0], "swRoutSurface");
             }
         }
-
-        } // end !routFacesOnly
 
         if (stepThrough && step == 9) { return; }
 
