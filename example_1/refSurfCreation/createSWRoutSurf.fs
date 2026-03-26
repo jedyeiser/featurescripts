@@ -1000,9 +1000,10 @@ function chainEdges(context is Context, queryArray is array) returns array
     while(size(allEdges) > 0)
     {
         var seedEdge = allEdges[0];
-        
+        allEdges = filter(allEdges, function(x) {return !areQueriesEquivalent(context, x, seedEdge);});
+
         var thisChain = [seedEdge];
-        
+
         var adjacentEdges = evaluateQuery(context, qIntersection([qUnion(allEdges), qAdjacent(qUnion(thisChain), AdjacencyType.VERTEX, EntityType.EDGE)]));
         
         var addedEdges = !isQueryEmpty(context, qUnion(adjacentEdges));
