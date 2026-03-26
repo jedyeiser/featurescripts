@@ -703,11 +703,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 
                 if (aChain.numEdges == bChain.numEdges)
                 {
-                    opLoft(context, id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), {
-                            "profileSubqueries" : [ qUnion(aChain.edgeArray), qUnion(bChain.edgeArray) ],
-                            "bodyType" : ToolBodyType.SURFACE
-                    });
-                    
                     addDebugEntities(context, qUnion(aChain.edgeArray), DebugColor.MAGENTA);
                     addDebugEntities(context, qUnion(bChain.edgeArray), DebugColor.CYAN);
                     
@@ -884,7 +879,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
-        if (size(allSurfBodies) > 1)
+        if (size(blendedBodies) > 0 && size(allSurfBodies) > 1)
         {
             opBoolean(context, id + "finalSurfUnion", {
                     "tools"         : qUnion(allSurfBodies),
