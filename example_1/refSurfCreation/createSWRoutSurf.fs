@@ -570,7 +570,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         {
             var region     = sortedRegions[r];
             var rKey       = toString(r);
-            var lowerWires = (region.swRoutStepin > 0 * millimeter) ? washedStepInWires[rKey] : washedStartWires[rKey];
+            var lowerWires = definition.routFacesOnly
+                    ? washedInitialWires[rKey]
+                    : ((region.swRoutStepin > 0 * millimeter) ? washedStepInWires[rKey] : washedStartWires[rKey]);
             regionSurfBodies = loftWireStep(context, id,lowerWires, washedStopWires[rKey], "lowerStopLoft", r, rKey, region.name, sideNames, "Lower to Stop [", regionSurfBodies);
         }
 
