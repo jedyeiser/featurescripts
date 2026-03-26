@@ -638,6 +638,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var rAIdx = intr.intersectionNum;
             var rBIdx = intr.intersectionNum + 1;
             if (rAIdx < 0 || rBIdx >= nRegions) { continue; }
+            if (!intr.join) { continue; }
 
             var regA = sortedRegions[rAIdx];
 
