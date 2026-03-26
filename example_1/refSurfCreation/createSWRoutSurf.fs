@@ -992,16 +992,14 @@ function pairVerticesByDegree(aVerts is array, bVerts is array) returns array
 }
 
 
-// Creates a degree-1 BSpline wire (straight line) between two points.
+// Creates a straight-line guide wire between two points.
 function createGuideLine(context is Context, id is Id, ptA is Vector, ptB is Vector)
 {
     opCreateBSplineCurve(context, id, {
         "bSplineCurve" : bSplineCurve({
             "degree"        : 1,
             "isPeriodic"    : false,
-            "isRational"    : false,
-            "controlPoints" : [ptA, ptB],
-            "knots"         : [0, 0, 1, 1]
+            "controlPoints" : [ptA, ptB]
         })
     });
 }
