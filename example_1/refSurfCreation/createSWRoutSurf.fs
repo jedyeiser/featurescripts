@@ -854,38 +854,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         }
 
-        // =====================================================================
-        // Step 9.6: union all region surfaces with blended bridge bodies
-        // =====================================================================
-        var allSurfBodies = [];
-        for (var r = 0; r < nRegions; r += 1)
-        {
-            var rKey = toString(r);
-            for (var s = 0; s < size(sideNames); s += 1)
-            {
-                var rsKey = rKey ~ "_" ~ toString(s);
-                var b = regionFinalSurfs[rsKey];
-                if (b != undefined)
-                {
-                    allSurfBodies = append(allSurfBodies, b);
-                }
-            }
-        }
-        for (var bb in blendedBodies)
-        {
-            if (!isQueryEmpty(context, bb))
-            {
-                allSurfBodies = append(allSurfBodies, bb);
-            }
-        }
-
-        if (size(blendedBodies) > 0 && size(allSurfBodies) > 1)
-        {
-            opBoolean(context, id + "finalSurfUnion", {
-                    "tools"         : qUnion(allSurfBodies),
-                    "operationType" : BooleanOperationType.UNION
-            });
-        }
+        // Step 9.6: region surfaces and blended bridges are output as separate bodies.
 
         if (stepThrough && step == 9) { return; }
 
