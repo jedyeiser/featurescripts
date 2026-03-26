@@ -892,20 +892,21 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var bodiesA = getBodiesForRegion(rAIdx, regionMergedBody, regionFinalSurfs, sideNames);
             var bodiesB = getBodiesForRegion(rBIdx, regionMergedBody, regionFinalSurfs, sideNames);
 
-            var toUnion = bridgeBodies;
+            // bodiesA first — the first tool's query persists through the union,
+            // so subsequent intersections can resolve regionMergedBody correctly.
+            var toUnion = [];
             for (var b in bodiesA) { toUnion = append(toUnion, b); }
             for (var b in bodiesB) { toUnion = append(toUnion, b); }
+            for (var b in bridgeBodies) { toUnion = append(toUnion, b); }
 
             if (size(toUnion) > 1)
             {
-                var unionId = id + ("joinUnion" ~ ix);
-                opBoolean(context, unionId, {
+                opBoolean(context, id + ("joinUnion" ~ ix), {
                         "tools"         : qUnion(toUnion),
                         "operationType" : BooleanOperationType.UNION
                 });
-                var mergedQ = qCreatedBy(unionId, EntityType.BODY);
-                regionMergedBody[toString(rAIdx)] = mergedQ;
-                regionMergedBody[toString(rBIdx)] = mergedQ;
+                regionMergedBody[toString(rAIdx)] = bodiesA[0];
+                regionMergedBody[toString(rBIdx)] = bodiesA[0];
             }
         }
 
