@@ -706,20 +706,22 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     addDebugEntities(context, qUnion(aChain.edgeArray), DebugColor.MAGENTA);
                     addDebugEntities(context, qUnion(bChain.edgeArray), DebugColor.CYAN);
                     
+                    var adjStart = qAdjacent(aChain.edgeArray[0], AdjacencyType.EDGE, EntityType.FACE);
+                    var adjEnd   = qAdjacent(bChain.edgeArray[0], AdjacencyType.EDGE, EntityType.FACE);
+
                     loft(context, id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), {
                         "bodyType" : ExtendedToolBodyType.SURFACE,
                         "surfaceOperationType" : NewSurfaceOperationType.NEW,
                         "wireProfilesArray" : [{'wireProfileEntities' : qUnion(aChain.edgeArray)}, {'wireProfileEntities' : qUnion(bChain.edgeArray)}],
                         "startCondition" : (intr.startContinuity == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
-                        "endCondition" : (intr.endContinuity == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
-                        "startMagnitude" : 1, 
-                        "endMagnitude" : 1, 
-                        "adjacentFacesStart" : qAdjacent(qUnion(aChain.edgeArray), AdjacencyType.EDGE, EntityType.FACE),
-                        "adjacentFacesEnd" : qAdjacent(qUnion(bChain.edgeArray), AdjacencyType.EDGE, EntityType.FACE), 
+                        "endCondition"   : (intr.endContinuity   == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                        "startMagnitude" : 1,
+                        "endMagnitude"   : 1,
+                        "adjacentFacesStart" : adjStart,
+                        "adjacentFacesEnd"   : adjEnd,
                         "trimProfiles" : false,
                         "matchConnections" : false,
-                        "showIsocurves" : false,
-                        
+                        "showIsocurves" : false
                         });
                         
                         blendedBodies = append(blendedBodies, qCreatedBy(id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), EntityType.BODY));
