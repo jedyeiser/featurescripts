@@ -629,6 +629,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         // regionFinalSurfs entries, which become stale once consumed by a union.
         var regionMergedBody = {};
         
+        var blendedBodies = [];
+        
+        
         for (var ix = 0; ix < size(definition.swRoutIntersections); ix += 1)
         {
             var intr  = definition.swRoutIntersections[ix];
@@ -683,171 +686,209 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     "maintainCurvature"  : true
                 });
             }
-
-            // Resolve trackers to post-extend edges, one array per source body.
-            var aEdgesPerBody = [];
-            for (var q in aTrackers)
+            
+            var aChains = chainEdges(context, aTrackers);
+            var bChains = chainEdges(context, bTrackers);
+            
+            //addDebugEntities(context, qUnion(aTrackers), DebugColor.MAGENTA);
+            //addDebugEntities(context, qUnion(bTrackers), DebugColor.CYAN);
+            
+            for (var ch = 0; ch < size(aChains); ch += 1)
             {
-                aEdgesPerBody = append(aEdgesPerBody, evaluateQuery(context, q));
-            }
-            var bEdgesPerBody = [];
-            for (var q in bTrackers)
-            {
-                bEdgesPerBody = append(bEdgesPerBody, evaluateQuery(context, q));
-            }
-
-            var bridgeSurfs = [];
-            var guideBodies = [];
-
-            for (var ai = 0; ai < size(aEdgesPerBody); ai += 1)
-            {
-                var aEdges = aEdgesPerBody[ai];
-                if (size(aEdges) == 0) { continue; }
-
-                // Match this A body to the nearest B body by mean-Y of cap edge midpoints.
-                var meanYA = 0 * meter;
-                for (var e in aEdges)
+                var aChain = aChains[ch];
+                
+                var tempBChains = mapArray(bChains, function(x) {return mergeMaps(x, {'aChainDist' : norm(x.midPoint - aChain.midPoint)});});
+                var bChain = sort(tempBChains, function(a, b) {return a.aChainDist - b.aChainDist;})[0];
+                
+                if (aChain.numEdges == bChain.numEdges)
                 {
-                    meanYA += evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin[1];
-                }
-                meanYA = meanYA / size(aEdges);
-
-                var bestBi  = -1;
-                var bestDif = undefined;
-                for (var bi = 0; bi < size(bEdgesPerBody); bi += 1)
-                {
-                    var bCand = bEdgesPerBody[bi];
-                    if (size(bCand) == 0) { continue; }
-                    var meanYB = 0 * meter;
-                    for (var e in bCand)
-                    {
-                        meanYB += evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin[1];
-                    }
-                    meanYB = meanYB / size(bCand);
-                    var dif = abs(meanYA - meanYB);
-                    if (bestDif == undefined || dif < bestDif) { bestDif = dif; bestBi = bi; }
-                }
-                if (bestBi < 0) { continue; }
-                var bEdges = bEdgesPerBody[bestBi];
-
-                // For each A edge, find the nearest B edge by midpoint and create
-                // one boundary surface per pair.  A single edge is always a valid
-                // connected chain, eliminating BSURF_OPEN_CHAIN entirely.
-                for (var aei = 0; aei < size(aEdges); aei += 1)
-                {
-                    var ae    = aEdges[aei];
-                    var aeMid = evEdgeTangentLine(context, { "edge" : ae, "parameter" : 0.5 }).origin;
-
-                    // Find the nearest B edge by midpoint distance.
-                    var bestBe    = bEdges[0];
-                    var bestBeDist = undefined;
-                    for (var be in bEdges)
-                    {
-                        var beMid = evEdgeTangentLine(context, { "edge" : be, "parameter" : 0.5 }).origin;
-                        var d     = norm(aeMid - beMid);
-                        if (bestBeDist == undefined || d < bestBeDist)
-                        {
-                            bestBeDist = d;
-                            bestBe     = be;
-                        }
-                    }
-
-                    // Create guide lines between paired vertices.
-                    var aVerts = collectVertexDegrees(context, [ae]);
-                    var bVerts = collectVertexDegrees(context, [bestBe]);
-                    var vPairs = pairVerticesByDegree(aVerts, bVerts);
-
-                    var guideQueries = [];
-                    for (var vpi = 0; vpi < size(vPairs); vpi += 1)
-                    {
-                        var gId = id + ("guide" ~ ix ~ "_" ~ ai ~ "_" ~ aei ~ "_" ~ vpi);
-                        createGuideLine(context, gId, vPairs[vpi].a, vPairs[vpi].b);
-                        var gBody = qCreatedBy(gId, EntityType.BODY);
-                        guideQueries = append(guideQueries, qOwnedByBody(gBody, EntityType.EDGE));
-                        guideBodies  = append(guideBodies, gBody);
-                    }
-
-                    // Boundary surface: single A edge and single B edge as U-profiles.
-                    var bsurfDef = {
-                        "uProfileSubqueries" : [ae, bestBe]
-                    };
-                    if (size(guideQueries) > 0) { bsurfDef.vProfileSubqueries = guideQueries; }
-
-                    var uDeriv = [];
-                    if (intr.startContinuity == SWRoutContinuityType.G1)
-                    {
-                        uDeriv = append(uDeriv, {
-                            "profileIndex"  : 0,
-                            "magnitude"     : 1.0,
-                            "adjacentFaces" : qAdjacent(ae, AdjacencyType.EDGE, EntityType.FACE)
-                        });
-                    }
-                    if (intr.endContinuity == SWRoutContinuityType.G1)
-                    {
-                        uDeriv = append(uDeriv, {
-                            "profileIndex"  : 1,
-                            "magnitude"     : 1.0,
-                            "adjacentFaces" : qAdjacent(bestBe, AdjacencyType.EDGE, EntityType.FACE)
-                        });
-                    }
-                    if (size(uDeriv) > 0) { bsurfDef.uDerivativeInfo = uDeriv; }
-
-                    var bsurfId = id + ("bsurf" ~ ix ~ "_" ~ ai ~ "_" ~ aei);
-                    try
-                    {
-                        opBoundarySurface(context, bsurfId, bsurfDef);
-                        var bsurfBody = qCreatedBy(bsurfId, EntityType.BODY);
-                        if (!isQueryEmpty(context, bsurfBody))
-                        {
-                            bridgeSurfs = append(bridgeSurfs, bsurfBody);
-                        }
-                    }
-                    catch {}
-                }
-            }
-
-            // Delete guide wires — they are intermediate geometry only.
-            if (size(guideBodies) > 0)
-            {
-                try silent(opDeleteBodies(context, id + ("delGuides" ~ ix), {
-                        "entities" : qUnion(guideBodies)
-                }));
-            }
-
-            // Union the trimmed-back A bodies, trimmed-back B bodies, and bridge surfaces.
-            var toUnion = bridgeSurfs;
-            for (var ba in bodiesA) { toUnion = append(toUnion, ba); }
-            for (var bb in bodiesB) { toUnion = append(toUnion, bb); }
-            if (size(toUnion) > 1)
-            {
-                var unionId = id + ("blendUnion" ~ ix);
-                try
-                {
-                    opBoolean(context, unionId, {
-                        "tools"         : qUnion(toUnion),
-                        "operationType" : BooleanOperationType.UNION
+                    opLoft(context, id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), {
+                            "profileSubqueries" : [ qUnion(aChain.edgeArray), qUnion(bChain.edgeArray) ],
+                            "bodyType" : ToolBodyType.SURFACE
                     });
+                    
+                    addDebugEntities(context, qUnion(aChain.edgeArray), DebugColor.MAGENTA);
+                    addDebugEntities(context, qUnion(bChain.edgeArray), DebugColor.CYAN);
+                    
+                    loft(context, id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), {
+                        "bodyType" : ExtendedToolBodyType.SURFACE,
+                        "surfaceOperationType" : NewSurfaceOperationType.NEW,
+                        "wireProfilesArray" : [{'wireProfileEntities' : qUnion(aChain.edgeArray)}, {'wireProfileEntities' : qUnion(bChain.edgeArray)}],
+                        "startCondition" : (intr.startContinuity == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                        "endCondition" : (intr.endContinuity == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                        "startMagnitude" : 1, 
+                        "endMagnitude" : 1, 
+                        "adjacentFacesStart" : qAdjacent(qUnion(aChain.edgeArray), AdjacencyType.EDGE, EntityType.FACE),
+                        "adjacentFacesEnd" : qAdjacent(qUnion(bChain.edgeArray), AdjacencyType.EDGE, EntityType.FACE), 
+                        "trimProfiles" : false,
+                        "matchConnections" : false,
+                        "showIsocurves" : false,
+                        
+                        });
+                        
+                        blendedBodies = append(blendedBodies, qCreatedBy(id + ("equalEdgeloft1" ~ ix ~ "chain" ~ ch), EntityType.BODY));
                 }
-                catch {}
-                var blendResult = qCreatedBy(unionId, EntityType.BODY);
-                if (isQueryEmpty(context, blendResult))
+                else //need to establish connections. 
                 {
-                    for (var b in toUnion)
+                    //addDebugEntities(context, qUnion(aChain.edgeArray), DebugColor.MAGENTA);
+                    //addDebugEntities(context, qUnion(bChain.edgeArray), DebugColor.CYAN);
+                    
+                    var aGreater = (aChain.numEdges > bChain.numEdges);
+                    var greaterChain = (aChain.numEdges > bChain.numEdges) ? aChain : bChain;
+                    var lesserChain = (aChain.numEdges > bChain.numEdges) ? bChain : aChain;
+                    
+                    var orphanEdge = qNothing();
+                    
+                    for (var gc = 0; gc < size(greaterChain.edgeArray); gc += 1)
                     {
-                        if (!isQueryEmpty(context, b)) { blendResult = b; break; }
+                        var edgeQ = greaterChain.edgeArray[gc];
+                        var adjQ = evaluateQuery(context, qIntersection([qUnion(greaterChain.edgeArray), qAdjacent(edgeQ, AdjacencyType.VERTEX, EntityType.EDGE)]));
+                        if (size(adjQ) == 2)
+                        {
+                            orphanEdge = edgeQ;
+                            break;
+                        }
                     }
-                }
-                if (!isQueryEmpty(context, blendResult))
-                {
-                    regionMergedBody[toString(rAIdx)] = blendResult;
-                    regionMergedBody[toString(rBIdx)] = blendResult;
+                    
+                    var orphanPoint = qIntersection([qAdjacent(lesserChain.edgeArray[0], AdjacencyType.VERTEX, EntityType.VERTEX), qAdjacent(lesserChain.edgeArray[1], AdjacencyType.VERTEX, EntityType.VERTEX)]);
+                    var orphanEdgeStart = qEdgeVertex(orphanEdge, true);
+                    var orphanEdgeEnd = qEdgeVertex(orphanEdge, false);
+                    
+                    
+                    var updatedGreater = qSubtraction(qUnion(greaterChain.edgeArray), orphanEdge);
+                    
+                    var iterEdges = evaluateQuery(context, updatedGreater);
+                    var createdEdges = [];
+                    var createdBodies = [];
+                    
+                    for (var ie = 0; ie < size(iterEdges); ie += 1)
+                    {
+                        var iterEdge = iterEdges[ie];
+                        var midPoint = evEdgeTangentLine(context, {
+                                "edge" : iterEdge,
+                                "parameter" : .5
+                        }).origin;
+                        var loftEdge = qClosestTo(qUnion(lesserChain.edgeArray), midPoint);
+                        
+                        loft(context, id + ("unequalEdgeloft1" ~ ix ~ "chain" ~ ch ~ "iterEdge" ~ ie), {
+                        "bodyType" : ExtendedToolBodyType.SURFACE,
+                        "surfaceOperationType" : NewSurfaceOperationType.NEW,
+                        "wireProfilesArray" : [{'wireProfileEntities' : (aGreater) ? qUnion([iterEdge]) : qUnion([loftEdge])}, {'wireProfileEntities' : (aGreater) ? qUnion([loftEdge]) : qUnion([iterEdge])}],
+                        "startCondition" : (intr.startContinuity == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                        "endCondition" : (intr.endContinuity == SWRoutContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                        "startMagnitude" : 1, 
+                        "endMagnitude" : 1, 
+                        "adjacentFacesStart" : qAdjacent((aGreater) ? qUnion([iterEdge]) : qUnion([loftEdge]), AdjacencyType.EDGE, EntityType.FACE),
+                        "adjacentFacesEnd" : qAdjacent((aGreater) ? qUnion([loftEdge]) : qUnion([iterEdge]), AdjacencyType.EDGE, EntityType.FACE), 
+                        "trimProfiles" : false,
+                        "matchConnections" : false,
+                        "showIsocurves" : false,
+                        
+                        });
+                        
+                        createdEdges = append(createdEdges, qUnion([qCreatedBy(id + ("unequalEdgeloft1" ~ ix ~ "chain" ~ ch ~ "iterEdge" ~ ie), EntityType.EDGE)]));
+                        createdBodies = append(createdBodies, qUnion([qCreatedBy(id + ("unequalEdgeloft1" ~ ix ~ "chain" ~ ch ~ "iterEdge" ~ ie), EntityType.BODY)]));
+                        
+                    }
+                    
+                    var edgesQ = qUnion(createdEdges);
+                    
+                    var orphanPointVector = evVertexPoint(context, {
+                            "vertex" : orphanPoint
+                    });
+                    
+                    var orphanEdgeStartPointVector = evVertexPoint(context, {
+                            "vertex" : orphanEdgeStart
+                    });
+                    
+                    var orphanEdgeEndPointVector = evVertexPoint(context, {
+                            "vertex" : orphanEdgeEnd
+                    });
+                    
+                    var allEdges = evaluateQuery(context, edgesQ);
+                    var keepEdges = [];
+                    
+                    for (var ae = 0; ae < size(allEdges); ae += 1)
+                    {
+                        var startPoint = evVertexPoint(context, {
+                                "vertex" : qEdgeVertex(allEdges[ae], true)
+                        });
+                        
+                        var endPoint = evVertexPoint(context, {
+                                "vertex" : qEdgeVertex(allEdges[ae], false)
+                        });
+                        
+                        if (abs(norm(startPoint - orphanPointVector)) < 0.1 * millimeter || abs(norm(endPoint - orphanPointVector)) < 0.1 * millimeter) // one endpoint touches our orphan point
+                        {
+                            if (abs(norm(startPoint - orphanEdgeStartPointVector)) < 0.1 * millimeter || abs(norm(endPoint - orphanEdgeStartPointVector)) < 0.1 * millimeter) // start or endpoint touches orphan edge startpoint
+                            {
+                                keepEdges = append(keepEdges, allEdges[ae]);
+                            }
+                            else if (abs(norm(startPoint - orphanEdgeEndPointVector)) < 0.1 * millimeter || abs(norm(endPoint - orphanEdgeEndPointVector)) < 0.1 * millimeter) //start or endpoint touches orphan edge endpoint
+                            {
+                                keepEdges = append(keepEdges, allEdges[ae]);
+                            }
+                        }
+                    }
+                    
+                    
+                    var fillEdges = append(keepEdges, orphanEdge);
+                
+                    opFillSurface(context, id + ("intr" ~ ix ~ "ch" ~ ch ~ "fill"), {
+                            "edgesG0" : qUnion(fillEdges),
+                            "edgesG1" : qNothing(),
+                            "edgesG2" : qNothing(),
+                            
+                    });
+                    
+                    var combineBodies = qUnion([qCreatedBy(id + ("intr" ~ ix ~ "ch" ~ ch ~ "fill"), EntityType.BODY), qUnion(createdBodies)]);
+                    
+                    opBoolean(context, id + ("intr" ~ ix ~ "ch" ~ ch ~ "boolean"), {
+                            "tools" : combineBodies,
+                            "operationType" : BooleanOperationType.UNION
+                    });
+                    
+                    
+                    blendedBodies = append(blendedBodies, qCreatedBy(id + ("intr" ~ ix ~ "ch" ~ ch ~ "fill"), EntityType.BODY));
+                        
+                        
+
                 }
             }
-            else if (size(toUnion) == 1)
+
+        }
+
+        // =====================================================================
+        // Step 9.6: union all region surfaces with blended bridge bodies
+        // =====================================================================
+        var allSurfBodies = [];
+        for (var r = 0; r < nRegions; r += 1)
+        {
+            var rKey = toString(r);
+            for (var s = 0; s < size(sideNames); s += 1)
             {
-                regionMergedBody[toString(rAIdx)] = toUnion[0];
-                regionMergedBody[toString(rBIdx)] = toUnion[0];
+                var rsKey = rKey ~ "_" ~ toString(s);
+                var b = regionFinalSurfs[rsKey];
+                if (b != undefined)
+                {
+                    allSurfBodies = append(allSurfBodies, b);
+                }
             }
+        }
+        for (var bb in blendedBodies)
+        {
+            if (!isQueryEmpty(context, bb))
+            {
+                allSurfBodies = append(allSurfBodies, bb);
+            }
+        }
+
+        if (size(allSurfBodies) > 1)
+        {
+            opBoolean(context, id + "finalSurfUnion", {
+                    "tools"         : qUnion(allSurfBodies),
+                    "operationType" : BooleanOperationType.UNION
+            });
         }
 
         if (stepThrough && step == 9) { return; }
@@ -912,102 +953,69 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 // Returns array of {pos, degree} for all vertices in the edge set.
 // Degree = number of cap edges that share that vertex position.
 // Degree 1 = free endpoint; degree 2+ = interior junction (e.g. step-riser bend).
-function collectVertexDegrees(context is Context, edges is array) returns array
+
+
+function chainEdges(context is Context, queryArray is array) returns array
 {
-    var result = [];
-    for (var e in edges)
+    var allEdges = [];
+    
+    for (var i = 0; i < size(queryArray); i += 1)
     {
-        for (var t in [0, 1])
-        {
-            var pt    = evEdgeTangentLine(context, { "edge" : e, "parameter" : t }).origin;
-            var found = false;
-            for (var i = 0; i < size(result); i += 1)
-            {
-                if (norm(result[i].pos - pt) < 1e-6 * meter)
-                {
-                    result[i] = { "pos" : result[i].pos, "degree" : result[i].degree + 1 };
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
-            {
-                result = append(result, { "pos" : pt, "degree" : 1 });
-            }
-        }
+        var edgeQueries = evaluateQuery(context, queryArray[i]);
+        allEdges = concatenateArrays(allEdges, edgeQueries);
     }
-    return result;
-}
-
-
-// Pairs each A vertex to a B vertex.
-// Degree-1 A vertices (endpoints) pair greedily to nearest unused degree-1 B vertex.
-// Remaining A vertices (interior junctions) pair to nearest any B vertex.
-// Where multiple A vertices map to the same B vertex, the bridge surface collapses
-// to a point there — this is the correct behaviour for step-in geometry.
-function pairVerticesByDegree(aVerts is array, bVerts is array) returns array
-{
-    var bEndpoints    = [];
-    var bEndpointUsed = [];
-    var bAll          = [];
-    for (var v in bVerts)
+    
+    var chains = [];
+    
+    while(size(allEdges) > 0)
     {
-        bAll = append(bAll, v.pos);
-        if (v.degree == 1)
+        var seedEdge = allEdges[0];
+        
+        var thisChain = [seedEdge];
+        
+        var adjacentEdges = evaluateQuery(context, qIntersection([qUnion(allEdges), qAdjacent(qUnion(thisChain), AdjacencyType.VERTEX, EntityType.EDGE)]));
+        
+        var addedEdges = !isQueryEmpty(context, qUnion(adjacentEdges));
+        
+        while(addedEdges)
         {
-            bEndpoints    = append(bEndpoints, v.pos);
-            bEndpointUsed = append(bEndpointUsed, false);
+            thisChain = concatenateArrays(thisChain, adjacentEdges); // add edges
+            allEdges = filter(allEdges, function(x) {return !any(thisChain, function(q) {return areQueriesEquivalent(context, x, q);});}); //remove added edges from allEdges
+            
+            if (size(allEdges) > 0)
+            {
+                adjacentEdges = evaluateQuery(context, qIntersection([qUnion(allEdges), qAdjacent(qUnion(thisChain), AdjacencyType.VERTEX, EntityType.EDGE)]));
+                
+                addedEdges = !isQueryEmpty(context, qUnion(adjacentEdges));
+            }
+            else
+            {
+                addedEdges = false;
+                break;
+            }
         }
+        
+        //all edges that COULD be part of a chain with our seed edge should now be in the chain
+        
+        chains = append(chains, thisChain);
     }
-
-    var pairs = [];
-    for (var av in aVerts)
+    
+    var mappedChains = [];
+    for (var i = 0; i < size(chains); i += 1)
     {
-        var bestPt = undefined;
-
-        if (av.degree == 1 && size(bEndpoints) > 0)
-        {
-            var bestDist = undefined;
-            var bestJ    = -1;
-            for (var j = 0; j < size(bEndpoints); j += 1)
-            {
-                if (bEndpointUsed[j]) { continue; }
-                var d = norm(av.pos - bEndpoints[j]);
-                if (bestDist == undefined || d < bestDist) { bestDist = d; bestJ = j; }
-            }
-            if (bestJ >= 0)
-            {
-                bEndpointUsed[bestJ] = true;
-                bestPt = bEndpoints[bestJ];
-            }
-        }
-
-        if (bestPt == undefined)
-        {
-            var bestDist = undefined;
-            for (var bp in bAll)
-            {
-                var d = norm(av.pos - bp);
-                if (bestDist == undefined || d < bestDist) { bestDist = d; bestPt = bp; }
-            }
-        }
-
-        if (bestPt != undefined) { pairs = append(pairs, { "a" : av.pos, "b" : bestPt }); }
+        var chainMap = {'edgeArray' : evaluateQuery(context, qUnion(chains[i]))};
+        var chainBox = evBox3d(context, {
+                "topology" : qUnion(chains[i]),
+                "tight" : true
+        });
+        chainMap['boundingBox'] = chainBox;
+        chainMap['midPoint'] = (chainBox.minCorner + chainBox.maxCorner)/2;
+        chainMap['numEdges'] = size(chainMap['edgeArray']);
+        
+        mappedChains = append(mappedChains, chainMap);
     }
-    return pairs;
-}
-
-
-// Creates a straight-line guide wire between two points.
-function createGuideLine(context is Context, id is Id, ptA is Vector, ptB is Vector)
-{
-    opCreateBSplineCurve(context, id, {
-        "bSplineCurve" : bSplineCurve({
-            "degree"        : 1,
-            "isPeriodic"    : false,
-            "controlPoints" : [ptA, ptB]
-        })
-    });
+    
+    return mappedChains;
 }
 
 /**
