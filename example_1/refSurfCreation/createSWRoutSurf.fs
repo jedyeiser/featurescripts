@@ -119,6 +119,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         annotation { "Name" : "SW rout height" }
         isLength(definition.swRoutHeight, SWRoutHeightBounds);
 
+        annotation { "Name" : "Rout faces only", "Default" : false,
+                     "Description" : "Return only the rout face surfaces (lower/step-in wire to stop wire). Skips the full wall loft." }
+        definition.routFacesOnly is boolean;
+
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -521,33 +525,39 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         if (stepThrough && step <= 5) { return; }
 
         // =====================================================================
-        // Step 6: per region -- loft initial wire -> start wire
+        // Step 6: per region -- loft initial wire -> start wire (full mode only)
         // =====================================================================
-        for (var r = 0; r < nRegions; r += 1)
+        if (!definition.routFacesOnly)
         {
-            var region = sortedRegions[r];
-            var rKey   = toString(r);
-            regionSurfBodies = loftWireStep(context, id,
-                    washedInitialWires[rKey], washedStartWires[rKey],
-                    "initStartLoft", r, rKey, region.name, sideNames,
-                    "Initial to Start [", regionSurfBodies);
+            for (var r = 0; r < nRegions; r += 1)
+            {
+                var region = sortedRegions[r];
+                var rKey   = toString(r);
+                regionSurfBodies = loftWireStep(context, id,
+                        washedInitialWires[rKey], washedStartWires[rKey],
+                        "initStartLoft", r, rKey, region.name, sideNames,
+                        "Initial to Start [", regionSurfBodies);
+            }
         }
 
         if (stepThrough && step == 6) { return; }
 
         // =====================================================================
-        // Step 7: per region -- loft start -> step-in wire (if stepIn > 0)
+        // Step 7: per region -- loft start -> step-in wire (full mode only)
         // =====================================================================
-        for (var r = 0; r < nRegions; r += 1)
+        if (!definition.routFacesOnly)
         {
-            var region = sortedRegions[r];
-            var rKey   = toString(r);
-            if (region.swRoutStepin > 0 * millimeter)
+            for (var r = 0; r < nRegions; r += 1)
             {
-                regionSurfBodies = loftWireStep(context, id,
-                        washedStartWires[rKey], washedStepInWires[rKey],
-                        "startStepInLoft", r, rKey, region.name, sideNames,
-                        "Start to Step-In [", regionSurfBodies);
+                var region = sortedRegions[r];
+                var rKey   = toString(r);
+                if (region.swRoutStepin > 0 * millimeter)
+                {
+                    regionSurfBodies = loftWireStep(context, id,
+                            washedStartWires[rKey], washedStepInWires[rKey],
+                            "startStepInLoft", r, rKey, region.name, sideNames,
+                            "Start to Step-In [", regionSurfBodies);
+                }
             }
         }
 
@@ -613,10 +623,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     }
                 }
 
-                setBodyName(context, finalBody, "SW Rout [" ~ rName ~ "] " ~ sideNames[s]);
+                setBodyName(context, finalBody, "swRoutSurface");
                 regionFinalSurfs[rsKey] = finalBody;
             }
         }
+
+        if (!definition.routFacesOnly)
+        {
 
         // =====================================================================
         // Step 9.5: join / blend adjacent region surfaces at their shared boundary
@@ -907,8 +920,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
                 regionMergedBody[toString(rAIdx)] = bodiesA[0];
                 regionMergedBody[toString(rBIdx)] = bodiesA[0];
+                setBodyName(context, bodiesA[0], "swRoutSurface");
             }
         }
+
+        } // end !routFacesOnly
 
         if (stepThrough && step == 9) { return; }
 
