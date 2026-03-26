@@ -116,6 +116,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                      "UIHint" : UIHint.OPPOSITE_DIRECTION }
         definition.flipRefWire is boolean;
 
+        annotation { "Name" : "SW rout height" }
+        isLength(definition.swRoutHeight, SWRoutHeightBounds);
+
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -159,9 +162,6 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
             annotation { "Name" : "Distance from bottom rout begins" }
             isLength(region.distAboveBottom, DistAboveBottomBounds);
-
-            annotation { "Name" : "SW rout height" }
-            isLength(region.swRoutHeight, SWRoutHeightBounds);
 
             annotation { "Name" : "SW rout step-in" }
             isLength(region.swRoutStepin, SWStepInBounds);
@@ -408,7 +408,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
 
             // --- Step 4: offset copies to stop position ---
-            var routSpanHeight = region.swRoutHeight - region.distAboveBottom;
+            var routSpanHeight = definition.swRoutHeight - region.distAboveBottom;
             var routSpanSide   = routSpanHeight * tan(region.swRoutAngle);
 
             if (definition.debugPrint)
