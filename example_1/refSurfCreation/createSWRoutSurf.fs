@@ -637,12 +637,9 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             if (rAIdx < 0 || rBIdx >= nRegions) { continue; }
 
             var regA = sortedRegions[rAIdx];
-            var regB = sortedRegions[rBIdx];
 
             // Boundary plane at end of region A (== start of region B)
             var boundaryPlane = createRegionBoundingPlane(context, refWirePath, regA.tEnd);
-            var pathTang = evPathTangentLines(context, refWirePath,
-                    [regA.tEnd]).tangentLines[0].direction;
 
             var bodiesA = getBodiesForRegion(rAIdx, regionMergedBody, regionFinalSurfs, sideNames);
             var bodiesB = getBodiesForRegion(rBIdx, regionMergedBody, regionFinalSurfs, sideNames);
@@ -661,10 +658,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             //addDebugEntities(context, qUnion(edgesA), DebugColor.RED);
             //addDebugEntities(context, qUnion(edgesB), DebugColor.BLUE);
             
-            if (intr.startDist > 0 * millimeter)
+            var extendEdgesA = qUnion(edgesA);
+            if (intr.startDist > 0 * millimeter && !isQueryEmpty(context, extendEdgesA))
             {
                 extendSurface(context, id + ("extendAIntersection" ~ ix), {
-                    "entities"           : qUnion(edgesA),
+                    "entities"           : extendEdgesA,
                     "tangentPropagation" : true,
                     "endCondition"       : ExtendBoundingType.BLIND,
                     "oppositeDirection"  : true,
@@ -673,10 +671,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 });
             }
 
-            if (intr.endDist > 0 * millimeter)
+            var extendEdgesB = qUnion(edgesB);
+            if (intr.endDist > 0 * millimeter && !isQueryEmpty(context, extendEdgesB))
             {
                 extendSurface(context, id + ("extendBIntersection" ~ ix), {
-                    "entities"           : qUnion(edgesB),
+                    "entities"           : extendEdgesB,
                     "tangentPropagation" : true,
                     "endCondition"       : ExtendBoundingType.BLIND,
                     "oppositeDirection"  : true,
@@ -731,66 +730,80 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 if (bestBi < 0) { continue; }
                 var bEdges = bEdgesPerBody[bestBi];
 
-                // Classify vertices of each profile by degree (number of cap edges sharing them).
-                // Degree 1 = endpoint (free end of chain); degree 2+ = interior junction.
-                var aVerts = collectVertexDegrees(context, aEdges);
-                var bVerts = collectVertexDegrees(context, bEdges);
-
-                // Pair vertices: A endpoints to nearest unused B endpoints first,
-                // then remaining A vertices to nearest any B vertex.
-                var vPairs = pairVerticesByDegree(aVerts, bVerts);
-
-                // Create a straight-line guide wire for each vertex pair.
-                // Where two A vertices converge to the same B vertex the surface
-                // naturally collapses to a point (correct step-in behaviour).
-                var guideQueries = [];
-                for (var vpi = 0; vpi < size(vPairs); vpi += 1)
+                // For each A edge, find the nearest B edge by midpoint and create
+                // one boundary surface per pair.  A single edge is always a valid
+                // connected chain, eliminating BSURF_OPEN_CHAIN entirely.
+                for (var aei = 0; aei < size(aEdges); aei += 1)
                 {
-                    var gId = id + ("guide" ~ ix ~ "_" ~ ai ~ "_" ~ vpi);
-                    createGuideLine(context, gId, vPairs[vpi].a, vPairs[vpi].b);
-                    var gBody = qCreatedBy(gId, EntityType.BODY);
-                    guideQueries = append(guideQueries,
-                            qOwnedByBody(gBody, EntityType.EDGE));
-                    guideBodies = append(guideBodies, gBody);
-                }
+                    var ae    = aEdges[aei];
+                    var aeMid = evEdgeTangentLine(context, { "edge" : ae, "parameter" : 0.5 }).origin;
 
-                // Build boundary surface: A/B cap edges as U-profiles,
-                // guide wires as V-profiles to direct topology flow.
-                var bsurfDef = {
-                    "uProfileSubqueries" : [qUnion(aEdges), qUnion(bEdges)]
-                };
-                if (size(guideQueries) > 0) { bsurfDef.vProfileSubqueries = guideQueries; }
-
-                var uDeriv = [];
-                if (intr.startContinuity == SWRoutContinuityType.G1)
-                {
-                    uDeriv = append(uDeriv, {
-                        "profileIndex"  : 0,
-                        "magnitude"     : 1.0,
-                        "adjacentFaces" : qAdjacent(qUnion(aEdges), AdjacencyType.EDGE, EntityType.FACE)
-                    });
-                }
-                if (intr.endContinuity == SWRoutContinuityType.G1)
-                {
-                    uDeriv = append(uDeriv, {
-                        "profileIndex"  : 1,
-                        "magnitude"     : 1.0,
-                        "adjacentFaces" : qAdjacent(qUnion(bEdges), AdjacencyType.EDGE, EntityType.FACE)
-                    });
-                }
-                if (size(uDeriv) > 0) { bsurfDef.uDerivativeInfo = uDeriv; }
-
-                var bsurfId = id + ("bsurf" ~ ix ~ "_" ~ ai);
-                try
-                {
-                    opBoundarySurface(context, bsurfId, bsurfDef);
-                    var bsurfBody = qCreatedBy(bsurfId, EntityType.BODY);
-                    if (!isQueryEmpty(context, bsurfBody))
+                    // Find the nearest B edge by midpoint distance.
+                    var bestBe    = bEdges[0];
+                    var bestBeDist = undefined;
+                    for (var be in bEdges)
                     {
-                        bridgeSurfs = append(bridgeSurfs, bsurfBody);
+                        var beMid = evEdgeTangentLine(context, { "edge" : be, "parameter" : 0.5 }).origin;
+                        var d     = norm(aeMid - beMid);
+                        if (bestBeDist == undefined || d < bestBeDist)
+                        {
+                            bestBeDist = d;
+                            bestBe     = be;
+                        }
                     }
+
+                    // Create guide lines between paired vertices.
+                    var aVerts = collectVertexDegrees(context, [ae]);
+                    var bVerts = collectVertexDegrees(context, [bestBe]);
+                    var vPairs = pairVerticesByDegree(aVerts, bVerts);
+
+                    var guideQueries = [];
+                    for (var vpi = 0; vpi < size(vPairs); vpi += 1)
+                    {
+                        var gId = id + ("guide" ~ ix ~ "_" ~ ai ~ "_" ~ aei ~ "_" ~ vpi);
+                        createGuideLine(context, gId, vPairs[vpi].a, vPairs[vpi].b);
+                        var gBody = qCreatedBy(gId, EntityType.BODY);
+                        guideQueries = append(guideQueries, qOwnedByBody(gBody, EntityType.EDGE));
+                        guideBodies  = append(guideBodies, gBody);
+                    }
+
+                    // Boundary surface: single A edge and single B edge as U-profiles.
+                    var bsurfDef = {
+                        "uProfileSubqueries" : [ae, bestBe]
+                    };
+                    if (size(guideQueries) > 0) { bsurfDef.vProfileSubqueries = guideQueries; }
+
+                    var uDeriv = [];
+                    if (intr.startContinuity == SWRoutContinuityType.G1)
+                    {
+                        uDeriv = append(uDeriv, {
+                            "profileIndex"  : 0,
+                            "magnitude"     : 1.0,
+                            "adjacentFaces" : qAdjacent(ae, AdjacencyType.EDGE, EntityType.FACE)
+                        });
+                    }
+                    if (intr.endContinuity == SWRoutContinuityType.G1)
+                    {
+                        uDeriv = append(uDeriv, {
+                            "profileIndex"  : 1,
+                            "magnitude"     : 1.0,
+                            "adjacentFaces" : qAdjacent(bestBe, AdjacencyType.EDGE, EntityType.FACE)
+                        });
+                    }
+                    if (size(uDeriv) > 0) { bsurfDef.uDerivativeInfo = uDeriv; }
+
+                    var bsurfId = id + ("bsurf" ~ ix ~ "_" ~ ai ~ "_" ~ aei);
+                    try
+                    {
+                        opBoundarySurface(context, bsurfId, bsurfDef);
+                        var bsurfBody = qCreatedBy(bsurfId, EntityType.BODY);
+                        if (!isQueryEmpty(context, bsurfBody))
+                        {
+                            bridgeSurfs = append(bridgeSurfs, bsurfBody);
+                        }
+                    }
+                    catch {}
                 }
-                catch {}
             }
 
             // Delete guide wires — they are intermediate geometry only.
@@ -896,39 +909,32 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
 // --- Helpers -----------------------------------------------------------------
 
-// ─── Encode a 3D point as a string key for vertex hashing ───────────────────
-function positionKey(pt is Vector) returns string
-{
-    const nm = 1e9; // meters → nanometers for integer rounding
-    const ix = round(pt[0] / meter * nm);
-    const iy = round(pt[1] / meter * nm);
-    const iz = round(pt[2] / meter * nm);
-    return toString(ix) ~ "_" ~ toString(iy) ~ "_" ~ toString(iz);
-}
-
 // Returns array of {pos, degree} for all vertices in the edge set.
 // Degree = number of cap edges that share that vertex position.
 // Degree 1 = free endpoint; degree 2+ = interior junction (e.g. step-riser bend).
 function collectVertexDegrees(context is Context, edges is array) returns array
 {
-    var vertMap = {};
+    var result = [];
     for (var e in edges)
     {
         for (var t in [0, 1])
         {
-            var pt  = evEdgeTangentLine(context, { "edge" : e, "parameter" : t }).origin;
-            var key = positionKey(pt);
-            if (vertMap[key] == undefined)
+            var pt    = evEdgeTangentLine(context, { "edge" : e, "parameter" : t }).origin;
+            var found = false;
+            for (var i = 0; i < size(result); i += 1)
             {
-                vertMap[key] = { "pos" : pt, "degree" : 0 };
+                if (norm(result[i].pos - pt) < 1e-6 * meter)
+                {
+                    result[i] = { "pos" : result[i].pos, "degree" : result[i].degree + 1 };
+                    found = true;
+                    break;
+                }
             }
-            vertMap[key] = { "pos" : vertMap[key].pos, "degree" : vertMap[key].degree + 1 };
+            if (!found)
+            {
+                result = append(result, { "pos" : pt, "degree" : 1 });
+            }
         }
-    }
-    var result = [];
-    for (var key, val in vertMap)
-    {
-        result = append(result, val);
     }
     return result;
 }
