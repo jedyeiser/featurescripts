@@ -735,9 +735,9 @@ function findEdgeZeroPoint(context, startHighPoint is map, startLowPoint is map,
     var highParam = startHighPoint.edgeParam;
     var lowParam = startLowPoint.edgeParam;
     var iterations = 0;
-    var distStep = 1 * meter;
+    var paramStep = 1.0;
 
-    while(distStep > 0.001 * millimeter)
+    while(paramStep > 1e-5)
     {
         if (iterations >= 20)
         {
@@ -747,7 +747,7 @@ function findEdgeZeroPoint(context, startHighPoint is map, startLowPoint is map,
         {
             iterations += 1;
             var newParam = (highParam + lowParam)/2;
-            distStep = abs(highParam - newParam);
+            paramStep = abs(highParam - newParam);
             
             var edgeParamLine = evEdgeTangentLine(context, {
                     "edge" : edge,
