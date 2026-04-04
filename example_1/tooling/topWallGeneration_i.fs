@@ -568,8 +568,8 @@ function computeGrevilleParams(bsCurve is BSplineCurve) returns map
     var knots     = getKnotVector(bsCurve);
     var degree    = getDegree(bsCurve);
     var paramRange = getBSplineParamRange(bsCurve);
-    var uMin      = paramRange.min;
-    var uMax      = paramRange.max;
+    var uMin      = paramRange.uMin;
+    var uMax      = paramRange.uMax;
     var span      = uMax - uMin;
     var n         = size(knots) - degree - 1; // number of control points
 
@@ -800,8 +800,8 @@ function findZeroCrossing(context is Context, highPoint is map, lowPoint is map,
     yAxisSign is number, startPoint is map, endPoint is map, transitionMap is map, definitionType) returns map
 {
     var paramRange = getBSplineParamRange(bsCurve);
-    var uMin = paramRange.min;
-    var uMax = paramRange.max;
+    var uMin = paramRange.uMin;
+    var uMax = paramRange.uMax;
 
     var f = function(u)
     {
@@ -885,8 +885,8 @@ function findMinCDTransition(context is Context, pointA is map, pointB is map, e
     yAxisSign is number, startPoint is map, endPoint is map, transitionMap is map) returns map
 {
     var paramRange = getBSplineParamRange(bsCurve);
-    var uMin = paramRange.min;
-    var uMax = paramRange.max;
+    var uMin = paramRange.uMin;
+    var uMax = paramRange.uMax;
     var span = uMax - uMin;
 
     var f = function(u)
