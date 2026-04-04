@@ -4,7 +4,7 @@
   "document_name": "example_1",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/7183868d32cdc7a6ad14410d/w/a3ea9a8cd3639eb3be0528c6",
-  "last_sync": "2026-04-04T18:39:34.759655+00:00",
+  "last_sync": "2026-04-04T22:30:02.579043+00:00",
   "feature_studios": {
     "variableSurfaceOffset": "a94d1ee80740b95e024f5a1c",
     "pathProcessing": "e9dd34f07820388a202cb620",
@@ -28,6 +28,7 @@
     "createBumperCE": "c4f04f6c70ea9c713fc4dc99",
     "createTailProtector": "5f890acc58d096b35bd09f4b",
     "topWallGeneration": "4e9dfe499a59e591ea886211",
+    "topWallGeneration_i": "230ce4dd5154a0f8c6988937",
     "toolingCore": "10f2db505352c52c13b44917",
     "toolingUtils": "31b34bfefa5e6e0ba7066194",
     "wrapToolingSurf": "dc93984f4a184b4e99605025",

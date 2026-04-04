@@ -364,30 +364,44 @@ export function processPath(context is Context, id is Id, definition is map) ret
     };
 }
 
-// Builds a parallel transport table seeded from a caller-supplied xAxis rather than
-// the Frenet normal. Useful for G0 wires where the Frenet normal is unreliable at
-// kink junctions. The seed is projected perpendicular to the wire tangent at s=0
-// before the first entry is stored.
-//
-// Algorithm is identical to buildParallelTransportTable; only the initial xAxis differs.
-export function buildPinchWireTransportTable(context is Context, frenetPath is map,
-    seedXAxis is Vector, numSamples is number) returns array
+/**
+ * Projects two point queries onto processedPath and returns their equivalent
+ * startX / endX — signed arc-length distances from the reference point,
+ * matching the coordinate used by ALONG_REF regions.
+ */
+export function queryRegionExtents(context is Context, processedPath is map,
+        startQuery is Query, endQuery is Query) returns map
+{
+    var pt0 = getRefPoint(context, startQuery);
+    var pt1 = getRefPoint(context, endQuery);
+    var r0 = projectOntoFrenetPath(processedPath.frenetPath, pt0, undefined);
+    var r1 = projectOntoFrenetPath(processedPath.frenetPath, pt1, undefined);
+    var refArcLength = processedPath.refParam * processedPath.totalLength;
+    return {
+        "startX" : min(r0.arcLength, r1.arcLength) - refArcLength,
+        "endX"   : max(r0.arcLength, r1.arcLength) - refArcLength
+    };
+}
+
+
+/**
+ * Builds a parallel transport table seeded from a custom xAxis rather than
+ * the Frenet normal.  Identical to buildParallelTransportTable except the
+ * first xAxis is supplied by the caller instead of taken from the native frame.
+ *
+ * @param frenetPath  {map}    : frenetPath built by buildFrenetPath
+ * @param seedXAxis   {Vector} : unit direction to seed PT at s=0 (must be
+ *                               perpendicular to the tangent at s=0 — caller must
+ *                               project it first)
+ * @param numSamples  {number} : number of uniform arc-length samples
+ * @returns array of { arcLength, xAxis }
+ */
+export function buildPinchWireTransportTable(context is Context, frenetPath is map, seedXAxis is Vector, numSamples is number) returns array
 {
     var totalLength = frenetPath.totalLength;
+    var prevXAxis   = seedXAxis;
     var fr0         = evalNativeFrame(context, frenetPath, 0 * meter);
     var prevTangent = fr0.frame.zAxis;
-
-    // Project seed perpendicular to the wire tangent at s=0, fallback to Frenet normal
-    var prevXAxis = seedXAxis - prevTangent * dot(prevTangent, seedXAxis);
-    var xLen      = norm(prevXAxis);
-    if (xLen > 1e-10)
-    {
-        prevXAxis = prevXAxis / xLen;
-    }
-    else
-    {
-        prevXAxis = fr0.frame.xAxis;
-    }
 
     var table = [{ "arcLength" : 0 * meter, "xAxis" : prevXAxis }];
 
@@ -412,10 +426,10 @@ export function buildPinchWireTransportTable(context is Context, frenetPath is m
         }
 
         newXAxis = newXAxis - currTangent * dot(currTangent, newXAxis);
-        var xLen2 = norm(newXAxis);
-        if (xLen2 > 1e-10)
+        var xLen = norm(newXAxis);
+        if (xLen > 1e-10)
         {
-            newXAxis = newXAxis / xLen2;
+            newXAxis = newXAxis / xLen;
         }
 
         table       = append(table, { "arcLength" : s, "xAxis" : newXAxis });
@@ -427,63 +441,53 @@ export function buildPinchWireTransportTable(context is Context, frenetPath is m
 }
 
 /**
- * Builds a processed path for a pinch wire — a wire that may have G0 (kink) junctions
- * between edges. The parallel transport xAxis is seeded from the ref wire's frame at
- * the pinch wire's start point, so "up" remains consistent with the ski coordinate system.
+ * Builds a processed pinch wire path: frenetPath (no fixFrenetPathSigns) +
+ * parallel transport table seeded from the ref wire's xAxis at the wire start.
  *
- * fixFrenetPathSigns is intentionally skipped: its sign-flip correction assumes G1
- * continuity, which does not hold at G0 junctions.
+ * The pinch wire may have G0 junctions (kinks), which fixFrenetPathSigns
+ * cannot handle correctly.  Pure Rodrigues rotation handles kinks naturally.
  *
- * Returns a map with the same shape as processPath — compatible with
- * sampleParallelTransportFrame, projectOntoFrenetPath, etc.
- *
- * @param context {Context}
- * @param id {Id}
- * @param pinchWireBody {Query} : the pinch wire body
- * @param processedRefPath {map} : output of processPath for the reference wire
- * @param numSamples {number} : number of PT table entries
+ * @param context          {Context}
+ * @param id               {Id}
+ * @param pinchWireBody    {Query}  : the pinch wire body
+ * @param processedRefPath {map}    : output of processPath on the ref wire
+ * @param numSamples       {number} : number of PT samples (use 50)
+ * @returns map : { frenetPath, ptTable, totalLength }
  */
-export function processPinchWire(context is Context, id is Id, pinchWireBody is Query,
-    processedRefPath is map, numSamples is number) returns map
+export function processPinchWire(context is Context, id is Id, pinchWireBody is Query, processedRefPath is map, numSamples is number) returns map
 {
     var edges      = expandEdgeQuery(pinchWireBody);
     var frenetPath = buildFrenetPath(context, id, edges, false);
-    // Intentionally skip fixFrenetPathSigns — G0 junctions break its continuity assumption
-    var totalLength = frenetPath.totalLength;
+    // Do NOT call fixFrenetPathSigns — G0 kinks make sign propagation unreliable.
 
-    // Seed xAxis from the ref wire frame at the pinch wire's start point
-    var fr0        = evalNativeFrame(context, frenetPath, 0 * meter);
-    var refFrame   = frameAtPoint(context, processedRefPath, fr0.frame.origin);
-    var seedXAxis  = refFrame.frame.xAxis;
+    // Seed the PT xAxis from the ref wire at the pinch wire start point.
+    var startFr    = evalNativeFrame(context, frenetPath, 0 * meter);
+    var startPt    = startFr.frame.origin;
+    var refFr      = frameAtPoint(context, processedRefPath, startPt);
+    var refXAxis   = refFr.frame.xAxis;
+
+    // Project ref xAxis perpendicular to pinch wire tangent at s=0.
+    var tangent0   = startFr.frame.zAxis;
+    var seedXAxis  = refXAxis - tangent0 * dot(tangent0, refXAxis);
+    var seedLen    = norm(seedXAxis);
+    if (seedLen > 1e-10)
+    {
+        seedXAxis = seedXAxis / seedLen;
+    }
+    else
+    {
+        // Fallback: use the Frenet normal if ref xAxis is parallel to tangent.
+        seedXAxis = startFr.frame.xAxis;
+    }
 
     var ptTable = buildPinchWireTransportTable(context, frenetPath, seedXAxis, numSamples);
 
     return {
         "frenetPath"  : frenetPath,
         "ptTable"     : ptTable,
-        "totalLength" : totalLength
+        "totalLength" : frenetPath.totalLength
     };
 }
-
-/**
- * Projects two point queries onto processedPath and returns their equivalent
- * startX / endX — signed arc-length distances from the reference point,
- * matching the coordinate used by ALONG_REF regions.
- */
-export function queryRegionExtents(context is Context, processedPath is map,
-        startQuery is Query, endQuery is Query) returns map
-{
-    var pt0 = getRefPoint(context, startQuery);
-    var pt1 = getRefPoint(context, endQuery);
-    var r0 = projectOntoFrenetPath(processedPath.frenetPath, pt0, undefined);
-    var r1 = projectOntoFrenetPath(processedPath.frenetPath, pt1, undefined);
-    var refArcLength = processedPath.refParam * processedPath.totalLength;
-    return {
-        "startX" : min(r0.arcLength, r1.arcLength) - refArcLength,
-        "endX"   : max(r0.arcLength, r1.arcLength) - refArcLength
-    };
-}
-
 
 export function showRefFrames(context is Context, refPath is map, flipNormal is boolean, flipBinormal is boolean)
 {
