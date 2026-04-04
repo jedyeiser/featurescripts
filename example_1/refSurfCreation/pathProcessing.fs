@@ -454,6 +454,13 @@ export function buildPinchWireTransportTable(context is Context, frenetPath is m
  * @param numSamples       {number} : number of PT samples (use 50)
  * @returns map : { frenetPath, ptTable, totalLength }
  */
+// Wrapper so callers that import only pathProcessing can project a point onto a frenetPath
+// without needing to import curveMappingCore directly.
+export function arcLengthAtPoint(frenetPath is map, point is Vector) returns ValueWithUnits
+{
+    return projectOntoFrenetPath(frenetPath, point, undefined).arcLength;
+}
+
 export function processPinchWire(context is Context, id is Id, pinchWireBody is Query, processedRefPath is map, numSamples is number) returns map
 {
     var edges      = expandEdgeQuery(pinchWireBody);

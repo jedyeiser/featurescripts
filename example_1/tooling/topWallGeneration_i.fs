@@ -1,11 +1,14 @@
 FeatureScript 2931;
 import(path : "onshape/std/common.fs", version : "2931.0");
+import(path : "onshape/std/bridgingCurve.fs", version : "2931.0");
 
 // import pathProcessing
 import(path : "e9dd34f07820388a202cb620", version : "0837de9a9d2e74ba57457e77");
 // IMPORT: tools/bspline_data.fs
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+
 // IMPORT: tools/solvers.fs
-// IMPORT: std/bridgingCurve.fs  (computeBridgingControlPoints, BridgingSideData)
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // --- Constants
 
@@ -325,7 +328,6 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
         for (var ri = 0; ri < size(preprocessedRegions); ri += 1)
         {
             var regionData  = preprocessedRegions[ri];
-            var region      = regionData.region;
             var startPoint  = regionData.startPoint;
             var endPoint    = regionData.endPoint;
             var transitionMap = regionData.transitionMap;
@@ -599,8 +601,8 @@ function determineYAxisPolarity(context is Context, edge is Query, processedPinc
         "parameter" : 0.5
     });
 
-    var projResult = projectOntoFrenetPath(processedPinchWire.frenetPath, tl.origin, undefined);
-    var ptFr       = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, projResult.arcLength);
+    var midArcLen = arcLengthAtPoint(processedPinchWire.frenetPath, tl.origin);
+    var ptFr = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, midArcLen);
 
     var xAx   = ptFr.frame.xAxis;
     var zAx   = ptFr.frame.zAxis;
@@ -627,8 +629,7 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     });
 
     var origin = tl.origin;
-    var projResult = projectOntoFrenetPath(processedPinchWire.frenetPath, origin, undefined);
-    var arcLen     = projResult.arcLength;
+    var arcLen = arcLengthAtPoint(processedPinchWire.frenetPath, origin);
     var ptFr       = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, arcLen);
 
     var xAx = ptFr.frame.xAxis;
@@ -782,9 +783,8 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
         "arcLengthParameterization" : false
     });
 
-    var projResult = projectOntoFrenetPath(processedPinchWire.frenetPath, tl.origin, undefined);
-    var ptFr       = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, projResult.arcLength);
-    var xAx        = ptFr.frame.xAxis;
+    var ptFr = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, arcLengthAtPoint(processedPinchWire.frenetPath, tl.origin));
+    var xAx  = ptFr.frame.xAxis;
 
     var topDist = evDistance(context, { "side0" : topSurf, "side1" : line(tl.origin, xAx) });
     var cdDist  = evDistance(context, { "side0" : cdSurf,  "side1" : line(tl.origin, xAx) });
@@ -900,8 +900,7 @@ function findMinCDTransition(context is Context, pointA is map, pointB is map, e
             "parameter"                : normParam,
             "arcLengthParameterization" : false
         });
-        var projResult = projectOntoFrenetPath(processedPinchWire.frenetPath, tl.origin, undefined);
-        var arcLen     = projResult.arcLength;
+        var arcLen      = arcLengthAtPoint(processedPinchWire.frenetPath, tl.origin);
         var startArcLen = startPoint.arcLength;
         var endArcLen   = endPoint.arcLength;
         var regionSpan  = endArcLen - startArcLen;
