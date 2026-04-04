@@ -364,6 +364,107 @@ export function processPath(context is Context, id is Id, definition is map) ret
     };
 }
 
+// Builds a parallel transport table seeded from a caller-supplied xAxis rather than
+// the Frenet normal. Useful for G0 wires where the Frenet normal is unreliable at
+// kink junctions. The seed is projected perpendicular to the wire tangent at s=0
+// before the first entry is stored.
+//
+// Algorithm is identical to buildParallelTransportTable; only the initial xAxis differs.
+export function buildPinchWireTransportTable(context is Context, frenetPath is map,
+    seedXAxis is Vector, numSamples is number) returns array
+{
+    var totalLength = frenetPath.totalLength;
+    var fr0         = evalNativeFrame(context, frenetPath, 0 * meter);
+    var prevTangent = fr0.frame.zAxis;
+
+    // Project seed perpendicular to the wire tangent at s=0, fallback to Frenet normal
+    var prevXAxis = seedXAxis - prevTangent * dot(prevTangent, seedXAxis);
+    var xLen      = norm(prevXAxis);
+    if (xLen > 1e-10)
+    {
+        prevXAxis = prevXAxis / xLen;
+    }
+    else
+    {
+        prevXAxis = fr0.frame.xAxis;
+    }
+
+    var table = [{ "arcLength" : 0 * meter, "xAxis" : prevXAxis }];
+
+    for (var i = 1; i < numSamples; i += 1)
+    {
+        var s           = totalLength * i / (numSamples - 1);
+        var fr          = evalNativeFrame(context, frenetPath, s);
+        var currTangent = fr.frame.zAxis;
+
+        var k    = cross(prevTangent, currTangent);
+        var kLen = norm(k);
+        var newXAxis = prevXAxis;
+
+        if (kLen >= 1e-10)
+        {
+            var kHat     = k / kLen;
+            var sinTheta = kLen;
+            var cosTheta = dot(prevTangent, currTangent);
+            newXAxis = prevXAxis * cosTheta
+                + cross(kHat, prevXAxis) * sinTheta
+                + kHat * (dot(kHat, prevXAxis) * (1 - cosTheta));
+        }
+
+        newXAxis = newXAxis - currTangent * dot(currTangent, newXAxis);
+        var xLen2 = norm(newXAxis);
+        if (xLen2 > 1e-10)
+        {
+            newXAxis = newXAxis / xLen2;
+        }
+
+        table       = append(table, { "arcLength" : s, "xAxis" : newXAxis });
+        prevXAxis   = newXAxis;
+        prevTangent = currTangent;
+    }
+
+    return table;
+}
+
+/**
+ * Builds a processed path for a pinch wire — a wire that may have G0 (kink) junctions
+ * between edges. The parallel transport xAxis is seeded from the ref wire's frame at
+ * the pinch wire's start point, so "up" remains consistent with the ski coordinate system.
+ *
+ * fixFrenetPathSigns is intentionally skipped: its sign-flip correction assumes G1
+ * continuity, which does not hold at G0 junctions.
+ *
+ * Returns a map with the same shape as processPath — compatible with
+ * sampleParallelTransportFrame, projectOntoFrenetPath, etc.
+ *
+ * @param context {Context}
+ * @param id {Id}
+ * @param pinchWireBody {Query} : the pinch wire body
+ * @param processedRefPath {map} : output of processPath for the reference wire
+ * @param numSamples {number} : number of PT table entries
+ */
+export function processPinchWire(context is Context, id is Id, pinchWireBody is Query,
+    processedRefPath is map, numSamples is number) returns map
+{
+    var edges      = expandEdgeQuery(pinchWireBody);
+    var frenetPath = buildFrenetPath(context, id, edges, false);
+    // Intentionally skip fixFrenetPathSigns — G0 junctions break its continuity assumption
+    var totalLength = frenetPath.totalLength;
+
+    // Seed xAxis from the ref wire frame at the pinch wire's start point
+    var fr0        = evalNativeFrame(context, frenetPath, 0 * meter);
+    var refFrame   = frameAtPoint(context, processedRefPath, fr0.frame.origin);
+    var seedXAxis  = refFrame.frame.xAxis;
+
+    var ptTable = buildPinchWireTransportTable(context, frenetPath, seedXAxis, numSamples);
+
+    return {
+        "frenetPath"  : frenetPath,
+        "ptTable"     : ptTable,
+        "totalLength" : totalLength
+    };
+}
+
 /**
  * Projects two point queries onto processedPath and returns their equivalent
  * startX / endX — signed arc-length distances from the reference point,
