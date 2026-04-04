@@ -805,11 +805,21 @@ function findZeroCrossing(context is Context, highPoint is map, lowPoint is map,
 
     var f = function(u)
     {
-        return evaluateCavityDepth(context, edge, u, uMin, uMax, processedPinchWire, topSurf, cdSurf) / millimeter;
+        return (evaluateCavityDepth(context, edge, u, uMin, uMax, processedPinchWire, topSurf, cdSurf) - CAVITY_DEPTH_TOL) / millimeter;
     };
 
-    var result    = solveRootHybrid(f, highPoint.nativeParam, lowPoint.nativeParam, BSEARCH_PARAM_TOL, BSEARCH_MAX_ITER);
-    var u         = result.u;
+    var fa = f(highPoint.nativeParam);
+    var fb = f(lowPoint.nativeParam);
+    var u;
+    if (fa * fb >= 0)
+    {
+        u = (abs(fa) < abs(fb)) ? highPoint.nativeParam : lowPoint.nativeParam;
+    }
+    else
+    {
+        var result = solveRootHybrid(f, highPoint.nativeParam, lowPoint.nativeParam, BSEARCH_PARAM_TOL, BSEARCH_MAX_ITER);
+        u = result.u;
+    }
     var span      = uMax - uMin;
     var normParam = (span > 1e-12) ? (u - uMin) / span : 0.0;
 
