@@ -396,21 +396,77 @@ export function queryRegionExtents(context is Context, processedPath is map,
  * @param numSamples  {number} : number of uniform arc-length samples
  * @returns array of { arcLength, xAxis }
  */
-export function buildPinchWireTransportTable(context is Context, frenetPath is map, seedXAxis is Vector, numSamples is number) returns array
+// Builds a self-contained pinch wire PT table by sampling edges directly
+// (no buildFrenetPath -- robust against G0 kinks).
+// Each entry: { arcLength, origin, tangent, xAxis }
+export function buildPinchWirePTTable(context is Context, wireBody is Query, processedRefPath is map, seedXAxis is Vector, numSamples is number) returns array
 {
-    var totalLength = frenetPath.totalLength;
-    var prevXAxis   = seedXAxis;
-    var fr0         = evalNativeFrame(context, frenetPath, 0 * meter);
-    var prevTangent = fr0.frame.zAxis;
-
-    var table = [{ "arcLength" : 0 * meter, "xAxis" : prevXAxis }];
-
-    for (var i = 1; i < numSamples; i += 1)
+    var edges = evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE));
+    if (size(edges) == 0)
     {
-        var s           = totalLength * i / (numSamples - 1);
-        var fr          = evalNativeFrame(context, frenetPath, s);
-        var currTangent = fr.frame.zAxis;
+        return [];
+    }
 
+    var edgeLengths = [];
+    var totalLen    = 0 * meter;
+    for (var edge in edges)
+    {
+        var len = evLength(context, { "entities" : edge });
+        edgeLengths = append(edgeLengths, len);
+        totalLen    = totalLen + len;
+    }
+
+    var rawSamples = [];
+    for (var i = 0; i < size(edges); i += 1)
+    {
+        var n   = max(3, ceil(numSamples * edgeLengths[i] / totalLen));
+        var tls = evEdgeTangentLines(context, {
+            "edge"                      : edges[i],
+            "parameters"                : range(0, 1, n),
+            "arcLengthParameterization" : true
+        });
+
+        for (var tl in tls)
+        {
+            var refArcLen = projectOntoFrenetPath(processedRefPath.frenetPath, tl.origin, undefined).arcLength;
+            rawSamples = append(rawSamples, {
+                "origin"    : tl.origin,
+                "tangent"   : tl.direction,
+                "refArcLen" : refArcLen
+            });
+        }
+    }
+
+    rawSamples = sort(rawSamples, function(a, b) { return (a.refArcLen - b.refArcLen) / meter; });
+
+    var deduped = [rawSamples[0]];
+    for (var i = 1; i < size(rawSamples); i += 1)
+    {
+        if (norm(rawSamples[i].origin - rawSamples[i - 1].origin) / meter > 1e-9)
+        {
+            deduped = append(deduped, rawSamples[i]);
+        }
+    }
+    rawSamples = deduped;
+
+    var cumLen     = 0 * meter;
+    var prevOrigin = rawSamples[0].origin;
+    var withArc    = [mergeMaps(rawSamples[0], { "arcLength" : 0 * meter })];
+
+    for (var i = 1; i < size(rawSamples); i += 1)
+    {
+        cumLen     = cumLen + norm(rawSamples[i].origin - prevOrigin);
+        prevOrigin = rawSamples[i].origin;
+        withArc    = append(withArc, mergeMaps(rawSamples[i], { "arcLength" : cumLen }));
+    }
+
+    var prevXAxis   = seedXAxis;
+    var prevTangent = withArc[0].tangent;
+    var table       = [mergeMaps(withArc[0], { "xAxis" : prevXAxis })];
+
+    for (var i = 1; i < size(withArc); i += 1)
+    {
+        var currTangent = withArc[i].tangent;
         var k    = cross(prevTangent, currTangent);
         var kLen = norm(k);
         var newXAxis = prevXAxis;
@@ -432,7 +488,7 @@ export function buildPinchWireTransportTable(context is Context, frenetPath is m
             newXAxis = newXAxis / xLen;
         }
 
-        table       = append(table, { "arcLength" : s, "xAxis" : newXAxis });
+        table       = append(table, mergeMaps(withArc[i], { "xAxis" : newXAxis }));
         prevXAxis   = newXAxis;
         prevTangent = currTangent;
     }
@@ -440,59 +496,126 @@ export function buildPinchWireTransportTable(context is Context, frenetPath is m
     return table;
 }
 
-/**
- * Builds a processed pinch wire path: frenetPath (no fixFrenetPathSigns) +
- * parallel transport table seeded from the ref wire's xAxis at the wire start.
- *
- * The pinch wire may have G0 junctions (kinks), which fixFrenetPathSigns
- * cannot handle correctly.  Pure Rodrigues rotation handles kinks naturally.
- *
- * @param context          {Context}
- * @param id               {Id}
- * @param pinchWireBody    {Query}  : the pinch wire body
- * @param processedRefPath {map}    : output of processPath on the ref wire
- * @param numSamples       {number} : number of PT samples (use 50)
- * @returns map : { frenetPath, ptTable, totalLength }
- */
-// Wrapper so callers that import only pathProcessing can project a point onto a frenetPath
-// without needing to import curveMappingCore directly.
-export function arcLengthAtPoint(frenetPath is map, point is Vector) returns ValueWithUnits
+// Interpolates origin, tangent, and xAxis at a given arc length.
+// No context or live edge references needed.
+export function samplePinchTransportFrame(ptTable is array, arcLength) returns map
 {
-    return projectOntoFrenetPath(frenetPath, point, undefined).arcLength;
+    var n = size(ptTable);
+    if (n == 0)
+    {
+        return { "frame" : coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1)) };
+    }
+    if (n == 1)
+    {
+        return { "frame" : coordSystem(ptTable[0].origin, ptTable[0].xAxis, ptTable[0].tangent) };
+    }
+
+    var sLo = ptTable[0].arcLength;
+    var sHi = ptTable[n - 1].arcLength;
+    if (arcLength <= sLo) { return { "frame" : coordSystem(ptTable[0].origin,   ptTable[0].xAxis,   ptTable[0].tangent)   }; }
+    if (arcLength >= sHi) { return { "frame" : coordSystem(ptTable[n-1].origin, ptTable[n-1].xAxis, ptTable[n-1].tangent) }; }
+
+    var lo = 0;
+    var hi = n - 1;
+    while (hi - lo > 1)
+    {
+        var mid = floor((lo + hi) / 2);
+        if (ptTable[mid].arcLength <= arcLength)
+        {
+            lo = mid;
+        }
+        else
+        {
+            hi = mid;
+        }
+    }
+
+    var span  = ptTable[hi].arcLength - ptTable[lo].arcLength;
+    var alpha = (span / meter > 1e-12) ? ((arcLength - ptTable[lo].arcLength) / span) : 0.0;
+
+    var origin  = ptTable[lo].origin  * (1 - alpha) + ptTable[hi].origin  * alpha;
+    var tLerp   = ptTable[lo].tangent * (1 - alpha) + ptTable[hi].tangent * alpha;
+    var tLen    = norm(tLerp);
+    var tangent = (tLen > 1e-10) ? tLerp / tLen : ptTable[lo].tangent;
+
+    var xLerp = ptTable[lo].xAxis * (1 - alpha) + ptTable[hi].xAxis * alpha;
+    var xLen  = norm(xLerp);
+    var xAxis = (xLen > 1e-10) ? xLerp / xLen : ptTable[lo].xAxis;
+    xAxis     = xAxis - tangent * dot(tangent, xAxis);
+    var xLen2 = norm(xAxis);
+    if (xLen2 > 1e-10)
+    {
+        xAxis = xAxis / xLen2;
+    }
+    else
+    {
+        xAxis = ptTable[lo].xAxis;
+    }
+
+    return { "frame" : coordSystem(origin, xAxis, tangent) };
 }
 
+// Projects a point onto the polyline defined by ptTable origins.
+// Returns the arc length along the pinch wire at the nearest point.
+export function arcLengthOnPinchWire(ptTable is array, point is Vector) returns ValueWithUnits
+{
+    var n = size(ptTable);
+    if (n == 0) { return 0 * meter; }
+    if (n == 1) { return ptTable[0].arcLength; }
+
+    var bestDist   = -1 * meter;
+    var bestArcLen = ptTable[0].arcLength;
+
+    for (var k = 0; k < n - 1; k += 1)
+    {
+        var a   = ptTable[k].origin;
+        var b   = ptTable[k + 1].origin;
+        var ab  = b - a;
+        var abLen = norm(ab);
+
+        if (abLen / meter < 1e-12) { continue; }
+
+        var t       = dot(point - a, ab) / dot(ab, ab);
+        t           = max(0.0, min(1.0, t));
+        var closest = a + ab * t;
+        var dist    = norm(point - closest);
+
+        if (bestDist < 0 * meter || dist < bestDist)
+        {
+            bestDist   = dist;
+            bestArcLen = ptTable[k].arcLength + t * abLen;
+        }
+    }
+
+    return bestArcLen;
+}
+
+// Builds a processed pinch wire using direct edge sampling (no buildFrenetPath).
+// Returns { ptTable, totalLength }.
+// Use samplePinchTransportFrame and arcLengthOnPinchWire for all lookups.
 export function processPinchWire(context is Context, id is Id, pinchWireBody is Query, processedRefPath is map, numSamples is number) returns map
 {
-    var edges      = expandEdgeQuery(pinchWireBody);
-    var frenetPath = buildFrenetPath(context, id, edges, false);
-    // Do NOT call fixFrenetPathSigns — G0 kinks make sign propagation unreliable.
+    var edges   = evaluateQuery(context, qOwnedByBody(pinchWireBody, EntityType.EDGE));
+    var startTL = evEdgeTangentLine(context, { "edge" : edges[0], "parameter" : 0.0 });
+    var refFr   = frameAtPoint(context, processedRefPath, startTL.origin);
 
-    // Seed the PT xAxis from the ref wire at the pinch wire start point.
-    var startFr    = evalNativeFrame(context, frenetPath, 0 * meter);
-    var startPt    = startFr.frame.origin;
-    var refFr      = frameAtPoint(context, processedRefPath, startPt);
-    var refXAxis   = refFr.frame.xAxis;
-
-    // Project ref xAxis perpendicular to pinch wire tangent at s=0.
-    var tangent0   = startFr.frame.zAxis;
-    var seedXAxis  = refXAxis - tangent0 * dot(tangent0, refXAxis);
-    var seedLen    = norm(seedXAxis);
+    var seedXAxis = refFr.frame.xAxis - startTL.direction * dot(startTL.direction, refFr.frame.xAxis);
+    var seedLen   = norm(seedXAxis);
     if (seedLen > 1e-10)
     {
         seedXAxis = seedXAxis / seedLen;
     }
     else
     {
-        // Fallback: use the Frenet normal if ref xAxis is parallel to tangent.
-        seedXAxis = startFr.frame.xAxis;
+        seedXAxis = vector(0, 1, 0);
     }
 
-    var ptTable = buildPinchWireTransportTable(context, frenetPath, seedXAxis, numSamples);
+    var ptTable     = buildPinchWirePTTable(context, pinchWireBody, processedRefPath, seedXAxis, numSamples);
+    var totalLength = (size(ptTable) > 0) ? ptTable[size(ptTable) - 1].arcLength : 0 * meter;
 
     return {
-        "frenetPath"  : frenetPath,
         "ptTable"     : ptTable,
-        "totalLength" : frenetPath.totalLength
+        "totalLength" : totalLength
     };
 }
 

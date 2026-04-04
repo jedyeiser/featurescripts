@@ -601,8 +601,8 @@ function determineYAxisPolarity(context is Context, edge is Query, processedPinc
         "parameter" : 0.5
     });
 
-    var midArcLen = arcLengthAtPoint(processedPinchWire.frenetPath, tl.origin);
-    var ptFr = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, midArcLen);
+    var midArcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
+    var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, midArcLen);
 
     var xAx   = ptFr.frame.xAxis;
     var zAx   = ptFr.frame.zAxis;
@@ -629,8 +629,8 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     });
 
     var origin = tl.origin;
-    var arcLen = arcLengthAtPoint(processedPinchWire.frenetPath, origin);
-    var ptFr       = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, arcLen);
+    var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
+    var ptFr       = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen);
 
     var xAx = ptFr.frame.xAxis;
     var zAx = ptFr.frame.zAxis;
@@ -783,7 +783,7 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
         "arcLengthParameterization" : false
     });
 
-    var ptFr = sampleParallelTransportFrame(context, processedPinchWire.frenetPath, processedPinchWire.ptTable, arcLengthAtPoint(processedPinchWire.frenetPath, tl.origin));
+    var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin));
     var xAx  = ptFr.frame.xAxis;
 
     var topDist = evDistance(context, { "side0" : topSurf, "side1" : line(tl.origin, xAx) });
@@ -900,7 +900,7 @@ function findMinCDTransition(context is Context, pointA is map, pointB is map, e
             "parameter"                : normParam,
             "arcLengthParameterization" : false
         });
-        var arcLen      = arcLengthAtPoint(processedPinchWire.frenetPath, tl.origin);
+        var arcLen      = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
         var startArcLen = startPoint.arcLength;
         var endArcLen   = endPoint.arcLength;
         var regionSpan  = endArcLen - startArcLen;
