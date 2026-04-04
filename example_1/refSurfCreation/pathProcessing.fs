@@ -146,7 +146,75 @@ export function evalNativeFrame(context is Context, frenetPath is map, arcLength
     };
 }
 
+/**
+ * Returns a parallel-transport frame at a signed distance from the path's reference point.
+ * Positive = forward along path (tail direction), negative = backward (tip direction).
+ * Arc length is clamped to [0, totalLength].
+ *
+ * @param context {Context}
+ * @param processedPath {map} : output of processPath
+ * @param distFromRef {ValueWithUnits} : signed distance from reference point (length units)
+ * @returns map : { frame {CoordSystem}, arcLength {ValueWithUnits}, sign {number} }
+ */
+export function frameAtDistFromRef(context is Context, processedPath is map, distFromRef is ValueWithUnits) returns map
+{
+    var refArcLength    = processedPath.refParam * processedPath.totalLength;
+    var targetArcLength = refArcLength + distFromRef;
+    targetArcLength     = max(0 * meter, min(targetArcLength, processedPath.totalLength));
 
+    var fr = sampleParallelTransportFrame(context, processedPath.frenetPath, processedPath.ptTable, targetArcLength);
+    return mergeMaps(fr, { "arcLength" : targetArcLength });
+}
+
+/**
+ * Projects a 3D point (vector) onto the path and returns the parallel-transport
+ * frame at the nearest point.
+ *
+ * @param context {Context}
+ * @param processedPath {map} : output of processPath
+ * @param point {Vector} : 3D point in world coordinates (length units)
+ * @returns {{
+ *      @field frame {CoordSystem}, 
+ *      @field arcLength {ValueWithUnits}, 
+ *      @field distFromRef {ValueWithUnits}, 
+ *      @field sign {number} 
+ * }}
+ */
+export function frameAtPoint(context is Context, processedPath is map, point is Vector) returns map
+{
+    var projResult      = projectOntoFrenetPath(processedPath.frenetPath, point, undefined);
+    var targetArcLength = projResult.arcLength;
+    var refArcLength    = processedPath.refParam * processedPath.totalLength;
+
+    var fr = sampleParallelTransportFrame(context, processedPath.frenetPath, processedPath.ptTable, targetArcLength);
+    return mergeMaps(fr, {
+        "arcLength"   : targetArcLength,
+        "distFromRef" : targetArcLength - refArcLength
+    });
+}
+
+/**
+ * Projects a query (vertex, plane, mate connector) onto the path and returns
+ * the parallel-transport frame at the nearest point.
+ *
+ * @param context {Context}
+ * @param processedPath {map} : output of processPath
+ * @param locationQuery {Query} : vertex, planar face, or mate connector
+ * @returns map : { frame {CoordSystem}, arcLength {ValueWithUnits}, distFromRef {ValueWithUnits}, sign {number} }
+ */
+export function frameAtQuery(context is Context, processedPath is map, locationQuery is Query) returns map
+{
+    var pt              = getRefPoint(context, locationQuery);
+    var projResult      = projectOntoFrenetPath(processedPath.frenetPath, pt, undefined);
+    var targetArcLength = projResult.arcLength;
+    var refArcLength    = processedPath.refParam * processedPath.totalLength;
+
+    var fr = sampleParallelTransportFrame(context, processedPath.frenetPath, processedPath.ptTable, targetArcLength);
+    return mergeMaps(fr, {
+        "arcLength"   : targetArcLength,
+        "distFromRef" : targetArcLength - refArcLength
+    });
+}
 
 
 // Builds a parallel transport (Bishop) frame table along the path.
@@ -265,13 +333,14 @@ export function sampleParallelTransportFrame(context is Context, frenetPath is m
 
 /**
  * Processes definition into a frenetPath
- * @param context {Context} : Context
+ * @param context {Context}
  * @param id {Id} : id
  * @param definition {{
  *      @field userSelection {Query} : Edges or wire queries
  *      @field flipDirection {boolean} : flip primary direction
  *      @field referencePoint {Query} : reference point along path
  *      @field numPoints {number} : number of points per region
+ * }}
  */
 export function processPath(context is Context, id is Id, definition is map) returns map
 {
@@ -321,7 +390,7 @@ export function showRefFrames(context is Context, refPath is map, flipNormal is 
     // Draw frames with flipNormal/flipBinormal applied so arrows match
     // the actual offset directions (RED = normal offset dir, GREEN = binormal offset dir, BLUE = tangent)
     var numF   = 20;
-    var len    = refPath.length;
+    var len    = refPath.totalLength;
     var aLen   = len / max([1, numF - 1]) / 3;
     var aRad   = aLen * 0.05;
     for (var fi = 0; fi < numF; fi += 1)
