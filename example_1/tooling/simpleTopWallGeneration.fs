@@ -238,7 +238,8 @@ function buildSimpleWallSurface(context is Context, id is Id,
             "tolerance"        : tolerance,
             "isPeriodic"       : false,
             "maxControlPoints" : maxCP,
-            "targets"          : [{ "points" : bottomPts }, { "points" : topPts }],
+            "targets"          : [approximationTarget({ "positions" : bottomPts }),
+                                  approximationTarget({ "positions" : topPts })],
             "parameters"       : sampleParams
         });
 
