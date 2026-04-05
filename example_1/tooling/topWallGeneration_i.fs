@@ -17,6 +17,7 @@ const BSEARCH_PARAM_TOL = 1e-9;
 const BSEARCH_MAX_ITER = 30;
 const YAXIS_PROBE_DIST = 1 * millimeter;
 const PINCH_PT_SAMPLES = 50;
+const MAX_GREVILLE_SAMPLES = 15;
 
 // --- Bounds
 
@@ -298,6 +299,9 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                 definition.showPinchTopPts is boolean;
             }
 
+            annotation { "Name" : "Show sample frames", "Default" : false }
+            definition.showSampleFrames is boolean;
+
             annotation { "Name" : "Log sampling", "Default" : false }
             definition.logSampling is boolean;
         }
@@ -395,6 +399,18 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         for (var ptMap in edgeResult.edgePointMaps)
                         {
                             println("  sp=" ~ ptMap.spanParam ~ " cd=" ~ ptMap.cavityDepth / millimeter ~ "mm");
+                        }
+                    }
+
+                    if (definition.showSampleFrames)
+                    {
+                        var arrowLen = 5 * millimeter;
+                        for (var ptMap in edgeResult.edgePointMaps)
+                        {
+                            var o = ptMap.origin;
+                            addDebugArrow(context, o, o + ptMap.xAxis * arrowLen,  1 * millimeter, DebugColor.RED);
+                            addDebugArrow(context, o, o + ptMap.yAxis * arrowLen,  1 * millimeter, DebugColor.GREEN);
+                            addDebugArrow(context, o, o + ptMap.zAxis * arrowLen,  1 * millimeter, DebugColor.BLUE);
                         }
                     }
 
@@ -678,6 +694,21 @@ function computeGrevilleParams(bsCurve is BSplineCurve) returns map
         normalizedParams = append(normalizedParams, (span > 1e-12) ? (g - uMin) / span : 0.0);
     }
 
+    // Downsample if too many control points — keeps endpoints, uniform spacing between.
+    if (n > MAX_GREVILLE_SAMPLES)
+    {
+        var sampledNative     = [];
+        var sampledNormalized = [];
+        for (var s = 0; s < MAX_GREVILLE_SAMPLES; s += 1)
+        {
+            var idx = round((s / (MAX_GREVILLE_SAMPLES - 1)) * (n - 1));
+            sampledNative     = append(sampledNative,     nativeParams[idx]);
+            sampledNormalized = append(sampledNormalized, normalizedParams[idx]);
+        }
+        nativeParams     = sampledNative;
+        normalizedParams = sampledNormalized;
+    }
+
     return { "native" : nativeParams, "normalized" : normalizedParams };
 }
 
@@ -702,7 +733,8 @@ function determineYAxisPolarity(context is Context, edge is Query, processedPinc
     var insideDist  = evDistance(context, { "side0" : cdSurfs.inside,  "side1" : probePoint }).distance;
     var outsideDist = evDistance(context, { "side0" : cdSurfs.outside, "side1" : probePoint }).distance;
 
-    return (insideDist < outsideDist) ? 1 : -1;
+    // tentY points toward inside when insideDist < outsideDist — flip it so yAxis points toward outside.
+    return (insideDist < outsideDist) ? -1 : 1;
 }
 
 
