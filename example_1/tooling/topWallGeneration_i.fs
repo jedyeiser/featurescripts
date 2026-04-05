@@ -13,6 +13,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e235
 // --- Constants
 
 const CAVITY_DEPTH_TOL = 0.001 * millimeter;
+const MIN_CURVE_CD = 0.05 * millimeter;
 const BSEARCH_PARAM_TOL = 1e-9;
 const BSEARCH_MAX_ITER = 30;
 const YAXIS_PROBE_DIST = 1 * millimeter;
@@ -496,9 +497,38 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         {
                             continue;
                         }
+
+                        // Sort sub-region by spanParam (insertion sort).
+                        // Edges traversed in reverse produce decreasing spanParams;
+                        // sorting ensures approximateSpline receives monotonic parameters.
+                        var sortedSR = subRegions[sr];
+                        for (var si = 1; si < size(sortedSR); si += 1)
+                        {
+                            var key = sortedSR[si];
+                            var ji  = si - 1;
+                            while (ji >= 0 && sortedSR[ji].spanParam > key.spanParam)
+                            {
+                                sortedSR[ji + 1] = sortedSR[ji];
+                                ji -= 1;
+                            }
+                            sortedSR[ji + 1] = key;
+                        }
+
+                        // Skip sub-regions where max cavity depth is negligible.
+                        // Avoids degenerate (zero-length) splines from opCreateBSplineCurve.
+                        var maxCD = 0 * millimeter;
+                        for (var ptMap in sortedSR)
+                        {
+                            if (ptMap.cavityDepth > maxCD) { maxCD = ptMap.cavityDepth; }
+                        }
+                        if (maxCD < MIN_CURVE_CD)
+                        {
+                            continue;
+                        }
+
                         buildCurveCollectionsForSubRegion(context,
                             id + ("curves_" ~ ri ~ "_" ~ b ~ "_" ~ e ~ "_" ~ sr),
-                            subRegions[sr], definition.definitionType, approxDef);
+                            sortedSR, definition.definitionType, approxDef);
                     }
                 }
             }
@@ -725,10 +755,11 @@ function determineYAxisPolarity(context is Context, edge is Query, processedPinc
     var midArcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
     var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, midArcLen);
 
-    var zAx  = tl.direction;
-    var xRaw = vector(0, 0, 1) - zAx * dot(zAx, vector(0, 0, 1));
-    var xLen = norm(xRaw);
-    var xAx  = (xLen > 1e-10) ? xRaw / xLen : cross(zAx, vector(1, 0, 0));
+    // xAxis: PT frame normal, flipped so Z component is positive (toward topsheet).
+    var xRaw = ptFr.frame.xAxis;
+    var xAx  = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
+
+    var zAx   = tl.direction;
     var tentY = cross(zAx, xAx);
 
     var probePoint  = tl.origin + tentY * YAXIS_PROBE_DIST;
@@ -755,15 +786,17 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     var origin = tl.origin;
     var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
 
-    // xAxis: world +Z (always points toward topsheet).
-    var xAx = vector(0, 0, 1);
+    // xAxis: PT frame normal at this arc length, flipped so Z component is positive (toward topsheet).
+    var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen);
+    var xRaw = ptFr.frame.xAxis;
+    var xAx  = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
 
     // zAxis: wire tangent projected onto the plane perpendicular to xAxis.
     // Required so coordSystem(xAxis, zAxis) satisfies perpendicularVectors.
     var wireDir = tl.direction;
-    var zRaw = wireDir - xAx * dot(xAx, wireDir);
-    var zLen = norm(zRaw);
-    var zAx  = (zLen > 1e-10) ? zRaw / zLen : cross(xAx, vector(1, 0, 0));
+    var zRaw2 = wireDir - xAx * dot(xAx, wireDir);
+    var zLen2 = norm(zRaw2);
+    var zAx   = (zLen2 > 1e-10) ? zRaw2 / zLen2 : cross(xAx, vector(1, 0, 0));
 
     // yAxis: cross(zAxis, xAxis) * yAxisSign, re-orthogonalized.
     var rawY = yAxisSign * cross(zAx, xAx);
@@ -917,10 +950,10 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
         "arcLengthParameterization" : false
     });
 
-    var zAx  = tl.direction;
-    var xRaw = vector(0, 0, 1) - zAx * dot(zAx, vector(0, 0, 1));
-    var xLen = norm(xRaw);
-    var xAx  = (xLen > 1e-10) ? xRaw / xLen : cross(zAx, vector(1, 0, 0));
+    var arcLen2 = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
+    var ptFr2   = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen2);
+    var xRaw2   = ptFr2.frame.xAxis;
+    var xAx     = (dot(xRaw2, vector(0, 0, 1)) >= 0) ? xRaw2 : -xRaw2;
 
     var topHits = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : topSurf, "closest" : true });
     var cdHits  = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : cdSurf,  "closest" : true });
