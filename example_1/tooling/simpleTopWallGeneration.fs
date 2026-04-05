@@ -2,16 +2,23 @@ FeatureScript 2931;
 import(path : "onshape/std/common.fs", version : "2931.0");
 
 // IMPORT: refSurfCore.fs       (RegionExtentDef, RegionOffsetType, IntersectionContinuityType, all bounds)
+export import(path : "828cc4108f1c8683bc0e59cf", version : "19939e975eb473ccfc23a8be");
+
 // IMPORT: pathProcessing.fs    (processPath, frameAtPoint, queryRegionExtents)
+import(path : "e9dd34f07820388a202cb620", version : "627abffa89a67d104b65a1e1");
+
 // IMPORT: regionProcessing.fs  (processRegions)
+import(path : "d1cf8af3d05964b44c3ab4c0", version : "2a69de4c258716430ef2bc97");
+
 // IMPORT: refSurfUtils.fs      (computeOffsetMag, buildIntersectionJoins)
+import(path : "d41884a96244793beb462449", version : "2311652bc87faaf67ce79c7d");
 
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
-const WALL_ANGLE_BOUNDS   = { (degree)     : [0,  10, 89]  } as AngleBoundSpec;
-const WALL_HEIGHT_BOUNDS  = { (millimeter) : [1,  20, 200] } as LengthBoundSpec;
-const RADIUS_BOUNDS       = { (millimeter) : [0,   2,  50] } as LengthBoundSpec;
+const WALL_ANGLE_BOUNDS  = { (degree)     : [0,  10, 89]  } as AngleBoundSpec;
+const WALL_HEIGHT_BOUNDS = { (millimeter) : [1,  20, 200] } as LengthBoundSpec;
+const RADIUS_BOUNDS      = { (millimeter) : [0,   2,  50] } as LengthBoundSpec;
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -25,13 +32,25 @@ export enum TopWallMode
     WALL_PINCH
 }
 
+// CONSTANT / LINEAR / SMOOTH only (no Quadratic).
+// String values match RegionOffsetType so computeOffsetMag comparisons still work.
+export enum SimpleOffsetType
+{
+    annotation { "Name" : "Constant" }
+    CONSTANT,
+    annotation { "Name" : "Linear" }
+    LINEAR,
+    annotation { "Name" : "Smooth" }
+    SMOOTH
+}
+
 // ─── Pure geometry helpers ────────────────────────────────────────────────────
 
-// wallAngle is measured from the surface normal (0 = vertical wall).
-// Returns the additional setback beyond pinchOffset needed so the
-// pinch fillet of radius R terminates exactly at the pinchOffset location.
+// wallAngle measured from the surface normal (0 = vertical wall).
+// Returns the setback beyond pinchOffset so the pinch fillet of radius R
+// terminates exactly at the pinchOffset location.
 //   derivation: tangent length on CD surface from wall base = R * (1 - sin(a)) / cos(a)
-function calcWallBottomOffset(pinchRadius is ValueWithUnits, wallAngle is ValueWithUnits) returns ValueWithUnits
+function calcWallBottomOffset(wallRadius is ValueWithUnits, wallAngle is ValueWithUnits) returns ValueWithUnits
 {
     var sinA = sin(wallAngle);
     var cosA = cos(wallAngle);
@@ -39,14 +58,14 @@ function calcWallBottomOffset(pinchRadius is ValueWithUnits, wallAngle is ValueW
     {
         return 0 * millimeter;
     }
-    return pinchRadius * (1 - sinA) / cosA;
+    return wallRadius * (1 - sinA) / cosA;
 }
 
-// t in [0,1] along the start->end axis of the region.
+// t in [0,1] along the region start->end axis.
 function computeRegionT(edgePt is Vector, startOrigin is Vector, endOrigin is Vector) returns number
 {
-    var axis    = (endOrigin - startOrigin) / meter;
-    var axLen2  = dot(axis, axis);
+    var axis   = (endOrigin - startOrigin) / meter;
+    var axLen2 = dot(axis, axis);
     if (axLen2 < 1e-18)
     {
         return 0;
@@ -55,13 +74,13 @@ function computeRegionT(edgePt is Vector, startOrigin is Vector, endOrigin is Ve
     return min(max(t, 0), 1);
 }
 
-// Returns the binormal = cross(faceNormal, edgeTangent), flipped if it points
-// into the face rather than away from it (probe 0.1 mm; flip if probe lands on face).
+// Binormal = cross(faceNormal, edgeTangent), flipped if it points into the face.
+// Probe 0.1 mm; if probe lands on face, the initial direction was inward.
 function computeBinormal(context is Context, faceQ is Query, edgePt is Vector,
     faceNorm is Vector, edgeTan is Vector) returns Vector
 {
     var bn = cross(faceNorm, edgeTan);
-    var probePt = edgePt + bn * 1e-4 * meter;
+    var probePt   = edgePt + bn * 1e-4 * meter;
     var probeDist = evDistance(context, { "side0" : faceQ, "side1" : probePt }).distance;
     if (probeDist < 0.5e-4 * meter)
     {
@@ -72,10 +91,9 @@ function computeBinormal(context is Context, faceQ is Query, edgePt is Vector,
 
 // ─── CD surface setup ─────────────────────────────────────────────────────────
 
-// Copies cdSurf, splits the copy with swSurf, and returns the smaller piece
-// (the cavity interior strip) and the larger piece (outer CD surface).
-// The inside piece's laminar edges are the swRout intersection curves --
-// these are the "pinch edges" that drive the offset.
+// Copies cdSurf, splits the copy with swSurf, identifies inside (smaller bounding
+// box) vs outside, and returns both as { inside, outside }.
+// The inside piece's laminar edges are the swRout intersection -- the pinch edges.
 function setupCDSplit(context is Context, id is Id, cdSurf is Query, swSurf is Query) returns map
 {
     opPattern(context, id + "cdCopy", {
@@ -113,7 +131,7 @@ function setupCDSplit(context is Context, id is Id, cdSurf is Query, swSurf is Q
         outsideQ = splitTrueQ;
     }
 
-    setProperty(context, { "entities" : insideQ,  "propertyType" : PropertyType.NAME, "value" : "CD_inside" });
+    setProperty(context, { "entities" : insideQ,  "propertyType" : PropertyType.NAME, "value" : "CD_inside"  });
     setProperty(context, { "entities" : outsideQ, "propertyType" : PropertyType.NAME, "value" : "CD_outside" });
 
     return { "inside" : insideQ, "outside" : outsideQ };
@@ -121,13 +139,11 @@ function setupCDSplit(context is Context, id is Id, cdSurf is Query, swSurf is Q
 
 // ─── Wall surface builder ─────────────────────────────────────────────────────
 
-// Builds the lofted wall surface for one region.
 // For each periphery edge of the region CD slice:
-//   wallBottomPt = edgePt + totalBottomOffset * binormal
-//   wallTopPt    = wallBottomPt + wallHeight * refWireNormal
-//   where refWireNormal = frameAtPoint(processedPath, wallBottomPt).frame.xAxis
-// Both curve sets are co-fitted via approximateSpline and lofted.
-// Returns a Query of the lofted surface body, or qNothing() on failure.
+//   bottomPt = edgePt + totalBottomOffset * binormal
+//   topPt    = bottomPt + wallHeight * refWireNormal
+//              where refWireNormal = frameAtPoint(processedPath, bottomPt).frame.xAxis
+// Both curves are co-fitted via approximateSpline and lofted.
 function buildSimpleWallSurface(context is Context, id is Id,
     regionSurf is Query,
     peripheryEdges is Query,
@@ -141,12 +157,10 @@ function buildSimpleWallSurface(context is Context, id is Id,
 {
     var allSurfs = [];
     var edgeList = evaluateQuery(context, peripheryEdges);
-    var edgeCount = size(edgeList);
 
-    for (var ei = 0; ei < edgeCount; ei += 1)
+    for (var ei = 0; ei < size(edgeList); ei += 1)
     {
-        var edgeQ = edgeList[ei];
-
+        var edgeQ    = edgeList[ei];
         var adjFaces = evaluateQuery(context, qAdjacent(edgeQ, AdjacencyType.EDGE, EntityType.FACE));
         if (size(adjFaces) == 0)
         {
@@ -154,12 +168,12 @@ function buildSimpleWallSurface(context is Context, id is Id,
         }
         var faceQ = adjFaces[0];
 
-        // Build uniform arc-length sample parameters.
         var sampleParams = [];
         for (var k = 0; k < numPts; k += 1)
         {
             sampleParams = append(sampleParams, k / (numPts - 1));
         }
+
         var tangentLines = evEdgeTangentLines(context, {
             "edge"                      : edgeQ,
             "parameters"                : sampleParams,
@@ -171,29 +185,22 @@ function buildSimpleWallSurface(context is Context, id is Id,
 
         for (var k = 0; k < size(tangentLines); k += 1)
         {
-            var tl    = tangentLines[k];
-            var ePt   = tl.origin;
-            var eTan  = tl.direction;
+            var tl   = tangentLines[k];
+            var ePt  = tl.origin;
+            var eTan = tl.direction;
 
-            // Face normal at this sample point.
             var uvParam  = evDistance(context, { "side0" : faceQ, "side1" : ePt }).sides[0].parameter;
             var faceNorm = evFaceTangentPlane(context, { "face" : faceQ, "parameter" : uvParam }).normal;
+            var binorm   = computeBinormal(context, faceQ, ePt, faceNorm, eTan);
 
-            // Binormal pointing away from the surface (into the offset region).
-            var binorm = computeBinormal(context, faceQ, ePt, faceNorm, eTan);
-
-            // Variable offset magnitude along the region.
-            var tReg     = computeRegionT(ePt, offsetDef.startFrameOrigin, offsetDef.endFrameOrigin);
+            var tReg      = computeRegionT(ePt, offsetDef.startFrameOrigin, offsetDef.endFrameOrigin);
             var offsetMag = computeOffsetMag(offsetDef, tReg);
 
             var bottomPt = ePt + offsetMag * binorm;
             bottomPts = append(bottomPts, bottomPt);
 
-            // Wall direction = xAxis of the PT frame at the closest refWire point.
             var ptFrame = frameAtPoint(context, processedPath, bottomPt);
-            var wallDir = ptFrame.frame.xAxis;
-
-            topPts = append(topPts, bottomPt + wallHeight * wallDir);
+            topPts = append(topPts, bottomPt + wallHeight * ptFrame.frame.xAxis);
         }
 
         if (size(bottomPts) < splineDegree + 1)
@@ -201,7 +208,6 @@ function buildSimpleWallSurface(context is Context, id is Id,
             continue;
         }
 
-        // Fit both curves with a shared parameterization.
         var approxResult = approximateSpline(context, {
             "degree"           : splineDegree,
             "tolerance"        : tolerance,
@@ -216,9 +222,6 @@ function buildSimpleWallSurface(context is Context, id is Id,
             continue;
         }
 
-        var bottomCurve = approxResult[0];
-        var topCurve    = approxResult[1];
-
         var bottomId = id + ("bCurve" ~ ei);
         var topId    = id + ("tCurve" ~ ei);
         var loftId   = id + ("loft"   ~ ei);
@@ -226,25 +229,23 @@ function buildSimpleWallSurface(context is Context, id is Id,
 
         try silent
         {
-            opCreateBSplineCurve(context, bottomId, { "bSplineCurve" : bottomCurve });
-            opCreateBSplineCurve(context, topId,    { "bSplineCurve" : topCurve    });
-
-            var bottomEdgeQ = qCreatedBy(bottomId, EntityType.EDGE);
-            var topEdgeQ    = qCreatedBy(topId,    EntityType.EDGE);
+            opCreateBSplineCurve(context, bottomId, { "bSplineCurve" : approxResult[0] });
+            opCreateBSplineCurve(context, topId,    { "bSplineCurve" : approxResult[1] });
 
             opLoft(context, loftId, {
                 "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [bottomEdgeQ, topEdgeQ]
+                "profileSubqueries" : [qCreatedBy(bottomId, EntityType.EDGE),
+                                       qCreatedBy(topId,    EntityType.EDGE)]
             });
 
             allSurfs = append(allSurfs, qCreatedBy(loftId, EntityType.BODY));
         }
 
-        // Always clean up the wire bodies regardless of loft success.
         try silent
         {
             opDeleteBodies(context, cleanId, {
-                "entities" : qUnion([qCreatedBy(bottomId, EntityType.BODY), qCreatedBy(topId, EntityType.BODY)])
+                "entities" : qUnion([qCreatedBy(bottomId, EntityType.BODY),
+                                     qCreatedBy(topId,    EntityType.BODY)])
             });
         }
     }
@@ -285,8 +286,8 @@ export function topWalliiEditingLogic(context is Context, id is Id,
             else if (reg.extentDef == RegionExtentDef.QUERY)
             {
                 var extents = queryRegionExtents(context, processedPath, reg.startPoint, reg.endPoint);
-                reg.startX = extents.startX;
-                reg.endX   = extents.endX;
+                reg.startX  = extents.startX;
+                reg.endX    = extents.endX;
                 sortable = append(sortable, reg);
             }
             else
@@ -295,7 +296,8 @@ export function topWalliiEditingLogic(context is Context, id is Id,
             }
         }
 
-        sortable = sort(sortable, function(a, b) { return (a.startX + a.endX) / 2 - (b.startX + b.endX) / 2; });
+        sortable = sort(sortable, function(a, b)
+            { return (a.startX + a.endX) / 2 - (b.startX + b.endX) / 2; });
 
         var counter    = 0;
         var newRegions = [];
@@ -303,8 +305,9 @@ export function topWalliiEditingLogic(context is Context, id is Id,
         for (var i = 0; i < size(sortable); i += 1)
         {
             var reg = sortable[i];
-            reg.regionNum         = counter;
-            reg.needsDefaultName  = (length(reg.name) == 0 || reg.name == undefined || startsWith(reg.name, "Region "));
+            reg.regionNum        = counter;
+            reg.needsDefaultName = (length(reg.name) == 0 || reg.name == undefined ||
+                                    startsWith(reg.name, "Region "));
             if (reg.needsDefaultName) { reg.name = "Region " ~ counter; }
             newRegions = append(newRegions, reg);
             counter += 1;
@@ -312,8 +315,8 @@ export function topWalliiEditingLogic(context is Context, id is Id,
         for (var i = 0; i < size(unsortable); i += 1)
         {
             var reg = unsortable[i];
-            reg.regionNum         = counter;
-            reg.needsDefaultName  = (length(reg.name) == 0 || reg.name == undefined);
+            reg.regionNum        = counter;
+            reg.needsDefaultName = (length(reg.name) == 0 || reg.name == undefined);
             if (reg.needsDefaultName) { reg.name = "Region " ~ counter; }
             newRegions = append(newRegions, reg);
             counter += 1;
@@ -367,26 +370,39 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Mode", "Default" : TopWallMode.FULL, "UIHint" : UIHint.HORIZONTAL_ENUM }
         definition.mode is TopWallMode;
 
-        annotation { "Name" : "SW rout surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "SW rout surface",
+                     "Filter" : EntityType.BODY && BodyType.SHEET && ModifiableEntityOnly.YES,
+                     "MaxNumberOfPicks" : 1 }
         definition.swRoutSurf is Query;
 
-        annotation { "Name" : "CD surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "CD surface",
+                     "Filter" : EntityType.BODY && BodyType.SHEET && ModifiableEntityOnly.YES,
+                     "MaxNumberOfPicks" : 1 }
         definition.cdSurf is Query;
 
         if (definition.mode == TopWallMode.FULL)
         {
-            annotation { "Name" : "Top surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Top surface",
+                         "Filter" : EntityType.BODY && BodyType.SHEET && ModifiableEntityOnly.YES,
+                         "MaxNumberOfPicks" : 1 }
             definition.topSurf is Query;
         }
 
-        annotation { "Name" : "Ref. wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Ref. wire",
+                     "Filter" : EntityType.BODY && BodyType.WIRE && ModifiableEntityOnly.YES,
+                     "MaxNumberOfPicks" : 1 }
         definition.refWire is Query;
 
         annotation { "Name" : "Flip direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
         definition.flipDirection is boolean;
 
-        annotation { "Name" : "Ref. point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Ref. point",
+                     "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE,
+                     "MaxNumberOfPicks" : 1 }
         definition.refPoint is Query;
+
+        annotation { "Name" : "Wall height" }
+        isLength(definition.wallHeight, WALL_HEIGHT_BOUNDS);
 
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
@@ -398,7 +414,8 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "regionNum", "UIHint" : UIHint.ALWAYS_HIDDEN }
             isInteger(region.regionNum, RegionNumBounds);
 
-            annotation { "Name" : "Extents from", "Default" : RegionExtentDef.ALONG_REF, "UIHint" : UIHint.HORIZONTAL_ENUM }
+            annotation { "Name" : "Extents from", "Default" : RegionExtentDef.ALONG_REF,
+                         "UIHint" : UIHint.HORIZONTAL_ENUM }
             region.extentDef is RegionExtentDef;
 
             annotation { "Name" : "Name" }
@@ -417,17 +434,22 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             }
             else if (region.extentDef == RegionExtentDef.QUERY)
             {
-                annotation { "Name" : "Start", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Start",
+                             "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE,
+                             "MaxNumberOfPicks" : 1 }
                 region.startPoint is Query;
 
-                annotation { "Name" : "End", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "End",
+                             "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE,
+                             "MaxNumberOfPicks" : 1 }
                 region.endPoint is Query;
             }
 
-            annotation { "Name" : "Pinch offset type", "Default" : RegionOffsetType.CONSTANT, "UIHint" : UIHint.HORIZONTAL_ENUM }
-            region.pinchOffsetType is RegionOffsetType;
+            annotation { "Name" : "Pinch offset type", "Default" : SimpleOffsetType.CONSTANT,
+                         "UIHint" : UIHint.HORIZONTAL_ENUM }
+            region.pinchOffsetType is SimpleOffsetType;
 
-            if (region.pinchOffsetType == RegionOffsetType.CONSTANT)
+            if (region.pinchOffsetType == SimpleOffsetType.CONSTANT)
             {
                 annotation { "Name" : "Pinch offset" }
                 isLength(region.pinchOffset, REGION_OFFSET_BOUNDS);
@@ -439,25 +461,13 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
                 annotation { "Name" : "Pinch offset (end)" }
                 isLength(region.endPinchOffset, REGION_OFFSET_BOUNDS);
-
-                if (region.pinchOffsetType == RegionOffsetType.QUADRATIC)
-                {
-                    annotation { "Name" : "Zero slope at start", "Default" : true }
-                    region.zeroSlopeAtStart is boolean;
-                }
             }
 
             annotation { "Name" : "Wall angle (from normal)" }
             isAngle(region.wallAngle, WALL_ANGLE_BOUNDS);
 
-            annotation { "Name" : "Wall height" }
-            isLength(region.wallHeight, WALL_HEIGHT_BOUNDS);
-
-            annotation { "Name" : "Pinch radius" }
-            isLength(region.pinchRadius, RADIUS_BOUNDS);
-
-            annotation { "Name" : "Top radius" }
-            isLength(region.topRadius, RADIUS_BOUNDS);
+            annotation { "Name" : "Wall radius" }
+            isLength(region.wallRadius, RADIUS_BOUNDS);
         }
 
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
@@ -493,10 +503,12 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
             if (ix.join)
             {
-                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0, "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0,
+                             "UIHint" : UIHint.SHOW_LABEL }
                 ix.startContinuity is IntersectionContinuityType;
 
-                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0, "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0,
+                             "UIHint" : UIHint.SHOW_LABEL }
                 ix.endContinuity is IntersectionContinuityType;
 
                 annotation { "Name" : "Start offset" }
@@ -521,24 +533,6 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Max control points" }
             isInteger(definition.approxMaxCP, ApproxMaxCPBounds);
         }
-
-        annotation { "Name" : "Debug", "Default" : false }
-        definition.debug is boolean;
-
-        if (definition.debug)
-        {
-            annotation { "Group Name" : "Debug", "Collapsed By Default" : false, "Driving Parameter" : "debug" }
-            {
-                annotation { "Name" : "Show ref frames", "Default" : false }
-                definition.showRefFrames is boolean;
-
-                annotation { "Name" : "Show wall bottom wire", "Default" : false }
-                definition.showWallBottom is boolean;
-
-                annotation { "Name" : "Show wall top wire", "Default" : false }
-                definition.showWallTop is boolean;
-            }
-        }
     }
     {
         // ── Step 0: Process path ───────────────────────────────────────────────
@@ -549,16 +543,10 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             "numPoints"      : max(20, definition.samplingDensity)
         });
 
-        if (definition.debug && definition.showRefFrames)
-        {
-            showRefFrames(context, processedPath, false, false);
-        }
-
         // ── Step 0: Split CD surface with swRout ───────────────────────────────
         var cdSplit = setupCDSplit(context, id + "setup", definition.cdSurf, definition.swRoutSurf);
-        // cdSplit.inside  = small strip of CD surface inside the swRout cavity
-        //                   Its laminar edges = swRout intersection = the pinch edges.
-        // cdSplit.outside = the rest of the CD surface (retained for bottom-trim in Step 5).
+        // cdSplit.inside  = CD strip inside swRout cavity; its laminar edges are the pinch edges.
+        // cdSplit.outside = remaining CD surface, retained for bottom-trim (Step 4 stub).
 
         // ── Step 1: Overlap validation + process regions ───────────────────────
         var regionsForOverlapCheck = [];
@@ -575,9 +563,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             }
         }
         regionsForOverlapCheck = sort(regionsForOverlapCheck, function(a, b)
-        {
-            return (a.startX - b.startX) / meter;
-        });
+            { return (a.startX - b.startX) / meter; });
         for (var i = 0; i < size(regionsForOverlapCheck) - 1; i += 1)
         {
             var gap = regionsForOverlapCheck[i + 1].startX - regionsForOverlapCheck[i].endX;
@@ -590,32 +576,31 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
         var processedRegions = processRegions(context, { "regions" : definition.regions }, processedPath);
 
-        // ── Step 2-4: Per-region wall surface ──────────────────────────────────
+        // ── Step 2-3: Per-region wall surface ──────────────────────────────────
         for (var r = 0; r < size(processedRegions); r += 1)
         {
             var region = processedRegions[r];
             var reg    = definition.regions[r];
 
             // Copy the inside CD strip for this region.
-            opPattern(context, id + ("cdRegion" ~ r ~ "copy"), {
+            opPattern(context, id + ("cdReg" ~ r ~ "copy"), {
                 "entities"      : cdSplit.inside,
                 "transforms"    : [identityTransform()],
                 "instanceNames" : ["1"]
             });
-            var regionCopy = qCreatedBy(id + ("cdRegion" ~ r ~ "copy"), EntityType.BODY);
+            var regionCopy = qCreatedBy(id + ("cdReg" ~ r ~ "copy"), EntityType.BODY);
             setProperty(context, {
                 "entities"     : regionCopy,
                 "propertyType" : PropertyType.NAME,
                 "value"        : reg.name ~ " cd strip"
             });
 
-            // Split at region start/end planes.
+            // Trim to region extent.
             var startPl = plane(region.startFrame.origin, region.startFrame.zAxis);
             var endPl   = plane(region.endFrame.origin,   region.endFrame.zAxis);
 
             var startTrims = qIntersectsPlane(regionCopy, startPl);
             var endTrims   = qIntersectsPlane(regionCopy, endPl);
-
             if (!isQueryEmpty(context, startTrims))
             {
                 opSplitPart(context, id + ("rStart" ~ r), { "targets" : startTrims, "tool" : startPl });
@@ -625,15 +610,15 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 opSplitPart(context, id + ("rEnd" ~ r), { "targets" : endTrims, "tool" : endPl });
             }
 
-            // Delete the pieces that lie outside the region.
             var midPt  = (region.startFrame.origin + region.endFrame.origin) / 2;
             var midDir = normalize((region.startFrame.origin - region.endFrame.origin) / millimeter);
             var midPl  = plane(midPt, midDir);
-            var toDelete = qSubtraction(regionCopy, qIntersectsPlane(regionCopy, midPl));
-            opDeleteBodies(context, id + ("rDelete" ~ r), { "entities" : toDelete });
+            opDeleteBodies(context, id + ("rDelete" ~ r), {
+                "entities" : qSubtraction(regionCopy, qIntersectsPlane(regionCopy, midPl))
+            });
 
-            // Identify periphery edges: one-sided edges excluding region boundary plane edges.
-            var newSplitEdges = qUnion([
+            // Periphery = one-sided edges, excluding region-boundary plane edges.
+            var splitEdges = qUnion([
                 qCreatedBy(id + ("rStart" ~ r), EntityType.EDGE),
                 qCreatedBy(id + ("rEnd"   ~ r), EntityType.EDGE)
             ]);
@@ -643,21 +628,18 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             ]);
             var peripheryEdges = qEdgeTopologyFilter(
                 qSubtraction(qOwnedByBody(regionCopy, EntityType.EDGE),
-                             qUnion([newSplitEdges, boundaryEdges])),
+                             qUnion([splitEdges, boundaryEdges])),
                 EdgeTopology.ONE_SIDED
             );
 
-            // Build the offsetDef for computeOffsetMag.
-            // offset = totalBottomOffset = pinchOffset + wallBottomOffset(pinchRadius, wallAngle)
-            var isConst    = reg.pinchOffsetType == RegionOffsetType.CONSTANT;
-            var pinchStart = isConst ? reg.pinchOffset : reg.startPinchOffset;
-            var pinchEnd   = isConst ? reg.pinchOffset : reg.endPinchOffset;
-            var wallBotOff = calcWallBottomOffset(reg.pinchRadius, reg.wallAngle);
+            // Build offsetDef.
+            // totalOffset = pinchOffset + wallBottomOffset(wallRadius, wallAngle)
+            // wallBottomOffset is constant per region (depends only on radius + angle).
+            var isConst  = reg.pinchOffsetType == SimpleOffsetType.CONSTANT;
+            var wallBotOff = calcWallBottomOffset(reg.wallRadius, reg.wallAngle);
 
-            var totalStart = pinchStart + wallBotOff;
-            var totalEnd   = pinchEnd   + wallBotOff;
-
-            var zeroAtStart = (reg.pinchOffsetType == RegionOffsetType.QUADRATIC) ? reg.zeroSlopeAtStart : true;
+            var totalStart = (isConst ? reg.pinchOffset : reg.startPinchOffset) + wallBotOff;
+            var totalEnd   = (isConst ? reg.pinchOffset : reg.endPinchOffset)   + wallBotOff;
 
             var offsetDef = {
                 "startFrameOrigin" : region.startFrame.origin,
@@ -666,7 +648,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 "offset"           : isConst ? totalStart : (0 * millimeter),
                 "startOffset"      : totalStart,
                 "endOffset"        : totalEnd,
-                "zeroSlopeAtStart" : zeroAtStart,
+                "zeroSlopeAtStart" : true,
                 "regionName"       : reg.name,
                 "singleCurve"      : false
             };
@@ -678,7 +660,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 regionCopy,
                 peripheryEdges,
                 offsetDef,
-                reg.wallHeight,
+                definition.wallHeight,
                 processedPath,
                 definition.samplingDensity,
                 definition.approxDegree,
@@ -688,47 +670,40 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
             processedRegions[r] = mergeMaps(processedRegions[r], { "loftBodyQuery" : wallSurfQ });
 
-            // Region CD copy no longer needed.
-            opDeleteBodies(context, id + ("cdRegionClean" ~ r), { "entities" : regionCopy });
+            opDeleteBodies(context, id + ("cdRegClean" ~ r), { "entities" : regionCopy });
 
-            // ── Step 4 (STUB): Trim bottom of wall against CD surface copy ─────
+            // ── Step 4 (STUB): Trim bottom of wall against CD surface ──────────
             // TODO: copy cdSplit.outside, extend bottom edge of wallSurfQ to meet it,
             //       mutual trim, delete inside of CD copy.
 
-            // ── Step 5 (STUB): Trim top of wall against topSurf copy ───────────
-            // TODO (mode == FULL): copy topSurf, extend top edge of wallSurfQ to
-            //       meet it, mutual trim, delete outside of topSurf copy.
+            // ── Step 5 (STUB): Trim top of wall against topSurf ───────────────
+            // TODO (mode == FULL): copy topSurf, extend top edge of wallSurfQ,
+            //       mutual trim, delete outside of topSurf copy.
 
-            // ── Step 6 (STUB): Apply pinch fillet ──────────────────────────────
-            // TODO (mode != WALL_ONLY): opFillet on the bottom edge of wallSurfQ
-            //       with radius = reg.pinchRadius.
-
-            // ── Step 7 (STUB): Apply top fillet ────────────────────────────────
-            // TODO (mode == FULL): opFillet on the top edge with reg.topRadius.
+            // ── Step 6 (STUB): Apply wall radius fillet ───────────────────────
+            // TODO: opFillet on bottom and top edges with reg.wallRadius.
         }
 
-        // Clean up the CD split bodies -- the inside strip was patterned per-region
-        // above; the outside is needed for Step 4 trim (stub) but not yet used.
+        // Clean up the split CD bodies.
         opDeleteBodies(context, id + "cleanupCDSplit", {
             "entities" : qUnion([cdSplit.inside, cdSplit.outside])
         });
 
-        // ── Step 8: Join region intersections ──────────────────────────────────
+        // ── Step 7: Join region intersections ──────────────────────────────────
         if (size(definition.intersections) > 0)
         {
-            buildIntersectionJoins(context, id, mergeMaps(definition, { "returnLoftSurface" : true }), processedRegions);
+            buildIntersectionJoins(context, id,
+                mergeMaps(definition, { "returnLoftSurface" : true }),
+                processedRegions);
         }
     }, {
         "flipDirection"   : false,
         "mode"            : TopWallMode.FULL,
+        "wallHeight"      : 20 * millimeter,
         "samplingDensity" : 50,
         "approxDegree"    : 3,
         "approxTolerance" : 0.01 * millimeter,
         "approxMaxCP"     : 100,
         "regions"         : [],
-        "intersections"   : [],
-        "debug"           : false,
-        "showRefFrames"   : false,
-        "showWallBottom"  : false,
-        "showWallTop"     : false
+        "intersections"   : []
     });
