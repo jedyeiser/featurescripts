@@ -173,6 +173,9 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
         annotation { "Name" : "Footprint surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
         definition.footprintSurf is Query;
 
+        annotation { "Name" : "Bottom surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+        definition.bottomSurf is Query;
+
         annotation { "Name" : "Wall points", "Item name" : "Wall point", "Item label template" : "#name", "UIHint" : [UIHint.COLLAPSE_ARRAY_ITEMS, UIHint.PREVENT_ARRAY_REORDER] }
         definition.wallPoints is array;
         for (var wallPoint in definition.wallPoints)
@@ -607,7 +610,7 @@ function setupGeometry(context is Context, id is Id, definition is map) returns 
     });
 
     var cdSurfsBase = splitCDSurfs_i(context, id + "splitCDSurfs", cdCopy, swRoutCopy);
-    const cdSurfs = mergeMaps(cdSurfsBase, { "footprint" : definition.footprintSurf });
+    const cdSurfs = mergeMaps(cdSurfsBase, { "footprint" : definition.footprintSurf, "bottom" : definition.bottomSurf });
 
     return {
         "pinchWire"   : pinchWire,
@@ -821,10 +824,12 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     var origin = tl.origin;
     var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
 
-    // xAxis: PT frame normal of the refWire at this arc length, flipped to positive Z component.
-    var ptFr   = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen);
-    var xRaw   = ptFr.frame.xAxis;
-    var xAx    = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
+    // xAxis: face normal of the bottom surface at the closest point to origin, flipped to +Z.
+    var closestBotFace  = qClosestTo(qOwnedByBody(cdSurfs.bottom, EntityType.FACE), origin);
+    var botFaceDist     = evDistance(context, { "side0" : closestBotFace, "side1" : origin });
+    var botTangentPlane = evFaceTangentPlane(context, { "face" : closestBotFace, "parameter" : botFaceDist.sides[0].parameter });
+    var xRaw            = botTangentPlane.normal;
+    var xAx             = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
 
     // Cavity depth: cast ray along xAx to topSurf.
     var topHits     = evRaycast(context, { "ray" : line(origin, xAx), "entities" : topSurf, "closest" : true });
