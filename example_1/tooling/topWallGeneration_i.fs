@@ -393,19 +393,22 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
 
                 for (var e = 0; e < size(bodyEdges); e += 1)
                 {
-                    var edge = bodyEdges[e];
+                    var edge     = bodyEdges[e];
+                    var bsCurve  = evApproximateBSplineCurve(context, { "edge" : edge });
 
-                    // Skip edges that lie in a region boundary plane — they are colinear
-                    // with the trim frame and produce spurious frames / zero-length spans.
-                    if (edgeLiesInPlane(context, edge, startPoint.pointRefPlane) ||
-                        edgeLiesInPlane(context, edge, endPoint.pointRefPlane))
+                    // Skip only LINEAR (degree-1) edges that lie in a boundary plane.
+                    // Curved edges can never be colinear with a plane, so the filter
+                    // is restricted to degree-1 edges to avoid discarding valid curved edges.
+                    if (getDegree(bsCurve) == 1 &&
+                        (edgeLiesInPlane(context, edge, startPoint.pointRefPlane) ||
+                         edgeLiesInPlane(context, edge, endPoint.pointRefPlane)))
                     {
                         continue;
                     }
 
                     // Step 3: Build edge point maps via Greville sampling
                     var edgeResult = processRegionEdge(context, id + ("edge_" ~ ri ~ "_" ~ b ~ "_" ~ e),
-                        edge, processedPinchWire, cdSurfs, topCopy, cdCopy,
+                        edge, bsCurve, processedPinchWire, cdSurfs, topCopy, cdCopy,
                         startPoint, endPoint, transitionMap, definition.definitionType);
 
                     if (definition.logSampling)
@@ -907,12 +910,12 @@ function buildEdgePointMaps(context is Context, edge is Query, bsCurve is BSplin
 }
 
 
-// Orchestrates edge processing: bsCurve -> Greville params -> point maps.
-function processRegionEdge(context is Context, id is Id, edge is Query, processedPinchWire is map,
-    cdSurfs is map, topSurf is Query, cdSurf is Query, startPoint is map, endPoint is map,
-    transitionMap is map, definitionType) returns map
+// Orchestrates edge processing: Greville params -> point maps.
+// bsCurve is pre-computed by the caller (avoids a duplicate evApproximateBSplineCurve call).
+function processRegionEdge(context is Context, id is Id, edge is Query, bsCurve is BSplineCurve,
+    processedPinchWire is map, cdSurfs is map, topSurf is Query, cdSurf is Query,
+    startPoint is map, endPoint is map, transitionMap is map, definitionType) returns map
 {
-    var bsCurve        = evApproximateBSplineCurve(context, { "edge" : edge });
     var grevilleParams = computeGrevilleParams(bsCurve);
     var edgePointMaps  = buildEdgePointMaps(context, edge, bsCurve, grevilleParams,
         processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
