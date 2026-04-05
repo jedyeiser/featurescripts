@@ -392,6 +392,14 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                 {
                     var edge = bodyEdges[e];
 
+                    // Skip edges that lie in a region boundary plane — they are colinear
+                    // with the trim frame and produce spurious frames / zero-length spans.
+                    if (edgeLiesInPlane(context, edge, startPoint.pointRefPlane) ||
+                        edgeLiesInPlane(context, edge, endPoint.pointRefPlane))
+                    {
+                        continue;
+                    }
+
                     // Step 3: Build edge point maps via Greville sampling
                     var edgeResult = processRegionEdge(context, id + ("edge_" ~ ri ~ "_" ~ b ~ "_" ~ e),
                         edge, processedPinchWire, cdSurfs, topCopy, cdCopy,
@@ -525,6 +533,24 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                                 ji -= 1;
                             }
                             sortedSR[ji + 1] = key;
+                        }
+
+                        // Deduplicate points with identical spanParams.
+                        // Duplicate spanParams cause approximateSpline to receive non-strictly-monotonic
+                        // parameters, which causes opCreateBSplineCurve BAD_GEOMETRY.
+                        var dedupedSR = [sortedSR[0]];
+                        for (var di = 1; di < size(sortedSR); di += 1)
+                        {
+                            if (sortedSR[di].spanParam - dedupedSR[size(dedupedSR) - 1].spanParam > 1e-9)
+                            {
+                                dedupedSR = append(dedupedSR, sortedSR[di]);
+                            }
+                        }
+                        sortedSR = dedupedSR;
+
+                        if (size(sortedSR) < 2)
+                        {
+                            continue;
                         }
 
                         // Skip sub-regions where max cavity depth is negligible.
@@ -757,6 +783,28 @@ function computeGrevilleParams(bsCurve is BSplineCurve) returns map
 }
 
 
+// Returns true if all sampled points on edge lie within PLANE_TOL of testPlane.
+// Used to skip edges that are colinear with (lie in) a region boundary plane.
+function edgeLiesInPlane(context is Context, edge is Query, testPlane is Plane) returns boolean
+{
+    const PLANE_TOL    = 1e-6 * meter;
+    const sampleParams = [0.0, 0.25, 0.5, 0.75, 1.0];
+
+    const tangentLines = evEdgeTangentLines(context, {
+        "edge"       : edge,
+        "parameters" : sampleParams
+    });
+
+    for (var tl in tangentLines)
+    {
+        if (abs(dot(tl.origin - testPlane.origin, testPlane.normal)) > PLANE_TOL)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 
 // Builds one edgePointMap at a native parameter u along edge.
 function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam is number,
@@ -773,25 +821,14 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     var origin = tl.origin;
     var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
 
-    // xAxis: direction from cdSurf to topSurf, derived by shooting world +Z from origin.
-    // origin lies on cdSurf (pinch wire = cdSurf x swRoutSurf intersection),
-    // so we only need one raycast upward to topSurf; cavityDepth = distance to that hit.
-    var worldZ   = vector(0, 0, 1);
-    var topHitsZ = evRaycast(context, { "ray" : line(origin, worldZ), "entities" : topSurf, "closest" : true });
-    var xAx;
-    var cavityDepth;
-    if (size(topHitsZ) > 0)
-    {
-        var thicknessVec = topHitsZ[0].intersection - origin;
-        var thickLen = norm(thicknessVec);
-        xAx = (thickLen / meter > 1e-10) ? thicknessVec / thickLen : worldZ;
-        cavityDepth = thickLen;
-    }
-    else
-    {
-        xAx = worldZ;
-        cavityDepth = 0 * millimeter;
-    }
+    // xAxis: PT frame normal of the refWire at this arc length, flipped to positive Z component.
+    var ptFr   = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen);
+    var xRaw   = ptFr.frame.xAxis;
+    var xAx    = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
+
+    // Cavity depth: cast ray along xAx to topSurf.
+    var topHits     = evRaycast(context, { "ray" : line(origin, xAx), "entities" : topSurf, "closest" : true });
+    var cavityDepth = (size(topHits) > 0) ? norm(topHits[0].intersection - origin) : 0 * millimeter;
 
     // yAxis: nearest footprint face normal, projected perpendicular to xAxis.
     // Polarity check (probe toward cdSurfs.inside) ensures yAxis points outward.
