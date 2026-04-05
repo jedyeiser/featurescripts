@@ -799,7 +799,8 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     // Footprint faces are planar (vertical extrusion) so normal is constant; UV (0.5, 0.5) is fine.
     var fpFaces        = qOwnedByBody(cdSurfs.footprint, EntityType.FACE);
     var closestFpFace  = qClosestTo(fpFaces, origin);
-    var fpTangentPlane = evFaceTangentPlane(context, { "face" : closestFpFace, "parameter" : vector(0.5, 0.5) });
+    var fpFaceDist     = evDistance(context, { "side0" : closestFpFace, "side1" : origin });
+    var fpTangentPlane = evFaceTangentPlane(context, { "face" : closestFpFace, "parameter" : fpFaceDist.sides[0].parameter });
     var fpNormalRaw    = fpTangentPlane.normal;
     var probeOut = origin + fpNormalRaw * YAXIS_PROBE_DIST;
     var probeIn  = origin - fpNormalRaw * YAXIS_PROBE_DIST;
