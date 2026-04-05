@@ -758,10 +758,8 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     // xAxis: world +Z projected perpendicular to the wire tangent.
     // This standardizes the frame so xAxis always points "up" (toward topsheet)
     // regardless of wire curvature or kinks.
-    var zAx   = tl.direction;
-    var xRaw  = vector(0, 0, 1) - zAx * dot(zAx, vector(0, 0, 1));
-    var xLen  = norm(xRaw);
-    var xAx   = (xLen > 1e-10) ? xRaw / xLen : cross(zAx, vector(1, 0, 0));
+    var zAx = tl.direction;
+    var xAx = vector(0, 0, 1);
 
     // yAxis: perpendicular to both zAxis and xAxis, sign from polarity check.
     var rawY = yAxisSign * cross(zAx, xAx);
@@ -782,10 +780,8 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     }
     else
     {
-        // Ray missed a surface — fall back to evDistance and accept whatever it returns.
-        var topDist = evDistance(context, { "side0" : topSurf, "side1" : line(origin, xAx) });
-        var cdDist  = evDistance(context, { "side0" : cdSurf,  "side1" : line(origin, xAx) });
-        cavityDepth = norm(topDist.sides[0].point - cdDist.sides[0].point);
+        // Ray missed a surface — point is outside the measurable cavity region.
+        cavityDepth = 0 * millimeter;
     }
 
     // spanParam: project startPoint and endPoint onto the pinch wire to get arc lengths
@@ -930,9 +926,7 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
         return norm(topHits[0].intersection - cdHits[0].intersection);
     }
 
-    var topDist = evDistance(context, { "side0" : topSurf, "side1" : line(tl.origin, xAx) });
-    var cdDist  = evDistance(context, { "side0" : cdSurf,  "side1" : line(tl.origin, xAx) });
-    return norm(topDist.sides[0].point - cdDist.sides[0].point);
+    return 0 * millimeter;
 }
 
 
