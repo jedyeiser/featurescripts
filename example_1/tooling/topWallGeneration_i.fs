@@ -396,7 +396,7 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
 
                     if (definition.logSampling)
                     {
-                        println("edge r" ~ ri ~ " b" ~ b ~ " e" ~ e ~ ": yAxisSign=" ~ edgeResult.yAxisSign ~ " nPts=" ~ size(edgeResult.edgePointMaps));
+                        println("edge r" ~ ri ~ " b" ~ b ~ " e" ~ e ~ ": nPts=" ~ size(edgeResult.edgePointMaps));
                         for (var ptMap in edgeResult.edgePointMaps)
                         {
                             println("  sp=" ~ ptMap.spanParam ~ " cd=" ~ ptMap.cavityDepth / millimeter ~ "mm");
@@ -424,7 +424,7 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                     var subRegions = filterAndInsertZeroCrossings(context,
                         edgeResult.edgePointMaps, edge, edgeResult.bsCurve,
                         processedPinchWire, cdSurfs, topCopy, cdCopy,
-                        edgeResult.yAxisSign, startPoint, endPoint, transitionMap, definition.definitionType);
+                        startPoint, endPoint, transitionMap, definition.definitionType);
 
                     if (definition.logSampling)
                     {
@@ -458,7 +458,7 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         {
                             augmentedSubRegions = append(augmentedSubRegions,
                                 insertMinCDTransitions(context, subRegions[sr], edge, edgeResult.bsCurve,
-                                    processedPinchWire, topCopy, cdCopy, edgeResult.yAxisSign, startPoint, endPoint, transitionMap));
+                                    processedPinchWire, cdSurfs, topCopy, cdCopy, startPoint, endPoint, transitionMap));
                         }
                         subRegions = augmentedSubRegions;
                     }
@@ -783,7 +783,7 @@ function determineYAxisPolarity(context is Context, edge is Query, processedPinc
 
 // Builds one edgePointMap at a native parameter u along edge.
 function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam is number,
-    normalizedParam is number, bsCurve is BSplineCurve, processedPinchWire is map, yAxisSign is number,
+    normalizedParam is number, bsCurve is BSplineCurve, processedPinchWire is map, cdSurfs is map,
     topSurf is Query, cdSurf is Query, startPoint is map, endPoint is map, transitionMap is map,
     definitionType) returns map
 {
@@ -801,18 +801,19 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     var xRaw = ptFr.frame.xAxis;
     var xAx  = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
 
-    // zAxis: wire tangent projected onto the plane perpendicular to xAxis.
-    // Required so coordSystem(xAxis, zAxis) satisfies perpendicularVectors.
-    var wireDir = tl.direction;
-    var zRaw2 = wireDir - xAx * dot(xAx, wireDir);
-    var zLen2 = norm(zRaw2);
-    var zAx   = (zLen2 > 1e-10) ? zRaw2 / zLen2 : cross(xAx, vector(1, 0, 0));
+    // yAxis: direction from cdSurfs.inside to cdSurfs.outside, projected perp to xAxis.
+    // This gives the "closest y axis normal to xAxis that points outward" regardless of wire direction.
+    var insidePt   = evDistance(context, { "side0" : cdSurfs.inside,  "side1" : origin }).sides[0].point;
+    var outsidePt  = evDistance(context, { "side0" : cdSurfs.outside, "side1" : origin }).sides[0].point;
+    var outwardVec = outsidePt - insidePt;
+    var outLen     = norm(outwardVec);
+    var outDir     = (outLen / meter > 1e-10) ? outwardVec / outLen : vector(0, 1, 0);
+    var yRaw       = outDir - xAx * dot(xAx, outDir);
+    var yLen       = norm(yRaw);
+    var yAx        = (yLen > 1e-10) ? yRaw / yLen : cross(xAx, vector(0, 1, 0));
 
-    // yAxis: cross(zAxis, xAxis) * yAxisSign, re-orthogonalized.
-    var rawY = yAxisSign * cross(zAx, xAx);
-    rawY = rawY - zAx * dot(zAx, rawY);
-    var yLen = norm(rawY);
-    var yAx  = (yLen > 1e-10) ? rawY / yLen : cross(zAx, xAx);
+    // zAxis: cross(xAxis, yAxis) — automatically perpendicular to both.
+    var zAx = cross(xAx, yAx);
 
     var pointFrame = coordSystem(origin, xAx, zAx);
 
@@ -862,7 +863,7 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
 
 // Builds all edge point maps for one edge using Greville sampling.
 function buildEdgePointMaps(context is Context, edge is Query, bsCurve is BSplineCurve,
-    grevilleParams is map, processedPinchWire is map, yAxisSign is number,
+    grevilleParams is map, processedPinchWire is map, cdSurfs is map,
     topSurf is Query, cdSurf is Query, startPoint is map, endPoint is map, transitionMap is map,
     definitionType) returns array
 {
@@ -873,30 +874,28 @@ function buildEdgePointMaps(context is Context, edge is Query, bsCurve is BSplin
     for (var j = 0; j < size(nativeParams); j += 1)
     {
         maps = append(maps, buildSingleEdgePointMap(context, edge, nativeParams[j], normalizedParams[j],
-            bsCurve, processedPinchWire, yAxisSign, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType));
+            bsCurve, processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType));
     }
 
     return maps;
 }
 
 
-// Orchestrates edge processing: bsCurve -> Greville params -> polarity -> point maps.
+// Orchestrates edge processing: bsCurve -> Greville params -> point maps.
 function processRegionEdge(context is Context, id is Id, edge is Query, processedPinchWire is map,
     cdSurfs is map, topSurf is Query, cdSurf is Query, startPoint is map, endPoint is map,
     transitionMap is map, definitionType) returns map
 {
-    var bsCurve       = evApproximateBSplineCurve(context, { "edge" : edge });
+    var bsCurve        = evApproximateBSplineCurve(context, { "edge" : edge });
     var grevilleParams = computeGrevilleParams(bsCurve);
-    var yAxisSign     = determineYAxisPolarity(context, edge, processedPinchWire, cdSurfs);
-    var edgePointMaps = buildEdgePointMaps(context, edge, bsCurve, grevilleParams,
-        processedPinchWire, yAxisSign, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
+    var edgePointMaps  = buildEdgePointMaps(context, edge, bsCurve, grevilleParams,
+        processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
 
     return {
-        "edge"          : edge,
-        "bsCurve"       : bsCurve,
+        "edge"           : edge,
+        "bsCurve"        : bsCurve,
         "grevilleParams" : grevilleParams,
-        "yAxisSign"     : yAxisSign,
-        "edgePointMaps" : edgePointMaps
+        "edgePointMaps"  : edgePointMaps
     };
 }
 
@@ -984,8 +983,8 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
 // Finds the zero crossing between highPoint (positive CD) and lowPoint (zero CD).
 // Returns a complete edgePointMap at the crossing.
 function findZeroCrossing(context is Context, highPoint is map, lowPoint is map, edge is Query,
-    bsCurve is BSplineCurve, processedPinchWire is map, topSurf is Query, cdSurf is Query,
-    yAxisSign is number, startPoint is map, endPoint is map, transitionMap is map, definitionType) returns map
+    bsCurve is BSplineCurve, processedPinchWire is map, cdSurfs is map, topSurf is Query, cdSurf is Query,
+    startPoint is map, endPoint is map, transitionMap is map, definitionType) returns map
 {
     var paramRange = getBSplineParamRange(bsCurve);
     var uMin = paramRange.uMin;
@@ -1012,7 +1011,7 @@ function findZeroCrossing(context is Context, highPoint is map, lowPoint is map,
     var normParam = (span > 1e-12) ? (u - uMin) / span : 0.0;
 
     var ptMap = buildSingleEdgePointMap(context, edge, u, normParam, bsCurve,
-        processedPinchWire, yAxisSign, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
+        processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
 
     return mergeMaps(ptMap, {
         "cavityDepth" : 0 * millimeter,
@@ -1026,7 +1025,7 @@ function findZeroCrossing(context is Context, highPoint is map, lowPoint is map,
 // solved exactly at the CD=0 transition.
 function filterAndInsertZeroCrossings(context is Context, edgePointMaps is array, edge is Query,
     bsCurve is BSplineCurve, processedPinchWire is map, cdSurfs is map, topSurf is Query, cdSurf is Query,
-    yAxisSign is number, startPoint is map, endPoint is map, transitionMap is map, definitionType) returns array
+    startPoint is map, endPoint is map, transitionMap is map, definitionType) returns array
 {
     var subRegions = [];
     var curRegion  = [];
@@ -1041,7 +1040,7 @@ function filterAndInsertZeroCrossings(context is Context, edgePointMaps is array
             if (size(curRegion) == 0 && k > 0 && edgePointMaps[k - 1].cavityDepth <= CAVITY_DEPTH_TOL)
             {
                 var zc = findZeroCrossing(context, ptMap, edgePointMaps[k - 1], edge, bsCurve,
-                    processedPinchWire, topSurf, cdSurf, yAxisSign, startPoint, endPoint, transitionMap, definitionType);
+                    processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
                 curRegion = append(curRegion, zc);
             }
             curRegion = append(curRegion, ptMap);
@@ -1053,7 +1052,7 @@ function filterAndInsertZeroCrossings(context is Context, edgePointMaps is array
                 // Leaving a positive-CD run: insert trailing zero crossing.
                 var lastHigh = curRegion[size(curRegion) - 1];
                 var zc = findZeroCrossing(context, lastHigh, ptMap, edge, bsCurve,
-                    processedPinchWire, topSurf, cdSurf, yAxisSign, startPoint, endPoint, transitionMap, definitionType);
+                    processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, definitionType);
                 curRegion  = append(curRegion, zc);
                 subRegions = append(subRegions, curRegion);
                 curRegion  = [];
@@ -1079,8 +1078,8 @@ function calcMinCD_i(pinchRadius is ValueWithUnits, topRadius is ValueWithUnits,
 
 
 function findMinCDTransition(context is Context, pointA is map, pointB is map, edge is Query,
-    bsCurve is BSplineCurve, processedPinchWire is map, topSurf is Query, cdSurf is Query,
-    yAxisSign is number, startPoint is map, endPoint is map, transitionMap is map) returns map
+    bsCurve is BSplineCurve, processedPinchWire is map, cdSurfs is map, topSurf is Query, cdSurf is Query,
+    startPoint is map, endPoint is map, transitionMap is map) returns map
 {
     var paramRange = getBSplineParamRange(bsCurve);
     var uMin = paramRange.uMin;
@@ -1119,7 +1118,7 @@ function findMinCDTransition(context is Context, pointA is map, pointB is map, e
     var normParam = (span > 1e-12) ? (u - uMin) / span : 0.0;
 
     var ptMap = buildSingleEdgePointMap(context, edge, u, normParam, bsCurve,
-        processedPinchWire, yAxisSign, topSurf, cdSurf, startPoint, endPoint, transitionMap, "RADIUS_ANGLE");
+        processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap, "RADIUS_ANGLE");
 
     // At the transition, midPoint == pinchFilletTop == topFilletBottom.
     // buildSingleEdgePointMap already sets curvePoints correctly via solveCapWallPoints at cd==minCD.
@@ -1130,8 +1129,8 @@ function findMinCDTransition(context is Context, pointA is map, pointB is map, e
 
 
 function insertMinCDTransitions(context is Context, subRegion is array, edge is Query,
-    bsCurve is BSplineCurve, processedPinchWire is map, topSurf is Query, cdSurf is Query,
-    yAxisSign is number, startPoint is map, endPoint is map, transitionMap is map) returns array
+    bsCurve is BSplineCurve, processedPinchWire is map, cdSurfs is map, topSurf is Query, cdSurf is Query,
+    startPoint is map, endPoint is map, transitionMap is map) returns array
 {
     if (size(subRegion) < 2)
     {
@@ -1158,7 +1157,7 @@ function insertMinCDTransitions(context is Context, subRegion is array, edge is 
         if (signChange)
         {
             var transPoint = findMinCDTransition(context, ptA, ptB, edge, bsCurve,
-                processedPinchWire, topSurf, cdSurf, yAxisSign, startPoint, endPoint, transitionMap);
+                processedPinchWire, cdSurfs, topSurf, cdSurf, startPoint, endPoint, transitionMap);
             result = append(result, transPoint);
         }
     }
