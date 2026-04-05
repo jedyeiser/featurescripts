@@ -106,7 +106,7 @@ function setupCDSplit(context is Context, id is Id, cdSurf is Query, swSurf is Q
 
     opSplitPart(context, id + "splitCD", {
         "targets"   : cdCopyQ,
-        "tool"      : qOwnedByBody(swSurf, EntityType.FACE),
+        "tool"      : swSurf,
         "keepTools" : true
     });
 
