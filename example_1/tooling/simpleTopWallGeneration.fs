@@ -156,12 +156,12 @@ function buildSimpleWallSurface(context is Context, id is Id,
     splineDegree is number,
     tolerance is ValueWithUnits,
     maxCP is number,
-    debug is boolean) returns Query
+    printLog is boolean) returns Query
 {
     var allSurfs = [];
     var edgeList = evaluateQuery(context, peripheryEdges);
 
-    if (debug)
+    if (printLog)
     {
         println("buildSimpleWallSurface: region=" ~ offsetDef.regionName ~
                 "  edges=" ~ size(edgeList));
@@ -173,7 +173,7 @@ function buildSimpleWallSurface(context is Context, id is Id,
         var adjFaces = evaluateQuery(context, qAdjacent(edgeQ, AdjacencyType.EDGE, EntityType.FACE));
         if (size(adjFaces) == 0)
         {
-            if (debug) { println("  edge " ~ ei ~ ": no adjacent face, skipping"); }
+            if (printLog) { println("  edge " ~ ei ~ ": no adjacent face, skipping"); }
             continue;
         }
         var faceQ = adjFaces[0];
@@ -182,7 +182,7 @@ function buildSimpleWallSurface(context is Context, id is Id,
         var bsCurve  = evApproximateBSplineCurve(context, { "edge" : edgeQ });
         var numPts   = max(splineDegree + 1, size(bsCurve.controlPoints) * cpMult);
 
-        if (debug)
+        if (printLog)
         {
             println("  edge " ~ ei ~ ": bsCPs=" ~ size(bsCurve.controlPoints) ~
                     "  numPts=" ~ numPts);
@@ -225,7 +225,7 @@ function buildSimpleWallSurface(context is Context, id is Id,
 
         if (size(bottomPts) < splineDegree + 1)
         {
-            if (debug)
+            if (printLog)
             {
                 println("  edge " ~ ei ~ ": only " ~ size(bottomPts) ~
                         " pts, need " ~ (splineDegree + 1) ~ " -- skipping");
@@ -245,7 +245,7 @@ function buildSimpleWallSurface(context is Context, id is Id,
 
         if (approxResult == undefined || size(approxResult) < 2)
         {
-            if (debug) { println("  edge " ~ ei ~ ": approximateSpline returned nothing, skipping"); }
+            if (printLog) { println("  edge " ~ ei ~ ": approximateSpline returned nothing, skipping"); }
             continue;
         }
 
@@ -267,11 +267,11 @@ function buildSimpleWallSurface(context is Context, id is Id,
 
             allSurfs = append(allSurfs, qCreatedBy(loftId, EntityType.BODY));
 
-            if (debug) { println("  edge " ~ ei ~ ": loft OK"); }
+            if (printLog) { println("  edge " ~ ei ~ ": loft OK"); }
         }
         catch
         {
-            if (debug) { println("  edge " ~ ei ~ ": loft FAILED (caught by try silent)"); }
+            if (printLog) { println("  edge " ~ ei ~ ": loft FAILED (caught by try silent)"); }
         }
 
         try silent
@@ -594,13 +594,19 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         annotation { "Name" : "Step 0 - CD split + path", "Default" : false }
                         definition.step0 is boolean;
 
-                        annotation { "Name" : "Step 1 - Region slices", "Default" : false }
+                        annotation { "Name" : "Step 1 - Regions processed", "Default" : false }
                         definition.step1 is boolean;
 
-                        annotation { "Name" : "Step 2 - Wall surfaces", "Default" : false }
+                        annotation { "Name" : "Step 2 - CD strips trimmed", "Default" : false }
                         definition.step2 is boolean;
+
+                        annotation { "Name" : "Step 3 - Wall surfaces built", "Default" : false }
+                        definition.step3 is boolean;
                     }
                 }
+
+                annotation { "Name" : "Print log", "Default" : false }
+                definition.printLog is boolean;
 
                 annotation { "Name" : "Show ref frames", "Default" : false }
                 definition.showRefFrames is boolean;
@@ -631,7 +637,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             "numPoints"      : 20
         });
 
-        if (definition.debug)
+        if (definition.printLog)
         {
             println("[TWG2] processPath done  totalLength=" ~
                     processedPath.totalLength / millimeter ~ " mm");
@@ -643,11 +649,16 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         }
 
         // ── Step 0: Split CD surface with swRout ───────────────────────────────
-        if (definition.debug) { println("[TWG2] setupCDSplit..."); }
+        if (definition.printLog) { println("[TWG2] setupCDSplit..."); }
         var cdSplit = setupCDSplit(context, id + "setup", definition.cdSurf, definition.swRoutSurf);
-        if (definition.debug) { println("[TWG2] setupCDSplit done"); }
+        if (definition.printLog) { println("[TWG2] setupCDSplit done"); }
         // cdSplit.inside  = CD strip inside swRout cavity; its laminar edges are the pinch edges.
         // cdSplit.outside = remaining CD surface, retained for bottom-trim (Step 4 stub).
+
+        if (definition.debug && definition.stepThrough && !definition.step0)
+        {
+            return;
+        }
 
         if (definition.debug && definition.stepThrough && !definition.step1)
         {
@@ -682,7 +693,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
         var processedRegions = processRegions(context, { "regions" : definition.regions }, processedPath);
 
-        if (definition.debug)
+        if (definition.printLog)
         {
             println("[TWG2] processRegions done  count=" ~ size(processedRegions));
             for (var r = 0; r < size(processedRegions); r += 1)
@@ -694,23 +705,18 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             }
         }
 
-        if (definition.debug && definition.stepThrough && !definition.step2)
-        {
-            return;
-        }
-
-        // ── Step 2-3: Per-region wall surface ──────────────────────────────────
+        // ── Pass A: Copy + trim one CD strip per region ────────────────────────
+        var regionData = [];
         for (var r = 0; r < size(processedRegions); r += 1)
         {
             var region = processedRegions[r];
             var reg    = definition.regions[r];
 
-            if (definition.debug)
+            if (definition.printLog)
             {
-                println("[TWG2] region " ~ r ~ " '" ~ reg.name ~ "' start...");
+                println("[TWG2] region " ~ r ~ " '" ~ reg.name ~ "': trimming CD strip...");
             }
 
-            // Copy the inside CD strip for this region.
             opPattern(context, id + ("cdReg" ~ r ~ "copy"), {
                 "entities"      : cdSplit.inside,
                 "transforms"    : [identityTransform()],
@@ -723,7 +729,6 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 "value"        : reg.name ~ " cd strip"
             });
 
-            // Trim to region extent.
             var startPl = plane(region.startFrame.origin, region.startFrame.zAxis);
             var endPl   = plane(region.endFrame.origin,   region.endFrame.zAxis);
 
@@ -745,7 +750,6 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 "entities" : qSubtraction(regionCopy, qIntersectsPlane(regionCopy, midPl))
             });
 
-            // Periphery = one-sided edges, excluding region-boundary plane edges.
             var splitEdges = qUnion([
                 qCreatedBy(id + ("rStart" ~ r), EntityType.EDGE),
                 qCreatedBy(id + ("rEnd"   ~ r), EntityType.EDGE)
@@ -760,17 +764,13 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 EdgeTopology.ONE_SIDED
             );
 
-            // Build offsetDef.
-            // totalOffset = pinchOffset + wallBottomOffset(wallRadius, wallAngle)
-            // wallBottomOffset is constant per region (depends only on radius + angle).
             var isConst        = reg.pinchOffsetType == SimpleOffsetType.CONSTANT;
             var wallBotOffStart = calcWallBottomOffset(reg.pinchRadiusStart, reg.wallAngle);
             var wallBotOffEnd   = calcWallBottomOffset(reg.pinchRadiusEnd,   reg.wallAngle);
-
             var totalStart = (isConst ? reg.pinchOffset : reg.startPinchOffset) + wallBotOffStart;
             var totalEnd   = (isConst ? reg.pinchOffset : reg.endPinchOffset)   + wallBotOffEnd;
 
-            if (definition.debug)
+            if (definition.printLog)
             {
                 println("  wallBotOffStart=" ~ wallBotOffStart / millimeter ~ " mm" ~
                         "  wallBotOffEnd="   ~ wallBotOffEnd   / millimeter ~ " mm" ~
@@ -778,37 +778,57 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         "  totalEnd="        ~ totalEnd        / millimeter ~ " mm");
             }
 
-            var offsetDef = {
-                "startFrameOrigin" : region.startFrame.origin,
-                "endFrameOrigin"   : region.endFrame.origin,
-                "offsetType"       : reg.pinchOffsetType,
-                "offset"           : isConst ? totalStart : (0 * millimeter),
-                "startOffset"      : totalStart,
-                "endOffset"        : totalEnd,
-                "zeroSlopeAtStart" : true,
-                "regionName"       : reg.name,
-                "singleCurve"      : false
-            };
+            regionData = append(regionData, {
+                "regionCopy"    : regionCopy,
+                "peripheryEdges": peripheryEdges,
+                "offsetDef"     : {
+                    "startFrameOrigin" : region.startFrame.origin,
+                    "endFrameOrigin"   : region.endFrame.origin,
+                    "offsetType"       : reg.pinchOffsetType,
+                    "offset"           : isConst ? totalStart : (0 * millimeter),
+                    "startOffset"      : totalStart,
+                    "endOffset"        : totalEnd,
+                    "zeroSlopeAtStart" : true,
+                    "regionName"       : reg.name,
+                    "singleCurve"      : false
+                }
+            });
+        }
 
-            // ── Step 3: Build wall surface ─────────────────────────────────────
+        if (definition.debug && definition.stepThrough && !definition.step2)
+        {
+            return;
+        }
+
+        // ── Pass B: Build wall surfaces ────────────────────────────────────────
+        for (var r = 0; r < size(regionData); r += 1)
+        {
+            var rd  = regionData[r];
+            var reg = definition.regions[r];
+
+            if (definition.printLog)
+            {
+                println("[TWG2] region " ~ r ~ " '" ~ reg.name ~ "': building wall surface...");
+            }
+
             var wallSurfQ = buildSimpleWallSurface(
                 context,
                 id + ("wall" ~ r),
-                regionCopy,
-                peripheryEdges,
-                offsetDef,
+                rd.regionCopy,
+                rd.peripheryEdges,
+                rd.offsetDef,
                 definition.wallHeight,
                 processedPath,
                 definition.cpMultiplier,
                 definition.approxDegree,
                 definition.approxTolerance,
                 definition.approxMaxCP,
-                definition.debug
+                definition.printLog
             );
 
             processedRegions[r] = mergeMaps(processedRegions[r], { "loftBodyQuery" : wallSurfQ });
 
-            opDeleteBodies(context, id + ("cdRegClean" ~ r), { "entities" : regionCopy });
+            opDeleteBodies(context, id + ("cdRegClean" ~ r), { "entities" : rd.regionCopy });
 
             // ── Step 4 (STUB): Trim bottom of wall against CD surface ──────────
             // TODO: copy cdSplit.outside, extend bottom edge of wallSurfQ to meet it,
@@ -821,6 +841,11 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             // ── Step 6 (STUB): Apply wall radius fillet ───────────────────────
             // TODO: opFillet on bottom edges with interpolated pinchRadius(t),
             //       on top edges with interpolated topRadius(t).
+        }
+
+        if (definition.debug && definition.stepThrough && !definition.step3)
+        {
+            return;
         }
 
         // Clean up the split CD bodies.
@@ -850,6 +875,8 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         "step0"           : false,
         "step1"           : false,
         "step2"           : false,
+        "step3"           : false,
+        "printLog"        : false,
         "showRefFrames"   : false,
         "showWallBottom"  : false,
         "showWallTop"     : false
