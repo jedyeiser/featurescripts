@@ -170,6 +170,9 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
         annotation { "Name" : "Sidewall rout surf", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
         definition.swRoutSurf is Query;
 
+        annotation { "Name" : "Footprint surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+        definition.footprintSurf is Query;
+
         annotation { "Name" : "Wall points", "Item name" : "Wall point", "Item label template" : "#name", "UIHint" : [UIHint.COLLAPSE_ARRAY_ITEMS, UIHint.PREVENT_ARRAY_REORDER] }
         definition.wallPoints is array;
         for (var wallPoint in definition.wallPoints)
@@ -577,7 +580,8 @@ function setupGeometry(context is Context, id is Id, definition is map) returns 
         "value"        : "PINCH_WIRE"
     });
 
-    const cdSurfs = splitCDSurfs_i(context, id + "splitCDSurfs", cdCopy, swRoutCopy);
+    var cdSurfsBase = splitCDSurfs_i(context, id + "splitCDSurfs", cdCopy, swRoutCopy);
+    const cdSurfs = mergeMaps(cdSurfsBase, { "footprint" : definition.footprintSurf });
 
     return {
         "pinchWire"   : pinchWire,
@@ -753,33 +757,6 @@ function computeGrevilleParams(bsCurve is BSplineCurve) returns map
 }
 
 
-// Returns +1 if yAxis points towards cdSurfs.inside, -1 otherwise.
-// Called once per edge at the midpoint (normalizedParam = 0.5).
-function determineYAxisPolarity(context is Context, edge is Query, processedPinchWire is map, cdSurfs is map) returns number
-{
-    var tl = evEdgeTangentLine(context, {
-        "edge"      : edge,
-        "parameter" : 0.5
-    });
-
-    var midArcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
-    var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, midArcLen);
-
-    // xAxis: PT frame normal, flipped so Z component is positive (toward topsheet).
-    var xRaw = ptFr.frame.xAxis;
-    var xAx  = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
-
-    var zAx   = tl.direction;
-    var tentY = cross(zAx, xAx);
-
-    var probePoint  = tl.origin + tentY * YAXIS_PROBE_DIST;
-    var insideDist  = evDistance(context, { "side0" : cdSurfs.inside,  "side1" : probePoint }).distance;
-    var outsideDist = evDistance(context, { "side0" : cdSurfs.outside, "side1" : probePoint }).distance;
-
-    // tentY points toward inside when insideDist < outsideDist — flip it so yAxis points toward outside.
-    return (insideDist < outsideDist) ? -1 : 1;
-}
-
 
 // Builds one edgePointMap at a native parameter u along edge.
 function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam is number,
@@ -796,41 +773,45 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     var origin = tl.origin;
     var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
 
-    // xAxis: PT frame normal at this arc length, flipped so Z component is positive (toward topsheet).
-    var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen);
-    var xRaw = ptFr.frame.xAxis;
-    var xAx  = (dot(xRaw, vector(0, 0, 1)) >= 0) ? xRaw : -xRaw;
+    // xAxis: direction from cdSurf to topSurf, derived by shooting world +Z from origin.
+    // origin lies on cdSurf (pinch wire = cdSurf x swRoutSurf intersection),
+    // so we only need one raycast upward to topSurf; cavityDepth = distance to that hit.
+    var worldZ   = vector(0, 0, 1);
+    var topHitsZ = evRaycast(context, { "ray" : line(origin, worldZ), "entities" : topSurf, "closest" : true });
+    var xAx;
+    var cavityDepth;
+    if (size(topHitsZ) > 0)
+    {
+        var thicknessVec = topHitsZ[0].intersection - origin;
+        var thickLen = norm(thicknessVec);
+        xAx = (thickLen / meter > 1e-10) ? thicknessVec / thickLen : worldZ;
+        cavityDepth = thickLen;
+    }
+    else
+    {
+        xAx = worldZ;
+        cavityDepth = 0 * millimeter;
+    }
 
-    // yAxis: direction from cdSurfs.inside to cdSurfs.outside, projected perp to xAxis.
-    // This gives the "closest y axis normal to xAxis that points outward" regardless of wire direction.
-    var insidePt   = evDistance(context, { "side0" : cdSurfs.inside,  "side1" : origin }).sides[0].point;
-    var outsidePt  = evDistance(context, { "side0" : cdSurfs.outside, "side1" : origin }).sides[0].point;
-    var outwardVec = outsidePt - insidePt;
-    var outLen     = norm(outwardVec);
-    var outDir     = (outLen / meter > 1e-10) ? outwardVec / outLen : vector(0, 1, 0);
-    var yRaw       = outDir - xAx * dot(xAx, outDir);
-    var yLen       = norm(yRaw);
-    var yAx        = (yLen > 1e-10) ? yRaw / yLen : cross(xAx, vector(0, 1, 0));
+    // yAxis: nearest footprint face normal, projected perpendicular to xAxis.
+    // Polarity check (probe toward cdSurfs.inside) ensures yAxis points outward.
+    var fpFaces       = qOwnedByBody(cdSurfs.footprint, EntityType.FACE);
+    var fpDistResult  = evDistance(context, { "side0" : fpFaces, "side1" : origin });
+    var fpTangentPlane = evFaceTangentPlane(context, { "face" : fpDistResult.sides[0].entity, "parameter" : fpDistResult.sides[0].parameter });
+    var fpNormalRaw   = fpTangentPlane.normal;
+    var probeOut = origin + fpNormalRaw * YAXIS_PROBE_DIST;
+    var probeIn  = origin - fpNormalRaw * YAXIS_PROBE_DIST;
+    var dOut = evDistance(context, { "side0" : cdSurfs.inside, "side1" : probeOut }).distance;
+    var dIn  = evDistance(context, { "side0" : cdSurfs.inside, "side1" : probeIn  }).distance;
+    var fpNormal = (dOut > dIn) ? fpNormalRaw : -fpNormalRaw;
+    var yRaw = fpNormal - xAx * dot(xAx, fpNormal);
+    var yLen = norm(yRaw);
+    var yAx  = (yLen > 1e-10) ? yRaw / yLen : cross(xAx, vector(0, 1, 0));
 
     // zAxis: cross(xAxis, yAxis) — automatically perpendicular to both.
     var zAx = cross(xAx, yAx);
 
     var pointFrame = coordSystem(origin, xAx, zAx);
-
-    // Cavity depth: cast ray along xAx using evRaycast (directed, positive half only)
-    // to avoid evDistance with an infinite line finding spuriously distant surface points.
-    var topHits = evRaycast(context, { "ray" : line(origin, xAx), "entities" : topSurf, "closest" : true });
-    var cdHits  = evRaycast(context, { "ray" : line(origin, xAx), "entities" : cdSurf,  "closest" : true });
-    var cavityDepth;
-    if (size(topHits) > 0 && size(cdHits) > 0)
-    {
-        cavityDepth = norm(topHits[0].intersection - cdHits[0].intersection);
-    }
-    else
-    {
-        // Ray missed a surface — point is outside the measurable cavity region.
-        cavityDepth = 0 * millimeter;
-    }
 
     // spanParam: project startPoint and endPoint onto the pinch wire to get arc lengths
     // in the same coordinate system as arcLen. This fixes the coordinate mismatch that
@@ -952,7 +933,7 @@ function solveCapWallPoints(context is Context, origin is Vector, xAx is Vector,
 // --- Step 4: Zero crossing detection
 
 // Evaluates cavity depth at a native parameter u along edge.
-function evaluateCavityDepth(context is Context, edge is Query, nativeParam is number, uMin is number, uMax is number, processedPinchWire is map, topSurf is Query, cdSurf is Query) returns ValueWithUnits
+function evaluateCavityDepth(context is Context, edge is Query, nativeParam is number, uMin is number, uMax is number, topSurf is Query) returns ValueWithUnits
 {
     var span      = uMax - uMin;
     var normParam = (span > 1e-12) ? (nativeParam - uMin) / span : 0.0;
@@ -963,17 +944,12 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
         "arcLengthParameterization" : false
     });
 
-    var arcLen2 = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
-    var ptFr2   = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen2);
-    var xRaw2   = ptFr2.frame.xAxis;
-    var xAx     = (dot(xRaw2, vector(0, 0, 1)) >= 0) ? xRaw2 : -xRaw2;
+    var worldZ  = vector(0, 0, 1);
+    var topHits = evRaycast(context, { "ray" : line(tl.origin, worldZ), "entities" : topSurf, "closest" : true });
 
-    var topHits = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : topSurf, "closest" : true });
-    var cdHits  = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : cdSurf,  "closest" : true });
-
-    if (size(topHits) > 0 && size(cdHits) > 0)
+    if (size(topHits) > 0)
     {
-        return norm(topHits[0].intersection - cdHits[0].intersection);
+        return norm(topHits[0].intersection - tl.origin);
     }
 
     return 0 * millimeter;
@@ -992,7 +968,7 @@ function findZeroCrossing(context is Context, highPoint is map, lowPoint is map,
 
     var f = function(u)
     {
-        return (evaluateCavityDepth(context, edge, u, uMin, uMax, processedPinchWire, topSurf, cdSurf) - CAVITY_DEPTH_TOL) / millimeter;
+        return (evaluateCavityDepth(context, edge, u, uMin, uMax, topSurf) - CAVITY_DEPTH_TOL) / millimeter;
     };
 
     var fa = f(highPoint.nativeParam);
@@ -1088,7 +1064,7 @@ function findMinCDTransition(context is Context, pointA is map, pointB is map, e
 
     var f = function(u)
     {
-        var cd       = evaluateCavityDepth(context, edge, u, uMin, uMax, processedPinchWire, topSurf, cdSurf);
+        var cd       = evaluateCavityDepth(context, edge, u, uMin, uMax, topSurf);
         var normParam = (span > 1e-12) ? (u - uMin) / span : 0.0;
 
         // Approximate spanParam at u
