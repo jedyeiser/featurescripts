@@ -128,6 +128,19 @@ export function topWallGeneration_iEditingLogic(context is Context, id is Id,
         regions = append(regions, oldRegion);
     }
     definition.regions = regions;
+
+    var stepNames = [
+        "0: Setup geometry",
+        "1: Preprocess points",
+        "2: Preprocess regions",
+        "3: Greville frames",
+        "4: Zero crossings",
+        "5: MinCD transitions",
+        "6: Build curves"
+    ];
+    var stepIdx = definition.debugStepNum;
+    definition.debugStepDesc = (stepIdx >= 0 && stepIdx < size(stepNames)) ? stepNames[stepIdx] : "";
+
     return definition;
 }
 
@@ -253,6 +266,9 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
             {
                 annotation { "Name" : "Debug step" }
                 isInteger(definition.debugStepNum, DebugStepBounds_i);
+
+                annotation { "Name" : "Step", "UIHint" : UIHint.READ_ONLY }
+                definition.debugStepDesc is string;
             }
 
             annotation { "Name" : "Show ref frames" }
@@ -999,9 +1015,23 @@ function buildCurveCollectionsForSubRegion(context is Context, id is Id, subRegi
     var allHaveMid  = true;
     var allHaveWall = true;
 
+    var lastSpanParam = -1.0;
     for (var ptMap in subRegion)
     {
-        spanParams = append(spanParams, ptMap.spanParam);
+        var sp = ptMap.spanParam;
+        if (sp - lastSpanParam < 1e-6)
+        {
+            // Too close to previous — skip to prevent approximateSpline parameter error.
+            if (definitionType == "RADIUS_ANGLE")
+            {
+                if (ptMap.curvePoints.midPoint == undefined) { allHaveMid = false; }
+                if (ptMap.curvePoints.pinchTop == undefined) { allHaveWall = false; }
+            }
+            continue;
+        }
+        lastSpanParam = sp;
+
+        spanParams = append(spanParams, sp);
         pinchPts   = append(pinchPts,   ptMap.curvePoints.pinchPoint);
         topPts     = append(topPts,     ptMap.curvePoints.topPoint);
 
@@ -1045,6 +1075,11 @@ function buildCurveCollectionsForSubRegion(context is Context, id is Id, subRegi
             targets = append(targets, approximationTarget({ "positions" : pinchFilletTopPts }));
             targets = append(targets, approximationTarget({ "positions" : topFilletBottomPts }));
         }
+    }
+
+    if (size(spanParams) < 2)
+    {
+        return {};
     }
 
     var approxResult = approximateSpline(context, {
