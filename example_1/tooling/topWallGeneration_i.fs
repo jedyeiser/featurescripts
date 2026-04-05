@@ -3,7 +3,7 @@ import(path : "onshape/std/common.fs", version : "2931.0");
 import(path : "onshape/std/bridgingCurve.fs", version : "2931.0");
 
 // import pathProcessing
-import(path : "e9dd34f07820388a202cb620", version : "0837de9a9d2e74ba57457e77");
+import(path : "e9dd34f07820388a202cb620", version : "627abffa89a67d104b65a1e1");
 // IMPORT: tools/bspline_data.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
@@ -554,7 +554,7 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         }
                         sortedSR = dedupedSR;
 
-                        if (size(sortedSR) < approxDef.degree + 1)
+                        if (size(sortedSR) < 2)
                         {
                             continue;
                         }
@@ -1272,7 +1272,7 @@ function buildCurveCollectionsForSubRegion(context is Context, id is Id, subRegi
         }
     }
 
-    if (size(spanParams) < approxDef.degree + 1)
+    if (size(spanParams) < 2)
     {
         return {};
     }
