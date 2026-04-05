@@ -765,24 +765,30 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
 
     var pointFrame = coordSystem(origin, xAx, zAx);
 
-    var topDist = evDistance(context, {
-        "side0" : topSurf,
-        "side1" : line(origin, xAx)
-    });
-    var cdDist = evDistance(context, {
-        "side0" : cdSurf,
-        "side1" : line(origin, xAx)
-    });
+    // Cavity depth: cast ray along xAx using evRaycast (directed, positive half only)
+    // to avoid evDistance with an infinite line finding spuriously distant surface points.
+    var topHits = evRaycast(context, { "ray" : line(origin, xAx), "entities" : topSurf, "closest" : true });
+    var cdHits  = evRaycast(context, { "ray" : line(origin, xAx), "entities" : cdSurf,  "closest" : true });
+    var cavityDepth;
+    if (size(topHits) > 0 && size(cdHits) > 0)
+    {
+        cavityDepth = norm(topHits[0].intersection - cdHits[0].intersection);
+    }
+    else
+    {
+        // Ray missed a surface — fall back to evDistance and accept whatever it returns.
+        var topDist = evDistance(context, { "side0" : topSurf, "side1" : line(origin, xAx) });
+        var cdDist  = evDistance(context, { "side0" : cdSurf,  "side1" : line(origin, xAx) });
+        cavityDepth = norm(topDist.sides[0].point - cdDist.sides[0].point);
+    }
 
-    var cavityDepth = norm(topDist.sides[0].point - cdDist.sides[0].point);
-
-    // spanParam: note that startPoint/endPoint arcLength values are from the ref wire,
-    // while arcLen is from the pinch wire. For nearly-parallel wires the scale mismatch
-    // is small (<1%), but clamp to [0,1] to prevent approximateSpline parameter errors.
-    var startArcLen = startPoint.arcLength;
-    var endArcLen   = endPoint.arcLength;
+    // spanParam: project startPoint and endPoint onto the pinch wire to get arc lengths
+    // in the same coordinate system as arcLen. This fixes the coordinate mismatch that
+    // caused spanParam to clamp to 1 for all regions except the one near the zero point.
+    var startArcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, startPoint.pointRefFrame.frame.origin);
+    var endArcLen   = arcLengthOnPinchWire(processedPinchWire.ptTable, endPoint.pointRefFrame.frame.origin);
     var regionSpan  = endArcLen - startArcLen;
-    var rawSpan     = (regionSpan / meter > 1e-12) ? ((arcLen - startArcLen) / regionSpan) : 0.0;
+    var rawSpan     = (abs(regionSpan) / meter > 1e-12) ? ((arcLen - startArcLen) / regionSpan) : 0.0;
     var spanParam   = max(0.0, min(1.0, rawSpan));
 
     var curvePoints = solveCapWallPoints(context, origin, xAx, yAx, pointFrame,
@@ -908,9 +914,16 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
     var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin));
     var xAx  = ptFr.frame.xAxis;
 
+    var topHits = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : topSurf, "closest" : true });
+    var cdHits  = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : cdSurf,  "closest" : true });
+
+    if (size(topHits) > 0 && size(cdHits) > 0)
+    {
+        return norm(topHits[0].intersection - cdHits[0].intersection);
+    }
+
     var topDist = evDistance(context, { "side0" : topSurf, "side1" : line(tl.origin, xAx) });
     var cdDist  = evDistance(context, { "side0" : cdSurf,  "side1" : line(tl.origin, xAx) });
-
     return norm(topDist.sides[0].point - cdDist.sides[0].point);
 }
 
