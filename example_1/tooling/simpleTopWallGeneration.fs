@@ -238,7 +238,7 @@ function buildSimpleWallSurface(context is Context, id is Id,
             "tolerance"        : tolerance,
             "isPeriodic"       : false,
             "maxControlPoints" : maxCP,
-            "targets"          : [bottomPts, topPts],
+            "targets"          : [{ "points" : bottomPts }, { "points" : topPts }],
             "parameters"       : sampleParams
         });
 
@@ -498,8 +498,17 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Wall angle (from normal)" }
             isAngle(region.wallAngle, WALL_ANGLE_BOUNDS);
 
-            annotation { "Name" : "Wall radius" }
-            isLength(region.wallRadius, RADIUS_BOUNDS);
+            annotation { "Name" : "Pinch radius (start)" }
+            isLength(region.pinchRadiusStart, RADIUS_BOUNDS);
+
+            annotation { "Name" : "Pinch radius (end)" }
+            isLength(region.pinchRadiusEnd, RADIUS_BOUNDS);
+
+            annotation { "Name" : "Top radius (start)" }
+            isLength(region.topRadiusStart, RADIUS_BOUNDS);
+
+            annotation { "Name" : "Top radius (end)" }
+            isLength(region.topRadiusEnd, RADIUS_BOUNDS);
         }
 
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
@@ -753,17 +762,19 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             // Build offsetDef.
             // totalOffset = pinchOffset + wallBottomOffset(wallRadius, wallAngle)
             // wallBottomOffset is constant per region (depends only on radius + angle).
-            var isConst  = reg.pinchOffsetType == SimpleOffsetType.CONSTANT;
-            var wallBotOff = calcWallBottomOffset(reg.wallRadius, reg.wallAngle);
+            var isConst        = reg.pinchOffsetType == SimpleOffsetType.CONSTANT;
+            var wallBotOffStart = calcWallBottomOffset(reg.pinchRadiusStart, reg.wallAngle);
+            var wallBotOffEnd   = calcWallBottomOffset(reg.pinchRadiusEnd,   reg.wallAngle);
 
-            var totalStart = (isConst ? reg.pinchOffset : reg.startPinchOffset) + wallBotOff;
-            var totalEnd   = (isConst ? reg.pinchOffset : reg.endPinchOffset)   + wallBotOff;
+            var totalStart = (isConst ? reg.pinchOffset : reg.startPinchOffset) + wallBotOffStart;
+            var totalEnd   = (isConst ? reg.pinchOffset : reg.endPinchOffset)   + wallBotOffEnd;
 
             if (definition.debug)
             {
-                println("  wallBotOff=" ~ wallBotOff / millimeter ~ " mm" ~
-                        "  totalStart=" ~ totalStart / millimeter ~ " mm" ~
-                        "  totalEnd="   ~ totalEnd   / millimeter ~ " mm");
+                println("  wallBotOffStart=" ~ wallBotOffStart / millimeter ~ " mm" ~
+                        "  wallBotOffEnd="   ~ wallBotOffEnd   / millimeter ~ " mm" ~
+                        "  totalStart="      ~ totalStart      / millimeter ~ " mm" ~
+                        "  totalEnd="        ~ totalEnd        / millimeter ~ " mm");
             }
 
             var offsetDef = {
@@ -807,7 +818,8 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             //       mutual trim, delete outside of topSurf copy.
 
             // ── Step 6 (STUB): Apply wall radius fillet ───────────────────────
-            // TODO: opFillet on bottom and top edges with reg.wallRadius.
+            // TODO: opFillet on bottom edges with interpolated pinchRadius(t),
+            //       on top edges with interpolated topRadius(t).
         }
 
         // Clean up the split CD bodies.
