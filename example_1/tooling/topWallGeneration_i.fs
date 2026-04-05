@@ -276,6 +276,30 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
 
             annotation { "Name" : "Show point frames" }
             definition.showPointFrames is boolean;
+
+            annotation { "Name" : "Show curve points", "Default" : false }
+            definition.showCurvePoints is boolean;
+
+            if (definition.showCurvePoints)
+            {
+                annotation { "Name" : "Pinch (green)", "Default" : true }
+                definition.showPinchPts is boolean;
+
+                annotation { "Name" : "Top (magenta)", "Default" : true }
+                definition.showTopPts is boolean;
+
+                annotation { "Name" : "Mid (blue)", "Default" : false }
+                definition.showMidPts is boolean;
+
+                annotation { "Name" : "Top edge bottom (cyan)", "Default" : false }
+                definition.showTopEdgeBottomPts is boolean;
+
+                annotation { "Name" : "Pinch top (red)", "Default" : false }
+                definition.showPinchTopPts is boolean;
+            }
+
+            annotation { "Name" : "Log sampling", "Default" : false }
+            definition.logSampling is boolean;
         }
     }
     {
@@ -365,6 +389,15 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         edge, processedPinchWire, cdSurfs, topCopy, cdCopy,
                         startPoint, endPoint, transitionMap, definition.definitionType);
 
+                    if (definition.logSampling)
+                    {
+                        println("edge r" ~ ri ~ " b" ~ b ~ " e" ~ e ~ ": yAxisSign=" ~ edgeResult.yAxisSign ~ " nPts=" ~ size(edgeResult.edgePointMaps));
+                        for (var ptMap in edgeResult.edgePointMaps)
+                        {
+                            println("  sp=" ~ ptMap.spanParam ~ " cd=" ~ ptMap.cavityDepth / millimeter ~ "mm");
+                        }
+                    }
+
                     if (definition.debugStepThrough && definition.debugStepNum == 3)
                     {
                         continue;
@@ -375,6 +408,15 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         edgeResult.edgePointMaps, edge, edgeResult.bsCurve,
                         processedPinchWire, cdSurfs, topCopy, cdCopy,
                         edgeResult.yAxisSign, startPoint, endPoint, transitionMap, definition.definitionType);
+
+                    if (definition.logSampling)
+                    {
+                        println("  subRegions=" ~ size(subRegions));
+                        for (var sr = 0; sr < size(subRegions); sr += 1)
+                        {
+                            println("    sr" ~ sr ~ ": nPts=" ~ size(subRegions[sr]));
+                        }
+                    }
 
                     if (definition.debugStepThrough && definition.debugStepNum == 4)
                     {
@@ -392,6 +434,38 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                                     processedPinchWire, topCopy, cdCopy, edgeResult.yAxisSign, startPoint, endPoint, transitionMap));
                         }
                         subRegions = augmentedSubRegions;
+                    }
+
+                    // Debug: draw computed curve points
+                    if (definition.showCurvePoints)
+                    {
+                        for (var sr = 0; sr < size(subRegions); sr += 1)
+                        {
+                            for (var ptMap in subRegions[sr])
+                            {
+                                var cp = ptMap.curvePoints;
+                                if (definition.showPinchPts && cp.pinchPoint != undefined)
+                                {
+                                    addDebugPoint(context, cp.pinchPoint, DebugColor.GREEN);
+                                }
+                                if (definition.showTopPts && cp.topPoint != undefined)
+                                {
+                                    addDebugPoint(context, cp.topPoint, DebugColor.MAGENTA);
+                                }
+                                if (definition.showMidPts && cp.midPoint != undefined)
+                                {
+                                    addDebugPoint(context, cp.midPoint, DebugColor.BLUE);
+                                }
+                                if (definition.showTopEdgeBottomPts && cp.topEdgeBottom != undefined)
+                                {
+                                    addDebugPoint(context, cp.topEdgeBottom, DebugColor.CYAN);
+                                }
+                                if (definition.showPinchTopPts && cp.pinchTop != undefined)
+                                {
+                                    addDebugPoint(context, cp.pinchTop, DebugColor.RED);
+                                }
+                            }
+                        }
                     }
 
                     if (definition.debugStepThrough && definition.debugStepNum == 5)
