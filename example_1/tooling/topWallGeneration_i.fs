@@ -432,6 +432,16 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         for (var sr = 0; sr < size(subRegions); sr += 1)
                         {
                             println("    sr" ~ sr ~ ": nPts=" ~ size(subRegions[sr]));
+                            for (var ptMap in subRegions[sr])
+                            {
+                                var cp = ptMap.curvePoints;
+                                if (cp != undefined && cp.pinchPoint != undefined && cp.topPoint != undefined)
+                                {
+                                    println("      sp=" ~ ptMap.spanParam
+                                        ~ " pinch=" ~ cp.pinchPoint / millimeter
+                                        ~ " top=" ~ cp.topPoint / millimeter);
+                                }
+                            }
                         }
                     }
 
@@ -911,9 +921,13 @@ function solveCapWallPoints(context is Context, origin is Vector, xAx is Vector,
             profileValueAt_i(spanParam, startPoint.wallAngle, endPoint.wallAngle, transType));
 
     var offsetPoint = origin + yAx * offset;
-    // The xAxis at offsetPoint is approximately the same as xAx (offset is perpendicular to tangent).
-    var topLine  = line(offsetPoint, xAx);
-    var topPoint = evDistance(context, { "side0" : topSurf, "side1" : topLine }).sides[0].point;
+    // Project offsetPoint onto topSurf along xAx via raycast.
+    // evRaycast avoids the distant-point issue that evDistance(surface, line) has when the line misses.
+    // Fallback to nearest-point projection if the ray misses (e.g. offset puts point outside topSurf).
+    var topPointHits = evRaycast(context, { "ray" : line(offsetPoint, xAx), "entities" : topSurf, "closest" : true });
+    var topPoint = (size(topPointHits) > 0)
+        ? topPointHits[0].intersection
+        : evDistance(context, { "side0" : topSurf, "side1" : offsetPoint }).sides[0].point;
 
     var retMap = {
         "pinchPoint" : pinchPoint,
