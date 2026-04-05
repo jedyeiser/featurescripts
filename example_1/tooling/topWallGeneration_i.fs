@@ -795,10 +795,12 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
 
     // yAxis: nearest footprint face normal, projected perpendicular to xAxis.
     // Polarity check (probe toward cdSurfs.inside) ensures yAxis points outward.
-    var fpFaces       = qOwnedByBody(cdSurfs.footprint, EntityType.FACE);
-    var fpDistResult  = evDistance(context, { "side0" : fpFaces, "side1" : origin });
-    var fpTangentPlane = evFaceTangentPlane(context, { "face" : fpDistResult.sides[0].entity, "parameter" : fpDistResult.sides[0].parameter });
-    var fpNormalRaw   = fpTangentPlane.normal;
+    // qClosestTo resolves to the specific closest face so evFaceTangentPlane gets a valid Query.
+    // Footprint faces are planar (vertical extrusion) so normal is constant; UV (0.5, 0.5) is fine.
+    var fpFaces        = qOwnedByBody(cdSurfs.footprint, EntityType.FACE);
+    var closestFpFace  = qClosestTo(fpFaces, origin);
+    var fpTangentPlane = evFaceTangentPlane(context, { "face" : closestFpFace, "parameter" : vector(0.5, 0.5) });
+    var fpNormalRaw    = fpTangentPlane.normal;
     var probeOut = origin + fpNormalRaw * YAXIS_PROBE_DIST;
     var probeIn  = origin - fpNormalRaw * YAXIS_PROBE_DIST;
     var dOut = evDistance(context, { "side0" : cdSurfs.inside, "side1" : probeOut }).distance;
