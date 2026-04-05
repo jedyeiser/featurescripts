@@ -755,13 +755,17 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
     var origin = tl.origin;
     var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
 
-    // xAxis: world +Z projected perpendicular to the wire tangent.
-    // This standardizes the frame so xAxis always points "up" (toward topsheet)
-    // regardless of wire curvature or kinks.
-    var zAx = tl.direction;
+    // xAxis: world +Z (always points toward topsheet).
     var xAx = vector(0, 0, 1);
 
-    // yAxis: perpendicular to both zAxis and xAxis, sign from polarity check.
+    // zAxis: wire tangent projected onto the plane perpendicular to xAxis.
+    // Required so coordSystem(xAxis, zAxis) satisfies perpendicularVectors.
+    var wireDir = tl.direction;
+    var zRaw = wireDir - xAx * dot(xAx, wireDir);
+    var zLen = norm(zRaw);
+    var zAx  = (zLen > 1e-10) ? zRaw / zLen : cross(xAx, vector(1, 0, 0));
+
+    // yAxis: cross(zAxis, xAxis) * yAxisSign, re-orthogonalized.
     var rawY = yAxisSign * cross(zAx, xAx);
     rawY = rawY - zAx * dot(zAx, rawY);
     var yLen = norm(rawY);
