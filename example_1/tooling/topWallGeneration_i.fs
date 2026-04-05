@@ -725,8 +725,10 @@ function determineYAxisPolarity(context is Context, edge is Query, processedPinc
     var midArcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin);
     var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, midArcLen);
 
-    var xAx   = ptFr.frame.xAxis;
-    var zAx   = ptFr.frame.zAxis;
+    var zAx  = tl.direction;
+    var xRaw = vector(0, 0, 1) - zAx * dot(zAx, vector(0, 0, 1));
+    var xLen = norm(xRaw);
+    var xAx  = (xLen > 1e-10) ? xRaw / xLen : cross(zAx, vector(1, 0, 0));
     var tentY = cross(zAx, xAx);
 
     var probePoint  = tl.origin + tentY * YAXIS_PROBE_DIST;
@@ -752,12 +754,16 @@ function buildSingleEdgePointMap(context is Context, edge is Query, nativeParam 
 
     var origin = tl.origin;
     var arcLen = arcLengthOnPinchWire(processedPinchWire.ptTable, origin);
-    var ptFr       = samplePinchTransportFrame(processedPinchWire.ptTable, arcLen);
 
-    var xAx = ptFr.frame.xAxis;
-    var zAx = ptFr.frame.zAxis;
+    // xAxis: world +Z projected perpendicular to the wire tangent.
+    // This standardizes the frame so xAxis always points "up" (toward topsheet)
+    // regardless of wire curvature or kinks.
+    var zAx   = tl.direction;
+    var xRaw  = vector(0, 0, 1) - zAx * dot(zAx, vector(0, 0, 1));
+    var xLen  = norm(xRaw);
+    var xAx   = (xLen > 1e-10) ? xRaw / xLen : cross(zAx, vector(1, 0, 0));
 
-    // yAxis = yAxisSign * cross(zAxis, xAxis), re-orthogonalized
+    // yAxis: perpendicular to both zAxis and xAxis, sign from polarity check.
     var rawY = yAxisSign * cross(zAx, xAx);
     rawY = rawY - zAx * dot(zAx, rawY);
     var yLen = norm(rawY);
@@ -911,8 +917,10 @@ function evaluateCavityDepth(context is Context, edge is Query, nativeParam is n
         "arcLengthParameterization" : false
     });
 
-    var ptFr = samplePinchTransportFrame(processedPinchWire.ptTable, arcLengthOnPinchWire(processedPinchWire.ptTable, tl.origin));
-    var xAx  = ptFr.frame.xAxis;
+    var zAx  = tl.direction;
+    var xRaw = vector(0, 0, 1) - zAx * dot(zAx, vector(0, 0, 1));
+    var xLen = norm(xRaw);
+    var xAx  = (xLen > 1e-10) ? xRaw / xLen : cross(zAx, vector(1, 0, 0));
 
     var topHits = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : topSurf, "closest" : true });
     var cdHits  = evRaycast(context, { "ray" : line(tl.origin, xAx), "entities" : cdSurf,  "closest" : true });
