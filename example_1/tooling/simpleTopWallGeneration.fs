@@ -19,6 +19,7 @@ import(path : "d41884a96244793beb462449", version : "2311652bc87faaf67ce79c7d");
 const WALL_ANGLE_BOUNDS  = { (degree)     : [0,  10, 89]  } as AngleBoundSpec;
 const WALL_HEIGHT_BOUNDS = { (millimeter) : [1,  20, 200] } as LengthBoundSpec;
 const RADIUS_BOUNDS      = { (millimeter) : [0,   2,  50] } as LengthBoundSpec;
+const CP_MULT_BOUNDS     = { (unitless)   : [2,   4,  10] } as IntegerBoundSpec;
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -144,13 +145,14 @@ function setupCDSplit(context is Context, id is Id, cdSurf is Query, swSurf is Q
 //   topPt    = bottomPt + wallHeight * refWireNormal
 //              where refWireNormal = frameAtPoint(processedPath, bottomPt).frame.xAxis
 // Both curves are co-fitted via approximateSpline and lofted.
+// cpMult: sample count = max(degree+1, nControlPoints * cpMult)
 function buildSimpleWallSurface(context is Context, id is Id,
     regionSurf is Query,
     peripheryEdges is Query,
     offsetDef is map,
     wallHeight is ValueWithUnits,
     processedPath is map,
-    numPts is number,
+    cpMult is number,
     splineDegree is number,
     tolerance is ValueWithUnits,
     maxCP is number) returns Query
@@ -167,6 +169,10 @@ function buildSimpleWallSurface(context is Context, id is Id,
             continue;
         }
         var faceQ = adjFaces[0];
+
+        // Derive sample count from the edge's own control-point count.
+        var bsCurve  = evApproximateBSplineCurve(context, { "edge" : edgeQ });
+        var numPts   = max(splineDegree + 1, size(bsCurve.controlPoints) * cpMult);
 
         var sampleParams = [];
         for (var k = 0; k < numPts; k += 1)
@@ -272,7 +278,7 @@ export function topWalliiEditingLogic(context is Context, id is Id,
             "userSelection"  : definition.refWire,
             "flipDirection"  : definition.flipDirection,
             "referencePoint" : definition.refPoint,
-            "numPoints"      : max(20, definition.samplingDensity)
+            "numPoints"      : 20
         });
 
         for (var r = 0; r < size(definition.regions); r += 1)
@@ -521,8 +527,8 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Sampling density", "Description" : "Points sampled per region edge" }
-            isInteger(definition.samplingDensity, SamplingDensityBounds);
+            annotation { "Name" : "Sampling multiplier (x CPs)", "Description" : "Sample count = edge control points x this multiplier" }
+            isInteger(definition.cpMultiplier, CP_MULT_BOUNDS);
 
             annotation { "Name" : "Spline degree" }
             isInteger(definition.approxDegree, ApproxDegreeBounds);
@@ -533,20 +539,76 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Max control points" }
             isInteger(definition.approxMaxCP, ApproxMaxCPBounds);
         }
+
+        annotation { "Name" : "Debug", "Default" : false }
+        definition.debug is boolean;
+
+        if (definition.debug)
+        {
+            annotation { "Group Name" : "Debug", "Collapsed By Default" : false, "Driving Parameter" : "debug" }
+            {
+                annotation { "Name" : "Step through?", "Default" : false }
+                definition.stepThrough is boolean;
+
+                if (definition.stepThrough)
+                {
+                    annotation { "Group Name" : "Step through", "Collapsed By Default" : false,
+                                 "Driving Parameter" : "stepThrough" }
+                    {
+                        annotation { "Name" : "Step 0 - CD split + path", "Default" : false }
+                        definition.step0 is boolean;
+
+                        annotation { "Name" : "Step 1 - Region slices", "Default" : false }
+                        definition.step1 is boolean;
+
+                        annotation { "Name" : "Step 2 - Wall surfaces", "Default" : false }
+                        definition.step2 is boolean;
+                    }
+                }
+
+                annotation { "Name" : "Show ref frames", "Default" : false }
+                definition.showRefFrames is boolean;
+
+                annotation { "Name" : "Show wall bottom wire", "Default" : false }
+                definition.showWallBottom is boolean;
+
+                annotation { "Name" : "Show wall top wire", "Default" : false }
+                definition.showWallTop is boolean;
+            }
+        }
     }
     {
+        // ── Input validation ──────────────────────────────────────────────────
+        verifyNonemptyQuery(context, definition, "swRoutSurf", "Select a sidewall rout surface");
+        verifyNonemptyQuery(context, definition, "cdSurf",     "Select a CD surface");
+        verifyNonemptyQuery(context, definition, "refWire",    "Select a reference wire");
+        if (definition.mode == TopWallMode.FULL)
+        {
+            verifyNonemptyQuery(context, definition, "topSurf", "Select a top surface");
+        }
+
         // ── Step 0: Process path ───────────────────────────────────────────────
         var processedPath = processPath(context, id + "path", {
             "userSelection"  : definition.refWire,
             "flipDirection"  : definition.flipDirection,
             "referencePoint" : definition.refPoint,
-            "numPoints"      : max(20, definition.samplingDensity)
+            "numPoints"      : 20
         });
+
+        if (definition.debug && definition.showRefFrames)
+        {
+            showRefFrames(context, processedPath, false, false);
+        }
 
         // ── Step 0: Split CD surface with swRout ───────────────────────────────
         var cdSplit = setupCDSplit(context, id + "setup", definition.cdSurf, definition.swRoutSurf);
         // cdSplit.inside  = CD strip inside swRout cavity; its laminar edges are the pinch edges.
         // cdSplit.outside = remaining CD surface, retained for bottom-trim (Step 4 stub).
+
+        if (definition.debug && definition.stepThrough && !definition.step1)
+        {
+            return;
+        }
 
         // ── Step 1: Overlap validation + process regions ───────────────────────
         var regionsForOverlapCheck = [];
@@ -575,6 +637,11 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         }
 
         var processedRegions = processRegions(context, { "regions" : definition.regions }, processedPath);
+
+        if (definition.debug && definition.stepThrough && !definition.step2)
+        {
+            return;
+        }
 
         // ── Step 2-3: Per-region wall surface ──────────────────────────────────
         for (var r = 0; r < size(processedRegions); r += 1)
@@ -662,7 +729,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 offsetDef,
                 definition.wallHeight,
                 processedPath,
-                definition.samplingDensity,
+                definition.cpMultiplier,
                 definition.approxDegree,
                 definition.approxTolerance,
                 definition.approxMaxCP
@@ -700,10 +767,18 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         "flipDirection"   : false,
         "mode"            : TopWallMode.FULL,
         "wallHeight"      : 20 * millimeter,
-        "samplingDensity" : 50,
+        "cpMultiplier"    : 4,
         "approxDegree"    : 3,
         "approxTolerance" : 0.01 * millimeter,
         "approxMaxCP"     : 100,
         "regions"         : [],
-        "intersections"   : []
+        "intersections"   : [],
+        "debug"           : false,
+        "stepThrough"     : false,
+        "step0"           : false,
+        "step1"           : false,
+        "step2"           : false,
+        "showRefFrames"   : false,
+        "showWallBottom"  : false,
+        "showWallTop"     : false
     });
