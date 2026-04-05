@@ -554,7 +554,7 @@ export const topWallGeneration_i = defineFeature(function(context is Context, id
                         }
                         sortedSR = dedupedSR;
 
-                        if (size(sortedSR) < 2)
+                        if (size(sortedSR) < approxDef.degree + 1)
                         {
                             continue;
                         }
@@ -1272,7 +1272,7 @@ function buildCurveCollectionsForSubRegion(context is Context, id is Id, subRegi
         }
     }
 
-    if (size(spanParams) < 2)
+    if (size(spanParams) < approxDef.degree + 1)
     {
         return {};
     }
