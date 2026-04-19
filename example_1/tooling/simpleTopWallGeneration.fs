@@ -169,14 +169,7 @@ function buildSimpleWallSurface(context is Context, id is Id,
 
     for (var ei = 0; ei < size(edgeList); ei += 1)
     {
-        var edgeQ    = edgeList[ei];
-        var adjFaces = evaluateQuery(context, qAdjacent(edgeQ, AdjacencyType.EDGE, EntityType.FACE));
-        if (size(adjFaces) == 0)
-        {
-            if (printLog) { println("  edge " ~ ei ~ ": no adjacent face, skipping"); }
-            continue;
-        }
-        var faceQ = adjFaces[0];
+        var edgeQ = edgeList[ei];
 
         // Derive sample count from the edge's own control-point count.
         var bsCurve  = evApproximateBSplineCurve(context, { "edge" : edgeQ });
@@ -200,27 +193,22 @@ function buildSimpleWallSurface(context is Context, id is Id,
             "arcLengthParameterization" : true
         });
 
+        // Positive offset moves in the -yAxis direction (into the inside surface).
+        // No per-point face normal needed; PT frame yAxis is the cross-slope direction.
         var bottomPts = [];
         var topPts    = [];
 
         for (var k = 0; k < size(tangentLines); k += 1)
         {
-            var tl   = tangentLines[k];
-            var ePt  = tl.origin;
-            var eTan = tl.direction;
-
-            var uvParam  = evDistance(context, { "side0" : faceQ, "side1" : ePt }).sides[0].parameter;
-            var faceNorm = evFaceTangentPlane(context, { "face" : faceQ, "parameter" : uvParam }).normal;
-            var binorm   = computeBinormal(context, faceQ, ePt, faceNorm, eTan);
+            var ePt     = tangentLines[k].origin;
+            var ptFrame = frameAtPoint(context, processedPath, ePt);
 
             var tReg      = computeRegionT(ePt, offsetDef.startFrameOrigin, offsetDef.endFrameOrigin);
             var offsetMag = computeOffsetMag(offsetDef, tReg);
 
-            var bottomPt = ePt + offsetMag * binorm;
+            var bottomPt = ePt - offsetMag * ptFrame.frame.yAxis;
             bottomPts = append(bottomPts, bottomPt);
-
-            var ptFrame = frameAtPoint(context, processedPath, bottomPt);
-            topPts = append(topPts, bottomPt + wallHeight * ptFrame.frame.xAxis);
+            topPts    = append(topPts, bottomPt + wallHeight * ptFrame.frame.xAxis);
         }
 
         if (size(bottomPts) < splineDegree + 1)
@@ -854,7 +842,15 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         });
 
         // ── Step 7: Join region intersections ──────────────────────────────────
-        if (size(definition.intersections) > 0)
+        // buildIntersectionJoins does a global opBoolean UNION of all sheet bodies
+        // created under `id` at its end. Only call it when at least one intersection
+        // actually has join=true, otherwise adjacent region surfaces remain separate.
+        var hasJoin = false;
+        for (var ix in definition.intersections)
+        {
+            if (ix.join) { hasJoin = true; break; }
+        }
+        if (hasJoin)
         {
             buildIntersectionJoins(context, id,
                 mergeMaps(definition, { "returnLoftSurface" : true }),
