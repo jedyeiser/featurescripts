@@ -1,5 +1,7 @@
 FeatureScript 2931;
 import(path : "onshape/std/common.fs", version : "2931.0");
+export import(path : "onshape/std/extend.fs", version : "2931.0");
+export import(path : "onshape/std/loft.fs", version : "2931.0");
 
 // IMPORT: refSurfCore.fs       (RegionExtentDef, RegionOffsetType, IntersectionContinuityType, all bounds)
 export import(path : "828cc4108f1c8683bc0e59cf", version : "19939e975eb473ccfc23a8be");
@@ -12,6 +14,10 @@ import(path : "d1cf8af3d05964b44c3ab4c0", version : "2a69de4c258716430ef2bc97");
 
 // IMPORT: refSurfUtils.fs      (computeOffsetMag, buildIntersectionJoins)
 import(path : "d41884a96244793beb462449", version : "2311652bc87faaf67ce79c7d");
+
+// IMPORT: transitions
+import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a656fa0d17723f0dafaf8638", version : "56689ead56dff6bcc596641b");
+
 
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
@@ -62,33 +68,6 @@ function calcWallBottomOffset(wallRadius is ValueWithUnits, wallAngle is ValueWi
     return wallRadius * (1 - sinA) / cosA;
 }
 
-// t in [0,1] along the region start->end axis.
-function computeRegionT(edgePt is Vector, startOrigin is Vector, endOrigin is Vector) returns number
-{
-    var axis   = (endOrigin - startOrigin) / meter;
-    var axLen2 = dot(axis, axis);
-    if (axLen2 < 1e-18)
-    {
-        return 0;
-    }
-    var t = dot((edgePt - startOrigin) / meter, axis) / axLen2;
-    return min(max(t, 0), 1);
-}
-
-// Binormal = cross(faceNormal, edgeTangent), flipped if it points into the face.
-// Probe 0.1 mm; if probe lands on face, the initial direction was inward.
-function computeBinormal(context is Context, faceQ is Query, edgePt is Vector,
-    faceNorm is Vector, edgeTan is Vector) returns Vector
-{
-    var bn = cross(faceNorm, edgeTan);
-    var probePt   = edgePt + bn * 1e-4 * meter;
-    var probeDist = evDistance(context, { "side0" : faceQ, "side1" : probePt }).distance;
-    if (probeDist < 0.5e-4 * meter)
-    {
-        bn = -bn;
-    }
-    return bn;
-}
 
 // ─── CD surface setup ─────────────────────────────────────────────────────────
 
@@ -138,145 +117,7 @@ function setupCDSplit(context is Context, id is Id, cdSurf is Query, swSurf is Q
     return { "inside" : insideQ, "outside" : outsideQ };
 }
 
-// ─── Wall surface builder ─────────────────────────────────────────────────────
 
-// For each periphery edge of the region CD slice:
-//   bottomPt = edgePt + totalBottomOffset * binormal
-//   topPt    = bottomPt + wallHeight * refWireNormal
-//              where refWireNormal = frameAtPoint(processedPath, bottomPt).frame.xAxis
-// Both curves are co-fitted via approximateSpline and lofted.
-// cpMult: sample count = max(degree+1, nControlPoints * cpMult)
-function buildSimpleWallSurface(context is Context, id is Id,
-    regionSurf is Query,
-    peripheryEdges is Query,
-    offsetDef is map,
-    wallHeight is ValueWithUnits,
-    processedPath is map,
-    cpMult is number,
-    splineDegree is number,
-    tolerance is ValueWithUnits,
-    maxCP is number,
-    printLog is boolean) returns Query
-{
-    var allSurfs = [];
-    var edgeList = evaluateQuery(context, peripheryEdges);
-
-    if (printLog)
-    {
-        println("buildSimpleWallSurface: region=" ~ offsetDef.regionName ~
-                "  edges=" ~ size(edgeList));
-    }
-
-    for (var ei = 0; ei < size(edgeList); ei += 1)
-    {
-        var edgeQ = edgeList[ei];
-
-        // Derive sample count from the edge's own control-point count.
-        var bsCurve  = evApproximateBSplineCurve(context, { "edge" : edgeQ });
-        var numPts   = max(splineDegree + 1, size(bsCurve.controlPoints) * cpMult);
-
-        if (printLog)
-        {
-            println("  edge " ~ ei ~ ": bsCPs=" ~ size(bsCurve.controlPoints) ~
-                    "  numPts=" ~ numPts);
-        }
-
-        var sampleParams = [];
-        for (var k = 0; k < numPts; k += 1)
-        {
-            sampleParams = append(sampleParams, k / (numPts - 1));
-        }
-
-        var tangentLines = evEdgeTangentLines(context, {
-            "edge"                      : edgeQ,
-            "parameters"                : sampleParams,
-            "arcLengthParameterization" : true
-        });
-
-        // Positive offset moves in the -yAxis direction (into the inside surface).
-        // No per-point face normal needed; PT frame yAxis is the cross-slope direction.
-        var bottomPts = [];
-        var topPts    = [];
-
-        for (var k = 0; k < size(tangentLines); k += 1)
-        {
-            var ePt     = tangentLines[k].origin;
-            var ptFrame = frameAtPoint(context, processedPath, ePt);
-
-            var tReg      = computeRegionT(ePt, offsetDef.startFrameOrigin, offsetDef.endFrameOrigin);
-            var offsetMag = computeOffsetMag(offsetDef, tReg);
-
-            var bottomPt = ePt - offsetMag * ptFrame.frame.yAxis;
-            bottomPts = append(bottomPts, bottomPt);
-            topPts    = append(topPts, bottomPt + wallHeight * ptFrame.frame.xAxis);
-        }
-
-        if (size(bottomPts) < splineDegree + 1)
-        {
-            if (printLog)
-            {
-                println("  edge " ~ ei ~ ": only " ~ size(bottomPts) ~
-                        " pts, need " ~ (splineDegree + 1) ~ " -- skipping");
-            }
-            continue;
-        }
-
-        var approxResult = approximateSpline(context, {
-            "degree"           : splineDegree,
-            "tolerance"        : tolerance,
-            "isPeriodic"       : false,
-            "maxControlPoints" : maxCP,
-            "targets"          : [approximationTarget({ "positions" : bottomPts }),
-                                  approximationTarget({ "positions" : topPts })],
-            "parameters"       : sampleParams
-        });
-
-        if (approxResult == undefined || size(approxResult) < 2)
-        {
-            if (printLog) { println("  edge " ~ ei ~ ": approximateSpline returned nothing, skipping"); }
-            continue;
-        }
-
-        var bottomId = id + ("bCurve" ~ ei);
-        var topId    = id + ("tCurve" ~ ei);
-        var loftId   = id + ("loft"   ~ ei);
-        var cleanId  = id + ("clean"  ~ ei);
-
-        try silent
-        {
-            opCreateBSplineCurve(context, bottomId, { "bSplineCurve" : approxResult[0] });
-            opCreateBSplineCurve(context, topId,    { "bSplineCurve" : approxResult[1] });
-
-            opLoft(context, loftId, {
-                "bodyType"          : ToolBodyType.SURFACE,
-                "profileSubqueries" : [qCreatedBy(bottomId, EntityType.EDGE),
-                                       qCreatedBy(topId,    EntityType.EDGE)]
-            });
-
-            allSurfs = append(allSurfs, qCreatedBy(loftId, EntityType.BODY));
-
-            if (printLog) { println("  edge " ~ ei ~ ": loft OK"); }
-        }
-        catch
-        {
-            if (printLog) { println("  edge " ~ ei ~ ": loft FAILED (caught by try silent)"); }
-        }
-
-        try silent
-        {
-            opDeleteBodies(context, cleanId, {
-                "entities" : qUnion([qCreatedBy(bottomId, EntityType.BODY),
-                                     qCreatedBy(topId,    EntityType.BODY)])
-            });
-        }
-    }
-
-    if (size(allSurfs) == 0)
-    {
-        return qNothing();
-    }
-    return qUnion(allSurfs);
-}
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
 
@@ -353,7 +194,6 @@ export function topWalliiEditingLogic(context is Context, id is Id,
                 "intersectionNum"       : i,
                 "intersectionName"      : "Intersection " ~ (i + 1),
                 "needsIntersectionName" : true,
-                "join"                  : false,
                 "startContinuity"       : IntersectionContinuityType.G0,
                 "endContinuity"         : IntersectionContinuityType.G0,
                 "joinStartOffset"       : 0 * millimeter,
@@ -400,7 +240,13 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                      "Filter" : EntityType.BODY && BodyType.SHEET && ModifiableEntityOnly.YES,
                      "MaxNumberOfPicks" : 1 }
         definition.cdSurf is Query;
-
+        
+        annotation { "Name" : "Periphery surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+        definition.peripherySurf is Query;
+        
+        annotation { "Name" : "Bottom surface", "Filter" : EntityType.BODY && BodyType.SHEET, "MaxNumberOfPicks" : 1 }
+        definition.bottomSurf is Query;
+        
         annotation { "Name" : "Ref. wire",
                      "Filter" : EntityType.BODY && BodyType.WIRE && ModifiableEntityOnly.YES,
                      "MaxNumberOfPicks" : 1 }
@@ -474,6 +320,15 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             {
                 annotation { "Name" : "Pinch offset" }
                 isLength(region.pinchOffset, REGION_OFFSET_BOUNDS);
+                
+                annotation { "Name" : "Wall angle" }
+                isAngle(region.wallAngle, WALL_ANGLE_BOUNDS);
+                
+                annotation { "Name" : "Pinch radius" }
+                isLength(region.pinchRadius, RADIUS_BOUNDS);
+    
+                annotation { "Name" : "Top radius" }
+                isLength(region.topRadius, RADIUS_BOUNDS);
             }
             else
             {
@@ -482,23 +337,29 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
                 annotation { "Name" : "Pinch offset (end)" }
                 isLength(region.endPinchOffset, REGION_OFFSET_BOUNDS);
+                
+                annotation { "Name" : "Start wall angle" }
+                isAngle(region.startWallAngle, WALL_ANGLE_BOUNDS);
+                
+                annotation { "Name" : "End wall angle" }
+                isAngle(region.endWallAngle, WALL_ANGLE_BOUNDS);
+    
+                annotation { "Name" : "Pinch radius (start)" }
+                isLength(region.pinchRadiusStart, RADIUS_BOUNDS);
+    
+                annotation { "Name" : "Pinch radius (end)" }
+                isLength(region.pinchRadiusEnd, RADIUS_BOUNDS);
+    
+                annotation { "Name" : "Top radius (start)" }
+                isLength(region.topRadiusStart, RADIUS_BOUNDS);
+    
+                annotation { "Name" : "Top radius (end)" }
+                isLength(region.topRadiusEnd, RADIUS_BOUNDS);
             }
 
-            annotation { "Name" : "Wall angle (from normal)" }
-            isAngle(region.wallAngle, WALL_ANGLE_BOUNDS);
-
-            annotation { "Name" : "Pinch radius (start)" }
-            isLength(region.pinchRadiusStart, RADIUS_BOUNDS);
-
-            annotation { "Name" : "Pinch radius (end)" }
-            isLength(region.pinchRadiusEnd, RADIUS_BOUNDS);
-
-            annotation { "Name" : "Top radius (start)" }
-            isLength(region.topRadiusStart, RADIUS_BOUNDS);
-
-            annotation { "Name" : "Top radius (end)" }
-            isLength(region.topRadiusEnd, RADIUS_BOUNDS);
         }
+        
+        //NOTE: there can be MAXIMUM one section with zero cavity depth per region. If there are more, the feature will fail
 
         annotation { "Name" : "Intersections", "Item name" : "Intersection",
                      "Item label template" : "#intersectionName",
@@ -528,25 +389,20 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             ix.regionBName is string;
 
-            annotation { "Name" : "Join", "Default" : false }
-            ix.join is boolean;
+            annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0,
+                         "UIHint" : UIHint.SHOW_LABEL }
+            ix.startContinuity is IntersectionContinuityType;
 
-            if (ix.join)
-            {
-                annotation { "Name" : "Start continuity", "Default" : IntersectionContinuityType.G0,
-                             "UIHint" : UIHint.SHOW_LABEL }
-                ix.startContinuity is IntersectionContinuityType;
+            annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0,
+                         "UIHint" : UIHint.SHOW_LABEL }
+            ix.endContinuity is IntersectionContinuityType;
 
-                annotation { "Name" : "End continuity", "Default" : IntersectionContinuityType.G0,
-                             "UIHint" : UIHint.SHOW_LABEL }
-                ix.endContinuity is IntersectionContinuityType;
+            annotation { "Name" : "Start offset" }
+            isLength(ix.joinStartOffset, INTERSECTION_OFFSET_BOUNDS);
 
-                annotation { "Name" : "Start offset" }
-                isLength(ix.joinStartOffset, INTERSECTION_OFFSET_BOUNDS);
-
-                annotation { "Name" : "End offset" }
-                isLength(ix.joinEndOffset, INTERSECTION_OFFSET_BOUNDS);
-            }
+            annotation { "Name" : "End offset" }
+            isLength(ix.joinEndOffset, INTERSECTION_OFFSET_BOUNDS);
+            
         }
 
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
@@ -585,11 +441,6 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         annotation { "Name" : "Step 1 - Regions processed", "Default" : false }
                         definition.step1 is boolean;
 
-                        annotation { "Name" : "Step 2 - CD strips trimmed", "Default" : false }
-                        definition.step2 is boolean;
-
-                        annotation { "Name" : "Step 3 - Wall surfaces built", "Default" : false }
-                        definition.step3 is boolean;
                     }
                 }
 
@@ -598,6 +449,9 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
                 annotation { "Name" : "Show ref frames", "Default" : false }
                 definition.showRefFrames is boolean;
+                
+                annotation { "Name" : "Show eval planes", "Default" : false }
+                definition.showEvalPlanes is boolean;
 
                 annotation { "Name" : "Show wall bottom wire", "Default" : false }
                 definition.showWallBottom is boolean;
@@ -716,7 +570,15 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 "propertyType" : PropertyType.NAME,
                 "value"        : reg.name ~ " cd strip"
             });
-
+            
+            println('keys(region.startFrame) -> ' ~ keys(region.startFrame));
+            
+            var startFrame = frameAtPoint(context, processedPath, region.startFrame.origin);
+            var endFrame = frameAtPoint(context, processedPath, region.endFrame.origin);
+            
+            var startFromRef = startFrame.distFromRef;
+            var endFromRef = endFrame.distFromRef;
+            
             var startPl = plane(region.startFrame.origin, region.startFrame.zAxis);
             var endPl   = plane(region.endFrame.origin,   region.endFrame.zAxis);
 
@@ -752,9 +614,9 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 EdgeTopology.ONE_SIDED
             );
 
-            var isConst        = reg.pinchOffsetType == SimpleOffsetType.CONSTANT;
+            var isConst = reg.pinchOffsetType == SimpleOffsetType.CONSTANT;
             var wallBotOffStart = calcWallBottomOffset(reg.pinchRadiusStart, reg.wallAngle);
-            var wallBotOffEnd   = calcWallBottomOffset(reg.pinchRadiusEnd,   reg.wallAngle);
+            var wallBotOffEnd = calcWallBottomOffset(reg.pinchRadiusEnd,   reg.wallAngle);
             var totalStart = (isConst ? reg.pinchOffset : reg.startPinchOffset) + wallBotOffStart;
             var totalEnd   = (isConst ? reg.pinchOffset : reg.endPinchOffset)   + wallBotOffEnd;
 
@@ -765,76 +627,933 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         "  totalStart="      ~ totalStart      / millimeter ~ " mm" ~
                         "  totalEnd="        ~ totalEnd        / millimeter ~ " mm");
             }
-
-            regionData = append(regionData, {
-                "regionCopy"    : regionCopy,
-                "peripheryEdges": peripheryEdges,
-                "offsetDef"     : {
-                    "startFrameOrigin" : region.startFrame.origin,
-                    "endFrameOrigin"   : region.endFrame.origin,
-                    "offsetType"       : reg.pinchOffsetType,
-                    "offset"           : isConst ? totalStart : (0 * millimeter),
-                    "startOffset"      : totalStart,
-                    "endOffset"        : totalEnd,
-                    "zeroSlopeAtStart" : true,
-                    "regionName"       : reg.name,
-                    "singleCurve"      : false
-                }
-            });
-        }
-
-        if (definition.debug && definition.stepThrough && !definition.step2)
-        {
-            return;
-        }
-
-        // ── Pass B: Build wall surfaces ────────────────────────────────────────
-        for (var r = 0; r < size(regionData); r += 1)
-        {
-            var rd  = regionData[r];
-            var reg = definition.regions[r];
-
-            if (definition.printLog)
+            
+            var regionBuildData = [];
+            var evalEdges = evaluateQuery(context, peripheryEdges);
+            
+            for (var i = 0; i < size(evalEdges); i += 1)
             {
-                println("[TWG2] region " ~ r ~ " '" ~ reg.name ~ "': building wall surface...");
+                var thisEdge = evalEdges[i];
+                var adjacentEdges = qIntersection([peripheryEdges, qAdjacent(thisEdge, AdjacencyType.VERTEX, EntityType.EDGE)]);
+                var seedBSpline = evApproximateBSplineCurve(context, {
+                        "edge" : thisEdge
+                });
+                
+                var startDist = evDistance(context, {
+                        "side0" : definition.topSurf,
+                        "side1" : seedBSpline.controlPoints[0]
+                });
+                var endDist = evDistance(context, {
+                        "side0" : definition.topSurf,
+                        "side1" : last(seedBSpline.controlPoints)
+                });
+                
+                if ((startDist.distance < 0.01 * millimeter) && (endDist.distance < 0.01 * millimeter)) //if start and endpoints are within 0.01mm of the top surface - don't do a thing
+                {
+                    println('skipping an edge!');
+                }
+                
+                else
+                {
+                    // need to add logic to find zero point of edges that have 0 cd. Part of the edge may be in the CD 
+                    const surfHeight = 20 * millimeter;
+                    
+                    var edgeDegree = seedBSpline.degree;                     
+                    var numPoints = definition.cpMultiplier * edgeDegree;
+                    
+                    var needSearchZero = ((startDist.distance < 0.01 * millimeter) || (endDist.distance < 0.01 * millimeter));
+                    
+                    var paramRange = (needSearchZero) ? getValidEdgeCDParams(context, thisEdge, definition.topSurf, numPoints) : range(0, 1, numPoints);
+                    
+                    var minK = min(seedBSpline.knots);
+                    var maxK = max(seedBSpline.knots);
+                    var kRange = (maxK - minK);
+                    
+                    paramRange = mapArray(paramRange, function(x) { return minK + x * (kRange);});
+                    
+                    var evalPoints = evaluateSpline({
+                            "spline" : seedBSpline,
+                            "parameters" : paramRange
+                    });
+                    
+                    var bottomFaces = qUnion([qOwnedByBody(definition.bottomSurf, EntityType.FACE)]);
+                    
+                    var edgeBuildMap = {'botPoints' : [], 'topPoints' : []};
+                    
+                    for (var pt in evalPoints[0])
+                    {
+                        var bottomDist = evDistance(context, {
+                                "side0" : qOwnedByBody(definition.bottomSurf, EntityType.FACE),
+                                "side1" : pt
+                        });
+                        
+                        var bottomFace = qNthElement(qOwnedByBody(definition.bottomSurf, EntityType.FACE), bottomDist.sides[0].index);
+                        
+                        var bottomNormalPlane = evFaceTangentPlane(context, {
+                                "face" : bottomFace,
+                                "parameter" : bottomDist.sides[0].parameter
+                        });
+                        
+                        var xAxis = bottomNormalPlane.normal;
+                        if (xAxis[2] < 0)
+                        {
+                            xAxis = -1 * xAxis;
+                        }
+                        
+                        var sideDist = evDistance(context, {
+                                "side0" : qOwnedByBody(definition.peripherySurf, EntityType.FACE),
+                                "side1" : pt
+                        });
+                        
+                        var sideFace = qNthElement(qOwnedByBody(definition.peripherySurf, EntityType.FACE), sideDist.sides[0].index);
+                        
+                        var sidePlane = evFaceTangentPlane(context, {
+                                "face" : sideFace,
+                                "parameter" : sideDist.sides[0].parameter
+                        });
+                        
+                        var y_Axis = sidePlane.normal;
+                        
+                        var testDist = evDistance(context, {
+                                "side0" : cdSplit.inside,
+                                "side1" : pt + y_Axis * 1 * millimeter
+                        });
+                        
+                        if (testDist.distance > 0.5 * millimeter)
+                        {
+                            y_Axis = -1 * y_Axis;
+                        }
+                        
+                        var pointRefFrame = frameAtPoint(context, processedPath, pt);
+                        var pointFromRef = pointRefFrame.distFromRef;
+                        
+                        var transitionParameter = (pointFromRef - startFromRef)/(endFromRef - startFromRef);
+                        
+                        var pinchOffset = 0 * millimeter;
+                        var wallAngle = 0 * degree;
+                        var pinchRadius = 0 * millimeter;
+                        var topRadius = 0 * millimeter;
+                        
+                        if (region.pinchOffsetType == SimpleOffsetType.CONSTANT)
+                        {
+                            pinchOffset = region.pinchOffset;
+                            wallAngle = region.wallAngle;
+                            pinchRadius = region.pinchRadius;
+                            topRadius = region.topRadius;
+                        }
+                        else
+                        {
+                            if (region.pinchOffsetType == SimpleOffsetType.LINEAR)
+                            {
+                                pinchOffset = (1-transitionParameter) * region.startPinchOffset + transitionParameter * region.endPinchOffset;
+                                wallAngle = (1-transitionParameter) * region.startWallAngle + transitionParameter * region.endWallAngle;
+                                pinchRadius = (1-transitionParameter) * region.pinchRadiusStart + transitionParameter * region.pinchRadiusEnd;
+                                topRadius = (1-transitionParameter) * region.topRadiusStart + transitionParameter * region.topRadiusEnd;
+                            }
+                            else if (region.pinchOffsetType == SimpleOffsetType.SMOOTH)
+                            {
+                                var smoothT = logisticTransition(transitionParameter);
+                                pinchOffset = (1-smoothT) * region.startPinchOffset + smoothT * region.endPinchOffset;
+                                wallAngle = (1-smoothT) * region.startWallAngle + smoothT * region.endWallAngle;
+                                pinchRadius = (1-smoothT) * region.pinchRadiusStart + smoothT * region.pinchRadiusEnd;
+                                topRadius = (1-smoothT) * region.topRadiusStart + smoothT * region.topRadiusEnd;
+                            }
+                        }
+                        
+                        //println("bottomDist.sides[0]  -> "  ~ bottomDist.sides[0]);
+                        
+                        var bottomOffset = pinchOffset + calcWallBottomOffset(pinchRadius, wallAngle);
+                        var topOffset = bottomOffset + tan(wallAngle) * surfHeight;
+                        var bottomDelta = -1 * millimeter; //amount to 'shift' the bottom wire so that it is always below the CD surf. 
+                        
+                        
+                        edgeBuildMap['botPoints'] = append(edgeBuildMap['botPoints'], pt + y_Axis * bottomOffset + (bottomDelta * xAxis + tan(wallAngle) * bottomDelta * y_Axis));
+                        edgeBuildMap['topPoints'] = append(edgeBuildMap['topPoints'], pt + y_Axis * topOffset + xAxis * surfHeight);
+
+                        if (definition.showEvalPlanes)
+                        {
+                            addDebugPoint(context, pt, DebugColor.BLACK);
+                            addDebugArrow(context, pt, pt + xAxis * 10 * millimeter, 1.5 * millimeter, DebugColor.RED);
+                            addDebugArrow(context, pt, pt + y_Axis * 10 * millimeter, 1.5 * millimeter, DebugColor.GREEN);
+                        }
+                        
+                    }
+                    
+                    edgeBuildMap['bottomBSpline'] = approximateSpline(context, {
+                            "degree" : definition.approxDegree,
+                            "tolerance" : definition.approxTolerance,
+                            "maxControlPoints" : definition.approxMaxCP,
+                            "isPeriodic" : false,
+                            "targets" : [approximationTarget({ 'positions' : edgeBuildMap.botPoints })]
+                    })[0];
+                    
+                    edgeBuildMap['topBSpline'] = approximateSpline(context, {
+                            "degree" : definition.approxDegree,
+                            "tolerance" : definition.approxTolerance,
+                            "maxControlPoints" : definition.approxMaxCP,
+                            "isPeriodic" : false,
+                            "targets" : [approximationTarget({ 'positions' : edgeBuildMap.topPoints })]
+                    })[0];
+                    
+                    opCreateBSplineCurve(context, id + ("region" ~ r ~ "bottomCurve" ~ i), {
+                            "bSplineCurve" : edgeBuildMap.bottomBSpline
+                    });
+                    
+                    opCreateBSplineCurve(context, id + ("region" ~ r ~ "topCurve" ~ i), {
+                            "bSplineCurve" : edgeBuildMap.topBSpline
+                    });
+                    
+                    edgeBuildMap['bottomWire'] = qCreatedBy(id + ("region" ~ r ~ "bottomCurve" ~ i), EntityType.BODY);
+                    edgeBuildMap['topWire'] = qCreatedBy(id + ("region" ~ r ~ "topCurve" ~ i), EntityType.BODY);
+                    
+                    
+
+                    opLoft(context, id + ("region_" ~ r ~ "edge_" ~ i ~"wall"), {
+                        "profileSubqueries" : [ qOwnedByBody(edgeBuildMap.bottomWire, EntityType.EDGE), qOwnedByBody(edgeBuildMap.topWire, EntityType.EDGE) ],
+                        "bodyType" : ToolBodyType.SURFACE
+                        
+                    });
+                    
+                    setProperty(context, {
+                            "entities" : qCreatedBy(id + ("region_" ~ r ~ "edge_" ~ i ~"wall"), EntityType.BODY),
+                            "propertyType" : PropertyType.NAME,
+                            "value" : "region_" ~ r ~ "edge_" ~ i ~"wall"
+                    });
+                    
+                    edgeBuildMap['thisEdge'] = thisEdge;
+                    
+                    edgeBuildMap['wallSheet'] = qCreatedBy(id + ("region_" ~ r ~ "edge_" ~ i ~"wall"), EntityType.BODY);
+                    
+                    edgeBuildMap['bottomStart'] = edgeBuildMap.bottomBSpline.controlPoints[0];
+                    edgeBuildMap['bottomEnd'] = last(edgeBuildMap.bottomBSpline.controlPoints);
+                    
+                    opDeleteBodies(context, id + ("deleteRegion" ~ r ~ "edge" ~ i), {
+                            "entities" : qUnion([ edgeBuildMap['bottomWire'], edgeBuildMap['topWire']])
+                    });
+                    
+                    
+                    regionBuildData = append(regionBuildData, edgeBuildMap);
+                }
+                
+            }
+            
+            
+            for (var b = 0; b < size(regionBuildData); b += 1)
+            {
+                var adjIndices = [];
+                var thisStart = regionBuildData[b].bottomStart;
+                var thisEnd = regionBuildData[b].bottomEnd;
+                
+                for (var o = 0; o < size(regionBuildData); o += 1)
+                {
+                    
+                    if (o == b)
+                    {
+                        continue; // don't compare a body to itself
+                    }   
+                    else
+                    {
+                        if ((norm(thisStart - regionBuildData[o].bottomStart) < 0.1 * millimeter) || (norm(thisStart - regionBuildData[o].bottomEnd) < 0.1 * millimeter) || (norm(thisEnd - regionBuildData[o].bottomStart) < 0.1 * millimeter) || (norm(thisEnd - regionBuildData[o].bottomEnd) < 0.1 * millimeter))
+                        {
+                            adjIndices = append(adjIndices, o);
+                        }
+                    }
+                }
+                
+                regionBuildData[b]['adjIndices'] = adjIndices;
+                regionBuildData[b]['index'] = b;
+            }
+            
+            
+            var indexMaps = mapArray(regionBuildData, function(x) {return {'index' : x.index, 'adjIndices' : x.adjIndices};});
+            
+            //println('indexMaps -> ' ~ indexMaps);
+            
+            var groups = groupAdjacentElements(indexMaps);
+            //println('GROUPS -> ' ~ groups);
+            
+            var groupedBuildMaps = [];
+            for (var j = 0; j < size(groups); j += 1)
+            {
+                var groupIndices = groups[j];
+                var groupArray = [];
+                for (var k = 0; k < size(groupIndices); k += 1)
+                {
+                    var kIndex = groupIndices[k];
+                    groupArray = append(groupArray, regionBuildData[kIndex]);
+                }
+                
+                groupedBuildMaps = append(groupedBuildMaps, groupArray);
+            }
+            
+            //combine surfs
+            
+            region.buildData = {'wallGroups' : groups, 'rawBuildData' : regionBuildData, 'walls' : []};
+            
+            for (var g = 0; g < size(groupedBuildMaps); g += 1)
+            {
+                var thisGroup = groupedBuildMaps[g];
+                var groupSurfs = mapArray(thisGroup, function(x) {return x.wallSheet;});
+                
+                opBoolean(context, id + ("combineRegion_" ~ r ~ "_wallSurfs_group_" ~ g), {
+                        "tools" : qUnion(groupSurfs),
+                        "operationType" : BooleanOperationType.UNION
+                });
+                
+                setProperty(context, {
+                        "entities" : groupSurfs[0],
+                        "propertyType" : PropertyType.NAME,
+                        "value" : ("Region_" ~ r ~ "_wallSurfs_group_" ~ g)
+                });
+                
+                var searchEdges = qEdgeTopologyFilter(qOwnedByBody(groupSurfs[0], EntityType.EDGE), EdgeTopology.ONE_SIDED);
+                searchEdges = evaluateQuery(context, qGeometry(searchEdges, GeometryType.LINE)); //we know that 'ends' will be linear
+                
+                var flagFaces = [];
+                var groupFaces = evaluateQuery(context, qOwnedByBody(groupSurfs[0], EntityType.FACE));
+                
+                var groupMap = {};
+                
+                for (var f = 0; f < size(groupFaces); f += 1)
+                {
+                    var testQ = qIntersection([qSubtraction(qOwnedByBody(groupSurfs[0], EntityType.FACE), groupFaces[f]), qAdjacent(groupFaces[f], AdjacencyType.EDGE, EntityType.FACE)]);
+                    var evalQ = evaluateQuery(context, testQ);
+                    if (size(evalQ) == 1)
+                    {
+                        flagFaces = append(flagFaces, groupFaces[f]);
+                        var possibleEdges = qIntersection([qOwnedByBody(groupSurfs[0], EntityType.EDGE), qGeometry(qEdgeTopologyFilter(qAdjacent(groupFaces[f], AdjacencyType.EDGE, EntityType.EDGE), EdgeTopology.ONE_SIDED), GeometryType.LINE)]);
+                        //addDebugEntities(context, possibleEdges, DebugColor.CYAN);
+                        var evalEdges = evaluateQuery(context, possibleEdges);
+                        for (var ee = 0; ee < size(evalEdges); ee += 1)
+                        {
+                            var startDist = evDistance(context, {
+                                    "side0" : evalEdges[ee],
+                                    "side1" : plane(region.startFrame.origin, region.startFrame.zAxis)
+                            });
+                            var endDist = evDistance(context, {
+                                    "side0" : evalEdges[ee],
+                                    "side1" : plane(region.endFrame.origin, region.endFrame.zAxis)
+                            });
+                            
+                            if (startDist.distance < 0.5 * millimeter)
+                            {
+                                groupMap['starts'] = any(keys(groupMap), function(x) {return x == 'starts';}) ? append(groupMap.starts, {'edge' : evalEdges[ee], 'face' : groupFaces[f]}) : [{'edge' : evalEdges[ee], 'face' : groupFaces[f]}];
+                                //addDebugEntities(context, evalEdges[ee], DebugColor.CYAN);
+                            }
+                            else if (endDist.distance < 0.5 * millimeter)
+                            {
+                                groupMap['ends'] = any(keys(groupMap), function(x) {return x == 'ends';}) ? append(groupMap.ends, {'edge' : evalEdges[ee], 'face' : groupFaces[f]}) : [{'edge' : evalEdges[ee], 'face' : groupFaces[f]}];
+                                //addDebugEntities(context, evalEdges[ee], DebugColor.CYAN);
+                            }
+                            else
+                            {
+                                groupMap['internals'] = any(keys(groupMap), function(x) {return x == 'internals';}) ? append(groupMap.internals, {'edge' : evalEdges[ee], 'face' : groupFaces[f]}) : [{'edge' : evalEdges[ee], 'face' : groupFaces[f]}];
+                                //addDebugEntities(context, evalEdges[ee], DebugColor.MAGENTA);
+                            }
+                        }
+                    }
+                }
+                
+                region.buildData.walls = append(region.buildData.walls, mergeMaps({'body' : groupSurfs[0]}, groupMap));
+            }
+            
+            //delete reference inside surface
+            /*
+            opDeleteBodies(context, id + ("deleteRegionSeedSurfs" ~ r), {
+                    "entities" : regionCopy
+            });
+            */
+            
+           processedRegions[r] = region; 
+        }
+        
+        
+        
+        for (var ix = 0; ix < size(definition.intersections); ix += 1) // Loop over intersections to create blends. 
+        {
+            var startRegionNum = definition.intersections[ix].regionANum;
+            var endRegionNum = definition.intersections[ix].regionBNum;
+            
+            //println('startRegionNum -> ' ~ startRegionNum);
+            //println('endRegionNum -> ' ~ endRegionNum);
+            
+            var startRegion = processedRegions[startRegionNum];
+            var endRegion = processedRegions[endRegionNum];
+            
+            //println('startRegion -> ' ~ startRegion);
+            //println('keys(startRegion.buildData) -> ' ~ keys(startRegion.buildData));
+
+            var startWalls = startRegion.buildData.walls;
+            var endWalls = endRegion.buildData.walls;
+            
+            var joins = [];
+            
+            for (var sw = 0; sw < size(startWalls); sw += 1)
+            {
+                var startWall = startWalls[sw];
+                if (any(keys(startWall), function(x) {return x == "ends";}))
+                {
+                    
+                    //println('keys(startWall) -> ' ~ keys(startWall));
+                    var starts = startWall.ends; // Start of join is END of start region
+                    
+                    for (var se = 0; se < size(starts); se += 1)
+                    {
+                        var startEdge = starts[se].edge;
+                        var startFace = starts[se].face;
+                        //addDebugEntities(context, startEdge, DebugColor.CYAN);
+                        
+                        var endDist = 10 * meter;
+                        var endEdge = qNothing();
+                        var endFace = qNothing();
+                        var endWall = {};
+                        
+                        for (var ew = 0; ew < size(endWalls); ew += 1)
+                        {
+                            var endWallTest = endWalls[ew];
+                            if (any(keys(endWallTest), function(x) {return x=="starts";}))
+                            {
+                                var ends = endWallTest.starts; //End of join is START of end region
+                                for (var ee = 0; ee < size(ends); ee += 1)
+                                {
+                                    var testEdge = ends[ee].edge;
+                                    var testDist = evDistance(context, {
+                                            "side0" : testEdge,
+                                            "side1" : startEdge
+                                    });
+                                    
+                                    if (testDist.distance < endDist)
+                                    {
+                                        endDist = testDist.distance;
+                                        endEdge = testEdge;
+                                        endFace = ends[ee].face;
+                                        endWall = endWallTest;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        joins = append(joins, {
+                            'startEdge' : startEdge, 
+                            'endEdge' : endEdge, 
+                            'startFace' : startFace, 
+                            'endFace' : endFace, 
+                            'startOffset' : definition.intersections[ix].joinStartOffset, 
+                            'endOffset' : definition.intersections[ix].joinEndOffset,
+                            'startBody' : startWall.body,
+                            'endBody' : endWall.body, 
+                            'startInternals' : (any(keys(startWall), function(x) {return x == "internals";})) ? startWall.internals : undefined,
+                            'endInternals' : (any(keys(endWall), function(x) {return x == "internals";})) ? endWall.internals : undefined
+                        });
+                        
+                    }
+                }
+            }
+            
+            for (var j = 0; j < size(joins); j += 1)
+            {
+                var joinData = joins[j];
+                var moveStart = joinData.startOffset > 0 * millimeter;
+                var moveEnd = joinData.endOffset > 0 * millimeter;
+                
+                var moveStartTracker = qNothing();
+                var moveEndTracker = qNothing();
+                
+                if (moveStart)
+                {
+                    moveStartTracker = startTracking(context, joinData.startEdge);
+                    extendSurface(context, id + ('intersection_' ~ ix ~ '_join_' ~ j ~ 'start'), {
+                        "entities" : joinData.startEdge,
+                        "tangentPropagation" : false,
+                        "endCondition" : ExtendBoundingType.BLIND,
+                        "oppositeDirection" : true, 
+                        "extendDistance" : joinData.startOffset,
+                        "maintainCurvature" : false
+                        });
+                }
+                
+                if (moveEnd)
+                {
+                    moveEndTracker = startTracking(context, joinData.endEdge);
+                    extendSurface(context, id + ('intersection_' ~ ix ~ '_join_' ~ j ~ 'end'), {
+                        "entities" : joinData.endEdge,
+                        "tangentPropagation" : false,
+                        "endCondition" : ExtendBoundingType.BLIND,
+                        "oppositeDirection" : true, 
+                        "extendDistance" : joinData.endOffset,
+                        "maintainCurvature" : false
+                        });
+                }
+                
+                loft(context, id + ('intersection_' ~ ix ~ '_join_' ~ j ~"_loft"), {
+                    "bodyType" : ExtendedToolBodyType.SURFACE,
+                    "surfaceOperationType" : NewSurfaceOperationType.NEW,
+                    "wireProfilesArray" : [
+                        {'wireProfileEntities' : qUnion([moveStart ? moveStartTracker : joinData.startEdge])}, 
+                        {'wireProfileEntities' : qUnion([moveEnd ? moveEndTracker : joinData.endEdge])}
+                        ], 
+                    "startCondition" : (definition.intersections[ix].startContinuity == IntersectionContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                    "adjacentFacesStart" : joinData.startFace,
+                    "startMagnitude" : 1,
+                    "endCondition" : (definition.intersections[ix].endContinuity == IntersectionContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
+                    "adjacentFacesEnd" : joinData.endFace,
+                    "endMagnitude" : 1, 
+                    "addGuides" : false, 
+                    "addSections" : false, 
+                    "matchConnections" : false, 
+                    "makePeriodic" : false, 
+                    "showIsocurves" : false
+                    });
+                    
+                var joinQ = qCreatedBy(id + ('intersection_' ~ ix ~ '_join_' ~ j ~"_loft"), EntityType.BODY);
+                
+                setProperty(context, {
+                        "entities" : joinQ,
+                        "propertyType" : PropertyType.NAME,
+                        "value" : ('intersection_' ~ ix ~ '_join_' ~ j ~"_loft")
+                });
+                
+                joins[j] = mergeMaps(joinData, {'joinBody' : joinQ});
+                
+                
+            }
+            
+            definition.intersections[ix]['joins'] = joins;   
+            
+        }
+        
+        // we now have ordered join data per intersection. Iterate over intersections again, joining bodies as necessary and creating trim planes where necessary (cd = 0). 
+        var wallBodyMaps = [];
+        var curWallBodies = [];
+        var curInsideBodies = [];
+        
+        for (var ix = 0; ix < size(definition.intersections); ix += 1)
+        {
+            var intersectionJoins = definition.intersections[ix].joins;
+            
+            var hasEndInternals = any(intersectionJoins, function(x) {return any(keys(x), function(y) {return y == "endInternals";});});
+            var hasStartInternals = any(intersectionJoins, function(x) {return any(keys(x), function(y) {return y == "startInternals";});});
+            
+            //println('hasEndInternals -> ' ~ hasEndInternals);
+            //println('hasStartInternals -> ' ~ hasStartInternals);
+            
+            var intersectionWallBodies = [];
+            var intersectionStartInternalBodies = [];
+            var intersectionEndInternalBodies = [];
+            
+            for (var j = 0; j < size(intersectionJoins); j += 1)
+            {
+                var thisJoin = intersectionJoins[j];
+                if (any(keys(thisJoin), function(x) {return x == "endInternals";}))
+                {
+                    var endInternals = thisJoin.endInternals;
+                    for (var ei = 0; ei < size(endInternals); ei += 1)
+                    {
+                        var thisInternal = endInternals[ei];
+                        var thisInternalEdge = thisInternal.edge;
+                        var internalEdgePoint = evVertexPoint(context, {
+                                "vertex" : qEdgeVertex(thisInternalEdge, true)
+                        });
+                        
+                        //addDebugEntities(context, thisInternalEdge, DebugColor.RED);
+                        
+                        opExtrude(context, id + ("intersection_" ~ ix ~ "_join_" ~ j ~ "_internal_end_" ~ei), {
+                                "entities" : thisInternalEdge,
+                                "endBound" : BoundingType.BLIND,
+                                "endDepth" : 200 * millimeter, 
+                                "direction" : (internalEdgePoint[1] > 0 * millimeter) ? vector(0, 1, 0) : vector(0, -1, 0)
+                        });
+                        
+                        intersectionEndInternalBodies = append(intersectionEndInternalBodies, qCreatedBy(id + ("intersection_" ~ ix ~ "_join_" ~ j ~ "_internal_end_" ~ ei), EntityType.BODY));
+                    }
+                }
+                
+                if (any(keys(thisJoin), function(x) {return x == "startInternals";}))
+                {
+                    var startInternals = thisJoin.startInternals;
+                    for (var si = 0; si < size(startInternals); si += 1)
+                    {
+                        var thisInternal = startInternals[si];
+                        var thisInternalEdge = thisInternal.edge;
+                        var internalEdgePoint = evVertexPoint(context, {
+                                "vertex" : qEdgeVertex(thisInternalEdge, true)
+                        });
+                        
+                        //addDebugEntities(context, thisInternalEdge, DebugColor.RED);
+                        
+                        opExtrude(context, id + ("intersection_" ~ ix ~ "_join_" ~ j ~ "_internal_start" ~si), {
+                                "entities" : thisInternalEdge,
+                                "endBound" : BoundingType.BLIND,
+                                "endDepth" : 200 * millimeter, 
+                                "direction" : (internalEdgePoint[1] > 0 * millimeter) ? vector(0, 1, 0) : vector(0, -1, 0)
+                        });
+                        
+                        intersectionStartInternalBodies = append(intersectionStartInternalBodies, qCreatedBy(id + ("intersection_" ~ ix ~ "_join_" ~ j ~ "_internal_start" ~si), EntityType.BODY));
+                    }
+                }
+                
+                var startBody = thisJoin.startBody;
+                var endBody = thisJoin.endBody;
+                
+                if (!any(intersectionWallBodies, function(x) {return areQueriesEquivalent(context, x, startBody);}))
+                {
+                    intersectionWallBodies = append(intersectionWallBodies, startBody);
+                }
+                if (!any(intersectionWallBodies, function(x) {return areQueriesEquivalent(context, x, endBody);}))
+                {
+                    intersectionWallBodies = append(intersectionWallBodies, endBody);
+                }
+                if (!any(intersectionWallBodies, function(x) {return areQueriesEquivalent(context, x, thisJoin.joinBody);}))
+                {
+                    intersectionWallBodies = append(intersectionWallBodies, thisJoin.joinBody);
+                }
+            }
+            
+            if (hasEndInternals) // has end internals - add current data, shift and clear
+            {
+                //add unique wall bodies
+                for (var iwb = 0; iwb < size(intersectionWallBodies); iwb += 1)
+                {
+                    if (!any(curWallBodies, function(x) {return areQueriesEquivalent(context, x, intersectionWallBodies[iwb]);}))
+                    {
+                        curWallBodies = append(curWallBodies, intersectionWallBodies[iwb]);
+                    }
+                }
+                for (var ieib = 0; ieib < size(intersectionEndInternalBodies); ieib += 1)
+                {
+                    if (!any(curInsideBodies, function(x) {return areQueriesEquivalent(context, x, intersectionEndInternalBodies[ieib]);}))
+                    {
+                        curInsideBodies = append(curInsideBodies, intersectionEndInternalBodies[ieib]);
+                    }
+                }
+                
+                wallBodyMaps = append(wallBodyMaps, {'wallBodies' : curWallBodies, 'insideBodies' : curInsideBodies});
+                curInsideBodies = [];
+                curWallBodies = [];
+            }
+            else if (hasStartInternals) // has start internals. Shift and clear, add current data
+            {
+                if (size(curWallBodies) > 0) // if we have data to deal with
+                {
+                    wallBodyMaps = append(wallBodyMaps, {'wallBodies' : curWallBodies, 'insideBodies' : curInsideBodies});
+                    curWallBodies = [];
+                    curInsideBodies = [];
+                }
+                
+                for (var iwb = 0; iwb < size(intersectionWallBodies); iwb += 1)
+                {
+                    if (!any(curWallBodies, function(x) {return areQueriesEquivalent(context, x, intersectionWallBodies[iwb]);}))
+                    {
+                        curWallBodies = append(curWallBodies, intersectionWallBodies[iwb]);
+                    }
+                }
+                for (var isib = 0; isib < size(intersectionStartInternalBodies); isib += 1)
+                {
+                    if (!any(curInsideBodies, function(x) {return areQueriesEquivalent(context, x, intersectionStartInternalBodies[isib]);}))
+                    {
+                        curInsideBodies = append(curInsideBodies, intersectionStartInternalBodies[isib]);
+                    }
+                }
+            }
+            else
+            {
+                for (var iwb = 0; iwb < size(intersectionWallBodies); iwb += 1)
+                {
+                    if (!any(curWallBodies, function(x) {return areQueriesEquivalent(context, x, intersectionWallBodies[iwb]);}))
+                    {
+                        curWallBodies = append(curWallBodies, intersectionWallBodies[iwb]);
+                    }
+                }
             }
 
-            var wallSurfQ = buildSimpleWallSurface(
-                context,
-                id + ("wall" ~ r),
-                rd.regionCopy,
-                rd.peripheryEdges,
-                rd.offsetDef,
-                definition.wallHeight,
-                processedPath,
-                definition.cpMultiplier,
-                definition.approxDegree,
-                definition.approxTolerance,
-                definition.approxMaxCP,
-                definition.printLog
-            );
-
-            processedRegions[r] = mergeMaps(processedRegions[r], { "loftBodyQuery" : wallSurfQ });
-
-            opDeleteBodies(context, id + ("cdRegClean" ~ r), { "entities" : rd.regionCopy });
-
-            // ── Step 4 (STUB): Trim bottom of wall against CD surface ──────────
-            // TODO: copy cdSplit.outside, extend bottom edge of wallSurfQ to meet it,
-            //       mutual trim, delete inside of CD copy.
-
-            // ── Step 5 (STUB): Trim top of wall against topSurf ───────────────
-            // TODO (mode == FULL): copy topSurf, extend top edge of wallSurfQ,
-            //       mutual trim, delete outside of topSurf copy.
-
-            // ── Step 6 (STUB): Apply wall radius fillet ───────────────────────
-            // TODO: opFillet on bottom edges with interpolated pinchRadius(t),
-            //       on top edges with interpolated topRadius(t).
         }
-
-        if (definition.debug && definition.stepThrough && !definition.step3)
+        
+        // chuck a dangling collection in if it exists
+        if (size(curWallBodies) > 0)
         {
-            return;
+            wallBodyMaps = append(wallBodyMaps, {'wallBodies' : curWallBodies, 'insideBodies' : curInsideBodies});
         }
+        
+        //println('size(wallBodyMaps) = ' ~ size(wallBodyMaps));
+        
+        for (var wbm = 0; wbm < size(wallBodyMaps); wbm += 1)
+        {
+            var bodyMap = wallBodyMaps[wbm];
+            
+            var keepQ = bodyMap.wallBodies[0];
+            
+            opBoolean(context, id + ("wallBody_" ~ wbm ~ "_combine"), {
+                    "tools" : qUnion(bodyMap.wallBodies),
+                    "operationType" : BooleanOperationType.UNION
+            });
+            
+            setProperty(context, {
+                    "entities" : keepQ,
+                    "propertyType" : PropertyType.NAME,
+                    "value" : ("WALL_" ~ wbm)
+            });
+            
+            //println('justCombined ' ~ ("WALL_" ~ wbm));
+            
+            var hasInternals = (size(bodyMap['insideBodies']) > 0); // has inside bodies
+            println('hasInternals -> ' ~ hasInternals);
+            
+            bodyMap['wallSeed'] = keepQ;
+            
+            opPattern(context, id + ("copyWall" ~ wbm ~ "cdCopy"), {
+                    "entities" : keepQ,
+                    "transforms" : [identityTransform()],
+                    "instanceNames" : ['1']
+            });
+            
+            var wallCDCopy = qCreatedBy(id + ("copyWall" ~ wbm ~ "cdCopy"), EntityType.BODY);
+            
+            if (hasInternals)
+            {
+                //println('bodyMap[insideBodies] -> ' ~ toString(bodyMap.insideBodies));
+                //addDebugEntities(context, wallCDCopy, DebugColor.RED);
+                //addDebugEntities(context, qUnion(bodyMap['insideBodies']), DebugColor.BLUE);
+                opBoolean(context, id + ("internalBoolean" ~ wbm), {
+                        "tools" : qUnion([wallCDCopy, qUnion(bodyMap['insideBodies'])]),
+                        "operationType" : BooleanOperationType.UNION
+                }); 
+            }
+            
+            bodyMap['cdTrim'] = wallCDCopy;
+            
+            opPattern(context, id + ("copyWall" ~ wbm ~ "topCopy"), {
+                    "entities" : wallCDCopy,
+                    "transforms" : [identityTransform()],
+                    "instanceNames" : ['1']
+            });
+            
+            bodyMap['topTrim'] = qCreatedBy(id + ("copyWall" ~ wbm ~ "topCopy"), EntityType.BODY);
+            
+            setProperty(context, {
+                    "entities" : wallCDCopy,
+                    "propertyType" : PropertyType.NAME,
+                    "value" : ("WALL_" ~ wbm ~ "_CD_TRIM")
+            });
+            
+            setProperty(context, {
+                    "entities" : qCreatedBy(id + ("copyWall" ~ wbm ~ "topCopy"), EntityType.BODY),
+                    "propertyType" : PropertyType.NAME,
+                    "value" : ("WALL_" ~ wbm ~ "_TOP_TRIM")
+            });
+            
+            wallBodyMaps[wbm] = bodyMap;
+        }
+        
+        opPattern(context, id + ("copyCD_forwork"), {
+                "entities" : definition.cdSurf,
+                "transforms" : [identityTransform()],
+                "instanceNames" : ['1']
+        });
+        
+        opPattern(context, id + ("copyTop_forwork"), {
+                "entities" : definition.topSurf,
+                "transforms" : [identityTransform()],
+                "instanceNames" : ['1']
+        });
+        
+        var workingCD = qCreatedBy(id + ("copyCD_forwork"), EntityType.BODY);
+        var workingTop = qCreatedBy(id + ("copyTop_forwork"), EntityType.BODY);
+        
+        opPattern(context, id + ("copyNonFilletedTop"), {
+                    "entities" : definition.topSurf,
+                    "transforms" : [identityTransform()],
+                    "instanceNames" : ['1']
+            });
+            
+        var nonFilletedTop = qCreatedBy(id + ("copyNonFilletedTop"), EntityType.BODY);
+        
+        for (var wbm = 0; wbm < size(wallBodyMaps); wbm += 1)
+        {
+            var bodyBox = evBox3d(context, {
+                    "topology" : wallBodyMaps[wbm].wallSeed,
+                    "tight" : true
+            });
+            var ctr = (bodyBox.minCorner + bodyBox.maxCorner)/2;
+            wallBodyMaps[wbm]['ctr'] = ctr;
+            
+            opSplitPart(context, id + ("cdSplintsWall_" ~ wbm), {
+                    "targets" : wallBodyMaps[wbm].wallSeed,
+                    "tool" : definition.cdSurf,
+                    "keepTools" : true
+            });
+            
+            var wallTrue = qSplitBy(id + ("cdSplintsWall_" ~ wbm), EntityType.BODY, true);
+            var wallFalse = qSplitBy(id + ("cdSplintsWall_" ~ wbm), EntityType.BODY, false);
+            var pinchEdgesRaw = qUnion([qCreatedBy(id + ("cdSplintsWall_" ~ wbm), EntityType.EDGE)]);
+            
+            var wallTrueBox = evBox3d(context, {
+                    "topology" : wallTrue,
+                    "tight" : true
+            });
+            var wallFalseBox = evBox3d(context, {
+                    "topology" : wallFalse,
+                    "tight" : true
+            });
+            
+            var deleteWall = (wallTrueBox.minCorner[2] < wallFalseBox.minCorner[2]) ? wallTrue : wallFalse;
+            opDeleteBodies(context, id + ("deleteWallBottom_" ~ wbm), {
+                    "entities" : deleteWall
+            });
+            
+            //cdSections
+            opSplitPart(context, id + ("wallSplitsCD_" ~ wbm), {
+                    "targets" : workingCD,
+                    "tool" : wallBodyMaps[wbm].cdTrim,
+                    "keepTools" : false
+            });
+            
+            var cdTrue = qSplitBy(id + ("wallSplitsCD_" ~ wbm), EntityType.BODY, true);
+            var cdFalse = qSplitBy(id + ("wallSplitsCD_" ~ wbm), EntityType.BODY, false);
+            
+            var cdTrueDist = evDistance(context, {
+                    "side0" : cdTrue,
+                    "side1" : ctr
+            });
+            var cdFalseDist = evDistance(context, {
+                    "side0" : cdFalse,
+                    "side1" : ctr
+            });
+            
+            var thisCD = (cdTrueDist.distance > cdFalseDist.distance) ? cdTrue : cdFalse;
+            var pinchEdges = startTracking(context, pinchEdgesRaw);
+            
+            opBoolean(context, id + ("wallCDBoolean" ~ wbm), {
+                    "tools" : qUnion([wallBodyMaps[wbm].wallSeed, thisCD]),
+                    "operationType" : BooleanOperationType.UNION
+            });
+            
+            //addDebugEntities(context, pinchEdges, DebugColor.GREEN);
+            wallBodyMaps[wbm]['pinchEdges'] = pinchEdges;
+            
+            var pinchVerticies = qIntersection([qOwnedByBody(wallBodyMaps[wbm].wallSeed, EntityType.VERTEX), qAdjacent(pinchEdges, AdjacencyType.VERTEX, EntityType.VERTEX)]);
+            addDebugEntities(context, pinchVerticies, DebugColor.RED);
+            
+            opPattern(context, id + ("copyCDForNoFillets" ~ wbm), {
+                    "entities" : wallBodyMaps[wbm].wallSeed,
+                    "transforms" : [identityTransform()],
+                    "instanceNames" : ['1']
+            });
+            
+            wallBodyMaps[wbm]['noFilletWall'] = qCreatedBy(id + ("copyCDForNoFillets" ~ wbm), EntityType.BODY);
+            
+            setProperty(context, {
+                    "entities" : qCreatedBy(id + ("copyCDForNoFillets" ~ wbm), EntityType.BODY),
+                    "propertyType" : PropertyType.APPEARANCE,
+                    "value" : color(194/255, 214/255, 236/255)
+            });
+            
+            setProperty(context, {
+                    "entities" : qCreatedBy(id + ("copyCDForNoFillets" ~ wbm), EntityType.BODY),
+                    "propertyType" : PropertyType.NAME,
+                    "value" : ("WALL_REGION_" ~ wbm ~ "_NO_FILLET_WALL")
+            });
+            
+            //populate pinch information
+            
+            pinchVerticies = evaluateQuery(context, pinchVerticies);
+            pinchVerticies = mapArray(pinchVerticies, function(x) {return {'query' : x, 'point' : evVertexPoint(context, { "vertex" : x})};});
+            pinchVerticies = mapArray(pinchVerticies, function(x) {return mergeMaps(x, {'frame' : frameAtPoint(context, processedPath, x.point)});});
+            pinchVerticies = mapArray(pinchVerticies, function(x) {return mergeMaps(x, {'distFromRef' : x.frame.distFromRef});});
+            
+            var allPinchVertexSettings = []; // all vertex points
+            var startStopPinchVertexSettings = []; //only points closest to starts/stops
+            
+            for (var r = 0; r < size(processedRegions); r += 1)
+            {
+                // iterate over regions. Filter verticies to ones between region start and end. Solve for pinch radius at each vertex
+                var region = processedRegions[r];
+                var pinchRadiusStart = (region.pinchOffsetType == SimpleOffsetType.CONSTANT) ? region.pinchRadius : region.pinchRadiusStart;
+                var pinchRadiusEnd = (region.pinchOffsetType == SimpleOffsetType.CONSTANT) ? region.pinchRadius : region.pinchRadiusEnd;
+                
+                //println('keys(region) -> ' ~ keys(region));
+                //println('region.pinchOffsetType -> ' ~ region.pinchOffsetType);
+                
+                var regionStartFrame = frameAtPoint(context, processedPath, region.startFrame.origin);
+                var regionEndFrame = frameAtPoint(context, processedPath, region.endFrame.origin);
+                
+                var startFromRef = regionStartFrame.distFromRef;
+                var endFromRef = regionEndFrame.distFromRef;
+                
+                var regionVertexSettings = [];
+                
+                var regionPinchVerticies = filter(pinchVerticies, function(x) {return (x.distFromRef >= startFromRef - 1 * millimeter) && (x.distFromRef <= endFromRef + 1 * millimeter);});
+                
+                for (var rpv = 0; rpv < size(regionPinchVerticies); rpv += 1)
+                {
+                    var thisVertex = regionPinchVerticies[rpv];
+                    if (region.pinchOffsetType == SimpleOffsetType.CONSTANT)
+                    {
+                        regionVertexSettings = append(regionVertexSettings, {'vertex' : thisVertex.query, "vertexRadius" : region.pinchRadius, 'distFromStart' : floor(thisVertex.distFromRef - startFromRef, 1* millimeter)});   
+                    }
+                    else
+                    {
+                        
+                        var thisRegionParam = (thisVertex.distFromRef - startFromRef)/(endFromRef - startFromRef);
+                        var scaleFactor = (region.pinchOffsetType == SimpleOffsetType.LINEAR) ? thisRegionParam : logisticTransition(thisRegionParam);
+                        regionVertexSettings = append(regionVertexSettings, {'vertex' : thisVertex.query, "vertexRadius" : (1 - scaleFactor) * pinchRadiusStart + scaleFactor * pinchRadiusEnd, 'distFromStart' : floor(thisVertex.distFromRef - startFromRef, 1* millimeter)});
+                    }
+
+                }
+                
+                var minFromStart = min(mapArray(regionVertexSettings, function(x) {return x.distFromStart;}));
+                var maxFromStart = max(mapArray(regionVertexSettings, function(x) {return x.distFromStart;}));
+                
+                var startVerticies = filter(regionVertexSettings, function(x) {return x.distFromStart == minFromStart;});
+                var endVerticies = filter(regionVertexSettings, function(x) {return x.distFromStart == maxFromStart;});
+                
+                startVerticies = mapArray(startVerticies, function(x) {return {'vertex' : x.vertex, 'vertexRadius' : x.vertexRadius};});
+                endVerticies = mapArray(endVerticies, function(x) {return {'vertex' : x.vertex, 'vertexRadius' : x.vertexRadius};});
+                
+                var allVerticies = mapArray(regionVertexSettings, function(x) {return {'vertex' : x.vertex, 'vertexRadius' : x.vertexRadius};});
+                
+                allPinchVertexSettings = concatenateArrays([allPinchVertexSettings, allVerticies]);
+                startStopPinchVertexSettings = concatenateArrays([startStopPinchVertexSettings, startVerticies, endVerticies]);
+                
+            }
+            
+            opFillet(context, id + ("wallBody_" ~ wbm ~ "_pinchFillet"), {
+                    "entities" : pinchEdgesRaw,
+                    "radius" : 2 * millimeter, // will be overridden 
+                    "isVariable" : true, 
+                    "vertexSettings" : allPinchVertexSettings, 
+                    "smoothTransition" : true
+                    //"smoothCorners" : true
+            });
+            
+            // we now have our pinch fillets. Move on to working on the top surface. 
+            
+            opSplitPart(context, id + ("nonFilletedTopSplit" ~ wbm), {
+                    "targets" : nonFilletedTop,
+                    "tool" : wallBodyMaps[wbm]['noFilletWall'],
+                    "keepTools" : true
+            });
+            
+            var noFilletTopTrue = qSplitBy(id + ("nonFilletedTopSplit" ~ wbm), EntityType.BODY, true);
+            var noFilletTopFalse = qSplitBy(id + ("nonFilletedTopSplit" ~ wbm), EntityType.BODY, false);
+            
+            var noFilletTopTrueDist = evDistance(context, {
+                    "side0" : noFilletTopTrue,
+                    "side1" : ctr
+            });
+            
+            var noFilletTopFalseDist = evDistance(context, {
+                    "side0" : noFilletTopFalse,
+                    "side1" : ctr
+            });
+            
+            opDeleteBodies(context, id + ("deleteNoFilletTop" ~ wbm), {
+                    "entities" : (noFilletTopTrueDist.distance > noFilletTopFalseDist.distance) ? qUnion([noFilletTopTrue]) : qUnion([noFilletTopFalse])
+            });
+        } 
+        
+        opDeleteBodies(context, id + ("deleteDanglingCD"), {
+                "entities" : workingCD
+        });
 
         // Clean up the split CD bodies.
         opDeleteBodies(context, id + "cleanupCDSplit", {
@@ -842,20 +1561,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         });
 
         // ── Step 7: Join region intersections ──────────────────────────────────
-        // buildIntersectionJoins does a global opBoolean UNION of all sheet bodies
-        // created under `id` at its end. Only call it when at least one intersection
-        // actually has join=true, otherwise adjacent region surfaces remain separate.
-        var hasJoin = false;
-        for (var ix in definition.intersections)
-        {
-            if (ix.join) { hasJoin = true; break; }
-        }
-        if (hasJoin)
-        {
-            buildIntersectionJoins(context, id,
-                mergeMaps(definition, { "returnLoftSurface" : true }),
-                processedRegions);
-        }
+        
     }, {
         "flipDirection"   : false,
         "mode"            : TopWallMode.FULL,
@@ -877,3 +1583,126 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
         "showWallBottom"  : false,
         "showWallTop"     : false
     });
+    
+
+function groupAdjacentElements(elements is array) returns array
+{
+    // Build index -> element lookup for O(1) access during BFS
+    // Without this, finding a neighbor requires scanning the whole array each time
+    var lookup = {};
+    for (var el in elements)
+    {
+        lookup[el.index] = el;
+    }
+
+    var visited = {};
+    var groups = [];
+
+    for (var el in elements)
+    {
+        var startIdx = el.index;
+
+        // Skip nodes already claimed by a previous group
+        if (visited[startIdx] == undefined)
+        {
+            var group = [];
+            var queue = [startIdx];
+            visited[startIdx] = true;
+
+            while (size(queue) > 0)
+            {
+                // Pop from front of queue
+                var current = queue[0];
+                queue = subArray(queue, 1, size(queue));
+                group = append(group, current);
+
+                // Enqueue unvisited neighbors
+                for (var adjIdx in lookup[current].adjIndices)
+                {
+                    if (visited[adjIdx] == undefined)
+                    {
+                        visited[adjIdx] = true;
+                        queue = append(queue, adjIdx);
+                    }
+     
+
+           }
+            }
+
+            groups = append(groups, group);
+        }
+    }
+
+    return groups;
+}
+
+function getValidEdgeCDParams(context is Context, thisEdge is Query, topSurf is Query, numPoints is number) returns array
+{
+    var initialRange = range(0, 1, 2 * numPoints);
+    var initialLines = evEdgeTangentLines(context, {
+            "edge" : thisEdge,
+            "parameters" : initialRange
+    });
+    
+    var startDist = evDistance(context, {
+            "side0" : initialLines[0].origin,
+            "side1" : topSurf
+    });
+    
+    var endDist = evDistance(context, {
+            "side0" : last(initialLines)['origin'],
+            "side1" : topSurf
+    });
+    
+    var fixedParam = (startDist.distance > endDist.distance) ? 0 : 1;
+
+    var searchData = [];
+    for (var i = 0; i < size(initialRange); i += 1)
+    {
+        var param = initialRange[i];
+        var thisDist = evDistance(context, {
+                "side0" : initialLines[i].origin,
+                "side1" : topSurf
+        });
+        
+        searchData = append(searchData, {'param' : param, 'dist' : thisDist.distance, 'point' : initialLines[i].origin});
+    }
+    
+    var lowPoints = filter(searchData, function(x) {return x.dist <= 0.01 * millimeter;});
+    var highPoints = filter(searchData, function(x) {return x.dist > 0.01 * millimeter;});
+    
+    var lowPoint = (fixedParam == 0) ? lowPoints[0] : last(lowPoints);
+    var highPoint = (fixedParam == 0) ? last(highPoints) : highPoints[0];
+    
+    var span = norm(highPoint.point - lowPoint.point);
+    var step = span/2;
+    
+    while (step > 1e-3 * millimeter)
+    {
+        var newParam = (lowPoint.param + highPoint.param)/2;
+        var newLine = evEdgeTangentLine(context, {
+                "edge" : thisEdge,
+                "parameter" : newParam
+        });
+        var newDist = evDistance(context, {
+                "side0" : newLine.origin,
+                "side1" : topSurf
+        });
+        
+        if (newDist.distance > 0.01 * millimeter)
+        {
+            highPoint = {'param' : newParam, 'dist' : newDist.distance, 'point' : newLine.origin};
+            step = step/2;
+        }
+        else
+        {
+            lowPoint = {'param' : newParam, 'dist' : newDist.distance, 'point' : newLine.origin};
+            step = step/2;
+        }
+    }
+    
+    var newParam = (lowPoint.param + highPoint.param)/2; // one final division after we pop out of the loop. Just because. 
+    var outputRange = (fixedParam == 0) ? range(0, newParam, numPoints) : range(newParam, 1, numPoints);
+    
+    return outputRange;
+}
