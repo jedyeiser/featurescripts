@@ -1635,7 +1635,7 @@ export function estimateDeflectionManipulatorChangeLegacy(
                           ~ ", " ~ dragStr);
                 }
 
-                println("--- Per-eval-point: j, x[m], M[N*m], kappa_arr[1/m], kappaAlt[1/m], EI_input[N*m^2], EI_alt[N*m^2] ---");
+                println("--- Per-eval-point: j, x[m], V[N], M[N*m], q_net[N/m], kappa_arr[1/m], kappaAlt[1/m], EI_input[N*m^2], EI_alt[N*m^2] ---");
                 for (var j = 0; j < N; j += 1)
                 {
                     var EIinPrint = interpEI(eiData, x_eval[j]);
@@ -1650,7 +1650,9 @@ export function estimateDeflectionManipulatorChangeLegacy(
                     }
                     println("  " ~ toString(j)
                           ~ ", " ~ toString(x_eval[j] / meter)
+                          ~ ", " ~ toString(V_arr[j] / newton)
                           ~ ", " ~ toString(M_arr[j] / (newton * meter))
+                          ~ ", " ~ toString(q_net[j] / (newton / meter))
                           ~ ", " ~ toString(kappa_arr[j] * meter)
                           ~ ", " ~ toString(kappaAlt[j] * meter)
                           ~ ", " ~ toString(EIinPrint / (newton * meter * meter))
