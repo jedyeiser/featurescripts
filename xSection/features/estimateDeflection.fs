@@ -64,6 +64,7 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     if (definition.alterCpInitialized == undefined)   { definition.alterCpInitialized = false; }
     if (definition.alterStoredScaleK == undefined)    { definition.alterStoredScaleK = 1e-3; }
     if (definition.alterEITransitionMode == undefined){ definition.alterEITransitionMode = EITransitionMode.SMOOTHSTEP; }
+    if (definition.printDiagnostics == undefined)     { definition.printDiagnostics = false; }
 
     /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
     if (definition.backOutEI == undefined)      { definition.backOutEI = false; }
@@ -382,8 +383,17 @@ export function estimateDeflectionManipulatorChangeLegacy(
          }
 
          annotation { "Name" : "Print load summary", "Default" : false,
-                      "Description" : "Prints reactions, load catalogue, equilibrium check, and M boundary values to the FeatureScript console on each regen" }
+                      "Description" : "Prints a brief load summary (reactions, applied loads, equilibrium check, EI sample list) to the FeatureScript console on each regen." }
          definition.printLoadSummary is boolean;
+
+         // Conditional declaration for backwards compat: pre-revision instances don't have
+         // this field; editing logic seeds the default on next regen.
+         if (definition.printDiagnostics != undefined)
+         {
+             annotation { "Name" : "Print full diagnostics", "Default" : false,
+                          "Description" : "Prints the verbose per-eval-point dump (V, M, q, kappa_arr, kappaAlt, EI_input, EI_alt) and per-anchor table to the FeatureScript console. Use for debugging; produces N+Nm lines per regen." }
+             definition.printDiagnostics is boolean;
+         }
 
 
          annotation { "Name" : "Add plate/mounting conditions?", "Default" : false, "Description" : "When true, allows users to add an additional query for plate stiffness as well as apply a mounting reaction moment" }
@@ -1117,22 +1127,39 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
         }
 
-        // --- 10b. Enforce M = 0 at outer support positions (simply-supported BCs) ---
-        // Trapezoidal integration starts M[0] = 0 at xEvalMin, not at xs1.
-        // Any non-zero q_net between xEvalMin and xs1 (e.g. distributed support straddle)
-        // leaves M(xs1) != 0.  Subtract the line through M(xs1) and M(xs2) to zero both.
+        // --- 10b. Enforce M = 0 at the BEAM ENDS (free-end BC) ---
+        // Trapezoidal integration starts M[0]=0; force/moment equilibrium implies M[N-1]=0,
+        // but numerical drift leaves a small residual. Subtract a linear correction to pin
+        // M=0 at both beam ends.
+        //
+        // Why beam ends, not supports: for distributed supports that reach the beam ends
+        // (e.g. QUINTIC reaction over [xEvalMin, xs1+hw1]), the *physical* free-end is the
+        // beam tip, not the support center. Enforcing M(xs1)=M(xs2)=0 (the old behavior)
+        // extrapolates the correction line beyond xs1/xs2 and produces a small NEGATIVE M
+        // (and thus negative kappa) at the cantilever tips. Beam-end BC fixes this and
+        // remains correct for point supports too (where the correction line is ~zero anyway,
+        // since accurate integration already gives M~0 at xs1/xs2).
+        //
+        // Deflection BCs (delta=0 at xs1/xs2) are still enforced via i1/i2 below in step 11.
+        var M_rawR  = M_arr[N - 1];
+        var xSpanLR = x_eval[N - 1] - x_eval[0];
+        if (abs(xSpanLR) < 1e-9 * meter)
+        {
+            throw regenError("Eval span is zero. Increase numEvalPoints or extend EI data.");
+        }
+        var M_drift = M_rawR / xSpanLR;
+        for (var i = 0; i < N; i += 1)
+        {
+            M_arr[i] = M_arr[i] - M_drift * (x_eval[i] - x_eval[0]);
+        }
+
+        // Compute i1, i2, xSpan12 for the deflection BC enforcement in step 11 below.
         var i1 = findNearestIndex(x_eval, xs1);
         var i2 = findNearestIndex(x_eval, xs2);
         var xSpan12 = x_eval[i2] - x_eval[i1];
         if (abs(xSpan12) < 1e-9 * meter)
         {
             throw regenError("Support positions map to the same eval grid node. Increase numEvalPoints or move supports.");
-        }
-        var M_raw1  = M_arr[i1];
-        var M_slope = (M_arr[i2] - M_arr[i1]) / xSpan12;
-        for (var i = 0; i < N; i += 1)
-        {
-            M_arr[i] = M_arr[i] - (M_raw1 + M_slope * (x_eval[i] - x_eval[i1]));
         }
 
         // Zero M and V outside the load-affected span (physically correct: V=0, M=0 beyond all loads)
@@ -1606,8 +1633,8 @@ export function estimateDeflectionManipulatorChangeLegacy(
                 EI_alt = append(EI_alt, EIj);
             }
 
-            // --- Diagnostic dump (gated on Print load summary toggle) ---
-            if (definition.printLoadSummary)
+            // --- Verbose diagnostic dump (gated on Print full diagnostics toggle) ---
+            if (definition.printDiagnostics == true)
             {
                 println("=== Estimate Deflection: Alter Diagnostics ===");
                 println("Mode: " ~ toString(transitionMode));
