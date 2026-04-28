@@ -63,7 +63,6 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     if (definition.alterIsDragged == undefined)       { definition.alterIsDragged = []; }
     if (definition.alterCpInitialized == undefined)   { definition.alterCpInitialized = false; }
     if (definition.alterStoredScaleK == undefined)    { definition.alterStoredScaleK = 1e-3; }
-    if (definition.alterTransitionWidth == undefined) { definition.alterTransitionWidth = 0.05 * meter; }
     if (definition.alterEITransitionMode == undefined){ definition.alterEITransitionMode = EITransitionMode.SMOOTHSTEP; }
 
     /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
@@ -376,13 +375,9 @@ export function estimateDeflectionManipulatorChangeLegacy(
                               "Description" : "How EI behaves at the support boundaries. SMOOTHSTEP: blends back to input EI within a transition zone. CONTINUE_OFFSET: extends the boundary EI delta as a constant offset into the cantilever beyond the support." }
                  definition.alterEITransitionMode is EITransitionMode;
 
-                 if (definition.alterEITransitionMode == EITransitionMode.SMOOTHSTEP
-                     && definition.alterTransitionWidth != undefined)
-                 {
-                     annotation { "Name" : "EI transition width", "Default" : 0.05 * meter,
-                                  "Description" : "Width of smoothstep blend zone near each support boundary. Clamped to (xCp[0] - xSupportMin) so the blend never washes out the dragged anchor at the first manipulator." }
-                     isLength(definition.alterTransitionWidth, alterTransitionWidthBounds);
-                 }
+                 // Smoothstep blend width is fixed to alterDx (the gap between extent and the
+                 // first/last manipulator) -- no user field needed; this is the natural width
+                 // that smooths the boundary without washing out any dragged anchor value.
              }
          }
 
@@ -1484,10 +1479,11 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
 
             // EI_altered = blend(M / kappa_altered, EI_input) using cubic smoothstep within
-            // alterTransitionWidth of either support boundary. Outside the support span the
-            // blend collapses to alpha=0 -> EI_alt = EI_input. Far interior, alpha=1 -> full
-            // back-out. Small-signal fallback (|M| or |kappa| below noise floor) defaults
-            // EI_back to EI_input for that point so the blend math stays well-behaved.
+            // alterDx (= the gap between extent and first/last manipulator) of either support
+            // boundary. Outside the support span the blend collapses to alpha=0 -> EI_alt =
+            // EI_input. At the first/last manipulator, alpha=1 -> full back-out so dragged
+            // values are preserved. Small-signal fallback (|M| or |kappa| below noise floor)
+            // defaults EI_back to EI_input for that point so the blend math stays well-behaved.
             var maxAbsM = 1e-12 * newton * meter;
             for (var j = 0; j < N; j += 1)
             {
@@ -1496,12 +1492,10 @@ export function estimateDeflectionManipulatorChangeLegacy(
             var mFloor = 1e-3 * maxAbsM;             // 0.1% of peak |M|
             var kFloor = 1e-3 * maxAbsKappa;         // 0.1% of peak |kappa|, computed earlier
 
-            // Read transitionW; clamp to alterDx so the smoothstep blend is contained within
-            // the gap between extent and the first/last manipulator (never washes out the
-            // user's drag at xCp[0] / xCp[Nm-1]).
-            var transitionW = definition.alterTransitionWidth;
-            if (transitionW == undefined || transitionW <= 0 * meter) { transitionW = 0.05 * meter; }
-            if (transitionW > alterDx) { transitionW = alterDx; }
+            // Smoothstep blend width is fixed to alterDx -- the gap between the support
+            // extent and the first/last manipulator. This is the natural width that smooths
+            // the boundary discontinuity without washing out any dragged anchor value.
+            var transitionW = alterDx;
 
             var transitionMode = definition.alterEITransitionMode;
             if (transitionMode == undefined) { transitionMode = EITransitionMode.SMOOTHSTEP; }
