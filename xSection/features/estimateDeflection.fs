@@ -1193,7 +1193,7 @@ export function estimateDeflectionManipulatorChange(
                 manips[key] = linearManipulator({
                     "base"      : vector(xCp[i], 0 * meter, 0 * meter),
                     "direction" : vector(0, 0, 1),
-                    "offset"    : kappaCp[i] * scaleK * meter
+                    "offset"    : kappaCp[i] * scaleK
                 });
             }
             addManipulators(context, id, manips);
