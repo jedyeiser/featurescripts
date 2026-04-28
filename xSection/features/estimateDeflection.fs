@@ -1046,8 +1046,30 @@ export function estimateDeflectionManipulatorChangeLegacy(
             if (pl.x > xAffectedMax) { xAffectedMax = pl.x; }
         }
 
-        // --- 7b. Print load summary (debug) -- print bodies removed; toggle preserved ---
-        // (intentionally empty; printLoadSummary toggle reserved for future diagnostic output)
+        // --- 7b. Print load summary (debug) ---
+        if (definition.printLoadSummary)
+        {
+            println("=== Estimate Deflection: Load Summary ===");
+            println("Eval span: [" ~ toString(xEvalMin / meter) ~ " m, " ~ toString(xEvalMax / meter) ~ " m], N=" ~ toString(N) ~ ", dx=" ~ toString(dx / meter) ~ " m");
+            println("Support 1: x=" ~ toString(xs1 / meter) ~ " m, R1=" ~ toString(R1 / newton) ~ " N");
+            println("Support 2: x=" ~ toString(xs2 / meter) ~ " m, R2=" ~ toString(R2 / newton) ~ " N");
+            if (definition.addThirdSupport)
+            {
+                println("Support 3: x=" ~ toString(xs3 / meter) ~ " m, R3=" ~ toString(R3 / newton) ~ " N");
+            }
+            println("Applied 1: x=" ~ toString(x1 / meter) ~ " m, F1=" ~ toString(F1 / newton) ~ " N");
+            if (definition.secondApplied)
+            {
+                println("Applied 2: x=" ~ toString(x2 / meter) ~ " m, F2=" ~ toString(F2 / newton) ~ " N");
+            }
+            println("Net force (R - F): " ~ toString((R1 + R2 + R3 - F1 - F2) / newton) ~ " N (should be ~0)");
+            println("xAffected: [" ~ toString(xAffectedMin / meter) ~ " m, " ~ toString(xAffectedMax / meter) ~ " m]");
+            println("EI input data (sorted, " ~ toString(size(eiData)) ~ " samples):");
+            for (var ei in eiData)
+            {
+                println("  x=" ~ toString(ei.x / meter) ~ " m, EI=" ~ toString(ei.EI / (newton * meter * meter)) ~ " N*m^2");
+            }
+        }
 
         // --- 8. Build distributed net load q_net at each eval point ---
         var q_net = [];
@@ -1588,6 +1610,59 @@ export function estimateDeflectionManipulatorChangeLegacy(
                     EIj = alpha * EIback + (1 - alpha) * EIinput;
                 }
                 EI_alt = append(EI_alt, EIj);
+            }
+
+            // --- Diagnostic dump (gated on Print load summary toggle) ---
+            if (definition.printLoadSummary)
+            {
+                println("=== Estimate Deflection: Alter Diagnostics ===");
+                println("Mode: " ~ toString(transitionMode));
+                println("Nm=" ~ toString(Nm) ~ " alterDx=" ~ toString(alterDx / meter) ~ " m transitionW=" ~ toString(transitionW / meter) ~ " m");
+                println("xSupport: [" ~ toString(xSupportMin / meter) ~ " m, " ~ toString(xSupportMax / meter) ~ " m]");
+                println("scaleK=" ~ toString(scaleK / (meter * meter)) ~ " (m^2 per 1/m)");
+                println("Floors: maxAbsM=" ~ toString(maxAbsM / (newton * meter)) ~ " N*m, mFloor=" ~ toString(mFloor / (newton * meter)) ~ " N*m");
+                println("        maxAbsKappa=" ~ toString(maxAbsKappa * meter) ~ " /m, kFloor=" ~ toString(kFloor * meter) ~ " /m");
+                if (transitionMode == EITransitionMode.CONTINUE_OFFSET)
+                {
+                    println("deltaLeft="  ~ toString(deltaLeft  / (newton * meter * meter)) ~ " N*m^2");
+                    println("deltaRight=" ~ toString(deltaRight / (newton * meter * meter)) ~ " N*m^2");
+                }
+
+                println("--- Anchors: i, xCp[m], seedKappa[1/m], kappaCp[1/m], delta[1/m], dragged ---");
+                for (var i = 0; i < Nm; i += 1)
+                {
+                    var dragStr = "false";
+                    if (hasArrays && definition.alterIsDragged[i].flag == true) { dragStr = "true"; }
+                    println("  " ~ toString(i)
+                          ~ ", " ~ toString(xCp[i] / meter)
+                          ~ ", " ~ toString(seedKappa[i] * meter)
+                          ~ ", " ~ toString(kappaCp[i] * meter)
+                          ~ ", " ~ toString((kappaCp[i] - seedKappa[i]) * meter)
+                          ~ ", " ~ dragStr);
+                }
+
+                println("--- Per-eval-point: j, x[m], M[N*m], kappa_arr[1/m], kappaAlt[1/m], EI_input[N*m^2], EI_alt[N*m^2] ---");
+                for (var j = 0; j < N; j += 1)
+                {
+                    var EIinPrint = interpEI(eiData, x_eval[j]);
+                    if (definition.addPlateConditions && size(plateData) > 0)
+                    {
+                        var ppMin = plateData[0].x;
+                        var ppMax = plateData[size(plateData) - 1].x;
+                        if (x_eval[j] >= ppMin && x_eval[j] <= ppMax)
+                        {
+                            EIinPrint = EIinPrint + interpEI(plateData, x_eval[j]);
+                        }
+                    }
+                    println("  " ~ toString(j)
+                          ~ ", " ~ toString(x_eval[j] / meter)
+                          ~ ", " ~ toString(M_arr[j] / (newton * meter))
+                          ~ ", " ~ toString(kappa_arr[j] * meter)
+                          ~ ", " ~ toString(kappaAlt[j] * meter)
+                          ~ ", " ~ toString(EIinPrint / (newton * meter * meter))
+                          ~ ", " ~ toString(EI_alt[j] / (newton * meter * meter)));
+                }
+                println("=== End Alter Diagnostics ===");
             }
 
             // Altered kappa polyline (GREEN, scaled like the existing CYAN kappa overlay)
