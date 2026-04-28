@@ -50,6 +50,13 @@ export const numAlterPointsBounds = {(unitless) : [10, 20, 50]} as IntegerBoundS
 export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
+    // Backwards-compat init for pre-existing feature instances saved before these fields existed.
+    // Onshape's precondition validation runs against stored values and rejects undefined arrays,
+    // so we must seed defaults here before any logic that touches them.
+    if (definition.alterCpZ == undefined)           { definition.alterCpZ = []; }
+    if (definition.alterIsDragged == undefined)     { definition.alterIsDragged = []; }
+    if (definition.alterCpInitialized == undefined) { definition.alterCpInitialized = false; }
+    if (definition.alterStoredScaleK == undefined)  { definition.alterStoredScaleK = 1e-3; }
 
     /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
     if (definition.backOutEI == undefined)      { definition.backOutEI = false; }
