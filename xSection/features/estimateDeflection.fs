@@ -210,18 +210,29 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
         }
     } */
 
-    // --- Reset alterBeamCurvature stored state when topology changes ---
-    // Triggers: alterBeamCurvature flips off->on, or numAlterPoints changes count,
-    // or the alterCpZ array length doesn't match the requested numAlterPoints.
+    // --- Pre-allocate alterBeamCurvature state arrays ---
+    // Triggers: alterBeamCurvature flips off->on, numAlterPoints changes, or array
+    // sizes don't match. Body-side mutations of these array fields don't persist to
+    // the change handler, so the editing-logic must create the slots up front.
     var altOnNow = (definition.debugMode == true && definition.alterBeamCurvature == true);
     var altOnOld = (oldDefinition.debugMode == true && oldDefinition.alterBeamCurvature == true);
     var nNow     = (definition.numAlterPoints == undefined) ? 0 : definition.numAlterPoints;
     var nOld     = (oldDefinition.numAlterPoints == undefined) ? 0 : oldDefinition.numAlterPoints;
-    var sizeMismatch = (definition.alterCpZ == undefined) || (size(definition.alterCpZ) != nNow);
+    var cpZSize  = (definition.alterCpZ == undefined) ? 0 : size(definition.alterCpZ);
+    var dragSize = (definition.alterIsDragged == undefined) ? 0 : size(definition.alterIsDragged);
+    var sizeMismatch = (cpZSize != nNow) || (dragSize != nNow);
 
-    if ((altOnNow && !altOnOld) || (altOnNow && nNow != nOld) || (altOnNow && sizeMismatch))
+    if (altOnNow && (!altOnOld || nNow != nOld || sizeMismatch))
     {
-        definition.alterCpZ = [];
+        var initCpZ = [];
+        var initDragged = [];
+        for (var k = 0; k < nNow; k += 1)
+        {
+            initCpZ = append(initCpZ, { "v" : 0 });
+            initDragged = append(initDragged, { "v" : false });
+        }
+        definition.alterCpZ = initCpZ;
+        definition.alterIsDragged = initDragged;
         definition.alterCpInitialized = false;
     }
 
@@ -239,17 +250,20 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 export function estimateDeflectionManipulatorChange(
     context is Context, definition is map, newManipulators is map) returns map
 {
-    if (definition.debugMode != true)            { return definition; }
-    if (definition.alterBeamCurvature != true)   { return definition; }
-    if (definition.alterCpZ == undefined)        { return definition; }
+    if (definition.debugMode != true)             { return definition; }
+    if (definition.alterBeamCurvature != true)    { return definition; }
+    if (definition.alterCpZ == undefined)         { return definition; }
+    if (definition.alterIsDragged == undefined)   { return definition; }
 
     var Nm = size(definition.alterCpZ);
-    if (Nm == 0)                                 { return definition; }
+    if (Nm == 0)                                  { return definition; }
+    if (size(definition.alterIsDragged) != Nm)    { return definition; }
 
     var scaleKVal = definition.alterStoredScaleK;
     if (scaleKVal == undefined || scaleKVal <= 0) { return definition; }
 
     var tempCpZ = definition.alterCpZ;
+    var tempDragged = definition.alterIsDragged;
     var anyChanged = false;
     for (var i = 0; i < Nm; i += 1)
     {
@@ -260,12 +274,14 @@ export function estimateDeflectionManipulatorChange(
             // store as kappa * meter (dimensionless, matches array element type)
             var newKappa = newManipulators[key].offset / (scaleKVal * meter * meter);
             tempCpZ[i] = { "v" : newKappa * meter };
+            tempDragged[i] = { "v" : true };
             anyChanged = true;
         }
     }
     if (anyChanged)
     {
         definition.alterCpZ = tempCpZ;
+        definition.alterIsDragged = tempDragged;
         definition.alterCpInitialized = true;
     }
     return definition;
@@ -601,14 +617,25 @@ export function estimateDeflectionManipulatorChangeLegacy(
          // Hidden state for the alterBeamCurvature manipulator flow (always-on so Onshape
          // initializes to [] / false / default on passive regens).
          //   alterCpZ          : per-anchor kappa storage; element {"v": kappa * meter} (dimensionless).
-         //   alterCpInitialized: false until the first manipulator drag persists values.
+         //   alterIsDragged    : parallel boolean array; true iff that anchor has been dragged.
+         //   alterCpInitialized: true once any drag has happened (set by change handler).
          //   alterStoredScaleK : last regen's scaleK / m^2, used by the change handler to decode offsets.
+         // alterCpZ and alterIsDragged are pre-allocated to Nm entries by the editing logic,
+         // because body-side array mutations don't persist back to the stored definition.
          annotation { "Name" : "alterCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
          definition.alterCpZ is array;
          for (var cpZ in definition.alterCpZ)
          {
              annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
              isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+         }
+
+         annotation { "Name" : "alterIsDragged", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Drag" }
+         definition.alterIsDragged is array;
+         for (var dr in definition.alterIsDragged)
+         {
+             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
+             dr.v is boolean;
          }
 
          annotation { "Name" : "alterCpInitialized", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -1285,56 +1312,49 @@ export function estimateDeflectionManipulatorChangeLegacy(
                 xCp = append(xCp, xSupportMin + (i + 1) * alterDx);
             }
 
-            // kappaCp source-of-truth selection:
-            //   - alterCpInitialized + array size matches: use stored values from prior drags
-            //   - otherwise: fresh-seed from raw kappa_arr at xCp positions, persist as the
-            //     starting state so the change handler has a complete array to update on first drag
-            var kappaCp = [];
-            var useStoredCp = (definition.alterCpInitialized == true
-                             && definition.alterCpZ != undefined
-                             && size(definition.alterCpZ) == Nm);
-
-            if (useStoredCp)
+            // Compute seed kappa at each anchor (raw kappa_arr sampled at xCp positions)
+            var seedKappa = [];
+            for (var i = 0; i < Nm; i += 1)
             {
-                for (var i = 0; i < Nm; i += 1)
+                var t = (xCp[i] - xEvalMin) / dx;
+                var idxLo = floor(t);
+                if (idxLo < 0)        { idxLo = 0; }
+                if (idxLo > N - 2)    { idxLo = N - 2; }
+                var frac = t - idxLo;
+                if (frac < 0)         { frac = 0; }
+                if (frac > 1)         { frac = 1; }
+                var kSeed = kappa_arr[idxLo] + frac * (kappa_arr[idxLo + 1] - kappa_arr[idxLo]);
+                seedKappa = append(seedKappa, kSeed);
+            }
+
+            // kappaCp resolved per-anchor:
+            //   - if alterIsDragged[i].v: use stored value (user's intended absolute kappa)
+            //   - else: use seed (raw physics)
+            // alterCpZ and alterIsDragged are pre-allocated to Nm entries by the editing logic.
+            var kappaCp = [];
+            var hasArrays = (definition.alterCpZ != undefined && size(definition.alterCpZ) == Nm
+                          && definition.alterIsDragged != undefined && size(definition.alterIsDragged) == Nm);
+            for (var i = 0; i < Nm; i += 1)
+            {
+                var isDragged = (hasArrays && definition.alterIsDragged[i].v == true);
+                if (isDragged)
                 {
-                    // alterCpZ[i].v stores kappa * meter (dimensionless); decode -> kappa [1/m]
                     kappaCp = append(kappaCp, definition.alterCpZ[i].v / meter);
                 }
-            }
-            else
-            {
-                // Fresh seed from raw kappa_arr by linear interp
-                for (var i = 0; i < Nm; i += 1)
+                else
                 {
-                    var t = (xCp[i] - xEvalMin) / dx;
-                    var idxLo = floor(t);
-                    if (idxLo < 0)        { idxLo = 0; }
-                    if (idxLo > N - 2)    { idxLo = N - 2; }
-                    var frac = t - idxLo;
-                    if (frac < 0)         { frac = 0; }
-                    if (frac > 1)         { frac = 1; }
-                    var kCp = kappa_arr[idxLo] + frac * (kappa_arr[idxLo + 1] - kappa_arr[idxLo]);
-                    kappaCp = append(kappaCp, kCp);
+                    kappaCp = append(kappaCp, seedKappa[i]);
                 }
-                // Persist seed so change handler can update individual entries (alterCpInitialized
-                // stays false until the first drag, which is what marks the array as "user-edited").
-                var seedCpZ = [];
-                for (var i = 0; i < Nm; i += 1)
-                {
-                    seedCpZ = append(seedCpZ, { "v" : kappaCp[i] * meter });
-                }
-                definition.alterCpZ = seedCpZ;
             }
 
-            // Persist scaleK so the change handler can decode dragged offsets in the same units.
-            // Body mutations of definition persist back (verified pattern -- see bridgingCurve.fs,
-            // helix.fs, std/feature.fs:56-72).
+            // Persist scaleK so the change handler can decode dragged offsets.
+            // Body-side mutations of array definition fields don't persist (which is why
+            // alterCpZ + alterIsDragged are pre-allocated in the editing logic); scalar
+            // mutations like this one do appear to persist. If decoded drags come back at
+            // the wrong magnitude, this is the line to revisit (fallback: setAttribute).
             definition.alterStoredScaleK = scaleK / (meter * meter);
 
-            // Add manipulators (no change handler registered yet -> drags inert by design).
-            // Drop a debug point at each base so the arrow visually emanates from a marker
-            // (debug points auto-clean at end of regen, same as addDebugLine).
+            // Add manipulators (standard arrow + GREEN debug-point base for the dot).
             var manips = {};
             for (var i = 0; i < Nm; i += 1)
             {
@@ -1349,46 +1369,38 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
             addManipulators(context, id, manips);
 
-            // Build extended anchor arrays with virtual kappa=0 endpoints at the supports.
-            // This pins the GREEN polyline to 0 at xSupportMin/xSupportMax (matching the M=0 BC)
-            // without requiring an actual manipulator there.
-            var xCpExt = [];
-            var kappaCpExt = [];
-            xCpExt = append(xCpExt, xSupportMin);
-            kappaCpExt = append(kappaCpExt, 0 / meter);
-            for (var i = 0; i < Nm; i += 1)
-            {
-                xCpExt = append(xCpExt, xCp[i]);
-                kappaCpExt = append(kappaCpExt, kappaCp[i]);
-            }
-            xCpExt = append(xCpExt, xSupportMax);
-            kappaCpExt = append(kappaCpExt, 0 / meter);
-            // xCpExt/kappaCpExt now have Nm+2 entries spanning [xSupportMin, xSupportMax]
-            // at uniform alterDx spacing.
-
-            // kappaAlt: inside support span use polyline through extended anchors;
-            //           outside support span use raw kappa_arr (matches CYAN exactly).
+            // kappaAlt = raw kappa_arr + sum of triangular bumps from each anchor's delta.
+            // Each anchor contributes a triangle peaked at xCp[i] (height = delta) tapering to
+            // zero at the neighboring anchors (or at xSupportMin/xSupportMax for the endpoints).
+            // Undragged anchors give delta = 0 -> no contribution -> kappaAlt = kappa_arr exactly,
+            // which means EI_alt = M / kappa_arr = EI_input exactly when nothing has been dragged.
             var kappaAlt = [];
             for (var j = 0; j < N; j += 1)
             {
                 var xj = x_eval[j];
-                var kj;
-                if (xj < xSupportMin || xj > xSupportMax)
+                var k = kappa_arr[j];
+                for (var i = 0; i < Nm; i += 1)
                 {
-                    kj = kappa_arr[j];
+                    var delta = kappaCp[i] - seedKappa[i];
+                    var xLeft;
+                    if (i == 0)        { xLeft = xSupportMin; }
+                    else               { xLeft = xCp[i - 1]; }
+                    var xRight;
+                    if (i == Nm - 1)   { xRight = xSupportMax; }
+                    else               { xRight = xCp[i + 1]; }
+
+                    var weight = 0;
+                    if (xj >= xLeft && xj <= xCp[i])
+                    {
+                        weight = (xj - xLeft) / (xCp[i] - xLeft);
+                    }
+                    else if (xj > xCp[i] && xj <= xRight)
+                    {
+                        weight = (xRight - xj) / (xRight - xCp[i]);
+                    }
+                    k = k + delta * weight;
                 }
-                else
-                {
-                    var s = (xj - xSupportMin) / alterDx;
-                    var iLo = floor(s);
-                    if (iLo < 0)        { iLo = 0; }
-                    if (iLo > Nm)       { iLo = Nm; }
-                    var fr = s - iLo;
-                    if (fr < 0)         { fr = 0; }
-                    if (fr > 1)         { fr = 1; }
-                    kj = kappaCpExt[iLo] + fr * (kappaCpExt[iLo + 1] - kappaCpExt[iLo]);
-                }
-                kappaAlt = append(kappaAlt, kj);
+                kappaAlt = append(kappaAlt, k);
             }
 
             // EI_altered = M / kappa_altered. Outside the load-affected span (M=0, kappa=0)
