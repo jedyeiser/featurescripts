@@ -210,15 +210,73 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
         }
     } */
 
+    // --- Reset alterBeamCurvature stored state when topology changes ---
+    // Triggers: alterBeamCurvature flips off->on, or numAlterPoints changes count,
+    // or the alterCpZ array length doesn't match the requested numAlterPoints.
+    var altOnNow = (definition.debugMode == true && definition.alterBeamCurvature == true);
+    var altOnOld = (oldDefinition.debugMode == true && oldDefinition.alterBeamCurvature == true);
+    var nNow     = (definition.numAlterPoints == undefined) ? 0 : definition.numAlterPoints;
+    var nOld     = (oldDefinition.numAlterPoints == undefined) ? 0 : oldDefinition.numAlterPoints;
+    var sizeMismatch = (definition.alterCpZ == undefined) || (size(definition.alterCpZ) != nNow);
+
+    if ((altOnNow && !altOnOld) || (altOnNow && nNow != nOld) || (altOnNow && sizeMismatch))
+    {
+        definition.alterCpZ = [];
+        definition.alterCpInitialized = false;
+    }
+
     return definition;
 }
 
 
 // =============================================================================
-// MANIPULATOR CHANGE FUNCTION — DISABLED (backOutEI feature trimmed out)
+// MANIPULATOR CHANGE FUNCTION — alterBeamCurvature drag handler
+// =============================================================================
+// Reads dragged manipulator offsets, decodes back to kappa [1/m] using the
+// scaleK from the previous regen (alterStoredScaleK), and persists into alterCpZ.
+// Setting alterCpInitialized = true tells the next regen body to use stored
+// values instead of fresh-seeding from kappa_arr.
+export function estimateDeflectionManipulatorChange(
+    context is Context, definition is map, newManipulators is map) returns map
+{
+    if (definition.debugMode != true)            { return definition; }
+    if (definition.alterBeamCurvature != true)   { return definition; }
+    if (definition.alterCpZ == undefined)        { return definition; }
+
+    var Nm = size(definition.alterCpZ);
+    if (Nm == 0)                                 { return definition; }
+
+    var scaleKVal = definition.alterStoredScaleK;
+    if (scaleKVal == undefined || scaleKVal <= 0) { return definition; }
+
+    var tempCpZ = definition.alterCpZ;
+    var anyChanged = false;
+    for (var i = 0; i < Nm; i += 1)
+    {
+        var key = "c" ~ toString(i);
+        if (newManipulators[key] is map)
+        {
+            // offset [m] / (scaleKVal [m^2/m^2] * m^2) -> kappa [1/m]
+            // store as kappa * meter (dimensionless, matches array element type)
+            var newKappa = newManipulators[key].offset / (scaleKVal * meter * meter);
+            tempCpZ[i] = { "v" : newKappa * meter };
+            anyChanged = true;
+        }
+    }
+    if (anyChanged)
+    {
+        definition.alterCpZ = tempCpZ;
+        definition.alterCpInitialized = true;
+    }
+    return definition;
+}
+
+
+// =============================================================================
+// LEGACY MANIPULATOR CHANGE FUNCTION — DISABLED (backOutEI feature trimmed out)
 // =============================================================================
 /* DISABLED — re-enable when restoring backOutEI / CP drag manipulators
-export function estimateDeflectionManipulatorChange(
+export function estimateDeflectionManipulatorChangeLegacy(
     context is Context, definition is map, newManipulators is map) returns map
 {
     if (!definition.backOutEI)                   { return definition; }
@@ -257,6 +315,7 @@ export function estimateDeflectionManipulatorChange(
 
  annotation { "Feature Type Name" : "Estimate Deflection",
              "Editing Logic Function" : "estimateDeflectionEditLogic",
+             "Manipulator Change Function" : "estimateDeflectionManipulatorChange",
              "Feature Type Description" : "Estimates beam deflection given an EI profile and loading conditions" }
  export const estimateDeflection = defineFeature(function(context is Context, id is Id, definition is map)
      precondition
@@ -538,6 +597,25 @@ export function estimateDeflectionManipulatorChange(
                  }
              }
          }
+
+         // Hidden state for the alterBeamCurvature manipulator flow (always-on so Onshape
+         // initializes to [] / false / default on passive regens).
+         //   alterCpZ          : per-anchor kappa storage; element {"v": kappa * meter} (dimensionless).
+         //   alterCpInitialized: false until the first manipulator drag persists values.
+         //   alterStoredScaleK : last regen's scaleK / m^2, used by the change handler to decode offsets.
+         annotation { "Name" : "alterCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
+         definition.alterCpZ is array;
+         for (var cpZ in definition.alterCpZ)
+         {
+             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+             isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+         }
+
+         annotation { "Name" : "alterCpInitialized", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+         definition.alterCpInitialized is boolean;
+
+         annotation { "Name" : "alterStoredScaleK", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 1e-3 }
+         isReal(definition.alterStoredScaleK, { (unitless) : [1e-12, 1e-3, 1e12] } as RealBoundSpec);
 
          /* DISABLED — backOutEI + CP storage arrays removed from precondition; re-enable to restore
          annotation { "Name" : "Back out EI", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -1207,20 +1285,52 @@ export function estimateDeflectionManipulatorChange(
                 xCp = append(xCp, xSupportMin + (i + 1) * alterDx);
             }
 
-            // Sample raw kappa at each anchor by linear interp into kappa_arr (uniform grid, spacing dx)
+            // kappaCp source-of-truth selection:
+            //   - alterCpInitialized + array size matches: use stored values from prior drags
+            //   - otherwise: fresh-seed from raw kappa_arr at xCp positions, persist as the
+            //     starting state so the change handler has a complete array to update on first drag
             var kappaCp = [];
-            for (var i = 0; i < Nm; i += 1)
+            var useStoredCp = (definition.alterCpInitialized == true
+                             && definition.alterCpZ != undefined
+                             && size(definition.alterCpZ) == Nm);
+
+            if (useStoredCp)
             {
-                var t = (xCp[i] - xEvalMin) / dx;
-                var idxLo = floor(t);
-                if (idxLo < 0)        { idxLo = 0; }
-                if (idxLo > N - 2)    { idxLo = N - 2; }
-                var frac = t - idxLo;
-                if (frac < 0)         { frac = 0; }
-                if (frac > 1)         { frac = 1; }
-                var kCp = kappa_arr[idxLo] + frac * (kappa_arr[idxLo + 1] - kappa_arr[idxLo]);
-                kappaCp = append(kappaCp, kCp);
+                for (var i = 0; i < Nm; i += 1)
+                {
+                    // alterCpZ[i].v stores kappa * meter (dimensionless); decode -> kappa [1/m]
+                    kappaCp = append(kappaCp, definition.alterCpZ[i].v / meter);
+                }
             }
+            else
+            {
+                // Fresh seed from raw kappa_arr by linear interp
+                for (var i = 0; i < Nm; i += 1)
+                {
+                    var t = (xCp[i] - xEvalMin) / dx;
+                    var idxLo = floor(t);
+                    if (idxLo < 0)        { idxLo = 0; }
+                    if (idxLo > N - 2)    { idxLo = N - 2; }
+                    var frac = t - idxLo;
+                    if (frac < 0)         { frac = 0; }
+                    if (frac > 1)         { frac = 1; }
+                    var kCp = kappa_arr[idxLo] + frac * (kappa_arr[idxLo + 1] - kappa_arr[idxLo]);
+                    kappaCp = append(kappaCp, kCp);
+                }
+                // Persist seed so change handler can update individual entries (alterCpInitialized
+                // stays false until the first drag, which is what marks the array as "user-edited").
+                var seedCpZ = [];
+                for (var i = 0; i < Nm; i += 1)
+                {
+                    seedCpZ = append(seedCpZ, { "v" : kappaCp[i] * meter });
+                }
+                definition.alterCpZ = seedCpZ;
+            }
+
+            // Persist scaleK so the change handler can decode dragged offsets in the same units.
+            // Body mutations of definition persist back (verified pattern -- see bridgingCurve.fs,
+            // helix.fs, std/feature.fs:56-72).
+            definition.alterStoredScaleK = scaleK / (meter * meter);
 
             // Add manipulators (no change handler registered yet -> drags inert by design).
             // Drop a debug point at each base so the arrow visually emanates from a marker
@@ -1336,6 +1446,25 @@ export function estimateDeflectionManipulatorChange(
                     vector(x_eval[j + 1], 0 * meter, (EI_alt[j + 1] / (newton * meter * meter)) * millimeter),
                     DebugColor.YELLOW);
             }
+
+            // --- 11e. Emit altered_EI as a real wire body (consumable by other features) ---
+            // Same Z-encoding as the input selEI curve so downstream consumers (e.g. another
+            // Estimate Deflection feeding off this) work without conversion.
+            var alteredEiPts = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                alteredEiPts = append(alteredEiPts, vector(
+                    x_eval[j],
+                    0 * meter,
+                    (EI_alt[j] / (newton * meter * meter)) * millimeter
+                ));
+            }
+            opFitSpline(context, id + "alteredEI", { "points" : alteredEiPts });
+            setProperty(context, {
+                "entities"     : qCreatedBy(id + "alteredEI", EntityType.BODY),
+                "propertyType" : PropertyType.NAME,
+                "value"        : "altered_EI"
+            });
         }
 
         // --- 11c. backOutEI: fit kappa regions, add manipulators, output EI edge ---
