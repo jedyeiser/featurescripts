@@ -235,8 +235,8 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
         var initDragged = [];
         for (var k = 0; k < nNow; k += 1)
         {
-            initCpZ = append(initCpZ, { "v" : 0 });
-            initDragged = append(initDragged, { "v" : false });
+            initCpZ = append(initCpZ, { "kVal" : 0 });
+            initDragged = append(initDragged, { "flag" : false });
         }
         definition.alterCpZ = initCpZ;
         definition.alterIsDragged = initDragged;
@@ -280,8 +280,8 @@ export function estimateDeflectionManipulatorChange(
             // offset [m] / (scaleKVal [m^2/m^2] * m^2) -> kappa [1/m]
             // store as kappa * meter (dimensionless, matches array element type)
             var newKappa = newManipulators[key].offset / (scaleKVal * meter * meter);
-            tempCpZ[i] = { "v" : newKappa * meter };
-            tempDragged[i] = { "v" : true };
+            tempCpZ[i] = { "kVal" : newKappa * meter };
+            tempDragged[i] = { "flag" : true };
             anyChanged = true;
         }
     }
@@ -621,35 +621,49 @@ export function estimateDeflectionManipulatorChangeLegacy(
              }
          }
 
-         // Hidden state for the alterBeamCurvature manipulator flow (always-on so Onshape
-         // initializes to [] / false / default on passive regens).
+         // Hidden state for the alterBeamCurvature manipulator flow.
          //   alterCpZ          : per-anchor kappa storage; element {"v": kappa * meter} (dimensionless).
          //   alterIsDragged    : parallel boolean array; true iff that anchor has been dragged.
          //   alterCpInitialized: true once any drag has happened (set by change handler).
          //   alterStoredScaleK : last regen's scaleK / m^2, used by the change handler to decode offsets.
-         // alterCpZ and alterIsDragged are pre-allocated to Nm entries by the editing logic,
-         // because body-side array mutations don't persist back to the stored definition.
-         annotation { "Name" : "alterCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
-         definition.alterCpZ is array;
-         for (var cpZ in definition.alterCpZ)
+         // Each declaration is wrapped in `if (... != undefined)` so pre-revision feature
+         // instances (where these fields don't exist yet) pass precondition validation.
+         // The editing logic then seeds the fields on the next pass via the
+         // `if (definition.X == undefined) { definition.X = ... }` block at its top, after
+         // which subsequent regens see the defined fields and validate them normally.
+         if (definition.alterCpZ != undefined)
          {
-             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
-             isReal(cpZ.v, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+             annotation { "Name" : "alterCpZ", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "CpZ" }
+             definition.alterCpZ is array;
+             for (var cpZ in definition.alterCpZ)
+             {
+                 annotation { "Name" : "kVal", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 0 }
+                 isReal(cpZ.kVal, { (unitless) : [-1e6, 0, 1e6] } as RealBoundSpec);
+             }
          }
 
-         annotation { "Name" : "alterIsDragged", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Drag" }
-         definition.alterIsDragged is array;
-         for (var dr in definition.alterIsDragged)
+         if (definition.alterIsDragged != undefined)
          {
-             annotation { "Name" : "v", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
-             dr.v is boolean;
+             annotation { "Name" : "alterIsDragged", "UIHint" : UIHint.ALWAYS_HIDDEN, "Item name" : "Drag" }
+             definition.alterIsDragged is array;
+             for (var dr in definition.alterIsDragged)
+             {
+                 annotation { "Name" : "flag", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : false }
+                 dr.flag is boolean;
+             }
          }
 
-         annotation { "Name" : "alterCpInitialized", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-         definition.alterCpInitialized is boolean;
+         if (definition.alterCpInitialized != undefined)
+         {
+             annotation { "Name" : "alterCpInitialized", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+             definition.alterCpInitialized is boolean;
+         }
 
-         annotation { "Name" : "alterStoredScaleK", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 1e-3 }
-         isReal(definition.alterStoredScaleK, { (unitless) : [1e-12, 1e-3, 1e12] } as RealBoundSpec);
+         if (definition.alterStoredScaleK != undefined)
+         {
+             annotation { "Name" : "alterStoredScaleK", "UIHint" : UIHint.ALWAYS_HIDDEN, "Default" : 1e-3 }
+             isReal(definition.alterStoredScaleK, { (unitless) : [1e-12, 1e-3, 1e12] } as RealBoundSpec);
+         }
 
          /* DISABLED — backOutEI + CP storage arrays removed from precondition; re-enable to restore
          annotation { "Name" : "Back out EI", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -1335,7 +1349,7 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
 
             // kappaCp resolved per-anchor:
-            //   - if alterIsDragged[i].v: use stored value (user's intended absolute kappa)
+            //   - if alterIsDragged[i].flag: use stored value (user's intended absolute kappa)
             //   - else: use seed (raw physics)
             // alterCpZ and alterIsDragged are pre-allocated to Nm entries by the editing logic.
             var kappaCp = [];
@@ -1343,10 +1357,10 @@ export function estimateDeflectionManipulatorChangeLegacy(
                           && definition.alterIsDragged != undefined && size(definition.alterIsDragged) == Nm);
             for (var i = 0; i < Nm; i += 1)
             {
-                var isDragged = (hasArrays && definition.alterIsDragged[i].v == true);
+                var isDragged = (hasArrays && definition.alterIsDragged[i].flag == true);
                 if (isDragged)
                 {
-                    kappaCp = append(kappaCp, definition.alterCpZ[i].v / meter);
+                    kappaCp = append(kappaCp, definition.alterCpZ[i].kVal / meter);
                 }
                 else
                 {
