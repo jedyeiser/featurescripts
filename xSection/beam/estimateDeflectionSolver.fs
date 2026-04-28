@@ -29,8 +29,18 @@ export const MaxControlPointsBounds = {(unitless) : [4, 50, 500]} as IntegerBoun
 export const ApproxDegreeBounds     = {(unitless) : [1, 3, 9]} as IntegerBoundSpec;
 
 // Width of the smoothstep blend zone applied to EI_alt near each support boundary.
-// 0 effectively disables the blend (hard switch back to input EI at the support).
-export const alterTransitionWidthBounds = {(meter) : [1e-4, 0.05, 1.0]} as LengthBoundSpec;
+// 0 disables the blend (hard switch back to input EI at the support).
+// Multi-unit entries match the LENGTH_BOUNDS pattern -- avoids stored-value issues if
+// Onshape re-saves at a unit-specific UI default.
+export const alterTransitionWidthBounds =
+{
+    (meter)      : [0, 0.05, 1.0],
+    (centimeter) : 5.0,
+    (millimeter) : 50.0,
+    (inch)       : 2.0,
+    (foot)       : 0.2,
+    (yard)       : 0.05
+} as LengthBoundSpec;
 
 
 // =============================================================================
