@@ -250,10 +250,11 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 // =============================================================================
 // MANIPULATOR CHANGE FUNCTION — alterBeamCurvature drag handler
 // =============================================================================
-// Reads dragged manipulator offsets, decodes back to kappa [1/m] using the
-// scaleK from the previous regen (alterStoredScaleK), and persists into alterCpZ.
-// Setting alterCpInitialized = true tells the next regen body to use stored
-// values instead of fresh-seeding from kappa_arr.
+// Stores each dragged manipulator's raw offset (in meters, as a dimensionless
+// number) into alterCpZ[i].kVal. The body decodes offset -> kappa at regen time
+// using the current scaleK; this avoids needing to persist scaleK across the
+// body/handler boundary and guarantees the manipulator visual stays exactly
+// where the user dragged it (curve follows the drag 1:1).
 export function estimateDeflectionManipulatorChange(
     context is Context, definition is map, newManipulators is map) returns map
 {
@@ -266,9 +267,6 @@ export function estimateDeflectionManipulatorChange(
     if (Nm == 0)                                  { return definition; }
     if (size(definition.alterIsDragged) != Nm)    { return definition; }
 
-    var scaleKVal = definition.alterStoredScaleK;
-    if (scaleKVal == undefined || scaleKVal <= 0) { return definition; }
-
     var tempCpZ = definition.alterCpZ;
     var tempDragged = definition.alterIsDragged;
     var anyChanged = false;
@@ -277,10 +275,10 @@ export function estimateDeflectionManipulatorChange(
         var key = "c" ~ toString(i);
         if (newManipulators[key] is map)
         {
-            // offset [m] / (scaleKVal [m^2/m^2] * m^2) -> kappa [1/m]
-            // store as kappa * meter (dimensionless, matches array element type)
-            var newKappa = newManipulators[key].offset / (scaleKVal * meter * meter);
-            tempCpZ[i] = { "kVal" : newKappa * meter };
+            // Store offset in meters as a dimensionless number; body converts to
+            // kappa = (kVal * meter) / scaleK on the next regen using the current
+            // physics-derived scaleK.
+            tempCpZ[i] = { "kVal" : newManipulators[key].offset / meter };
             tempDragged[i] = { "flag" : true };
             anyChanged = true;
         }
@@ -625,7 +623,9 @@ export function estimateDeflectionManipulatorChangeLegacy(
          //   alterCpZ          : per-anchor kappa storage; element {"v": kappa * meter} (dimensionless).
          //   alterIsDragged    : parallel boolean array; true iff that anchor has been dragged.
          //   alterCpInitialized: true once any drag has happened (set by change handler).
-         //   alterStoredScaleK : last regen's scaleK / m^2, used by the change handler to decode offsets.
+         //   alterStoredScaleK : (deprecated, kept for backwards compat) was used by the
+         //                       change handler to decode offsets back to kappa; that round-trip
+         //                       is now eliminated -- handler stores the raw offset directly.
          // Each declaration is wrapped in `if (... != undefined)` so pre-revision feature
          // instances (where these fields don't exist yet) pass precondition validation.
          // The editing logic then seeds the fields on the next pass via the
@@ -1349,8 +1349,10 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
 
             // kappaCp resolved per-anchor:
-            //   - if alterIsDragged[i].flag: use stored value (user's intended absolute kappa)
-            //   - else: use seed (raw physics)
+            //   - if alterIsDragged[i].flag: stored value is the dragged offset (in meters
+            //     as a dimensionless number); decode kappa = offset / current scaleK so the
+            //     manipulator visual position is preserved 1:1 from where the user dragged it.
+            //   - else: use seed (raw physics) at this anchor.
             // alterCpZ and alterIsDragged are pre-allocated to Nm entries by the editing logic.
             var kappaCp = [];
             var hasArrays = (definition.alterCpZ != undefined && size(definition.alterCpZ) == Nm
@@ -1360,7 +1362,8 @@ export function estimateDeflectionManipulatorChangeLegacy(
                 var isDragged = (hasArrays && definition.alterIsDragged[i].flag == true);
                 if (isDragged)
                 {
-                    kappaCp = append(kappaCp, definition.alterCpZ[i].kVal / meter);
+                    var localOffset = definition.alterCpZ[i].kVal * meter;
+                    kappaCp = append(kappaCp, localOffset / scaleK);
                 }
                 else
                 {
@@ -1368,20 +1371,17 @@ export function estimateDeflectionManipulatorChangeLegacy(
                 }
             }
 
-            // Persist scaleK so the change handler can decode dragged offsets.
-            // Body-side mutations of array definition fields don't persist (which is why
-            // alterCpZ + alterIsDragged are pre-allocated in the editing logic); scalar
-            // mutations like this one do appear to persist. If decoded drags come back at
-            // the wrong magnitude, this is the line to revisit (fallback: setAttribute).
-            definition.alterStoredScaleK = scaleK / (meter * meter);
-
-            // Add manipulators (standard arrow + GREEN debug-point base for the dot).
+            // Add manipulators (standard arrow + GREEN debug-point at the visible arrow
+            // position so the dot sits on the kappa curve, where the user actually grabs it).
+            // The manipulator's `base` parameter is the offset=0 reference (on the X axis);
+            // its visible arrow renders at base + direction * offset, which is on the curve.
             var manips = {};
             for (var i = 0; i < Nm; i += 1)
             {
                 var key = "c" ~ toString(i);
-                var basePt = vector(xCp[i], 0 * meter, 0 * meter);
-                addDebugPoint(context, basePt, DebugColor.GREEN);
+                var basePt    = vector(xCp[i], 0 * meter, 0 * meter);
+                var visiblePt = vector(xCp[i], 0 * meter, kappaCp[i] * scaleK);
+                addDebugPoint(context, visiblePt, DebugColor.GREEN);
                 manips[key] = linearManipulator({
                     "base"      : basePt,
                     "direction" : vector(0, 0, 1),
