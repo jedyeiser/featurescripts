@@ -1196,13 +1196,15 @@ export function estimateDeflectionManipulatorChange(
             if (xSupportMin < xEvalMin) { xSupportMin = xEvalMin; }
             if (xSupportMax > xEvalMax) { xSupportMax = xEvalMax; }
 
-            var alterDx = (xSupportMax - xSupportMin) / (Nm - 1);
+            // Place Nm anchors strictly INSIDE [xSupportMin, xSupportMax] -- the support
+            // extents themselves are fixed by BC (M=0 -> kappa=0), so no manipulator there.
+            // Divide the span into Nm+1 equal segments and place anchors at the interior nodes.
+            var alterDx = (xSupportMax - xSupportMin) / (Nm + 1);
 
-            // Anchor X positions across the support span (index-keyed; slides with supports)
             var xCp = [];
             for (var i = 0; i < Nm; i += 1)
             {
-                xCp = append(xCp, xSupportMin + i * alterDx);
+                xCp = append(xCp, xSupportMin + (i + 1) * alterDx);
             }
 
             // Sample raw kappa at each anchor by linear interp into kappa_arr (uniform grid, spacing dx)
@@ -1220,34 +1222,62 @@ export function estimateDeflectionManipulatorChange(
                 kappaCp = append(kappaCp, kCp);
             }
 
-            // Add manipulators (no change handler registered yet -> drags inert by design)
+            // Add manipulators (no change handler registered yet -> drags inert by design).
+            // Drop a debug point at each base so the arrow visually emanates from a marker
+            // (debug points auto-clean at end of regen, same as addDebugLine).
             var manips = {};
             for (var i = 0; i < Nm; i += 1)
             {
                 var key = "c" ~ toString(i);
+                var basePt = vector(xCp[i], 0 * meter, 0 * meter);
+                addDebugPoint(context, basePt, DebugColor.GREEN);
                 manips[key] = linearManipulator({
-                    "base"      : vector(xCp[i], 0 * meter, 0 * meter),
+                    "base"      : basePt,
                     "direction" : vector(0, 0, 1),
-                    "offset"    : kappaCp[i] * scaleK,
-                    "style"     : ManipulatorStyleEnum.SIMPLE
+                    "offset"    : kappaCp[i] * scaleK
                 });
             }
             addManipulators(context, id, manips);
 
-            // Build kappa_altered at every x_eval[j] by linear interp through (xCp, kappaCp).
-            // For x_eval outside [xSupportMin, xSupportMax], clamps to the nearest endpoint
-            // anchor (which sits on a support where M=0, so kappa ~= 0 -- matches kappa_arr).
+            // Build extended anchor arrays with virtual kappa=0 endpoints at the supports.
+            // This pins the GREEN polyline to 0 at xSupportMin/xSupportMax (matching the M=0 BC)
+            // without requiring an actual manipulator there.
+            var xCpExt = [];
+            var kappaCpExt = [];
+            xCpExt = append(xCpExt, xSupportMin);
+            kappaCpExt = append(kappaCpExt, 0 / meter);
+            for (var i = 0; i < Nm; i += 1)
+            {
+                xCpExt = append(xCpExt, xCp[i]);
+                kappaCpExt = append(kappaCpExt, kappaCp[i]);
+            }
+            xCpExt = append(xCpExt, xSupportMax);
+            kappaCpExt = append(kappaCpExt, 0 / meter);
+            // xCpExt/kappaCpExt now have Nm+2 entries spanning [xSupportMin, xSupportMax]
+            // at uniform alterDx spacing.
+
+            // kappaAlt: inside support span use polyline through extended anchors;
+            //           outside support span use raw kappa_arr (matches CYAN exactly).
             var kappaAlt = [];
             for (var j = 0; j < N; j += 1)
             {
-                var s = (x_eval[j] - xSupportMin) / alterDx;
-                var iLo = floor(s);
-                if (iLo < 0)          { iLo = 0; }
-                if (iLo > Nm - 2)     { iLo = Nm - 2; }
-                var fr = s - iLo;
-                if (fr < 0)           { fr = 0; }
-                if (fr > 1)           { fr = 1; }
-                var kj = kappaCp[iLo] + fr * (kappaCp[iLo + 1] - kappaCp[iLo]);
+                var xj = x_eval[j];
+                var kj;
+                if (xj < xSupportMin || xj > xSupportMax)
+                {
+                    kj = kappa_arr[j];
+                }
+                else
+                {
+                    var s = (xj - xSupportMin) / alterDx;
+                    var iLo = floor(s);
+                    if (iLo < 0)        { iLo = 0; }
+                    if (iLo > Nm)       { iLo = Nm; }
+                    var fr = s - iLo;
+                    if (fr < 0)         { fr = 0; }
+                    if (fr > 1)         { fr = 1; }
+                    kj = kappaCpExt[iLo] + fr * (kappaCpExt[iLo + 1] - kappaCpExt[iLo]);
+                }
                 kappaAlt = append(kappaAlt, kj);
             }
 
