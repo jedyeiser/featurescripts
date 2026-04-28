@@ -1161,13 +1161,48 @@ export function estimateDeflectionManipulatorChange(
         if (definition.debugMode && definition.alterBeamCurvature)
         {
             var Nm = definition.numAlterPoints;
-            var alterDx = (xEvalMax - xEvalMin) / (Nm - 1);
 
-            // Anchor X positions across the full eval span (slide with span; index-keyed)
+            // Anchor extents = support load extents (mirrors the OutputSpan.SUPPORT_SPAN
+            // computation in step 3). Manipulators outside the supports sit on M=0/kappa=0
+            // and have no physical effect on the back-out, so we skip them.
+            var xSupportMin = xs1;
+            var xSupportMax = xs1;
+            if (definition.support1LoadShape != LoadType.POINT)
+            {
+                var hw1 = definition.support1Width / 2;
+                if (xs1 - hw1 < xSupportMin) { xSupportMin = xs1 - hw1; }
+                if (xs1 + hw1 > xSupportMax) { xSupportMax = xs1 + hw1; }
+            }
+            if (xs2 < xSupportMin) { xSupportMin = xs2; }
+            if (xs2 > xSupportMax) { xSupportMax = xs2; }
+            if (definition.support2LoadShape != LoadType.POINT)
+            {
+                var hw2 = definition.support2Width / 2;
+                if (xs2 - hw2 < xSupportMin) { xSupportMin = xs2 - hw2; }
+                if (xs2 + hw2 > xSupportMax) { xSupportMax = xs2 + hw2; }
+            }
+            if (definition.addThirdSupport)
+            {
+                if (xs3 < xSupportMin) { xSupportMin = xs3; }
+                if (xs3 > xSupportMax) { xSupportMax = xs3; }
+                if (definition.support3LoadShape != LoadType.POINT)
+                {
+                    var hw3 = definition.support3Width / 2;
+                    if (xs3 - hw3 < xSupportMin) { xSupportMin = xs3 - hw3; }
+                    if (xs3 + hw3 > xSupportMax) { xSupportMax = xs3 + hw3; }
+                }
+            }
+            // Clamp to eval grid bounds
+            if (xSupportMin < xEvalMin) { xSupportMin = xEvalMin; }
+            if (xSupportMax > xEvalMax) { xSupportMax = xEvalMax; }
+
+            var alterDx = (xSupportMax - xSupportMin) / (Nm - 1);
+
+            // Anchor X positions across the support span (index-keyed; slides with supports)
             var xCp = [];
             for (var i = 0; i < Nm; i += 1)
             {
-                xCp = append(xCp, xEvalMin + i * alterDx);
+                xCp = append(xCp, xSupportMin + i * alterDx);
             }
 
             // Sample raw kappa at each anchor by linear interp into kappa_arr (uniform grid, spacing dx)
@@ -1193,16 +1228,19 @@ export function estimateDeflectionManipulatorChange(
                 manips[key] = linearManipulator({
                     "base"      : vector(xCp[i], 0 * meter, 0 * meter),
                     "direction" : vector(0, 0, 1),
-                    "offset"    : kappaCp[i] * scaleK
+                    "offset"    : kappaCp[i] * scaleK,
+                    "style"     : ManipulatorStyleEnum.SIMPLE
                 });
             }
             addManipulators(context, id, manips);
 
-            // Build kappa_altered at every x_eval[j] by linear interp through (xCp, kappaCp)
+            // Build kappa_altered at every x_eval[j] by linear interp through (xCp, kappaCp).
+            // For x_eval outside [xSupportMin, xSupportMax], clamps to the nearest endpoint
+            // anchor (which sits on a support where M=0, so kappa ~= 0 -- matches kappa_arr).
             var kappaAlt = [];
             for (var j = 0; j < N; j += 1)
             {
-                var s = (x_eval[j] - xEvalMin) / alterDx;
+                var s = (x_eval[j] - xSupportMin) / alterDx;
                 var iLo = floor(s);
                 if (iLo < 0)          { iLo = 0; }
                 if (iLo > Nm - 2)     { iLo = Nm - 2; }
@@ -1213,18 +1251,40 @@ export function estimateDeflectionManipulatorChange(
                 kappaAlt = append(kappaAlt, kj);
             }
 
-            // EI_altered = M / kappa_altered, with small-kappa guard (matches disabled backOutEI block)
+            // EI_altered = M / kappa_altered. Outside the load-affected span (M=0, kappa=0)
+            // and near M zero-crossings inside the span (where M/kappa is numerically unstable),
+            // fall back to the input EI so the YELLOW curve overlays the input curve cleanly
+            // and only deviates where dragging actually has physical meaning.
+            var maxAbsM = 1e-12 * newton * meter;
+            for (var j = 0; j < N; j += 1)
+            {
+                if (abs(M_arr[j]) > maxAbsM) { maxAbsM = abs(M_arr[j]); }
+            }
+            var mFloor = 1e-3 * maxAbsM;             // 0.1% of peak |M|
+            var kFloor = 1e-3 * maxAbsKappa;         // 0.1% of peak |kappa|, computed earlier
+
             var EI_alt = [];
             for (var j = 0; j < N; j += 1)
             {
                 var EIj;
-                if (abs(kappaAlt[j]) > 1e-6 / meter)
+                if (abs(kappaAlt[j]) > kFloor && abs(M_arr[j]) > mFloor)
                 {
                     EIj = M_arr[j] / kappaAlt[j];
                 }
                 else
                 {
-                    EIj = 0 * newton * meter * meter;
+                    // Fallback: re-interpolate the input EI (mirrors the EI_i build in step 11)
+                    var EIinput = interpEI(eiData, x_eval[j]);
+                    if (definition.addPlateConditions && size(plateData) > 0)
+                    {
+                        var xpMin = plateData[0].x;
+                        var xpMax = plateData[size(plateData) - 1].x;
+                        if (x_eval[j] >= xpMin && x_eval[j] <= xpMax)
+                        {
+                            EIinput = EIinput + interpEI(plateData, x_eval[j]);
+                        }
+                    }
+                    EIj = EIinput;
                 }
                 EI_alt = append(EI_alt, EIj);
             }
