@@ -45,6 +45,12 @@ export enum RegionType
     FREE_DRAG
 }
 
+export enum EITransitionMode
+{
+    SMOOTHSTEP,
+    CONTINUE_OFFSET
+}
+
 export const numAlterPointsBounds = {(unitless) : [10, 20, 50]} as IntegerBoundSpec;
 
 export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
@@ -53,11 +59,12 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     // Backwards-compat init for pre-existing feature instances saved before these fields existed.
     // Onshape's precondition validation runs against stored values and rejects undefined arrays,
     // so we must seed defaults here before any logic that touches them.
-    if (definition.alterCpZ == undefined)            { definition.alterCpZ = []; }
-    if (definition.alterIsDragged == undefined)      { definition.alterIsDragged = []; }
-    if (definition.alterCpInitialized == undefined)  { definition.alterCpInitialized = false; }
-    if (definition.alterStoredScaleK == undefined)   { definition.alterStoredScaleK = 1e-3; }
-    if (definition.alterTransitionWidth == undefined){ definition.alterTransitionWidth = 0.05 * meter; }
+    if (definition.alterCpZ == undefined)             { definition.alterCpZ = []; }
+    if (definition.alterIsDragged == undefined)       { definition.alterIsDragged = []; }
+    if (definition.alterCpInitialized == undefined)   { definition.alterCpInitialized = false; }
+    if (definition.alterStoredScaleK == undefined)    { definition.alterStoredScaleK = 1e-3; }
+    if (definition.alterTransitionWidth == undefined) { definition.alterTransitionWidth = 0.05 * meter; }
+    if (definition.alterEITransitionMode == undefined){ definition.alterEITransitionMode = EITransitionMode.SMOOTHSTEP; }
 
     /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
     if (definition.backOutEI == undefined)      { definition.backOutEI = false; }
@@ -222,8 +229,9 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     // Triggers: alterBeamCurvature flips off->on, numAlterPoints changes, or array
     // sizes don't match. Body-side mutations of these array fields don't persist to
     // the change handler, so the editing-logic must create the slots up front.
-    var altOnNow = (definition.debugMode == true && definition.alterBeamCurvature == true);
-    var altOnOld = (oldDefinition.debugMode == true && oldDefinition.alterBeamCurvature == true);
+    // Independent of debugMode -- alterBeamCurvature is now a top-level toggle.
+    var altOnNow = (definition.alterBeamCurvature == true);
+    var altOnOld = (oldDefinition.alterBeamCurvature == true);
     var nNow     = (definition.numAlterPoints == undefined) ? 0 : definition.numAlterPoints;
     var nOld     = (oldDefinition.numAlterPoints == undefined) ? 0 : oldDefinition.numAlterPoints;
     var cpZSize  = (definition.alterCpZ == undefined) ? 0 : size(definition.alterCpZ);
@@ -259,7 +267,6 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
 export function estimateDeflectionManipulatorChange(
     context is Context, definition is map, newManipulators is map) returns map
 {
-    if (definition.debugMode != true)             { return definition; }
     if (definition.alterBeamCurvature != true)    { return definition; }
     if (definition.alterCpZ == undefined)         { return definition; }
     if (definition.alterIsDragged == undefined)   { return definition; }
@@ -348,30 +355,35 @@ export function estimateDeflectionManipulatorChangeLegacy(
          annotation { "Name" : "Number of evaluation points" }
          isInteger(definition.numEvalPoints, EvaluationPointBounds);
 
-         annotation { "Name" : "Show plots", "Default" : false,
-                      "Description" : "Draws shear/moment diagrams and load arrows for diagnosis (visible while editing only)" }
+         annotation { "Name" : "Show shear/moment diagrams", "Default" : false,
+                      "Description" : "Draws shear (BLUE), moment (MAGENTA), curvature (CYAN), and load arrow overlays for diagnosis (visible while editing only)" }
          definition.debugMode is boolean;
-         
-         if (definition.debugMode)
-         {
-             annotation { "Name" : "Alter deformed beam curvature?", "Default" : false, "Description" : "allows users to alter deformed beam curvatures and returns the EI profile that yields that curvature profile under the specified loading conditions" }
-             definition.alterBeamCurvature is boolean;
-             
-             if (definition.debugMode && definition.alterBeamCurvature)
-             {
-                 annotation { "Name" : "Num. Manipulation points", "Description" : "Number of points to manipulate" }
-                 isInteger(definition.numAlterPoints, numAlterPointsBounds);
 
-                 // Conditional declaration for backwards compat: pre-revision instances
-                 // don't have this field; editing logic seeds the default on next regen.
-                 if (definition.alterTransitionWidth != undefined)
+         annotation { "Name" : "Alter deformed beam curvature", "Default" : false,
+                      "Description" : "Adds draggable manipulators along the curvature curve. Drags update the kappa profile and back out a corresponding altered_EI wire body. Independent of show-shear/moment toggle." }
+         definition.alterBeamCurvature is boolean;
+
+         if (definition.alterBeamCurvature)
+         {
+             annotation { "Name" : "Num. Manipulation points", "Description" : "Number of points to manipulate" }
+             isInteger(definition.numAlterPoints, numAlterPointsBounds);
+
+             // Conditional declaration for backwards compat: pre-revision instances
+             // don't have this field; editing logic seeds the default on next regen.
+             if (definition.alterEITransitionMode != undefined)
+             {
+                 annotation { "Name" : "EI extension mode", "Default" : EITransitionMode.SMOOTHSTEP,
+                              "Description" : "How EI behaves at the support boundaries. SMOOTHSTEP: blends back to input EI within a transition zone. CONTINUE_OFFSET: extends the boundary EI delta as a constant offset into the cantilever beyond the support." }
+                 definition.alterEITransitionMode is EITransitionMode;
+
+                 if (definition.alterEITransitionMode == EITransitionMode.SMOOTHSTEP
+                     && definition.alterTransitionWidth != undefined)
                  {
                      annotation { "Name" : "EI transition width", "Default" : 0.05 * meter,
-                                  "Description" : "Width of smoothstep blend zone near each support boundary. Smoothly fades the back-out EI to the input EI within this distance of xs1/xs2/xs3, eliminating the hard step at the support extents. Set to minimum to disable blending." }
+                                  "Description" : "Width of smoothstep blend zone near each support boundary. Clamped to (xCp[0] - xSupportMin) so the blend never washes out the dragged anchor at the first manipulator." }
                      isLength(definition.alterTransitionWidth, alterTransitionWidthBounds);
                  }
              }
-             
          }
 
          annotation { "Name" : "Print load summary", "Default" : false,
@@ -1034,26 +1046,8 @@ export function estimateDeflectionManipulatorChangeLegacy(
             if (pl.x > xAffectedMax) { xAffectedMax = pl.x; }
         }
 
-        // --- 7b. Print load summary (debug) ---
-        if (definition.printLoadSummary)
-        {
-            if (definition.addThirdSupport)
-            {
-            }
-            if (definition.addThirdSupport)
-            {
-            }
-            if (definition.secondApplied)
-            {
-            }
-            var netForce = R1 + R2 + R3 - F1 - F2;
-            for (var dl in distLoads)
-            {
-            }
-            for (var pl in pointLoads)
-            {
-            }
-        }
+        // --- 7b. Print load summary (debug) -- print bodies removed; toggle preserved ---
+        // (intentionally empty; printLoadSummary toggle reserved for future diagnostic output)
 
         // --- 8. Build distributed net load q_net at each eval point ---
         var q_net = [];
@@ -1118,14 +1112,10 @@ export function estimateDeflectionManipulatorChangeLegacy(
             throw regenError("Support positions map to the same eval grid node. Increase numEvalPoints or move supports.");
         }
         var M_raw1  = M_arr[i1];
-        var M_raw2  = M_arr[i2];
         var M_slope = (M_arr[i2] - M_arr[i1]) / xSpan12;
         for (var i = 0; i < N; i += 1)
         {
             M_arr[i] = M_arr[i] - (M_raw1 + M_slope * (x_eval[i] - x_eval[i1]));
-        }
-        if (definition.printLoadSummary)
-        {
         }
 
         // Zero M and V outside the load-affected span (physically correct: V=0, M=0 beyond all loads)
@@ -1292,8 +1282,8 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
         }
 
-        // --- 11d. Altered curvature scaffold (Step 1: manipulators inert, overlays trace originals) ---
-        if (definition.debugMode && definition.alterBeamCurvature)
+        // --- 11d. Altered curvature scaffold (independent of debugMode/show-shear-moment) ---
+        if (definition.alterBeamCurvature)
         {
             var Nm = definition.numAlterPoints;
 
@@ -1484,10 +1474,53 @@ export function estimateDeflectionManipulatorChangeLegacy(
             var mFloor = 1e-3 * maxAbsM;             // 0.1% of peak |M|
             var kFloor = 1e-3 * maxAbsKappa;         // 0.1% of peak |kappa|, computed earlier
 
+            // Read transitionW; clamp to alterDx so the smoothstep blend is contained within
+            // the gap between extent and the first/last manipulator (never washes out the
+            // user's drag at xCp[0] / xCp[Nm-1]).
             var transitionW = definition.alterTransitionWidth;
-            if (transitionW == undefined || transitionW <= 0 * meter)
+            if (transitionW == undefined || transitionW <= 0 * meter) { transitionW = 0.05 * meter; }
+            if (transitionW > alterDx) { transitionW = alterDx; }
+
+            var transitionMode = definition.alterEITransitionMode;
+            if (transitionMode == undefined) { transitionMode = EITransitionMode.SMOOTHSTEP; }
+
+            // Helper to compute EI_input + plate at any x (used for fallback + Mode 2 offset)
+            // Inlined below since FS doesn't support local closures cleanly.
+
+            // For CONTINUE_OFFSET mode: compute the EI delta at the first/last manipulator.
+            // Delta_left = (M / kappaAlt) at xCp[0] - EI_input at xCp[0], using kappa_arr-vs-M
+            // back-out evaluated at xCp[0]'s nearest grid index. Same for Delta_right at xCp[Nm-1].
+            var deltaLeft  = 0 * newton * meter * meter;
+            var deltaRight = 0 * newton * meter * meter;
+            if (transitionMode == EITransitionMode.CONTINUE_OFFSET)
             {
-                transitionW = 0.05 * meter;
+                var jL = findNearestIndex(x_eval, xCp[0]);
+                var jR = findNearestIndex(x_eval, xCp[Nm - 1]);
+
+                var EIinL = interpEI(eiData, x_eval[jL]);
+                var EIinR = interpEI(eiData, x_eval[jR]);
+                if (definition.addPlateConditions && size(plateData) > 0)
+                {
+                    var xpMinL = plateData[0].x;
+                    var xpMaxL = plateData[size(plateData) - 1].x;
+                    if (x_eval[jL] >= xpMinL && x_eval[jL] <= xpMaxL)
+                    {
+                        EIinL = EIinL + interpEI(plateData, x_eval[jL]);
+                    }
+                    if (x_eval[jR] >= xpMinL && x_eval[jR] <= xpMaxL)
+                    {
+                        EIinR = EIinR + interpEI(plateData, x_eval[jR]);
+                    }
+                }
+
+                if (abs(kappaAlt[jL]) > kFloor && abs(M_arr[jL]) > mFloor)
+                {
+                    deltaLeft = M_arr[jL] / kappaAlt[jL] - EIinL;
+                }
+                if (abs(kappaAlt[jR]) > kFloor && abs(M_arr[jR]) > mFloor)
+                {
+                    deltaRight = M_arr[jR] / kappaAlt[jR] - EIinR;
+                }
             }
 
             var EI_alt = [];
@@ -1495,8 +1528,7 @@ export function estimateDeflectionManipulatorChangeLegacy(
             {
                 var xj = x_eval[j];
 
-                // Always compute EIinput (needed for both the small-signal fallback and the
-                // smoothstep blend toward input EI near the support boundaries).
+                // Always compute EIinput (needed for fallback, blends, and Mode 2 offset)
                 var EIinput = interpEI(eiData, xj);
                 if (definition.addPlateConditions && size(plateData) > 0)
                 {
@@ -1518,31 +1550,44 @@ export function estimateDeflectionManipulatorChangeLegacy(
                     EIback = EIinput;
                 }
 
-                // Cubic smoothstep blend: alpha goes 0 at the support boundary -> 1 at
-                // distance transitionW into the interior. Outside the support span, dist <= 0
-                // so alpha = 0 (full input EI). At the boundary alpha=0 and alpha'(0)=0, so
-                // EI_alt is C1 with EI_input across the boundary.
-                var distLeft  = xj - xSupportMin;
-                var distRight = xSupportMax - xj;
-                var dist      = distLeft;
-                if (distRight < dist) { dist = distRight; }
-
-                var alpha;
-                if (dist <= 0 * meter)
+                var EIj;
+                if (transitionMode == EITransitionMode.CONTINUE_OFFSET)
                 {
-                    alpha = 0;
-                }
-                else if (dist >= transitionW)
-                {
-                    alpha = 1;
+                    // Inside support span: full back-out. Outside: input EI + boundary delta.
+                    if (xj < xSupportMin)
+                    {
+                        EIj = EIinput + deltaLeft;
+                    }
+                    else if (xj > xSupportMax)
+                    {
+                        EIj = EIinput + deltaRight;
+                    }
+                    else
+                    {
+                        EIj = EIback;
+                    }
                 }
                 else
                 {
-                    var t = dist / transitionW;
-                    alpha = 3 * t * t - 2 * t * t * t;
-                }
+                    // SMOOTHSTEP: cubic blend within transitionW of either support boundary.
+                    // alpha=0 at boundary -> 1 at distance transitionW into interior. C1 across
+                    // the boundary because alpha'(0)=0.
+                    var distLeft  = xj - xSupportMin;
+                    var distRight = xSupportMax - xj;
+                    var dist      = distLeft;
+                    if (distRight < dist) { dist = distRight; }
 
-                EI_alt = append(EI_alt, alpha * EIback + (1 - alpha) * EIinput);
+                    var alpha;
+                    if (dist <= 0 * meter)              { alpha = 0; }
+                    else if (dist >= transitionW)       { alpha = 1; }
+                    else
+                    {
+                        var t = dist / transitionW;
+                        alpha = 3 * t * t - 2 * t * t * t;
+                    }
+                    EIj = alpha * EIback + (1 - alpha) * EIinput;
+                }
+                EI_alt = append(EI_alt, EIj);
             }
 
             // Altered kappa polyline (GREEN, scaled like the existing CYAN kappa overlay)
