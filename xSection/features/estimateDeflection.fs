@@ -1390,38 +1390,76 @@ export function estimateDeflectionManipulatorChangeLegacy(
             }
             addManipulators(context, id, manips);
 
-            // kappaAlt = raw kappa_arr + sum of triangular bumps from each anchor's delta.
-            // Each anchor contributes a triangle peaked at xCp[i] (height = delta) tapering to
-            // zero at the neighboring anchors (or at xSupportMin/xSupportMax for the endpoints).
-            // Undragged anchors give delta = 0 -> no contribution -> kappaAlt = kappa_arr exactly,
-            // which means EI_alt = M / kappa_arr = EI_input exactly when nothing has been dragged.
-            var kappaAlt = [];
+            // kappaAlt = raw kappa_arr + smoothly-interpolated delta(x), where delta(x) is a
+            // degree-3 BSpline through (Nm+2) anchor points -- Nm interior dragged-or-seed
+            // anchors plus two virtual endpoints at xSupportMin/xSupportMax with delta=0.
+            // Encoded as 3D positions: x stays x, Z = delta * scaleK (length-valued).
+            // Using the X coords as explicit `parameters` makes the spline directly samplable
+            // by x; `interpolateIndices` forces exact pass-through every anchor so dragged
+            // values land exactly where set. Undragged anchors -> delta=0 everywhere ->
+            // kappaAlt = kappa_arr exactly -> EI_alt = EI_input exactly.
+            var nExt = Nm + 2;
+            var deltaPts = [];
+            var deltaParams = [];
+
+            deltaPts = append(deltaPts, vector(xSupportMin, 0 * meter, 0 * meter));
+            deltaParams = append(deltaParams, xSupportMin / meter);
+            for (var i = 0; i < Nm; i += 1)
+            {
+                var delta = kappaCp[i] - seedKappa[i];
+                deltaPts = append(deltaPts, vector(xCp[i], 0 * meter, delta * scaleK));
+                deltaParams = append(deltaParams, xCp[i] / meter);
+            }
+            deltaPts = append(deltaPts, vector(xSupportMax, 0 * meter, 0 * meter));
+            deltaParams = append(deltaParams, xSupportMax / meter);
+
+            var interpAll = [];
+            for (var i = 0; i < nExt; i += 1)
+            {
+                interpAll = append(interpAll, i);
+            }
+
+            var deltaSpline = approximateSpline(context, {
+                "degree"                      : 3,
+                "tolerance"                   : 1e-7 * meter,
+                "isPeriodic"                  : false,
+                "targets"                     : [{ "positions" : deltaPts }],
+                "parameters"                  : deltaParams,
+                "interpolateIndices"          : interpAll,
+                "maxControlPoints"            : nExt + 10,
+                "suppressInterpolationNotice" : true
+            })[0];
+
+            // Sample the spline only at x_eval points inside the support span; outside,
+            // kappaAlt = kappa_arr (no perturbation reaches the cantilever).
+            var evalParams = [];
+            var evalIdx = [];
             for (var j = 0; j < N; j += 1)
             {
                 var xj = x_eval[j];
-                var k = kappa_arr[j];
-                for (var i = 0; i < Nm; i += 1)
+                if (xj >= xSupportMin && xj <= xSupportMax)
                 {
-                    var delta = kappaCp[i] - seedKappa[i];
-                    var xLeft;
-                    if (i == 0)        { xLeft = xSupportMin; }
-                    else               { xLeft = xCp[i - 1]; }
-                    var xRight;
-                    if (i == Nm - 1)   { xRight = xSupportMax; }
-                    else               { xRight = xCp[i + 1]; }
-
-                    var weight = 0;
-                    if (xj >= xLeft && xj <= xCp[i])
-                    {
-                        weight = (xj - xLeft) / (xCp[i] - xLeft);
-                    }
-                    else if (xj > xCp[i] && xj <= xRight)
-                    {
-                        weight = (xRight - xj) / (xRight - xCp[i]);
-                    }
-                    k = k + delta * weight;
+                    evalParams = append(evalParams, xj / meter);
+                    evalIdx = append(evalIdx, j);
                 }
-                kappaAlt = append(kappaAlt, k);
+            }
+
+            var kappaAlt = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                kappaAlt = append(kappaAlt, kappa_arr[j]);
+            }
+            if (size(evalParams) > 0)
+            {
+                var samplesResult = evaluateSpline({ "spline" : deltaSpline, "parameters" : evalParams });
+                var samples = samplesResult[0];
+                for (var k = 0; k < size(samples); k += 1)
+                {
+                    var jIdx = evalIdx[k];
+                    // sample.z = delta * scaleK (length); decode delta = sample.z / scaleK [1/m]
+                    var deltaSmooth = samples[k][2] / scaleK;
+                    kappaAlt[jIdx] = kappa_arr[jIdx] + deltaSmooth;
+                }
             }
 
             // EI_altered = M / kappa_altered. Outside the load-affected span (M=0, kappa=0)
