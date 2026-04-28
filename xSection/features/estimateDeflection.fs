@@ -53,10 +53,11 @@ export function estimateDeflectionEditLogic(context is Context, id is Id, oldDef
     // Backwards-compat init for pre-existing feature instances saved before these fields existed.
     // Onshape's precondition validation runs against stored values and rejects undefined arrays,
     // so we must seed defaults here before any logic that touches them.
-    if (definition.alterCpZ == undefined)           { definition.alterCpZ = []; }
-    if (definition.alterIsDragged == undefined)     { definition.alterIsDragged = []; }
-    if (definition.alterCpInitialized == undefined) { definition.alterCpInitialized = false; }
-    if (definition.alterStoredScaleK == undefined)  { definition.alterStoredScaleK = 1e-3; }
+    if (definition.alterCpZ == undefined)            { definition.alterCpZ = []; }
+    if (definition.alterIsDragged == undefined)      { definition.alterIsDragged = []; }
+    if (definition.alterCpInitialized == undefined)  { definition.alterCpInitialized = false; }
+    if (definition.alterStoredScaleK == undefined)   { definition.alterStoredScaleK = 1e-3; }
+    if (definition.alterTransitionWidth == undefined){ definition.alterTransitionWidth = 0.05 * meter; }
 
     /* DISABLED — backOutEI backwards-compat + force-false; restore when re-enabling the feature
     if (definition.backOutEI == undefined)      { definition.backOutEI = false; }
@@ -360,7 +361,15 @@ export function estimateDeflectionManipulatorChangeLegacy(
              {
                  annotation { "Name" : "Num. Manipulation points", "Description" : "Number of points to manipulate" }
                  isInteger(definition.numAlterPoints, numAlterPointsBounds);
-                 
+
+                 // Conditional declaration for backwards compat: pre-revision instances
+                 // don't have this field; editing logic seeds the default on next regen.
+                 if (definition.alterTransitionWidth != undefined)
+                 {
+                     annotation { "Name" : "EI transition width", "Default" : 0.05 * meter,
+                                  "Description" : "Width of smoothstep blend zone near each support boundary. Smoothly fades the back-out EI to the input EI within this distance of xs1/xs2/xs3, eliminating the hard step at the support extents. Set to minimum to disable blending." }
+                     isLength(definition.alterTransitionWidth, alterTransitionWidthBounds);
+                 }
              }
              
          }
@@ -1462,10 +1471,11 @@ export function estimateDeflectionManipulatorChangeLegacy(
                 }
             }
 
-            // EI_altered = M / kappa_altered. Outside the load-affected span (M=0, kappa=0)
-            // and near M zero-crossings inside the span (where M/kappa is numerically unstable),
-            // fall back to the input EI so the YELLOW curve overlays the input curve cleanly
-            // and only deviates where dragging actually has physical meaning.
+            // EI_altered = blend(M / kappa_altered, EI_input) using cubic smoothstep within
+            // alterTransitionWidth of either support boundary. Outside the support span the
+            // blend collapses to alpha=0 -> EI_alt = EI_input. Far interior, alpha=1 -> full
+            // back-out. Small-signal fallback (|M| or |kappa| below noise floor) defaults
+            // EI_back to EI_input for that point so the blend math stays well-behaved.
             var maxAbsM = 1e-12 * newton * meter;
             for (var j = 0; j < N; j += 1)
             {
@@ -1474,30 +1484,65 @@ export function estimateDeflectionManipulatorChangeLegacy(
             var mFloor = 1e-3 * maxAbsM;             // 0.1% of peak |M|
             var kFloor = 1e-3 * maxAbsKappa;         // 0.1% of peak |kappa|, computed earlier
 
+            var transitionW = definition.alterTransitionWidth;
+            if (transitionW == undefined || transitionW <= 0 * meter)
+            {
+                transitionW = 0.05 * meter;
+            }
+
             var EI_alt = [];
             for (var j = 0; j < N; j += 1)
             {
-                var EIj;
+                var xj = x_eval[j];
+
+                // Always compute EIinput (needed for both the small-signal fallback and the
+                // smoothstep blend toward input EI near the support boundaries).
+                var EIinput = interpEI(eiData, xj);
+                if (definition.addPlateConditions && size(plateData) > 0)
+                {
+                    var xpMin = plateData[0].x;
+                    var xpMax = plateData[size(plateData) - 1].x;
+                    if (xj >= xpMin && xj <= xpMax)
+                    {
+                        EIinput = EIinput + interpEI(plateData, xj);
+                    }
+                }
+
+                var EIback;
                 if (abs(kappaAlt[j]) > kFloor && abs(M_arr[j]) > mFloor)
                 {
-                    EIj = M_arr[j] / kappaAlt[j];
+                    EIback = M_arr[j] / kappaAlt[j];
                 }
                 else
                 {
-                    // Fallback: re-interpolate the input EI (mirrors the EI_i build in step 11)
-                    var EIinput = interpEI(eiData, x_eval[j]);
-                    if (definition.addPlateConditions && size(plateData) > 0)
-                    {
-                        var xpMin = plateData[0].x;
-                        var xpMax = plateData[size(plateData) - 1].x;
-                        if (x_eval[j] >= xpMin && x_eval[j] <= xpMax)
-                        {
-                            EIinput = EIinput + interpEI(plateData, x_eval[j]);
-                        }
-                    }
-                    EIj = EIinput;
+                    EIback = EIinput;
                 }
-                EI_alt = append(EI_alt, EIj);
+
+                // Cubic smoothstep blend: alpha goes 0 at the support boundary -> 1 at
+                // distance transitionW into the interior. Outside the support span, dist <= 0
+                // so alpha = 0 (full input EI). At the boundary alpha=0 and alpha'(0)=0, so
+                // EI_alt is C1 with EI_input across the boundary.
+                var distLeft  = xj - xSupportMin;
+                var distRight = xSupportMax - xj;
+                var dist      = distLeft;
+                if (distRight < dist) { dist = distRight; }
+
+                var alpha;
+                if (dist <= 0 * meter)
+                {
+                    alpha = 0;
+                }
+                else if (dist >= transitionW)
+                {
+                    alpha = 1;
+                }
+                else
+                {
+                    var t = dist / transitionW;
+                    alpha = 3 * t * t - 2 * t * t * t;
+                }
+
+                EI_alt = append(EI_alt, alpha * EIback + (1 - alpha) * EIinput);
             }
 
             // Altered kappa polyline (GREEN, scaled like the existing CYAN kappa overlay)

@@ -28,6 +28,10 @@ export const ApproxToleranceBounds  = {(meter) : [1e-7, 1e-4, 1e-2]} as LengthBo
 export const MaxControlPointsBounds = {(unitless) : [4, 50, 500]} as IntegerBoundSpec;
 export const ApproxDegreeBounds     = {(unitless) : [1, 3, 9]} as IntegerBoundSpec;
 
+// Width of the smoothstep blend zone applied to EI_alt near each support boundary.
+// 0 effectively disables the blend (hard switch back to input EI at the support).
+export const alterTransitionWidthBounds = {(meter) : [1e-4, 0.05, 1.0]} as LengthBoundSpec;
+
 
 // =============================================================================
 // HELPER FUNCTIONS
