@@ -2,9 +2,9 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "d4ef98b7b0acf40b1998b4ed");
+import(path : "08fddb59786b6bfee020ee05", version : "6e68ed6cb07a952caa490205");
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "9e8676f449d3bc6ce225a1b8");
+import(path : "ebac109589e3bf405d3f3ae7", version : "995918706a03f1f08e8720c3");
 
 
 /**

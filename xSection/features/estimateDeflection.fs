@@ -2,12 +2,11 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // IMPORT: estimateDeflectionSolver.fs
-import(path : "b94e66e5f6d027e5be938121", version : "1ade6262494ba7dbc52300ad");
+import(path : "b94e66e5f6d027e5be938121", version : "2b44615a0c956d8d15e4d87c");
 
 /**
  * ESTIMATE DEFLECTION
  * ===================
- * Enums are defined here (required by FeatureScript for feature parameter types).
  * Bounds and helper functions live in estimateDeflectionSolver.fs.
  */
 
@@ -45,6 +44,8 @@ export enum RegionType
     BRIDGING,
     FREE_DRAG
 }
+
+export const numAlterPointsBounds = {(unitless) : [10, 20, 50]} as IntegerBoundSpec;
 
 export function estimateDeflectionEditLogic(context is Context, id is Id, oldDefinition is map,
     definition is map, isCreating is boolean, specifiedParameters is map) returns map
@@ -266,9 +267,23 @@ export function estimateDeflectionManipulatorChange(
          annotation { "Name" : "Number of evaluation points" }
          isInteger(definition.numEvalPoints, EvaluationPointBounds);
 
-         annotation { "Name" : "Debug mode", "Default" : false,
+         annotation { "Name" : "Show plots", "Default" : false,
                       "Description" : "Draws shear/moment diagrams and load arrows for diagnosis (visible while editing only)" }
          definition.debugMode is boolean;
+         
+         if (definition.debugMode)
+         {
+             annotation { "Name" : "Alter deformed beam curvature?", "Default" : false, "Description" : "allows users to alter deformed beam curvatures and returns the EI profile that yields that curvature profile under the specified loading conditions" }
+             definition.alterBeamCurvature is boolean;
+             
+             if (definition.debugMode && definition.alterBeamCurvature)
+             {
+                 annotation { "Name" : "Num. Manipulation points", "Description" : "Number of points to manipulate" }
+                 isInteger(definition.numAlterPoints, numAlterPointsBounds);
+                 
+             }
+             
+         }
 
          annotation { "Name" : "Print load summary", "Default" : false,
                       "Description" : "Prints reactions, load catalogue, equilibrium check, and M boundary values to the FeatureScript console on each regen" }
@@ -1139,6 +1154,97 @@ export function estimateDeflectionManipulatorChange(
                     vector(x2, 0 * meter, 0 * meter),
                     vector(x2, 0 * meter, -F2 * scaleF),
                     DebugColor.RED);
+            }
+        }
+
+        // --- 11d. Altered curvature scaffold (Step 1: manipulators inert, overlays trace originals) ---
+        if (definition.debugMode && definition.alterBeamCurvature)
+        {
+            var Nm = definition.numAlterPoints;
+            var alterDx = (xEvalMax - xEvalMin) / (Nm - 1);
+
+            // Anchor X positions across the full eval span (slide with span; index-keyed)
+            var xCp = [];
+            for (var i = 0; i < Nm; i += 1)
+            {
+                xCp = append(xCp, xEvalMin + i * alterDx);
+            }
+
+            // Sample raw kappa at each anchor by linear interp into kappa_arr (uniform grid, spacing dx)
+            var kappaCp = [];
+            for (var i = 0; i < Nm; i += 1)
+            {
+                var t = (xCp[i] - xEvalMin) / dx;
+                var idxLo = floor(t);
+                if (idxLo < 0)        { idxLo = 0; }
+                if (idxLo > N - 2)    { idxLo = N - 2; }
+                var frac = t - idxLo;
+                if (frac < 0)         { frac = 0; }
+                if (frac > 1)         { frac = 1; }
+                var kCp = kappa_arr[idxLo] + frac * (kappa_arr[idxLo + 1] - kappa_arr[idxLo]);
+                kappaCp = append(kappaCp, kCp);
+            }
+
+            // Add manipulators (no change handler registered yet -> drags inert by design)
+            var manips = {};
+            for (var i = 0; i < Nm; i += 1)
+            {
+                var key = "c" ~ toString(i);
+                manips[key] = linearManipulator({
+                    "base"      : vector(xCp[i], 0 * meter, 0 * meter),
+                    "direction" : vector(0, 0, 1),
+                    "offset"    : kappaCp[i] * scaleK * meter
+                });
+            }
+            addManipulators(context, id, manips);
+
+            // Build kappa_altered at every x_eval[j] by linear interp through (xCp, kappaCp)
+            var kappaAlt = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                var s = (x_eval[j] - xEvalMin) / alterDx;
+                var iLo = floor(s);
+                if (iLo < 0)          { iLo = 0; }
+                if (iLo > Nm - 2)     { iLo = Nm - 2; }
+                var fr = s - iLo;
+                if (fr < 0)           { fr = 0; }
+                if (fr > 1)           { fr = 1; }
+                var kj = kappaCp[iLo] + fr * (kappaCp[iLo + 1] - kappaCp[iLo]);
+                kappaAlt = append(kappaAlt, kj);
+            }
+
+            // EI_altered = M / kappa_altered, with small-kappa guard (matches disabled backOutEI block)
+            var EI_alt = [];
+            for (var j = 0; j < N; j += 1)
+            {
+                var EIj;
+                if (abs(kappaAlt[j]) > 1e-6 / meter)
+                {
+                    EIj = M_arr[j] / kappaAlt[j];
+                }
+                else
+                {
+                    EIj = 0 * newton * meter * meter;
+                }
+                EI_alt = append(EI_alt, EIj);
+            }
+
+            // Altered kappa polyline (GREEN, scaled like the existing CYAN kappa overlay)
+            for (var j = 0; j < N - 1; j += 1)
+            {
+                addDebugLine(context,
+                    vector(x_eval[j],     0 * meter, kappaAlt[j]     * scaleK),
+                    vector(x_eval[j + 1], 0 * meter, kappaAlt[j + 1] * scaleK),
+                    DebugColor.GREEN);
+            }
+
+            // Altered EI polyline (YELLOW, encoded as Z[mm] = EI[N*m^2] like selEI input)
+            for (var j = 0; j < N - 1; j += 1)
+            {
+                addDebugLine(context,
+                    vector(x_eval[j],     0 * meter, (EI_alt[j]     / (newton * meter * meter)) * millimeter),
+                    vector(x_eval[j + 1], 0 * meter, (EI_alt[j + 1] / (newton * meter * meter)) * millimeter),
+                    DebugColor.YELLOW);
             }
         }
 
