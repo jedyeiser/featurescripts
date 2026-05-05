@@ -396,7 +396,7 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
 export function forceQuadraticNurbs(context is Context, id is Id, bSplines is array) returns array
 {    
     var dotTol = cos(0.1 * degree);
-    var polyArcs = approximateSplinesWithPolyArcs(bSplines, 1e-3 * millimeter, 1e-3 * millimeter, dotTol, 1 * millimeter, 16, 8);
+    var polyArcs = approximateSplinesWithPolyArcs(bSplines, 1e-3 * millimeter, 1e-3 * millimeter, dotTol, 1 * millimeter, 16, 8, false);
 
     var NURBS = primitivesToBSplines(polyArcs.segments);
     

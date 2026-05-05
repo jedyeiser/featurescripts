@@ -54,8 +54,8 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         annotation { "Name" : "Output type" }
         definition.outputType is ArcFitOutputType;
 
-        annotation { "Name" : "Group output", "Default" : false, "Description" : "When true, uses opExtractWires to group the curve output of this feature" }
-        definition.extractWires is boolean;
+        annotation { "Name" : "Debug", "Default" : false, "Description" : "Emit detailed pipeline diagnostics to FeatureScript notices (segment counts, fit decisions, subdivision warnings)" }
+        definition.debug is boolean;
     }
     {
         var evEdges = evaluateQuery(context, qUnion([definition.selEdges]));
@@ -73,12 +73,18 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
                             });
                 });
 
-        println("arcFit: evEdges=" ~ size(evEdges) ~ " bSplines=" ~ size(bSplines));
-        println("arcFit: outputType=" ~ definition.outputType ~ " posTol=" ~ toString(definition.posTol / millimeter) ~ "mm minLength=" ~ toString(definition.minLength / millimeter) ~ "mm");
+        if (definition.debug)
+        {
+            println("arcFit: evEdges=" ~ size(evEdges) ~ " bSplines=" ~ size(bSplines));
+            println("arcFit: outputType=" ~ definition.outputType ~ " posTol=" ~ toString(definition.posTol / millimeter) ~ "mm minLength=" ~ toString(definition.minLength / millimeter) ~ "mm");
+        }
 
         // 1) Sample input curves once for both plane fit and coplanarity check.
         const allSamples = sampleAllSplines(bSplines, definition.numSamples);
-        println("arcFit: sampled " ~ size(allSamples) ~ " points across all input curves");
+        if (definition.debug)
+        {
+            println("arcFit: sampled " ~ size(allSamples) ~ " points across all input curves");
+        }
 
         // 2) Best-fit plane via centroid + two principal in-plane directions.
         const fitPlane = computeBestFitPlane(allSamples);
@@ -95,32 +101,33 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
                 dotTol,
                 definition.minLength,
                 definition.numSamples,
-                definition.maxDepth);
+                definition.maxDepth,
+                definition.debug);
 
         const segments = polyArcs.segments;
-        println("arcFit: pipeline produced " ~ size(segments) ~ " segments");
+        if (definition.debug)
+        {
+            println("arcFit: pipeline produced " ~ size(segments) ~ " segments");
+        }
 
         // Defensive: existing feature instances saved before outputType was added will
         // have definition.outputType == undefined. undefined == anything is false in FS,
         // so without this fallback BOTH output branches silently skip.
         const outputType = (definition.outputType != undefined) ? definition.outputType : ArcFitOutputType.CURVES;
-        println("arcFit: outputType=" ~ outputType);
+        if (definition.debug)
+        {
+            println("arcFit: outputType=" ~ outputType);
+        }
 
         // 5) Curve output (CURVES or BOTH)
         if (outputType == ArcFitOutputType.CURVES || outputType == ArcFitOutputType.BOTH)
         {
             const NURBS = primitivesToBSplines(segments);
-            println("arcFit: primitivesToBSplines produced " ~ size(NURBS) ~ " NURBS curves");
-            var validCount = 0;
-            for (var i = 0; i < size(NURBS); i += 1)
+            if (definition.debug)
             {
-                if (canBeBSplineCurve(NURBS[i]))
-                {
-                    validCount += 1;
-                }
+                println("arcFit: primitivesToBSplines produced " ~ size(NURBS) ~ " NURBS curves");
             }
-            println("arcFit: " ~ validCount ~ " of " ~ size(NURBS) ~ " NURBS pass canBeBSplineCurve");
-            emitCurves(context, id, NURBS, definition.extractWires);
+            emitCurves(context, id, NURBS, definition.debug);
         }
 
         // 6) Sketch output (SKETCH or BOTH)
@@ -130,9 +137,12 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         }
     });
 
-function emitCurves(context is Context, id is Id, NURBS is array, extractWires is boolean)
+function emitCurves(context is Context, id is Id, NURBS is array, debug is boolean)
 {
-    println("arcFit: emitCurves entered with " ~ size(NURBS) ~ " NURBS");
+    if (debug)
+    {
+        println("arcFit: emitCurves entered with " ~ size(NURBS) ~ " NURBS");
+    }
 
     var edgeQueries = [];
     var bodyQueries = [];
@@ -151,7 +161,6 @@ function emitCurves(context is Context, id is Id, NURBS is array, extractWires i
                     ~ " isPeriodic=" ~ c.isPeriodic);
         }
 
-        println("arcFit: opCreateBSplineCurve i=" ~ i ~ " degree=" ~ c.degree ~ " nCtrl=" ~ size(c.controlPoints));
         opCreateBSplineCurve(context, id + ("arcNURBSFit" ~ i), {
                     "bSplineCurve" : c
                 });
@@ -159,14 +168,19 @@ function emitCurves(context is Context, id is Id, NURBS is array, extractWires i
         bodyQueries = append(bodyQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.BODY));
     }
 
-    println("arcFit: emitCurves created " ~ size(bodyQueries) ~ " bodies");
-
-    if (size(bodyQueries) > 1 && extractWires)
+    if (debug)
     {
-        opExtractWires(context, id + "extractNURBSWires", {
+        println("arcFit: emitCurves created " ~ size(bodyQueries) ~ " primitive bodies; consolidating into composite wire body");
+    }
+
+    // Always consolidate the per-primitive bodies into a single composite wire body
+    // (one body per connected chain). opExtractWires joins edges that share endpoints.
+    if (size(bodyQueries) > 0)
+    {
+        opExtractWires(context, id + "compositeWire", {
                     "edges" : qUnion(edgeQueries)
                 });
-        opDeleteBodies(context, id + "deleteNURBSWires", {
+        opDeleteBodies(context, id + "deletePrimitiveBodies", {
                     "entities" : qUnion(bodyQueries)
                 });
     }
@@ -553,7 +567,8 @@ export function approximateSplinesWithPolyArcs(
         tanDotTol is number,
         minLength is ValueWithUnits,
         numSamples is number,
-        maxDepth is number) returns map
+        maxDepth is number,
+        debug is boolean) returns map
 {
     const joinTol = posTol;
     const tanBreakDotTol = tanDotTol;
@@ -573,7 +588,7 @@ export function approximateSplinesWithPolyArcs(
 
     // 5) Subdivide-to-convergence: any segment whose fit exceeds posTol gets bisected
     //    at the parameter of max error and re-fit recursively. Honors maxDepth + minLength floors.
-    segments = subdivideUntilFit(ordered.splines, segments, posTol, planeTol, minLength, numSamples, maxDepth);
+    segments = subdivideUntilFit(ordered.splines, segments, posTol, planeTol, minLength, numSamples, maxDepth, debug);
 
     // 6) Greedy merge (single pass after subdivision is converged)
     segments = mergeUntilStable(ordered.splines, segments, joins, posTol, planeTol, minLength, numSamples);
@@ -837,12 +852,13 @@ export function subdivideUntilFit(
         planeTol is ValueWithUnits,
         minLength is ValueWithUnits,
         numSamples is number,
-        maxDepth is number) returns array
+        maxDepth is number,
+        debug is boolean) returns array
 {
     var out = [];
     for (var i = 0; i < size(segments); i += 1)
     {
-        const sub = subdivideOne(orderedSplines, segments[i], posTol, planeTol, minLength, numSamples, 0, maxDepth);
+        const sub = subdivideOne(orderedSplines, segments[i], posTol, planeTol, minLength, numSamples, 0, maxDepth, debug);
         for (var j = 0; j < size(sub); j += 1)
         {
             out = append(out, sub[j]);
@@ -859,7 +875,8 @@ function subdivideOne(
         minLength is ValueWithUnits,
         numSamples is number,
         depth is number,
-        maxDepth is number) returns array
+        maxDepth is number,
+        debug is boolean) returns array
 {
     // If seg is already fitted from upstream, accept the existing fit's maxErr;
     // otherwise re-fit so we have a measured maxErr to act on.
@@ -883,10 +900,13 @@ function subdivideOne(
     // Floor: depth limit
     if (depth >= maxDepth)
     {
-        println("arcFit WARNING: max recursion depth (" ~ maxDepth ~ ") reached for segment "
-                ~ "[u0=" ~ fit.u0 ~ ", u1=" ~ fit.u1 ~ "]. "
-                ~ "Accepting fit with maxErr=" ~ toString(fit.maxErr / millimeter) ~ " mm "
-                ~ "(posTol=" ~ toString(posTol / millimeter) ~ " mm).");
+        if (debug)
+        {
+            println("arcFit WARNING: max recursion depth (" ~ maxDepth ~ ") reached for segment "
+                    ~ "[u0=" ~ fit.u0 ~ ", u1=" ~ fit.u1 ~ "]. "
+                    ~ "Accepting fit with maxErr=" ~ toString(fit.maxErr / millimeter) ~ " mm "
+                    ~ "(posTol=" ~ toString(posTol / millimeter) ~ " mm).");
+        }
         return [fit];
     }
 
@@ -894,9 +914,12 @@ function subdivideOne(
     const segLen = norm(fit.p1 - fit.p0);
     if (segLen < 2 * minLength)
     {
-        println("arcFit WARNING: segment length " ~ toString(segLen / millimeter) ~ " mm "
-                ~ "too short to bisect (minLength=" ~ toString(minLength / millimeter) ~ " mm). "
-                ~ "Accepting fit with maxErr=" ~ toString(fit.maxErr / millimeter) ~ " mm.");
+        if (debug)
+        {
+            println("arcFit WARNING: segment length " ~ toString(segLen / millimeter) ~ " mm "
+                    ~ "too short to bisect (minLength=" ~ toString(minLength / millimeter) ~ " mm). "
+                    ~ "Accepting fit with maxErr=" ~ toString(fit.maxErr / millimeter) ~ " mm.");
+        }
         return [fit];
     }
 
@@ -932,8 +955,8 @@ function subdivideOne(
             "curveIndex1" : fit.curveIndex0, "u1" : fit.u1
         };
 
-    const subA = subdivideOne(orderedSplines, segA, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth);
-    const subB = subdivideOne(orderedSplines, segB, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth);
+    const subA = subdivideOne(orderedSplines, segA, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth, debug);
+    const subB = subdivideOne(orderedSplines, segB, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth, debug);
 
     return concatenateArrays(subA, subB);
 }
