@@ -234,7 +234,7 @@ export function lineSegmentToBSpline(seg is map) returns map
             "isRational" : false,
             "isPeriodic" : false,
             "controlPoints" : [p0, p1],
-            "knots" : [0, 0, 1, 1]
+            "knots" : knotArray([0, 0, 1, 1])
         };
 }
 
@@ -308,7 +308,7 @@ function makeQuadraticArcNurbs(circle is map, a is number, b is number) returns 
             "isPeriodic" : false,
             "controlPoints" : [P0, P1, P2],
             "weights" : [1, wSafe, 1],
-            "knots" : [0, 0, 0, 1, 1, 1]
+            "knots" : knotArray([0, 0, 0, 1, 1, 1])
         };
 }
 
