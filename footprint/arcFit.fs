@@ -462,7 +462,7 @@ export function emitSketchFromPrimitives(context is Context, sketchId is Id, fit
     {
         const seg = segments[i];
 
-        if (seg.type == "line")
+        if (seg["type"] == "line")
         {
             const p0_2d = worldToPlane(fitPlane, seg.p0);
             const p1_2d = worldToPlane(fitPlane, seg.p1);
@@ -475,7 +475,7 @@ export function emitSketchFromPrimitives(context is Context, sketchId is Id, fit
                         "end" : p1_2d
                     });
         }
-        else if (seg.type == "arc")
+        else if (seg["type"] == "arc")
         {
             // Use the stored mid-sample point (lies on the fitted circle by construction)
             // instead of (theta0+theta1)/2, which would pick the wrong half on arcs that
@@ -830,12 +830,12 @@ function subdivideOne(
     // If seg is already fitted from upstream, accept the existing fit's maxErr;
     // otherwise re-fit so we have a measured maxErr to act on.
     var fit = seg;
-    if (seg.type == "unfit" || seg.maxErr == undefined)
+    if (seg["type"] == "unfit" || seg.maxErr == undefined)
     {
         fit = fitLineOrArcForSegment(orderedSplines, seg, posTol, planeTol, numSamples);
     }
 
-    if (fit.type != "line" && fit.type != "arc")
+    if (fit["type"] != "line" && fit["type"] != "arc")
     {
         // Couldn't fit anything (degenerate); return as-is.
         return [fit];
@@ -1018,7 +1018,7 @@ function makeUnionSegment(a is map, b is map) returns map
  */
 function isFitAcceptable(fit is map, posTol is ValueWithUnits) returns boolean
 {
-    if (fit.type != "line" && fit.type != "arc")
+    if (fit["type"] != "line" && fit["type"] != "arc")
     {
         return false;
     }
