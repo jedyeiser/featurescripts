@@ -73,8 +73,12 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
                             });
                 });
 
+        println("arcFit: evEdges=" ~ size(evEdges) ~ " bSplines=" ~ size(bSplines));
+        println("arcFit: outputType=" ~ definition.outputType ~ " posTol=" ~ toString(definition.posTol / millimeter) ~ "mm minLength=" ~ toString(definition.minLength / millimeter) ~ "mm");
+
         // 1) Sample input curves once for both plane fit and coplanarity check.
         const allSamples = sampleAllSplines(bSplines, definition.numSamples);
+        println("arcFit: sampled " ~ size(allSamples) ~ " points across all input curves");
 
         // 2) Best-fit plane via centroid + two principal in-plane directions.
         const fitPlane = computeBestFitPlane(allSamples);
@@ -94,16 +98,33 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
                 definition.maxDepth);
 
         const segments = polyArcs.segments;
+        println("arcFit: pipeline produced " ~ size(segments) ~ " segments");
+
+        // Defensive: existing feature instances saved before outputType was added will
+        // have definition.outputType == undefined. undefined == anything is false in FS,
+        // so without this fallback BOTH output branches silently skip.
+        const outputType = (definition.outputType != undefined) ? definition.outputType : ArcFitOutputType.CURVES;
+        println("arcFit: outputType=" ~ outputType);
 
         // 5) Curve output (CURVES or BOTH)
-        if (definition.outputType == ArcFitOutputType.CURVES || definition.outputType == ArcFitOutputType.BOTH)
+        if (outputType == ArcFitOutputType.CURVES || outputType == ArcFitOutputType.BOTH)
         {
             const NURBS = primitivesToBSplines(segments);
+            println("arcFit: primitivesToBSplines produced " ~ size(NURBS) ~ " NURBS curves");
+            var validCount = 0;
+            for (var i = 0; i < size(NURBS); i += 1)
+            {
+                if (canBeBSplineCurve(NURBS[i]))
+                {
+                    validCount += 1;
+                }
+            }
+            println("arcFit: " ~ validCount ~ " of " ~ size(NURBS) ~ " NURBS pass canBeBSplineCurve");
             emitCurves(context, id, NURBS, definition.extractWires);
         }
 
         // 6) Sketch output (SKETCH or BOTH)
-        if (definition.outputType == ArcFitOutputType.SKETCH || definition.outputType == ArcFitOutputType.BOTH)
+        if (outputType == ArcFitOutputType.SKETCH || outputType == ArcFitOutputType.BOTH)
         {
             emitSketchFromPrimitives(context, id + "arcSketch", fitPlane, segments);
         }
@@ -111,6 +132,8 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
 
 function emitCurves(context is Context, id is Id, NURBS is array, extractWires is boolean)
 {
+    println("arcFit: emitCurves entered with " ~ size(NURBS) ~ " NURBS");
+
     var edgeQueries = [];
     var bodyQueries = [];
     for (var i = 0; i < size(NURBS); i += 1)
@@ -118,14 +141,25 @@ function emitCurves(context is Context, id is Id, NURBS is array, extractWires i
         const c = NURBS[i];
         if (!canBeBSplineCurve(c))
         {
-            continue;
+            // LOUD failure instead of silent skip so we can see exactly what's wrong.
+            throw regenError("arcFit: NURBS[" ~ i ~ "] failed canBeBSplineCurve check. "
+                    ~ "degree=" ~ c.degree
+                    ~ " dim=" ~ c.dimension
+                    ~ " nCtrl=" ~ size(c.controlPoints)
+                    ~ " nKnots=" ~ size(c.knots)
+                    ~ " isRational=" ~ c.isRational
+                    ~ " isPeriodic=" ~ c.isPeriodic);
         }
+
+        println("arcFit: opCreateBSplineCurve i=" ~ i ~ " degree=" ~ c.degree ~ " nCtrl=" ~ size(c.controlPoints));
         opCreateBSplineCurve(context, id + ("arcNURBSFit" ~ i), {
                     "bSplineCurve" : c
                 });
         edgeQueries = append(edgeQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.EDGE));
         bodyQueries = append(bodyQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.BODY));
     }
+
+    println("arcFit: emitCurves created " ~ size(bodyQueries) ~ " bodies");
 
     if (size(bodyQueries) > 1 && extractWires)
     {
