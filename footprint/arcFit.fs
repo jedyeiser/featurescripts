@@ -202,11 +202,20 @@ function isArcSegment(seg is map) returns boolean
         });
 }
 
+function isBiarcSegment(seg is map) returns boolean
+{
+    return any(keys(seg), function(x)
+        {
+            return x == "circle1";
+        });
+}
+
 /**
- * Convert an array of primitive segments (lines/arcs) into an array of BSplineCurve maps.
+ * Convert an array of primitive segments (lines/arcs/biarcs) into an array of BSplineCurve maps.
  *
- * Lines become non-rational degree-1 B-splines.
- * Arcs become rational degree-2 quadratic NURBS. Large arcs are split into <= 90 deg pieces.
+ * Lines  -> degree-1 non-rational BSpline.
+ * Arcs   -> rational degree-2 quadratic NURBS pieces (large arcs split into <= 90 deg pieces).
+ * Biarcs -> two arcs, each converted via the arc path. End result: one G1 chain of NURBS.
  */
 export function primitivesToBSplines(segments is array) returns array
 {
@@ -217,6 +226,22 @@ export function primitivesToBSplines(segments is array) returns array
         if (isLineSegment(seg))
         {
             out = append(out, lineSegmentToBSpline(seg));
+        }
+        else if (isBiarcSegment(seg))
+        {
+            // Biarc has two sub-arcs; convert each through the standard arc path.
+            const subArc1 = { "circle" : seg.circle1, "theta0" : seg.theta0_arc1, "theta1" : seg.theta1_arc1 };
+            const subArc2 = { "circle" : seg.circle2, "theta0" : seg.theta0_arc2, "theta1" : seg.theta1_arc2 };
+            const pieces1 = arcSegmentToQuadraticNurbsPieces(subArc1);
+            const pieces2 = arcSegmentToQuadraticNurbsPieces(subArc2);
+            for (var j = 0; j < size(pieces1); j += 1)
+            {
+                out = append(out, pieces1[j]);
+            }
+            for (var j = 0; j < size(pieces2); j += 1)
+            {
+                out = append(out, pieces2[j]);
+            }
         }
         else if (isArcSegment(seg))
         {
@@ -540,6 +565,29 @@ export function emitSketchFromPrimitives(context is Context, sketchId is Id, fit
                         "end" : p1_2d
                     });
         }
+        else if (seg["type"] == "biarc")
+        {
+            // Two skArc calls, one per sub-arc, sharing the joint point pJ.
+            const pMid1 = arcPointAt(seg.circle1, (seg.theta0_arc1 + seg.theta1_arc1) / 2);
+            const pMid2 = arcPointAt(seg.circle2, (seg.theta0_arc2 + seg.theta1_arc2) / 2);
+
+            const p0_2d = worldToPlane(fitPlane, seg.p0);
+            const pJ_2d = worldToPlane(fitPlane, seg.pJ);
+            const p1_2d = worldToPlane(fitPlane, seg.p1);
+            const pm1_2d = worldToPlane(fitPlane, pMid1);
+            const pm2_2d = worldToPlane(fitPlane, pMid2);
+
+            skArc(sk, "biarcA_" ~ i, {
+                        "start" : p0_2d,
+                        "mid" : pm1_2d,
+                        "end" : pJ_2d
+                    });
+            skArc(sk, "biarcB_" ~ i, {
+                        "start" : pJ_2d,
+                        "mid" : pm2_2d,
+                        "end" : p1_2d
+                    });
+        }
         // "unfit" segments are silently dropped from sketch output; they shouldn't
         // appear here in practice because subdivideUntilFit + fit always assign a type.
     }
@@ -750,8 +798,18 @@ export function fitAllSegments(
 }
 
 /**
- * Fit a Line or Circle-arc to a segment. Computes the REAL max deviation
- * (point-to-line for lines; point-to-arc for arcs) and stores it in maxErr.
+ * Fit a Line, Biarc, or single Circle-arc to a segment.
+ *
+ * Order of attempts:
+ *   1) Line  -- if max chord deviation <= posTol
+ *   2) Biarc -- two G1-continuous arcs that match the source tangents at both endpoints.
+ *               This is the standard fit for non-linear segments. The G1 endpoint match
+ *               eliminates the tangent mismatch that single-arc 3-point fits introduce.
+ *   3) Single 3-point arc -- fallback only when biarc construction degenerates.
+ *
+ * The maxErr stored on the returned segment is the REAL point-to-primitive distance
+ * (not chord error), measured by sampling the source curve and computing min distance
+ * to either of the biarc's two arcs (or to the single arc/line for those branches).
  */
 export function fitLineOrArcForSegment(
         orderedSplines is array,
@@ -794,7 +852,66 @@ export function fitLineOrArcForSegment(
                 });
     }
 
-    // 2) Arc fit: 3-point circle through endpoints + midpoint sample.
+    // 2) Biarc fit (preferred): two G1-continuous arcs matching source tangents at p0 and p1.
+    const t0_raw = evalBSplineDerivAtParam(c, u0);
+    const t1_raw = evalBSplineDerivAtParam(c, u1);
+    const t0_norm = norm(t0_raw);
+    const t1_norm = norm(t1_raw);
+    if (t0_norm > 0 * meter && t1_norm > 0 * meter)
+    {
+        const t0_unit = t0_raw / t0_norm;
+        const t1_unit = t1_raw / t1_norm;
+
+        const ba = constructBiarc3D(p0, t0_unit, p1, t1_unit);
+        if (ba != undefined && !ba.isLine)
+        {
+            const circle1 = makeCircleFromBiarcArc(ba.C1, ba.r1, p0, ba.n);
+            const circle2 = makeCircleFromBiarcArc(ba.C2, ba.r2, ba.J, ba.n);
+
+            if (circle1 != undefined && circle2 != undefined)
+            {
+                // By construction, each sub-arc's xAxis points from center to its start point,
+                // so theta_start = 0 and theta_end is the angle to the sub-arc's end point.
+                const th0_arc1 = 0;
+                const th1_arc1 = circleAngle(circle1, ba.J);
+                const th0_arc2 = 0;
+                const th1_arc2 = circleAngle(circle2, p1);
+
+                const stats = biarcSamplesMaxError(pts, circle1, th0_arc1, th1_arc1,
+                        circle2, th0_arc2, th1_arc2, u0, u1);
+
+                return mergeMaps(seg, {
+                            "type" : "biarc",
+                            "p0" : p0, "p1" : p1, "pJ" : ba.J,
+                            "circle1" : circle1, "theta0_arc1" : th0_arc1, "theta1_arc1" : th1_arc1,
+                            "circle2" : circle2, "theta0_arc2" : th0_arc2, "theta1_arc2" : th1_arc2,
+                            "maxErr" : stats.maxErr,
+                            "uMaxErr" : stats.uMax
+                        });
+            }
+        }
+        // If biarc returned isLine, fall through to chord-line fallback below
+        // (degenerate cases produce a near-collinear line; let the chord-line code handle it).
+        if (ba != undefined && ba.isLine)
+        {
+            var dirLine = p1 - p0;
+            const lenLine = norm(dirLine);
+            if (lenLine == 0 * meter)
+            {
+                return seg;
+            }
+            dirLine = dirLine / lenLine;
+            return mergeMaps(seg, {
+                        "type" : "line",
+                        "p0" : p0, "p1" : p1,
+                        "line" : { "origin" : p0, "direction" : dirLine },
+                        "t0" : 0, "t1" : lenLine,
+                        "maxErr" : chordErr
+                    });
+        }
+    }
+
+    // 3) Single-arc fallback: 3-point circle through endpoints + midpoint sample.
     const circFit = circleThrough3Points(p0, pm, p1);
     if (circFit == undefined)
     {
@@ -886,7 +1003,7 @@ function subdivideOne(
         fit = fitLineOrArcForSegment(orderedSplines, seg, posTol, planeTol, numSamples);
     }
 
-    if (fit["type"] != "line" && fit["type"] != "arc")
+    if (fit["type"] != "line" && fit["type"] != "arc" && fit["type"] != "biarc")
     {
         // Couldn't fit anything (degenerate); return as-is.
         return [fit];
@@ -1075,7 +1192,7 @@ function makeUnionSegment(a is map, b is map) returns map
  */
 function isFitAcceptable(fit is map, posTol is ValueWithUnits) returns boolean
 {
-    if (fit["type"] != "line" && fit["type"] != "arc")
+    if (fit["type"] != "line" && fit["type"] != "arc" && fit["type"] != "biarc")
     {
         return false;
     }
@@ -1404,4 +1521,274 @@ function arcSamplesMaxError(pts is array, circle is map, theta0 is number, theta
     const t = (n > 1) ? (maxIdx / (n - 1)) : 0;
     const uMax = u0 + (u1 - u0) * t;
     return { "maxErr" : maxErr, "uMax" : uMax };
+}
+
+/**
+ * Compute max deviation of source samples from a biarc (min distance to either sub-arc),
+ * and report the source-curve parameter at which the max occurred.
+ */
+function biarcSamplesMaxError(
+        pts is array,
+        circle1 is map, theta0_a1 is number, theta1_a1 is number,
+        circle2 is map, theta0_a2 is number, theta1_a2 is number,
+        u0 is number, u1 is number) returns map
+{
+    var maxErr = 0 * meter;
+    var maxIdx = 0;
+    const n = size(pts);
+    for (var i = 0; i < n; i += 1)
+    {
+        const e1 = pointToArcDistance3D(pts[i], circle1, theta0_a1, theta1_a1);
+        const e2 = pointToArcDistance3D(pts[i], circle2, theta0_a2, theta1_a2);
+        const e = (e1 < e2) ? e1 : e2;
+        if (e > maxErr)
+        {
+            maxErr = e;
+            maxIdx = i;
+        }
+    }
+    const t = (n > 1) ? (maxIdx / (n - 1)) : 0;
+    const uMax = u0 + (u1 - u0) * t;
+    return { "maxErr" : maxErr, "uMax" : uMax };
+}
+
+/**
+ * Evaluate first-derivative tangent of a BSplineCurve at parameter u.
+ * Returns the raw derivative vector (NOT normalized) to preserve units / sign info.
+ */
+function evalBSplineDerivAtParam(c is map, u is number) returns Vector
+{
+    const dom = getSplineDomain(c);
+    const uu = clamp(u, dom.uMin, dom.uMax);
+
+    const result = evaluateSpline({
+                "spline" : c,
+                "parameters" : [uu],
+                "nDerivatives" : 1
+            });
+
+    return result[1][0];
+}
+
+/**
+ * Build a {coordSystem, radius} circle map for a sub-arc whose start point is `startPoint`,
+ * lying in the plane with normal `planeNormal`. The xAxis points from center to start, so
+ * theta_start == 0 and circleAngle(circle, endPoint) == sweep angle to the end.
+ */
+function makeCircleFromBiarcArc(center is Vector, radius is ValueWithUnits, startPoint is Vector, planeNormal is Vector) returns map
+{
+    var xAxis = startPoint - center;
+    const xLen = norm(xAxis);
+    if (xLen == 0 * meter)
+    {
+        return undefined;
+    }
+    xAxis = xAxis / xLen;
+
+    return {
+            "coordSystem" : { "origin" : center, "xAxis" : xAxis, "zAxis" : planeNormal },
+            "radius" : radius
+        };
+}
+
+/**
+ * ============================================================================
+ * Biarc construction (Bolton 1975, k=1 / equal-tangent-length / Hermite biarc)
+ * ============================================================================
+ *
+ * Given two endpoints with their tangent directions, constructs two G1-continuous
+ * arcs that match positions and tangents at both endpoints. Single arcs cannot
+ * satisfy this (4 endpoint constraints vs. 3 DOF in a circle); biarcs add a joint
+ * point with one free parameter, giving exactly enough flexibility.
+ *
+ * Reference: Bolton, K.M. (1975), "Biarc curves," CAD 7(2):89-92.
+ *            Walton & Meek (1992), Sabin (1976) for the k=1 default rationale.
+ *
+ * Sign of the centers (which side of the tangent each arc curves toward) emerges
+ * automatically from the algebra; no separate convexity check is needed. C-shape
+ * vs S-shape is determined by sign(s1) == sign(s2) vs opposite.
+ */
+
+/**
+ * 2D biarc construction in plane coordinates. Returns:
+ *   { "isLine" : true }  if input degenerates to a straight line (collinear, parallel tangents)
+ *   undefined           if construction fails (perpendicular tangents, etc.)
+ *   { "isLine" : false, "J" : 2D Vector, "C1" : 2D Vector, "r1" : length, "s1" : signed length,
+ *                       "C2" : 2D Vector, "r2" : length, "s2" : signed length }
+ *
+ * p0, p1 carry length units; t0_2d, t1_2d are unitless unit vectors.
+ */
+function constructBiarc2D(p0_2d is Vector, t0_2d is Vector, p1_2d is Vector, t1_2d is Vector) returns map
+{
+    const v = p1_2d - p0_2d;
+    const d2 = dot(v, v);
+    const dLen = sqrt(d2);
+
+    if (dLen < 1e-9 * meter)
+    {
+        return undefined;
+    }
+
+    const cos_t = dot(t0_2d, t1_2d);
+
+    // 2D scalar cross product of t0 with v -- sign tells whether tangent and chord agree.
+    const cross_t0_v = t0_2d[0] * v[1] - t0_2d[1] * v[0];
+
+    // Collinear case: tangents parallel AND aligned with chord -> straight line.
+    if (cos_t > 1 - 1e-9 && abs(cross_t0_v) < 1e-9 * dLen)
+    {
+        return { "isLine" : true };
+    }
+
+    // Bolton quadratic in alpha1 (with k = alpha2/alpha1 = 1 for equal-tangent-length default).
+    const A = 2 * (cos_t - 1);          // unitless; <= 0 always; zero only when tangents parallel
+    const B = 2 * (dot(v, t0_2d) + dot(v, t1_2d));   // length
+    const C = -d2;                      // length^2
+
+    var alpha1;
+    if (abs(A) < 1e-9)
+    {
+        // Tangents parallel but not collinear with chord: degenerate quadratic -> linear.
+        if (abs(B) < 1e-9 * dLen)
+        {
+            return undefined;
+        }
+        alpha1 = -C / B;
+    }
+    else
+    {
+        const discRaw = B * B - 4 * A * C;
+        const disc = (discRaw > 0 * meter * meter) ? discRaw : (0 * meter * meter);
+        alpha1 = (-B + sqrt(disc)) / (2 * A);
+    }
+
+    if (alpha1 <= 0 * meter)
+    {
+        return undefined;
+    }
+
+    const alpha2 = alpha1;  // k = 1
+
+    // Joint point (k=1 simplification: J = midpoint of Q0 and Q1).
+    const Q0 = p0_2d + alpha1 * t0_2d;
+    const Q1 = p1_2d - alpha2 * t1_2d;
+    const J = (Q0 + Q1) / 2;
+
+    // Arc 1 center: on perpendicular to t0 at p0, equidistant from p0 and J.
+    const n0 = vector([-t0_2d[1], t0_2d[0]]);
+    const chord1 = J - p0_2d;
+    const den1 = 2 * dot(chord1, n0);
+    if (abs(den1) < 1e-9 * meter)
+    {
+        return undefined;
+    }
+    const s1 = dot(chord1, chord1) / den1;
+    const C1 = p0_2d + s1 * n0;
+    const r1 = abs(s1);
+
+    // Arc 2 center: on perpendicular to t1 at p1, equidistant from p1 and J.
+    const n1 = vector([-t1_2d[1], t1_2d[0]]);
+    const chord2 = J - p1_2d;
+    const den2 = 2 * dot(chord2, n1);
+    if (abs(den2) < 1e-9 * meter)
+    {
+        return undefined;
+    }
+    const s2 = dot(chord2, chord2) / den2;
+    const C2 = p1_2d + s2 * n1;
+    const r2 = abs(s2);
+
+    return {
+            "isLine" : false,
+            "J" : J,
+            "C1" : C1, "r1" : r1, "s1" : s1,
+            "C2" : C2, "r2" : r2, "s2" : s2
+        };
+}
+
+/**
+ * 3D biarc construction. Derives a local plane from t0 x (p1-p0), projects to 2D,
+ * runs constructBiarc2D, and lifts the result back to 3D.
+ *
+ * Returns:
+ *   { "isLine" : true }                                  -- degenerate to straight line
+ *   undefined                                             -- construction failed
+ *   { "isLine" : false, "J", "C1", "r1", "C2", "r2",
+ *     "s1", "s2", "n" }                                   -- successful biarc; n = plane normal
+ */
+function constructBiarc3D(p0 is Vector, t0_unit is Vector, p1 is Vector, t1_unit is Vector) returns map
+{
+    const v = p1 - p0;
+    const vNorm = norm(v);
+    if (vNorm == 0 * meter)
+    {
+        return undefined;
+    }
+
+    // Local plane normal: prefer t0 x v; fall back to t1 x v; if both parallel to chord, line.
+    var nRaw = cross(t0_unit, v);
+    var nLen = norm(nRaw);
+    if (nLen == 0 * meter)
+    {
+        nRaw = cross(t1_unit, v);
+        nLen = norm(nRaw);
+        if (nLen == 0 * meter)
+        {
+            return { "isLine" : true };
+        }
+    }
+    const n = nRaw / nLen;
+
+    // 2D basis: x along the chord, y in-plane perpendicular.
+    const xAxis = v / vNorm;
+    const yAxis = cross(n, xAxis);
+
+    // Project endpoints (p0 is the 2D origin by construction, p1 lies on the +x axis).
+    const p0_2d = vector([0 * meter, 0 * meter]);
+    const p1_2d = vector([vNorm, 0 * meter]);
+
+    // Project + renormalize tangents. If the tangent has a large out-of-plane component,
+    // the post-projection 2D length drops below ~1; abort if too lossy to be meaningful.
+    const t0_2dx_raw = dot(t0_unit, xAxis);
+    const t0_2dy_raw = dot(t0_unit, yAxis);
+    const t0_2d_lenSq = t0_2dx_raw * t0_2dx_raw + t0_2dy_raw * t0_2dy_raw;
+    if (t0_2d_lenSq < 0.25)
+    {
+        return undefined;
+    }
+    const t0_2d_len = sqrt(t0_2d_lenSq);
+    const t0_2d = vector([t0_2dx_raw / t0_2d_len, t0_2dy_raw / t0_2d_len]);
+
+    const t1_2dx_raw = dot(t1_unit, xAxis);
+    const t1_2dy_raw = dot(t1_unit, yAxis);
+    const t1_2d_lenSq = t1_2dx_raw * t1_2dx_raw + t1_2dy_raw * t1_2dy_raw;
+    if (t1_2d_lenSq < 0.25)
+    {
+        return undefined;
+    }
+    const t1_2d_len = sqrt(t1_2d_lenSq);
+    const t1_2d = vector([t1_2dx_raw / t1_2d_len, t1_2dy_raw / t1_2d_len]);
+
+    const ba = constructBiarc2D(p0_2d, t0_2d, p1_2d, t1_2d);
+    if (ba == undefined)
+    {
+        return undefined;
+    }
+    if (ba.isLine)
+    {
+        return { "isLine" : true };
+    }
+
+    // Lift J, C1, C2 back to 3D using the in-plane basis.
+    const J_3d = p0 + ba.J[0] * xAxis + ba.J[1] * yAxis;
+    const C1_3d = p0 + ba.C1[0] * xAxis + ba.C1[1] * yAxis;
+    const C2_3d = p0 + ba.C2[0] * xAxis + ba.C2[1] * yAxis;
+
+    return {
+            "isLine" : false,
+            "J" : J_3d,
+            "C1" : C1_3d, "r1" : ba.r1, "s1" : ba.s1,
+            "C2" : C2_3d, "r2" : ba.r2, "s2" : ba.s2,
+            "n" : n
+        };
 }
