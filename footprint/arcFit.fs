@@ -3,107 +3,162 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/math.fs", version : "2892.0");
 import(path : "onshape/std/vector.fs", version : "2892.0");
+import(path : "onshape/std/sketch.fs", version : "2892.0");
+import(path : "onshape/std/surfaceGeometry.fs", version : "2892.0");
+import(path : "onshape/std/containers.fs", version : "2892.0");
 export import(path : "onshape/std/nurbsUtils.fs", version : "2892.0");
 
 export const PositionTolBounds = {(millimeter) : [0.00001, 0.0001, 1]} as LengthBoundSpec;
 export const PlaneTolBounds = {(millimeter) : [0.00001, 0.00001, 1]} as LengthBoundSpec;
 export const MinLengthBounds = {(millimeter) : [1, 10, 100]} as LengthBoundSpec;
 export const TanTolBounds = {(degree) : [0.00001, 0.1, 1]} as AngleBoundSpec;
+export const NumSamplesBounds = {(unitless) : [10, 16, 200]} as IntegerBoundSpec;
+export const MaxDepthBounds = {(unitless) : [3, 8, 12]} as IntegerBoundSpec;
+
+export enum ArcFitOutputType
+{
+    annotation { "Name" : "Curves" }
+    CURVES,
+    annotation { "Name" : "Sketch" }
+    SKETCH,
+    annotation { "Name" : "Curves and sketch" }
+    BOTH
+}
 
 
-annotation { "Feature Type Name" : "Arc fit", "Feature Type Description" : "Takes edges as input and outputs an arc fit representation of the edges. Lines collapse to lines. Continuity is not preserved if input edges are not within a given range" }
+annotation { "Feature Type Name" : "Arc fit", "Feature Type Description" : "Takes coplanar edges as input and outputs an arc fit representation of the edges. Lines collapse to lines. Continuity is not preserved if input edges are not within a given range" }
 export const arcFit = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Edges to fit", "Filter" : EntityType.EDGE}
+        annotation { "Name" : "Edges to fit", "Filter" : EntityType.EDGE }
         definition.selEdges is Query;
-        
-        annotation { "Name" : "Position tolerance", "Description": "Distance within which to ensure G0 continuity", "Default": 0.00001 * millimeter }
-        isLength(definition.posTol, PositionTolBounds);
-        
-        annotation { "Name" : "Plane tolerance", "Description": "Allowable out-of-plane error", "Default": 0.01 * millimeter }
-        isLength(definition.planeTol, PlaneTolBounds);
-        
-        annotation { "Name" : "Minimum segment length", "Description" : "Minimum allowable length of an individual arc/line", "Default": 1 * millimeter }
-        isLength(definition.minLength, MinLengthBounds);
-        
-        annotation { "Name" : "Tangency tol", "Description": "Ensure G1 tangency within this angle", "Default": 0.1 * degree }
-        isAngle(definition.tanTol, TanTolBounds);
-        
-        annotation { "Name" : "Group output", "Default": false, "Description": "When true, uses opExtractWires to group the output of this feature" }
-        definition.extractWires is boolean;
-        
-        annotation { "Name" : "Create curves", "Default": true}
-        definition.createCurves is boolean;
 
-        
+        annotation { "Name" : "Position tolerance", "Description" : "Max allowable point-to-arc/line deviation (also the join tolerance for G0 continuity)", "Default" : 0.00001 * millimeter }
+        isLength(definition.posTol, PositionTolBounds);
+
+        annotation { "Name" : "Plane tolerance", "Description" : "Allowable out-of-plane error for input edges (coplanarity gate)", "Default" : 0.01 * millimeter }
+        isLength(definition.planeTol, PlaneTolBounds);
+
+        annotation { "Name" : "Minimum segment length", "Description" : "Minimum allowable length of an individual arc/line", "Default" : 1 * millimeter }
+        isLength(definition.minLength, MinLengthBounds);
+
+        annotation { "Name" : "Tangency tol", "Description" : "Ensure G1 tangency within this angle", "Default" : 0.1 * degree }
+        isAngle(definition.tanTol, TanTolBounds);
+
+        annotation { "Name" : "Validation samples per arc", "Description" : "Number of samples per arc/line used to validate the fit against the original spline" }
+        isInteger(definition.numSamples, NumSamplesBounds);
+
+        annotation { "Name" : "Max subdivision depth", "Description" : "Maximum recursion depth when bisecting arcs to satisfy position tolerance" }
+        isInteger(definition.maxDepth, MaxDepthBounds);
+
+        annotation { "Name" : "Output type" }
+        definition.outputType is ArcFitOutputType;
+
+        annotation { "Name" : "Group output", "Default" : false, "Description" : "When true, uses opExtractWires to group the curve output of this feature" }
+        definition.extractWires is boolean;
     }
     {
         var evEdges = evaluateQuery(context, qUnion([definition.selEdges]));
-        
-        var bSplines = mapArray(evEdges, function(e) {return evApproximateBSplineCurve(context, {
-                "edge" : e,
-                "forceNonRational" : true
-        });});
-        
-        var dotTol = cos(definition.tanTol);
-        var polyArcs = approximateSplinesWithPolyArcs(bSplines, definition.posTol, definition.planeTol, dotTol, definition.minLength);
 
-        var NURBS = primitivesToBSplines(polyArcs.segments);
-        
-        for (var i = 0; i < size(NURBS); i += 1)
+        if (size(evEdges) == 0)
         {
-            const c = NURBS[i];
-        
-            if (!canBeBSplineCurve(c))
-            {
-                continue;
-            }
-        
+            throw regenError("Arc fit: no edges selected.");
         }
-        
-        if (definition.createCurves)
+
+        var bSplines = mapArray(evEdges, function(e)
+                {
+                    return evApproximateBSplineCurve(context, {
+                                "edge" : e,
+                                "forceNonRational" : true
+                            });
+                });
+
+        // 1) Sample input curves once for both plane fit and coplanarity check.
+        const allSamples = sampleAllSplines(bSplines, definition.numSamples);
+
+        // 2) Best-fit plane via centroid + two principal in-plane directions.
+        const fitPlane = computeBestFitPlane(allSamples);
+
+        // 3) Coplanarity gate. Fail loudly with deviation/tolerance in the message.
+        assertCoplanar(allSamples, fitPlane, definition.planeTol);
+
+        // 4) Approximate with poly-arcs (subdivide-to-convergence, then merge).
+        const dotTol = cos(definition.tanTol);
+        const polyArcs = approximateSplinesWithPolyArcs(
+                bSplines,
+                definition.posTol,
+                definition.planeTol,
+                dotTol,
+                definition.minLength,
+                definition.numSamples,
+                definition.maxDepth);
+
+        const segments = polyArcs.segments;
+
+        // 5) Curve output (CURVES or BOTH)
+        if (definition.outputType == ArcFitOutputType.CURVES || definition.outputType == ArcFitOutputType.BOTH)
         {
-            var edgeQueries = [];
-            var bodyQueries = [];
-            for (var i = 0; i < size(NURBS); i += 1)
-            {
-                opCreateBSplineCurve(context, id + ("arcNURBSFit" ~ i), {
-                        "bSplineCurve" : NURBS[i]
-                });
-                edgeQueries = append(edgeQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.EDGE));
-                bodyQueries = append(bodyQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.BODY));
-            }
-            
-            if (size(bodyQueries) > 1 && definition.extractWires)
-            {
-                opExtractWires(context, id + "extractNURBSWires", {
-                        "edges" : qUnion(edgeQueries)
-                });
-                opDeleteBodies(context, id + "deleteNURBSWires", {
-                        "entities" : qUnion(bodyQueries)
-                });
-            }
+            const NURBS = primitivesToBSplines(segments);
+            emitCurves(context, id, NURBS, definition.extractWires);
         }
-        
+
+        // 6) Sketch output (SKETCH or BOTH)
+        if (definition.outputType == ArcFitOutputType.SKETCH || definition.outputType == ArcFitOutputType.BOTH)
+        {
+            emitSketchFromPrimitives(context, id + "arcSketch", fitPlane, segments);
+        }
     });
+
+function emitCurves(context is Context, id is Id, NURBS is array, extractWires is boolean)
+{
+    var edgeQueries = [];
+    var bodyQueries = [];
+    for (var i = 0; i < size(NURBS); i += 1)
+    {
+        const c = NURBS[i];
+        if (!canBeBSplineCurve(c))
+        {
+            continue;
+        }
+        opCreateBSplineCurve(context, id + ("arcNURBSFit" ~ i), {
+                    "bSplineCurve" : c
+                });
+        edgeQueries = append(edgeQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.EDGE));
+        bodyQueries = append(bodyQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.BODY));
+    }
+
+    if (size(bodyQueries) > 1 && extractWires)
+    {
+        opExtractWires(context, id + "extractNURBSWires", {
+                    "edges" : qUnion(edgeQueries)
+                });
+        opDeleteBodies(context, id + "deleteNURBSWires", {
+                    "entities" : qUnion(bodyQueries)
+                });
+    }
+}
 
 function isLineSegment(seg is map) returns boolean
 {
-    return any(keys(seg), function(x) {return x == "line";});
-
+    return any(keys(seg), function(x)
+        {
+            return x == "line";
+        });
 }
 
 function isArcSegment(seg is map) returns boolean
 {
-    return any(keys(seg), function(x) {return x == "circle";});
+    return any(keys(seg), function(x)
+        {
+            return x == "circle";
+        });
 }
 
 /**
  * Convert an array of primitive segments (lines/arcs) into an array of BSplineCurve maps.
  *
  * Lines become non-rational degree-1 B-splines.
- * Arcs become rational degree-2 quadratic NURBS. Large arcs are split into <= 90° pieces.
+ * Arcs become rational degree-2 quadratic NURBS. Large arcs are split into <= 90 deg pieces.
  */
 export function primitivesToBSplines(segments is array) returns array
 {
@@ -119,7 +174,9 @@ export function primitivesToBSplines(segments is array) returns array
         {
             const arcs = arcSegmentToQuadraticNurbsPieces(seg);
             for (var j = 0; j < size(arcs); j += 1)
+            {
                 out = append(out, arcs[j]);
+            }
         }
         else
         {
@@ -131,10 +188,6 @@ export function primitivesToBSplines(segments is array) returns array
 
 /**
  * Convert a line segment to a degree-1 non-rational BSplineCurve.
- *
- * Expected fields:
- *   seg.p0 : Vector (length units)
- *   seg.p1 : Vector (length units)
  */
 export function lineSegmentToBSpline(seg is map) returns map
 {
@@ -142,25 +195,17 @@ export function lineSegmentToBSpline(seg is map) returns map
     const p1 = seg.p1;
 
     return {
-        "degree" : 1,
-        "dimension" : 3,
-        "isRational" : false,
-        "isPeriodic" : false,
-        "controlPoints" : [p0, p1],
-        // Knot vector size must be 1 + degree + nCtrlPts = 1 + 1 + 2 = 4
-        "knots" : [0, 0, 1, 1]
-    };
+            "degree" : 1,
+            "dimension" : 3,
+            "isRational" : false,
+            "isPeriodic" : false,
+            "controlPoints" : [p0, p1],
+            "knots" : [0, 0, 1, 1]
+        };
 }
 
 /**
  * Convert an arc segment (Circle + theta bounds) into one or more quadratic rational NURBS pieces.
- *
- * Expected fields:
- *   seg.circle : Circle map { coordSystem, radius }
- *   seg.theta0 : number (radians)
- *   seg.theta1 : number (radians)
- *
- * Returns: array of BSplineCurve maps (each a single-span quadratic)
  */
 export function arcSegmentToQuadraticNurbsPieces(seg is map) returns array
 {
@@ -168,18 +213,17 @@ export function arcSegmentToQuadraticNurbsPieces(seg is map) returns array
     var t0 = seg.theta0;
     var t1 = seg.theta1;
 
-    // Normalize sweep direction to take the shorter/expected path:
-    // If you have a separate "sweepSign" concept, apply it here instead.
     var d = t1 - t0;
+    while (d > 2 * PI)
+    {
+        d -= 2 * PI;
+    }
+    while (d < -2 * PI)
+    {
+        d += 2 * PI;
+    }
 
-    // Bring into (-2π, 2π) range; keep as user-intended sign
-    while (d > 2 * PI) { d -= 2 * PI; }
-    while (d < -2 * PI) { d += 2 * PI; }
-
-    // If extremely small sweep, you could collapse to a line-like tiny segment,
-    // but we'll still emit a tiny arc piece.
-    const maxPiece = PI / 2; // 90 degrees per piece
-
+    const maxPiece = PI / 2;
     const nPieces = max(1, ceil(abs(d) / maxPiece));
     const step = d / nPieces;
 
@@ -194,18 +238,6 @@ export function arcSegmentToQuadraticNurbsPieces(seg is map) returns array
     return out;
 }
 
-/**
- * Build a single-span quadratic rational NURBS representation of a circular arc from angle a to b.
- *
- * This uses the standard construction:
- *   - endpoints are points on circle at a and b
- *   - middle control point is intersection of endpoint tangents (in the circle plane)
- *   - middle weight w = cos(Δ/2)
- *
- * Circle is defined by:
- *   - circle.coordSystem: circle lies in its local XY plane
- *   - circle.radius
- */
 function makeQuadraticArcNurbs(circle is map, a is number, b is number) returns map
 {
     const cs = circle.coordSystem;
@@ -215,59 +247,39 @@ function makeQuadraticArcNurbs(circle is map, a is number, b is number) returns 
     const X = cs.xAxis;
     const Y = cross(cs.zAxis, cs.xAxis);
 
-    // Convert unitless radians -> Angle ValueWithUnits for trig
     const aA = a * radian;
     const bA = b * radian;
 
-    // 2D endpoint points on unit circle in local XY
     const p0_2 = vector([cos(aA), sin(aA)]);
     const p2_2 = vector([cos(bA), sin(bA)]);
 
-    // 2D tangents (unit) on unit circle
     const t0_2 = vector([-sin(aA), cos(aA)]);
     const t2_2 = vector([-sin(bA), cos(bA)]);
 
-    // Intersect tangents in 2D to get middle control point
     const p1_2 = intersectLines2D(p0_2, t0_2, p2_2, t2_2);
 
-    // Lift 2D -> 3D: P = C + R*(x*X + y*Y)
     const P0 = C + R * (p0_2[0] * X + p0_2[1] * Y);
     const P1 = C + R * (p1_2[0] * X + p1_2[1] * Y);
     const P2 = C + R * (p2_2[0] * X + p2_2[1] * Y);
 
-    const delta = b - a;                 // unitless radians
-    const w = cos((delta / 2) * radian); // <-- trig needs Angle
+    const delta = b - a;
+    const w = cos((delta / 2) * radian);
 
     const wSafe = (abs(w) < 1e-9) ? (w >= 0 ? 1e-9 : -1e-9) : w;
-    
-    
 
     return {
-        "degree" : 2,
-        "dimension" : 3,
-        "isRational" : true,
-        "isPeriodic" : false,
-        "controlPoints" : [P0, P1, P2],
-        "weights" : [1, wSafe, 1],
-        "knots" : [0, 0, 0, 1, 1, 1]
-    };
+            "degree" : 2,
+            "dimension" : 3,
+            "isRational" : true,
+            "isPeriodic" : false,
+            "controlPoints" : [P0, P1, P2],
+            "weights" : [1, wSafe, 1],
+            "knots" : [0, 0, 0, 1, 1, 1]
+        };
 }
 
-/**
- * Intersection of two infinite 2D lines:
- *   L0: p = p0 + s*d0
- *   L1: p = p1 + t*d1
- *
- * Returns the intersection point in 2D.
- *
- * NOTE:
- * - If lines are nearly parallel, this returns a fallback (midpoint) to avoid blowing up.
- * - For circular arcs with small sweep, tangents are well-behaved.
- */
 function intersectLines2D(p0 is Vector, d0 is Vector, p1 is Vector, d1 is Vector) returns Vector
 {
-    // Solve: p0 + s*d0 = p1 + t*d1
-    // In 2D: [d0, -d1] [s, t]^T = (p1 - p0)
     const a00 = d0[0];
     const a01 = -d1[0];
     const a10 = d0[1];
@@ -280,7 +292,6 @@ function intersectLines2D(p0 is Vector, d0 is Vector, p1 is Vector, d1 is Vector
 
     if (abs(det) < 1e-12)
     {
-        // Nearly parallel; fallback to something reasonable.
         return (p0 + p1) / 2;
     }
 
@@ -288,86 +299,231 @@ function intersectLines2D(p0 is Vector, d0 is Vector, p1 is Vector, d1 is Vector
     return p0 + s * d0;
 }
 
+/**
+ * ============================================================================
+ * Coplanarity / best-fit plane
+ * ============================================================================
+ */
+
+/**
+ * Sample positions across all input splines for the coplanarity check and plane fit.
+ */
+export function sampleAllSplines(splines is array, numSamples is number) returns array
+{
+    var out = [];
+    for (var i = 0; i < size(splines); i += 1)
+    {
+        const dom = getSplineDomain(splines[i]);
+        const pts = sampleSplineSegmentPositions(splines[i], dom.uMin, dom.uMax, max(numSamples, 10));
+        for (var j = 0; j < size(pts); j += 1)
+        {
+            out = append(out, pts[j]);
+        }
+    }
+    return out;
+}
+
+/**
+ * Compute centroid of a point cloud.
+ */
+function pointCentroid(points is array) returns Vector
+{
+    var sumX = 0 * meter;
+    var sumY = 0 * meter;
+    var sumZ = 0 * meter;
+    const n = size(points);
+    for (var i = 0; i < n; i += 1)
+    {
+        sumX += points[i][0];
+        sumY += points[i][1];
+        sumZ += points[i][2];
+    }
+    return vector([sumX / n, sumY / n, sumZ / n]);
+}
+
+/**
+ * Compute the best-fit plane through a set of (assumed) coplanar points.
+ *
+ * Picks the centroid as plane origin, then chooses two principal in-plane
+ * directions geometrically:
+ *   d1 = direction from centroid to farthest sample
+ *   d2 = perpendicular component of (centroid -> sample farthest from line through centroid in d1)
+ *   normal = d1 x d2
+ *
+ * For truly coplanar input this recovers the exact plane. For near-coplanar input
+ * the normal matches PCA's smallest-eigenvalue eigenvector to first order, and the
+ * downstream coplanarity check will reject inputs whose deviation exceeds planeTol.
+ */
+export function computeBestFitPlane(points is array) returns Plane
+{
+    if (size(points) < 3)
+    {
+        throw regenError("Arc fit: need at least 3 sample points to fit a plane.");
+    }
+
+    const c = pointCentroid(points);
+
+    // First principal direction: vector from centroid to farthest sample.
+    var maxDist1 = 0 * meter;
+    var farIdx1 = -1;
+    for (var i = 0; i < size(points); i += 1)
+    {
+        const d = norm(points[i] - c);
+        if (d > maxDist1)
+        {
+            maxDist1 = d;
+            farIdx1 = i;
+        }
+    }
+    if (farIdx1 < 0 || maxDist1 == 0 * meter)
+    {
+        throw regenError("Arc fit: input points are degenerate (all at same location).");
+    }
+
+    const v1 = points[farIdx1] - c;
+    const d1 = v1 / norm(v1);
+
+    // Second principal direction: maximize perpendicular distance to line {c, d1}.
+    var maxPerp = 0 * meter;
+    var farIdx2 = -1;
+    for (var i = 0; i < size(points); i += 1)
+    {
+        const v = points[i] - c;
+        const along = dot(v, d1) * d1;
+        const perp = v - along;
+        const pn = norm(perp);
+        if (pn > maxPerp)
+        {
+            maxPerp = pn;
+            farIdx2 = i;
+        }
+    }
+    if (farIdx2 < 0 || maxPerp == 0 * meter)
+    {
+        throw regenError("Arc fit: input points are collinear; cannot determine a plane.");
+    }
+
+    const v2 = points[farIdx2] - c;
+    const along2 = dot(v2, d1) * d1;
+    const perp2 = v2 - along2;
+    const d2 = perp2 / norm(perp2);
+
+    const normalRaw = cross(d1, d2);
+    const normalLen = norm(normalRaw);
+    if (normalLen == 0)
+    {
+        throw regenError("Arc fit: principal directions are parallel; cannot determine plane normal.");
+    }
+    const normal = normalRaw / normalLen;
+
+    return plane(c, normal, d1);
+}
+
+/**
+ * Throw a regenError if any sample lies more than planeTol off the supplied plane.
+ */
+export function assertCoplanar(points is array, fitPlane is Plane, planeTol is ValueWithUnits)
+{
+    var maxDev = 0 * meter;
+    for (var i = 0; i < size(points); i += 1)
+    {
+        const dev = abs(dot(points[i] - fitPlane.origin, fitPlane.normal));
+        if (dev > maxDev)
+        {
+            maxDev = dev;
+        }
+    }
+    if (maxDev > planeTol)
+    {
+        throw regenError("Arc fit: input edges are not coplanar. "
+                ~ "Max out-of-plane deviation: " ~ toString(maxDev / millimeter) ~ " mm. "
+                ~ "Plane tolerance: " ~ toString(planeTol / millimeter) ~ " mm. "
+                ~ "Either supply coplanar edges or increase plane tolerance.");
+    }
+}
 
 /**
  * ============================================================================
- * Poly-Arc Approximation Utilities (NURBS-only)
+ * Sketch output
  * ============================================================================
- *
- * Goal:
- *   - Input: an array of non-rational BSplineCurve maps (unordered; may contain 1)
- *   - Output: an ordered chain approximated by primitives:
- *       - Line segments (Line map)
- *       - Arc segments (Circle map + angle bounds)
- *
- * Constraints:
- *   - Never create bodies or edges.
- *   - Work strictly with curve definitions (BSplineCurve maps) and primitives.
- *
- * Philosophy:
- *   - Order and orient splines into a polycurve chain.
- *   - Build initial over-segmentation using knot spans (grouped).
- *   - Fit line-or-arc per segment.
- *   - Merge adjacent segments greedily until stable, BUT:
- *       - Never merge across "hard" boundaries (discontinuity above tolerance).
- *       - Do not enforce tangency at hard boundaries.
  */
-
-/** --------------------------------------------------------------------------
- * Types (represented as maps)
- * ---------------------------------------------------------------------------
- *
- * Segment map (returned):
- *   {
- *     "type" : "line" | "arc",
- *     "p0" : Vector,         // endpoint, length units
- *     "p1" : Vector,         // endpoint, length units
- *     "curveIndex0" : number, "u0" : number,  // start location in source polycurve
- *     "curveIndex1" : number, "u1" : number,  // end location in source polycurve
- *
- *     // If type == "line":
- *     "line" : Line,         // { origin, direction }
- *     "t0" : number, "t1" : number, // optional scalar params along line
- *
- *     // If type == "arc":
- *     "circle" : Circle,     // { coordSystem, radius }
- *     "theta0" : number, "theta1" : number, // arc bounds in circle CS
- *
- *     // Error stats (optional):
- *     "maxErr" : ValueWithUnits
- *   }
- *
- * Join metadata (between ordered splines):
- *   { "isHard" : boolean, "gap" : ValueWithUnits, "tanAngle" : number, "point" : Vector }
- */
-
-
 
 /**
- * Approximate a chain of (unordered) non-rational BSplineCurves with line/arc primitives.
+ * Emit a sketch on the supplied plane containing the line/arc primitives.
  *
- * @param splines          array of BSplineCurve (non-rational, dimension 3 recommended)
- * @param posTol           maximum allowed deviation (distance)
- * @param planeTol         maximum allowed out-of-plane deviation for arc fits (distance)
- * @param tanDotTol           dot product based tangency
- * @param minLength        minimum segment length; shorter segments are discouraged/merged/ignored
+ * Lines become skLineSegment, arcs become 3-point skArc using start/mid/end
+ * projected into the sketch's 2D coordinates.
+ */
+export function emitSketchFromPrimitives(context is Context, sketchId is Id, fitPlane is Plane, segments is array)
+{
+    const sk = newSketchOnPlane(context, sketchId, { "sketchPlane" : fitPlane });
+
+    for (var i = 0; i < size(segments); i += 1)
+    {
+        const seg = segments[i];
+
+        if (seg.type == "line")
+        {
+            const p0_2d = worldToPlane(fitPlane, seg.p0);
+            const p1_2d = worldToPlane(fitPlane, seg.p1);
+            if (norm(p1_2d - p0_2d) <= 0 * meter)
+            {
+                continue;
+            }
+            skLineSegment(sk, "line_" ~ i, {
+                        "start" : p0_2d,
+                        "end" : p1_2d
+                    });
+        }
+        else if (seg.type == "arc")
+        {
+            // Use the stored mid-sample point (lies on the fitted circle by construction)
+            // instead of (theta0+theta1)/2, which would pick the wrong half on arcs that
+            // wrap the +/- pi branch cut.
+            const pmid = (seg.pMid != undefined) ? seg.pMid : arcPointAt(seg.circle, (seg.theta0 + seg.theta1) / 2);
+
+            const p0_2d = worldToPlane(fitPlane, seg.p0);
+            const p1_2d = worldToPlane(fitPlane, seg.p1);
+            const pm_2d = worldToPlane(fitPlane, pmid);
+
+            skArc(sk, "arc_" ~ i, {
+                        "start" : p0_2d,
+                        "mid" : pm_2d,
+                        "end" : p1_2d
+                    });
+        }
+        // "unfit" segments are silently dropped from sketch output; they shouldn't
+        // appear here in practice because subdivideUntilFit + fit always assign a type.
+    }
+
+    skSolve(sk);
+}
+
+/**
+ * ============================================================================
+ * Poly-Arc Approximation Pipeline (NURBS-only)
+ * ============================================================================
  *
- * @returns map:
- *   {
- *     "orderedSplines" : array,
- *     "joins" : array,        // join metadata between splines (size = n-1, empty if n<2)
- *     "segments" : array      // primitive segments
- *   }
+ * Pipeline:
+ *   1) Order + orient input splines into a chain
+ *   2) Classify joins as hard/soft
+ *   3) Build initial segments from knot spans
+ *   4) Fit line-or-arc per segment
+ *   5) Subdivide-to-convergence: bisect any segment whose fit exceeds posTol
+ *   6) Merge until stable (greedy left-to-right), honoring hard boundaries
  */
 export function approximateSplinesWithPolyArcs(
-    splines is array, posTol is ValueWithUnits, planeTol is ValueWithUnits, tanDotTol is number, minLength is ValueWithUnits) returns map
+        splines is array,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        tanDotTol is number,
+        minLength is ValueWithUnits,
+        numSamples is number,
+        maxDepth is number) returns map
 {
-    // ---- Defaults ----
     const joinTol = posTol;
-    const tanBreakDotTol = tanDotTol;           
+    const tanBreakDotTol = tanDotTol;
     const initialSpansPerSeg = 2;
-    const minSamples = 9;
-    const maxSamples = 33;
 
     // 1) Order + orient into a chain
     const ordered = orderAndOrientBSplines(splines, joinTol);
@@ -375,20 +531,24 @@ export function approximateSplinesWithPolyArcs(
     // 2) Classify joins as hard/soft (hard => no merging across)
     const joins = classifyJoinsHardness(ordered.splines, joinTol, tanBreakDotTol);
 
-    // 3) Build initial segments from knot spans (over-segmented by design)
+    // 3) Initial segmentation from knot spans
     var segments = buildInitialSegmentsFromKnotSpans(ordered.splines, joins, initialSpansPerSeg, minLength);
 
-    // 4) Fit primitives for each segment (line or arc)
-    segments = fitAllSegments(ordered.splines, segments, posTol, planeTol, minSamples, maxSamples);
+    // 4) Initial fit per segment
+    segments = fitAllSegments(ordered.splines, segments, posTol, planeTol, numSamples);
 
-    // 5) Merge until stable (greedy left-to-right), honoring hard boundaries
-    segments = mergeUntilStable(ordered.splines, segments, joins, posTol, planeTol, minLength, minSamples, maxSamples);
+    // 5) Subdivide-to-convergence: any segment whose fit exceeds posTol gets bisected
+    //    at the parameter of max error and re-fit recursively. Honors maxDepth + minLength floors.
+    segments = subdivideUntilFit(ordered.splines, segments, posTol, planeTol, minLength, numSamples, maxDepth);
+
+    // 6) Greedy merge (single pass after subdivision is converged)
+    segments = mergeUntilStable(ordered.splines, segments, joins, posTol, planeTol, minLength, numSamples);
 
     return {
-        "orderedSplines" : ordered.splines,
-        "joins" : joins,
-        "segments" : segments
-    };
+            "orderedSplines" : ordered.splines,
+            "joins" : joins,
+            "segments" : segments
+        };
 }
 
 /** --------------------------------------------------------------------------
@@ -398,46 +558,24 @@ export function approximateSplinesWithPolyArcs(
 /**
  * Order and orient splines into a continuous chain using endpoint proximity.
  *
- * Notes:
- * - If input contains only one spline, it is returned as-is.
- * - This is intended to be reusable for other NURBS tools downstream.
- *
- * @returns map: { "splines" : array, "flipFlags" : array }
+ * TODO: Real adjacency walk. Currently a pass-through; relies on caller-supplied
+ * order being correct (true for current consumers).
  */
 export function orderAndOrientBSplines(splines is array, joinTol is ValueWithUnits) returns map
 {
-    // TODO: Implement robust ordering:
-    //   - Extract endpoints per spline
-    //   - Build adjacency by endpoint distance <= joinTol
-    //   - Walk chain (open: start at degree-1 endpoint; closed: arbitrary)
-    //   - Flip splines so end(i) matches start(i+1)
-    //
-    // For now: return input as-is (placeholder).
     return { "splines" : splines, "flipFlags" : makeArray(size(splines), false) };
 }
 
 /** --------------------------------------------------------------------------
- * Step 2: Join hardness classification (critical for your "no enforced continuity")
+ * Step 2: Join hardness classification
  * -------------------------------------------------------------------------- */
 
-/**
- * Compute join metadata between consecutive ordered splines.
- * A join is HARD if:
- *   - endpoint gap > joinTol, OR
- *   - tangent angle mismatch > tanBreakTol
- *
- * HARD join behavior:
- *   - never create segments that cross this boundary
- *   - never attempt merges across it
- *
- * SOFT join behavior:
- *   - merges may cross it (if tolerance allows)
- *   - still no requirement that final primitives be tangent if merge fails
- */
 export function classifyJoinsHardness(orderedSplines is array, joinTol is ValueWithUnits, tanBreakDotTol is number) returns array
 {
     if (size(orderedSplines) < 2)
+    {
         return [];
+    }
 
     var joins = [];
     for (var i = 0; i < size(orderedSplines) - 1; i += 1)
@@ -445,20 +583,18 @@ export function classifyJoinsHardness(orderedSplines is array, joinTol is ValueW
         const a = orderedSplines[i];
         const b = orderedSplines[i + 1];
 
-        // TODO: Replace with exact endpoint evaluation for your BSplineCurve definition.
-        // Placeholder endpoint getters:
-        const pa = evalBSplineEndPoint(a, /*isStart*/ false);
-        const pb = evalBSplineEndPoint(b, /*isStart*/ true);
+        const pa = evalBSplineEndPoint(a, false);
+        const pb = evalBSplineEndPoint(b, true);
 
         const gap = norm(pa - pb);
-        const ta = evalBSplineEndTangent(a, /*isStart*/ false);
-        const tb = evalBSplineEndTangent(b, /*isStart*/ true);
+        const ta = evalBSplineEndTangent(a, false);
+        const tb = evalBSplineEndTangent(b, true);
 
         const isHard = (gap > joinTol) || tangentMismatch(ta, tb, tanBreakDotTol);
 
         const da = norm(ta);
         const db = norm(tb);
-        const tanAngle = (da == 0 || db == 0) ? PI : acos(clamp(dot(ta/da, tb/db), -1, 1));
+        const tanAngle = (da == 0 || db == 0) ? PI : acos(clamp(dot(ta / da, tb / db), -1, 1));
         joins = append(joins, { "isHard" : isHard, "gap" : gap, "tanAngle" : tanAngle, "point" : (pa + pb) / 2 });
     }
     return joins;
@@ -468,73 +604,43 @@ export function classifyJoinsHardness(orderedSplines is array, joinTol is ValueW
  * Step 3: Knot-span based initial segmentation
  * -------------------------------------------------------------------------- */
 
-/**
- * Build an initial list of segments by grouping knot spans.
- * - Never crosses hard joins.
- * - Starts "over-segmented" so merge can collapse quickly.
- */
 export function buildInitialSegmentsFromKnotSpans(
-    orderedSplines is array,
-    joins is array,
-    spansPerSeg is number,
-    minLength is ValueWithUnits) returns array
+        orderedSplines is array,
+        joins is array,
+        spansPerSeg is number,
+        minLength is ValueWithUnits) returns array
 {
     var segments = [];
 
     for (var curveIndex = 0; curveIndex < size(orderedSplines); curveIndex += 1)
     {
         const c = orderedSplines[curveIndex];
-        const spans = getUniqueKnotSpans(c); // array of {u0, u1}
-        
-       /* println("curveIndex=" ~ curveIndex
-            ~ " degree=" ~ c.degree
-            ~ " nCtrl=" ~ size(c.controlPoints)
-            ~ " nKnots=" ~ size(c.knots)
-            ~ " nSpans=" ~ size(spans)); */
-            
-        // Group spans into blocks of spansPerSeg
+        const spans = getUniqueKnotSpans(c);
+
         var blockStart = 0;
         while (blockStart < size(spans))
         {
-            
             var blockEnd = min(blockStart + spansPerSeg - 1, size(spans) - 1);
 
             const u0 = spans[blockStart].u0;
             const u1 = spans[blockEnd].u1;
-            /*
-            println("  blockStart=" ~ blockStart
-                ~ " blockEnd=" ~ blockEnd
-                ~ " u0=" ~ u0
-                ~ " u1=" ~ u1);
-                */
 
-            // Segment references a single source spline for now.
-            // Merge step may later create segments spanning across soft joins.
             const p0 = evalBSplineAtParam(c, u0);
             const p1 = evalBSplineAtParam(c, u1);
-            
-            const L = norm(p1 - p0);
-            /*
-            println("    L=" ~ L ~ "  minLength=" ~ minLength);
-            println("    p0=" ~ p0);
-            println("    p1=" ~ p1);*/
 
             if (norm(p1 - p0) >= minLength)
             {
                 segments = append(segments, {
-                    "type" : "unfit",
-                    "p0" : p0,
-                    "p1" : p1,
-                    "curveIndex0" : curveIndex, "u0" : u0,
-                    "curveIndex1" : curveIndex, "u1" : u1
-                });
+                            "type" : "unfit",
+                            "p0" : p0,
+                            "p1" : p1,
+                            "curveIndex0" : curveIndex, "u0" : u0,
+                            "curveIndex1" : curveIndex, "u1" : u1
+                        });
             }
 
             blockStart = blockEnd + 1;
         }
-
-        // IMPORTANT: we do not create a segment that crosses from curveIndex -> curveIndex+1 here.
-        // That is handled (optionally) during merge, and only if joins[curveIndex] is soft.
     }
 
     return segments;
@@ -542,19 +648,11 @@ export function buildInitialSegmentsFromKnotSpans(
 
 function getSplineDomain(c is map) returns map
 {
-    // Active domain for (typical) clamped B-splines:
-    // uMin = knots[degree]
-    // uMax = knots[nCtrl]
     const p = c.degree;
     const nCtrl = size(c.controlPoints);
     return { "uMin" : c.knots[p], "uMax" : c.knots[nCtrl] };
 }
 
-/**
- * Return unique knot spans (intervals between consecutive distinct knot values).
- *
- * @returns array of { "u0" : number, "u1" : number }
- */
 export function getUniqueKnotSpans(c is map) returns array
 {
     const dom = getSplineDomain(c);
@@ -566,13 +664,17 @@ export function getUniqueKnotSpans(c is map) returns array
         var u0 = knots[i];
         var u1 = knots[i + 1];
         if (u1 <= u0)
+        {
             continue;
+        }
 
         u0 = max(u0, dom.uMin);
         u1 = min(u1, dom.uMax);
 
         if (u1 > u0)
+        {
             spans = append(spans, { "u0" : u0, "u1" : u1 });
+        }
     }
     return spans;
 }
@@ -581,140 +683,246 @@ export function getUniqueKnotSpans(c is map) returns array
  * Step 4: Fit primitives for segments
  * -------------------------------------------------------------------------- */
 
-/**
- * Fit line-or-arc for every segment in the list.
- * This is a pure function over NURBS definitions + intervals.
- */
 export function fitAllSegments(
-    orderedSplines is array,
-    segments is array,
-    posTol is ValueWithUnits,
-    planeTol is ValueWithUnits,
-    minSamples is number,
-    maxSamples is number) returns array
+        orderedSplines is array,
+        segments is array,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        numSamples is number) returns array
 {
     var out = [];
     for (var i = 0; i < size(segments); i += 1)
     {
         const seg = segments[i];
-        const fit = fitLineOrArcForSegment(orderedSplines, seg, posTol, planeTol, minSamples, maxSamples);
+        const fit = fitLineOrArcForSegment(orderedSplines, seg, posTol, planeTol, numSamples);
         out = append(out, fit);
     }
     return out;
 }
 
 /**
- * Fit a Line or Circle-arc to a segment.
- *
- * Implementation notes:
- * - First try to classify as line-like (max deviation from chord < posTol, etc.)
- * - Else fit a circle in best-fit plane (or assume planar).
- * - Return a segment map with "type" = "line" or "arc".
+ * Fit a Line or Circle-arc to a segment. Computes the REAL max deviation
+ * (point-to-line for lines; point-to-arc for arcs) and stores it in maxErr.
  */
 export function fitLineOrArcForSegment(
-    orderedSplines is array,
-    seg is map,
-    posTol is ValueWithUnits,
-    planeTol is ValueWithUnits,
-    minSamples is number,
-    maxSamples is number) returns map
+        orderedSplines is array,
+        seg is map,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        numSamples is number) returns map
 {
-    // For now we only support segments that live on a single spline
-    // (Your current segmentation produces this; cross-spline segments can come later.)
     const c = orderedSplines[seg.curveIndex0];
     const u0 = seg.u0;
     const u1 = seg.u1;
 
-    const n = max(minSamples, 7);
+    const n = max(numSamples, 10);
     const pts = sampleSplineSegmentPositions(c, u0, u1, n);
 
     const p0 = pts[0];
     const p1 = pts[size(pts) - 1];
     const pm = pts[floor((size(pts) - 1) / 2)];
 
-    // 1) Line test: if max deviation from chord <= posTol, treat as a line
+    // 1) Line test: if max deviation from chord <= posTol, treat as a line.
     const chordErr = maxDistanceToChord(pts, p0, p1);
     if (chordErr <= posTol)
     {
         var dir = p1 - p0;
         const len = norm(dir);
         if (len == 0 * meter)
+        {
             return seg;
-
+        }
         dir = dir / len;
-        const line = { "origin" : p0, "direction" : dir };
+        const lineDef = { "origin" : p0, "direction" : dir };
 
         return mergeMaps(seg, {
-            "type" : "line",
-            "p0" : p0, "p1" : p1,
-            "line" : line,
-            "t0" : 0,
-            "t1" : len,
-            "maxErr" : chordErr
-        });
+                    "type" : "line",
+                    "p0" : p0, "p1" : p1,
+                    "line" : lineDef,
+                    "t0" : 0,
+                    "t1" : len,
+                    "maxErr" : chordErr
+                });
     }
 
-    // 2) Arc fit: simple 3-point circle
+    // 2) Arc fit: 3-point circle through endpoints + midpoint sample.
     const circFit = circleThrough3Points(p0, pm, p1);
     if (circFit == undefined)
     {
-        // fallback to line if points are collinear
         var dir2 = p1 - p0;
         const len2 = norm(dir2);
-        if (len2 == 0 * meter) return seg;
+        if (len2 == 0 * meter)
+        {
+            return seg;
+        }
         dir2 = dir2 / len2;
         return mergeMaps(seg, {
-            "type" : "line",
-            "p0" : p0, "p1" : p1,
-            "line" : { "origin" : p0, "direction" : dir2 },
-            "t0" : 0,
-            "t1" : len2,
-            "maxErr" : chordErr
-        });
+                    "type" : "line",
+                    "p0" : p0, "p1" : p1,
+                    "line" : { "origin" : p0, "direction" : dir2 },
+                    "t0" : 0,
+                    "t1" : len2,
+                    "maxErr" : chordErr
+                });
     }
 
     const circle = circFit.circle;
-
-    // Optional: planeTol check (out-of-plane error)
-    // Since circle is planar by construction, measure point distance to plane.
-    // For now we skip this, but you can add it once you're ready.
-
     const th0 = circleAngle(circle, p0);
     const th1 = circleAngle(circle, p1);
+    const thMid = circleAngle(circle, pm);
+
+    // Real arc-error metric: point-to-arc distance over all samples.
+    const arcStats = arcSamplesMaxError(pts, circle, th0, th1, u0, u1);
 
     return mergeMaps(seg, {
-        "type" : "arc",
-        "p0" : p0, "p1" : p1,
-        "circle" : circle,
-        "theta0" : th0,
-        "theta1" : th1,
-        "maxErr" : chordErr // placeholder; later compute real circle error
-    });
+                "type" : "arc",
+                "p0" : p0, "p1" : p1,
+                "pMid" : pm,
+                "circle" : circle,
+                "theta0" : th0,
+                "theta1" : th1,
+                "thetaMid" : thMid,
+                "maxErr" : arcStats.maxErr,
+                "uMaxErr" : arcStats.uMax
+            });
 }
 
 /** --------------------------------------------------------------------------
- * Step 5: Merge until stable (honor hard joins; allow line collapse)
+ * Step 5: Subdivide-to-convergence (bisect at parameter of max error)
  * -------------------------------------------------------------------------- */
 
 /**
- * Repeatedly perform merge passes until no merges occur.
+ * Walk every segment and recursively bisect any whose fit exceeds posTol,
+ * splitting at the parameter of maximum error. Honors maxDepth and minLength
+ * floors with a println warning when either fires.
  */
+export function subdivideUntilFit(
+        orderedSplines is array,
+        segments is array,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        minLength is ValueWithUnits,
+        numSamples is number,
+        maxDepth is number) returns array
+{
+    var out = [];
+    for (var i = 0; i < size(segments); i += 1)
+    {
+        const sub = subdivideOne(orderedSplines, segments[i], posTol, planeTol, minLength, numSamples, 0, maxDepth);
+        for (var j = 0; j < size(sub); j += 1)
+        {
+            out = append(out, sub[j]);
+        }
+    }
+    return out;
+}
+
+function subdivideOne(
+        orderedSplines is array,
+        seg is map,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        minLength is ValueWithUnits,
+        numSamples is number,
+        depth is number,
+        maxDepth is number) returns array
+{
+    // If seg is already fitted from upstream, accept the existing fit's maxErr;
+    // otherwise re-fit so we have a measured maxErr to act on.
+    var fit = seg;
+    if (seg.type == "unfit" || seg.maxErr == undefined)
+    {
+        fit = fitLineOrArcForSegment(orderedSplines, seg, posTol, planeTol, numSamples);
+    }
+
+    if (fit.type != "line" && fit.type != "arc")
+    {
+        // Couldn't fit anything (degenerate); return as-is.
+        return [fit];
+    }
+
+    if (fit.maxErr <= posTol)
+    {
+        return [fit];
+    }
+
+    // Floor: depth limit
+    if (depth >= maxDepth)
+    {
+        println("arcFit WARNING: max recursion depth (" ~ maxDepth ~ ") reached for segment "
+                ~ "[u0=" ~ fit.u0 ~ ", u1=" ~ fit.u1 ~ "]. "
+                ~ "Accepting fit with maxErr=" ~ toString(fit.maxErr / millimeter) ~ " mm "
+                ~ "(posTol=" ~ toString(posTol / millimeter) ~ " mm).");
+        return [fit];
+    }
+
+    // Floor: minimum length
+    const segLen = norm(fit.p1 - fit.p0);
+    if (segLen < 2 * minLength)
+    {
+        println("arcFit WARNING: segment length " ~ toString(segLen / millimeter) ~ " mm "
+                ~ "too short to bisect (minLength=" ~ toString(minLength / millimeter) ~ " mm). "
+                ~ "Accepting fit with maxErr=" ~ toString(fit.maxErr / millimeter) ~ " mm.");
+        return [fit];
+    }
+
+    // Pick split parameter: max-error location, falling back to midpoint if too close to endpoint.
+    const c = orderedSplines[fit.curveIndex0];
+    var uSplit = (fit.uMaxErr != undefined) ? fit.uMaxErr : ((fit.u0 + fit.u1) / 2);
+    const span = fit.u1 - fit.u0;
+    if (span > 0)
+    {
+        const tSplit = (uSplit - fit.u0) / span;
+        if (tSplit < 0.05 || tSplit > 0.95)
+        {
+            uSplit = (fit.u0 + fit.u1) / 2;
+        }
+    }
+    else
+    {
+        return [fit];
+    }
+
+    const pSplit = evalBSplineAtParam(c, uSplit);
+
+    const segA = {
+            "type" : "unfit",
+            "p0" : fit.p0, "p1" : pSplit,
+            "curveIndex0" : fit.curveIndex0, "u0" : fit.u0,
+            "curveIndex1" : fit.curveIndex0, "u1" : uSplit
+        };
+    const segB = {
+            "type" : "unfit",
+            "p0" : pSplit, "p1" : fit.p1,
+            "curveIndex0" : fit.curveIndex0, "u0" : uSplit,
+            "curveIndex1" : fit.curveIndex0, "u1" : fit.u1
+        };
+
+    const subA = subdivideOne(orderedSplines, segA, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth);
+    const subB = subdivideOne(orderedSplines, segB, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth);
+
+    return concatenateArrays(subA, subB);
+}
+
+/** --------------------------------------------------------------------------
+ * Step 6: Merge until stable (honor hard joins; allow line collapse)
+ * -------------------------------------------------------------------------- */
+
 export function mergeUntilStable(
-    orderedSplines is array,
-    segments is array,
-    joins is array,
-    posTol is ValueWithUnits,
-    planeTol is ValueWithUnits,
-    minLength is ValueWithUnits,
-    minSamples is number,
-    maxSamples is number) returns array
+        orderedSplines is array,
+        segments is array,
+        joins is array,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        minLength is ValueWithUnits,
+        numSamples is number) returns array
 {
     var changed = true;
     var current = segments;
 
     while (changed)
     {
-        const pass = mergePassOnce(orderedSplines, current, joins, posTol, planeTol, minLength, minSamples, maxSamples);
+        const pass = mergePassOnce(orderedSplines, current, joins, posTol, planeTol, minLength, numSamples);
         current = pass.segments;
         changed = pass.changed;
     }
@@ -722,24 +930,14 @@ export function mergeUntilStable(
     return current;
 }
 
-/**
- * One greedy left-to-right merge pass.
- *
- * Merge rules:
- * - Only consider adjacent segments.
- * - Do not merge if the boundary crosses a HARD join.
- * - Try to fit union as a LINE first; if fails, try ARC.
- * - Accept merge only if union max error <= posTol (and plane error <= planeTol, if used).
- */
 export function mergePassOnce(
-    orderedSplines is array,
-    segments is array,
-    joins is array,
-    posTol is ValueWithUnits,
-    planeTol is ValueWithUnits,
-    minLength is ValueWithUnits,
-    minSamples is number,
-    maxSamples is number) returns map
+        orderedSplines is array,
+        segments is array,
+        joins is array,
+        posTol is ValueWithUnits,
+        planeTol is ValueWithUnits,
+        minLength is ValueWithUnits,
+        numSamples is number) returns map
 {
     var out = [];
     var i = 0;
@@ -764,16 +962,13 @@ export function mergePassOnce(
         }
 
         const unionSeg = makeUnionSegment(a, b);
+        const fit = fitLineOrArcForSegment(orderedSplines, unionSeg, posTol, planeTol, numSamples);
 
-        // Attempt union fit
-        const fit = fitLineOrArcForSegment(orderedSplines, unionSeg, posTol, planeTol, minSamples, maxSamples);
-
-        // Validate fit error (placeholder always succeeds right now)
-        if (isFitAcceptable(orderedSplines, fit, posTol, planeTol, minSamples, maxSamples))
+        if (isFitAcceptable(fit, posTol))
         {
             out = append(out, fit);
             changed = true;
-            i += 2; // consumed two segments
+            i += 2;
         }
         else
         {
@@ -785,140 +980,112 @@ export function mergePassOnce(
     return { "segments" : out, "changed" : changed };
 }
 
-/**
- * Decide whether two segments are allowed to merge, based on HARD joins.
- *
- * IMPORTANT:
- * - We do NOT require tangency between primitives.
- * - We only prevent merges that cross joins that were classified as "hard"
- *   from the ORIGINAL ordered BSpline chain.
- */
 function canAttemptMergeAcrossBoundary(a is map, b is map, joins is array) returns boolean
 {
-    // If segments come from the same source curve, always okay to attempt.
     if (a.curveIndex1 == b.curveIndex0)
     {
         if (a.curveIndex1 == a.curveIndex0 && b.curveIndex0 == b.curveIndex1)
         {
-            // Same curve boundary
             return true;
         }
 
-        // Crossing a curve-to-curve boundary. That boundary index is curveIndex1 (join between curveIndex1 and curveIndex1+1)
-        const joinIndex = a.curveIndex1; // join between curveIndex1 and curveIndex1+1
+        const joinIndex = a.curveIndex1;
         if (joinIndex >= 0 && joinIndex < size(joins))
+        {
             return !joins[joinIndex].isHard;
+        }
 
-        // If we don't have join info, be conservative:
         return false;
     }
-
-    // Non-adjacent in source indexing => do not merge (shouldn't happen if segments are well formed)
     return false;
 }
 
-/**
- * Create a union segment map from two adjacent segments.
- */
 function makeUnionSegment(a is map, b is map) returns map
 {
     return {
-        "type" : "unfit",
-        "p0" : a.p0,
-        "p1" : b.p1,
-        "curveIndex0" : a.curveIndex0, "u0" : a.u0,
-        "curveIndex1" : b.curveIndex1, "u1" : b.u1
-    };
+            "type" : "unfit",
+            "p0" : a.p0,
+            "p1" : b.p1,
+            "curveIndex0" : a.curveIndex0, "u0" : a.u0,
+            "curveIndex1" : b.curveIndex1, "u1" : b.u1
+        };
 }
 
 /**
- * Placeholder acceptance test.
- * Replace with sampling-based max deviation to primitive.
+ * A fit is acceptable iff it has a known type and its max deviation is within posTol.
+ * The maxErr is the REAL point-to-primitive distance (computed in fitLineOrArcForSegment),
+ * not the chord error.
  */
-function isFitAcceptable(
-    orderedSplines is array,
-    seg is map,
-    posTol is ValueWithUnits,
-    planeTol is ValueWithUnits,
-    minSamples is number,
-    maxSamples is number) returns boolean
+function isFitAcceptable(fit is map, posTol is ValueWithUnits) returns boolean
 {
-    // TODO: Evaluate curve points over [u0,u1] (across multiple curves if needed),
-    // compute point-to-line or point-to-arc distance, track max.
-    return true;
+    if (fit.type != "line" && fit.type != "arc")
+    {
+        return false;
+    }
+    if (fit.maxErr == undefined)
+    {
+        return false;
+    }
+    return fit.maxErr <= posTol;
 }
 
 /** --------------------------------------------------------------------------
- * Low-level evaluation stubs (you will replace with your existing backend)
+ * Low-level evaluation helpers (real implementations using evaluateSpline)
  * -------------------------------------------------------------------------- */
 
 /**
  * Evaluate a BSplineCurve at parameter u.
- * NOTE: This is a stub. Implement with your NURBS evaluator.
  */
 function evalBSplineAtParam(c is map, u is number) returns Vector
 {
     const dom = getSplineDomain(c);
-
-    // Clamp u to the valid domain to avoid weird behavior
     const uu = clamp(u, dom.uMin, dom.uMax);
 
     const result = evaluateSpline({
-        "spline" : c,
-        "parameters" : [uu],
-        "nDerivatives" : 0
-    });
+                "spline" : c,
+                "parameters" : [uu],
+                "nDerivatives" : 0
+            });
 
-    // result[0][0] is the position at parameters[0]
     return result[0][0];
 }
 
 /**
- * Endpoint convenience: start or end point.
+ * Endpoint convenience: evaluates at the actual domain endpoints (knots[degree] / knots[n]),
+ * not control points.
  */
 function evalBSplineEndPoint(c is map, isStart is boolean) returns Vector
 {
-    // TODO: evaluate at uMin/uMax using knot vector endpoints.
-    // For clamped splines, uMin = knots[degree], uMax = knots[n+1] typically.
-    // Placeholder uses control points.
-    return isStart ? c.controlPoints[0] : c.controlPoints[size(c.controlPoints) - 1];
+    const dom = getSplineDomain(c);
+    const u = isStart ? dom.uMin : dom.uMax;
+    return evalBSplineAtParam(c, u);
 }
 
 /**
- * Evaluate tangent (unit direction) at start/end.
- * Stub: you’ll implement using your curve derivative evaluator.
+ * Evaluate first-derivative tangent at start/end via evaluateSpline.
  */
 function evalBSplineEndTangent(c is map, isStart is boolean) returns Vector
 {
-    // TODO: compute derivative at uMin/uMax and normalize.
-    // Placeholder uses chord between first/last two control points.
-    if (isStart)
-    {
-        var d = c.controlPoints[min(1, size(c.controlPoints)-1)] - c.controlPoints[0];
-        const n = norm(d);
-        return (n == 0 * meter) ? vector([1,0,0]) : d / n;
-    }
-    else
-    {
-        const ncp = size(c.controlPoints);
-        var d = c.controlPoints[ncp - 1] - c.controlPoints[max(0, ncp - 2)];
-        const n = norm(d);
-        return (n == 0 * meter) ? vector([1,0,0]) : d / n;
-    }
+    const dom = getSplineDomain(c);
+    const u = isStart ? dom.uMin : dom.uMax;
+
+    const result = evaluateSpline({
+                "spline" : c,
+                "parameters" : [u],
+                "nDerivatives" : 1
+            });
+
+    return result[1][0];
 }
 
-
-
-/**
- * Return true if two tangent vectors differ by more than the given dot tolerance.
- * Vectors do NOT need to be unit; normalization is handled internally.
- */
 export function tangentMismatch(a is Vector, b is Vector, dotTol is number) returns boolean
 {
     const na = norm(a);
     const nb = norm(b);
     if (na == 0 || nb == 0)
-        return true; // treat undefined tangent as mismatch
+    {
+        return true;
+    }
 
     const ua = a / na;
     const ub = b / nb;
@@ -928,45 +1095,51 @@ export function tangentMismatch(a is Vector, b is Vector, dotTol is number) retu
 
 /**
  * Sample positions along a single BSplineCurve segment [u0, u1].
- * Uses evaluateSpline (no custom de Boor needed).
  */
 function sampleSplineSegmentPositions(c is map, u0 is number, u1 is number, n is number) returns array
 {
-    // Ensure increasing order
     var a = u0;
     var b = u1;
     if (b < a)
     {
-        const tmp = a; a = b; b = tmp;
+        const tmp = a;
+        a = b;
+        b = tmp;
+    }
+
+    var nClamped = n;
+    if (nClamped < 2)
+    {
+        nClamped = 2;
     }
 
     var params = [];
-    if (n < 2) n = 2;
-    for (var i = 0; i < n; i += 1)
+    for (var i = 0; i < nClamped; i += 1)
     {
-        const t = i / (n - 1);
+        const t = i / (nClamped - 1);
         params = append(params, a + (b - a) * t);
     }
 
     const res = evaluateSpline({
-        "spline" : c,
-        "parameters" : params,
-        "nDerivatives" : 0
-    });
+                "spline" : c,
+                "parameters" : params,
+                "nDerivatives" : 0
+            });
 
-    return res[0]; // positions
+    return res[0];
 }
 
 /**
  * Max distance from points to the infinite chord line through p0->p1.
- * (For short segments, infinite vs segment distance doesn't matter much; we can tighten later.)
  */
 function maxDistanceToChord(points is array, p0 is Vector, p1 is Vector) returns ValueWithUnits
 {
     var d = p1 - p0;
     const L = norm(d);
     if (L == 0 * meter)
+    {
         return 0 * meter;
+    }
     const u = d / L;
 
     var maxErr = 0 * meter;
@@ -976,50 +1149,55 @@ function maxDistanceToChord(points is array, p0 is Vector, p1 is Vector) returns
         const proj = dot(v, u) * u;
         const perp = v - proj;
         const e = norm(perp);
-        if (e > maxErr) maxErr = e;
+        if (e > maxErr)
+        {
+            maxErr = e;
+        }
     }
     return maxErr;
 }
 
 /**
  * Fit a circle through 3 points (if non-collinear).
- * Returns undefined if points are nearly collinear.
  */
 function circleThrough3Points(p0 is Vector, pm is Vector, p1 is Vector) returns map
 {
-    // Plane normal
     const a = pm - p0;
     const b = p1 - p0;
     const nRaw = cross(a, b);
     const nLen = norm(nRaw);
     if (nLen == 0 * meter * meter)
-        return undefined; // collinear => no circle
+    {
+        return undefined;
+    }
 
-    const n = nRaw / nLen; // unit normal (unitless)
+    const n = nRaw / nLen;
 
-    // Build plane basis (u,v) in the plane
     const uRaw = a;
     const uLen = norm(uRaw);
     if (uLen == 0 * meter)
+    {
         return undefined;
-    const u = uRaw / uLen;      // unitless
-    const v = cross(n, u);      // unitless
+    }
+    const u = uRaw / uLen;
+    const v = cross(n, u);
 
-    // 2D coordinates in (u,v) with origin at p0
-    const Bx = dot(a, u);  const By = dot(a, v);
-    const Cx = dot(b, u);  const Cy = dot(b, v);
+    const Bx = dot(a, u);
+    const By = dot(a, v);
+    const Cx = dot(b, u);
+    const Cy = dot(b, v);
 
-    const B2 = Bx*Bx + By*By;
-    const C2 = Cx*Cx + Cy*Cy;
-    
+    const B2 = Bx * Bx + By * By;
+    const C2 = Cx * Cx + Cy * Cy;
+
     const D = 2 * (Bx * Cy - By * Cx);
-    
-    // Scale-aware threshold: compares against typical magnitude of D.
-    // B2 and C2 are length^2 already.
-    const scale2 = B2 + C2;            // length^2
-    const eps2 = scale2 * 1e-12;       // length^2 (tunable)
+
+    const scale2 = B2 + C2;
+    const eps2 = scale2 * 1e-12;
     if (abs(D) < eps2)
+    {
         return undefined;
+    }
 
     const Ux = (B2 * Cy - By * C2) / D;
     const Uy = (Bx * C2 - B2 * Cx) / D;
@@ -1027,14 +1205,12 @@ function circleThrough3Points(p0 is Vector, pm is Vector, p1 is Vector) returns 
     const center = p0 + Ux * u + Uy * v;
     const R = norm(p0 - center);
 
-    // Define circle coord system:
-    // - origin at center
-    // - zAxis = n
-    // - xAxis = direction from center to p0
     var xAxis = p0 - center;
     const xLen = norm(xAxis);
     if (xLen == 0 * meter)
+    {
         return undefined;
+    }
     xAxis = xAxis / xLen;
 
     const cs = { "origin" : center, "xAxis" : xAxis, "zAxis" : n };
@@ -1043,19 +1219,132 @@ function circleThrough3Points(p0 is Vector, pm is Vector, p1 is Vector) returns 
 }
 
 /**
- * Angle of a point on the circle in the circle's coordSystem.
+ * Angle of a point on the circle in the circle's coordSystem (radians as number).
  */
 function circleAngle(circle is map, p is Vector) returns number
 {
     const cs = circle.coordSystem;
-    const c = cs.origin;
-    const x = cs.xAxis;
-    const y = cross(cs.zAxis, cs.xAxis);
+    const ctr = cs.origin;
+    const xa = cs.xAxis;
+    const ya = cross(cs.zAxis, cs.xAxis);
 
-    const v = p - c;
-    const vx = dot(v, x);
-    const vy = dot(v, y);
+    const v = p - ctr;
+    const vx = dot(v, xa);
+    const vy = dot(v, ya);
 
-    // atan2 returns an Angle (ValueWithUnits). Convert to unitless radians.
     return atan2(vy, vx) / radian;
+}
+
+/**
+ * Return the 3D point on a circle at the given angle (radians as number).
+ */
+function arcPointAt(circle is map, theta is number) returns Vector
+{
+    const cs = circle.coordSystem;
+    const ya = cross(cs.zAxis, cs.xAxis);
+    const a = theta * radian;
+    return cs.origin + circle.radius * (cos(a) * cs.xAxis + sin(a) * ya);
+}
+
+/**
+ * True iff theta lies inside the swept arc range from theta0 to theta1.
+ * The sweep direction is the sign of (theta1 - theta0). Handles |sweep| up to ~2 PI.
+ */
+function angleInArcRange(theta is number, theta0 is number, theta1 is number) returns boolean
+{
+    const d = theta1 - theta0;
+    if (abs(d) >= 2 * PI - 1e-9)
+    {
+        return true;
+    }
+
+    var phi = theta - theta0;
+    while (phi > 2 * PI)
+    {
+        phi -= 2 * PI;
+    }
+    while (phi < -2 * PI)
+    {
+        phi += 2 * PI;
+    }
+
+    if (d >= 0)
+    {
+        if (phi < 0)
+        {
+            phi += 2 * PI;
+        }
+        return phi <= d + 1e-9;
+    }
+    else
+    {
+        if (phi > 0)
+        {
+            phi -= 2 * PI;
+        }
+        return phi >= d - 1e-9;
+    }
+}
+
+/**
+ * Distance from a 3D point to a circular arc.
+ *
+ * If the point's projection onto the circle plane has angle inside [theta0, theta1],
+ * distance = sqrt((radial - R)^2 + outOfPlane^2).
+ * Otherwise, distance = min(distance to arc start, distance to arc end).
+ */
+export function pointToArcDistance3D(p is Vector, circle is map, theta0 is number, theta1 is number) returns ValueWithUnits
+{
+    const cs = circle.coordSystem;
+    const ctr = cs.origin;
+    const xa = cs.xAxis;
+    const za = cs.zAxis;
+    const ya = cross(za, xa);
+    const R = circle.radius;
+
+    const v = p - ctr;
+    const outOfPlane = dot(v, za);
+    const vx = dot(v, xa);
+    const vy = dot(v, ya);
+    const radial = sqrt(vx * vx + vy * vy);
+
+    const theta = atan2(vy, vx) / radian;
+
+    if (angleInArcRange(theta, theta0, theta1))
+    {
+        const radialErr = radial - R;
+        return sqrt(radialErr * radialErr + outOfPlane * outOfPlane);
+    }
+    else
+    {
+        const pStart = arcPointAt(circle, theta0);
+        const pEnd = arcPointAt(circle, theta1);
+        const dStart = norm(p - pStart);
+        const dEnd = norm(p - pEnd);
+        return (dStart < dEnd) ? dStart : dEnd;
+    }
+}
+
+/**
+ * Compute max point-to-arc deviation across pre-sampled points and report the
+ * source-curve parameter at which the max occurred (for split-point selection).
+ */
+function arcSamplesMaxError(pts is array, circle is map, theta0 is number, theta1 is number, u0 is number, u1 is number) returns map
+{
+    var maxErr = 0 * meter;
+    var maxIdx = 0;
+    const n = size(pts);
+    for (var i = 0; i < n; i += 1)
+    {
+        const e = pointToArcDistance3D(pts[i], circle, theta0, theta1);
+        if (e > maxErr)
+        {
+            maxErr = e;
+            maxIdx = i;
+        }
+    }
+
+    const t = (n > 1) ? (maxIdx / (n - 1)) : 0;
+    const uMax = u0 + (u1 - u0) * t;
+    return { "maxErr" : maxErr, "uMax" : uMax };
 }
