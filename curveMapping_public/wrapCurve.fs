@@ -206,6 +206,17 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 3. Approximation options (with defaults for when showAdvanced is false)
         var degree = definition.approximationDegree;
 
+        // One-time reconciliation of from/to frame normal orientation at the reference points.
+        // getFrameAtArcLength already produces a continuous (cumulative-sign-corrected) xAxis
+        // along each path, so cross-path alignment is fixed at the reference and applied
+        // uniformly to every sample. Doing the toSign-vs-fromSign comparison per-sample
+        // double-corrects whenever either path crosses an inflection, flipping the offset
+        // to the opposite side of the to-curve.
+        var fromRefFrame = getFrameAtArcLength(context, fromFrenetPath, fromRefArc);
+        var toRefFrame   = getFrameAtArcLength(context, toFrenetPath,   toRefArc);
+        var refToSign    = definition.flipToNormal ? -1 * toRefFrame.sign : toRefFrame.sign;
+        var flipToXAxis  = (refToSign != fromRefFrame.sign);
+
         // 4. For each source curve: sample, map, fit, create
         var allSegEdges           = [];
         var allSegBodies          = [];
@@ -271,16 +282,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 // Get to-frame at mapped arc-length
                 var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
 
-                // Determine effective to-frame normal sign (apply flipToNormal toggle)
-                var toSign = toResult.sign;
-                if (definition.flipToNormal)
-                {
-                    toSign = -1 * toSign;
-                }
-
-                // Reconcile normal sign: if from/to normals are on opposite sides, flip to-frame xAxis
+                // Apply the one-time reference reconciliation (computed before the loop).
                 var toFrameResult = toResult;
-                if (toSign != fromResult.sign)
+                if (flipToXAxis)
                 {
                     var flippedFrame = coordSystem(toResult.frame.origin,
                                                    -1 * toResult.frame.xAxis,
@@ -342,8 +346,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
                 var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
                 var toResult_0      = getFrameAtArcLength(context, toFrenetPath, s_to_0);
-                var toSign_0        = definition.flipToNormal ? -1 * toResult_0.sign : toResult_0.sign;
-                var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
+                var toFrameResult_0 = flipToXAxis
                     ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
                     : toResult_0;
                 junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
@@ -420,17 +423,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var pt_junction = junctionLine.origin;
                     var srcTangent  = srcFlipped ? -1 * junctionLine.direction : junctionLine.direction;
 
-                    // Map through frames with same sign-reconciliation as main loop
+                    // Map through frames; apply the same one-time reference reconciliation.
                     var fromResult_j  = getFrameAtArcLength(context, fromFrenetPath, s_from_junction);
                     var localCoords_j = worldPointToFrenet(pt_junction, fromResult_j);
                     var toResult_j    = getFrameAtArcLength(context, toFrenetPath, s_to_boundary);
-                    var toSign_j      = toResult_j.sign;
-                    if (definition.flipToNormal)
-                    {
-                        toSign_j = -1 * toSign_j;
-                    }
                     var toFrameResult_j = toResult_j;
-                    if (toSign_j != fromResult_j.sign)
+                    if (flipToXAxis)
                     {
                         toFrameResult_j = mergeMaps(toResult_j, { "frame":
                             coordSystem(toResult_j.frame.origin, -1 * toResult_j.frame.xAxis, toResult_j.frame.zAxis) });
@@ -454,8 +452,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                             var localCoords_e = worldPointToFrenet(extraLine.origin, fromResult_e);
                             var s_to_extra    = toRefArc + (sFrom_extra - fromRefArc);
                             var toResult_e    = getFrameAtArcLength(context, toFrenetPath, s_to_extra);
-                            var toSign_e      = definition.flipToNormal ? -1 * toResult_e.sign : toResult_e.sign;
-                            var toFrameResult_e = (toSign_e != fromResult_e.sign)
+                            var toFrameResult_e = flipToXAxis
                                 ? mergeMaps(toResult_e, { "frame": coordSystem(toResult_e.frame.origin, -1 * toResult_e.frame.xAxis, toResult_e.frame.zAxis) })
                                 : toResult_e;
                             segPoints = append(segPoints, frenetPointToWorld(localCoords_e, toFrameResult_e));
@@ -500,8 +497,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
                     var s_to_end          = toRefArc + (s_from_end - fromRefArc);
                     var toResult_end      = getFrameAtArcLength(context, toFrenetPath, s_to_end);
-                    var toSign_end        = definition.flipToNormal ? -1 * toResult_end.sign : toResult_end.sign;
-                    var toFrameResult_end = (toSign_end != fromResult_end.sign)
+                    var toFrameResult_end = flipToXAxis
                         ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
                         : toResult_end;
                     junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
