@@ -1,4 +1,4 @@
-FeatureScript 2892;
+﻿FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/extend.fs", version : "2892.0");
 import(path : "onshape/std/faceIntersection.fs", version : "2892.0");
@@ -7,7 +7,7 @@ import(path : "onshape/std/loft.fs", version : "2892.0");
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
-// import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
+// import swRoutRegions -- bounds, region processing, intersection rebuild
 export import(path : "7e3b271854475bf6cf878b2b", version : "7a7ace076afa389075c27fee");
 
 
@@ -19,6 +19,15 @@ export enum SWRoutContinuityType
     G0,
     annotation { "Name" : "G1" }
     G1
+}
+
+// Defined here (not in swRoutRegions) because enums used as feature
+// parameter types must live in the feature file. swRoutRegions compares
+// against the string literal "ALONG_REF" to avoid a circular import.
+export enum SWRoutExtentType
+{
+    QUERY,
+    ALONG_REF
 }
 
 
@@ -48,7 +57,10 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
     if (size(definition.swRoutRegions) > 0)
     {
         var sortedRegions = definition.swRoutRegions;  // fallback: unsorted
-        try silent
+        // Only sort when the geometry inputs resolve; otherwise leave order as-is
+        // so the UI keeps working before the user has picked refWire / origin.
+        if (!isQueryEmpty(context, definition.refWire) &&
+                !isQueryEmpty(context, definition.refWireOrigin))
         {
             var refWirePath = constructPath(context,
                     qOwnedByBody(definition.refWire, EntityType.EDGE));
@@ -309,9 +321,8 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var rKey   = toString(r);
 
             // --- Step 0: copy and trim reference surfaces, compute signs ---
-            var tMid       = (region.tStart + region.tEnd) / 2;
-            var midTL      = evPathTangentLines(context, refWirePath, [tMid]);
-            var probePoint = midTL.tangentLines[0].origin;
+            // Multi-point probe so the keep-test works on curved regions (e.g. tip arc).
+            var probePoints = regionProbePoints(context, refWirePath, region.tStart, region.tEnd);
 
             opPattern(context, id + ("bottomCopy" ~ r), {
                     "entities"      : definition.bottomSheet,
@@ -327,13 +338,24 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             });
             var sideQ = qCreatedBy(id + ("sideCopy" ~ r), EntityType.BODY);
 
-            var startPl = createRegionBoundingPlane(context, refWirePath, region.tStart);
-            bottomQ = splitAndKeep(context, id + ("trimBotStart" ~ r), bottomQ, startPl, probePoint);
-            sideQ   = splitAndKeep(context, id + ("trimSideStart" ~ r), sideQ, startPl, probePoint);
+            // Skip the boundary trim when the region reaches the ref wire endpoint:
+            // there's nothing "before t=0" or "after t=1" to remove, and the boundary
+            // plane there is tangent to a curving path (e.g. tip apex) so it can split
+            // the body along the wrong axis.
+            const EDGE_EPS = 1e-4;
+            if (region.tStart > EDGE_EPS)
+            {
+                var startPl = createRegionBoundingPlane(context, refWirePath, region.tStart);
+                bottomQ = splitAndKeep(context, id + ("trimBotStart" ~ r), bottomQ, startPl, probePoints);
+                sideQ   = splitAndKeep(context, id + ("trimSideStart" ~ r), sideQ, startPl, probePoints);
+            }
 
-            var endPl = createRegionBoundingPlane(context, refWirePath, region.tEnd);
-            bottomQ = splitAndKeep(context, id + ("trimBotEnd" ~ r), bottomQ, endPl, probePoint);
-            sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoint);
+            if (region.tEnd < 1 - EDGE_EPS)
+            {
+                var endPl = createRegionBoundingPlane(context, refWirePath, region.tEnd);
+                bottomQ = splitAndKeep(context, id + ("trimBotEnd" ~ r), bottomQ, endPl, probePoints);
+                sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoints);
+            }
 
             // Compute offset signs from the trimmed copies for this region.
             var bFace   = qNthElement(qOwnedByBody(bottomQ, EntityType.FACE), 0);
@@ -447,18 +469,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             }
             if (size(naturalQs) > 0 && preExtendDist > 0 * meter)
             {
-                try
-                {
-                    extendSurface(context, id + ("preExtendStopSide" ~ r), {
-                            "entities"           : qUnion(naturalQs),
-                            "tangentPropagation" : true,
-                            "endCondition"       : ExtendBoundingType.BLIND,
-                            "oppositeDirection"  : false,
-                            "extendDistance"     : preExtendDist,
-                            "maintainCurvature"  : true
-                    });
-                }
-                catch {}
+                extendSurface(context, id + ("preExtendStopSide" ~ r), {
+                        "entities"           : qUnion(naturalQs),
+                        "tangentPropagation" : true,
+                        "endCondition"       : ExtendBoundingType.BLIND,
+                        "oppositeDirection"  : false,
+                        "extendDistance"     : preExtendDist,
+                        "maintainCurvature"  : true
+                });
             }
 
             opOffsetFace(context, id + ("stopBottomOffset" ~ r), {
@@ -492,18 +510,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         EdgeTopology.ONE_SIDED);
                 if (!isQueryEmpty(context, fallbackEdges))
                 {
-                    try
-                    {
-                        extendSurface(context, id + ("extendStopSide" ~ r), {
-                                "entities"           : fallbackEdges,
-                                "tangentPropagation" : true,
-                                "endCondition"       : ExtendBoundingType.BLIND,
-                                "oppositeDirection"  : false,
-                                "extendDistance"     : gapDist + 1 * millimeter,
-                                "maintainCurvature"  : true
-                        });
-                    }
-                    catch {}
+                    extendSurface(context, id + ("extendStopSide" ~ r), {
+                            "entities"           : fallbackEdges,
+                            "tangentPropagation" : true,
+                            "endCondition"       : ExtendBoundingType.BLIND,
+                            "oppositeDirection"  : false,
+                            "extendDistance"     : gapDist + 1 * millimeter,
+                            "maintainCurvature"  : true
+                    });
                 }
             }
 
@@ -603,25 +617,14 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 var finalBody = bodies[0];
                 if (size(bodies) > 1)
                 {
-                    try
-                    {
-                        opBoolean(context, id + ("combineFinal" ~ r ~ "_" ~ s), {
-                                "tools"         : qUnion(bodies),
-                                "operationType" : BooleanOperationType.UNION
-                        });
-                    }
-                    catch {}
+                    opBoolean(context, id + ("combineFinal" ~ r ~ "_" ~ s), {
+                            "tools"         : qUnion(bodies),
+                            "operationType" : BooleanOperationType.UNION
+                    });
                     var unionResult = qCreatedBy(id + ("combineFinal" ~ r ~ "_" ~ s), EntityType.BODY);
                     if (!isQueryEmpty(context, unionResult))
                     {
                         finalBody = unionResult;
-                    }
-                    else
-                    {
-                        for (var b in bodies)
-                        {
-                            if (!isQueryEmpty(context, b)) { finalBody = b; break; }
-                        }
                     }
                 }
 
@@ -904,7 +907,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             var bodiesA = getBodiesForRegion(rAIdx, regionMergedBody, regionFinalSurfs, sideNames);
             var bodiesB = getBodiesForRegion(rBIdx, regionMergedBody, regionFinalSurfs, sideNames);
 
-            // bodiesA first — the first tool's query persists through the union,
+            // bodiesA first -- the first tool's query persists through the union,
             // so subsequent intersections can resolve regionMergedBody correctly.
             var toUnion = [];
             for (var b in bodiesA) { toUnion = append(toUnion, b); }
@@ -1063,11 +1066,11 @@ function pointToPlaneDistance(pt is Vector, plane is Plane) returns ValueWithUni
 /**
  * Filter a pre-evaluated edge query to those lying on a given plane.
  *
- * @param edges      : Query  — already-filtered edge candidates
- * @param testPlane  : Plane  — plane(origin, normal)
- * @param coplanar   : boolean — true = all sampled points must be on plane
+ * @param edges      : Query  -- already-filtered edge candidates
+ * @param testPlane  : Plane  -- plane(origin, normal)
+ * @param coplanar   : boolean -- true = all sampled points must be on plane
  *                               false = midpoint only
- * @param tolerance  : ValueWithUnits — distance tolerance (e.g. 1e-8 * meter)
+ * @param tolerance  : ValueWithUnits -- distance tolerance (e.g. 1e-8 * meter)
  */
 function qEdgesOnPlane(context is Context, edges is Query, testPlane is Plane,
                        coplanar is boolean, tolerance is ValueWithUnits) returns Query
@@ -1092,48 +1095,95 @@ function qEdgesOnPlane(context is Context, edges is Query, testPlane is Plane,
             if (abs(pointToPlaneDistance(tangentLine.origin, testPlane)) > tolerance)
             {
                 onPlane = false;
-                break;  // early exit — no need to check remaining samples
+                break;  // early exit -- no need to check remaining samples
             }
         }
 
         if (onPlane)
+        {
             result = qUnion([result, edge]);
+        }
     }
 
     return result;
 }
 
+// Samples 5 evenly-spaced points along the ref wire path between tStart and tEnd.
+// Used as probe points by splitAndKeep so the keep-test sees multiple positions
+// along a curved region (e.g. a tip arc) rather than just the midpoint.
+function regionProbePoints(context is Context, refWirePath is Path,
+        tStart is number, tEnd is number) returns array
+{
+    const N = 5;
+    var ts = [];
+    for (var i = 0; i < N; i += 1)
+    {
+        ts = append(ts, tStart + (tEnd - tStart) * (i + 0.5) / N);
+    }
+    var tls = evPathTangentLines(context, refWirePath, ts).tangentLines;
+    var pts = [];
+    for (var i = 0; i < size(tls); i += 1)
+    {
+        pts = append(pts, tls[i].origin);
+    }
+    return pts;
+}
+
+
+// Minimum distance from any probe point to any sampled point on any face of body.
+// Sampling uses face parameter centres rather than the bbox centre so the test
+// doesn't drift into the hollow of a U-shaped piece.
+function minFaceSampleDistance(context is Context, body is Query,
+        probePoints is array) returns ValueWithUnits
+{
+    var faces = evaluateQuery(context, qOwnedByBody(body, EntityType.FACE));
+    if (size(faces) == 0)
+    {
+        return 1e10 * meter;
+    }
+    var samples = [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.75, 0.75),
+                   vector(0.25, 0.75), vector(0.75, 0.25)];
+    var best = 1e10 * meter;
+    for (var f in faces)
+    {
+        for (var s in samples)
+        {
+            var pt = evFaceTangentPlane(context, { "face" : f, "parameter" : s }).origin;
+            for (var p in probePoints)
+            {
+                var d = norm(pt - p);
+                if (d < best)
+                {
+                    best = d;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+
 /**
- * Splits body with boundPlane, keeps the piece whose bounding-box center is
- * closest to probePoint, deletes the other.  Returns the query of the kept
- * piece.  If the plane does not intersect the body, returns body unchanged.
+ * Splits body with boundPlane, keeps the piece whose face-sample distance to
+ * any probe point is smallest, deletes the other.  Returns the query of the
+ * kept piece.  If only one piece survives the split, returns it (no choice
+ * needed).  If neither does, returns body unchanged.
  */
 function splitAndKeep(context is Context, id is Id, body is Query,
-        boundPlane is Plane, probePoint is Vector) returns Query
+        boundPlane is Plane, probePoints is array) returns Query
 {
     // opSplitPart requires a Query tool -- create a temporary construction plane
     opPlane(context, id + "pl", { "plane" : boundPlane });
     var planeQ = qCreatedBy(id + "pl", EntityType.BODY);
 
-    var splitOk = false;
-    try
-    {
-        opSplitPart(context, id + "split", {
-                "targets"    : body,
-                "tool"       : planeQ,
-                "keepTools"  : false
-        });
-        splitOk = true;
-    }
-    catch {}
+    opSplitPart(context, id + "split", {
+            "targets"    : body,
+            "tool"       : planeQ,
+            "keepTools"  : false
+    });
 
     // opSplitPart does not delete construction planes regardless of keepTools
-    try silent(opDeleteBodies(context, id + "delPl", { "entities" : planeQ }));
-
-    if (!splitOk)
-    {
-        return body;
-    }
+    opDeleteBodies(context, id + "delPl", { "entities" : planeQ });
 
     var pieceA = qSplitBy(id + "split", EntityType.BODY, false);
     var pieceB = qSplitBy(id + "split", EntityType.BODY, true);
@@ -1146,12 +1196,10 @@ function splitAndKeep(context is Context, id is Id, body is Query,
     if (aEmpty) { return pieceB; }
     if (bEmpty) { return pieceA; }
 
-    var bbA = evBox3d(context, { "topology" : pieceA, "tight" : true });
-    var bbB = evBox3d(context, { "topology" : pieceB, "tight" : true });
-    var cA  = (bbA.minCorner + bbA.maxCorner) / 2;
-    var cB  = (bbB.minCorner + bbB.maxCorner) / 2;
+    var distA = minFaceSampleDistance(context, pieceA, probePoints);
+    var distB = minFaceSampleDistance(context, pieceB, probePoints);
 
-    if (norm(cA - probePoint) <= norm(cB - probePoint))
+    if (distA <= distB)
     {
         opDeleteBodies(context, id + "del", { "entities" : pieceB });
         return pieceA;
@@ -1249,33 +1297,26 @@ function sortBodiesByMeanY(context is Context, bodies is array) returns array
 // Combines all edges of a wire body into a single approximated BSpline.
 // Uses constructPath to order the edges and evPathTangentLines for uniform
 // arc-length sampling.  Returns the new single-edge wire body; the original
-// wireBody is deleted.  Falls back to returning the original on any failure.
+// wireBody is deleted.
 function combineWireEdges(context is Context, id is Id, wireBody is Query) returns Query
 {
-    try
+    var pl = constructPath(context, qOwnedByBody(wireBody, EntityType.EDGE));
+    const N = 60;
+    var pts = [];
+    for (var k = 0; k <= N; k += 1)
     {
-        var pl = constructPath(context, qOwnedByBody(wireBody, EntityType.EDGE));
-        const N = 60;
-        var pts = [];
-        for (var k = 0; k <= N; k += 1)
-        {
-            pts = append(pts, evPathTangentLines(context, pl, [k / N]).tangentLines[0].origin);
-        }
-        var curve = approximateSpline(context, {
-                "targets"          : [approximationTarget({ "positions" : pts })],
-                "degree"           : 3,
-                "tolerance"        : 1e-5 * meter,
-                "isPeriodic"       : false,
-                "maxControlPoints" : 200
-        })[0];
-        opDeleteBodies(context, id + "Del", { "entities" : wireBody });
-        opCreateBSplineCurve(context, id + "Crv", { "bSplineCurve" : curve });
-        return qCreatedBy(id + "Crv", EntityType.BODY);
+        pts = append(pts, evPathTangentLines(context, pl, [k / N]).tangentLines[0].origin);
     }
-    catch
-    {
-        return wireBody;
-    }
+    var curve = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : pts })],
+            "degree"           : 3,
+            "tolerance"        : 1e-5 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : 200
+    })[0];
+    opDeleteBodies(context, id + "Del", { "entities" : wireBody });
+    opCreateBSplineCurve(context, id + "Crv", { "bSplineCurve" : curve });
+    return qCreatedBy(id + "Crv", EntityType.BODY);
 }
 
 
@@ -1353,7 +1394,8 @@ function intersectAndGetWires(context is Context, id is Id,
             evaluateQuery(context, qCreatedBy(id, EntityType.BODY)));
     for (var s = 0; s < size(wires); s += 1)
     {
-        setBodyName(context, wires[s], label ~ " " ~ sideNames[s]);
+        var sideName = (s < size(sideNames)) ? sideNames[s] : ("extra " ~ toString(s));
+        setBodyName(context, wires[s], label ~ " " ~ sideName);
     }
     if (combineCurves)
     {
@@ -1394,32 +1436,20 @@ function loftWireStep(context is Context, id is Id,
             var midPt = evEdgeTangentLine(context, { "edge" : aEdge, "parameter" : 0.5 }).origin;
             var bEdge = qClosestTo(bEdgesQ, midPt);
             var lId   = id + (idPrefix ~ r ~ "_" ~ s ~ "_" ~ i);
-            try
-            {
-                opLoft(context, lId, {
-                        "profileSubqueries" : [aEdge, bEdge],
-                        "bodyType"          : ToolBodyType.SURFACE
-                });
-                loftedSurfs = append(loftedSurfs, qCreatedBy(lId, EntityType.BODY));
-            }
-            catch
-            {
-                addDebugEntities(context, bEdge,  DebugColor.RED);
-                addDebugEntities(context, aEdge, DebugColor.GREEN);
-            }
+            opLoft(context, lId, {
+                    "profileSubqueries" : [aEdge, bEdge],
+                    "bodyType"          : ToolBodyType.SURFACE
+            });
+            loftedSurfs = append(loftedSurfs, qCreatedBy(lId, EntityType.BODY));
         }
 
         if (size(loftedSurfs) > 1)
         {
             var boolId = id + ("combine" ~ idPrefix ~ r ~ "_" ~ s);
-            try
-            {
-                opBoolean(context, boolId, {
-                        "tools"         : qUnion(loftedSurfs),
-                        "operationType" : BooleanOperationType.UNION
-                });
-            }
-            catch {}
+            opBoolean(context, boolId, {
+                    "tools"         : qUnion(loftedSurfs),
+                    "operationType" : BooleanOperationType.UNION
+            });
             var boolResult = qCreatedBy(boolId, EntityType.BODY);
             if (!isQueryEmpty(context, boolResult)) { loftedSurfs[0] = boolResult; }
         }
