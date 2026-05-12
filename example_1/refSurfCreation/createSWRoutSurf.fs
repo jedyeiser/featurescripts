@@ -1420,9 +1420,11 @@ function intersectAndGetWires(context is Context, id is Id,
 }
 
 
-// Lofts paired wire edges from wiresA to wiresB, accumulates each loft body into
-// regionSurfBodies[rsKey] where rsKey = rKey ~ "_" ~ toString(s).
-// idPrefix, rKey, and iteration index i are combined to form each opLoft id.
+// Lofts each paired wire as a single connected profile.  Each wire body (which
+// may be a closed loop wrapping the tip or an open chain on a straight section)
+// is fed to opLoft whole; the kernel handles the topology.  This avoids the
+// "closest edge by midpoint" pairing trap, which mis-pairs +Y/-Y arms when a
+// single wire body contains both (Tip and Tail regions).
 function loftWireStep(context is Context, id is Id,
         wiresA is array, wiresB is array,
         idPrefix is string, r, rKey is string,
@@ -1433,42 +1435,24 @@ function loftWireStep(context is Context, id is Id,
     var pairs = pairWiresByMeanY(context, wiresA, wiresB);
     for (var p in pairs)
     {
-        var s          = p.a;
-        var aEdges     = qUnion([qOwnedByBody(wiresA[p.a], EntityType.EDGE)]);
-        var bEdgesQ    = qUnion([qOwnedByBody(wiresB[p.b], EntityType.EDGE)]);
-        var iterEdges  = evaluateQuery(context, aEdges);
-        var loftedSurfs = [];
+        var s        = p.a;
+        var aProfile = qOwnedByBody(wiresA[p.a], EntityType.EDGE);
+        var bProfile = qOwnedByBody(wiresB[p.b], EntityType.EDGE);
+        var lId      = id + (idPrefix ~ r ~ "_" ~ s);
 
-        for (var i = 0; i < size(iterEdges); i += 1)
-        {
-            var aEdge = iterEdges[i];
-            var midPt = evEdgeTangentLine(context, { "edge" : aEdge, "parameter" : 0.5 }).origin;
-            var bEdge = qClosestTo(bEdgesQ, midPt);
-            var lId   = id + (idPrefix ~ r ~ "_" ~ s ~ "_" ~ i);
-            opLoft(context, lId, {
-                    "profileSubqueries" : [aEdge, bEdge],
-                    "bodyType"          : ToolBodyType.SURFACE
-            });
-            loftedSurfs = append(loftedSurfs, qCreatedBy(lId, EntityType.BODY));
-        }
+        opLoft(context, lId, {
+                "profileSubqueries" : [aProfile, bProfile],
+                "bodyType"          : ToolBodyType.SURFACE
+        });
+        var loftedBody = qCreatedBy(lId, EntityType.BODY);
 
-        if (size(loftedSurfs) > 1)
+        if (!isQueryEmpty(context, loftedBody))
         {
-            var boolId = id + ("combine" ~ idPrefix ~ r ~ "_" ~ s);
-            opBoolean(context, boolId, {
-                    "tools"         : qUnion(loftedSurfs),
-                    "operationType" : BooleanOperationType.UNION
-            });
-            var boolResult = qCreatedBy(boolId, EntityType.BODY);
-            if (!isQueryEmpty(context, boolResult)) { loftedSurfs[0] = boolResult; }
-        }
-
-        if (size(loftedSurfs) > 0)
-        {
-            setBodyName(context, loftedSurfs[0], nameLabel ~ rName ~ "] " ~ sideNames[s]);
+            var sideName = (s < size(sideNames)) ? sideNames[s] : ("extra " ~ toString(s));
+            setBodyName(context, loftedBody, nameLabel ~ rName ~ "] " ~ sideName);
             var rsKey = rKey ~ "_" ~ toString(s);
             var prev  = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
-            regionSurfBodies[rsKey] = append(prev, loftedSurfs[0]);
+            regionSurfBodies[rsKey] = append(prev, loftedBody);
         }
     }
     return regionSurfBodies;
