@@ -7,7 +7,7 @@ import(path : "onshape/std/loft.fs", version : "2892.0");
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
-// import swRoutRegions -- bounds, region processing, intersection rebuild
+// import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
 export import(path : "7e3b271854475bf6cf878b2b", version : "7a7ace076afa389075c27fee");
 
 
@@ -19,15 +19,6 @@ export enum SWRoutContinuityType
     G0,
     annotation { "Name" : "G1" }
     G1
-}
-
-// Defined here (not in swRoutRegions) because enums used as feature
-// parameter types must live in the feature file. swRoutRegions compares
-// against the string literal "ALONG_REF" to avoid a circular import.
-export enum SWRoutExtentType
-{
-    QUERY,
-    ALONG_REF
 }
 
 
@@ -57,9 +48,27 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
     if (size(definition.swRoutRegions) > 0)
     {
         var sortedRegions = definition.swRoutRegions;  // fallback: unsorted
-        // Only sort when the geometry inputs resolve; otherwise leave order as-is
-        // so the UI keeps working before the user has picked refWire / origin.
-        if (!isQueryEmpty(context, definition.refWire) &&
+
+        // Only sort when every region's extent inputs are ready.  A QUERY-mode
+        // region without two picked points would throw inside processSwRoutRegions
+        // -- valid at regen time, but during editing we want the UI to keep working
+        // while the user is still filling in picks.
+        var allRegionsReady = true;
+        for (var reg in definition.swRoutRegions)
+        {
+            if (reg.extentType == SWRoutExtentType.QUERY)
+            {
+                if (reg.extentQueries == undefined ||
+                        size(evaluateQuery(context, reg.extentQueries)) != 2)
+                {
+                    allRegionsReady = false;
+                    break;
+                }
+            }
+        }
+
+        if (allRegionsReady &&
+                !isQueryEmpty(context, definition.refWire) &&
                 !isQueryEmpty(context, definition.refWireOrigin))
         {
             var refWirePath = constructPath(context,

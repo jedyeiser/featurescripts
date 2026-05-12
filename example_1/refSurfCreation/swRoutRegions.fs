@@ -5,10 +5,13 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "d41884a96244793beb462449", version : "2311652bc87faaf67ce79c7d");
 
 
-// Note: SWRoutExtentType lives in createSWRoutSurf.fs because enums used as
-// feature parameter types must be defined in the feature file.  We compare
-// against the string literal "ALONG_REF" below to avoid a circular import --
-// in FeatureScript enum values equal their case-name string at runtime.
+// --- Enums -------------------------------------------------------------------
+
+export enum SWRoutExtentType
+{
+    QUERY,
+    ALONG_REF
+}
 
 
 // --- Bounds ------------------------------------------------------------------
@@ -56,7 +59,7 @@ export function processSwRoutRegions(context is Context, id is Id,
         var tStart;
         var tEnd;
 
-        if (region.extentType == "ALONG_REF")
+        if (region.extentType == SWRoutExtentType.ALONG_REF)
         {
             tStart = tOrigin + dirSign * region.startX / totalLength;
             tEnd   = tOrigin + dirSign * region.endX   / totalLength;
