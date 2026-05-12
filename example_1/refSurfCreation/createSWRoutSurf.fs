@@ -1,4 +1,4 @@
-﻿FeatureScript 2892;
+FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/extend.fs", version : "2892.0");
 import(path : "onshape/std/faceIntersection.fs", version : "2892.0");
