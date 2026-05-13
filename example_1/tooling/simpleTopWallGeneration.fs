@@ -435,12 +435,29 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                     annotation { "Group Name" : "Step through", "Collapsed By Default" : false,
                                  "Driving Parameter" : "stepThrough" }
                     {
-                        annotation { "Name" : "Step 0 - CD split + path", "Default" : false }
+                        annotation { "Name" : "Step 0 - processPath", "Default" : false }
                         definition.step0 is boolean;
 
-                        annotation { "Name" : "Step 1 - Regions processed", "Default" : false }
+                        annotation { "Name" : "Step 1 - setupCDSplit", "Default" : false }
                         definition.step1 is boolean;
 
+                        annotation { "Name" : "Step 2 - processRegions", "Default" : false }
+                        definition.step2 is boolean;
+
+                        annotation { "Name" : "Step 3 - per-region wall builds", "Default" : false }
+                        definition.step3 is boolean;
+
+                        annotation { "Name" : "Step 4 - intersection joinData (no lofts)", "Default" : false }
+                        definition.step4 is boolean;
+
+                        annotation { "Name" : "Step 5 - intersection join lofts", "Default" : false }
+                        definition.step5 is boolean;
+
+                        annotation { "Name" : "Step 6 - wallBodyMaps assembly", "Default" : false }
+                        definition.step6 is boolean;
+
+                        annotation { "Name" : "Step 7 - wall CD/top + pinch fillet", "Default" : false }
+                        definition.step7 is boolean;
                     }
                 }
 
@@ -449,15 +466,24 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
 
                 annotation { "Name" : "Show ref frames", "Default" : false }
                 definition.showRefFrames is boolean;
-                
+
                 annotation { "Name" : "Show eval planes", "Default" : false }
                 definition.showEvalPlanes is boolean;
 
-                annotation { "Name" : "Show wall bottom wire", "Default" : false }
+                annotation { "Name" : "Show wall bottom points", "Default" : false }
                 definition.showWallBottom is boolean;
 
-                annotation { "Name" : "Show wall top wire", "Default" : false }
+                annotation { "Name" : "Show wall top points", "Default" : false }
                 definition.showWallTop is boolean;
+
+                annotation { "Name" : "Show wall edge classification (start/end/internal)", "Default" : false }
+                definition.showWallClassification is boolean;
+
+                annotation { "Name" : "Show join edges (cyan=start, magenta=end)", "Default" : false }
+                definition.showJoinEdges is boolean;
+
+                annotation { "Name" : "Show pinch vertices", "Default" : false }
+                definition.showPinchVertices is boolean;
             }
         }
     }
@@ -490,24 +516,24 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             showRefFrames(context, processedPath, false, false);
         }
 
-        // ── Step 0: Split CD surface with swRout ───────────────────────────────
+        if (definition.debug && definition.stepThrough && !definition.step0)
+        {
+            return;
+        }
+
+        // ── Step 1: Split CD surface with swRout ───────────────────────────────
         if (definition.printLog) { println("[TWG2] setupCDSplit..."); }
         var cdSplit = setupCDSplit(context, id + "setup", definition.cdSurf, definition.swRoutSurf);
         if (definition.printLog) { println("[TWG2] setupCDSplit done"); }
         // cdSplit.inside  = CD strip inside swRout cavity; its laminar edges are the pinch edges.
         // cdSplit.outside = remaining CD surface, retained for bottom-trim (Step 4 stub).
 
-        if (definition.debug && definition.stepThrough && !definition.step0)
-        {
-            return;
-        }
-
         if (definition.debug && definition.stepThrough && !definition.step1)
         {
             return;
         }
 
-        // ── Step 1: Overlap validation + process regions ───────────────────────
+        // ── Step 2: Overlap validation + process regions ───────────────────────
         var regionsForOverlapCheck = [];
         for (var r = 0; r < size(definition.regions); r += 1)
         {
@@ -547,7 +573,13 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             }
         }
 
-        // ── Pass A: Copy + trim one CD strip per region ────────────────────────
+        if (definition.debug && definition.stepThrough && !definition.step2)
+        {
+            return;
+        }
+
+        // ── Step 3: Per-region wall builds (CD strip trim, lofts, union, classify)
+        //           Pass A: Copy + trim one CD strip per region ────────────────
         var regionData = [];
         for (var r = 0; r < size(processedRegions); r += 1)
         {
@@ -570,9 +602,12 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 "propertyType" : PropertyType.NAME,
                 "value"        : reg.name ~ " cd strip"
             });
-            
-            println('keys(region.startFrame) -> ' ~ keys(region.startFrame));
-            
+
+            if (definition.printLog)
+            {
+                println("  keys(region.startFrame) -> " ~ keys(region.startFrame));
+            }
+
             var startFrame = frameAtPoint(context, processedPath, region.startFrame.origin);
             var endFrame = frameAtPoint(context, processedPath, region.endFrame.origin);
             
@@ -650,7 +685,10 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 
                 if ((startDist.distance < 0.01 * millimeter) && (endDist.distance < 0.01 * millimeter)) //if start and endpoints are within 0.01mm of the top surface - don't do a thing
                 {
-                    println('skipping an edge!');
+                    if (definition.printLog)
+                    {
+                        println("  skipping edge " ~ i ~ " (both endpoints on topSurf)");
+                    }
                 }
                 
                 else
@@ -767,16 +805,28 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         var bottomDelta = -1 * millimeter; //amount to 'shift' the bottom wire so that it is always below the CD surf. 
                         
                         
-                        edgeBuildMap['botPoints'] = append(edgeBuildMap['botPoints'], pt + y_Axis * bottomOffset + (bottomDelta * xAxis + tan(wallAngle) * bottomDelta * y_Axis));
-                        edgeBuildMap['topPoints'] = append(edgeBuildMap['topPoints'], pt + y_Axis * topOffset + xAxis * surfHeight);
+                        var botPt = pt + y_Axis * bottomOffset + (bottomDelta * xAxis + tan(wallAngle) * bottomDelta * y_Axis);
+                        var topPt = pt + y_Axis * topOffset + xAxis * surfHeight;
+                        edgeBuildMap['botPoints'] = append(edgeBuildMap['botPoints'], botPt);
+                        edgeBuildMap['topPoints'] = append(edgeBuildMap['topPoints'], topPt);
 
-                        if (definition.showEvalPlanes)
+                        if (definition.debug && definition.showEvalPlanes)
                         {
                             addDebugPoint(context, pt, DebugColor.BLACK);
                             addDebugArrow(context, pt, pt + xAxis * 10 * millimeter, 1.5 * millimeter, DebugColor.RED);
                             addDebugArrow(context, pt, pt + y_Axis * 10 * millimeter, 1.5 * millimeter, DebugColor.GREEN);
                         }
-                        
+
+                        if (definition.debug && definition.showWallBottom)
+                        {
+                            addDebugPoint(context, botPt, DebugColor.BLUE);
+                        }
+
+                        if (definition.debug && definition.showWallTop)
+                        {
+                            addDebugPoint(context, topPt, DebugColor.RED);
+                        }
+
                     }
                     
                     edgeBuildMap['bottomBSpline'] = approximateSpline(context, {
@@ -922,8 +972,11 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                     {
                         flagFaces = append(flagFaces, groupFaces[f]);
                         var possibleEdges = qIntersection([qOwnedByBody(groupSurfs[0], EntityType.EDGE), qGeometry(qEdgeTopologyFilter(qAdjacent(groupFaces[f], AdjacencyType.EDGE, EntityType.EDGE), EdgeTopology.ONE_SIDED), GeometryType.LINE)]);
-                        //addDebugEntities(context, possibleEdges, DebugColor.CYAN);
                         var evalEdges = evaluateQuery(context, possibleEdges);
+                        if (definition.printLog)
+                        {
+                            println("    region " ~ r ~ " group " ~ g ~ " face " ~ f ~ ": " ~ size(evalEdges) ~ " candidate edges");
+                        }
                         for (var ee = 0; ee < size(evalEdges); ee += 1)
                         {
                             var startDist = evDistance(context, {
@@ -934,21 +987,30 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                                     "side0" : evalEdges[ee],
                                     "side1" : plane(region.endFrame.origin, region.endFrame.zAxis)
                             });
-                            
+
                             if (startDist.distance < 0.5 * millimeter)
                             {
                                 groupMap['starts'] = any(keys(groupMap), function(x) {return x == 'starts';}) ? append(groupMap.starts, {'edge' : evalEdges[ee], 'face' : groupFaces[f]}) : [{'edge' : evalEdges[ee], 'face' : groupFaces[f]}];
-                                //addDebugEntities(context, evalEdges[ee], DebugColor.CYAN);
+                                if (definition.debug && definition.showWallClassification)
+                                {
+                                    addDebugEntities(context, evalEdges[ee], DebugColor.CYAN);
+                                }
                             }
                             else if (endDist.distance < 0.5 * millimeter)
                             {
                                 groupMap['ends'] = any(keys(groupMap), function(x) {return x == 'ends';}) ? append(groupMap.ends, {'edge' : evalEdges[ee], 'face' : groupFaces[f]}) : [{'edge' : evalEdges[ee], 'face' : groupFaces[f]}];
-                                //addDebugEntities(context, evalEdges[ee], DebugColor.CYAN);
+                                if (definition.debug && definition.showWallClassification)
+                                {
+                                    addDebugEntities(context, evalEdges[ee], DebugColor.MAGENTA);
+                                }
                             }
                             else
                             {
                                 groupMap['internals'] = any(keys(groupMap), function(x) {return x == 'internals';}) ? append(groupMap.internals, {'edge' : evalEdges[ee], 'face' : groupFaces[f]}) : [{'edge' : evalEdges[ee], 'face' : groupFaces[f]}];
-                                //addDebugEntities(context, evalEdges[ee], DebugColor.MAGENTA);
+                                if (definition.debug && definition.showWallClassification)
+                                {
+                                    addDebugEntities(context, evalEdges[ee], DebugColor.YELLOW);
+                                }
                             }
                         }
                     }
@@ -964,12 +1026,18 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             });
             */
             
-           processedRegions[r] = region; 
+           processedRegions[r] = region;
         }
-        
-        
-        
-        for (var ix = 0; ix < size(definition.intersections); ix += 1) // Loop over intersections to create blends. 
+
+        if (definition.debug && definition.stepThrough && !definition.step3)
+        {
+            return;
+        }
+
+        // ── Step 4: Build intersection joinData (no lofts yet) ────────────────
+        // perIxJoins[ix] holds the array of joinData maps for intersection ix.
+        var perIxJoins = [];
+        for (var ix = 0; ix < size(definition.intersections); ix += 1) // Loop over intersections to create blends.
         {
             var startRegionNum = definition.intersections[ix].regionANum;
             var endRegionNum = definition.intersections[ix].regionBNum;
@@ -1034,31 +1102,70 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         }
                         
                         joins = append(joins, {
-                            'startEdge' : startEdge, 
-                            'endEdge' : endEdge, 
-                            'startFace' : startFace, 
-                            'endFace' : endFace, 
-                            'startOffset' : definition.intersections[ix].joinStartOffset, 
+                            'startEdge' : startEdge,
+                            'endEdge' : endEdge,
+                            'startFace' : startFace,
+                            'endFace' : endFace,
+                            'startOffset' : definition.intersections[ix].joinStartOffset,
                             'endOffset' : definition.intersections[ix].joinEndOffset,
                             'startBody' : startWall.body,
-                            'endBody' : endWall.body, 
+                            'endBody' : endWall.body,
                             'startInternals' : (any(keys(startWall), function(x) {return x == "internals";})) ? startWall.internals : undefined,
                             'endInternals' : (any(keys(endWall), function(x) {return x == "internals";})) ? endWall.internals : undefined
                         });
-                        
+
                     }
                 }
             }
-            
+
+            perIxJoins = append(perIxJoins, joins);
+        }
+
+        if (definition.printLog)
+        {
+            for (var ix = 0; ix < size(perIxJoins); ix += 1)
+            {
+                println("[TWG2] intersection " ~ ix ~ ": " ~ size(perIxJoins[ix]) ~ " joins constructed");
+            }
+        }
+
+        if (definition.debug && definition.showJoinEdges)
+        {
+            for (var ix = 0; ix < size(perIxJoins); ix += 1)
+            {
+                var ixJoins = perIxJoins[ix];
+                for (var j = 0; j < size(ixJoins); j += 1)
+                {
+                    if (!isQueryEmpty(context, ixJoins[j].startEdge))
+                    {
+                        addDebugEntities(context, ixJoins[j].startEdge, DebugColor.CYAN);
+                    }
+                    if (!isQueryEmpty(context, ixJoins[j].endEdge))
+                    {
+                        addDebugEntities(context, ixJoins[j].endEdge, DebugColor.MAGENTA);
+                    }
+                }
+            }
+        }
+
+        if (definition.debug && definition.stepThrough && !definition.step4)
+        {
+            return;
+        }
+
+        // ── Step 5: Loft each intersection join ───────────────────────────────
+        for (var ix = 0; ix < size(definition.intersections); ix += 1)
+        {
+            var joins = perIxJoins[ix];
             for (var j = 0; j < size(joins); j += 1)
             {
                 var joinData = joins[j];
                 var moveStart = joinData.startOffset > 0 * millimeter;
                 var moveEnd = joinData.endOffset > 0 * millimeter;
-                
+
                 var moveStartTracker = qNothing();
                 var moveEndTracker = qNothing();
-                
+
                 if (moveStart)
                 {
                     moveStartTracker = startTracking(context, joinData.startEdge);
@@ -1066,12 +1173,12 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         "entities" : joinData.startEdge,
                         "tangentPropagation" : false,
                         "endCondition" : ExtendBoundingType.BLIND,
-                        "oppositeDirection" : true, 
+                        "oppositeDirection" : true,
                         "extendDistance" : joinData.startOffset,
                         "maintainCurvature" : false
                         });
                 }
-                
+
                 if (moveEnd)
                 {
                     moveEndTracker = startTracking(context, joinData.endEdge);
@@ -1079,50 +1186,54 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         "entities" : joinData.endEdge,
                         "tangentPropagation" : false,
                         "endCondition" : ExtendBoundingType.BLIND,
-                        "oppositeDirection" : true, 
+                        "oppositeDirection" : true,
                         "extendDistance" : joinData.endOffset,
                         "maintainCurvature" : false
                         });
                 }
-                
+
                 loft(context, id + ('intersection_' ~ ix ~ '_join_' ~ j ~"_loft"), {
                     "bodyType" : ExtendedToolBodyType.SURFACE,
                     "surfaceOperationType" : NewSurfaceOperationType.NEW,
                     "wireProfilesArray" : [
-                        {'wireProfileEntities' : qUnion([moveStart ? moveStartTracker : joinData.startEdge])}, 
+                        {'wireProfileEntities' : qUnion([moveStart ? moveStartTracker : joinData.startEdge])},
                         {'wireProfileEntities' : qUnion([moveEnd ? moveEndTracker : joinData.endEdge])}
-                        ], 
+                        ],
                     "startCondition" : (definition.intersections[ix].startContinuity == IntersectionContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
                     "adjacentFacesStart" : joinData.startFace,
                     "startMagnitude" : 1,
                     "endCondition" : (definition.intersections[ix].endContinuity == IntersectionContinuityType.G0) ? LoftEndDerivativeType.DEFAULT : LoftEndDerivativeType.MATCH_TANGENT,
                     "adjacentFacesEnd" : joinData.endFace,
-                    "endMagnitude" : 1, 
-                    "addGuides" : false, 
-                    "addSections" : false, 
-                    "matchConnections" : false, 
-                    "makePeriodic" : false, 
+                    "endMagnitude" : 1,
+                    "addGuides" : false,
+                    "addSections" : false,
+                    "matchConnections" : false,
+                    "makePeriodic" : false,
                     "showIsocurves" : false
                     });
-                    
+
                 var joinQ = qCreatedBy(id + ('intersection_' ~ ix ~ '_join_' ~ j ~"_loft"), EntityType.BODY);
-                
+
                 setProperty(context, {
                         "entities" : joinQ,
                         "propertyType" : PropertyType.NAME,
                         "value" : ('intersection_' ~ ix ~ '_join_' ~ j ~"_loft")
                 });
-                
+
                 joins[j] = mergeMaps(joinData, {'joinBody' : joinQ});
-                
-                
             }
-            
-            definition.intersections[ix]['joins'] = joins;   
-            
+
+            definition.intersections[ix]['joins'] = joins;
         }
-        
-        // we now have ordered join data per intersection. Iterate over intersections again, joining bodies as necessary and creating trim planes where necessary (cd = 0). 
+
+        if (definition.debug && definition.stepThrough && !definition.step5)
+        {
+            return;
+        }
+
+        // ── Step 6: Wall body collection (wallBodyMaps) ───────────────────────
+        // Iterate over intersections again, joining bodies as necessary and
+        // creating trim planes where necessary (cd = 0).
         var wallBodyMaps = [];
         var curWallBodies = [];
         var curInsideBodies = [];
@@ -1296,8 +1407,12 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             //println('justCombined ' ~ ("WALL_" ~ wbm));
             
             var hasInternals = (size(bodyMap['insideBodies']) > 0); // has inside bodies
-            println('hasInternals -> ' ~ hasInternals);
-            
+            if (definition.printLog)
+            {
+                println("  wallBodyMap " ~ wbm ~ ": hasInternals=" ~ hasInternals ~
+                        ", " ~ size(bodyMap.wallBodies) ~ " wall bodies");
+            }
+
             bodyMap['wallSeed'] = keepQ;
             
             opPattern(context, id + ("copyWall" ~ wbm ~ "cdCopy"), {
@@ -1343,7 +1458,18 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             
             wallBodyMaps[wbm] = bodyMap;
         }
-        
+
+        if (definition.printLog)
+        {
+            println("[TWG2] wallBodyMaps assembled  count=" ~ size(wallBodyMaps));
+        }
+
+        if (definition.debug && definition.stepThrough && !definition.step6)
+        {
+            return;
+        }
+
+        // ── Step 7: Per-wall CD/top split + pinch fillet ──────────────────────
         opPattern(context, id + ("copyCD_forwork"), {
                 "entities" : definition.cdSurf,
                 "transforms" : [identityTransform()],
@@ -1431,7 +1557,10 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             wallBodyMaps[wbm]['pinchEdges'] = pinchEdges;
             
             var pinchVerticies = qIntersection([qOwnedByBody(wallBodyMaps[wbm].wallSeed, EntityType.VERTEX), qAdjacent(pinchEdges, AdjacencyType.VERTEX, EntityType.VERTEX)]);
-            addDebugEntities(context, pinchVerticies, DebugColor.RED);
+            if (definition.debug && definition.showPinchVertices)
+            {
+                addDebugEntities(context, pinchVerticies, DebugColor.RED);
+            }
             
             opPattern(context, id + ("copyCDForNoFillets" ~ wbm), {
                     "entities" : wallBodyMaps[wbm].wallSeed,
@@ -1560,28 +1689,34 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             "entities" : qUnion([cdSplit.inside, cdSplit.outside])
         });
 
-        // ── Step 7: Join region intersections ──────────────────────────────────
-        
     }, {
-        "flipDirection"   : false,
-        "mode"            : TopWallMode.FULL,
-        "wallHeight"      : 20 * millimeter,
-        "cpMultiplier"    : 4,
-        "approxDegree"    : 3,
-        "approxTolerance" : 0.01 * millimeter,
-        "approxMaxCP"     : 100,
-        "regions"         : [],
-        "intersections"   : [],
-        "debug"           : false,
-        "stepThrough"     : false,
-        "step0"           : false,
-        "step1"           : false,
-        "step2"           : false,
-        "step3"           : false,
-        "printLog"        : false,
-        "showRefFrames"   : false,
-        "showWallBottom"  : false,
-        "showWallTop"     : false
+        "flipDirection"          : false,
+        "mode"                   : TopWallMode.FULL,
+        "wallHeight"             : 20 * millimeter,
+        "cpMultiplier"           : 4,
+        "approxDegree"           : 3,
+        "approxTolerance"        : 0.01 * millimeter,
+        "approxMaxCP"            : 100,
+        "regions"                : [],
+        "intersections"          : [],
+        "debug"                  : false,
+        "stepThrough"            : false,
+        "step0"                  : false,
+        "step1"                  : false,
+        "step2"                  : false,
+        "step3"                  : false,
+        "step4"                  : false,
+        "step5"                  : false,
+        "step6"                  : false,
+        "step7"                  : false,
+        "printLog"               : false,
+        "showRefFrames"          : false,
+        "showEvalPlanes"         : false,
+        "showWallBottom"         : false,
+        "showWallTop"            : false,
+        "showWallClassification" : false,
+        "showJoinEdges"          : false,
+        "showPinchVertices"      : false
     });
     
 
