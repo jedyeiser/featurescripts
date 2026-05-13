@@ -708,14 +708,37 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                     var kRange = (maxK - minK);
                     
                     paramRange = mapArray(paramRange, function(x) { return minK + x * (kRange);});
-                    
+
                     var evalPoints = evaluateSpline({
                             "spline" : seedBSpline,
                             "parameters" : paramRange
                     });
-                    
+
+                    // Precompute per-control-point path tParam.
+                    // Greville abscissa for CP c = (knots[c+1] + knots[c+2] + ... + knots[c+degree]) / degree.
+                    // For each CP, project to refPath once to get its tParam. Per-sample-point
+                    // tParam is then linear-interpolated in (greville-edge-param) space rather
+                    // than re-projecting every sample (expensive, and produces clustered results
+                    // when sample points project to clamped path locations).
+                    var cpCount = size(seedBSpline.controlPoints);
+                    var cpKnots = seedBSpline.knots;
+                    var cpDeg   = seedBSpline.degree;
+                    var greville  = makeArray(cpCount);
+                    var cpTParams = makeArray(cpCount);
+                    for (var c = 0; c < cpCount; c += 1)
+                    {
+                        var gSum = 0;
+                        for (var jg = 1; jg <= cpDeg; jg += 1)
+                        {
+                            gSum = gSum + cpKnots[c + jg];
+                        }
+                        greville[c] = gSum / cpDeg;
+                        var cpFrame = frameAtPoint(context, processedPath, seedBSpline.controlPoints[c]);
+                        cpTParams[c] = (cpFrame.distFromRef - startFromRef) / (endFromRef - startFromRef);
+                    }
+
                     var bottomFaces = qUnion([qOwnedByBody(definition.bottomSurf, EntityType.FACE)]);
-                    
+
                     var edgeBuildMap = {'botPoints' : [], 'topPoints' : []};
 
                     for (var ptIdx = 0; ptIdx < size(evalPoints[0]); ptIdx += 1)
@@ -763,10 +786,37 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                             y_Axis = -1 * y_Axis;
                         }
                         
-                        var pointRefFrame = frameAtPoint(context, processedPath, pt);
-                        var pointFromRef = pointRefFrame.distFromRef;
-                        
-                        var transitionParameter = (pointFromRef - startFromRef)/(endFromRef - startFromRef);
+                        // Interpolate transitionParameter from the per-CP tParams using the
+                        // sample's knot-space parameter. Linear interpolation between adjacent
+                        // Greville abscissae. Clamps to endpoint CPs outside the Greville range.
+                        var sKnot = paramRange[ptIdx];
+                        var transitionParameter;
+                        if (sKnot <= greville[0])
+                        {
+                            transitionParameter = cpTParams[0];
+                        }
+                        else if (sKnot >= greville[cpCount - 1])
+                        {
+                            transitionParameter = cpTParams[cpCount - 1];
+                        }
+                        else
+                        {
+                            var hit = false;
+                            for (var cb = 0; cb < cpCount - 1; cb += 1)
+                            {
+                                if (sKnot >= greville[cb] && sKnot <= greville[cb + 1])
+                                {
+                                    var w = (sKnot - greville[cb]) / (greville[cb + 1] - greville[cb]);
+                                    transitionParameter = cpTParams[cb] + w * (cpTParams[cb + 1] - cpTParams[cb]);
+                                    hit = true;
+                                    break;
+                                }
+                            }
+                            if (!hit)
+                            {
+                                transitionParameter = cpTParams[cpCount - 1];
+                            }
+                        }
                         
                         var pinchOffset = 0 * millimeter;
                         var wallAngle = 0 * degree;
@@ -1609,67 +1659,80 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             pinchVerticies = mapArray(pinchVerticies, function(x) {return mergeMaps(x, {'frame' : frameAtPoint(context, processedPath, x.point)});});
             pinchVerticies = mapArray(pinchVerticies, function(x) {return mergeMaps(x, {'distFromRef' : x.frame.distFromRef});});
             
-            var allPinchVertexSettings = []; // all vertex points
-            var startStopPinchVertexSettings = []; //only points closest to starts/stops
-            
+            // Precompute each region's path-extents and pinch-radius bounds once,
+            // so the per-vertex assignment below is a single scan.
+            var regionExtents = [];
             for (var r = 0; r < size(processedRegions); r += 1)
             {
-                // iterate over regions. Filter verticies to ones between region start and end. Solve for pinch radius at each vertex
                 var region = processedRegions[r];
                 var pinchRadiusStart = (region.pinchOffsetType == SimpleOffsetType.CONSTANT) ? region.pinchRadius : region.pinchRadiusStart;
-                var pinchRadiusEnd = (region.pinchOffsetType == SimpleOffsetType.CONSTANT) ? region.pinchRadius : region.pinchRadiusEnd;
-                
-                //println('keys(region) -> ' ~ keys(region));
-                //println('region.pinchOffsetType -> ' ~ region.pinchOffsetType);
-                
+                var pinchRadiusEnd   = (region.pinchOffsetType == SimpleOffsetType.CONSTANT) ? region.pinchRadius : region.pinchRadiusEnd;
                 var regionStartFrame = frameAtPoint(context, processedPath, region.startFrame.origin);
-                var regionEndFrame = frameAtPoint(context, processedPath, region.endFrame.origin);
-                
-                var startFromRef = regionStartFrame.distFromRef;
-                var endFromRef = regionEndFrame.distFromRef;
-                
-                var regionVertexSettings = [];
-                
-                var regionPinchVerticies = filter(pinchVerticies, function(x) {return (x.distFromRef >= startFromRef - 1 * millimeter) && (x.distFromRef <= endFromRef + 1 * millimeter);});
-                
-                for (var rpv = 0; rpv < size(regionPinchVerticies); rpv += 1)
-                {
-                    var thisVertex = regionPinchVerticies[rpv];
-                    if (region.pinchOffsetType == SimpleOffsetType.CONSTANT)
-                    {
-                        regionVertexSettings = append(regionVertexSettings, {'vertex' : thisVertex.query, "vertexRadius" : region.pinchRadius, 'distFromStart' : floor(thisVertex.distFromRef - startFromRef, 1* millimeter)});   
-                    }
-                    else
-                    {
-                        
-                        var thisRegionParam = (thisVertex.distFromRef - startFromRef)/(endFromRef - startFromRef);
-                        var scaleFactor = (region.pinchOffsetType == SimpleOffsetType.LINEAR) ? thisRegionParam : logisticTransition(thisRegionParam);
-                        regionVertexSettings = append(regionVertexSettings, {'vertex' : thisVertex.query, "vertexRadius" : (1 - scaleFactor) * pinchRadiusStart + scaleFactor * pinchRadiusEnd, 'distFromStart' : floor(thisVertex.distFromRef - startFromRef, 1* millimeter)});
-                    }
-
-                }
-                
-                var minFromStart = min(mapArray(regionVertexSettings, function(x) {return x.distFromStart;}));
-                var maxFromStart = max(mapArray(regionVertexSettings, function(x) {return x.distFromStart;}));
-                
-                var startVerticies = filter(regionVertexSettings, function(x) {return x.distFromStart == minFromStart;});
-                var endVerticies = filter(regionVertexSettings, function(x) {return x.distFromStart == maxFromStart;});
-                
-                startVerticies = mapArray(startVerticies, function(x) {return {'vertex' : x.vertex, 'vertexRadius' : x.vertexRadius};});
-                endVerticies = mapArray(endVerticies, function(x) {return {'vertex' : x.vertex, 'vertexRadius' : x.vertexRadius};});
-                
-                var allVerticies = mapArray(regionVertexSettings, function(x) {return {'vertex' : x.vertex, 'vertexRadius' : x.vertexRadius};});
-                
-                allPinchVertexSettings = concatenateArrays([allPinchVertexSettings, allVerticies]);
-                startStopPinchVertexSettings = concatenateArrays([startStopPinchVertexSettings, startVerticies, endVerticies]);
-                
+                var regionEndFrame   = frameAtPoint(context, processedPath, region.endFrame.origin);
+                regionExtents = append(regionExtents, {
+                    "startFromRef"     : regionStartFrame.distFromRef,
+                    "endFromRef"       : regionEndFrame.distFromRef,
+                    "pinchRadiusStart" : pinchRadiusStart,
+                    "pinchRadiusEnd"   : pinchRadiusEnd,
+                    "pinchOffsetType"  : region.pinchOffsetType
+                });
             }
-            
+
+            // Assign each pinch vertex to exactly one region (first containing region wins,
+            // boundary vertices land in the earlier region). Prevents the duplicate-vertex
+            // entries that the prior +/- 1 mm filter window produced at region boundaries,
+            // which silently leaked the next region's radius into the previous region.
+            var allPinchVertexSettings = [];
+            for (var vi = 0; vi < size(pinchVerticies); vi += 1)
+            {
+                var v = pinchVerticies[vi];
+                var ownerR = -1;
+                for (var rr = 0; rr < size(regionExtents); rr += 1)
+                {
+                    var ext = regionExtents[rr];
+                    if (v.distFromRef >= ext.startFromRef && v.distFromRef <= ext.endFromRef)
+                    {
+                        ownerR = rr;
+                        break;
+                    }
+                }
+
+                if (ownerR < 0)
+                {
+                    continue; // vertex outside every region's range; opFillet falls back to default radius
+                }
+
+                var ext = regionExtents[ownerR];
+                var vRadius = 0 * millimeter;
+                if (ext.pinchOffsetType == SimpleOffsetType.CONSTANT)
+                {
+                    vRadius = ext.pinchRadiusStart;
+                }
+                else
+                {
+                    var span = ext.endFromRef - ext.startFromRef;
+                    var rParam = (span == 0 * millimeter) ? 0 : (v.distFromRef - ext.startFromRef) / span;
+                    var scale = (ext.pinchOffsetType == SimpleOffsetType.LINEAR) ? rParam : logisticTransition(rParam);
+                    vRadius = (1 - scale) * ext.pinchRadiusStart + scale * ext.pinchRadiusEnd;
+                }
+
+                allPinchVertexSettings = append(allPinchVertexSettings, {
+                    'vertex'       : v.query,
+                    'vertexRadius' : vRadius
+                });
+            }
+
+            if (definition.printLog)
+            {
+                println("  wbm " ~ wbm ~ ": " ~ size(pinchVerticies) ~ " pinch verts, " ~
+                        size(allPinchVertexSettings) ~ " assigned");
+            }
+
             opFillet(context, id + ("wallBody_" ~ wbm ~ "_pinchFillet"), {
                     "entities" : pinchEdgesRaw,
-                    "radius" : 2 * millimeter, // will be overridden 
-                    "isVariable" : true, 
-                    "vertexSettings" : allPinchVertexSettings, 
+                    "radius" : 0 * millimeter, // fallback for uncovered vertices -- prefer no fillet over leaking a default
+                    "isVariable" : true,
+                    "vertexSettings" : allPinchVertexSettings,
                     "smoothTransition" : true
                     //"smoothCorners" : true
             });
