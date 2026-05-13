@@ -133,9 +133,9 @@ function computePathParam(context is Context, path is Path, edgeIndex is number,
 // =====================================================================
 
 /**
- * Extracts top and bottom reference wires from a side surface, builds a
- * reference bottom surface (extrude + split) and fills the top wire.
- * Returns a map with keys: topWire, bottomWire, refBottomSurf, refTopSurf.
+ * Extracts top and bottom reference wires from a side surface, then builds a
+ * reference bottom surface (extrude + split).
+ * Returns a map with keys: topWire, bottomWire, refBottomSurf.
  */
 export function processSideSurf(context is Context, id is Id, refSheetBody is Query, refWire is Query) returns map
 {
@@ -211,19 +211,6 @@ export function processSideSurf(context is Context, id is Id, refSheetBody is Qu
     retMap["refBottomSurf"] = extrudedBottomBody;
     setProperty(context, { "entities" : retMap["refBottomSurf"], "propertyType" : PropertyType.NAME,       "value" : "refBottomSurf" });
     setProperty(context, { "entities" : retMap["refBottomSurf"], "propertyType" : PropertyType.APPEARANCE, "value" : color(137/255, 218/255, 211/255) });
-
-    // Fill top wire
-    var topRefEdges = qUnion([qOwnedByBody(retMap["topWire"], EntityType.EDGE)]);
-    opFillSurface(context, id + "fillRefTop", {
-        "edgesG0"       : topRefEdges,
-        "edgesG1"       : qNothing(),
-        "edgesG2"       : qNothing(),
-        "guideVertices" : qNothing()
-    });
-
-    retMap["refTopSurf"] = qCreatedBy(id + "fillRefTop", EntityType.BODY);
-    setProperty(context, { "entities" : retMap["refTopSurf"], "propertyType" : PropertyType.NAME,       "value" : "refTopSurf" });
-    setProperty(context, { "entities" : retMap["refTopSurf"], "propertyType" : PropertyType.APPEARANCE, "value" : color(234/255, 185/255, 125/255) });
 
     opDeleteBodies(context, id + "deleteRefWires", {
         "entities" : qUnion([retMap["topWire"], retMap["bottomWire"]])

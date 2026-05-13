@@ -374,11 +374,7 @@ export const variableSurfaceOffset = defineFeature(function(context is Context, 
     }
     {
         var refGeo = processSideSurf(context, id + "getRefWires", definition.sideSurfBody, definition.refWire);
-        
-        opDeleteBodies(context, id + "deleteDummyTop", {
-                "entities" : refGeo.refTopSurf
-        });
-        
+
         var refPath = processPath(context, id, {'userSelection' : definition.refWire, "flipDirection" : definition.flipDirection, "referencePoint" : definition.refPoint, 'numPoints' : max(20, definition.samplingDensity)});
         
         if (definition.debug && definition.showRefFrames)
