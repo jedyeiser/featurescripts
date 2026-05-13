@@ -23,7 +23,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a656fa0d17723f0
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
 const WALL_ANGLE_BOUNDS  = { (degree)     : [0,  10, 89]  } as AngleBoundSpec;
-const WALL_HEIGHT_BOUNDS = { (millimeter) : [1,  20, 200] } as LengthBoundSpec;
+const HEIGHT_ABOVE_TOP_BOUNDS = { (millimeter) : [0.5, 1, 5] } as LengthBoundSpec;
 const RADIUS_BOUNDS      = { (millimeter) : [0,   2,  50] } as LengthBoundSpec;
 const CP_MULT_BOUNDS     = { (unitless)   : [2,   4,  10] } as IntegerBoundSpec;
 
@@ -268,8 +268,9 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
             definition.topSurf is Query;
         }
 
-        annotation { "Name" : "Wall height" }
-        isLength(definition.wallHeight, WALL_HEIGHT_BOUNDS);
+        annotation { "Name" : "Height above top surface",
+                     "Description" : "How far above the top surface the top curves should land. 0.5-5 mm; not precision-critical." }
+        isLength(definition.heightAboveTop, HEIGHT_ABOVE_TOP_BOUNDS);
 
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
@@ -693,8 +694,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 
                 else
                 {
-                    // need to add logic to find zero point of edges that have 0 cd. Part of the edge may be in the CD 
-                    const surfHeight = 20 * millimeter;
+                    // need to add logic to find zero point of edges that have 0 cd. Part of the edge may be in the CD
                     
                     var edgeDegree = seedBSpline.degree;                     
                     var numPoints = definition.cpMultiplier * edgeDegree;
@@ -717,9 +717,10 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                     var bottomFaces = qUnion([qOwnedByBody(definition.bottomSurf, EntityType.FACE)]);
                     
                     var edgeBuildMap = {'botPoints' : [], 'topPoints' : []};
-                    
-                    for (var pt in evalPoints[0])
+
+                    for (var ptIdx = 0; ptIdx < size(evalPoints[0]); ptIdx += 1)
                     {
+                        var pt = evalPoints[0][ptIdx];
                         var bottomDist = evDistance(context, {
                                 "side0" : qOwnedByBody(definition.bottomSurf, EntityType.FACE),
                                 "side1" : pt
@@ -800,13 +801,32 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         
                         //println("bottomDist.sides[0]  -> "  ~ bottomDist.sides[0]);
                         
+                        // surfHeight: distance from this sample point to the top surface
+                        // (along xAxis, the bottom-surface normal) plus the user's buffer.
+                        // evDistance is closest-point distance; close enough here since
+                        // xAxis tracks the local normal and precision isn't critical.
+                        var topSurfDist = evDistance(context, {
+                                "side0" : qOwnedByBody(definition.topSurf, EntityType.FACE),
+                                "side1" : pt
+                        });
+                        var surfHeight = topSurfDist.distance + definition.heightAboveTop;
+
                         var bottomOffset = pinchOffset + calcWallBottomOffset(pinchRadius, wallAngle);
                         var topOffset = bottomOffset + tan(wallAngle) * surfHeight;
-                        var bottomDelta = -1 * millimeter; //amount to 'shift' the bottom wire so that it is always below the CD surf. 
-                        
-                        
+                        var bottomDelta = -1 * millimeter; //amount to 'shift' the bottom wire so that it is always below the CD surf.
+
                         var botPt = pt + y_Axis * bottomOffset + (bottomDelta * xAxis + tan(wallAngle) * bottomDelta * y_Axis);
                         var topPt = pt + y_Axis * topOffset + xAxis * surfHeight;
+
+                        if (definition.printLog && (ptIdx == 0 || ptIdx == size(evalPoints[0]) - 1))
+                        {
+                            println("      edge " ~ i ~ " pt " ~ ptIdx ~ "/" ~ (size(evalPoints[0]) - 1) ~
+                                    ":  tParam=" ~ transitionParameter ~
+                                    "  pinchOffset=" ~ (pinchOffset / millimeter) ~ "mm" ~
+                                    "  wallAngle=" ~ (wallAngle / degree) ~ "deg" ~
+                                    "  pinchRadius=" ~ (pinchRadius / millimeter) ~ "mm" ~
+                                    "  bottomOffset=" ~ (bottomOffset / millimeter) ~ "mm");
+                        }
                         edgeBuildMap['botPoints'] = append(edgeBuildMap['botPoints'], botPt);
                         edgeBuildMap['topPoints'] = append(edgeBuildMap['topPoints'], topPt);
 
@@ -1692,7 +1712,7 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
     }, {
         "flipDirection"          : false,
         "mode"                   : TopWallMode.FULL,
-        "wallHeight"             : 20 * millimeter,
+        "heightAboveTop"         : 1 * millimeter,
         "cpMultiplier"           : 4,
         "approxDegree"           : 3,
         "approxTolerance"        : 0.01 * millimeter,
