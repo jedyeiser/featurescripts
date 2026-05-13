@@ -662,6 +662,17 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                         "  wallBotOffEnd="   ~ wallBotOffEnd   / millimeter ~ " mm" ~
                         "  totalStart="      ~ totalStart      / millimeter ~ " mm" ~
                         "  totalEnd="        ~ totalEnd        / millimeter ~ " mm");
+                println("  region fields: pinchOffsetType=" ~ reg.pinchOffsetType ~
+                        "  isConst-via-eq=" ~ isConst ~
+                        "  pinchRadius=" ~ reg.pinchRadius ~
+                        "  pinchRadiusStart=" ~ reg.pinchRadiusStart ~
+                        "  pinchRadiusEnd=" ~ reg.pinchRadiusEnd ~
+                        "  wallAngle=" ~ reg.wallAngle ~
+                        "  startWallAngle=" ~ reg.startWallAngle ~
+                        "  endWallAngle=" ~ reg.endWallAngle ~
+                        "  pinchOffset=" ~ reg.pinchOffset ~
+                        "  startPinchOffset=" ~ reg.startPinchOffset ~
+                        "  endPinchOffset=" ~ reg.endPinchOffset);
             }
             
             var regionBuildData = [];
@@ -1232,6 +1243,28 @@ export const topWallii = defineFeature(function(context is Context, id is Id, de
                 var joinData = joins[j];
                 var moveStart = joinData.startOffset > 0 * millimeter;
                 var moveEnd = joinData.endOffset > 0 * millimeter;
+
+                if (definition.printLog)
+                {
+                    var startEdgeCount = size(evaluateQuery(context, joinData.startEdge));
+                    var endEdgeCount   = size(evaluateQuery(context, joinData.endEdge));
+                    var startFaceCount = size(evaluateQuery(context, joinData.startFace));
+                    var endFaceCount   = size(evaluateQuery(context, joinData.endFace));
+                    println("  ix " ~ ix ~ " join " ~ j ~
+                            ": startOffset=" ~ (joinData.startOffset / millimeter) ~ "mm" ~
+                            "  endOffset=" ~ (joinData.endOffset / millimeter) ~ "mm" ~
+                            "  startEdge resolves to " ~ startEdgeCount ~ " entity(s)" ~
+                            "  endEdge resolves to " ~ endEdgeCount ~ " entity(s)" ~
+                            "  startFace resolves to " ~ startFaceCount ~ " entity(s)" ~
+                            "  endFace resolves to " ~ endFaceCount ~ " entity(s)" ~
+                            "  moveStart=" ~ moveStart ~ "  moveEnd=" ~ moveEnd);
+                }
+
+                if (definition.debug && definition.showJoinEdges)
+                {
+                    addDebugEntities(context, joinData.startEdge, DebugColor.CYAN);
+                    addDebugEntities(context, joinData.endEdge,   DebugColor.MAGENTA);
+                }
 
                 var moveStartTracker = qNothing();
                 var moveEndTracker = qNothing();
