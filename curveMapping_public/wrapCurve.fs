@@ -193,10 +193,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
-        // Fix 1: Align isolated from-line xAxes with to-path normal.
+        // Fix 1: Bilaterally align isolated line frames between from-path and to-path.
         // Lines adjacent to a curve already got a curve-context xAxis in buildFrenetPath step 4.5;
-        // this handles the isolated-line case (no curve neighbor) by borrowing the to-path normal.
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        // this handles isolated lines on EITHER path (no curve neighbor on its own path) by
+        // borrowing the other path's frame at the corresponding arc-length.
+        var aligned = alignLineFramesBilateral(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        fromFrenetPath = aligned.fromFrenetPath;
+        toFrenetPath   = aligned.toFrenetPath;
 
         if (definition.debugShowFromFrames)
         {

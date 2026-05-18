@@ -402,8 +402,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
-        // ===== Isolated from-line xAxis fix =====
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        // ===== Bilateral isolated-line xAxis fix =====
+        // Symmetric so that line-on-to-path workflows work as well as line-on-from-path.
+        var aligned = alignLineFramesBilateral(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        fromFrenetPath = aligned.fromFrenetPath;
+        toFrenetPath   = aligned.toFrenetPath;
 
         if (definition.debugShowFromFrames)
         {

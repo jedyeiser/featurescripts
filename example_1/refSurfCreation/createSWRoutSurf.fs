@@ -74,12 +74,23 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
             var refWirePath = constructPath(context,
                     qOwnedByBody(definition.refWire, EntityType.EDGE));
             var dirSign = (definition.flipRefWire == true) ? -1 : 1;
-            sortedRegions = processSwRoutRegions(context, id + "elSort",
-                    definition, refWirePath, definition.refWireOrigin, dirSign);
-            sortedRegions = sort(sortedRegions, function(a, b)
+            // Build a canonical (dirSign=+1) pass purely for ordering: flipRefWire
+            // must invert offset sign downstream but must NOT reorder regions or
+            // swap user-assigned identities (e.g. "Tip" vs "Tail").
+            var canonicalRegions = processSwRoutRegions(context, id + "elSortCanon",
+                    definition, refWirePath, definition.refWireOrigin, 1);
+            var canonicalOrder = sort(canonicalRegions, function(a, b)
             {
                 return ((a.tStart + a.tEnd) / 2) - ((b.tStart + b.tEnd) / 2);
             });
+            // Geometric pass uses the actual dirSign for tStart/tEnd values.
+            var geomRegions = processSwRoutRegions(context, id + "elSort",
+                    definition, refWirePath, definition.refWireOrigin, dirSign);
+            sortedRegions = [];
+            for (var i = 0; i < size(canonicalOrder); i += 1)
+            {
+                sortedRegions = append(sortedRegions, geomRegions[canonicalOrder[i].regionNum]);
+            }
         }
 
         var newRegions = [];
@@ -285,8 +296,22 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
 
         var dirSign = definition.flipRefWire ? -1 : 1;
 
-        // Process and sort regions
-        var sortedRegions = processSwRoutRegions(context, id, definition, refWirePath, definition.refWireOrigin, dirSign);
+        // Process and sort regions.
+        // Canonical pass (dirSign=+1) drives ordering so flipRefWire only inverts
+        // offset/normal sign, not region identity. Geometric pass uses actual dirSign.
+        var canonicalRegions = processSwRoutRegions(context, id + "canonSort",
+                definition, refWirePath, definition.refWireOrigin, 1);
+        var canonicalOrder = sort(canonicalRegions, function(a, b)
+        {
+            return ((a.tStart + a.tEnd) / 2) - ((b.tStart + b.tEnd) / 2);
+        });
+        var geomRegions = processSwRoutRegions(context, id, definition, refWirePath,
+                definition.refWireOrigin, dirSign);
+        var sortedRegions = [];
+        for (var i = 0; i < size(canonicalOrder); i += 1)
+        {
+            sortedRegions = append(sortedRegions, geomRegions[canonicalOrder[i].regionNum]);
+        }
         validateSwRoutRegionsNoOverlap(sortedRegions);
         var nRegions = size(sortedRegions);
 

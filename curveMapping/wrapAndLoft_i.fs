@@ -415,10 +415,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
-        // ===== Isolated from-line xAxis fix =====
-        // Pass 1 promotes near-linear projected BSplines to line mode; Pass 2 borrows
-        // the to-path normal for isolated lines that have no adjacent curve neighbor.
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        // ===== Bilateral isolated-line xAxis fix =====
+        // Promotes near-linear projected BSplines to line mode and borrows the other path's
+        // frame at the corresponding arc-length for isolated lines on EITHER path. Symmetric
+        // so that line-on-to-path workflows (e.g. flattening) work as well as line-on-from-path.
+        var aligned = alignLineFramesBilateral(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        fromFrenetPath = aligned.fromFrenetPath;
+        toFrenetPath   = aligned.toFrenetPath;
 
         if (definition.debugShowFromFrames)
         {

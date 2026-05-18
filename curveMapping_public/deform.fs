@@ -160,8 +160,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, getRefPoint(context, definition.fromRef), undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   getRefPoint(context, definition.toRef),   undefined).arcLength;
 
-        // Align isolated from-line xAxes with the to-path normal.
-        fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        // Bilaterally align isolated line frames so from/to xAxes match regardless
+        // of which path the line lives on (e.g. flattening: line is on the to-path).
+        var aligned = alignLineFramesBilateral(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        fromFrenetPath = aligned.fromFrenetPath;
+        toFrenetPath   = aligned.toFrenetPath;
 
         if (definition.debugShowFromFrames)
             debugDrawFrames(context, fromFrenetPath, 10);

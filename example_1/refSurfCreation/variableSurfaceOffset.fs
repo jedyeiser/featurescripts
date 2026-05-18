@@ -28,7 +28,10 @@ export function variableSurfaceOffsetEditingLogic(context is Context, id is Id,
     {
         var sortable = [];
         var unsortable = [];
-        var processedPath = processPath(context, id + "editingLogic", {'userSelection' : definition.refWire, "flipDirection" : definition.flipDirection, "referencePoint" : definition.refPoint, 'numPoints' : max(20, definition.samplingDensity)});
+        // Editing logic uses a canonical (unflipped) path so region order/numbering
+        // is invariant to flipDirection. The executor still honours flipDirection
+        // when building the geometric refPath.
+        var processedPath = processPath(context, id + "editingLogic", {'userSelection' : definition.refWire, "flipDirection" : false, "referencePoint" : definition.refPoint, 'numPoints' : max(20, definition.samplingDensity)});
 
         for (var r = 0; r < size(definition.regions); r += 1)
         {

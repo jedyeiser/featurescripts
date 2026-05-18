@@ -749,6 +749,50 @@ export function alignIsolatedLineFrames(context is Context,
 
 
 // ============================================================================
+// alignLineFramesBilateral
+// ============================================================================
+
+/**
+ * Align isolated line frames in BOTH FrenetPaths so the from/to frames stay
+ * aligned regardless of which path contains the straight line(s).
+ *
+ * Why: alignIsolatedLineFrames is one-directional — it only fixes isolated
+ * lines on the first path by borrowing the second path's xAxis. When the
+ * line lives on the to-path instead (e.g. flattening a bent body with Deform),
+ * the to-path's line keeps its arbitrary world-axis heuristic from
+ * lineFrenetFrame, producing a fixed rotational offset (often 90 deg) between
+ * the from and to frames.
+ *
+ * Calls alignIsolatedLineFrames twice with swapped arguments:
+ *   Pass A: fix from-path isolated lines using the original to-path frames.
+ *   Pass B: fix to-path   isolated lines using the updated  from-path frames.
+ *
+ * Pass B reads the updated from-path so that any line that was just corrected
+ * in Pass A is used as a real reference when the to-path borrows back.
+ *
+ * Use this in place of the one-directional alignIsolatedLineFrames whenever
+ * either path may contain straight-line edges.
+ *
+ * @param context         {Context}
+ * @param fromFrenetPath  {map}            - result from buildFrenetPath
+ * @param toFrenetPath    {map}            - result from buildFrenetPath
+ * @param fromRefArc      {ValueWithUnits} - reference arc-length on from-path
+ * @param toRefArc        {ValueWithUnits} - reference arc-length on to-path
+ * @param linearThreshold {number}         - max lateral deviation fraction (e.g. 0.001)
+ * @returns {map} : { "fromFrenetPath": map, "toFrenetPath": map }
+ */
+export function alignLineFramesBilateral(context is Context,
+    fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits,
+    linearThreshold is number) returns map
+{
+    fromFrenetPath = alignIsolatedLineFrames(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, linearThreshold);
+    toFrenetPath   = alignIsolatedLineFrames(context, toFrenetPath,   fromFrenetPath, toRefArc,   fromRefArc, linearThreshold);
+    return { "fromFrenetPath": fromFrenetPath, "toFrenetPath": toFrenetPath };
+}
+
+
+// ============================================================================
 // sampleSourceEdge
 // ============================================================================
 
