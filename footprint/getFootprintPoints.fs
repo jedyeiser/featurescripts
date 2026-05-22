@@ -484,19 +484,14 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                 });
 
         //9. Footprint analysis on the combined sidecut path
-        try
+        var allBodyParts = concatenateArrays([tipBodyParts, rslBodyParts, tailBodyParts]);
+        var allWireEdges = [];
+        for (var bodyQ in allBodyParts)
         {
-            var allBodyParts = concatenateArrays([tipBodyParts, rslBodyParts, tailBodyParts]);
-            var allWireEdges = [];
-            for (var bodyQ in allBodyParts)
-                allWireEdges = append(allWireEdges, qOwnedByBody(bodyQ, EntityType.EDGE));
-            var fptPath = constructPath(context, qUnion(allWireEdges));
-            analyzeFootprint(context, id + 'getFootprintDataBody', fptPath, definition.rslQuery, definition.showCurvature);
+            allWireEdges = append(allWireEdges, qOwnedByBody(bodyQ, EntityType.EDGE));
         }
-        catch
-        {
-            reportFeatureInfo(context, id, 'FOOTPRINT MUST BE CONTINUIOUS. NO FOOTPRINT DATA ANALYSIS. Cannot form a tangent path from selected edges');
-        }
+        var fptPath = constructPath(context, qUnion(allWireEdges));
+        analyzeFootprint(context, id + 'getFootprintDataBody', fptPath, definition.rslQuery, definition.showCurvature);
 
         //10. Always delete sub-zero discard pieces; optionally delete the rest
         if (size(discardBodies) > 0)
