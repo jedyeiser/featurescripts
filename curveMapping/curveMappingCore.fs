@@ -113,16 +113,20 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
 
         if (isLine)
         {
-            // Build Frenet frame for the line, direction-corrected for traversal
-            var lineDir = curveDef.direction;
-            if (!stdDir)
-                lineDir = -1 * lineDir;
+            // Derive the line tangent from the actual traversal endpoints rather than
+            // curveDef.direction. For a line, curveDef.direction is a fixed geometric
+            // orientation that is INDEPENDENT of the edge's parametric (control-point)
+            // order, so the old "if (!stdDir) lineDir = -lineDir" correction could point
+            // the frame backwards: on a flat to-edge traversed opposite to its CP order
+            // (stdDir=false) the frame ran -x while the path traversed +x, placing the
+            // reference one edge-length off and mirroring every source curve on that edge.
+            var endLines       = evEdgeTangentLines(context, { "edge": edge, "parameters": [0, 1] });
+            var traversalStart = stdDir ? endLines[0].origin : endLines[1].origin;
+            var traversalEnd   = stdDir ? endLines[1].origin : endLines[0].origin;
+            var lineDir        = normalize(traversalEnd - traversalStart);
 
-            lineFrame = lineFrenetFrame({ "origin": curveDef.origin, "direction": lineDir });
-
-            // Store traversal-start position for position interpolation in getFrameAtArcLength
-            var endLines = evEdgeTangentLines(context, { "edge": edge, "parameters": [0, 1] });
-            lineStartPt  = stdDir ? endLines[0].origin : endLines[1].origin;
+            lineFrame   = lineFrenetFrame({ "origin": curveDef.origin, "direction": lineDir });
+            lineStartPt = traversalStart;
         }
         else
         {
