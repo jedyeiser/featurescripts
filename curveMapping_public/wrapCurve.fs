@@ -136,6 +136,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "Default" : false }
             definition.printWrapDetails is boolean;
 
+            annotation { "Name" : "Print arc-length parameterization",
+                        "Description" : "Print both paths' arc-length structure (per-edge arc range and world start/end positions) and each source curve's first/last s_to. Use to diagnose where a source curve maps along the to-path.",
+                        "Default" : false }
+            definition.debugArcParam is boolean;
+
             annotation { "Name" : "Show from frames",
                         "Description" : "Draw Frenet frame axes along the from reference path",
                         "Default" : false }
@@ -219,6 +224,44 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var toRefFrame   = getFrameAtArcLength(context, toFrenetPath,   toRefArc);
         var refToSign    = definition.flipToNormal ? -1 * toRefFrame.sign : toRefFrame.sign;
         var flipToXAxis  = (refToSign != fromRefFrame.sign);
+
+        if (definition.debugArcParam)
+        {
+            println("===== ARC-LENGTH PARAMETERIZATION =====");
+            println("FROM totalLength = " ~ toString(fromFrenetPath.totalLength) ~
+                    " | TO totalLength = " ~ toString(toFrenetPath.totalLength));
+            println("fromRefArc = " ~ toString(fromRefArc) ~
+                    " | toRefArc = " ~ toString(toRefArc) ~
+                    " | offset(to-from) = " ~ toString(toRefArc - fromRefArc));
+            println("FROM ref point   = " ~ toString(fromRefPt) ~
+                    " -> ref frame origin = " ~ toString(fromRefFrame.frame.origin));
+            println("TO   ref point   = " ~ toString(toRefPt) ~
+                    " -> ref frame origin = " ~ toString(toRefFrame.frame.origin));
+            println("flipToXAxis = " ~ toString(flipToXAxis));
+            println("-- FROM edges (in arc-length order) --");
+            for (var j = 0; j < size(fromFrenetPath.edgeData); j += 1)
+            {
+                var ed     = fromFrenetPath.edgeData[j];
+                var startO = getFrameAtArcLength(context, fromFrenetPath, ed.startArcLength).frame.origin;
+                var endO   = getFrameAtArcLength(context, fromFrenetPath, ed.startArcLength + ed.length).frame.origin;
+                println("  from[" ~ toString(j) ~ "] isLine=" ~ toString(ed.isLine) ~
+                        " stdDir=" ~ toString(ed.stdDir) ~
+                        " startArc=" ~ toString(ed.startArcLength) ~ " len=" ~ toString(ed.length) ~
+                        " start=" ~ toString(startO) ~ " end=" ~ toString(endO));
+            }
+            println("-- TO edges (in arc-length order) --");
+            for (var j = 0; j < size(toFrenetPath.edgeData); j += 1)
+            {
+                var ed     = toFrenetPath.edgeData[j];
+                var startO = getFrameAtArcLength(context, toFrenetPath, ed.startArcLength).frame.origin;
+                var endO   = getFrameAtArcLength(context, toFrenetPath, ed.startArcLength + ed.length).frame.origin;
+                println("  to[" ~ toString(j) ~ "] isLine=" ~ toString(ed.isLine) ~
+                        " stdDir=" ~ toString(ed.stdDir) ~
+                        " startArc=" ~ toString(ed.startArcLength) ~ " len=" ~ toString(ed.length) ~
+                        " start=" ~ toString(startO) ~ " end=" ~ toString(endO));
+            }
+            println("=======================================");
+        }
 
         // 4. For each source curve: sample, map, fit, create
         var allSegEdges           = [];
@@ -320,6 +363,19 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "point"    : toPoint,
                     "sFrom"    : s_from
                 });
+            }
+
+            if (definition.debugArcParam && size(mappedData) > 0)
+            {
+                var f0 = mappedData[0];
+                var fN = mappedData[size(mappedData) - 1];
+                println("  >> Source " ~ toString(i) ~ " mapping (" ~ toString(size(mappedData)) ~ " pts):");
+                println("     first: sFrom=" ~ toString(f0.sFrom) ~
+                        " -> s_to=" ~ toString(toRefArc + (f0.sFrom - fromRefArc)) ~
+                        " edge=" ~ toString(f0.edgeIndex) ~ " OUT=" ~ toString(f0.point));
+                println("     last : sFrom=" ~ toString(fN.sFrom) ~
+                        " -> s_to=" ~ toString(toRefArc + (fN.sFrom - fromRefArc)) ~
+                        " edge=" ~ toString(fN.edgeIndex) ~ " OUT=" ~ toString(fN.point));
             }
 
             // Detect if source curve is parameterized opposite to the from-path direction
