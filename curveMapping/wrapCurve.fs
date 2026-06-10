@@ -63,6 +63,38 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Curves to map from fromEdge to toEdge. Accepts edges, wire bodies, or composite parts containing wire bodies." }
         definition.sourceCurves is Query;
 
+        annotation { "Group Name" : "Frame orientation", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.TRUST_FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet uses the curvature normal (can flip at inflections on near-flat curves). Plane normal builds a flip-free in-plane normal from a supplied plane normal; requires planar, coplanar references." }
+            definition.frameNormalMode is FrameNormalMode;
+
+            if (definition.frameNormalMode == FrameNormalMode.PLANE_NORMAL)
+            {
+                annotation { "Name" : "Plane normal from", "Default" : BinormalSource.CONNECTOR_OR_FACE, "UIHint" : UIHint.HORIZONTAL_ENUM }
+                definition.binormalSource is BinormalSource;
+
+                if (definition.binormalSource == BinormalSource.CONNECTOR_OR_FACE)
+                {
+                    annotation { "Name" : "Plane normal reference", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Planar face (uses its normal) or mate connector (uses its Z axis) defining the reference-path plane normal." }
+                    definition.binormalQuery is Query;
+                }
+                else
+                {
+                    annotation { "Name" : "X", "Icon" : Icon.ALONG_X }
+                    isReal(definition.binormalX, binormalCompBounds);
+
+                    annotation { "Name" : "Y", "Icon" : Icon.ALONG_Y }
+                    isReal(definition.binormalY, binormalCompBoundsY);
+
+                    annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
+                    isReal(definition.binormalZ, binormalCompBounds);
+                }
+
+                annotation { "Name" : "Flip binormal", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION, "Description" : "Flips which side the offset lands on (negates the to-path plane normal)." }
+                definition.flipBinormal is boolean;
+            }
+        }
+
         annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source curves should be sampled based on length between sampling points, or as an integer multiple of source curve control points" }
@@ -155,8 +187,24 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
     {
         // 1. Build FrenetPaths for from/to references
-        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
-        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo);
+        // Frame orientation: resolve plane-normal options (PLANE_NORMAL) or default (TRUST_FRENET).
+        // flipBinormal negates the TO-path plane normal only — this flips which side the offset
+        // lands on. A symmetric flip of both paths would cancel out (no-op).
+        var fromOpts = defaultFrameNormalOptions();
+        var toOpts   = defaultFrameNormalOptions();
+        if (definition.frameNormalMode == FrameNormalMode.PLANE_NORMAL)
+        {
+            var planeRef;
+            if (definition.binormalSource == BinormalSource.VECTOR)
+                planeRef = resolveBinormalRefFromVector(definition.binormalX, definition.binormalY, definition.binormalZ);
+            else
+                planeRef = resolveBinormalRefFromQuery(context, definition.binormalQuery);
+            fromOpts = planeNormalOptions(planeRef);
+            toOpts   = planeNormalOptions(definition.flipBinormal ? -1 * planeRef : planeRef);
+        }
+
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false,             fromOpts);
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo, toOpts);
 
         if (definition.debugFromBSplines)
         {
@@ -187,6 +235,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var toRefPt    = getRefPoint(context, definition.toRef);
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
+
+        // Visualize the supplied plane normal (binormal) at each reference point.
+        if (definition.frameNormalMode == FrameNormalMode.PLANE_NORMAL)
+        {
+            addDebugArrow(context, fromRefPt, fromRefPt + 0.05 * meter * fromOpts.ref, 0.0015 * meter, DebugColor.GREEN);
+            addDebugArrow(context, toRefPt,   toRefPt   + 0.05 * meter * toOpts.ref,   0.0015 * meter, DebugColor.GREEN);
+        }
 
         // Fix 1: Bilaterally align isolated line frames between from-path and to-path.
         // Lines adjacent to a curve already got a curve-context xAxis in buildFrenetPath step 4.5;

@@ -23,6 +23,86 @@ export enum SamplingMode
 
 export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpec;
 
+// ── Frame normal mode ───────────────────────────────────────────────────────
+// Controls how getFrameAtArcLength orients the frame normal (xAxis) along a path.
+//   TRUST_FRENET : kernel curvature normal + inflection-parity sign tracking (legacy).
+//                  The curvature normal flips 180 deg at every inflection; the parity
+//                  counter compensates, but mis-detected inflections in near-flat
+//                  regions leave one-sample sign errors (cusps).
+//   PLANE_NORMAL : build an in-plane normal from a supplied plane normal (the binormal):
+//                  N = normalize(ref x tangent), B = ref. Independent of curvature sign
+//                  or magnitude, so it never flips at inflections. Requires the path to
+//                  be planar with plane normal ~= ref (validated in buildFrenetPath).
+export enum FrameNormalMode
+{
+    annotation { "Name" : "Frenet (curvature)" }
+    TRUST_FRENET,
+    annotation { "Name" : "Plane normal" }
+    PLANE_NORMAL
+}
+
+// How the PLANE_NORMAL reference (plane normal / binormal) direction is supplied.
+export enum BinormalSource
+{
+    annotation { "Name" : "Mate connector / planar face" }
+    CONNECTOR_OR_FACE,
+    annotation { "Name" : "Vector" }
+    VECTOR
+}
+
+export const binormalCompBounds  = { (unitless) : [-1e7, 0, 1e7] } as RealBoundSpec;  // X / Z default 0
+export const binormalCompBoundsY = { (unitless) : [-1e7, 1, 1e7] } as RealBoundSpec;  // Y default 1
+
+/**
+ * Default frame-normal options: legacy Frenet behavior. Stored on every FrenetPath
+ * built via the 4-argument buildFrenetPath so getFrameAtArcLength can read it safely.
+ */
+export function defaultFrameNormalOptions() returns map
+{
+    return { "mode" : FrameNormalMode.TRUST_FRENET, "ref" : vector(0, 0, 0) };
+}
+
+/**
+ * Build a PLANE_NORMAL options map from an already-resolved, normalized ref direction.
+ */
+export function planeNormalOptions(ref is Vector) returns map
+{
+    return { "mode" : FrameNormalMode.PLANE_NORMAL, "ref" : ref };
+}
+
+/**
+ * Resolve a plane-normal (binormal) reference direction from explicit components.
+ * Returns a normalized unitless direction.
+ */
+export function resolveBinormalRefFromVector(vx is number, vy is number, vz is number) returns Vector
+{
+    var dir = vector(vx, vy, vz);
+    if (norm(dir) < 1e-9)
+        throw regenError("Plane normal vector is zero - supply a non-zero (X, Y, Z).");
+    return normalize(dir);
+}
+
+/**
+ * Resolve a plane-normal (binormal) reference direction from a query.
+ * Accepts a mate connector (uses its Z axis) or a planar face (uses its normal).
+ * Returns a normalized unitless direction.
+ */
+export function resolveBinormalRefFromQuery(context is Context, q is Query) returns Vector
+{
+    if (isQueryEmpty(context, q))
+        throw regenError("Select a planar face or mate connector for the plane normal.");
+
+    var dir;
+    if (!isQueryEmpty(context, qBodyType(q, BodyType.MATE_CONNECTOR)))
+        dir = evMateConnector(context, { "mateConnector" : q }).zAxis;
+    else
+        dir = evPlane(context, { "face" : q }).normal;
+
+    if (norm(dir) < 1e-9)
+        throw regenError("Could not resolve a plane normal from the selection.");
+    return normalize(dir);
+}
+
 /**
  * Expands a mixed edge/wire-body/composite selection into a flat edge query.
  * - Direct edges pass through unchanged.
@@ -74,6 +154,23 @@ export function expandEdgeQuery(q is Query) returns Query
  */
 export function buildFrenetPath(context is Context, id is Id, sourceEdges is Query, flipRef is boolean) returns map
 {
+    return buildFrenetPath(context, id, sourceEdges, flipRef, defaultFrameNormalOptions());
+}
+
+/**
+ * 5-argument overload: same as above but with explicit frame-normal options.
+ *
+ * @param frameOptions {map} : { "mode" : FrameNormalMode, "ref" : Vector }
+ *   - TRUST_FRENET : ref ignored (legacy curvature-normal + inflection parity).
+ *   - PLANE_NORMAL : ref is the unitless plane normal; each edge is validated planar
+ *     with that normal, inflection detection is skipped, and getFrameAtArcLength
+ *     builds N = normalize(ref x tangent).
+ */
+export function buildFrenetPath(context is Context, id is Id, sourceEdges is Query, flipRef is boolean, frameOptions is map) returns map
+{
+    var planeNormalMode = (frameOptions.mode == FrameNormalMode.PLANE_NORMAL);
+    var planeRef        = frameOptions.ref;
+
     // 1. Validate G1 continuity and get ordered path
     var path;
     try
@@ -106,6 +203,24 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
 
         // Always build arc-length table — used for both projection and frame lookup
         var arcLengthTable = buildArcLengthTable(bspline, 100);
+
+        // PLANE_NORMAL requires each reference edge to be planar with normal ~= planeRef.
+        // A planar edge has all control points at constant dot(point, planeRef); flag the
+        // max out-of-plane deviation so a tilted/3D reference fails loudly instead of skewing.
+        if (planeNormalMode)
+        {
+            var pcps   = bspline.controlPoints;
+            var maxOff = 0 * meter;
+            for (var j = 1; j < size(pcps); j += 1)
+            {
+                var off = abs(dot(pcps[j] - pcps[0], planeRef));
+                if (off > maxOff)  maxOff = off;
+            }
+            if (maxOff > 1e-4 * length)
+                throw regenError("Reference edge is not planar with the supplied plane normal " ~
+                    "(out-of-plane deviation " ~ toString(maxOff) ~ "). Use Frenet mode, or a " ~
+                    "plane normal in the path's plane.", edge);
+        }
 
         var localInflectionArcs = [];
         var lineFrame           = undefined;
@@ -168,7 +283,7 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
                 lineStartPt = origin;
             }
 
-            if (!isNearLinear && bSplineMayHaveInflection(bspline))
+            if (!planeNormalMode && !isNearLinear && bSplineMayHaveInflection(bspline))
             {
                 var rawInflections = findBSplineInflections(bspline, 4 * nCPs, 1e-4);
 
@@ -330,9 +445,10 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
         totalLength += ed.length;
 
     return {
-        "path"       : path,
-        "totalLength": totalLength,
-        "edgeData"   : edgeData
+        "path"              : path,
+        "totalLength"       : totalLength,
+        "edgeData"          : edgeData,
+        "frameNormalOptions": frameOptions
     };
 }
 
@@ -439,6 +555,21 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
 
         // Apply cumulative normal sign correction to xAxis
         frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
+    }
+
+    // PLANE_NORMAL: replace the curvature normal with an in-plane normal derived from
+    // the supplied plane normal (binormal). N = normalize(ref x tangent), B = ref.
+    // The tangent (zAxis) is preserved; only the normal/binormal are rebuilt, so this is
+    // flip-free across inflections and independent of curvature sign/magnitude. The
+    // parity-based `sign` is left intact for the from/to reconciliation in mapSinglePoint.
+    var fopts = frenetPath.frameNormalOptions;
+    if (fopts.mode == FrameNormalMode.PLANE_NORMAL)
+    {
+        var tangent       = frame.zAxis;
+        var inPlaneNormal = cross(fopts.ref, tangent);
+        if (norm(inPlaneNormal) < 1e-6)
+            throw regenError("Plane normal is parallel to the path tangent; cannot build an in-plane frame.");
+        frame = coordSystem(frame.origin, normalize(inPlaneNormal), tangent);
     }
 
     return {
