@@ -82,6 +82,35 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             definition.flipToNormal is boolean;
         }
 
+        annotation { "Group Name" : "Frame orientation", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet uses the curvature normal (can flip at inflections on near-flat curves). Binormal builds a flip-free in-plane normal from a supplied plane normal; requires planar, coplanar references." }
+            definition.frameNormalMode is FrameNormalMode;
+
+            if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
+            {
+                annotation { "Name" : "Binormal from", "Default" : BinormalSource.QUERY, "UIHint" : UIHint.HORIZONTAL_ENUM }
+                definition.binormalSource is BinormalSource;
+
+                if (definition.binormalSource == BinormalSource.QUERY)
+                {
+                    annotation { "Name" : "Binormal reference", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Planar face (uses its normal) or mate connector (uses its Z axis) defining the reference-path plane normal." }
+                    definition.binormalQuery is Query;
+                }
+                else
+                {
+                    annotation { "Name" : "X", "Icon" : Icon.ALONG_X }
+                    isReal(definition.binormalX, binormalCompBounds);
+
+                    annotation { "Name" : "Y", "Icon" : Icon.ALONG_Y }
+                    isReal(definition.binormalY, binormalCompBoundsY);
+
+                    annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
+                    isReal(definition.binormalZ, binormalCompBounds);
+                }
+            }
+        }
+
         annotation { "Group Name" : "Setup", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the edge control points" }
@@ -152,9 +181,27 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
     }
     {
+        // --- Frame orientation ---
+        // BINORMAL builds a flip-free in-plane normal from a supplied plane normal (shared by
+        // both paths); FRENET is the legacy curvature normal.
+        var frameOpts = defaultFrameNormalOptions();
+        if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
+        {
+            var planeRef;
+            if (definition.binormalSource == BinormalSource.VECTOR)
+            {
+                planeRef = resolveBinormalRefFromVector(definition.binormalX, definition.binormalY, definition.binormalZ);
+            }
+            else
+            {
+                planeRef = resolveBinormalRefFromQuery(context, definition.binormalQuery);
+            }
+            frameOpts = planeNormalOptions(planeRef);
+        }
+
         // --- Setup (always runs) ---
-        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo);
-        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false);
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo, frameOpts);
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false,             frameOpts);
 
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, getRefPoint(context, definition.fromRef), undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   getRefPoint(context, definition.toRef),   undefined).arcLength;

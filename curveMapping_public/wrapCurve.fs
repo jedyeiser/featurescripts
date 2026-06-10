@@ -68,17 +68,17 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Group Name" : "Frame orientation", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.TRUST_FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet uses the curvature normal (can flip at inflections on near-flat curves). Plane normal builds a flip-free in-plane normal from a supplied plane normal; requires planar, coplanar references." }
+            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet uses the curvature normal (can flip at inflections on near-flat curves). Binormal builds a flip-free in-plane normal from a supplied plane normal; requires planar, coplanar references." }
             definition.frameNormalMode is FrameNormalMode;
 
-            if (definition.frameNormalMode == FrameNormalMode.PLANE_NORMAL)
+            if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
             {
-                annotation { "Name" : "Plane normal from", "Default" : BinormalSource.CONNECTOR_OR_FACE, "UIHint" : UIHint.HORIZONTAL_ENUM }
+                annotation { "Name" : "Binormal from", "Default" : BinormalSource.QUERY, "UIHint" : UIHint.HORIZONTAL_ENUM }
                 definition.binormalSource is BinormalSource;
 
-                if (definition.binormalSource == BinormalSource.CONNECTOR_OR_FACE)
+                if (definition.binormalSource == BinormalSource.QUERY)
                 {
-                    annotation { "Name" : "Plane normal reference", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Planar face (uses its normal) or mate connector (uses its Z axis) defining the reference-path plane normal." }
+                    annotation { "Name" : "Binormal reference", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Planar face (uses its normal) or mate connector (uses its Z axis) defining the reference-path plane normal." }
                     definition.binormalQuery is Query;
                 }
                 else
@@ -92,9 +92,6 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
                     isReal(definition.binormalZ, binormalCompBounds);
                 }
-
-                annotation { "Name" : "Flip binormal", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION, "Description" : "Flips which side the offset lands on (negates the to-path plane normal)." }
-                definition.flipBinormal is boolean;
             }
         }
 
@@ -197,24 +194,27 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
     {
         // 1. Build FrenetPaths for from/to references
-        // Frame orientation: resolve plane-normal options (PLANE_NORMAL) or default (TRUST_FRENET).
-        // flipBinormal negates the TO-path plane normal only — this flips which side the offset
-        // lands on. A symmetric flip of both paths would cancel out (no-op).
-        var fromOpts = defaultFrameNormalOptions();
-        var toOpts   = defaultFrameNormalOptions();
-        if (definition.frameNormalMode == FrameNormalMode.PLANE_NORMAL)
+        // Frame orientation: BINORMAL builds a flip-free in-plane normal from a supplied plane
+        // normal (the binormal), shared by both paths; FRENET is the legacy curvature normal.
+        // The binormal sign is shared, so it does not affect the wrap output — use "Flip normal"
+        // to flip the offset side.
+        var frameOpts = defaultFrameNormalOptions();
+        if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
         {
             var planeRef;
             if (definition.binormalSource == BinormalSource.VECTOR)
+            {
                 planeRef = resolveBinormalRefFromVector(definition.binormalX, definition.binormalY, definition.binormalZ);
+            }
             else
+            {
                 planeRef = resolveBinormalRefFromQuery(context, definition.binormalQuery);
-            fromOpts = planeNormalOptions(planeRef);
-            toOpts   = planeNormalOptions(definition.flipBinormal ? -1 * planeRef : planeRef);
+            }
+            frameOpts = planeNormalOptions(planeRef);
         }
 
-        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false,             fromOpts);
-        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo, toOpts);
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false,             frameOpts);
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo, frameOpts);
 
         if (definition.debugFromBSplines)
         {
@@ -246,11 +246,16 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         var fromRefArc = projectOntoFrenetPath(fromFrenetPath, fromRefPt, undefined).arcLength;
         var toRefArc   = projectOntoFrenetPath(toFrenetPath,   toRefPt,   undefined).arcLength;
 
-        // Visualize the supplied plane normal (binormal) at each reference point.
-        if (definition.frameNormalMode == FrameNormalMode.PLANE_NORMAL)
+        // Visualize the frame at the reference points: GREEN = binormal (the supplied plane
+        // normal, shared by both paths), RED = derived in-plane normal (ref x tangent, the
+        // offset direction). One of each, at the from reference.
+        if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
         {
-            addDebugArrow(context, fromRefPt, fromRefPt + 0.05 * meter * fromOpts.ref, 0.0015 * meter, DebugColor.GREEN);
-            addDebugArrow(context, toRefPt,   toRefPt   + 0.05 * meter * toOpts.ref,   0.0015 * meter, DebugColor.GREEN);
+            var arrowLen  = 0.05 * meter;
+            var arrowRad  = 0.0015 * meter;
+            var fromFrame = getFrameAtArcLength(context, fromFrenetPath, fromRefArc).frame;
+            addDebugArrow(context, fromRefPt, fromRefPt + arrowLen * yAxis(fromFrame), arrowRad, DebugColor.GREEN);
+            addDebugArrow(context, fromRefPt, fromRefPt + arrowLen * fromFrame.xAxis,  arrowRad, DebugColor.RED);
         }
 
         // Fix 1: Bilaterally align isolated line frames between from-path and to-path.

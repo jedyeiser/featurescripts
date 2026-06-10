@@ -193,9 +193,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         {
             var planeRef;
             if (definition.binormalSource == BinormalSource.VECTOR)
+            {
                 planeRef = resolveBinormalRefFromVector(definition.binormalX, definition.binormalY, definition.binormalZ);
+            }
             else
+            {
                 planeRef = resolveBinormalRefFromQuery(context, definition.binormalQuery);
+            }
             frameOpts = planeNormalOptions(planeRef);
         }
 
