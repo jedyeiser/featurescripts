@@ -150,9 +150,10 @@ function fmtPoint(pt is Vector, fmt is map) returns string
     return "(" ~ toString(x) ~ ", " ~ toString(y) ~ ", " ~ toString(z) ~ ")" ~ unitSuffix(fmt.units, fmt.include);
 }
 
-// Sample numPoints points uniformly by arc length along a G1 chain.
-// Returns an array of { "point" : Vector, "tangent" : Vector } in traversal order.
-function sampleFromChainUniform(context is Context, fromEdges is Query, numPoints is number) returns array
+// ---- From-chain sampling toolkit ----------------------------------------
+
+// Build a reusable description of the G1 from-chain: ordered edges + cumulative arc lengths.
+function buildChain(context is Context, fromEdges is Query) returns map
 {
     var path;
     try
@@ -178,39 +179,359 @@ function sampleFromChainUniform(context is Context, fromEdges is Query, numPoint
         total = total + li;
         cum = append(cum, total);
     }
+    return { "edges" : edges, "flipped" : flipped, "lens" : lens, "cum" : cum, "total" : total };
+}
 
-    var samples = [];
-    for (var k = 0; k < numPoints; k += 1)
+// Evaluate { point, tangent } at a global arc length s along the chain.
+function chainPointAt(context is Context, chain is map, s is ValueWithUnits) returns map
+{
+    var n = size(chain.edges);
+    var ss = s;
+    if (ss < 0 * meter)
     {
-        var frac = (numPoints == 1) ? 0 : k / (numPoints - 1);
-        var s = total * frac;
-
-        var ei = 0;
-        for (var i = 0; i < n; i += 1)
+        ss = 0 * meter;
+    }
+    if (ss > chain.total)
+    {
+        ss = chain.total;
+    }
+    var ei = 0;
+    for (var i = 0; i < n; i += 1)
+    {
+        if (chain.cum[i] <= ss)
         {
-            if (cum[i] <= s)
+            ei = i;
+        }
+    }
+    var t = (chain.lens[ei].value > 1e-12) ? (ss - chain.cum[ei]).value / chain.lens[ei].value : 0;
+    if (t < 0)
+    {
+        t = 0;
+    }
+    if (t > 1)
+    {
+        t = 1;
+    }
+    if (chain.flipped[ei])
+    {
+        t = 1 - t;
+    }
+    var ln = evEdgeTangentLines(context, { "edge" : chain.edges[ei], "parameters" : [t] })[0];
+    var tan = chain.flipped[ei] ? -1 * ln.direction : ln.direction;
+    return { "point" : ln.origin, "tangent" : tan };
+}
+
+// Dense ordered table [{ s, point, tangent }] for projecting a reference and inverting an axis
+// coordinate. Cost is one evEdgeTangentLines call per edge (params batched).
+function buildDenseTable(context is Context, chain is map, mPerEdge is number) returns array
+{
+    var dense = [];
+    var n = size(chain.edges);
+    for (var ei = 0; ei < n; ei += 1)
+    {
+        var fractions = [];
+        var params = [];
+        for (var a = 0; a <= mPerEdge; a += 1)
+        {
+            var frac = a / mPerEdge;
+            fractions = append(fractions, frac);
+            params = append(params, chain.flipped[ei] ? (1 - frac) : frac);
+        }
+        var lines = evEdgeTangentLines(context, { "edge" : chain.edges[ei], "parameters" : params });
+        for (var a = 0; a <= mPerEdge; a += 1)
+        {
+            if (ei > 0 && a == 0)
             {
-                ei = i;
+                continue; // skip the vertex shared with the previous edge
+            }
+            var sGlobal = chain.cum[ei] + fractions[a] * chain.lens[ei];
+            var tan = chain.flipped[ei] ? -1 * lines[a].direction : lines[a].direction;
+            dense = append(dense, { "s" : sGlobal, "point" : lines[a].origin, "tangent" : tan });
+        }
+    }
+    return dense;
+}
+
+// Anchor a plane / vertex / mate-connector reference onto the chain. For a vertex or mate
+// connector, project its point onto the curve; for a plane, find where the curve crosses it.
+// Returns { s, point } of the nearest dense-table sample.
+function anchorOnChain(context is Context, dense is array, q is Query) returns map
+{
+    var usePlane = false;
+    var refPt = vector(0, 0, 0) * meter;
+    var pl = undefined;
+    if (!isQueryEmpty(context, qBodyType(q, BodyType.MATE_CONNECTOR)))
+    {
+        refPt = evMateConnector(context, { "mateConnector" : q }).origin;
+    }
+    else if (!isQueryEmpty(context, qEntityFilter(q, EntityType.VERTEX)))
+    {
+        refPt = evVertexPoint(context, { "vertex" : q });
+    }
+    else
+    {
+        usePlane = true;
+        pl = evPlane(context, { "face" : q });
+    }
+
+    var bestIdx = 0;
+    var bestD = 0 * meter;
+    for (var i = 0; i < size(dense); i += 1)
+    {
+        var d;
+        if (usePlane)
+        {
+            d = abs(dot(dense[i].point - pl.origin, pl.normal));
+        }
+        else
+        {
+            d = norm(dense[i].point - refPt);
+        }
+        if (i == 0 || d < bestD)
+        {
+            bestD = d;
+            bestIdx = i;
+        }
+    }
+    return { "s" : dense[bestIdx].s, "point" : dense[bestIdx].point };
+}
+
+// Resolve the ALONG_AXIS point-spacing direction to a unit vector.
+function resolveSpacingAxis(context is Context, definition is map) returns Vector
+{
+    var a = definition.pointSpacingAxis;
+    if (a == AxisDefinition.ALONG_X)
+    {
+        return vector(1, 0, 0);
+    }
+    if (a == AxisDefinition.ALONG_Y)
+    {
+        return vector(0, 1, 0);
+    }
+    if (a == AxisDefinition.ALONG_Z)
+    {
+        return vector(0, 0, 1);
+    }
+    if (definition.customPointSpacingAxisType == CustomAxisType.INPUT)
+    {
+        var v = vector(definition.spacingAlongVector_X, definition.spacingAlongVector_Y, definition.spacingAlongVector_Z);
+        if (norm(v) < 1e-9)
+        {
+            throw regenError("Point-spacing axis vector is zero.");
+        }
+        return normalize(v);
+    }
+    var q = definition.pointSpacingNormalQuery;
+    if (!isQueryEmpty(context, qBodyType(q, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : q }).zAxis;
+    }
+    return evPlane(context, { "face" : q }).normal;
+}
+
+// Clamp to [0, total], sort ascending, drop near-duplicates.
+function sortAndDedup(targets is array, total is ValueWithUnits) returns array
+{
+    var arr = [];
+    for (var s in targets)
+    {
+        var ss = s;
+        if (ss < 0 * meter)
+        {
+            ss = 0 * meter;
+        }
+        if (ss > total)
+        {
+            ss = total;
+        }
+        arr = append(arr, ss);
+    }
+    for (var i = 1; i < size(arr); i += 1)
+    {
+        var key = arr[i];
+        var j = i - 1;
+        while (j >= 0 && arr[j] > key)
+        {
+            arr[j + 1] = arr[j];
+            j = j - 1;
+        }
+        arr[j + 1] = key;
+    }
+    var dedupTol = 1e-6 * meter;
+    var out = [];
+    for (var i = 0; i < size(arr); i += 1)
+    {
+        if (size(out) == 0 || abs(arr[i] - out[size(out) - 1]) > dedupTol)
+        {
+            out = append(out, arr[i]);
+        }
+    }
+    return out;
+}
+
+// Invert an axis coordinate ft to a global arc length via the dense table (first bracket, linear).
+function invertAxisCoord(dense is array, fvals is array, ft is ValueWithUnits) returns ValueWithUnits
+{
+    var n = size(fvals);
+    for (var i = 0; i < n - 1; i += 1)
+    {
+        var fa = fvals[i];
+        var fb = fvals[i + 1];
+        var lo = (fa < fb) ? fa : fb;
+        var hi = (fa < fb) ? fb : fa;
+        if (ft >= lo && ft <= hi)
+        {
+            var denom = fb - fa;
+            var w = (abs(denom) < 1e-12 * meter) ? 0 : (ft - fa) / denom;
+            return dense[i].s + w * (dense[i + 1].s - dense[i].s);
+        }
+    }
+    return (abs(ft - fvals[0]) <= abs(ft - fvals[n - 1])) ? dense[0].s : dense[n - 1].s;
+}
+
+// Target arc lengths for ALONG_AXIS spacing (equal increments of the axis projection).
+function axisSpacingTargets(context is Context, chain is map, dense is array, axis is Vector, definition is map) returns array
+{
+    var origin = dense[0].point;
+    var fvals = [];
+    for (var i = 0; i < size(dense); i += 1)
+    {
+        fvals = append(fvals, dot(dense[i].point - origin, axis));
+    }
+    var fMin = fvals[0];
+    var fMax = fvals[0];
+    for (var i = 1; i < size(fvals); i += 1)
+    {
+        if (fvals[i] < fMin)
+        {
+            fMin = fvals[i];
+        }
+        if (fvals[i] > fMax)
+        {
+            fMax = fvals[i];
+        }
+    }
+    if ((fMax - fMin) < 1e-9 * meter)
+    {
+        throw regenError("The 'measure from' curve has no extent along the chosen spacing axis.");
+    }
+
+    var fTargets = [];
+    if (definition.pointSpacing == PointSpacingType.NUMBER_OF_POINTS)
+    {
+        var nPts = definition.numPoints;
+        for (var k = 0; k < nPts; k += 1)
+        {
+            var frac = (nPts == 1) ? 0 : k / (nPts - 1);
+            fTargets = append(fTargets, fMin + (fMax - fMin) * frac);
+        }
+    }
+    else
+    {
+        var dist = definition.pointSpacingDist;
+        if ((fMax - fMin) / dist > 1000)
+        {
+            throw regenError("Point spacing too small for the axis extent (>1000 points). Increase the spacing.");
+        }
+        var anchor = anchorOnChain(context, dense, definition.pointSpacingRef);
+        var f0 = dot(anchor.point - origin, axis);
+        fTargets = append(fTargets, f0);
+        var f = f0 - dist;
+        while (f > fMin)
+        {
+            fTargets = append(fTargets, f);
+            f = f - dist;
+        }
+        f = f0 + dist;
+        while (f < fMax)
+        {
+            fTargets = append(fTargets, f);
+            f = f + dist;
+        }
+        fTargets = append(fTargets, fMin);
+        fTargets = append(fTargets, fMax);
+    }
+
+    var targets = [];
+    for (var ti = 0; ti < size(fTargets); ti += 1)
+    {
+        var ft = fTargets[ti];
+        if (ft < fMin)
+        {
+            ft = fMin;
+        }
+        if (ft > fMax)
+        {
+            ft = fMax;
+        }
+        targets = append(targets, invertAxisCoord(dense, fvals, ft));
+    }
+    return targets;
+}
+
+// Target arc lengths for ALONG_CURVE POINT_SPACING (anchored at a reference, endpoints included).
+function arcSpacingTargets(context is Context, chain is map, dense is array, definition is map) returns array
+{
+    var dist = definition.pointSpacingDist;
+    if (chain.total / dist > 1000)
+    {
+        throw regenError("Point spacing too small for the curve length (>1000 points). Increase the spacing.");
+    }
+    var s0 = anchorOnChain(context, dense, definition.pointSpacingRef).s;
+    var targets = [s0];
+    var s = s0 - dist;
+    while (s > 0 * meter)
+    {
+        targets = append(targets, s);
+        s = s - dist;
+    }
+    s = s0 + dist;
+    while (s < chain.total)
+    {
+        targets = append(targets, s);
+        s = s + dist;
+    }
+    targets = append(targets, 0 * meter);
+    targets = append(targets, chain.total);
+    return targets;
+}
+
+// Establish the measurement sample points on the from-chain per the UI spacing options.
+// Returns an array of { "point" : Vector, "tangent" : Vector }, ordered along the chain.
+function establishSamples(context is Context, definition is map, fromEdges is Query) returns array
+{
+    var chain = buildChain(context, fromEdges);
+    var targets = [];
+
+    if (definition.pointSpacingAlong == AlongType.ALONG_CURVE)
+    {
+        if (definition.pointSpacing == PointSpacingType.NUMBER_OF_POINTS)
+        {
+            for (var k = 0; k < definition.numPoints; k += 1)
+            {
+                var frac = (definition.numPoints == 1) ? 0 : k / (definition.numPoints - 1);
+                targets = append(targets, chain.total * frac);
             }
         }
+        else
+        {
+            var dense = buildDenseTable(context, chain, 100);
+            targets = arcSpacingTargets(context, chain, dense, definition);
+        }
+    }
+    else
+    {
+        var dense = buildDenseTable(context, chain, 100);
+        var axis = resolveSpacingAxis(context, definition);
+        targets = axisSpacingTargets(context, chain, dense, axis, definition);
+    }
 
-        var t = (lens[ei].value > 1e-12) ? (s - cum[ei]).value / lens[ei].value : 0;
-        if (t < 0)
-        {
-            t = 0;
-        }
-        if (t > 1)
-        {
-            t = 1;
-        }
-        if (flipped[ei])
-        {
-            t = 1 - t;
-        }
+    targets = sortAndDedup(targets, chain.total);
 
-        var ln = evEdgeTangentLines(context, { "edge" : edges[ei], "parameters" : [t] })[0];
-        var tan = flipped[ei] ? -1 * ln.direction : ln.direction;
-        samples = append(samples, { "point" : ln.origin, "tangent" : tan });
+    var samples = [];
+    for (var ti = 0; ti < size(targets); ti += 1)
+    {
+        samples = append(samples, chainPointAt(context, chain, targets[ti]));
     }
     return samples;
 }
@@ -408,13 +729,8 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
         
     }
     {
-        // Phases 1-2: uniform sampling along the from-chain; CLOSEST / NORMAL_DIST / ALONG_AXIS.
-        // (POINT_SPACING and along-axis spacing land in the next phase.)
-        if (definition.pointSpacing != PointSpacingType.NUMBER_OF_POINTS)
-        {
-            throw regenError("Only 'Number of points' spacing is implemented so far.");
-        }
-
+        // All sampling modes (number-of-points / point-spacing, along-curve / along-axis) and all
+        // measurement modes (CLOSEST / NORMAL_DIST / ALONG_AXIS).
         var fromEdges = expandToEdges(context, definition.measureFrom);
         var toEdges = expandToEdges(context, definition.measureTo);
         if (isQueryEmpty(context, fromEdges))
@@ -427,7 +743,7 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
         }
 
         // 1-3. Establish measurement points along the from-chain.
-        var samples = sampleFromChainUniform(context, fromEdges, definition.numPoints);
+        var samples = establishSamples(context, definition, fromEdges);
 
         var fmt = {
                 "units" : definition.tableUnits,
