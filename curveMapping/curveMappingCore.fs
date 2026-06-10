@@ -550,6 +550,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     }
     else
     {
+        // 6b. Curved: evaluate the exact Frenet frame on the actual edge geometry.
         // arcFrac maps local traversal arc-length → [0,1] arc-length fraction on the edge.
         // Clamp to [0,1] to guard against floating-point overshoot at the boundary
         // (e.g. arcLength == totalLength but float subtraction gives localArc = length + eps).
@@ -561,44 +562,35 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
             arcFrac = 1 - arcFrac;  // traversal is reversed: start=1, end=0
         }
 
-        if (binormalMode)
+        var rawResult = evEdgeCurvature(context, {
+            "edge"                      : edgeDat.query,
+            "parameter"                 : arcFrac,
+            "arcLengthParameterization" : true
+        });
+
+        if (!edgeDat.stdDir)
         {
-            // 6b-BINORMAL: position + tangent straight from the BSpline (no curvature kernel
-            // call). We only need the tangent direction; the in-plane normal is ref x tangent.
-            // Much cheaper than evEdgeCurvature, and consistent with the BSpline space that
-            // projectOntoFrenetPath already works in. Convert arc-length fraction → BSpline
-            // parameter via the arc-length table, then evaluate position + first derivative.
-            var u   = parameterAtArcLength(edgeDat.arcLengthTable, arcFrac * edgeDat.arcLengthTable.totalLength);
-            var ev  = evaluateSpline({ "spline" : edgeDat.bspline, "parameters" : [u], "nDerivatives" : 1 });
-            var tan = normalize(ev[1][0]);
-            if (!edgeDat.stdDir)
-            {
-                tan = -1 * tan;  // velocity points in +u; traversal is reversed
-            }
-            frame = coordSystem(ev[0][0], planeNormalAxis(fopts.ref, tan), tan);
+            // Flip zAxis so it points in the traversal direction.
+            frame = coordSystem(rawResult.frame.origin, rawResult.frame.xAxis, -1 * rawResult.frame.zAxis);
         }
         else
         {
-            // 6b-FRENET: exact curvature frame on the actual edge geometry.
-            var rawResult = evEdgeCurvature(context, {
-                "edge"                      : edgeDat.query,
-                "parameter"                 : arcFrac,
-                "arcLengthParameterization" : true
-            });
-
-            if (!edgeDat.stdDir)
-            {
-                // Flip zAxis so it points in the traversal direction.
-                frame = coordSystem(rawResult.frame.origin, rawResult.frame.xAxis, -1 * rawResult.frame.zAxis);
-            }
-            else
-            {
-                frame = rawResult.frame;
-            }
-
-            // Apply cumulative normal sign correction to xAxis.
-            frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
+            frame = rawResult.frame;
         }
+
+        // Apply cumulative normal sign correction to xAxis.
+        frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
+    }
+
+    // BINORMAL: replace the curvature normal with the in-plane normal N = ref x tangent.
+    // The evEdgeCurvature call above already provides the tangent (zAxis), so we only rebuild
+    // the normal. (We tried evaluateSpline for a tangent-only frame: it is also a kernel call,
+    // but it takes a raw BSpline parameter, so it needs a per-sample arc-length -> parameter
+    // conversion [parameterAtArcLength] that evEdgeCurvature does internally for free — net
+    // slower. So we keep evEdgeCurvature and override only the normal.)
+    if (binormalMode)
+    {
+        frame = coordSystem(frame.origin, planeNormalAxis(fopts.ref, frame.zAxis), frame.zAxis);
     }
 
     return {

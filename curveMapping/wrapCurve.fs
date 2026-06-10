@@ -240,10 +240,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             var arrowLen  = 0.05 * meter;
             var arrowRad  = 0.0015 * meter;
             var fromFrame = getFrameAtArcLength(context, fromFrenetPath, fromRefArc).frame;
-            var toFrame   = getFrameAtArcLength(context, toFrenetPath,   toRefArc).frame;
+            // GREEN = binormal (the supplied plane normal); RED = derived in-plane normal
+            // (ref x tangent, the offset direction). One of each, at the from reference.
             addDebugArrow(context, fromRefPt, fromRefPt + arrowLen * yAxis(fromFrame), arrowRad, DebugColor.GREEN);
             addDebugArrow(context, fromRefPt, fromRefPt + arrowLen * fromFrame.xAxis,  arrowRad, DebugColor.RED);
-            addDebugArrow(context, toRefPt,   toRefPt   + arrowLen * toFrame.xAxis,    arrowRad, DebugColor.RED);
         }
 
         // Fix 1: Bilaterally align isolated line frames between from-path and to-path.
