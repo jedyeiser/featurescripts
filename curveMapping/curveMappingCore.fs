@@ -25,27 +25,29 @@ export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpe
 
 // ── Frame normal mode ───────────────────────────────────────────────────────
 // Controls how getFrameAtArcLength orients the frame normal (xAxis) along a path.
-//   TRUST_FRENET : kernel curvature normal + inflection-parity sign tracking (legacy).
-//                  The curvature normal flips 180 deg at every inflection; the parity
-//                  counter compensates, but mis-detected inflections in near-flat
-//                  regions leave one-sample sign errors (cusps).
-//   PLANE_NORMAL : build an in-plane normal from a supplied plane normal (the binormal):
-//                  N = normalize(ref x tangent), B = ref. Independent of curvature sign
-//                  or magnitude, so it never flips at inflections. Requires the path to
-//                  be planar with plane normal ~= ref (validated in buildFrenetPath).
+//   FRENET   : kernel curvature normal + inflection-parity sign tracking (legacy).
+//              The curvature normal flips 180 deg at every inflection; the parity
+//              counter compensates, but mis-detected inflections in near-flat regions
+//              leave one-sample sign errors (cusps).
+//   BINORMAL : build an in-plane normal from a supplied plane normal (the binormal):
+//              N = normalize(ref x tangent), B = ref. Independent of curvature sign or
+//              magnitude, so it never flips at inflections. Requires the path to be
+//              planar with plane normal ~= ref (validated in buildFrenetPath). The ref
+//              is shared by the from- and to-paths, so its sign does NOT affect the wrap
+//              output (offset side is corrected with the existing "Flip normal").
 export enum FrameNormalMode
 {
-    annotation { "Name" : "Frenet (curvature)" }
-    TRUST_FRENET,
-    annotation { "Name" : "Plane normal" }
-    PLANE_NORMAL
+    annotation { "Name" : "Frenet" }
+    FRENET,
+    annotation { "Name" : "Binormal" }
+    BINORMAL
 }
 
-// How the PLANE_NORMAL reference (plane normal / binormal) direction is supplied.
+// How the BINORMAL reference (plane normal) direction is supplied.
 export enum BinormalSource
 {
-    annotation { "Name" : "Mate connector / planar face" }
-    CONNECTOR_OR_FACE,
+    annotation { "Name" : "Query" }
+    QUERY,
     annotation { "Name" : "Vector" }
     VECTOR
 }
@@ -59,15 +61,15 @@ export const binormalCompBoundsY = { (unitless) : [-1e7, 1, 1e7] } as RealBoundS
  */
 export function defaultFrameNormalOptions() returns map
 {
-    return { "mode" : FrameNormalMode.TRUST_FRENET, "ref" : vector(0, 0, 0) };
+    return { "mode" : FrameNormalMode.FRENET, "ref" : vector(0, 0, 0) };
 }
 
 /**
- * Build a PLANE_NORMAL options map from an already-resolved, normalized ref direction.
+ * Build a BINORMAL options map from an already-resolved, normalized ref direction.
  */
 export function planeNormalOptions(ref is Vector) returns map
 {
-    return { "mode" : FrameNormalMode.PLANE_NORMAL, "ref" : ref };
+    return { "mode" : FrameNormalMode.BINORMAL, "ref" : ref };
 }
 
 /**
@@ -161,14 +163,14 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
  * 5-argument overload: same as above but with explicit frame-normal options.
  *
  * @param frameOptions {map} : { "mode" : FrameNormalMode, "ref" : Vector }
- *   - TRUST_FRENET : ref ignored (legacy curvature-normal + inflection parity).
- *   - PLANE_NORMAL : ref is the unitless plane normal; each edge is validated planar
- *     with that normal, inflection detection is skipped, and getFrameAtArcLength
- *     builds N = normalize(ref x tangent).
+ *   - FRENET   : ref ignored (legacy curvature-normal + inflection parity).
+ *   - BINORMAL : ref is the unitless plane normal; each edge is validated planar with
+ *     that normal, inflection detection is skipped, and getFrameAtArcLength builds
+ *     N = normalize(ref x tangent).
  */
 export function buildFrenetPath(context is Context, id is Id, sourceEdges is Query, flipRef is boolean, frameOptions is map) returns map
 {
-    var planeNormalMode = (frameOptions.mode == FrameNormalMode.PLANE_NORMAL);
+    var planeNormalMode = (frameOptions.mode == FrameNormalMode.BINORMAL);
     var planeRef        = frameOptions.ref;
 
     // 1. Validate G1 continuity and get ordered path
@@ -204,7 +206,7 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
         // Always build arc-length table — used for both projection and frame lookup
         var arcLengthTable = buildArcLengthTable(bspline, 100);
 
-        // PLANE_NORMAL requires each reference edge to be planar with normal ~= planeRef.
+        // BINORMAL requires each reference edge to be planar with normal ~= planeRef.
         // A planar edge has all control points at constant dot(point, planeRef); flag the
         // max out-of-plane deviation so a tilted/3D reference fails loudly instead of skewing.
         if (planeNormalMode)
@@ -557,13 +559,13 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
         frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
     }
 
-    // PLANE_NORMAL: replace the curvature normal with an in-plane normal derived from
+    // BINORMAL: replace the curvature normal with an in-plane normal derived from
     // the supplied plane normal (binormal). N = normalize(ref x tangent), B = ref.
     // The tangent (zAxis) is preserved; only the normal/binormal are rebuilt, so this is
     // flip-free across inflections and independent of curvature sign/magnitude. The
     // parity-based `sign` is left intact for the from/to reconciliation in mapSinglePoint.
     var fopts = frenetPath.frameNormalOptions;
-    if (fopts.mode == FrameNormalMode.PLANE_NORMAL)
+    if (fopts.mode == FrameNormalMode.BINORMAL)
     {
         var tangent       = frame.zAxis;
         var inPlaneNormal = cross(fopts.ref, tangent);
