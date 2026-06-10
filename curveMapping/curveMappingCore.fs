@@ -106,6 +106,18 @@ export function resolveBinormalRefFromQuery(context is Context, q is Query) retu
 }
 
 /**
+ * In-plane (offset) normal for BINORMAL mode: N = normalize(ref x tangent).
+ * Throws if ref is parallel to the tangent (degenerate).
+ */
+function planeNormalAxis(ref is Vector, tangent is Vector) returns Vector
+{
+    var n = cross(ref, tangent);
+    if (norm(n) < 1e-6)
+        throw regenError("Plane normal is parallel to the path tangent; cannot build an in-plane frame.");
+    return normalize(n);
+}
+
+/**
  * Expands a mixed edge/wire-body/composite selection into a flat edge query.
  * - Direct edges pass through unchanged.
  * - Wire bodies contribute all of their owned edges.
@@ -517,61 +529,76 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     if (inflectionsBefore % 2 == 1)
         sign = -1 * sign;
 
+    var fopts        = frenetPath.frameNormalOptions;
+    var binormalMode = (fopts.mode == FrameNormalMode.BINORMAL);
+
     var frame;
 
     if (edgeDat.isLine)
     {
-        // 6a. Line: interpolate position along traversal direction
+        // 6a. Line: interpolate position along traversal direction.
         var position = edgeDat.lineStartPt + localArc * edgeDat.lineFrame.zAxis;
-        frame = coordSystem(position, sign * edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
+        if (binormalMode)
+        {
+            // In-plane normal from the supplied plane normal; tangent = line direction.
+            frame = coordSystem(position, planeNormalAxis(fopts.ref, edgeDat.lineFrame.zAxis), edgeDat.lineFrame.zAxis);
+        }
+        else
+        {
+            frame = coordSystem(position, sign * edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
+        }
     }
     else
     {
-        // 6b. Curved: evaluate exact Frenet frame on actual edge geometry
-        // arcFrac maps local traversal arc-length → [0,1] arc-length fraction on edge
+        // arcFrac maps local traversal arc-length → [0,1] arc-length fraction on the edge.
         // Clamp to [0,1] to guard against floating-point overshoot at the boundary
         // (e.g. arcLength == totalLength but float subtraction gives localArc = length + eps).
         var arcFrac = localArc.value / edgeDat.length.value;
         if (arcFrac < 0) { arcFrac = 0; }
         if (arcFrac > 1) { arcFrac = 1; }
         if (!edgeDat.stdDir)
-            arcFrac = 1 - arcFrac;  // traversal is reversed: start=1, end=0
-
-        var rawResult = evEdgeCurvature(context, {
-            "edge"                      : edgeDat.query,
-            "parameter"                 : arcFrac,
-            "arcLengthParameterization" : true
-        });
-
-        if (!edgeDat.stdDir)
         {
-            // Flip zAxis so it points in the traversal direction
-            frame = coordSystem(rawResult.frame.origin,
-                                rawResult.frame.xAxis,
-                                -1 * rawResult.frame.zAxis);
+            arcFrac = 1 - arcFrac;  // traversal is reversed: start=1, end=0
+        }
+
+        if (binormalMode)
+        {
+            // 6b-BINORMAL: position + tangent straight from the BSpline (no curvature kernel
+            // call). We only need the tangent direction; the in-plane normal is ref x tangent.
+            // Much cheaper than evEdgeCurvature, and consistent with the BSpline space that
+            // projectOntoFrenetPath already works in. Convert arc-length fraction → BSpline
+            // parameter via the arc-length table, then evaluate position + first derivative.
+            var u   = parameterAtArcLength(edgeDat.arcLengthTable, arcFrac * edgeDat.arcLengthTable.totalLength);
+            var ev  = evaluateSpline({ "spline" : edgeDat.bspline, "parameters" : [u], "nDerivatives" : 1 });
+            var tan = normalize(ev[1][0]);
+            if (!edgeDat.stdDir)
+            {
+                tan = -1 * tan;  // velocity points in +u; traversal is reversed
+            }
+            frame = coordSystem(ev[0][0], planeNormalAxis(fopts.ref, tan), tan);
         }
         else
         {
-            frame = rawResult.frame;
+            // 6b-FRENET: exact curvature frame on the actual edge geometry.
+            var rawResult = evEdgeCurvature(context, {
+                "edge"                      : edgeDat.query,
+                "parameter"                 : arcFrac,
+                "arcLengthParameterization" : true
+            });
+
+            if (!edgeDat.stdDir)
+            {
+                // Flip zAxis so it points in the traversal direction.
+                frame = coordSystem(rawResult.frame.origin, rawResult.frame.xAxis, -1 * rawResult.frame.zAxis);
+            }
+            else
+            {
+                frame = rawResult.frame;
+            }
+
+            // Apply cumulative normal sign correction to xAxis.
+            frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
         }
-
-        // Apply cumulative normal sign correction to xAxis
-        frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
-    }
-
-    // BINORMAL: replace the curvature normal with an in-plane normal derived from
-    // the supplied plane normal (binormal). N = normalize(ref x tangent), B = ref.
-    // The tangent (zAxis) is preserved; only the normal/binormal are rebuilt, so this is
-    // flip-free across inflections and independent of curvature sign/magnitude. The
-    // parity-based `sign` is left intact for the from/to reconciliation in mapSinglePoint.
-    var fopts = frenetPath.frameNormalOptions;
-    if (fopts.mode == FrameNormalMode.BINORMAL)
-    {
-        var tangent       = frame.zAxis;
-        var inPlaneNormal = cross(fopts.ref, tangent);
-        if (norm(inPlaneNormal) < 1e-6)
-            throw regenError("Plane normal is parallel to the path tangent; cannot build an in-plane frame.");
-        frame = coordSystem(frame.origin, normalize(inPlaneNormal), tangent);
     }
 
     return {
