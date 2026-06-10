@@ -667,7 +667,7 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
         
         if (definition.pointSpacingAlong == AlongType.ALONG_AXIS)
         {
-            annotation { "Name" : "Point spacing along axis", "UIHint" : UIHint.SHOW_LABEL, "Default" : AxisDefinition.ALONG_Z}
+            annotation { "Name" : "Point spacing along axis", "UIHint" : UIHint.SHOW_LABEL, "Default" : AxisDefinition.ALONG_X}
             definition.pointSpacingAxis is AxisDefinition;
             
             if (definition.pointSpacingAxis == AxisDefinition.CUSTOM)
@@ -706,6 +706,12 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
             
             annotation { "Name" : "Decimal precision", "Description" : "Number of decimals to include. If value requires fewer decimals, the minimum number of decimals are included" }
             isInteger(definition.decimalPrecision, DecimalPrecisionBounds);
+
+            annotation { "Name" : "Reverse point order", "Default" : false, "Description" : "Flip the order in which points are evaluated and listed in the table" }
+            definition.reverseOrder is boolean;
+
+            annotation { "Name" : "Start point numbers at 1", "Default" : false, "Description" : "When off, the first point is numbered 0; when on, it is numbered 1" }
+            definition.startAtOne is boolean;
         }
         
         annotation { "Name" : "Clear accumulated data", "Default" : false, "Description" : "Resets the shared measurement table to only this feature's data. Use to clear stale rows left behind by deleted measure features: toggle on, regenerate, then toggle off." }
@@ -744,6 +750,15 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
 
         // 1-3. Establish measurement points along the from-chain.
         var samples = establishSamples(context, definition, fromEdges);
+        if (definition.reverseOrder)
+        {
+            var rev = [];
+            for (var i = size(samples) - 1; i >= 0; i -= 1)
+            {
+                rev = append(rev, samples[i]);
+            }
+            samples = rev;
+        }
 
         var fmt = {
                 "units" : definition.tableUnits,
@@ -776,7 +791,8 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
 
         // 4-5. Measure each point and build table rows (directional modes skip points with no crossing).
         var rows = [];
-        var rowNum = 0;
+        var numBase = definition.startAtOne ? 1 : 0;
+        var validCount = 0;
         for (var i = 0; i < size(samples); i += 1)
         {
             var fromPt = samples[i].point;
@@ -815,7 +831,6 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
 
             if (valid)
             {
-                rowNum = rowNum + 1;
                 if (definition.showFromPoints)
                 {
                     addDebugPoint(context, fromPt, DebugColor.CYAN);
@@ -830,11 +845,12 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
                 }
 
                 rows = append(rows, {
-                            "n" : toString(rowNum),
+                            "n" : toString(validCount + numBase),
                             "fromPt" : fmtPoint(fromPt, fmt),
                             "toPt" : fmtPoint(toPt, fmt),
                             "dist" : fmtLength(measVal, fmt)
                         });
+                validCount = validCount + 1;
             }
         }
 
