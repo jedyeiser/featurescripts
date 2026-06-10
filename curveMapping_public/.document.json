@@ -4,8 +4,9 @@
   "document_name": "curveMapping_public",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/d12583277c42b00c63a9b7b7/w/430e0dff82a5ed23ba89b7aa",
-  "last_sync": "2026-06-09T13:03:09.126997+00:00",
+  "last_sync": "2026-06-10T13:43:43.243687+00:00",
   "feature_studios": {
+    "measureBetweenCurves": "08af3fbb554511b76d83f5f4",
     "deform": "9724227531894d5d7b42df00",
     "wrapAndLoft": "a3eddb3751d6df06167fe80b",
     "wrapCurve": "0e53e9b1145a1bd7bbfa0193"

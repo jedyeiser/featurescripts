@@ -9,11 +9,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/abb0c145fb299afea996669e/683d867c35fdab9c98d47556", version : "3eaccc21648416164f515e4f");
+export import(path : "08e8748f2ef24eea16072b75/1eb130181402a2947ebb2028/683d867c35fdab9c98d47556", version : "3d6d4ca0d09ce4716a366e37");
 
 
 //import wrapCurve.fs
-import(path : "0e53e9b1145a1bd7bbfa0193", version : "7671619aeb9111eff46fc4ff");
+import(path : "0e53e9b1145a1bd7bbfa0193", version : "1ba4a5cea5150cdb384bb3c9");
 
 IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
 
