@@ -215,6 +215,65 @@ function sampleFromChainUniform(context is Context, fromEdges is Query, numPoint
     return samples;
 }
 
+// Resolve the ALONG_AXIS measurement direction to a unit vector.
+function resolveMeasurementAxis(context is Context, definition is map) returns Vector
+{
+    var a = definition.measurementDirectionAxis;
+    if (a == AxisDefinition.ALONG_X)
+    {
+        return vector(1, 0, 0);
+    }
+    if (a == AxisDefinition.ALONG_Y)
+    {
+        return vector(0, 1, 0);
+    }
+    if (a == AxisDefinition.ALONG_Z)
+    {
+        return vector(0, 0, 1);
+    }
+    // CUSTOM
+    if (definition.measurementDirectionAxisType == CustomAxisType.INPUT)
+    {
+        var v = vector(definition.measurementAlongVector_X, definition.measurementAlongVector_Y, definition.measurementAlongVector_Z);
+        if (norm(v) < 1e-9)
+        {
+            throw regenError("Measurement axis vector is zero.");
+        }
+        return normalize(v);
+    }
+    // QUERY: mate connector Z axis (standard) or planar-face normal.
+    var q = definition.measurementNormalQuery;
+    if (!isQueryEmpty(context, qBodyType(q, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : q }).zAxis;
+    }
+    return evPlane(context, { "face" : q }).normal;
+}
+
+// Best-fit plane normal for an ordered set of points (Newell's method). Returns a unitless unit vector.
+function fitPlaneNormal(points is array) returns Vector
+{
+    var n = size(points);
+    var nx = 0;
+    var ny = 0;
+    var nz = 0;
+    for (var i = 0; i < n; i += 1)
+    {
+        var j = (i + 1 == n) ? 0 : i + 1;
+        var c = points[i];
+        var d = points[j];
+        nx = nx + (c[1].value - d[1].value) * (c[2].value + d[2].value);
+        ny = ny + (c[2].value - d[2].value) * (c[0].value + d[0].value);
+        nz = nz + (c[0].value - d[0].value) * (c[1].value + d[1].value);
+    }
+    var nv = vector(nx, ny, nz);
+    if (norm(nv) < 1e-12)
+    {
+        throw regenError("The 'measure from' curve is too straight to define a plane. Normal/Along-axis modes need a planar (curved) source, or more sample points.");
+    }
+    return normalize(nv);
+}
+
 
 annotation { "Feature Type Name" : "Measure curve distance", "Feature Type Description" : "Measures the distance between two groups of edges/wires and outputs results in a table" }
 export const measureBetweenCurves = defineFeature(function(context is Context, id is Id, definition is map)
@@ -349,12 +408,8 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
         
     }
     {
-        // Phase 1: uniform sampling along the from-chain + CLOSEST distance to the to-set.
-        // (NORMAL_DIST / ALONG_AXIS measurement and POINT_SPACING spacing land in the next phase.)
-        if (definition.measurementType != CurveMeasurementType.CLOSEST)
-        {
-            throw regenError("Only the 'Closest' measurement is implemented so far. Normal/Along-axis are next.");
-        }
+        // Phases 1-2: uniform sampling along the from-chain; CLOSEST / NORMAL_DIST / ALONG_AXIS.
+        // (POINT_SPACING and along-axis spacing land in the next phase.)
         if (definition.pointSpacing != PointSpacingType.NUMBER_OF_POINTS)
         {
             throw regenError("Only 'Number of points' spacing is implemented so far.");
@@ -380,33 +435,91 @@ export const measureBetweenCurves = defineFeature(function(context is Context, i
                 "include" : definition.includeUints
             };
 
-        // 4-5. Measure CLOSEST distance for each point and build table rows.
+        var mode = definition.measurementType;
+
+        // Directional modes measure inside a plane that CONTAINS the measurement direction and
+        // cuts ACROSS the to-curve (normal = cross(direction, planeNormal)). Resolve the from-curve
+        // plane (and the axis) once up front.
+        var planeNormal = undefined;
+        var axisDir = undefined;
+        if (mode != CurveMeasurementType.CLOSEST)
+        {
+            var pts = [];
+            for (var sm in samples)
+            {
+                pts = append(pts, sm.point);
+            }
+            planeNormal = fitPlaneNormal(pts);
+            if (mode == CurveMeasurementType.ALONG_AXIS)
+            {
+                axisDir = resolveMeasurementAxis(context, definition);
+            }
+        }
+
+        var crossingTol = 1e-5 * meter; // the plane "crosses" the to-curve when evDistance ~ 0
+
+        // 4-5. Measure each point and build table rows (directional modes skip points with no crossing).
         var rows = [];
+        var rowNum = 0;
         for (var i = 0; i < size(samples); i += 1)
         {
             var fromPt = samples[i].point;
-            var r = evDistance(context, { "side0" : fromPt, "side1" : toEdges });
-            var toPt = r.sides[1].point;
+            var toPt = undefined;
+            var measVal = undefined;
+            var valid = true;
 
-            if (definition.showFromPoints)
+            if (mode == CurveMeasurementType.CLOSEST)
             {
-                addDebugPoint(context, fromPt, DebugColor.CYAN);
+                var r = evDistance(context, { "side0" : fromPt, "side1" : toEdges });
+                toPt = r.sides[1].point;
+                measVal = r.distance;
             }
-            if (definition.showToPoints)
+            else
             {
-                addDebugPoint(context, toPt, DebugColor.MAGENTA);
-            }
-            if (definition.showConnections)
-            {
-                addDebugLine(context, fromPt, toPt, DebugColor.GREEN);
+                var dir = (mode == CurveMeasurementType.NORMAL_DIST)
+                    ? normalize(cross(planeNormal, samples[i].tangent))
+                    : axisDir;
+                var sliceNormal = cross(dir, planeNormal);
+                if (norm(sliceNormal) < 1e-6)
+                {
+                    throw regenError("Measurement axis is parallel to the curve-plane normal; cannot build a measurement plane that cuts the curves.");
+                }
+                var measPlane = plane(fromPt, normalize(sliceNormal));
+                var r = evDistance(context, { "side0" : measPlane, "side1" : toEdges });
+                if (r.distance < crossingTol)
+                {
+                    toPt = r.sides[1].point;
+                    measVal = dot(toPt - fromPt, dir);
+                }
+                else
+                {
+                    valid = false; // from-curve overruns the to-curve at this station
+                }
             }
 
-            rows = append(rows, {
-                        "n" : toString(i + 1),
-                        "fromPt" : fmtPoint(fromPt, fmt),
-                        "toPt" : fmtPoint(toPt, fmt),
-                        "dist" : fmtLength(r.distance, fmt)
-                    });
+            if (valid)
+            {
+                rowNum = rowNum + 1;
+                if (definition.showFromPoints)
+                {
+                    addDebugPoint(context, fromPt, DebugColor.CYAN);
+                }
+                if (definition.showToPoints)
+                {
+                    addDebugPoint(context, toPt, DebugColor.MAGENTA);
+                }
+                if (definition.showConnections)
+                {
+                    addDebugLine(context, fromPt, toPt, DebugColor.GREEN);
+                }
+
+                rows = append(rows, {
+                            "n" : toString(rowNum),
+                            "fromPt" : fmtPoint(fromPt, fmt),
+                            "toPt" : fmtPoint(toPt, fmt),
+                            "dist" : fmtLength(measVal, fmt)
+                        });
+            }
         }
 
         // 6. Store rows on the part-studio origin, keyed per-feature so multiple measure
