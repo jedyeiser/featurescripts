@@ -1635,25 +1635,46 @@ function intersectAndGetWires(context is Context, id is Id,
 }
 
 
-// Returns the edges of a wire body whose length exceeds MIN_LOFT_EDGE, dropping
-// degenerate slivers.  The offset + region-boundary trim can collapse the small
-// end-cap connector edges into zero-length (or sub-micron) edges; a profile that
-// contains a zero-length edge makes opLoft return LOFT_INVALID.  A zero-length
-// edge is just a collapsed point -- its neighbors already meet there -- so
-// dropping it leaves the profile connected.  Real edges are >> 1 mm; observed
-// slivers are < 0.1 mm, so the threshold cleanly separates them.
-function loftableProfile(context is Context, wireBody is Query) returns Query
+// Rebuilds a wire body as a single smooth BSpline edge for lofting.
+// The intersection wires are clean open chains (2 ends, no branches) but the
+// offset/trim over-segments them with sub-micron slivers at the region
+// boundaries.  Feeding those straight to opLoft gives LOFT_INVALID; deleting them
+// leaves gaps (LOFT_PROFILE_FAILED); constructPath alone rejects truly
+// zero-length edges ("edges do not form a continuous path").  So we:
+//   1. drop ONLY zero-length edges (a collapsed point -- removing one never opens
+//      a gap, and it is the one thing constructPath cannot path through),
+//   2. constructPath the remainder (a continuous chain) for ordering,
+//   3. resample uniformly and fit one degree-3 BSpline, absorbing the slivers.
+// Returns the edge query of a newly created curve body (scratch; caller deletes).
+function wireToSingleCurve(context is Context, id is Id, wireBody is Query) returns Query
 {
-    const MIN_LOFT_EDGE = 1e-4 * meter;   // 0.1 mm
-    var keep = [];
+    var pathEdges = [];
     for (var e in evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE)))
     {
-        if (evLength(context, { "entities" : e }) > MIN_LOFT_EDGE)
+        if (evLength(context, { "entities" : e }) > 1e-6 * meter)
         {
-            keep = append(keep, e);
+            pathEdges = append(pathEdges, e);
         }
     }
-    return qUnion(keep);
+
+    var pl = constructPath(context, qUnion(pathEdges));
+
+    const NS = 120;
+    var pts = [];
+    for (var k = 0; k <= NS; k += 1)
+    {
+        pts = append(pts, evPathTangentLines(context, pl, [k / NS]).tangentLines[0].origin);
+    }
+
+    var curve = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : pts })],
+            "degree"           : 3,
+            "tolerance"        : 1e-5 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : 300
+    })[0];
+    opCreateBSplineCurve(context, id, { "bSplineCurve" : curve });
+    return qCreatedBy(id, EntityType.EDGE);
 }
 
 
@@ -1687,11 +1708,16 @@ function loftWireStep(context is Context, id is Id,
     for (var p in pairs)
     {
         var s        = p.a;
-        // Strip degenerate sliver edges (zero-length connectors collapsed by the
-        // offset/trim at region boundaries) -- opLoft returns LOFT_INVALID on a
-        // profile that contains one.  See loftableProfile.
-        var aProfile = loftableProfile(context, wiresA[p.a]);
-        var bProfile = loftableProfile(context, wiresB[p.b]);
+        // Rebuild each wire as ONE smooth BSpline before lofting.  The raw
+        // intersection wires are clean open chains but are over-segmented with
+        // sub-micron slivers at the region boundaries; feeding those to opLoft
+        // gives LOFT_INVALID, and deleting them leaves gaps (LOFT_PROFILE_FAILED).
+        // A single resampled curve absorbs the slivers with no gaps.  See
+        // wireToSingleCurve.
+        var aCrvId   = id + (idPrefix ~ "Acrv" ~ r ~ "_" ~ s);
+        var bCrvId   = id + (idPrefix ~ "Bcrv" ~ r ~ "_" ~ s);
+        var aProfile = wireToSingleCurve(context, aCrvId, wiresA[p.a]);
+        var bProfile = wireToSingleCurve(context, bCrvId, wiresB[p.b]);
         var lId      = id + (idPrefix ~ r ~ "_" ~ s);
 
         opLoft(context, lId, {
@@ -1699,6 +1725,12 @@ function loftWireStep(context is Context, id is Id,
                 "bodyType"          : ToolBodyType.SURFACE
         });
         var loftedBody = qCreatedBy(lId, EntityType.BODY);
+
+        // The single-curve profiles were scratch geometry -- remove them.
+        opDeleteBodies(context, id + (idPrefix ~ "delCrv" ~ r ~ "_" ~ s), {
+                "entities" : qUnion([qCreatedBy(aCrvId, EntityType.BODY),
+                                     qCreatedBy(bCrvId, EntityType.BODY)])
+        });
 
         // Loud failure: opLoft normally throws on bad input, but if it returns an
         // empty body for a valid wire pair, surface it rather than dropping it.
