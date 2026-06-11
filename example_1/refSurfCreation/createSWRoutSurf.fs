@@ -635,6 +635,18 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                         " start=" ~ toString(size(washedStartWires[rKey])) ~
                         " stepIn=" ~ toString(nStepIn) ~
                         " stop=" ~ toString(size(washedStopWires[rKey])));
+
+                // Topology report: classifies WHY a wire is unpathable/unloftable.
+                // ends(deg1): 2 = open chain, 0 = closed loop, anything else = malformed.
+                // branches(deg3+): >0 means a true branch (kills constructPath/loft).
+                // shortEdges/minLen: degenerate slivers from the offset+trim.
+                logWireTopology(context, washedInitialWires[rKey], rName ~ " initial");
+                logWireTopology(context, washedStartWires[rKey],   rName ~ " start");
+                if (washedStepInWires[rKey] != undefined)
+                {
+                    logWireTopology(context, washedStepInWires[rKey], rName ~ " stepIn");
+                }
+                logWireTopology(context, washedStopWires[rKey],    rName ~ " stop");
             }
         }
 
@@ -1536,6 +1548,48 @@ function drawStartWireFrames(context is Context, startWires is array, bottomQ is
                 addDebugArrow(context, org, org + ARROW_LEN * tang, ARROW_RAD * 0.5,     DebugColor.BLUE);
             }
         }
+    }
+}
+
+
+// Reports the topology of each wire body so we can classify WHY constructPath /
+// opLoft reject it, instead of guessing.  For each wire it prints:
+//   edges / verts         -- counts (open chain of N edges => N+1 verts)
+//   ends(deg1)            -- vertices touched by exactly 1 edge (2 => open chain)
+//   branches(deg3+)       -- vertices touched by 3+ edges (any => true branch)
+//   shortEdges / minLen   -- count of sub-0.1mm edges and the shortest edge
+// A clean, loftable wire reads: ends=2, branches=0, shortEdges=0.
+function logWireTopology(context is Context, wires is array, label is string)
+{
+    for (var i = 0; i < size(wires); i += 1)
+    {
+        var edges = evaluateQuery(context, qOwnedByBody(wires[i], EntityType.EDGE));
+        var verts = evaluateQuery(context, qOwnedByBody(wires[i], EntityType.VERTEX));
+
+        var nShort = 0;
+        var minLen = 1e9 * meter;
+        for (var e in edges)
+        {
+            var len = evLength(context, { "entities" : e });
+            if (len < 1e-4 * meter) { nShort += 1; }
+            if (len < minLen) { minLen = len; }
+        }
+
+        var ends = 0;
+        var branches = 0;
+        for (var v in verts)
+        {
+            var inc = size(evaluateQuery(context, qIntersection([
+                    qOwnedByBody(wires[i], EntityType.EDGE),
+                    qAdjacent(v, AdjacencyType.VERTEX, EntityType.EDGE)])));
+            if (inc == 1) { ends += 1; }
+            else if (inc >= 3) { branches += 1; }
+        }
+
+        println("  " ~ label ~ "[" ~ toString(i) ~ "]: edges=" ~ toString(size(edges)) ~
+                " verts=" ~ toString(size(verts)) ~ " ends(deg1)=" ~ toString(ends) ~
+                " branches(deg3+)=" ~ toString(branches) ~ " shortEdges=" ~ toString(nShort) ~
+                " minLen=" ~ toString(minLen));
     }
 }
 
