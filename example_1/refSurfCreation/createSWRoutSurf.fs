@@ -155,6 +155,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                      "Description" : "Return only the rout face surfaces (lower/step-in wire to stop wire). Skips the full wall loft." }
         definition.routFacesOnly is boolean;
 
+        annotation { "Name" : "Flip rout direction", "Default" : false,
+                     "Description" : "Flips the lateral (binormal) rout direction. Use if the rout cuts outward instead of inward. The vertical (normal) direction is unchanged." }
+        definition.flipRoutDirection is boolean;
+
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#name",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -278,6 +282,11 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Detailed BSplines", "Default" : false,
                          "UIHint" : UIHint.SHOW_LABEL }
             definition.debugDetailedBSplines is boolean;
+
+            annotation { "Name" : "Show start-wire frames", "Default" : false,
+                         "Description" : "Draws normal (green), binormal (red), tangent (blue) arrows along each start wire. The red binormal points the way the rout cuts inward.",
+                         "UIHint" : UIHint.SHOW_LABEL }
+            definition.debugShowStartFrames is boolean;
         }
     }
     {
@@ -391,16 +400,51 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                 sideQ   = splitAndKeep(context, id + ("trimSideEnd" ~ r), sideQ, endPl, probePoints);
             }
 
-            // Compute offset signs from the trimmed copies for this region.
+            // --- Offset signs ------------------------------------------------
+            // Normal (up): robust as-is.  Skis lie roughly flat, so offsetting the
+            // bottom along +Z is "up".  bNormal[2] sign just accounts for the
+            // arbitrary sheet-normal orientation.
             var bFace   = qNthElement(qOwnedByBody(bottomQ, EntityType.FACE), 0);
             var bNormal = evFaceTangentPlane(context, {
                     "face" : bFace, "parameter" : vector(0.5, 0.5) }).normal;
             regionBottomSign[rKey] = bNormal[2] >= 0 ? 1 : -1;
 
+            // Binormal (lateral, in/out): determined GEOMETRICALLY so it is
+            // independent of part orientation.  The rout must cut INWARD, toward
+            // the ski interior.  The bottom sheet spans the full underside, so its
+            // centroid lies laterally inboard of the sidewall; the horizontal
+            // vector from the side face toward that centroid is a robust "inward".
+            // (The old test, sNormal[1] >= 0, assumed a fixed global-Y layout and
+            // inverts on rotated/mirrored production parts -- the bug that made the
+            // rout cut outward.)
             var sFace   = qNthElement(qOwnedByBody(sideQ, EntityType.FACE), 0);
-            var sNormal = evFaceTangentPlane(context, {
-                    "face" : sFace, "parameter" : vector(0.5, 0.5) }).normal;
-            regionSideSign[rKey] = sNormal[1] >= 0 ? 1 : -1;
+            var sPlane  = evFaceTangentPlane(context, {
+                    "face" : sFace, "parameter" : vector(0.5, 0.5) });
+            var sNormal = sPlane.normal;
+
+            var botBox    = evBox3d(context, { "topology" : bottomQ, "tight" : true });
+            var botCtr    = (botBox.minCorner + botBox.maxCorner) / 2;
+            var inwardRef = botCtr - sPlane.origin;
+            inwardRef     = inwardRef - vector(0, 0, 1) * inwardRef[2];   // horizontal only
+            var inwardLen = norm(inwardRef);
+            var inwardDir = (inwardLen > TOLERANCE.zeroLength * meter)
+                    ? (inwardRef / inwardLen)
+                    : sNormal;
+
+            // opOffsetFace moves the face along +normal for a positive distance,
+            // and the rout offsets below use -sSign * dist, so -sSign * sNormal
+            // must point inward.  dot(sNormal, inwardDir) > 0 means +normal is
+            // already inward, so -sSign must be +1 -> sSign = -1.
+            var sideSign = (dot(sNormal, inwardDir) > 0) ? -1 : 1;
+
+            // Global manual override: flip the binormal (== flip the tangent) while
+            // the normal (up) is unchanged.  Escape hatch when the auto-detection
+            // is wrong, or a reversed rout is wanted deliberately.
+            if (definition.flipRoutDirection)
+            {
+                sideSign = -sideSign;
+            }
+            regionSideSign[rKey] = sideSign;
 
             if (definition.debugPrint)
             {
@@ -441,6 +485,15 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     debugPrintWireBSplines(context, startWiresDbg[s],
                             "Start wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
                 }
+            }
+
+            // Reference-frame visualization around the start ("pinch") wire.
+            // sSign/bSign here are the post-flip signs the rout actually uses, so
+            // the red binormal arrow points the real cut direction.
+            if (definition.debugShowStartFrames)
+            {
+                drawStartWireFrames(context, washedStartWires[rKey],
+                        sNormal, sSign, bNormal, bSign);
             }
 
             // --- Step 3: step-in wire (if applicable) ---
@@ -567,6 +620,20 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
                     debugPrintWireBSplines(context, stopWiresDbg[s],
                             "Stop wire [" ~ rName ~ "] " ~ sideNames[s], debugFmt);
                 }
+            }
+
+            // Wire-count summary: the fastest way to spot a silently-empty wire
+            // array (e.g. an empty start wire => no full-mode lofts, no surfaces,
+            // no error).  rout-faces-only never touches start/step-in wires.
+            if (definition.debugPrint)
+            {
+                var nStepIn = (washedStepInWires[rKey] != undefined)
+                        ? size(washedStepInWires[rKey]) : 0;
+                println("  [" ~ rName ~ "] wireCounts: initial=" ~
+                        toString(size(washedInitialWires[rKey])) ~
+                        " start=" ~ toString(size(washedStartWires[rKey])) ~
+                        " stepIn=" ~ toString(nStepIn) ~
+                        " stop=" ~ toString(size(washedStopWires[rKey])));
             }
         }
 
@@ -1404,6 +1471,46 @@ function debugPrintWireBSplines(context is Context, wireBody is Query,
 }
 
 
+// Draws reference-frame arrows at sample points along each start ("pinch") wire:
+//   GREEN = normal   (up      = bSign * bottomNormal)
+//   RED   = binormal (lateral = -sSign * sideNormal)  -- the way the rout cuts
+//   BLUE  = tangent  (along the wire)
+// The red binormal arrow points the direction the rout will actually move, so a
+// flipped binormal is visible directly.  Arrow convention matches showRefFrames
+// in pathProcessing.fs (green normal, red binormal, blue tangent).
+function drawStartWireFrames(context is Context, startWires is array,
+        sideNormal is Vector, sSign is number, bottomNormal is Vector, bSign is number)
+{
+    var upDir  = bSign * bottomNormal;
+    var latDir = -sSign * sideNormal;
+
+    const N = 10;
+    var params = [];
+    for (var i = 0; i < N; i += 1)
+    {
+        params = append(params, i / (N - 1));
+    }
+
+    for (var w in startWires)
+    {
+        var bb   = evBox3d(context, { "topology" : w, "tight" : true });
+        var aLen = norm(bb.maxCorner - bb.minCorner) / 25;
+        var aRad = aLen * 0.06;
+        for (var e in evaluateQuery(context, qOwnedByBody(w, EntityType.EDGE)))
+        {
+            var tls = evEdgeTangentLines(context, { "edge" : e, "parameters" : params });
+            for (var tl in tls)
+            {
+                var org = tl.origin;
+                addDebugArrow(context, org, org + aLen * upDir,        aRad,         DebugColor.GREEN);
+                addDebugArrow(context, org, org + aLen * latDir,       aRad * (2 / 3), DebugColor.RED);
+                addDebugArrow(context, org, org + aLen * tl.direction, aRad * 0.5,   DebugColor.BLUE);
+            }
+        }
+    }
+}
+
+
 // Sets the Name property of a body in one line.
 function setBodyName(context is Context, body, name is string)
 {
@@ -1458,6 +1565,20 @@ function loftWireStep(context is Context, id is Id,
         regionSurfBodies is map) returns map
 {
     var pairs = pairWiresByMeanY(context, wiresA, wiresB);
+
+    // Loud failure: a step that was given lower and upper wires must produce at
+    // least one pair.  Zero pairs means one of the wire arrays came back empty
+    // (e.g. an empty start wire) -- which would otherwise yield no surface and no
+    // error.  A tip U-shape with one arm gone is NOT this case: pairWiresByMeanY
+    // returns FEWER pairs there, not zero, so this check leaves it untouched.
+    if (size(pairs) == 0)
+    {
+        throw regenError("SWRout '" ~ nameLabel ~ rName ~ "]': nothing to loft -- " ~
+                "lower wires=" ~ toString(size(wiresA)) ~
+                ", upper wires=" ~ toString(size(wiresB)) ~
+                ". A wire intersection came back empty (the side that reads 0).");
+    }
+
     for (var p in pairs)
     {
         var s        = p.a;
@@ -1471,14 +1592,20 @@ function loftWireStep(context is Context, id is Id,
         });
         var loftedBody = qCreatedBy(lId, EntityType.BODY);
 
-        if (!isQueryEmpty(context, loftedBody))
+        // Loud failure: opLoft normally throws on bad input, but if it returns an
+        // empty body for a valid wire pair, surface it rather than dropping it.
+        if (isQueryEmpty(context, loftedBody))
         {
-            var sideName = (s < size(sideNames)) ? sideNames[s] : ("extra " ~ toString(s));
-            setBodyName(context, loftedBody, nameLabel ~ rName ~ "] " ~ sideName);
-            var rsKey = rKey ~ "_" ~ toString(s);
-            var prev  = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
-            regionSurfBodies[rsKey] = append(prev, loftedBody);
+            throw regenError("SWRout '" ~ nameLabel ~ rName ~ "]': loft produced no " ~
+                    "surface for side " ~ toString(s) ~
+                    " (lower/upper wires paired but opLoft returned nothing).");
         }
+
+        var sideName = (s < size(sideNames)) ? sideNames[s] : ("extra " ~ toString(s));
+        setBodyName(context, loftedBody, nameLabel ~ rName ~ "] " ~ sideName);
+        var rsKey = rKey ~ "_" ~ toString(s);
+        var prev  = (regionSurfBodies[rsKey] != undefined) ? regionSurfBodies[rsKey] : [];
+        regionSurfBodies[rsKey] = append(prev, loftedBody);
     }
     return regionSurfBodies;
 }
