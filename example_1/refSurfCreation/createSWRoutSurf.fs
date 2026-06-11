@@ -1581,6 +1581,28 @@ function intersectAndGetWires(context is Context, id is Id,
 }
 
 
+// Returns the edges of a wire body whose length exceeds MIN_LOFT_EDGE, dropping
+// degenerate slivers.  The offset + region-boundary trim can collapse the small
+// end-cap connector edges into zero-length (or sub-micron) edges; a profile that
+// contains a zero-length edge makes opLoft return LOFT_INVALID.  A zero-length
+// edge is just a collapsed point -- its neighbors already meet there -- so
+// dropping it leaves the profile connected.  Real edges are >> 1 mm; observed
+// slivers are < 0.1 mm, so the threshold cleanly separates them.
+function loftableProfile(context is Context, wireBody is Query) returns Query
+{
+    const MIN_LOFT_EDGE = 1e-4 * meter;   // 0.1 mm
+    var keep = [];
+    for (var e in evaluateQuery(context, qOwnedByBody(wireBody, EntityType.EDGE)))
+    {
+        if (evLength(context, { "entities" : e }) > MIN_LOFT_EDGE)
+        {
+            keep = append(keep, e);
+        }
+    }
+    return qUnion(keep);
+}
+
+
 // Lofts each paired wire as a single connected profile.  Each wire body (which
 // may be a closed loop wrapping the tip or an open chain on a straight section)
 // is fed to opLoft whole; the kernel handles the topology.  This avoids the
@@ -1611,8 +1633,11 @@ function loftWireStep(context is Context, id is Id,
     for (var p in pairs)
     {
         var s        = p.a;
-        var aProfile = qOwnedByBody(wiresA[p.a], EntityType.EDGE);
-        var bProfile = qOwnedByBody(wiresB[p.b], EntityType.EDGE);
+        // Strip degenerate sliver edges (zero-length connectors collapsed by the
+        // offset/trim at region boundaries) -- opLoft returns LOFT_INVALID on a
+        // profile that contains one.  See loftableProfile.
+        var aProfile = loftableProfile(context, wiresA[p.a]);
+        var bProfile = loftableProfile(context, wiresB[p.b]);
         var lId      = id + (idPrefix ~ r ~ "_" ~ s);
 
         opLoft(context, lId, {
