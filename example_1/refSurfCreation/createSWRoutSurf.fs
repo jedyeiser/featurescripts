@@ -241,15 +241,17 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Region B", "UIHint" : UIHint.READ_ONLY }
             intr.regionBName is string;
 
-            annotation { "Name" : "Join regions?", "Default" : false }
+            annotation { "Name" : "Join regions?", "Default" : true }
             intr.join is boolean;
 
             if (intr.join)
             {
-                annotation { "Name" : "Start continuity", "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "Start continuity", "Default" : SWRoutContinuityType.G1,
+                             "UIHint" : UIHint.SHOW_LABEL }
                 intr.startContinuity is SWRoutContinuityType;
-                
-                annotation { "Name" : "End continuity", "UIHint" : UIHint.SHOW_LABEL }
+
+                annotation { "Name" : "End continuity", "Default" : SWRoutContinuityType.G1,
+                             "UIHint" : UIHint.SHOW_LABEL }
                 intr.endContinuity is SWRoutContinuityType;
 
                 annotation { "Name" : "Start distance" }
@@ -1489,7 +1491,12 @@ function drawStartWireFrames(context is Context, startWires is array, bottomQ is
     var botBox = evBox3d(context, { "topology" : bottomQ, "tight" : true });
     var botCtr = (botBox.minCorner + botBox.maxCorner) / 2;
 
-    const NS = 10;
+    // Fixed arrow size -- consistent across the whole ski.  (The old per-wire
+    // bbox scaling made tip arrows differ from long-region arrows.)  Tune here.
+    const ARROW_LEN = 10 * millimeter;
+    const ARROW_RAD = ARROW_LEN * 0.06;
+
+    const NS = 5;   // samples per edge (was 10 -- halved for less clutter)
     var params = [];
     for (var i = 0; i < NS; i += 1)
     {
@@ -1498,9 +1505,6 @@ function drawStartWireFrames(context is Context, startWires is array, bottomQ is
 
     for (var w in startWires)
     {
-        var bb   = evBox3d(context, { "topology" : w, "tight" : true });
-        var aLen = norm(bb.maxCorner - bb.minCorner) / 25;
-        var aRad = aLen * 0.06;
         for (var e in evaluateQuery(context, qOwnedByBody(w, EntityType.EDGE)))
         {
             var tls = evEdgeTangentLines(context, { "edge" : e, "parameters" : params });
@@ -1527,9 +1531,9 @@ function drawStartWireFrames(context is Context, startWires is array, bottomQ is
                 inwardRef = inwardRef - vector(0, 0, 1) * inwardRef[2];   // horizontal
                 if (dot(bin, inwardRef) < 0) { bin = -1 * bin; }
 
-                addDebugArrow(context, org, org + aLen * nrm,  aRad,           DebugColor.RED);
-                addDebugArrow(context, org, org + aLen * bin,  aRad * (2 / 3), DebugColor.GREEN);
-                addDebugArrow(context, org, org + aLen * tang, aRad * 0.5,     DebugColor.BLUE);
+                addDebugArrow(context, org, org + ARROW_LEN * nrm,  ARROW_RAD,           DebugColor.RED);
+                addDebugArrow(context, org, org + ARROW_LEN * bin,  ARROW_RAD * (2 / 3), DebugColor.GREEN);
+                addDebugArrow(context, org, org + ARROW_LEN * tang, ARROW_RAD * 0.5,     DebugColor.BLUE);
             }
         }
     }

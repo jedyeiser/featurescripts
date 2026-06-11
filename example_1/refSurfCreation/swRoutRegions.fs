@@ -175,10 +175,10 @@ export function rebuildSwRoutIntersections(definition is map,
             "regionBNum"            : regB.regionNum,
             "regionAName"           : regA.name,
             "regionBName"           : regB.name,
-            "join"                  : false,
-            "startContinuity"       : "G0",
+            "join"                  : true,
+            "startContinuity"       : "G1",
             "startDist"             : 10 * millimeter,
-            "endContinuity"         : "G0",
+            "endContinuity"         : "G1",
             "endDist"               : 10 * millimeter
         };
 
