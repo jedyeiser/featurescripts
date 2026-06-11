@@ -492,8 +492,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             // the red binormal arrow points the real cut direction.
             if (definition.debugShowStartFrames)
             {
-                drawStartWireFrames(context, washedStartWires[rKey],
-                        sNormal, sSign, bNormal, bSign);
+                drawStartWireFrames(context, washedStartWires[rKey], bottomQ);
             }
 
             // --- Step 3: step-in wire (if applicable) ---
@@ -1473,22 +1472,22 @@ function debugPrintWireBSplines(context is Context, wireBody is Query,
 
 // Draws an orthonormal reference frame at sample points along each start
 // ("pinch") wire:
-//   RED   = normal   (up,      from bSign * bottomNormal)
-//   GREEN = binormal (lateral, the direction the rout cuts)
+//   RED   = normal   (LOCAL bottom-surface normal, oriented to +Z)
+//   GREEN = binormal (lateral, pointing INWARD toward the ski interior)
 //   BLUE  = tangent  (along the wire)
 // Color convention matches offsetEdges.fs / refSurfUtils.fs (red normal, green
-// binormal, blue tangent).  These are NOT Frenet frames -- the feature uses
-// surface normals, not a transport frame.  The up and lateral references are
-// the constant per-region offset directions the rout actually uses; we
-// orthonormalize them against the LOCAL wire tangent at each point so the frame
-// stays clean (orthogonal, unit length) and follows the wire's curvature.
-// The green binormal points the actual cut direction, so a flipped binormal is
-// visible directly.
-function drawStartWireFrames(context is Context, startWires is array,
-        sideNormal is Vector, sSign is number, bottomNormal is Vector, bSign is number)
+// binormal, blue tangent).  Everything is evaluated LOCALLY per sample point so
+// the frame follows the surface: the normal is the bottom face's actual normal
+// at the projected point (flipped to the +Z side), and the binormal is signed
+// inward toward the bottom-surface centroid PER POINT -- so it stays correct on
+// both the +Y and -Y sides instead of flipping at y = 0.  The start wire lies on
+// the bottom surface, so the tangent is already in that surface's tangent plane
+// and normal/tangent/binormal come out orthonormal.
+function drawStartWireFrames(context is Context, startWires is array, bottomQ is Query)
 {
-    var upRef  = bSign * bottomNormal;     // vertical reference ("normal")
-    var latRef = -sSign * sideNormal;      // rout cut reference ("binormal")
+    var bFace  = qNthElement(qOwnedByBody(bottomQ, EntityType.FACE), 0);
+    var botBox = evBox3d(context, { "topology" : bottomQ, "tight" : true });
+    var botCtr = (botBox.minCorner + botBox.maxCorner) / 2;
 
     const NS = 10;
     var params = [];
@@ -1514,16 +1513,19 @@ function drawStartWireFrames(context is Context, startWires is array,
                 var tLen = norm(tang);
                 tang = (tLen > 1e-9) ? tang / tLen : tang;
 
-                // Normal: up reference, orthogonalized against the tangent.
-                var nrm  = upRef - tang * dot(upRef, tang);
-                var nLen = norm(nrm);
-                nrm = (nLen > 1e-9) ? nrm / nLen : upRef;
+                // Normal: LOCAL bottom-surface normal at this point, set to +Z side.
+                var uv  = evDistance(context, { "side0" : bFace, "side1" : org }).sides[0].parameter;
+                var nrm = evFaceTangentPlane(context, { "face" : bFace, "parameter" : uv }).normal;
+                if (nrm[2] < 0) { nrm = -1 * nrm; }
 
-                // Binormal: perpendicular to both, signed to the rout cut direction.
+                // Binormal: perpendicular to tangent and normal, signed INWARD
+                // (toward the bottom-surface centroid) per point.
                 var bin  = cross(tang, nrm);
                 var bLen = norm(bin);
                 bin = (bLen > 1e-9) ? bin / bLen : bin;
-                if (dot(bin, latRef) < 0) { bin = -1 * bin; }
+                var inwardRef = botCtr - org;
+                inwardRef = inwardRef - vector(0, 0, 1) * inwardRef[2];   // horizontal
+                if (dot(bin, inwardRef) < 0) { bin = -1 * bin; }
 
                 addDebugArrow(context, org, org + aLen * nrm,  aRad,           DebugColor.RED);
                 addDebugArrow(context, org, org + aLen * bin,  aRad * (2 / 3), DebugColor.GREEN);
