@@ -284,7 +284,7 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             definition.debugDetailedBSplines is boolean;
 
             annotation { "Name" : "Show start-wire frames", "Default" : false,
-                         "Description" : "Draws normal (green), binormal (red), tangent (blue) arrows along each start wire. The red binormal points the way the rout cuts inward.",
+                         "Description" : "Draws normal (red), binormal (green), tangent (blue) arrows along each start wire. The green binormal points the way the rout cuts -- it should point into the ski.",
                          "UIHint" : UIHint.SHOW_LABEL }
             definition.debugShowStartFrames is boolean;
         }
@@ -1471,24 +1471,30 @@ function debugPrintWireBSplines(context is Context, wireBody is Query,
 }
 
 
-// Draws reference-frame arrows at sample points along each start ("pinch") wire:
-//   GREEN = normal   (up      = bSign * bottomNormal)
-//   RED   = binormal (lateral = -sSign * sideNormal)  -- the way the rout cuts
+// Draws an orthonormal reference frame at sample points along each start
+// ("pinch") wire:
+//   RED   = normal   (up,      from bSign * bottomNormal)
+//   GREEN = binormal (lateral, the direction the rout cuts)
 //   BLUE  = tangent  (along the wire)
-// The red binormal arrow points the direction the rout will actually move, so a
-// flipped binormal is visible directly.  Arrow convention matches showRefFrames
-// in pathProcessing.fs (green normal, red binormal, blue tangent).
+// Color convention matches offsetEdges.fs / refSurfUtils.fs (red normal, green
+// binormal, blue tangent).  These are NOT Frenet frames -- the feature uses
+// surface normals, not a transport frame.  The up and lateral references are
+// the constant per-region offset directions the rout actually uses; we
+// orthonormalize them against the LOCAL wire tangent at each point so the frame
+// stays clean (orthogonal, unit length) and follows the wire's curvature.
+// The green binormal points the actual cut direction, so a flipped binormal is
+// visible directly.
 function drawStartWireFrames(context is Context, startWires is array,
         sideNormal is Vector, sSign is number, bottomNormal is Vector, bSign is number)
 {
-    var upDir  = bSign * bottomNormal;
-    var latDir = -sSign * sideNormal;
+    var upRef  = bSign * bottomNormal;     // vertical reference ("normal")
+    var latRef = -sSign * sideNormal;      // rout cut reference ("binormal")
 
-    const N = 10;
+    const NS = 10;
     var params = [];
-    for (var i = 0; i < N; i += 1)
+    for (var i = 0; i < NS; i += 1)
     {
-        params = append(params, i / (N - 1));
+        params = append(params, i / (NS - 1));
     }
 
     for (var w in startWires)
@@ -1502,9 +1508,26 @@ function drawStartWireFrames(context is Context, startWires is array,
             for (var tl in tls)
             {
                 var org = tl.origin;
-                addDebugArrow(context, org, org + aLen * upDir,        aRad,         DebugColor.GREEN);
-                addDebugArrow(context, org, org + aLen * latDir,       aRad * (2 / 3), DebugColor.RED);
-                addDebugArrow(context, org, org + aLen * tl.direction, aRad * 0.5,   DebugColor.BLUE);
+
+                // Tangent (unit).
+                var tang = tl.direction;
+                var tLen = norm(tang);
+                tang = (tLen > 1e-9) ? tang / tLen : tang;
+
+                // Normal: up reference, orthogonalized against the tangent.
+                var nrm  = upRef - tang * dot(upRef, tang);
+                var nLen = norm(nrm);
+                nrm = (nLen > 1e-9) ? nrm / nLen : upRef;
+
+                // Binormal: perpendicular to both, signed to the rout cut direction.
+                var bin  = cross(tang, nrm);
+                var bLen = norm(bin);
+                bin = (bLen > 1e-9) ? bin / bLen : bin;
+                if (dot(bin, latRef) < 0) { bin = -1 * bin; }
+
+                addDebugArrow(context, org, org + aLen * nrm,  aRad,           DebugColor.RED);
+                addDebugArrow(context, org, org + aLen * bin,  aRad * (2 / 3), DebugColor.GREEN);
+                addDebugArrow(context, org, org + aLen * tang, aRad * 0.5,     DebugColor.BLUE);
             }
         }
     }
