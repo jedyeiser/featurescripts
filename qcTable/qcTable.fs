@@ -285,6 +285,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             var swSetup = setupSidewallMeasurement(context, id + "sw_", swData, swExtents);
 
             // Measure at each station
+            var bottomCenterPoints = [];
+            var topCenterPoints = [];
             for (var station in stations)
             {
                 var measurement = measureSidewallAtStation(
@@ -297,6 +299,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 if (measurement != undefined)
                 {
                     swMeasurements[station.x] = measurement;
+                    bottomCenterPoints = append(bottomCenterPoints, measurement.bottomCenter);
+                    topCenterPoints = append(topCenterPoints, measurement.topCenter);
                 }
             }
 
@@ -305,25 +309,25 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 println("SW measurements: " ~ size(keys(swMeasurements)));
             }
 
-            // Handle measurement wires
-            if (definition.keepWires)
+            // Optionally build center wires from the measured station points
+            if (definition.keepWires && size(bottomCenterPoints) >= 2)
             {
+                opFitSpline(context, id + "swBottomWire", {
+                    "points" : bottomCenterPoints
+                });
                 setProperty(context, {
-                    "entities" : swSetup.centerSplineBottom,
+                    "entities" : qCreatedBy(id + "swBottomWire", EntityType.BODY),
                     "propertyType" : PropertyType.NAME,
                     "value" : "SW_BOTTOM_CENTER_WIRE"
                 });
 
+                opFitSpline(context, id + "swTopWire", {
+                    "points" : topCenterPoints
+                });
                 setProperty(context, {
-                    "entities" : swSetup.centerSplineTop,
+                    "entities" : qCreatedBy(id + "swTopWire", EntityType.BODY),
                     "propertyType" : PropertyType.NAME,
                     "value" : "SW_TOP_CENTER_WIRE"
-                });
-            }
-            else
-            {
-                opDeleteBodies(context, id + "deleteSWWires", {
-                    "entities" : qUnion([swSetup.centerSplineBottom, swSetup.centerSplineTop])
                 });
             }
         }

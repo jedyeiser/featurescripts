@@ -354,20 +354,13 @@ export function setupSidewallMeasurement(
     // Get top edges
     var topEdges = getTopEdges(context, id + "top", swData.bodies, swExtents);
 
-    // Create paths from edges
-    var insidePath = constructPath(context, qUnion(bottomEdges.inside));
-    var outsidePath = constructPath(context, qUnion(bottomEdges.outside));
-
-    var insideTopPath = constructPath(context, qUnion(topEdges.inside));
-    var outsideTopPath = constructPath(context, qUnion(topEdges.outside));
-
-    // Create center splines
-    var centerSplineBottom = getCenterSpline(context, id + "centerBottom", insidePath, outsidePath);
-    var centerSplineTop = getCenterSpline(context, id + "centerTop", insideTopPath, outsideTopPath);
-
+    // Return the classified edge sets directly. Measurement intersects each
+    // station plane with these edges, so no continuous Path is required.
     return {
-        "centerSplineBottom" : centerSplineBottom,
-        "centerSplineTop" : centerSplineTop
+        "bottomInside" : bottomEdges.inside,
+        "bottomOutside" : bottomEdges.outside,
+        "topInside" : topEdges.inside,
+        "topOutside" : topEdges.outside
     };
 }
 
@@ -378,20 +371,19 @@ export function measureSidewallAtStation(
     context is Context,
     swSetup is map,
     stationX is ValueWithUnits,
-    verbose is boolean) returns map
+    verbose is boolean)
 {
     var measurePlane = plane(vector(stationX, 0 * millimeter, 0 * millimeter), vector(1, 0, 0));
 
-    // Get bottom and top points on center splines
-    var bottomPoint = evDistance(context, {
-        "side0" : swSetup.centerSplineBottom,
-        "side1" : measurePlane
-    }).sides[0].point;
+    // Intersect the station plane directly with the inside/outside sidewall
+    // edges and average to get the mid-thickness center point at this station.
+    var bottomPoint = stationCenterPoint(context, swSetup.bottomInside, swSetup.bottomOutside, measurePlane);
+    var topPoint = stationCenterPoint(context, swSetup.topInside, swSetup.topOutside, measurePlane);
 
-    var topPoint = evDistance(context, {
-        "side0" : swSetup.centerSplineTop,
-        "side1" : measurePlane
-    }).sides[0].point;
+    if (bottomPoint == undefined || topPoint == undefined)
+    {
+        return undefined;
+    }
 
     var swHeight = topPoint[2] - bottomPoint[2];
 
@@ -404,8 +396,58 @@ export function measureSidewallAtStation(
     return {
         "swHeight" : swHeight,
         "swBottomZ" : bottomPoint[2],
-        "swTopZ" : topPoint[2]
+        "swTopZ" : topPoint[2],
+        "bottomCenter" : bottomPoint,
+        "topCenter" : topPoint
     };
+}
+
+/**
+ * Center point at a station: average the inside and outside edge intersections
+ * with the measurement plane. Returns undefined if neither side intersects.
+ */
+function stationCenterPoint(context is Context, insideEdges, outsideEdges, measurePlane is Plane)
+{
+    var insidePoint = stationEdgeIntersection(context, insideEdges, measurePlane);
+    var outsidePoint = stationEdgeIntersection(context, outsideEdges, measurePlane);
+
+    if (insidePoint == undefined && outsidePoint == undefined)
+    {
+        return undefined;
+    }
+    if (insidePoint == undefined)
+    {
+        return outsidePoint;
+    }
+    if (outsidePoint == undefined)
+    {
+        return insidePoint;
+    }
+    return average([insidePoint, outsidePoint]);
+}
+
+/**
+ * Average intersection point of an edge set with the measurement plane.
+ * Returns undefined if no edge in the set crosses the plane.
+ */
+function stationEdgeIntersection(context is Context, edges, measurePlane is Plane)
+{
+    var crossing = evaluateQuery(context, qIntersectsPlane(qUnion(edges), measurePlane));
+    if (size(crossing) == 0)
+    {
+        return undefined;
+    }
+
+    var points = [];
+    for (var edge in crossing)
+    {
+        var dist = evDistance(context, {
+            "side0" : edge,
+            "side1" : measurePlane
+        });
+        points = append(points, dist.sides[0].point);
+    }
+    return average(points);
 }
 
 // ============================================================================
@@ -624,37 +666,3 @@ function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is
     };
 }
 
-/**
- * Create center spline by averaging inside and outside paths
- */
-function getCenterSpline(context is Context, id is Id, insidePath is Path, outsidePath is Path) returns Query
-{
-    var splinePoints = [];
-
-    for (var param in range(0, 1, 50))
-    {
-        var insidePoint = evPathTangentLines(context, insidePath, [param]).tangentLines[0].origin;
-        var outsidePoint = evPathTangentLines(context, outsidePath, [param]).tangentLines[0].origin;
-
-        var pointDist = evDistance(context, {
-            "side0" : insidePoint,
-            "side1" : outsidePoint
-        });
-
-        var flipOutside = (pointDist.distance > 15 * millimeter);
-
-        if (flipOutside)
-        {
-            outsidePoint = evPathTangentLines(context, outsidePath, [1 - param]).tangentLines[0].origin;
-        }
-
-        var centerPoint = average([insidePoint, outsidePoint]);
-        splinePoints = append(splinePoints, centerPoint);
-    }
-
-    opFitSpline(context, id + "centerSpline", {
-        "points" : splinePoints
-    });
-
-    return qCreatedBy(id + "centerSpline", EntityType.BODY);
-}
