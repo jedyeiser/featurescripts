@@ -77,6 +77,31 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         {
             println("arcFit: evEdges=" ~ size(evEdges) ~ " bSplines=" ~ size(bSplines));
             println("arcFit: outputType=" ~ definition.outputType ~ " posTol=" ~ toString(definition.posTol / millimeter) ~ "mm minLength=" ~ toString(definition.minLength / millimeter) ~ "mm");
+
+            // Per-edge arc/line diagnostic: compare the edge's EXACT (rational-allowed)
+            // representation against the non-rational approximation the pipeline actually fits.
+            // If arcErr-exact << posTol but arcErr-nonrat > posTol, the edge IS a clean arc and
+            // forceNonRational is what's preventing preservation -- the lever is posTol or the
+            // input representation, not the detector.
+            println("arcFit: --- per-edge arc/line diagnostic (exact vs pipeline non-rational) ---");
+            for (var di = 0; di < size(evEdges); di += 1)
+            {
+                var ctName = "n/a";
+                const curveDef = evCurveDefinition(context, { "edge" : evEdges[di] });
+                if (curveDef.curveType != undefined)
+                {
+                    ctName = toString(curveDef.curveType);
+                }
+                const exactRep = evApproximateBSplineCurve(context, { "edge" : evEdges[di] });
+                const exactRpt = wholeCurveArcLineResidual(exactRep, definition.numSamples);
+                const nrRpt = wholeCurveArcLineResidual(bSplines[di], definition.numSamples);
+                println("arcFit edge " ~ di ~ ": curveType=" ~ ctName
+                        ~ " | exactRep[rational=" ~ exactRep.isRational ~ " deg=" ~ exactRep.degree
+                        ~ " nCtrl=" ~ size(exactRep.controlPoints) ~ "]"
+                        ~ " arcErr exact=" ~ fmtMM(exactRpt.arcErr) ~ "mm nonrat=" ~ fmtMM(nrRpt.arcErr) ~ "mm"
+                        ~ " lineErr exact=" ~ fmtMM(exactRpt.lineErr) ~ "mm"
+                        ~ " radius=" ~ fmtMM(exactRpt.radius) ~ "mm");
+            }
         }
 
         // 1) Sample input curves once for both plane fit and coplanarity check.
@@ -629,7 +654,7 @@ export function approximateSplinesWithPolyArcs(
     const joins = classifyJoinsHardness(ordered.splines, joinTol, tanBreakDotTol);
 
     // 3) Initial segmentation from knot spans
-    var segments = buildInitialSegmentsFromKnotSpans(ordered.splines, joins, initialSpansPerSeg, minLength, posTol, numSamples);
+    var segments = buildInitialSegmentsFromKnotSpans(ordered.splines, joins, initialSpansPerSeg, minLength, posTol, numSamples, debug);
 
     // 4) Initial fit per segment
     segments = fitAllSegments(ordered.splines, segments, posTol, planeTol, numSamples);
@@ -702,6 +727,75 @@ export function classifyJoinsHardness(orderedSplines is array, joinTol is ValueW
  * -------------------------------------------------------------------------- */
 
 /**
+ * Format a ValueWithUnits length in mm for debug output, tolerating undefined.
+ */
+function fmtMM(v) returns string
+{
+    if (v == undefined)
+    {
+        return "n/a";
+    }
+    return toString(v / millimeter);
+}
+
+/**
+ * Pure measurement (no decision): how closely does the WHOLE curve match a single line
+ * and a single circular arc? Returns { "lineErr", "arcErr", "radius", "nSamp", "nKnotSpans" },
+ * with lineErr/arcErr/radius as ValueWithUnits or undefined when not computable. Used by the
+ * detector and by the feature-body per-edge diagnostic.
+ */
+function wholeCurveArcLineResidual(c is map, numSamples is number) returns map
+{
+    const dom = getSplineDomain(c);
+    const u0 = dom.uMin;
+    const u1 = dom.uMax;
+
+    const spans = getUniqueKnotSpans(c);
+    var nSamp = max(numSamples, 20);
+    if (8 * size(spans) > nSamp)
+    {
+        nSamp = 8 * size(spans);
+    }
+
+    const pts = sampleSplineSegmentPositions(c, u0, u1, nSamp);
+
+    var lineErr = undefined;
+    var arcErr = undefined;
+    var radius = undefined;
+
+    if (size(pts) >= 3)
+    {
+        const p0 = pts[0];
+        const p1 = pts[size(pts) - 1];
+        const pm = pts[floor((size(pts) - 1) / 2)];
+
+        const chordLen = norm(p1 - p0);
+        if (chordLen > 0 * meter)
+        {
+            lineErr = maxDistanceToChord(pts, p0, p1);
+        }
+
+        const circFit = circleThrough3Points(p0, pm, p1);
+        if (circFit != undefined)
+        {
+            const circle = circFit.circle;
+            const th0 = circleAngle(circle, p0);
+            const th1 = circleAngle(circle, p1);
+            arcErr = arcSamplesMaxError(pts, circle, th0, th1, u0, u1).maxErr;
+            radius = circle.radius;
+        }
+    }
+
+    return {
+            "lineErr" : lineErr,
+            "arcErr" : arcErr,
+            "radius" : radius,
+            "nSamp" : nSamp,
+            "nKnotSpans" : size(spans)
+        };
+}
+
+/**
  * Per-curve detector: test whether an ENTIRE input curve is, to within posTol, a single
  * straight line or a single circular arc. Returns a fully-fitted "line" or "arc" primitive
  * segment spanning the whole curve (flagged "preserved" : true), or undefined when the curve
@@ -714,7 +808,7 @@ export function classifyJoinsHardness(orderedSplines is array, joinTol is ValueW
  * reliance on stored curve-type metadata. The tolerance is posTol, so a curve is preserved
  * only when a single primitive fits it to the same standard the rest of the pipeline enforces.
  */
-function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is ValueWithUnits, numSamples is number)
+function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is ValueWithUnits, numSamples is number, debug is boolean)
 {
     const dom = getSplineDomain(c);
     const u0 = dom.uMin;
@@ -732,6 +826,10 @@ function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is Val
     const pts = sampleSplineSegmentPositions(c, u0, u1, nSamp);
     if (size(pts) < 3)
     {
+        if (debug)
+        {
+            println("arcFit detect: edge " ~ curveIndex ~ " too few samples (" ~ size(pts) ~ ") -> freeform");
+        }
         return undefined;
     }
 
@@ -739,56 +837,82 @@ function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is Val
     const p1 = pts[size(pts) - 1];
     const pm = pts[floor((size(pts) - 1) / 2)];
 
-    // 1) Whole-curve line test: max deviation from the endpoint chord within posTol.
-    //    Guard against a closed curve (p0 == p1), where the chord is degenerate.
+    // Measure line residual (guard against a closed curve where the chord is degenerate).
     const chordVec = p1 - p0;
     const chordLen = norm(chordVec);
+    var lineErr = undefined;
     if (chordLen > 0 * meter)
     {
-        const chordErr = maxDistanceToChord(pts, p0, p1);
-        if (chordErr <= posTol)
-        {
-            const dir = chordVec / chordLen;
-            return {
-                    "type" : "line",
-                    "preserved" : true,
-                    "p0" : p0, "p1" : p1,
-                    "line" : { "origin" : p0, "direction" : dir },
-                    "t0" : 0, "t1" : chordLen,
-                    "maxErr" : chordErr,
-                    "curveIndex0" : curveIndex, "u0" : u0,
-                    "curveIndex1" : curveIndex, "u1" : u1
-                };
-        }
+        lineErr = maxDistanceToChord(pts, p0, p1);
     }
 
-    // 2) Whole-curve single-arc test. Three distinct points fix a circle exactly; the
-    //    arcSamplesMaxError 3D point-to-arc metric then confirms EVERY sample lies on that
-    //    arc, which also rejects out-of-plane (non-coplanar) and non-circular curves.
+    // Measure single-arc residual. Three distinct points fix a circle exactly; the
+    // arcSamplesMaxError 3D point-to-arc metric confirms EVERY sample lies on that arc,
+    // which also rejects out-of-plane (non-coplanar) and non-circular curves.
+    var arcErr = undefined;
+    var radius = undefined;
+    var circle = undefined;
+    var th0 = 0;
+    var th1 = 0;
+    var thMid = 0;
+    var uMaxErr = u0;
     const circFit = circleThrough3Points(p0, pm, p1);
     if (circFit != undefined)
     {
-        const circle = circFit.circle;
-        const th0 = circleAngle(circle, p0);
-        const th1 = circleAngle(circle, p1);
-        const thMid = circleAngle(circle, pm);
+        circle = circFit.circle;
+        th0 = circleAngle(circle, p0);
+        th1 = circleAngle(circle, p1);
+        thMid = circleAngle(circle, pm);
         const arcStats = arcSamplesMaxError(pts, circle, th0, th1, u0, u1);
-        if (arcStats.maxErr <= posTol)
-        {
-            return {
-                    "type" : "arc",
-                    "preserved" : true,
-                    "p0" : p0, "p1" : p1, "pMid" : pm,
-                    "circle" : circle,
-                    "theta0" : th0, "theta1" : th1, "thetaMid" : thMid,
-                    "maxErr" : arcStats.maxErr, "uMaxErr" : arcStats.uMax,
-                    "curveIndex0" : curveIndex, "u0" : u0,
-                    "curveIndex1" : curveIndex, "u1" : u1
-                };
-        }
+        arcErr = arcStats.maxErr;
+        uMaxErr = arcStats.uMax;
+        radius = circle.radius;
     }
 
-    return undefined;
+    // Decide: line first, then arc.
+    var verdict = "freeform";
+    var result = undefined;
+    if (lineErr != undefined && lineErr <= posTol)
+    {
+        verdict = "LINE";
+        const dir = chordVec / chordLen;
+        result = {
+                "type" : "line",
+                "preserved" : true,
+                "p0" : p0, "p1" : p1,
+                "line" : { "origin" : p0, "direction" : dir },
+                "t0" : 0, "t1" : chordLen,
+                "maxErr" : lineErr,
+                "curveIndex0" : curveIndex, "u0" : u0,
+                "curveIndex1" : curveIndex, "u1" : u1
+            };
+    }
+    else if (arcErr != undefined && arcErr <= posTol)
+    {
+        verdict = "ARC";
+        result = {
+                "type" : "arc",
+                "preserved" : true,
+                "p0" : p0, "p1" : p1, "pMid" : pm,
+                "circle" : circle,
+                "theta0" : th0, "theta1" : th1, "thetaMid" : thMid,
+                "maxErr" : arcErr, "uMaxErr" : uMaxErr,
+                "curveIndex0" : curveIndex, "u0" : u0,
+                "curveIndex1" : curveIndex, "u1" : u1
+            };
+    }
+
+    if (debug)
+    {
+        println("arcFit detect: edge " ~ curveIndex
+                ~ " nKnotSpans=" ~ size(spans) ~ " nSamp=" ~ nSamp
+                ~ " lineErr=" ~ fmtMM(lineErr) ~ "mm"
+                ~ " arcErr=" ~ fmtMM(arcErr) ~ "mm"
+                ~ " radius=" ~ fmtMM(radius) ~ "mm"
+                ~ " posTol=" ~ toString(posTol / millimeter) ~ "mm -> " ~ verdict);
+    }
+
+    return result;
 }
 
 /** --------------------------------------------------------------------------
@@ -801,7 +925,8 @@ export function buildInitialSegmentsFromKnotSpans(
         spansPerSeg is number,
         minLength is ValueWithUnits,
         posTol is ValueWithUnits,
-        numSamples is number) returns array
+        numSamples is number,
+        debug is boolean) returns array
 {
     var segments = [];
 
@@ -812,7 +937,7 @@ export function buildInitialSegmentsFromKnotSpans(
         // Per-edge fast path: if this whole curve is already a single line or arc within
         // posTol, preserve it as ONE primitive instead of slicing it into knot-span blocks
         // (which the downstream biarc-preferring fit would otherwise re-split).
-        const preserved = detectWholeCurveArcOrLine(c, curveIndex, posTol, numSamples);
+        const preserved = detectWholeCurveArcOrLine(c, curveIndex, posTol, numSamples, debug);
         if (preserved != undefined)
         {
             segments = append(segments, preserved);
