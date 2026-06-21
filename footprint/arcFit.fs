@@ -629,7 +629,7 @@ export function approximateSplinesWithPolyArcs(
     const joins = classifyJoinsHardness(ordered.splines, joinTol, tanBreakDotTol);
 
     // 3) Initial segmentation from knot spans
-    var segments = buildInitialSegmentsFromKnotSpans(ordered.splines, joins, initialSpansPerSeg, minLength);
+    var segments = buildInitialSegmentsFromKnotSpans(ordered.splines, joins, initialSpansPerSeg, minLength, posTol, numSamples);
 
     // 4) Initial fit per segment
     segments = fitAllSegments(ordered.splines, segments, posTol, planeTol, numSamples);
@@ -698,6 +698,100 @@ export function classifyJoinsHardness(orderedSplines is array, joinTol is ValueW
 }
 
 /** --------------------------------------------------------------------------
+ * Step 3a: Whole-curve arc / line preservation (per-edge fast path)
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Per-curve detector: test whether an ENTIRE input curve is, to within posTol, a single
+ * straight line or a single circular arc. Returns a fully-fitted "line" or "arc" primitive
+ * segment spanning the whole curve (flagged "preserved" : true), or undefined when the curve
+ * is freeform and must go through the normal knot-span + subdivide + merge pipeline.
+ *
+ * This runs ONCE PER EDGE (not across all edges together): every input curve is judged on its
+ * own geometry. Detection is purely geometric (sample-and-fit via evaluateSpline), so it is
+ * representation-agnostic and inherently accounts for control-point weights -- a rational arc
+ * and a non-rational arc approximation are both recognized by the points they trace, with no
+ * reliance on stored curve-type metadata. The tolerance is posTol, so a curve is preserved
+ * only when a single primitive fits it to the same standard the rest of the pipeline enforces.
+ */
+function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is ValueWithUnits, numSamples is number)
+{
+    const dom = getSplineDomain(c);
+    const u0 = dom.uMin;
+    const u1 = dom.uMax;
+
+    // Sample density proportional to knot-span count so a wiggly spline cannot masquerade
+    // as an arc by only touching the fitted circle at sparsely spaced sample points.
+    const spans = getUniqueKnotSpans(c);
+    var nSamp = max(numSamples, 20);
+    if (8 * size(spans) > nSamp)
+    {
+        nSamp = 8 * size(spans);
+    }
+
+    const pts = sampleSplineSegmentPositions(c, u0, u1, nSamp);
+    if (size(pts) < 3)
+    {
+        return undefined;
+    }
+
+    const p0 = pts[0];
+    const p1 = pts[size(pts) - 1];
+    const pm = pts[floor((size(pts) - 1) / 2)];
+
+    // 1) Whole-curve line test: max deviation from the endpoint chord within posTol.
+    //    Guard against a closed curve (p0 == p1), where the chord is degenerate.
+    const chordVec = p1 - p0;
+    const chordLen = norm(chordVec);
+    if (chordLen > 0 * meter)
+    {
+        const chordErr = maxDistanceToChord(pts, p0, p1);
+        if (chordErr <= posTol)
+        {
+            const dir = chordVec / chordLen;
+            return {
+                    "type" : "line",
+                    "preserved" : true,
+                    "p0" : p0, "p1" : p1,
+                    "line" : { "origin" : p0, "direction" : dir },
+                    "t0" : 0, "t1" : chordLen,
+                    "maxErr" : chordErr,
+                    "curveIndex0" : curveIndex, "u0" : u0,
+                    "curveIndex1" : curveIndex, "u1" : u1
+                };
+        }
+    }
+
+    // 2) Whole-curve single-arc test. Three distinct points fix a circle exactly; the
+    //    arcSamplesMaxError 3D point-to-arc metric then confirms EVERY sample lies on that
+    //    arc, which also rejects out-of-plane (non-coplanar) and non-circular curves.
+    const circFit = circleThrough3Points(p0, pm, p1);
+    if (circFit != undefined)
+    {
+        const circle = circFit.circle;
+        const th0 = circleAngle(circle, p0);
+        const th1 = circleAngle(circle, p1);
+        const thMid = circleAngle(circle, pm);
+        const arcStats = arcSamplesMaxError(pts, circle, th0, th1, u0, u1);
+        if (arcStats.maxErr <= posTol)
+        {
+            return {
+                    "type" : "arc",
+                    "preserved" : true,
+                    "p0" : p0, "p1" : p1, "pMid" : pm,
+                    "circle" : circle,
+                    "theta0" : th0, "theta1" : th1, "thetaMid" : thMid,
+                    "maxErr" : arcStats.maxErr, "uMaxErr" : arcStats.uMax,
+                    "curveIndex0" : curveIndex, "u0" : u0,
+                    "curveIndex1" : curveIndex, "u1" : u1
+                };
+        }
+    }
+
+    return undefined;
+}
+
+/** --------------------------------------------------------------------------
  * Step 3: Knot-span based initial segmentation
  * -------------------------------------------------------------------------- */
 
@@ -705,13 +799,26 @@ export function buildInitialSegmentsFromKnotSpans(
         orderedSplines is array,
         joins is array,
         spansPerSeg is number,
-        minLength is ValueWithUnits) returns array
+        minLength is ValueWithUnits,
+        posTol is ValueWithUnits,
+        numSamples is number) returns array
 {
     var segments = [];
 
     for (var curveIndex = 0; curveIndex < size(orderedSplines); curveIndex += 1)
     {
         const c = orderedSplines[curveIndex];
+
+        // Per-edge fast path: if this whole curve is already a single line or arc within
+        // posTol, preserve it as ONE primitive instead of slicing it into knot-span blocks
+        // (which the downstream biarc-preferring fit would otherwise re-split).
+        const preserved = detectWholeCurveArcOrLine(c, curveIndex, posTol, numSamples);
+        if (preserved != undefined)
+        {
+            segments = append(segments, preserved);
+            continue;
+        }
+
         const spans = getUniqueKnotSpans(c);
 
         var blockStart = 0;
@@ -791,6 +898,14 @@ export function fitAllSegments(
     for (var i = 0; i < size(segments); i += 1)
     {
         const seg = segments[i];
+        // Skip segments that already carry a fitted primitive (e.g. whole-curve preserved
+        // arcs/lines). Re-fitting would discard the preserved arc and replace it with the
+        // biarc the fitter prefers. Freeform segments still arrive as "unfit" and are fit here.
+        if (seg["type"] != "unfit")
+        {
+            out = append(out, seg);
+            continue;
+        }
         const fit = fitLineOrArcForSegment(orderedSplines, seg, posTol, planeTol, numSamples);
         out = append(out, fit);
     }
@@ -995,6 +1110,12 @@ function subdivideOne(
         maxDepth is number,
         debug is boolean) returns array
 {
+    // Whole-curve preserved arcs/lines are kept verbatim -- never bisect them.
+    if (seg["preserved"] == true)
+    {
+        return [seg];
+    }
+
     // If seg is already fitted from upstream, accept the existing fit's maxErr;
     // otherwise re-fit so we have a measured maxErr to act on.
     var fit = seg;
@@ -1127,6 +1248,15 @@ export function mergePassOnce(
 
         const a = segments[i];
         const b = segments[i + 1];
+
+        // Never merge a whole-curve preserved arc/line away: merging re-fits the union
+        // (biarc-first), which would destroy the single-arc identity we just preserved.
+        if (a["preserved"] == true || b["preserved"] == true)
+        {
+            out = append(out, a);
+            i += 1;
+            continue;
+        }
 
         if (!canAttemptMergeAcrossBoundary(a, b, joins))
         {
