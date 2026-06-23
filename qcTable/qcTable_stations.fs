@@ -428,9 +428,12 @@ function applyBoundaryBehavior(
 
 /**
  * Merge stations that are within tolerance of each other
- * If core and SW end at the same X, combine into one station
+ * If core and SW end at the same X, combine into one station.
+ * When a cluster contains a preferred (critical) station - FCP, ACP, MRS,
+ * XS-1, XS-2 - the merged station keeps that station's exact X so reference
+ * points never drift; otherwise the cluster is averaged.
  */
-function mergeCoincidentStations(stations is array) returns array
+export function mergeCoincidentStations(stations is array) returns array
 {
     if (size(stations) == 0)
     {
@@ -464,6 +467,7 @@ function mergeCoincidentStations(stations is array) returns array
         // Merge callouts from group
         var callouts = [];
         var isPreferred = false;
+        var preferredX = undefined;
 
         for (var s in group)
         {
@@ -474,6 +478,11 @@ function mergeCoincidentStations(stations is array) returns array
             if (s.preferred)
             {
                 isPreferred = true;
+                // Snap to the first preferred station encountered in the cluster
+                if (preferredX == undefined)
+                {
+                    preferredX = s.x;
+                }
             }
         }
 
@@ -488,16 +497,21 @@ function mergeCoincidentStations(stations is array) returns array
             mergedCallout = mergedCallout ~ callouts[k];
         }
 
-        // Use average X position
-        var avgX = 0 * millimeter;
-        for (var s in group)
+        // Position: snap to the preferred station if the cluster has one so
+        // critical references never move; otherwise use the cluster average.
+        var mergedX = preferredX;
+        if (mergedX == undefined)
         {
-            avgX = avgX + s.x;
+            var avgX = 0 * millimeter;
+            for (var s in group)
+            {
+                avgX = avgX + s.x;
+            }
+            mergedX = avgX / size(group);
         }
-        avgX = avgX / size(group);
 
         merged = append(merged, {
-            x: avgX,
+            x: mergedX,
             callout: mergedCallout,
             preferred: isPreferred
         });

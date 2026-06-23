@@ -265,8 +265,9 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         if (!isQueryEmpty(context, definition.addtlPoints))
         {
             stations = addUserPoints(context, stations, definition.addtlPoints);
-            // Re-sort and merge after adding user points
-            stations = sort(stations, function(a, b) { return a.x - b.x; });
+            // Re-merge so user points coincident with existing stations (FCP,
+            // ACP, body ends, ...) collapse instead of producing duplicate rows.
+            stations = mergeCoincidentStations(stations);
         }
 
         if (definition.verbose)
