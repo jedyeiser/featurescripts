@@ -44,6 +44,16 @@ export function elFunction(context is Context, id is Id, oldDefinition is map, d
         definition.showPointCount = true;
     }
 
+    // Show/hide the table-origin reference based on the selected origin mode
+    if (definition.tableOrigin == TABLE_ORIGIN.QUERY)
+    {
+        definition.showOriginQuery = true;
+    }
+    else
+    {
+        definition.showOriginQuery = false;
+    }
+
     return definition;
 }
 
@@ -63,6 +73,19 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
             annotation { "Name" : "ACP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE, "MaxNumberOfPicks" : 1 }
             definition.acpReference is Query;
+
+            annotation { "Name" : "Table Origin", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORIGIN.ORIGIN }
+            definition.tableOrigin is TABLE_ORIGIN;
+
+            // Hidden control for showing/hiding the origin reference picker
+            annotation { "Name" : "showOriginQuery", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            definition.showOriginQuery is boolean;
+
+            if (definition.showOriginQuery)
+            {
+                annotation { "Name" : "Table Origin Reference", "Filter" : EntityType.VERTEX || EntityType.FACE, "MaxNumberOfPicks" : 1 }
+                definition.originReference is Query;
+            }
         }
 
         // ===== Body Selection =====
@@ -170,11 +193,19 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
         var boundaries = extractFCPACP(context, definition.fcpReference, definition.acpReference);
 
+        // Resolve the table origin (zero datum for the "X" column)
+        var tableOriginX = 0 * millimeter;
+        if (definition.tableOrigin == TABLE_ORIGIN.QUERY)
+        {
+            tableOriginX = extractXPosition(context, definition.originReference, "Table Origin");
+        }
+
         if (definition.verbose)
         {
             println("FCP: " ~ boundaries.fcp);
             println("ACP: " ~ boundaries.acp);
             println("RSL: " ~ boundaries.rsl);
+            println("Table origin X: " ~ tableOriginX);
         }
 
         // ===================================================================
@@ -351,11 +382,12 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             boundaries,
             coreExtents,
             swExtents,
+            tableOriginX,
             formatConfig
         );
 
         // Sort by table order
-        tableData = sortTableRows(tableData, definition.tableOrder);
+        tableData = sortTableRows(tableData, definition.tableOrder, boundaries);
 
         if (definition.verbose)
         {

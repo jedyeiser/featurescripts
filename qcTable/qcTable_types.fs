@@ -168,6 +168,19 @@ export enum DETAIL_LEVEL
     DETAILS
 }
 
+/**
+ * Table origin - the zero datum used for the "X" column.
+ * ORIGIN uses world X = 0 (legacy behavior). QUERY uses the X value of a
+ * selected vertex, plane, planar face, or mate connector.
+ */
+export enum TABLE_ORIGIN
+{
+    annotation { "Name" : "World Origin (X = 0)" }
+    ORIGIN,
+    annotation { "Name" : "Selected Reference" }
+    QUERY
+}
+
 // ============================================================================
 // CONSTANTS AND BOUNDS
 // ============================================================================

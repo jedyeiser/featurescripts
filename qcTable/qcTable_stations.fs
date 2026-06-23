@@ -24,11 +24,13 @@ export function extractFCPACP(context is Context, fcpQuery is Query, acpQuery is
     var fcpX = extractXPosition(context, fcpQuery, "FCP");
     var acpX = extractXPosition(context, acpQuery, "ACP");
 
+    // Signed running-surface length. Negative when ACP is at a smaller X than
+    // FCP (part modeled in mirrored X orientation) - that orientation is allowed.
     var rsl = acpX - fcpX;
 
-    if (rsl <= 0 * millimeter)
+    if (abs(rsl) < GEOM_TOL)
     {
-        throw "ACP must be forward of FCP (positive RSL)";
+        throw "FCP and ACP cannot be at the same X position";
     }
 
     return {
@@ -41,7 +43,7 @@ export function extractFCPACP(context is Context, fcpQuery is Query, acpQuery is
 /**
  * Extract X position from a query (vertex, mate connector, plane, or planar face)
  */
-function extractXPosition(context is Context, query is Query, label is string) returns ValueWithUnits
+export function extractXPosition(context is Context, query is Query, label is string) returns ValueWithUnits
 {
     if (isQueryEmpty(context, query))
     {
@@ -124,13 +126,13 @@ export function generateStations(
     });
 
     stations = append(stations, {
-        x: 0 * millimeter,
+        x: boundaries.fcp + boundaries.rsl / 2,
         callout: CALLOUT_MRS,
         preferred: true
     });
 
     stations = append(stations, {
-        x: boundaries.rsl / 4,
+        x: boundaries.fcp + 3 * boundaries.rsl / 4,
         callout: CALLOUT_XS2,
         preferred: true
     });
@@ -141,17 +143,24 @@ export function generateStations(
         preferred: true
     });
 
-    // 2. Add body endpoints if present
+    // 2. Add body endpoints if present. Tip is the FCP (forward) side and tail
+    //    the ACP (aft) side; when ACP is at smaller X the part is mirrored, so
+    //    the tip is the max-X extent and the tail the min-X extent.
+    var tailIsMaxX = boundaries.rsl >= 0 * millimeter;
+
     if (coreExtents != undefined)
     {
+        var coreTipX = tailIsMaxX ? coreExtents.minCorner[0] : coreExtents.maxCorner[0];
+        var coreTailX = tailIsMaxX ? coreExtents.maxCorner[0] : coreExtents.minCorner[0];
+
         stations = append(stations, {
-            x: coreExtents.minCorner[0],
+            x: coreTipX,
             callout: CALLOUT_CORE_TIP,
             preferred: false
         });
 
         stations = append(stations, {
-            x: coreExtents.maxCorner[0],
+            x: coreTailX,
             callout: CALLOUT_CORE_TAIL,
             preferred: false
         });
@@ -159,14 +168,17 @@ export function generateStations(
 
     if (swExtents != undefined)
     {
+        var swTipX = tailIsMaxX ? swExtents.minCorner[0] : swExtents.maxCorner[0];
+        var swTailX = tailIsMaxX ? swExtents.maxCorner[0] : swExtents.minCorner[0];
+
         stations = append(stations, {
-            x: swExtents.minCorner[0],
+            x: swTipX,
             callout: CALLOUT_SW_TIP,
             preferred: false
         });
 
         stations = append(stations, {
-            x: swExtents.maxCorner[0],
+            x: swTailX,
             callout: CALLOUT_SW_TAIL,
             preferred: false
         });
@@ -197,11 +209,10 @@ function addIntermediateStations(
     coreExtents,
     swExtents) returns array
 {
-    var spacing = 100 * millimeter;  // Default (will be overridden)
     var startX = 0 * millimeter;
     var endX = 0 * millimeter;
 
-    // Determine measurement range
+    // Determine measurement range from body extents
     if (coreExtents != undefined && swExtents != undefined)
     {
         // Both present - use combined range
@@ -227,82 +238,68 @@ function addIntermediateStations(
         endX = boundaries.acp;
     }
 
-    var totalLength = endX - startX;
+    // Normalize so lo <= hi regardless of body or FCP/ACP orientation
+    var lo = min([startX, endX]);
+    var hi = max([startX, endX]);
+    var totalLength = hi - lo;
 
-    // Calculate spacing based on method
+    // MRS (stance midpoint) - orientation independent
+    var mrsX = boundaries.fcp + boundaries.rsl / 2;
+
     if (definition.pointGeneration == POINT_TYPES.STATIC_DISTANCE)
     {
-        spacing = definition.pointDistance;
+        var spacing = definition.pointDistance;
 
-        if (definition.staticStart == START_STATIC_POINTS.MRS)
+        // Grid anchor: MRS for the MRS-centered mode, or the tail (aft = ACP
+        // side) for the tail mode. Points are then laid out across the whole
+        // [lo, hi] range in both directions from the anchor.
+        var anchorX = mrsX;
+        if (definition.staticStart == START_STATIC_POINTS.TAIL)
         {
-            // Start from MRS, work outward in both directions
-            var numTailPoints = floor(endX / spacing);
-            var numTipPoints = floor(abs(startX) / spacing);
-
-            for (var i = -1 * numTipPoints; i <= numTailPoints; i += 1)
-            {
-                var x = i * spacing;
-                if (x >= startX && x <= endX)
-                {
-                    stations = append(stations, {
-                        "x" : x,
-                        callout: '',
-                        preferred: false
-                    });
-                }
-            }
+            anchorX = (boundaries.rsl >= 0 * millimeter) ? hi : lo;
         }
-        else  // START_STATIC_POINTS.TAIL
-        {
-            // Start from tail, work toward tip
-            var numPoints = ceil(totalLength / spacing);
 
-            for (var i = 0; i <= numPoints; i += 1)
-            {
-                var x = endX - i * spacing;
-                if (x >= startX && x <= endX)
-                {
-                    stations = append(stations, {
-                        "x" : x,
-                        callout: '',
-                        preferred: false
-                    });
-                }
-            }
+        var kMin = ceil((lo - anchorX) / spacing);
+        var kMax = floor((hi - anchorX) / spacing);
+
+        for (var k = kMin; k <= kMax; k += 1)
+        {
+            stations = append(stations, {
+                "x" : anchorX + k * spacing,
+                callout: '',
+                preferred: false
+            });
         }
     }
     else if (definition.pointGeneration == POINT_TYPES.EVENLY_DIVIDE_RSL)
     {
-        // Divide RSL evenly, then extend pattern outside FCP/ACP
-        spacing = boundaries.rsl / (definition.numEvenPoints - 1);
+        // Spacing derived from the (unsigned) RSL, extended across the whole
+        // body. Anchored at MRS so the grid reduces to the legacy result when
+        // the stance is centered on the world origin.
+        var spacing = abs(boundaries.rsl) / (definition.numEvenPoints - 1);
+        var anchorX = mrsX;
 
-        var numTailPoints = floor(endX / spacing);
-        var numTipPoints = floor(abs(startX) / spacing);
+        var kMin = ceil((lo - anchorX) / spacing);
+        var kMax = floor((hi - anchorX) / spacing);
 
-        for (var i = -1 * numTipPoints; i <= numTailPoints; i += 1)
+        for (var k = kMin; k <= kMax; k += 1)
         {
-            var x = i * spacing;
-            if (x >= startX && x <= endX)
-            {
-                stations = append(stations, {
-                    "x" : x,
-                    callout: '',
-                    preferred: false
-                });
-            }
+            stations = append(stations, {
+                "x" : anchorX + k * spacing,
+                callout: '',
+                preferred: false
+            });
         }
     }
     else if (definition.pointGeneration == POINT_TYPES.EVENLY_DIVIDE_LENGTH)
     {
         // Divide total body length evenly
-        spacing = totalLength / (definition.numEvenPoints - 1);
+        var spacing = totalLength / (definition.numEvenPoints - 1);
 
         for (var i = 0; i < definition.numEvenPoints; i += 1)
         {
-            var x = startX + i * spacing;
             stations = append(stations, {
-                "x" : x,
+                "x" : lo + i * spacing,
                 callout: '',
                 preferred: false
             });
@@ -320,12 +317,16 @@ function applyBoundaryBehavior(
     boundaries is map,
     behavior is BOUNDARY_BEHAVIOR) returns array
 {
+    // FCP/ACP may be in either X order; normalize to a low/high interval.
+    var loB = min([boundaries.fcp, boundaries.acp]);
+    var hiB = max([boundaries.fcp, boundaries.acp]);
+
     if (behavior == BOUNDARY_BEHAVIOR.IGNORE)
     {
         // Remove all stations outside FCP/ACP
         return filter(stations, function(s)
         {
-            return s.x >= boundaries.fcp && s.x <= boundaries.acp;
+            return s.x >= loB && s.x <= hiB;
         });
     }
     else if (behavior == BOUNDARY_BEHAVIOR.MINIMAL)
@@ -333,7 +334,7 @@ function applyBoundaryBehavior(
         // Keep ALL stations between FCP and ACP (inclusive)
         var insideBoundary = filter(stations, function(s)
         {
-            return s.x >= boundaries.fcp && s.x <= boundaries.acp;
+            return s.x >= loB && s.x <= hiB;
         });
 
         // Add body endpoints that are outside FCP/ACP boundaries
@@ -341,7 +342,7 @@ function applyBoundaryBehavior(
         for (var station in stations)
         {
             // Check if station is outside boundaries
-            if (station.x < boundaries.fcp || station.x > boundaries.acp)
+            if (station.x < loB || station.x > hiB)
             {
                 // Check if this station is a body endpoint
                 var isEndpoint = (

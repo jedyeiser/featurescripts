@@ -25,10 +25,15 @@ export function mergeStationData(
     boundaries is map,
     coreExtents,
     swExtents,
+    tableOriginX is ValueWithUnits,
     formatConfig is FormatConfig) returns array
 {
     var merged = [];
     var stationNum = 0;
+
+    // ACP at larger X means the aft (tail) end is the max-X extent; otherwise
+    // the part is mirrored and the tail is the min-X extent.
+    var acpAtLargerX = boundaries.rsl >= 0 * millimeter;
 
     for (var station in stations)
     {
@@ -42,18 +47,19 @@ export function mergeStationData(
             continue;
         }
 
-        // Build base row
+        // Build base row. "X" is reported relative to the chosen table origin.
         var row = {
             "station" : stationNum,
             callout: station.callout,
-            x_mrs: x,
+            x_mrs: x - tableOriginX,
             x_acp: x - boundaries.acp
         };
 
         // Add core measurements if present
         if (coreData != undefined)
         {
-            row.x_core = coreExtents.maxCorner[0] - x;
+            var coreTailX = acpAtLargerX ? coreExtents.maxCorner[0] : coreExtents.minCorner[0];
+            row.x_core = abs(x - coreTailX);
             row.core_height = coreData.coreThickness;
             row.coreWidth = coreData.coreWidth;
             row.groovedThickness = coreData.groovedThickness;
@@ -66,7 +72,8 @@ export function mergeStationData(
         // Add SW measurements if present
         if (swData != undefined)
         {
-            row.x_sw = swExtents.maxCorner[0] - x;
+            var swTailX = acpAtLargerX ? swExtents.maxCorner[0] : swExtents.minCorner[0];
+            row.x_sw = abs(x - swTailX);
             row.sw_height = swData.swHeight;
         }
 
@@ -227,18 +234,23 @@ function formatValue(value is ValueWithUnits, scaleFactor is number, sigFigs is 
 /**
  * Sort table rows by table order (ascending or descending)
  */
-export function sortTableRows(rows is array, tableOrder is TABLE_ORDER) returns array
+export function sortTableRows(rows is array, tableOrder is TABLE_ORDER, boundaries is map) returns array
 {
-    if (tableOrder == TABLE_ORDER.ASCENDING)
+    // Rows arrive in ascending world-X order. Tip is the FCP side: when the
+    // part is mirrored (ACP at smaller X) ascending world-X runs tail -> tip,
+    // so the reversal logic flips.
+    var mirrored = boundaries.rsl < 0 * millimeter;
+
+    var reverseNeeded = (tableOrder == TABLE_ORDER.ASCENDING) ? mirrored : !mirrored;
+
+    if (reverseNeeded)
     {
-        // Ascending: Tip to Tail (station 0 at tip)
-        return rows;  // Already in order
-    }
-    else
-    {
-        // Descending: Tail to Tip (station 0 at tail)
+        // Tail to Tip (station 0 at tail) or mirrored Tip to Tail
         return reverse(rows);
     }
+
+    // Tip to Tail (station 0 at tip)
+    return rows;
 }
 
 // ============================================================================
