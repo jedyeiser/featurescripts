@@ -44,7 +44,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
          "X from ACP" : "Abstand von EDA",
          "X from Core Tail" : "Abstand vom Kernende",
          "X from SW Tail" : "Abstand von SW ende",
-         "Core Width" : "Kernbreite",
+         "Core Width" : "Kernbereite",
          "Grooved Thickness" : "Grooved dicke",
          "Top Width" : "Oberer breite",
          "Top Angle" : "Oberer winkel",

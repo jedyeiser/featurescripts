@@ -138,6 +138,9 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 isLength(definition.pointDistance, pointDistBounds);
             }
 
+            annotation { "Name" : "Drop XS-1/MRS/XS-2 not on spacing", "Default" : false, "Description" : "Remove the XS-1, MRS, and XS-2 cross-section markers unless they coincide with a generated spacing station. FCP and ACP are always kept." }
+            definition.removeOffGridSections is boolean;
+
             annotation { "Name" : "Additional Points (optional)", "Filter" : EntityType.VERTEX }
             definition.addtlPoints is Query;
         }

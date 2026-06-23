@@ -187,6 +187,12 @@ export function generateStations(
     // 3. Add intermediate stations based on spacing method
     stations = addIntermediateStations(stations, definition, boundaries, coreExtents, swExtents);
 
+    // 3.5 Optionally drop XS-1/MRS/XS-2 that don't land on a spacing station
+    if (definition.removeOffGridSections)
+    {
+        stations = removeOffGridCrossSections(stations);
+    }
+
     // 4. Apply boundary behavior (IGNORE/MINIMAL/NORMAL)
     stations = applyBoundaryBehavior(stations, boundaries, definition.boundaryBehavior);
 
@@ -307,6 +313,42 @@ function addIntermediateStations(
     }
 
     return stations;
+}
+
+/**
+ * Drop the XS-1, MRS, and XS-2 cross-section markers unless they coincide
+ * (within STATION_MERGE_TOL) with a spacing-generated station. Spacing
+ * stations are the only ones carrying an empty callout at this stage.
+ * FCP, ACP, and body-endpoint stations are always kept.
+ */
+function removeOffGridCrossSections(stations is array) returns array
+{
+    var spacingX = [];
+    for (var s in stations)
+    {
+        if (s.callout == '')
+        {
+            spacingX = append(spacingX, s.x);
+        }
+    }
+
+    return filter(stations, function(s)
+    {
+        var isAddedSection = (s.callout == CALLOUT_XS1 || s.callout == CALLOUT_MRS || s.callout == CALLOUT_XS2);
+        if (!isAddedSection)
+        {
+            return true;
+        }
+
+        for (var sx in spacingX)
+        {
+            if (abs(sx - s.x) < STATION_MERGE_TOL)
+            {
+                return true;
+            }
+        }
+        return false;
+    });
 }
 
 /**

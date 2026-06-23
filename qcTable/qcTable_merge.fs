@@ -276,6 +276,7 @@ export function buildColumnDefinitions(
     if (hasCore)
     {
         columns = append(columns, tableColumnDefinition("core_height", translateColumnName("Core Height", language)));
+        columns = append(columns, tableColumnDefinition("coreWidth", translateColumnName("Core Width", language)));
     }
 
     if (hasSW)
@@ -308,7 +309,6 @@ export function buildColumnDefinitions(
         // Core geometry details
         if (hasCore)
         {
-            columns = append(columns, tableColumnDefinition("coreWidth", translateColumnName("Core Width", language)));
             columns = append(columns, tableColumnDefinition("groovedThickness", translateColumnName("Grooved Thickness", language)));
             columns = append(columns, tableColumnDefinition("topWidth", translateColumnName("Top Width", language)));
             columns = append(columns, tableColumnDefinition("topAngle", translateColumnName("Top Angle", language)));
