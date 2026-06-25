@@ -86,8 +86,13 @@ export function measureCoreAtStation(
     coreData is map,
     stationX is ValueWithUnits,
     coreExtents is Box3d,
-    verbose is boolean) returns map
+    verbose is boolean)
 {
+    // NOTE: no declared return type. This function returns a measurement map on
+    // success but returns undefined when a station plane finds no core
+    // intersection. A declared "returns map" makes the undefined return illegal
+    // and throws "Function with a return type returned undefined." Callers treat
+    // undefined as "no data at this station".
     // Validate input
     if (!isLength(stationX))
     {

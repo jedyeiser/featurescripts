@@ -10,6 +10,9 @@ import(path : "ff9221b7148cfda8a449abff", version : "2567f5f72109d2808992437d");
  * Merges core and sidewall measurement data, computes deltas, and formats table rows.
  */
 
+// Placeholder shown when a core measurement was expected but could not be taken.
+export const NO_DATA = "No Data";
+
 // ============================================================================
 // DATA MERGING
 // ============================================================================
@@ -41,8 +44,16 @@ export function mergeStationData(
         var coreData = coreMeasurements[x];
         var swData = swMeasurements[x];
 
-        // Skip if no measurements at this station
-        if (coreData == undefined && swData == undefined)
+        // A station is "core-expected" when it falls within the core's X extents
+        // but produced no measurement. Cores have data throughout FCP/ACP, so a
+        // missing measurement here is anomalous and should read "No Data" rather
+        // than appear blank. Stations beyond the core (SW-only) stay blank.
+        var coreExpected = coreExtents != undefined
+            && x >= coreExtents.minCorner[0] - EDGE_MARGIN
+            && x <= coreExtents.maxCorner[0] + EDGE_MARGIN;
+
+        // Skip only if there is genuinely nothing to report at this station
+        if (coreData == undefined && swData == undefined && !coreExpected)
         {
             continue;
         }
@@ -67,6 +78,21 @@ export function mergeStationData(
             row.topAngle = coreData.coreTopAngle;
             row.baseRoutDepth = coreData.baseRoutDepth;
             row.baseRoutWidth = coreData.baseRoutWidth;
+        }
+        else if (coreExpected)
+        {
+            // Core should have intersected here but the measurement failed.
+            // x_core is purely geometric, so keep it; mark the measured
+            // quantities as "No Data".
+            var coreTailX = acpAtLargerX ? coreExtents.maxCorner[0] : coreExtents.minCorner[0];
+            row.x_core = abs(x - coreTailX);
+            row.core_height = NO_DATA;
+            row.coreWidth = NO_DATA;
+            row.groovedThickness = NO_DATA;
+            row.topWidth = NO_DATA;
+            row.topAngle = NO_DATA;
+            row.baseRoutDepth = NO_DATA;
+            row.baseRoutWidth = NO_DATA;
         }
 
         // Add SW measurements if present
@@ -135,25 +161,26 @@ function formatTableRow(row is map, formatConfig is FormatConfig) returns map
         formatted.x_sw = formatValue(row.x_sw, scaleFactor, formatConfig.sigFigs, suffix);
     }
 
-    // Format core fields
+    // Format core fields. These can hold the NO_DATA string when a core
+    // measurement was expected but failed, so pass strings through unchanged.
     if (row.core_height != undefined)
     {
-        formatted.core_height = formatValue(row.core_height, scaleFactor, formatConfig.sigFigs, suffix);
+        formatted.core_height = formatField(row.core_height, scaleFactor, formatConfig.sigFigs, suffix);
     }
 
     if (row.coreWidth != undefined)
     {
-        formatted.coreWidth = formatValue(row.coreWidth, scaleFactor, formatConfig.sigFigs, suffix);
+        formatted.coreWidth = formatField(row.coreWidth, scaleFactor, formatConfig.sigFigs, suffix);
     }
 
     if (row.groovedThickness != undefined)
     {
-        formatted.groovedThickness = formatValue(row.groovedThickness, scaleFactor, formatConfig.sigFigs, suffix);
+        formatted.groovedThickness = formatField(row.groovedThickness, scaleFactor, formatConfig.sigFigs, suffix);
     }
 
     if (row.topWidth != undefined)
     {
-        formatted.topWidth = formatValue(row.topWidth, scaleFactor, formatConfig.sigFigs, suffix);
+        formatted.topWidth = formatField(row.topWidth, scaleFactor, formatConfig.sigFigs, suffix);
     }
 
     if (row.topAngle != undefined)
@@ -216,6 +243,19 @@ function formatTableRow(row is map, formatConfig is FormatConfig) returns map
     }
 
     return formatted;
+}
+
+/**
+ * Format a field that is either a measured value or a placeholder string
+ * (e.g. NO_DATA). Strings pass through unchanged; values are formatted.
+ */
+function formatField(value, scaleFactor is number, sigFigs is number, suffix is string) returns string
+{
+    if (value is string)
+    {
+        return value;
+    }
+    return formatValue(value, scaleFactor, sigFigs, suffix);
 }
 
 /**
