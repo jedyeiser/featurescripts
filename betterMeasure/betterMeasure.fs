@@ -54,7 +54,11 @@ export enum VariableMeasurementMode
     annotation { "Name" : "Diameter" }
     DIAMETER,
     annotation { "Name" : "Angle" }
-    ANGLE
+    ANGLE,
+    annotation { "Name" : "Radius of curvature" }
+    CURVATURE,
+    annotation { "Name" : "Point coordinate" }
+    COORDINATE
 }
 
 /**
@@ -96,6 +100,28 @@ export enum AngleType
     annotation { "Name" : "Three points" }
     THREE_POINTS
 }
+
+/**
+ * Which component of a point's position to record as the variable.
+ */
+export enum PointComponent
+{
+    annotation { "Name" : "X" }
+    X,
+    annotation { "Name" : "Y" }
+    Y,
+    annotation { "Name" : "Z" }
+    Z
+}
+
+/**
+ * A read-only curve parameter in [0, 1], used to report the location of the minimum
+ * radius of curvature.
+ */
+export const PARAMETER_BOUNDS =
+{
+    (unitless) : [0, 0, 1]
+} as RealBoundSpec;
 
 /**
  * Debug color selection
@@ -406,6 +432,46 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Complement", "Default" : false,
                             "Description" : "Report the supplementary angle (180 - measured)." }
                 definition.complementAngle is boolean;
+
+                annotation { "Name" : "Measured angle", "UIHint" : UIHint.READ_ONLY }
+                isAngle(definition.angleReadout, ANGLE_360_ZERO_DEFAULT_BOUNDS);
+            }
+            else if (definition.measurementMode == VariableMeasurementMode.CURVATURE)
+            {
+                annotation { "Name" : "Curve", "Filter" : EntityType.EDGE && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
+                definition.curvatureEdge is Query;
+
+                annotation { "Name" : "Minimum radius along curve", "Default" : false,
+                            "Description" : "Find the smallest radius of curvature anywhere on the curve, instead of at a picked point." }
+                definition.minimumRadius is boolean;
+
+                if (!definition.minimumRadius)
+                {
+                    annotation { "Name" : "At point", "Filter" : (EntityType.VERTEX || BodyType.MATE_CONNECTOR) && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
+                    definition.curvaturePoint is Query;
+                }
+                else
+                {
+                    annotation { "Name" : "Location parameter", "UIHint" : UIHint.READ_ONLY }
+                    isReal(definition.minRadiusParameter, PARAMETER_BOUNDS);
+                }
+            }
+            else if (definition.measurementMode == VariableMeasurementMode.COORDINATE)
+            {
+                annotation { "Name" : "Point", "Filter" : (EntityType.VERTEX || BodyType.MATE_CONNECTOR) && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
+                definition.coordinateEntity is Query;
+
+                annotation { "Name" : "Component", "UIHint" : UIHint.HORIZONTAL_ENUM }
+                definition.coordinateComponent is PointComponent;
+
+                annotation { "Name" : "X", "UIHint" : UIHint.READ_ONLY }
+                isLength(definition.coordX, LENGTH_BOUNDS);
+
+                annotation { "Name" : "Y", "UIHint" : UIHint.READ_ONLY }
+                isLength(definition.coordY, LENGTH_BOUNDS);
+
+                annotation { "Name" : "Z", "UIHint" : UIHint.READ_ONLY }
+                isLength(definition.coordZ, LENGTH_BOUNDS);
             }
         }
 
@@ -719,6 +785,24 @@ export const assignVariable = defineFeature(function(context is Context, id is I
 
                     setHighlightedEntities(context, { "entities": definition.angleEntities });
                 }
+
+                setFeatureComputedParameter(context, id, { "name" : "angleReadout", "value" : value });
+            }
+            else if (definition.measurementMode == VariableMeasurementMode.CURVATURE)
+            {
+                verifyNonemptyQuery(context, definition, "curvatureEdge", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
+                value = measureRadiusOfCurvature(context, id, definition);
+                setHighlightedEntities(context, { "entities": definition.curvatureEdge });
+            }
+            else if (definition.measurementMode == VariableMeasurementMode.COORDINATE)
+            {
+                verifyNonemptyQuery(context, definition, "coordinateEntity", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
+                const coordPoint = pointFromEntity(context, definition.coordinateEntity);
+                setFeatureComputedParameter(context, id, { "name" : "coordX", "value" : coordPoint[0] });
+                setFeatureComputedParameter(context, id, { "name" : "coordY", "value" : coordPoint[1] });
+                setFeatureComputedParameter(context, id, { "name" : "coordZ", "value" : coordPoint[2] });
+                value = selectCoordinate(coordPoint, definition.coordinateComponent);
+                setHighlightedEntities(context, { "entities": definition.coordinateEntity });
             }
         }
 
@@ -749,6 +833,18 @@ export const assignVariable = defineFeature(function(context is Context, id is I
         angleVertex : qNothing(),
         anglePoints : qNothing(),
         complementAngle : false,
+        angleReadout : 0 * degree,
+
+        curvatureEdge : qNothing(),
+        curvaturePoint : qNothing(),
+        minimumRadius : false,
+        minRadiusParameter : 0,
+
+        coordinateEntity : qNothing(),
+        coordinateComponent : PointComponent.X,
+        coordX : 0 * meter,
+        coordY : 0 * meter,
+        coordZ : 0 * meter,
 
         // MEASURED mode options are set such that the ability to enable them is true, but the default value is false.
         // In the case of the UI, the editing logic handles updating these defaults to their appropriate values.
@@ -1454,6 +1550,82 @@ function debugArmLength(context is Context, e0 is Query, e1 is Query)
         return undefined;
     }
     return 0.5 * min(lengths);
+}
+
+/**
+ * Radius of curvature of a curve, either at a picked point or -- when
+ * definition.minimumRadius is set -- the minimum radius found by sampling along the
+ * whole curve. In the minimum case the curve parameter of the tightest point is
+ * reported (minRadiusParameter) and the location is drawn as a debug point. The
+ * minimum is found by dense sampling, so it is approximate, not analytically exact.
+ */
+function measureRadiusOfCurvature(context is Context, id is Id, definition is map) returns ValueWithUnits
+{
+    const edge = definition.curvatureEdge;
+
+    if (definition.minimumRadius)
+    {
+        const samples = 200;
+        var params = [];
+        for (var i = 0; i <= samples; i += 1)
+        {
+            params = append(params, i / samples);
+        }
+
+        const curvatures = evEdgeCurvatures(context, { "edge" : edge, "parameters" : params });
+        var bestIndex = 0;
+        for (var i = 1; i < size(curvatures); i += 1)
+        {
+            if (curvatures[i].curvature > curvatures[bestIndex].curvature)
+            {
+                bestIndex = i;
+            }
+        }
+
+        const maxCurvature = curvatures[bestIndex].curvature;
+        if (maxCurvature < 1e-6 / meter)
+        {
+            throw regenError("The curve is effectively straight; its radius of curvature is unbounded.", definition.curvatureEdge);
+        }
+
+        setFeatureComputedParameter(context, id, { "name" : "minRadiusParameter", "value" : params[bestIndex] });
+        try silent
+        {
+            addDebugPoint(context, curvatures[bestIndex].frame.origin, DebugColor.RED);
+        }
+        return 1 / maxCurvature;
+    }
+
+    verifyNonemptyQuery(context, definition, "curvaturePoint", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
+    const pt = pointFromEntity(context, definition.curvaturePoint);
+    const proj = evDistance(context, { "side0" : edge, "side1" : pt });
+    const param = clamp(proj.sides[0].parameter, 0, 1);
+    const cv = evEdgeCurvature(context, { "edge" : edge, "parameter" : param });
+    if (cv.curvature < 1e-6 / meter)
+    {
+        throw regenError("The curve is effectively straight at this point; its radius of curvature is unbounded.", definition.curvatureEdge);
+    }
+    try silent
+    {
+        addDebugPoint(context, cv.frame.origin, DebugColor.RED);
+    }
+    return 1 / cv.curvature;
+}
+
+/**
+ * The chosen component (X, Y, or Z) of a point's position.
+ */
+function selectCoordinate(point is Vector, component is PointComponent) returns ValueWithUnits
+{
+    if (component == PointComponent.X)
+    {
+        return point[0];
+    }
+    if (component == PointComponent.Y)
+    {
+        return point[1];
+    }
+    return point[2];
 }
 
 /**
