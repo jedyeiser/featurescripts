@@ -214,6 +214,17 @@
       "last_push": null,
       "document_id": "1e7e65b7c519164902d7a5b9",
       "workspace_id": "ff44ea79fbc22781878191a0"
+    },
+    {
+      "name": "smallTools",
+      "description": "Working project: smallTools",
+      "working_directory": "./smallTools",
+      "onshape_url": "https://k2-sports.onshape.com/documents/14cdaad24a8beab67af40fe4/w/9bfd33d53af778cf02e60d9f/e/ab0debbe1dc8fa95294ea68a",
+      "references": [],
+      "last_pull": "2026-06-30T16:39:13.016735+00:00",
+      "last_push": null,
+      "document_id": "14cdaad24a8beab67af40fe4",
+      "workspace_id": "9bfd33d53af778cf02e60d9f"
     }
   ],
   "sync_metadata": {}
