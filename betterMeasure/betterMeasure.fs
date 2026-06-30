@@ -455,6 +455,9 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                     annotation { "Name" : "Location parameter", "UIHint" : UIHint.READ_ONLY }
                     isReal(definition.minRadiusParameter, PARAMETER_BOUNDS);
                 }
+
+                annotation { "Name" : "Measured radius", "UIHint" : UIHint.READ_ONLY }
+                isLength(definition.radiusReadout, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
             }
             else if (definition.measurementMode == VariableMeasurementMode.COORDINATE)
             {
@@ -792,6 +795,7 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             {
                 verifyNonemptyQuery(context, definition, "curvatureEdge", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
                 value = measureRadiusOfCurvature(context, id, definition);
+                setFeatureComputedParameter(context, id, { "name" : "radiusReadout", "value" : value });
                 setHighlightedEntities(context, { "entities": definition.curvatureEdge });
             }
             else if (definition.measurementMode == VariableMeasurementMode.COORDINATE)
@@ -839,6 +843,7 @@ export const assignVariable = defineFeature(function(context is Context, id is I
         curvaturePoint : qNothing(),
         minimumRadius : false,
         minRadiusParameter : 0,
+        radiusReadout : 0 * meter,
 
         coordinateEntity : qNothing(),
         coordinateComponent : PointComponent.X,
@@ -1588,12 +1593,13 @@ function measureRadiusOfCurvature(context is Context, id is Id, definition is ma
             throw regenError("The curve is effectively straight; its radius of curvature is unbounded.", definition.curvatureEdge);
         }
 
+        const minRadius = 1 / maxCurvature;
         setFeatureComputedParameter(context, id, { "name" : "minRadiusParameter", "value" : params[bestIndex] });
         try silent
         {
-            addDebugPoint(context, curvatures[bestIndex].frame.origin, DebugColor.RED);
+            drawCurvatureDebug(context, curvatures[bestIndex].frame, minRadius);
         }
-        return 1 / maxCurvature;
+        return minRadius;
     }
 
     verifyNonemptyQuery(context, definition, "curvaturePoint", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
@@ -1605,11 +1611,25 @@ function measureRadiusOfCurvature(context is Context, id is Id, definition is ma
     {
         throw regenError("The curve is effectively straight at this point; its radius of curvature is unbounded.", definition.curvatureEdge);
     }
+    const radius = 1 / cv.curvature;
     try silent
     {
-        addDebugPoint(context, cv.frame.origin, DebugColor.RED);
+        drawCurvatureDebug(context, cv.frame, radius);
     }
-    return 1 / cv.curvature;
+    return radius;
+}
+
+/**
+ * Visualize a radius of curvature: mark the point on the curve (red), draw the radius
+ * along the Frenet normal (the frame xAxis, which points toward the center of
+ * curvature) to that center, and mark the center (green).
+ */
+function drawCurvatureDebug(context is Context, frame is CoordSystem, radius is ValueWithUnits)
+{
+    const center = frame.origin + radius * frame.xAxis;
+    addDebugPoint(context, frame.origin, DebugColor.RED);
+    addDebugLine(context, frame.origin, center, DebugColor.BLUE);
+    addDebugPoint(context, center, DebugColor.GREEN);
 }
 
 /**
