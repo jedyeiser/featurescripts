@@ -32,7 +32,9 @@
       "Bash(du:*)",
       "Bash(git diff:*)",
       "WebSearch",
-      "WebFetch(domain:cad.onshape.com)"
+      "WebFetch(domain:cad.onshape.com)",
+      "Bash(git mv *)",
+      "Bash(mv projects/betterMeasure betterMeasure)"
     ]
   }
 }
