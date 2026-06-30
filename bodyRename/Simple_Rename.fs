@@ -1,103 +1,52 @@
-FeatureScript 2473;
-import(path : "onshape/std/common.fs", version : "2473.0");
+FeatureScript 3008;
+import(path : "onshape/std/common.fs", version : "3008.0");
 
-annotation { "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select Bodies to rename and provide a new name" }
+annotation { "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select bodies to rename, with an optional shared prefix and suffix applied to every body." }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Bodies to Rename", "Item name" : "Body to Rename",
+        annotation { "Name" : "Add prefix", "Default" : false }
+        definition.usePrefix is boolean;
+        if (definition.usePrefix)
+        {
+            annotation { "Name" : "Prefix", "Description" : "Prepended to every body name below." }
+            definition.prefix is string;
+        }
+
+        annotation { "Name" : "Add suffix", "Default" : false }
+        definition.useSuffix is boolean;
+        if (definition.useSuffix)
+        {
+            annotation { "Name" : "Suffix", "Description" : "Appended to every body name below." }
+            definition.suffix is string;
+        }
+
+        annotation { "Name" : "Bodies to Rename", "Item name" : "Body",
                 "Driven query" : "query", "Item label template" : "#renameString" }
         definition.renameArray is array;
         for (var body in definition.renameArray)
         {
-            annotation { "Name" : "Body to rename", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), "MaxNumberOfPicks" : 1 , "UIHint" : UIHint.FOCUS_INNER_QUERY}
+            annotation { "Name" : "Body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), "MaxNumberOfPicks" : 1, "UIHint" : UIHint.FOCUS_INNER_QUERY }
             body.query is Query;
-            
-            annotation { "Name" : "New Body Name"}
-            body.renameString is string;
-            
-            annotation { "Name" : "Assign Attributes" }
-            body.attributes is boolean;
-            
-            if (body.attributes)
-            {
-                annotation { "Name" : "Assign body type attribute?" }
-                body.assignStdAttribute is boolean;
-                
-                annotation { "Name" : "Assign custom attribute?" }
-                body.assignCustomAttribute is boolean;
-                
-                if (body.assignCustomAttribute)
-                {
-                    annotation { "Name" : "Attribute Name" }
-                    body.attributeName is string;
-                    
-                    annotation { "Name" : "Attribute Value" }
-                    body.attributeValue is string;
-                    
-                }
-                
-            }
 
-            
-            
-            // More nested parameters defined here, as e.g. widget.myParameter
+            annotation { "Name" : "New Body Name" }
+            body.renameString is string;
         }
-        
     }
     {
+        const prefix = definition.usePrefix ? definition.prefix : "";
+        const suffix = definition.useSuffix ? definition.suffix : "";
+
         for (var renameBody in definition.renameArray)
         {
-            var body = renameBody.query;
-            setProperty(context, {
-                    "entities" : body,
-                    "propertyType" : PropertyType.NAME,
-                    "value" : renameBody.renameString
-            });
-            if (renameBody.assignStdAttribute)
+            const newName = prefix ~ renameBody.renameString ~ suffix;
+            if (newName != "")
             {
-                var isSolid = !isQueryEmpty(context, qBodyType(body, BodyType.SOLID));
-                var isSheet = !isQueryEmpty(context, qBodyType(body, BodyType.SHEET));
-                var isWire = !isQueryEmpty(context, qBodyType(body, BodyType.WIRE));
-                
-                if (isSolid)
-                {
-                    setAttribute(context, {
-                            "entities" : body,
-                            "name" : 'bodyName',
-                            "attribute" : renameBody.renameString
-                    });
-                    
-                }
-                if (isSheet)
-                {
-                    setAttribute(context, {
-                            "entities" : body,
-                            "name" : 'surfName',
-                            "attribute" : renameBody.renameString
-                    });
-                    
-                }
-                if (isWire)
-                {
-                    setAttribute(context, {
-                            "entities" : body,
-                            "name" : 'curveName',
-                            "attribute" : renameBody.renameString
-                    });
-                    
-                }
-                
-            }
-            
-            if (renameBody.assignCustomAttribute)
-            {
-                setAttribute(context, {
-                        "entities" : body,
-                        "name" : renameBody.attributeName,
-                        "attribute" : renameBody.attributeValue
+                setProperty(context, {
+                        "entities" : renameBody.query,
+                        "propertyType" : PropertyType.NAME,
+                        "value" : newName
                 });
             }
-            
         }
     });
