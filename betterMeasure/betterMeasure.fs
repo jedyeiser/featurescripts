@@ -365,10 +365,10 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             }
             else if (definition.measurementMode == VariableMeasurementMode.ANGLE)
             {
-                annotation { "Name" : "Edges",
-                            "Filter" : (EntityType.EDGE && GeometryType.LINE) && AllowFlattenedGeometry.YES,
+                annotation { "Name" : "Entities",
+                            "Filter" : (QueryFilterCompound.ALLOWS_DIRECTION || EntityType.EDGE) && AllowFlattenedGeometry.YES,
                             "MaxNumberOfPicks" : 2 }
-                definition.angleEdges is Query;
+                definition.angleEntities is Query;
 
                 annotation { "Name" : "Complement", "Default" : false,
                             "Description" : "Report the supplementary angle (180 - measured)." }
@@ -646,24 +646,21 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             }
             else if (definition.measurementMode == VariableMeasurementMode.ANGLE)
             {
-                verifyNonemptyQuery(context, definition, "angleEdges", ErrorStringEnum.VARIABLE_SELECT_ENTITIES_TO_MEASURE);
+                verifyNonemptyQuery(context, definition, "angleEntities", ErrorStringEnum.VARIABLE_SELECT_ENTITIES_TO_MEASURE);
 
-                const edgeList = evaluateQuery(context, definition.angleEdges);
-                if (size(edgeList) < 2)
+                const angleEntityList = evaluateQuery(context, definition.angleEntities);
+                if (size(angleEntityList) < 2)
                 {
-                    throw regenError(ErrorStringEnum.VARIABLE_SELECT_SECOND_ENTITY, ["angleEdges"]);
+                    throw regenError(ErrorStringEnum.VARIABLE_SELECT_SECOND_ENTITY, ["angleEntities"]);
                 }
-                if (size(edgeList) > 2)
+                if (size(angleEntityList) > 2)
                 {
-                    throw regenError(ErrorStringEnum.VARIABLE_ONLY_TWO_ENTITIES_ALLOWED, ["angleEdges"]);
+                    throw regenError(ErrorStringEnum.VARIABLE_ONLY_TWO_ENTITIES_ALLOWED, ["angleEntities"]);
                 }
 
-                const dir0 = lineDirectionOrThrow(context, edgeList[0]);
-                const dir1 = lineDirectionOrThrow(context, edgeList[1]);
+                value = measureAngleBetween(context, angleEntityList[0], angleEntityList[1], definition.complementAngle);
 
-                value = angleBetweenDirections(dir0, dir1, definition.complementAngle);
-
-                setHighlightedEntities(context, { "entities": definition.angleEdges });
+                setHighlightedEntities(context, { "entities": definition.angleEntities });
             }
         }
 
@@ -689,7 +686,7 @@ export const assignVariable = defineFeature(function(context is Context, id is I
         entityCouple : qNothing(),
         lengthEntities : qNothing(),
         diameterEntity : qNothing(),
-        angleEdges : qNothing(),
+        angleEntities : qNothing(),
         complementAngle : false,
 
         // MEASURED mode options are set such that the ability to enable them is true, but the default value is false.
@@ -1219,18 +1216,60 @@ function getLineFromSide(context is Context, sideEntity)
 }
 
 /**
- * Return the unit direction of a linear edge. Throws if the edge is not linear,
- * so a non-linear selection (arc, spline, circle) is rejected up front rather
- * than fabricating a meaningless direction from its endpoints.
+ * Endpoints of an edge with the unit tangent at each, oriented to point AWAY from
+ * that endpoint along the edge. Two edges meeting at a shared endpoint then yield
+ * their interior corner angle. Works for any edge: line, arc, spline, or bspline.
+ * At parameter 0 the tangent already points into the edge (away from the start
+ * vertex); at parameter 1 it points out past the end, so it is negated.
  */
-function lineDirectionOrThrow(context is Context, edge is Query) returns Vector
+function edgeEndpointsAwayFromVertex(context is Context, edge is Query) returns array
 {
-    if (isQueryEmpty(context, qGeometry(edge, GeometryType.LINE)))
+    const lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
+    return [
+        { "point" : lines[0].origin, "dir" : normalize(lines[0].direction) },
+        { "point" : lines[1].origin, "dir" : normalize(-1 * lines[1].direction) }
+    ];
+}
+
+/**
+ * Measure the angle between two selected entities, dispatching on type:
+ *  - Two edges that share a vertex (lines, arcs, splines, bsplines): the angle
+ *    between their tangents at that shared vertex -- the true intersection angle.
+ *  - Otherwise (lines, axes, planar faces, mate connectors, or non-touching edges):
+ *    the angle between their constant directions (face normal for a plane, axis for
+ *    a mate connector or cylinder). Direction-only, so parallel, perpendicular, and
+ *    skew all work without an intersection point.
+ * Throws only when a curved edge is paired with something it does not intersect,
+ * because no intersection angle is defined in that case.
+ */
+function measureAngleBetween(context is Context, e0 is Query, e1 is Query, complement is boolean) returns ValueWithUnits
+{
+    const bothEdges = !isQueryEmpty(context, e0->qEntityFilter(EntityType.EDGE))
+        && !isQueryEmpty(context, e1->qEntityFilter(EntityType.EDGE));
+
+    if (bothEdges)
     {
-        throw regenError(ErrorStringEnum.VARIABLE_CANNOT_EVALUATE, ["angleEdges"]);
+        const ends0 = edgeEndpointsAwayFromVertex(context, e0);
+        const ends1 = edgeEndpointsAwayFromVertex(context, e1);
+        for (var a in ends0)
+        {
+            for (var b in ends1)
+            {
+                if (norm(a.point - b.point) < TOLERANCE.zeroLength * meter)
+                {
+                    return angleBetweenDirections(a.dir, b.dir, complement);
+                }
+            }
+        }
     }
-    const ln = evLine(context, { "edge" : edge });
-    return normalize(ln.direction);
+
+    const d0 = extractDirection(context, e0);
+    const d1 = extractDirection(context, e1);
+    if (d0 == undefined || d1 == undefined)
+    {
+        throw regenError(ErrorStringEnum.VARIABLE_CANNOT_EVALUATE, ["angleEntities"]);
+    }
+    return angleBetweenDirections(d0, d1, complement);
 }
 
 /**
@@ -1299,9 +1338,7 @@ export function variableEditLogic(context is Context, id is Id, oldDefinition is
             }
             else if (definition.measurementMode == VariableMeasurementMode.ANGLE)
             {
-                definition.angleEdges = definition.initEntities
-                    ->qEntityFilter(EntityType.EDGE)
-                    ->qGeometry(GeometryType.LINE);
+                definition.angleEntities = definition.initEntities;
             }
         }
         definition.initEntities = qNothing();
