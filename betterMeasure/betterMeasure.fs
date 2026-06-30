@@ -26,6 +26,9 @@ import(path : "onshape/std/topologyUtils.fs", version : "3008.0");
 import(path : "onshape/std/coordSystem.fs", version : "3008.0");
 import(path : "onshape/std/tabReferences.fs", version : "3008.0");
 
+IconNamespace::import(path : "ec3ff312013d4044c5a3263f", version : "1f86a3719ac577b79afa79b6");
+
+
 /**
  * Whether the variable is measured, assigned or from table.
  */
@@ -80,6 +83,18 @@ export enum VariableMinMaxSelection
     MINIMUM,
     annotation { "Name" : "Maximum" }
     MAXIMUM
+}
+
+/**
+ * How an angle is measured: between two direction-bearing entities, or as the
+ * angle subtended at a vertex by two other points.
+ */
+export enum AngleType
+{
+    annotation { "Name" : "Between entities" }
+    BETWEEN_ENTITIES,
+    annotation { "Name" : "Three points" }
+    THREE_POINTS
 }
 
 /**
@@ -158,9 +173,9 @@ export const TABLE_INDEX_BOUNDS =
  *      @field diameterEntity {Query} : Query for diameter mode, containing an entity to measure the diameter of.
  * }}
  */
-annotation { "Feature Type Name" : "Variable", "Feature Name Template" : "###name = #value", "UIHint" : UIHint.NO_PREVIEW_PROVIDED,
+annotation { "Feature Type Name" : "Variable +", "Feature Name Template" : "###name = #value", "UIHint" : UIHint.NO_PREVIEW_PROVIDED,
         "Tooltip Template" : "###name = #value #description",
-        "Editing Logic Function" : "variableEditLogic" }
+        "Editing Logic Function" : "variableEditLogic", "Icon" : IconNamespace::BLOB_DATA }
 export const assignVariable = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -365,10 +380,28 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             }
             else if (definition.measurementMode == VariableMeasurementMode.ANGLE)
             {
-                annotation { "Name" : "Entities",
-                            "Filter" : (QueryFilterCompound.ALLOWS_DIRECTION || EntityType.EDGE) && AllowFlattenedGeometry.YES,
-                            "MaxNumberOfPicks" : 2 }
-                definition.angleEntities is Query;
+                annotation { "Name" : "Angle type", "UIHint" : UIHint.HORIZONTAL_ENUM }
+                definition.angleType is AngleType;
+
+                if (definition.angleType == AngleType.BETWEEN_ENTITIES)
+                {
+                    annotation { "Name" : "Entities",
+                                "Filter" : (QueryFilterCompound.ALLOWS_DIRECTION || EntityType.EDGE) && AllowFlattenedGeometry.YES,
+                                "MaxNumberOfPicks" : 2 }
+                    definition.angleEntities is Query;
+                }
+                else
+                {
+                    annotation { "Name" : "Vertex",
+                                "Filter" : (EntityType.VERTEX || BodyType.MATE_CONNECTOR) && AllowFlattenedGeometry.YES,
+                                "MaxNumberOfPicks" : 1 }
+                    definition.angleVertex is Query;
+
+                    annotation { "Name" : "End points",
+                                "Filter" : (EntityType.VERTEX || BodyType.MATE_CONNECTOR) && AllowFlattenedGeometry.YES,
+                                "MaxNumberOfPicks" : 2 }
+                    definition.anglePoints is Query;
+                }
 
                 annotation { "Name" : "Complement", "Default" : false,
                             "Description" : "Report the supplementary angle (180 - measured)." }
@@ -646,21 +679,46 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             }
             else if (definition.measurementMode == VariableMeasurementMode.ANGLE)
             {
-                verifyNonemptyQuery(context, definition, "angleEntities", ErrorStringEnum.VARIABLE_SELECT_ENTITIES_TO_MEASURE);
-
-                const angleEntityList = evaluateQuery(context, definition.angleEntities);
-                if (size(angleEntityList) < 2)
+                if (definition.angleType == AngleType.THREE_POINTS)
                 {
-                    throw regenError(ErrorStringEnum.VARIABLE_SELECT_SECOND_ENTITY, ["angleEntities"]);
+                    verifyNonemptyQuery(context, definition, "angleVertex", ErrorStringEnum.VARIABLE_SELECT_ENTITIES_TO_MEASURE);
+                    verifyNonemptyQuery(context, definition, "anglePoints", ErrorStringEnum.VARIABLE_SELECT_ENTITIES_TO_MEASURE);
+
+                    const armList = evaluateQuery(context, definition.anglePoints);
+                    if (size(armList) < 2)
+                    {
+                        throw regenError(ErrorStringEnum.VARIABLE_SELECT_SECOND_ENTITY, ["anglePoints"]);
+                    }
+                    if (size(armList) > 2)
+                    {
+                        throw regenError(ErrorStringEnum.VARIABLE_ONLY_TWO_ENTITIES_ALLOWED, ["anglePoints"]);
+                    }
+
+                    const vertexPoint = pointFromEntity(context, definition.angleVertex);
+                    value = measureThreePointAngle(context, vertexPoint,
+                        pointFromEntity(context, armList[0]), pointFromEntity(context, armList[1]),
+                        definition.complementAngle);
+
+                    setHighlightedEntities(context, { "entities": qUnion(definition.angleVertex, definition.anglePoints) });
                 }
-                if (size(angleEntityList) > 2)
+                else
                 {
-                    throw regenError(ErrorStringEnum.VARIABLE_ONLY_TWO_ENTITIES_ALLOWED, ["angleEntities"]);
+                    verifyNonemptyQuery(context, definition, "angleEntities", ErrorStringEnum.VARIABLE_SELECT_ENTITIES_TO_MEASURE);
+
+                    const angleEntityList = evaluateQuery(context, definition.angleEntities);
+                    if (size(angleEntityList) < 2)
+                    {
+                        throw regenError(ErrorStringEnum.VARIABLE_SELECT_SECOND_ENTITY, ["angleEntities"]);
+                    }
+                    if (size(angleEntityList) > 2)
+                    {
+                        throw regenError(ErrorStringEnum.VARIABLE_ONLY_TWO_ENTITIES_ALLOWED, ["angleEntities"]);
+                    }
+
+                    value = measureAngleBetween(context, angleEntityList[0], angleEntityList[1], definition.complementAngle);
+
+                    setHighlightedEntities(context, { "entities": definition.angleEntities });
                 }
-
-                value = measureAngleBetween(context, angleEntityList[0], angleEntityList[1], definition.complementAngle);
-
-                setHighlightedEntities(context, { "entities": definition.angleEntities });
             }
         }
 
@@ -686,7 +744,10 @@ export const assignVariable = defineFeature(function(context is Context, id is I
         entityCouple : qNothing(),
         lengthEntities : qNothing(),
         diameterEntity : qNothing(),
+        angleType : AngleType.BETWEEN_ENTITIES,
         angleEntities : qNothing(),
+        angleVertex : qNothing(),
+        anglePoints : qNothing(),
         complementAngle : false,
 
         // MEASURED mode options are set such that the ability to enable them is true, but the default value is false.
@@ -1257,19 +1318,122 @@ function measureAngleBetween(context is Context, e0 is Query, e1 is Query, compl
             {
                 if (norm(a.point - b.point) < TOLERANCE.zeroLength * meter)
                 {
+                    const armLength = 0.5 * min([evLength(context, { "entities" : e0 }), evLength(context, { "entities" : e1 })]);
+                    try silent
+                    {
+                        drawAngleDebug(context, a.point, a.dir, b.dir, armLength);
+                    }
                     return angleBetweenDirections(a.dir, b.dir, complement);
                 }
             }
         }
     }
 
+    return constantDirectionAngle(context, e0, e1, complement);
+}
+
+/**
+ * Angle for entities that each carry a constant direction: lines, axes, mate
+ * connectors, and planar faces. `extractDirection` returns the face NORMAL for a
+ * planar face and the line direction otherwise, so the raw angle is adjusted by type:
+ *  - exactly one planar face -> the line-to-plane angle (90 - angle to the normal)
+ *  - both planar faces       -> the dihedral angle (angle between normals), unchanged
+ *  - neither                 -> the line/axis/connector angle, unchanged
+ */
+function constantDirectionAngle(context is Context, e0 is Query, e1 is Query, complement is boolean) returns ValueWithUnits
+{
     const d0 = extractDirection(context, e0);
     const d1 = extractDirection(context, e1);
     if (d0 == undefined || d1 == undefined)
     {
         throw regenError(ErrorStringEnum.VARIABLE_CANNOT_EVALUATE, ["angleEntities"]);
     }
-    return angleBetweenDirections(d0, d1, complement);
+
+    var theta = angleBetweenDirections(d0, d1, false);
+
+    if (isPlanarFace(context, e0) != isPlanarFace(context, e1))
+    {
+        theta = abs(90 * degree - theta);
+    }
+
+    if (complement)
+    {
+        theta = 180 * degree - theta;
+    }
+    return theta;
+}
+
+/**
+ * Whether the entity has planar geometry (a planar face or datum plane).
+ */
+function isPlanarFace(context is Context, entity is Query) returns boolean
+{
+    return !isQueryEmpty(context, entity->qGeometry(GeometryType.PLANE));
+}
+
+/**
+ * World point of a vertex or mate connector, for three-point angle measurement.
+ */
+function pointFromEntity(context is Context, entity is Query) returns Vector
+{
+    if (!isQueryEmpty(context, entity->qEntityFilter(EntityType.VERTEX)))
+    {
+        return evVertexPoint(context, { "vertex" : entity });
+    }
+    return evMateConnector(context, { "mateConnector" : entity }).origin;
+}
+
+/**
+ * Angle subtended at `vertexPt` by the rays to `armA` and `armB` (angle A-V-B).
+ */
+function measureThreePointAngle(context is Context, vertexPt is Vector, armA is Vector, armB is Vector, complement is boolean) returns ValueWithUnits
+{
+    const v0 = armA - vertexPt;
+    const v1 = armB - vertexPt;
+    if (norm(v0) < TOLERANCE.zeroLength * meter || norm(v1) < TOLERANCE.zeroLength * meter)
+    {
+        throw regenError(ErrorStringEnum.VARIABLE_CANNOT_EVALUATE, ["anglePoints"]);
+    }
+
+    const dir0 = normalize(v0);
+    const dir1 = normalize(v1);
+    const armLength = 0.5 * min([norm(v0), norm(v1)]);
+    try silent
+    {
+        drawAngleDebug(context, vertexPt, dir0, dir1, armLength);
+    }
+    return angleBetweenDirections(dir0, dir1, complement);
+}
+
+/**
+ * Draw a visualization of the measured angle: a ray along each direction from the
+ * vertex plus a short arc swept between them. Always called inside try silent, since
+ * debug geometry must never block the measurement itself. The swept direction uses
+ * Rodrigues' rotation of dir0 about the axis normal to both directions; since that
+ * axis is perpendicular to dir0, the formula reduces to dir0*cos + (axis x dir0)*sin.
+ */
+function drawAngleDebug(context is Context, vertex is Vector, dir0 is Vector, dir1 is Vector, armLength is ValueWithUnits)
+{
+    addDebugLine(context, vertex, vertex + armLength * dir0, DebugColor.GREEN);
+    addDebugLine(context, vertex, vertex + armLength * dir1, DebugColor.GREEN);
+
+    const axisV = cross(dir0, dir1);
+    if (norm(axisV) > TOLERANCE.zeroAngle)
+    {
+        const axis = normalize(axisV);
+        const sweep = angleBetweenDirections(dir0, dir1, false);
+        const radius = armLength * 0.5;
+        const segments = 16;
+        var prev = vertex + radius * dir0;
+        for (var i = 1; i <= segments; i += 1)
+        {
+            const a = sweep * i / segments;
+            const swept = dir0 * cos(a) + cross(axis, dir0) * sin(a);
+            const cur = vertex + radius * swept;
+            addDebugLine(context, prev, cur, DebugColor.BLUE);
+            prev = cur;
+        }
+    }
 }
 
 /**
