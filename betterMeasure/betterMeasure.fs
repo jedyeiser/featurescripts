@@ -1329,7 +1329,7 @@ function measureAngleBetween(context is Context, e0 is Query, e1 is Query, compl
         }
     }
 
-    return constantDirectionAngle(context, e0, e1, complement);
+    return generalEntityAngle(context, e0, e1, complement);
 }
 
 /**
@@ -1340,20 +1340,26 @@ function measureAngleBetween(context is Context, e0 is Query, e1 is Query, compl
  *  - both planar faces       -> the dihedral angle (angle between normals), unchanged
  *  - neither                 -> the line/axis/connector angle, unchanged
  */
-function constantDirectionAngle(context is Context, e0 is Query, e1 is Query, complement is boolean) returns ValueWithUnits
+function generalEntityAngle(context is Context, e0 is Query, e1 is Query, complement is boolean) returns ValueWithUnits
 {
-    const d0 = extractDirection(context, e0);
-    const d1 = extractDirection(context, e1);
-    if (d0 == undefined || d1 == undefined)
-    {
-        throw regenError(ErrorStringEnum.VARIABLE_CANNOT_EVALUATE, ["angleEntities"]);
-    }
+    const a0 = entityDirectionAndPoint(context, e0, e1);
+    const a1 = entityDirectionAndPoint(context, e1, e0);
 
-    var theta = angleBetweenDirections(d0, d1, false);
+    var theta = angleBetweenDirections(a0.dir, a1.dir, false);
 
     if (isPlanarFace(context, e0) != isPlanarFace(context, e1))
     {
         theta = abs(90 * degree - theta);
+    }
+
+    const anchor = (a0.point != undefined) ? a0.point : a1.point;
+    const armLength = debugArmLength(context, e0, e1);
+    if (anchor != undefined && armLength != undefined)
+    {
+        try silent
+        {
+            drawAngleDebug(context, anchor, a0.dir, a1.dir, armLength);
+        }
     }
 
     if (complement)
@@ -1361,6 +1367,93 @@ function constantDirectionAngle(context is Context, e0 is Query, e1 is Query, co
         theta = 180 * degree - theta;
     }
     return theta;
+}
+
+/**
+ * Whether the entity is a non-linear edge (arc, spline, circle): an edge that is not
+ * a straight line. Such an edge has no single direction, and evAxis would return its
+ * central axis -- not its tangent -- so it must be routed through the tangent path.
+ */
+function isCurvedEdge(context is Context, entity is Query) returns boolean
+{
+    return !isQueryEmpty(context, entity->qEntityFilter(EntityType.EDGE))
+        && isQueryEmpty(context, entity->qGeometry(GeometryType.LINE));
+}
+
+/**
+ * A reference point for an entity: a vertex position or a mate connector origin.
+ * Returns undefined for entities without a single characteristic point.
+ */
+function referencePoint(context is Context, entity is Query)
+{
+    if (!isQueryEmpty(context, entity->qEntityFilter(EntityType.VERTEX)))
+    {
+        return evVertexPoint(context, { "vertex" : entity });
+    }
+    if (!isQueryEmpty(context, entity->qBodyType(BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : entity }).origin;
+    }
+    return undefined;
+}
+
+/**
+ * Unit tangent of a curved edge at the point on the edge closest to `point`. The
+ * parameter from evDistance is clamped to [0, 1] before the tangent is evaluated.
+ */
+function curveTangentAtPoint(context is Context, edge is Query, point is Vector) returns Vector
+{
+    const proj = evDistance(context, { "side0" : edge, "side1" : point });
+    const param = clamp(proj.sides[0].parameter, 0, 1);
+    const tangent = evEdgeTangentLine(context, { "edge" : edge, "parameter" : param });
+    return normalize(tangent.direction);
+}
+
+/**
+ * The direction to use for an entity, plus an anchor point when available. A curved
+ * edge uses its tangent at the partner's point; every other entity uses extractDirection
+ * (the normal for a planar face, the axis for a line, mate connector, or cylinder).
+ */
+function entityDirectionAndPoint(context is Context, entity is Query, partner is Query) returns map
+{
+    if (isCurvedEdge(context, entity))
+    {
+        const p = referencePoint(context, partner);
+        if (p == undefined)
+        {
+            throw regenError("Cannot measure the highlighted curved edge against the other selection. Pair a curved edge with an edge it shares a vertex with, or a mate connector that lies on it.", entity);
+        }
+        return { "dir" : curveTangentAtPoint(context, entity, p), "point" : p };
+    }
+
+    const d = extractDirection(context, entity);
+    if (d == undefined)
+    {
+        throw regenError("Cannot determine a direction from the highlighted entity.", entity);
+    }
+    return { "dir" : normalize(d), "point" : referencePoint(context, entity) };
+}
+
+/**
+ * Half the length of the shorter selected edge, used to scale the debug drawing.
+ * Returns undefined when neither selection is an edge.
+ */
+function debugArmLength(context is Context, e0 is Query, e1 is Query)
+{
+    var lengths = [];
+    if (!isQueryEmpty(context, e0->qEntityFilter(EntityType.EDGE)))
+    {
+        lengths = append(lengths, evLength(context, { "entities" : e0 }));
+    }
+    if (!isQueryEmpty(context, e1->qEntityFilter(EntityType.EDGE)))
+    {
+        lengths = append(lengths, evLength(context, { "entities" : e1 }));
+    }
+    if (size(lengths) == 0)
+    {
+        return undefined;
+    }
+    return 0.5 * min(lengths);
 }
 
 /**
@@ -1392,7 +1485,7 @@ function measureThreePointAngle(context is Context, vertexPt is Vector, armA is 
     const v1 = armB - vertexPt;
     if (norm(v0) < TOLERANCE.zeroLength * meter || norm(v1) < TOLERANCE.zeroLength * meter)
     {
-        throw regenError(ErrorStringEnum.VARIABLE_CANNOT_EVALUATE, ["anglePoints"]);
+        throw regenError("An end point coincides with the vertex. Pick three distinct points.", ["anglePoints"]);
     }
 
     const dir0 = normalize(v0);
