@@ -201,6 +201,19 @@
       "last_push": "2026-06-30T15:45:04.044232+00:00",
       "document_id": "f2aa0d88aa9af672efd57487",
       "workspace_id": "5a0fcb2078f784d26eaec662"
+    },
+    {
+      "name": "bodyRename",
+      "description": "Working project: bodyRename",
+      "working_directory": "./bodyRename",
+      "onshape_url": "https://k2-sports.onshape.com/documents/1e7e65b7c519164902d7a5b9/w/ff44ea79fbc22781878191a0/e/a091f1b19031e3e516d65f66",
+      "references": [
+        "Onshape Standard Library"
+      ],
+      "last_pull": "2026-06-30T16:30:35.624050+00:00",
+      "last_push": null,
+      "document_id": "1e7e65b7c519164902d7a5b9",
+      "workspace_id": "ff44ea79fbc22781878191a0"
     }
   ],
   "sync_metadata": {}
