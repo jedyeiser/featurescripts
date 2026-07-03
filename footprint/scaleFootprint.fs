@@ -2536,6 +2536,12 @@ function fitArcRun(runCurves is array, endpointWeight is number, printDebug is b
 
     if (printDebug)
     {
+        println("[arcChain " ~ label ~ "] vertices (should ascend in X for a monotonic sidecut):");
+        for (var k = 0; k < size(vertices); k += 1)
+        {
+            println("  V" ~ k ~ "=(" ~ round(vertices[k][0] / millimeter) ~ ", " ~ round(vertices[k][1] / millimeter)
+                ~ ")mm targetPhi=" ~ round(targetPhis[k] * 180 / PI) ~ "deg");
+        }
         println("[arcChain " ~ label ~ "] " ~ size(fit.arcs) ~ " arc(s), startPhi=" ~ round(fit.startPhi * 180 / PI) ~ "deg");
         for (var k = 0; k < size(fit.arcs); k += 1)
         {

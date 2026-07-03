@@ -396,6 +396,17 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 //3. based on values, update iterCamberHeight
                 var camberDiff = definition.camberHeight - camber;
                 var pctChange = (iterCamberHeight + camberDiff)/iterCamberHeight;
+
+                if (definition.debugPrintSolverIterations)
+                {
+                    println('  iter ' ~ i
+                        ~ ': iterH=' ~ toString(iterCamberHeight / millimeter)
+                        ~ ' measured=' ~ toString(camber / millimeter)
+                        ~ ' target=' ~ toString(definition.camberHeight / millimeter)
+                        ~ ' pctChange=' ~ toString(pctChange)
+                        ~ ' rawFbMinZ=' ~ toString(minPoints.fbMin[2] / millimeter)
+                        ~ ' rawAbMinZ=' ~ toString(minPoints.abMin[2] / millimeter) ~ ' (mm)');
+                }
                 /*
                 println('********** ITERATION ' ~ i ~ ' ***************');
                 println('current -> ' ~ iterCamberHeight);

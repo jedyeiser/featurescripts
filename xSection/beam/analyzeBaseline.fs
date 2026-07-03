@@ -637,6 +637,22 @@ export function analyzeBaselineGeometry(context is Context,
         {
             println("  infl " ~ formatVec(infl.pt));
         }
+        println("curvature profile (u, x, z, N.z):");
+        var profParams = [0.1, 0.25, 0.5, 0.75, 0.9];
+        for (var ci = 0; ci < size(chain); ci += 1)
+        {
+            var profCurv = evEdgeCurvatures(context, { "edge" : chain[ci].edge, "parameters" : profParams });
+            println("  edge[" ~ ci ~ "]:");
+            for (var pi = 0; pi < size(profParams); pi += 1)
+            {
+                var pOrigin = profCurv[pi].frame.origin;
+                var pNz     = profCurv[pi].frame.xAxis[2];
+                println("    u=" ~ profParams[pi]
+                    ~ " x=" ~ toString(pOrigin[0] / millimeter)
+                    ~ " z=" ~ toString(pOrigin[2] / millimeter)
+                    ~ " Nz=" ~ toString(pNz));
+            }
+        }
     }
 
     // Step 7: Select inflection with lowest Z in each half (FRCP / ARCP)
