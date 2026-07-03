@@ -166,6 +166,9 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             
             annotation { "Name" : "Print solver iterations" }
             definition.debugPrintSolverIterations is boolean;
+
+            annotation { "Name" : "Print baseline analysis" }
+            definition.debugPrintAnalysis is boolean;
         }
         
 
@@ -591,7 +594,8 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         {
             var baselineEdges = qUnion([qOwnedByBody(curveBodyQ, EntityType.EDGE)]);
             var result = analyzeBaselineGeometry(context, baselineEdges,
-                                                 definition.fcpQuery, definition.acpQuery);
+                                                 definition.fcpQuery, definition.acpQuery,
+                                                 definition.debugPrintAnalysis);
             if (result != undefined)
             {
                 var chordDir   = normalize(result.ab_min_pt - result.fb_min_pt);

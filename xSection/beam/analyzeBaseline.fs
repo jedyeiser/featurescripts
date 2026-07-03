@@ -452,7 +452,7 @@ export function formatLine(origin is Vector, dir is Vector) returns string
  * @returns {map} : Geometry results, or undefined if inputs are invalid
  */
 export function analyzeBaselineGeometry(context is Context,
-    baselineEdgesQ is Query, fcpQ is Query, acpQ is Query) returns map
+    baselineEdgesQ is Query, fcpQ is Query, acpQ is Query, debug is boolean) returns map
 {
     // Step 1: Build ordered edge chain
     var chain = buildEdgeChain(context, baselineEdgesQ);
@@ -621,6 +621,24 @@ export function analyzeBaselineGeometry(context is Context,
         }
     }
 
+    if (debug)
+    {
+        println("=== analyzeBaselineGeometry ===");
+        println("chain edges: " ~ size(chain));
+        for (var ci = 0; ci < size(chain); ci += 1)
+        {
+            println("  edge[" ~ ci ~ "] reversed=" ~ (chain[ci].reversed ? "T" : "F"));
+        }
+        println("fcpX=" ~ toString(fcpX / millimeter) ~ "  acpX=" ~ toString(acpX / millimeter) ~ "  mrsX=" ~ toString(mrsX / millimeter) ~ " (mm)");
+        println("FB region X=[" ~ toString(fbXLow / millimeter) ~ ", " ~ toString(fbXHigh / millimeter) ~ "]  AB region X=[" ~ toString(abXLow / millimeter) ~ ", " ~ toString(abXHigh / millimeter) ~ "] (mm)");
+        println("fbMinPt=" ~ formatVec(fbMinPt) ~ "  abMinPt=" ~ formatVec(abMinPt));
+        println("inflections found: " ~ size(allInflections));
+        for (var infl in allInflections)
+        {
+            println("  infl " ~ formatVec(infl.pt));
+        }
+    }
+
     // Step 7: Select inflection with lowest Z in each half (FRCP / ARCP)
     var frcpPt   = undefined;
     var frcpU    = undefined;
@@ -660,6 +678,12 @@ export function analyzeBaselineGeometry(context is Context,
                 arcpZ    = pz;
             }
         }
+    }
+
+    if (debug)
+    {
+        println("frcpPt=" ~ (frcpPt == undefined ? "UNDEFINED" : formatVec(frcpPt)));
+        println("arcpPt=" ~ (arcpPt == undefined ? "UNDEFINED" : formatVec(arcpPt)));
     }
 
     // Assemble core result
@@ -707,7 +731,7 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
    definition is map, isCreating is boolean, specifiedParameters is map,
    hiddenBodies is Query, clickedButton is string) returns map
 {
-    var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ);
+    var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ, false);
     if (result == undefined)
     {
         return definition;
@@ -808,7 +832,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             return;
         }
 
-        var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ);
+        var result = analyzeBaselineGeometry(context, definition.baselineEdges, definition.fcpQ, definition.acpQ, false);
         if (result == undefined)
         {
             return;
