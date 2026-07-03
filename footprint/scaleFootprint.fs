@@ -2493,23 +2493,6 @@ function tanAngle(v is Vector) returns number
 }
 
 /**
- * Per-curve arc classification of the (unscaled) reference sidecut curves, using
- * arcFit's whole-curve detector. A curve is an arc only if EVERY sample lies on one
- * fitted circle within posTol -- a real transition spline (varying curvature) fails
- * this, so near-circular splines are the only false-positive risk (noted).
- */
-function detectArcFlags(curves is array) returns array
-{
-    var flags = [];
-    for (var i = 0; i < size(curves); i += 1)
-    {
-        var seg = detectWholeCurveArcOrLine(curves[i], i, 1e-3 * millimeter, 32, false);
-        flags = append(flags, seg != undefined && seg["type"] == "arc");
-    }
-    return flags;
-}
-
-/**
  * Fit a G1 arc chain to a run of consecutive arc-origin (scaled) curves and return
  * tagged segments ({kind:"arc"|"line", start/mid/end}). Vertices are the curves'
  * scaled endpoints; each curve is oriented to ascending X so the chain runs FCP->ACP,
@@ -2611,16 +2594,28 @@ function fitArcRun(runCurves is array, endpointWeight is number, printDebug is b
 function buildTaggedCurves(context is Context, id is Id, curves is array, isArcArray is array,
     strictArcs is boolean, endpointWeight is number, printDebug is boolean, label is string) returns array
 {
+    // Pair each curve with its arc flag and X-midpoint, then sort by X so runs are
+    // GEOMETRICALLY contiguous. Input-edge order is NOT necessarily geometric; grouping by
+    // array order lets an arc run bridge a spline that sits between arcs in X, producing a
+    // phantom arc across (and overlapping) the spline region.
+    var paired = [];
+    for (var k = 0; k < size(curves); k += 1)
+    {
+        var b = getBSplineBounds(curves[k]);
+        paired = append(paired, { "curve" : curves[k], "isArc" : isArcArray[k], "xMid" : (b.xMin + b.xMax) / 2 });
+    }
+    paired = sort(paired, function(a, b) { return a.xMid - b.xMid; });
+
     var tagged = [];
     var i = 0;
-    var n = size(curves);
+    var n = size(paired);
     while (i < n)
     {
-        if (isArcArray[i])
+        if (paired[i].isArc)
         {
             var runStart = i;
             var run = [];
-            while (i < n && isArcArray[i]) { run = append(run, curves[i]); i += 1; }
+            while (i < n && paired[i].isArc) { run = append(run, paired[i].curve); i += 1; }
             var segs = fitArcRun(run, endpointWeight, printDebug, label ~ "-" ~ runStart);
             for (var s in segs) { tagged = append(tagged, s); }
         }
@@ -2628,7 +2623,7 @@ function buildTaggedCurves(context is Context, id is Id, curves is array, isArcA
         {
             var runStart = i;
             var splineRun = [];
-            while (i < n && !isArcArray[i]) { splineRun = append(splineRun, curves[i]); i += 1; }
+            while (i < n && !paired[i].isArc) { splineRun = append(splineRun, paired[i].curve); i += 1; }
             var outSplines = strictArcs ? forceQuadraticNurbs(context, id + ("strict" ~ runStart), splineRun)
                                         : splineRun;
             for (var c in outSplines) { tagged = append(tagged, { "kind" : "spline", "bspline" : c }); }
