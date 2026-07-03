@@ -500,8 +500,10 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         if (definition.showOutputCurveType)
         {
             var outputEdges = evaluateQuery(context, qUnion([
-                qCreatedBy(id + "posOut" + "wires", EntityType.EDGE),
-                qCreatedBy(id + "negOut" + "wires", EntityType.EDGE)
+                qCreatedBy(id + "posOut" + "arcWires", EntityType.EDGE),
+                qCreatedBy(id + "posOut" + "splineWires", EntityType.EDGE),
+                qCreatedBy(id + "negOut" + "arcWires", EntityType.EDGE),
+                qCreatedBy(id + "negOut" + "splineWires", EntityType.EDGE)
             ]));
             debugCurvesByType(context, outputEdges);
         }
@@ -2667,7 +2669,6 @@ function emitScaledSide(context is Context, id is Id, tagged is array, skipMerge
             }
         }
         skSolve(sk);
-        looseEdges = append(looseEdges, qCreatedBy(sketchId, EntityType.EDGE));
     }
 
     if (skipMerge)
@@ -2675,9 +2676,17 @@ function emitScaledSide(context is Context, id is Id, tagged is array, skipMerge
         return;   // debug: leave loose spline bodies + the arc sketch as visible output
     }
 
-    if (size(looseEdges) > 0)
+    // Extract arcs and splines SEPARATELY. A run of consecutive G1-tangent analytic arcs
+    // hugs within kernel tolerance at each joint, which opExtractWires reports as
+    // overlapping if mixed/stitched with the spline edges -- so the arc chain is extracted
+    // on its own. (Diagnostic split; may be revisited once confirmed.)
+    if (hasSketch)
     {
-        opExtractWires(context, id + "wires", { "edges" : qUnion(looseEdges) });
+        opExtractWires(context, id + "arcWires", { "edges" : qCreatedBy(sketchId, EntityType.EDGE) });
+    }
+    if (size(looseEdges) > 0)   // looseEdges holds ONLY the spline edges now
+    {
+        opExtractWires(context, id + "splineWires", { "edges" : qUnion(looseEdges) });
     }
 
     var toDelete = looseBodies;

@@ -399,13 +399,26 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
                 if (definition.debugPrintSolverIterations)
                 {
+                    var maxPocketZ = 0 * millimeter;
+                    var minPocketZ = 0 * millimeter;
+                    for (var pp in camberPocket)
+                    {
+                        if (pp['z'] > maxPocketZ)
+                        {
+                            maxPocketZ = pp['z'];
+                        }
+                        if (pp['z'] < minPocketZ)
+                        {
+                            minPocketZ = pp['z'];
+                        }
+                    }
                     println('  iter ' ~ i
                         ~ ': iterH=' ~ toString(iterCamberHeight / millimeter)
+                        ~ ' rawPocketZ=[' ~ toString(minPocketZ / millimeter) ~ ',' ~ toString(maxPocketZ / millimeter) ~ ']'
                         ~ ' measured=' ~ toString(camber / millimeter)
-                        ~ ' target=' ~ toString(definition.camberHeight / millimeter)
-                        ~ ' pctChange=' ~ toString(pctChange)
-                        ~ ' rawFbMinZ=' ~ toString(minPoints.fbMin[2] / millimeter)
-                        ~ ' rawAbMinZ=' ~ toString(minPoints.abMin[2] / millimeter) ~ ' (mm)');
+                        ~ ' xFRCP=' ~ toString(xFRCP / millimeter)
+                        ~ ' xARCP=' ~ toString(xARCP / millimeter)
+                        ~ ' xMount=' ~ toString(xMount / millimeter) ~ ' (mm)');
                 }
                 /*
                 println('********** ITERATION ' ~ i ~ ' ***************');
