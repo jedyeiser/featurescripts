@@ -210,6 +210,13 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         var xFRCP = (stdDir) ? xFCP + definition.frcpl : xFCP - definition.frcpl;
         var xARCP = (stdDir) ? xACP - definition.arcpl : xACP + definition.arcpl;
 
+        // The camber-pocket solvers treat the two support points as an ascending
+        // span (their internal integration/scaling assumes xLo < xHi). Pass them
+        // lo->hi so FCP > ACP (descending X) still solves; the returned points are
+        // keyed by absolute X and re-sorted downstream.
+        var xPocketLo = min(xFRCP, xARCP);
+        var xPocketHi = max(xFRCP, xARCP);
+
 
         // ----------------------------------------------------------------
         // 3. Load EI data
@@ -265,7 +272,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 
                 baselineBSplines =[]; // clear array
 
-                var camberPocket = (hasEI) ? solveCamberBeam(eiData, xFRCP, xARCP, xMount, iterCamberHeight/meter) : solveCamberCubic(xFRCP, xARCP, xMount, iterCamberHeight/meter);
+                var camberPocket = (hasEI) ? solveCamberBeam(eiData, xPocketLo, xPocketHi, xMount, iterCamberHeight/meter) : solveCamberCubic(xPocketLo, xPocketHi, xMount, iterCamberHeight/meter);
                 
                 var cleanPocket = mapArray(camberPocket, function(x) {return vector(x['x'], 0 * millimeter, x['z']);}); // convert to usable form (vectors)
                 

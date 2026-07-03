@@ -272,16 +272,27 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var tolerance = 0.001 * millimeter;
         var bsplines = edgesToBSplines(context, definition.refEdges, tolerance);
 
+        // Authoritative per-edge arc classification: an input edge is an arc ONLY if its
+        // kernel geometry is an analytic Circle (what the designer drew). This must NOT be a
+        // geometric fit -- a short spline is locally near-circular and would be misclassified.
+        // evaluateQuery order matches edgesToBSplines, so this aligns 1:1 with bsplines.
+        var refEdgeList = evaluateQuery(context, definition.refEdges);
+        var bsplineIsArc = [];
+        for (var e in refEdgeList)
+        {
+            bsplineIsArc = append(bsplineIsArc, evCurveDefinition(context, { "edge" : e }) is Circle);
+        }
+
         // DEBUG: highlight input curves by analytic type (GREEN = arc, BLUE = spline).
         if (definition.showInputCurveType)
         {
-            debugCurvesByType(context, evaluateQuery(context, definition.refEdges));
+            debugCurvesByType(context, refEdgeList);
         }
 
         // =====================================================================
         // STEP 3: Categorize curves (+Y / -Y aware)
         // =====================================================================
-        var categorized = categorizeCurvesWithSides(context, bsplines, refFcp[0], refAcp[0], tolerance);
+        var categorized = categorizeCurvesWithSides(context, bsplines, bsplineIsArc, refFcp[0], refAcp[0], tolerance);
 
         var hasNegData = size(categorized.sidecutNeg) > 0;
         
@@ -447,7 +458,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // align with scaledPos.curves. Scale-Radius RECONSTRUCTS the sidecut (different
         // curve count), so a size mismatch signals it -- fall back to all-spline there
         // (Scale-Radius arc preservation is Phase B).
-        var posSidecutIsArc = detectArcFlags(categorized.sidecutPos);
+        var posSidecutIsArc = categorized.sidecutPosIsArc;
         if (size(posSidecutIsArc) != size(scaledPos.curves))
         {
             posSidecutIsArc = [];
@@ -457,7 +468,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var negSidecutIsArc = posSidecutIsArc;   // symmetric: -Y mirrors +Y 1:1
         if (definition.symmetryMode == SymmetryMode.ASYMMETRIC)
         {
-            negSidecutIsArc = detectArcFlags(categorized.sidecutNeg);
+            negSidecutIsArc = categorized.sidecutNegIsArc;
             if (size(negSidecutIsArc) != size(scaledNegCurves))
             {
                 negSidecutIsArc = [];
@@ -500,10 +511,8 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         if (definition.showOutputCurveType)
         {
             var outputEdges = evaluateQuery(context, qUnion([
-                qCreatedBy(id + "posOut" + "arcWires", EntityType.EDGE),
-                qCreatedBy(id + "posOut" + "splineWires", EntityType.EDGE),
-                qCreatedBy(id + "negOut" + "arcWires", EntityType.EDGE),
-                qCreatedBy(id + "negOut" + "splineWires", EntityType.EDGE)
+                qCreatedBy(id + "posOut" + "wire", EntityType.EDGE),
+                qCreatedBy(id + "negOut" + "wire", EntityType.EDGE)
             ]));
             debugCurvesByType(context, outputEdges);
         }
@@ -970,8 +979,8 @@ function getCurvatureAtX(curveData is array, targetX is ValueWithUnits, toleranc
  *
  * @returns map with keys: tipPos, sidecutPos, tailPos, tipNeg, sidecutNeg, tailNeg
  */
-function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX is ValueWithUnits,
-    acpX is ValueWithUnits, tolerance is ValueWithUnits) returns map
+function categorizeCurvesWithSides(context is Context, bsplines is array, bsplineIsArc is array,
+    fcpX is ValueWithUnits, acpX is ValueWithUnits, tolerance is ValueWithUnits) returns map
 {
     var tipPos = [];
     var sidecutPos = [];
@@ -979,9 +988,14 @@ function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX i
     var tipNeg = [];
     var sidecutNeg = [];
     var tailNeg = [];
-    
-    for (var bspline in bsplines)
+    // Authoritative per-sidecut-curve arc flags (designer intent, carried from ingest).
+    var sidecutPosIsArc = [];
+    var sidecutNegIsArc = [];
+
+    for (var idx = 0; idx < size(bsplines); idx += 1)
     {
+        var bspline = bsplines[idx];
+        var curveIsArc = bsplineIsArc[idx];
         var bounds = getBSplineBounds(bspline);
         var xMin = bounds.xMin;
         var xMax = bounds.xMax;
@@ -1028,8 +1042,8 @@ function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX i
         if (xMin >= fcpX - tolerance && xMax <= acpX + tolerance)
         {
             // Entirely in sidecut region
-            if (isPos) sidecutPos = append(sidecutPos, bspline);
-            else       sidecutNeg = append(sidecutNeg, bspline);
+            if (isPos) { sidecutPos = append(sidecutPos, bspline); sidecutPosIsArc = append(sidecutPosIsArc, curveIsArc); }
+            else       { sidecutNeg = append(sidecutNeg, bspline); sidecutNegIsArc = append(sidecutNegIsArc, curveIsArc); }
             continue;
         }
         
@@ -1043,8 +1057,9 @@ function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX i
         }
         if (splits.sidecutPortion != undefined)
         {
-            if (isPos) sidecutPos = append(sidecutPos, splits.sidecutPortion);
-            else       sidecutNeg = append(sidecutNeg, splits.sidecutPortion);
+            // A split arc keeps its arc identity on the sidecut portion.
+            if (isPos) { sidecutPos = append(sidecutPos, splits.sidecutPortion); sidecutPosIsArc = append(sidecutPosIsArc, curveIsArc); }
+            else       { sidecutNeg = append(sidecutNeg, splits.sidecutPortion); sidecutNegIsArc = append(sidecutNegIsArc, curveIsArc); }
         }
         if (splits.tailPortion != undefined)
         {
@@ -1059,7 +1074,9 @@ function categorizeCurvesWithSides(context is Context, bsplines is array, fcpX i
         "tailPos" : tailPos,
         "tipNeg" : tipNeg,
         "sidecutNeg" : sidecutNeg,
-        "tailNeg" : tailNeg
+        "tailNeg" : tailNeg,
+        "sidecutPosIsArc" : sidecutPosIsArc,
+        "sidecutNegIsArc" : sidecutNegIsArc
     };
 }
 
@@ -2676,21 +2693,30 @@ function emitScaledSide(context is Context, id is Id, tagged is array, skipMerge
         return;   // debug: leave loose spline bodies + the arc sketch as visible output
     }
 
-    // Extract arcs and splines SEPARATELY. A run of consecutive G1-tangent analytic arcs
-    // hugs within kernel tolerance at each joint, which opExtractWires reports as
-    // overlapping if mixed/stitched with the spline edges -- so the arc chain is extracted
-    // on its own. (Diagnostic split; may be revisited once confirmed.)
+    // Merge into ONE wire per side. Mixing SKETCH arc edges with opCreate'd spline wire-body
+    // edges in a single opExtractWires triggers OVERLAPPING_EDGES (cross-body-type imprint).
+    // So: (1) extract the arc chain into its own wire BODY, then (2) stitch that wire's edges
+    // together with the spline edges -- now all the same body type -- into the final wire.
+    var finalEdges = [];
     if (hasSketch)
     {
         opExtractWires(context, id + "arcWires", { "edges" : qCreatedBy(sketchId, EntityType.EDGE) });
+        finalEdges = append(finalEdges, qCreatedBy(id + "arcWires", EntityType.EDGE));
     }
-    if (size(looseEdges) > 0)   // looseEdges holds ONLY the spline edges now
+    finalEdges = concatenateArrays(finalEdges, looseEdges);   // looseEdges = spline edges only
+
+    if (size(finalEdges) > 0)
     {
-        opExtractWires(context, id + "splineWires", { "edges" : qUnion(looseEdges) });
+        opExtractWires(context, id + "wire", { "edges" : qUnion(finalEdges) });
     }
 
+    // Delete intermediates: opCreate'd spline bodies, the sketch, and the arc-chain wire body.
     var toDelete = looseBodies;
-    if (hasSketch) { toDelete = append(toDelete, qCreatedBy(sketchId, EntityType.BODY)); }
+    if (hasSketch)
+    {
+        toDelete = append(toDelete, qCreatedBy(sketchId, EntityType.BODY));
+        toDelete = append(toDelete, qCreatedBy(id + "arcWires", EntityType.BODY));
+    }
     if (size(toDelete) > 0)
     {
         opDeleteBodies(context, id + "delTmp", { "entities" : qUnion(toDelete) });
