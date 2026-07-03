@@ -240,6 +240,14 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Show output curve type", "Default" : false,
                          "Description" : "Highlights the output curves by analytic type (via evCurveDefinition): GREEN = arc, BLUE = spline." }
             definition.showOutputCurveType is boolean;
+
+            annotation { "Name" : "Skip wire merge", "Default" : false,
+                         "Description" : "Debug: leave fitted arcs/splines as separate bodies instead of stitching with opExtractWires, so the raw arc chain is visible." }
+            definition.debugSkipMerge is boolean;
+
+            annotation { "Name" : "Print arc chain", "Default" : false,
+                         "Description" : "Debug: log each fitted arc's radius, sweep and center, and flag adjacent near-co-circular arcs." }
+            definition.debugPrintArcs is boolean;
         }
     }
     {
@@ -472,11 +480,13 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var negStrict = (definition.symmetryMode == SymmetryMode.ASYMMETRIC)
             ? definition.negStrictArcs : strictArcs;
 
-        var taggedPos = buildTaggedCurves(context, id + "tagPos", posCurves, posIsArc, strictArcs, endpointWeight);
-        var taggedNeg = buildTaggedCurves(context, id + "tagNeg", negCurves, negIsArc, negStrict, endpointWeight);
+        var taggedPos = buildTaggedCurves(context, id + "tagPos", posCurves, posIsArc, strictArcs,
+            endpointWeight, definition.debugPrintArcs, "pos");
+        var taggedNeg = buildTaggedCurves(context, id + "tagNeg", negCurves, negIsArc, negStrict,
+            endpointWeight, definition.debugPrintArcs, "neg");
 
-        emitScaledSide(context, id + "posOut", taggedPos);
-        emitScaledSide(context, id + "negOut", taggedNeg);
+        emitScaledSide(context, id + "posOut", taggedPos, definition.debugSkipMerge);
+        emitScaledSide(context, id + "negOut", taggedNeg, definition.debugSkipMerge);
         
         // Optionally delete reference curves
         if (!definition.keepReference)
@@ -2453,7 +2463,8 @@ function fitArcChainThroughVertices(vertices is array, targetPhis is array, endp
         });
     }
 
-    return { "segments" : segs, "startPhi" : phi0, "endPhi" : last(prop.vertexPhis) };
+    return { "segments" : segs, "startPhi" : phi0, "endPhi" : last(prop.vertexPhis),
+             "arcs" : prop.arcs, "vertexPhis" : prop.vertexPhis };
 }
 
 /** Tangent-direction angle (radians, plain number) of a 2-D vector. */
@@ -2485,7 +2496,7 @@ function detectArcFlags(curves is array) returns array
  * scaled endpoints; each curve is oriented to ascending X so the chain runs FCP->ACP,
  * and target tangents come from the curves' endpoint control-point directions.
  */
-function fitArcRun(runCurves is array, endpointWeight is number) returns array
+function fitArcRun(runCurves is array, endpointWeight is number, printDebug is boolean, label is string) returns array
 {
     var oriented = [];
     for (var c in runCurves)
@@ -2523,6 +2534,34 @@ function fitArcRun(runCurves is array, endpointWeight is number) returns array
 
     var fit = fitArcChainThroughVertices(vertices, targetPhis, endpointWeight);
 
+    if (printDebug)
+    {
+        println("[arcChain " ~ label ~ "] " ~ size(fit.arcs) ~ " arc(s), startPhi=" ~ round(fit.startPhi * 180 / PI) ~ "deg");
+        for (var k = 0; k < size(fit.arcs); k += 1)
+        {
+            var arc = fit.arcs[k];
+            var sweepDeg = round(angleDiff(fit.vertexPhis[k + 1], fit.vertexPhis[k]) * 180 / PI);
+            println("  arc " ~ k ~ ": R=" ~ round(arc.R / millimeter) ~ "mm sweep=" ~ sweepDeg
+                ~ "deg center=(" ~ round(arc.center[0] / millimeter) ~ ", " ~ round(arc.center[1] / millimeter)
+                ~ ")mm line=" ~ (arc.isLine ? "y" : "n"));
+        }
+        for (var k = 0; k < size(fit.arcs) - 1; k += 1)
+        {
+            var a = fit.arcs[k];
+            var b = fit.arcs[k + 1];
+            if (!a.isLine && !b.isLine)
+            {
+                var dR = abs(abs(a.R) - abs(b.R));
+                var dC = norm(vector(a.center[0] - b.center[0], a.center[1] - b.center[1]));
+                if (dR < 1 * millimeter && dC < 1 * millimeter)
+                {
+                    println("  WARNING: arcs " ~ k ~ " & " ~ (k + 1) ~ " nearly co-circular (dR="
+                        ~ round(dR / millimeter) ~ "mm dC=" ~ round(dC / millimeter) ~ "mm) -> overlap risk");
+                }
+            }
+        }
+    }
+
     var segs = [];
     for (var s in fit.segments)
     {
@@ -2545,7 +2584,7 @@ function fitArcRun(runCurves is array, endpointWeight is number) returns array
  * Tagged kinds: {kind:"arc",start,mid,end} | {kind:"line",start,end} | {kind:"spline",bspline}.
  */
 function buildTaggedCurves(context is Context, id is Id, curves is array, isArcArray is array,
-    strictArcs is boolean, endpointWeight is number) returns array
+    strictArcs is boolean, endpointWeight is number, printDebug is boolean, label is string) returns array
 {
     var tagged = [];
     var i = 0;
@@ -2554,9 +2593,10 @@ function buildTaggedCurves(context is Context, id is Id, curves is array, isArcA
     {
         if (isArcArray[i])
         {
+            var runStart = i;
             var run = [];
             while (i < n && isArcArray[i]) { run = append(run, curves[i]); i += 1; }
-            var segs = fitArcRun(run, endpointWeight);
+            var segs = fitArcRun(run, endpointWeight, printDebug, label ~ "-" ~ runStart);
             for (var s in segs) { tagged = append(tagged, s); }
         }
         else
@@ -2578,7 +2618,7 @@ function buildTaggedCurves(context is Context, id is Id, curves is array, isArcA
  * a radius). A single opExtractWires stitches everything into a wire; temporary spline
  * bodies and the sketch are then deleted. Kept per-side so +Y and -Y never merge.
  */
-function emitScaledSide(context is Context, id is Id, tagged is array)
+function emitScaledSide(context is Context, id is Id, tagged is array, skipMerge is boolean)
 {
     var looseEdges = [];
     var looseBodies = [];
@@ -2622,6 +2662,11 @@ function emitScaledSide(context is Context, id is Id, tagged is array)
         }
         skSolve(sk);
         looseEdges = append(looseEdges, qCreatedBy(sketchId, EntityType.EDGE));
+    }
+
+    if (skipMerge)
+    {
+        return;   // debug: leave loose spline bodies + the arc sketch as visible output
     }
 
     if (size(looseEdges) > 0)
