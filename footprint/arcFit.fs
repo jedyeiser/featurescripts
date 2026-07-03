@@ -1667,7 +1667,7 @@ function circleAngle(circle is map, p is Vector) returns number
 /**
  * Return the 3D point on a circle at the given angle (radians as number).
  */
-function arcPointAt(circle is map, theta is number) returns Vector
+export function arcPointAt(circle is map, theta is number) returns Vector
 {
     const cs = circle.coordSystem;
     const ya = cross(cs.zAxis, cs.xAxis);

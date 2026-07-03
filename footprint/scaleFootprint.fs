@@ -2586,6 +2586,38 @@ function fitArcRun(runCurves is array, endpointWeight is number, printDebug is b
 }
 
 /**
+ * Convert arcFit poly-arc SEGMENTS (from approximateSplinesWithPolyArcs) into tagged
+ * arc/line segments for analytic sketch emission -- so strict-mode best-fit arcs report a
+ * radius instead of being rational-NURBS "circles" (which read as BSplineCurve). A biarc
+ * becomes two arcs; its per-sub-arc mid point is the theta-bisector via arcPointAt.
+ */
+function polyArcSegsToTagged(segments is array) returns array
+{
+    var out = [];
+    for (var seg in segments)
+    {
+        if (seg["type"] == "line")
+        {
+            out = append(out, { "kind" : "line", "start" : seg.p0, "end" : seg.p1 });
+        }
+        else if (seg["type"] == "arc")
+        {
+            var amid = (seg.pMid != undefined) ? seg.pMid : arcPointAt(seg.circle, (seg.theta0 + seg.theta1) / 2);
+            out = append(out, { "kind" : "arc", "start" : seg.p0, "mid" : amid, "end" : seg.p1 });
+        }
+
+        else if (seg["type"] == "biarc")
+        {
+            var m1 = arcPointAt(seg.circle1, (seg.theta0_arc1 + seg.theta1_arc1) / 2);
+            var m2 = arcPointAt(seg.circle2, (seg.theta0_arc2 + seg.theta1_arc2) / 2);
+            out = append(out, { "kind" : "arc", "start" : seg.p0, "mid" : m1, "end" : seg.pJ });
+            out = append(out, { "kind" : "arc", "start" : seg.pJ, "mid" : m2, "end" : seg.p1 });
+        }
+    }
+    return out;
+}
+
+/**
  * Convert an assembled curve array + per-curve isArc flags into tagged output segments.
  * Consecutive arc-origin curves are refit into a single G1 arc chain; spline-origin
  * curves stay splines (or, in strict mode, are best-fit to poly-arc NURBS).
@@ -2621,12 +2653,21 @@ function buildTaggedCurves(context is Context, id is Id, curves is array, isArcA
         }
         else
         {
-            var runStart = i;
             var splineRun = [];
             while (i < n && !paired[i].isArc) { splineRun = append(splineRun, paired[i].curve); i += 1; }
-            var outSplines = strictArcs ? forceQuadraticNurbs(context, id + ("strict" ~ runStart), splineRun)
-                                        : splineRun;
-            for (var c in outSplines) { tagged = append(tagged, { "kind" : "spline", "bspline" : c }); }
+            if (strictArcs)
+            {
+                // Strict: best-fit the spline run to poly-arcs, emitted as ANALYTIC arcs/lines
+                // (not rational NURBS) so they report a radius. As many arcs as needed.
+                var polyArcs = approximateSplinesWithPolyArcs(splineRun, 1e-3 * millimeter,
+                    1e-3 * millimeter, cos(0.1 * degree), 1 * millimeter, 16, 8, false);
+                var arcSegs = polyArcSegsToTagged(polyArcs.segments);
+                for (var s in arcSegs) { tagged = append(tagged, s); }
+            }
+            else
+            {
+                for (var c in splineRun) { tagged = append(tagged, { "kind" : "spline", "bspline" : c }); }
+            }
         }
     }
     return tagged;
