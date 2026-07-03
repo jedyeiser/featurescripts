@@ -29,6 +29,16 @@ export enum QuadraticZeroSlope
     AT_END
 }
 
+export enum OffsetType
+{
+    annotation { "Name" : "Normal" }
+    NORMAL,
+    annotation { "Name" : "Binormal" }
+    BINORMAL,
+    annotation { "Name" : "Both" }
+    BOTH
+}
+
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
@@ -143,9 +153,13 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                      "Description" : "Defines X = 0 along the path" }
         definition.referencePoint is Query;
 
-        annotation { "Name" : "Flip direction", "Default" : false,
+        annotation { "Name" : "Flip direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION,
                      "Description" : "Reverses the traversal direction of the reference path" }
         definition.flipDirection is boolean;
+
+        annotation { "Name" : "Show direction indicator", "Default" : true,
+                     "Description" : "Draws arrows at the reference point so you can see traversal direction before setting offsets: GREEN = + (positive region start), RED = - (behind the reference point). Follows Flip direction." }
+        definition.showDirection is boolean;
 
         annotation { "Name" : "Flip normal", "Default" : false,
                      "Description" : "Inverts the Frenet normal direction" }
@@ -203,21 +217,32 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 isLength(region.regionEnd, LENGTH_BOUNDS);
             }
 
-            annotation { "Name" : "Start normal offset",
-                         "Description" : "Frenet normal offset at the region start" }
-            isLength(region.startNormalOffset, OffsetBounds);
+            annotation { "Name" : "Offset type", "Default" : OffsetType.NORMAL,
+                         "UIHint" : UIHint.HORIZONTAL_ENUM,
+                         "Description" : "Which Frenet offsets this region applies (hides the unused fields)" }
+            region.offsetType is OffsetType;
 
-            annotation { "Name" : "End normal offset",
-                         "Description" : "Frenet normal offset at the region end" }
-            isLength(region.endNormalOffset, OffsetBounds);
+            if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
+            {
+                annotation { "Name" : "Start normal offset",
+                             "Description" : "Frenet normal offset at the region start" }
+                isLength(region.startNormalOffset, OffsetBounds);
 
-            annotation { "Name" : "Start binormal offset",
-                         "Description" : "Frenet binormal offset at the region start" }
-            isLength(region.startBinormalOffset, OffsetBounds);
+                annotation { "Name" : "End normal offset",
+                             "Description" : "Frenet normal offset at the region end" }
+                isLength(region.endNormalOffset, OffsetBounds);
+            }
 
-            annotation { "Name" : "End binormal offset",
-                         "Description" : "Frenet binormal offset at the region end" }
-            isLength(region.endBinormalOffset, OffsetBounds);
+            if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
+            {
+                annotation { "Name" : "Start binormal offset",
+                             "Description" : "Frenet binormal offset at the region start" }
+                isLength(region.startBinormalOffset, OffsetBounds);
+
+                annotation { "Name" : "End binormal offset",
+                             "Description" : "Frenet binormal offset at the region end" }
+                isLength(region.endBinormalOffset, OffsetBounds);
+            }
 
             annotation { "Name" : "Region length", "UIHint" : UIHint.READ_ONLY }
             isLength(region.length, LENGTH_BOUNDS);
@@ -281,7 +306,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             definition.showRefFrames is boolean;
 
             annotation { "Name" : "Show regions",
-                         "Description" : "Highlight region output curves (cyan)" }
+                         "Description" : "Highlight region output curves, alternating CYAN / MAGENTA per region" }
             definition.showRegions is boolean;
 
             annotation { "Name" : "Show blends",
@@ -307,6 +332,21 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
     }
     {
         var pathInfo = processPath(context, id + "refPath", definition);
+
+        // Direction indicator: GREEN = + (increasing region start), RED = - (behind reference).
+        // Drawn before the region check so it is available while setting the path up. It uses
+        // the traversal tangent at the reference point, so it follows the Flip direction toggle.
+        if (definition.showDirection)
+        {
+            var refArc = pathInfo.refParam * pathInfo.length;
+            var dirFr  = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, refArc);
+            var dOrg   = dirFr.frame.origin;
+            var dTan   = dirFr.frame.zAxis;                 // traversal (+) direction
+            var dLen   = pathInfo.length / 8;
+            var dRad   = dLen * 0.03;
+            addDebugArrow(context, dOrg, dOrg + dLen * dTan, dRad, DebugColor.GREEN);  // + direction
+            addDebugArrow(context, dOrg, dOrg - dLen * dTan, dRad, DebugColor.RED);    // - direction
+        }
 
         if (size(definition.regions) == 0)
         {
@@ -834,9 +874,20 @@ function computeOffsetsAt(region is map, tPath is number) returns map
     var span  = region.tEnd - region.tStart;
     var alpha = (span > 1e-10) ? min(max((tPath - region.tStart) / span, 0), 1) : 0;
     var quadZS = region.quadZeroSlope;
+
+    // Offset type gates which components are applied; the hidden ones contribute 0. Fall
+    // back to BOTH for regions created before offsetType existed (preserves old behavior).
+    var ot = (region.offsetType != undefined) ? region.offsetType : OffsetType.BOTH;
+    var useNormal   = (ot == OffsetType.NORMAL   || ot == OffsetType.BOTH);
+    var useBinormal = (ot == OffsetType.BINORMAL || ot == OffsetType.BOTH);
+
     return {
-        "normalOff"   : profileValueAt(alpha, region.startNormalOffset,   region.endNormalOffset,   region.regionType, quadZS),
-        "binormalOff" : profileValueAt(alpha, region.startBinormalOffset, region.endBinormalOffset, region.regionType, quadZS)
+        "normalOff"   : useNormal
+            ? profileValueAt(alpha, region.startNormalOffset,   region.endNormalOffset,   region.regionType, quadZS)
+            : 0 * meter,
+        "binormalOff" : useBinormal
+            ? profileValueAt(alpha, region.startBinormalOffset, region.endBinormalOffset, region.regionType, quadZS)
+            : 0 * meter
     };
 }
 
@@ -1210,7 +1261,8 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             }
 
             if (definition.showRegions)
-                addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.CYAN);
+                addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY),
+                    (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
         }
     }
 

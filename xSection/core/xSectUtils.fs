@@ -83,68 +83,114 @@ export function signaturesMatch(sig1 is map, sig2 is map, tolerance is ValueWith
 // =============================================================================
 
 /**
- * Generate coordinate frames at evenly spaced locations along an edge.
- * 
- * Frames are oriented with:
- * - Origin at the curve point
- * - Z-axis along curve tangent (forced positive X direction)
- * - X and Y axes in the normal plane
- * 
- * @param context {Context}
- * @param edge {Query} : Edge to generate frames along
- * @param numSections {number} : Number of frames (includes endpoints)
- * @returns {array} : Array of CoordSystem frames
+ * Reduce the "cross section along" selection to an edges Query.
+ *
+ * Accepts any mix of directly-selected edges and wire bodies. Wire bodies
+ * contribute their constituent edges via qOwnedByBody; directly-selected
+ * edges pass through qEntityFilter. qUnion gives constructPath a stable
+ * evaluation order for stitching the edges into a single path.
+ *
+ * @param alongQuery {Query} : The user's "cross section along" selection
+ * @returns {Query} : Query resolving to the constituent edges
  */
-export function getCrossSectionFrames(context is Context, edge is Query, numSections is number) returns array
+export function edgesFromAlongQuery(alongQuery is Query) returns Query
 {
-    var paramRange = range(0, 1, numSections);
-    
-    var curvatures = evEdgeCurvatures(context, {
-            "edge" : edge,
-            "parameters" : paramRange
-    });
-    
-    var frames = mapArray(curvatures, function(c) { return c.frame; });
-    
-    // Force consistent frame orientation:
-    //   zAxis (tangent)  → positive world X (tip to tail)
-    //   xAxis (normal)   → positive world Z (thickness, up from base)
-    //   yAxis (binormal) → world -Y (width, derived)
-    //
-    // Assumption: cross-section edge lies in or parallel to the XZ plane.
+    return qUnion([
+        qEntityFilter(alongQuery, EntityType.EDGE),
+        qOwnedByBody(alongQuery, EntityType.EDGE)
+    ]);
+}
+
+/**
+ * Build a single Path from the "cross section along" selection.
+ *
+ * This is the unifying abstraction that lets the feature work with a single
+ * edge, multiple connected edges, or a wire body. All downstream sampling
+ * uses whole-path arc-length parameters [0,1] via the native Path eval API.
+ *
+ * @param context {Context}
+ * @param alongQuery {Query} : The user's "cross section along" selection
+ * @returns {Path} : Connected path spanning the selected geometry
+ */
+export function buildCrossSectionPath(context is Context, alongQuery is Query) returns Path
+{
+    return constructPath(context, edgesFromAlongQuery(alongQuery));
+}
+
+/**
+ * Orient an array of path tangent lines into cross-section coordinate frames.
+ *
+ * Each frame is oriented with:
+ *   zAxis (tangent)  -> positive world X (tip to tail)
+ *   xAxis (normal)   -> positive world Z (thickness, up from base)
+ *   yAxis (binormal) -> world -Y (width, derived)
+ *
+ * Assumption: the cross-section path lies in or parallel to the XZ plane.
+ * Only the tangent line's origin and direction are used; curvature is not
+ * needed because the normal is rederived from the world thickness axis.
+ *
+ * @param tangentLines {array} : Line objects ({ origin, direction }) from evPathTangentLines
+ * @returns {array} : Array of oriented CoordSystem frames
+ */
+function orientPathFrames(tangentLines is array) returns array
+{
     var worldThickness = vector(0, 0, 1);
-    
-    for (var i = 0; i < size(frames); i += 1)
+    var frames = [];
+
+    for (var i = 0; i < size(tangentLines); i += 1)
     {
         // Force tangent toward positive X
-        var z = frames[i].zAxis;
+        var z = tangentLines[i].direction;
         if (z[0] < 0)
         {
             z *= -1;
         }
-        
+
         // Project world +Z onto plane perpendicular to tangent
         var rawX = worldThickness - dot(worldThickness, z) * z;
         var xDir = normalize(rawX);
-        
-        frames[i] = coordSystem(frames[i].origin, xDir, z);
+
+        frames = append(frames, coordSystem(tangentLines[i].origin, xDir, z));
     }
-    
+
     return frames;
 }
 
 /**
- * Project a world X coordinate onto an edge parameter using binary search.
+ * Generate coordinate frames at evenly spaced locations along a path.
  *
- * Handles curved edges gracefully by finding the parameter where the edge's
- * world X coordinate matches the target X value.
+ * Frames are oriented with:
+ * - Origin at the curve point
+ * - Z-axis along curve tangent (forced positive X direction)
+ * - X and Y axes in the normal plane
  *
  * @param context {Context}
- * @param edge {Query} : Edge to project onto
- * @param targetX {ValueWithUnits} : Target world X coordinate
- * @returns {number} : Parameter [0,1] where edge world X ≈ targetX, or undefined if not found
+ * @param path {Path} : Path to generate frames along (see buildCrossSectionPath)
+ * @param numSections {number} : Number of frames (includes endpoints)
+ * @returns {array} : Array of CoordSystem frames
  */
-export function projectXToEdgeParameter(context is Context, edge is Query, targetX is ValueWithUnits) returns number
+export function getCrossSectionFrames(context is Context, path is Path, numSections is number) returns array
+{
+    var paramRange = range(0, 1, numSections);
+
+    var result = evPathTangentLines(context, path, paramRange);
+
+    return orientPathFrames(result.tangentLines);
+}
+
+/**
+ * Project a world X coordinate onto a whole-path parameter using binary search.
+ *
+ * Handles curved paths gracefully by finding the parameter where the path's
+ * world X coordinate matches the target X value. Assumes world X is monotonic
+ * along the path (true for a tip-to-tail ski baseline).
+ *
+ * @param context {Context}
+ * @param path {Path} : Path to project onto (see buildCrossSectionPath)
+ * @param targetX {ValueWithUnits} : Target world X coordinate
+ * @returns {number} : Parameter [0,1] where path world X ~= targetX, or undefined if out of range
+ */
+export function projectXToPathParameter(context is Context, path is Path, targetX is ValueWithUnits) returns number
 {
     const MAX_ITERATIONS = 20;
     const TOLERANCE = 1e-6 * meter;
@@ -153,17 +199,9 @@ export function projectXToEdgeParameter(context is Context, edge is Query, targe
     var paramMax = 1.0;
 
     // Get X coordinates at bounds
-    var curvStart = evEdgeCurvatures(context, {
-        "edge" : edge,
-        "parameters" : [paramMin]
-    });
-    var curvEnd = evEdgeCurvatures(context, {
-        "edge" : edge,
-        "parameters" : [paramMax]
-    });
-
-    var xMin = curvStart[0].frame.origin[0];
-    var xMax = curvEnd[0].frame.origin[0];
+    var bounds = evPathTangentLines(context, path, [paramMin, paramMax]);
+    var xMin = bounds.tangentLines[0].origin[0];
+    var xMax = bounds.tangentLines[1].origin[0];
 
     // Check if targetX is outside bounds
     if (targetX < min(xMin, xMax) - TOLERANCE || targetX > max(xMin, xMax) + TOLERANCE)
@@ -176,11 +214,8 @@ export function projectXToEdgeParameter(context is Context, edge is Query, targe
     {
         var paramMid = (paramMin + paramMax) / 2.0;
 
-        var curvMid = evEdgeCurvatures(context, {
-            "edge" : edge,
-            "parameters" : [paramMid]
-        });
-        var xMid = curvMid[0].frame.origin[0];
+        var mid = evPathTangentLines(context, path, [paramMid]);
+        var xMid = mid.tangentLines[0].origin[0];
 
         // Check convergence
         if (abs(xMid - targetX) < TOLERANCE)
@@ -214,20 +249,23 @@ export function projectXToEdgeParameter(context is Context, edge is Query, targe
  * Fallback: If FCP or ACP undefined → uniform spacing (current behavior)
  *
  * @param context {Context}
- * @param edge {Query} : Edge to generate frames along
+ * @param alongQuery {Query} : Selection to cross-section along (single edge, multiple edges, or wire body)
  * @param numSections {number} : Total number of frames requested
  * @param fcpX : FCP world X coordinate (or undefined)
  * @param acpX : ACP world X coordinate (or undefined)
  * @returns {array} : Array of maps [{ "frame": CoordSystem, "stationNumber": number }, ...]
  */
-export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
+export function getCrossSectionFramesAdaptive(context is Context, alongQuery is Query,
                                                numSections is number,
                                                fcpX, acpX) returns array
 {
+    // Build a single path from the selection (single edge, multiple edges, or wire body).
+    var path = buildCrossSectionPath(context, alongQuery);
+
     // Fallback to uniform spacing if either FCP or ACP undefined
     if (fcpX == undefined || acpX == undefined)
     {
-        var uniformFrames = getCrossSectionFrames(context, edge, numSections);
+        var uniformFrames = getCrossSectionFrames(context, path, numSections);
         var result = [];
         for (var i = 0; i < size(uniformFrames); i += 1)
         {
@@ -239,18 +277,11 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
         return result;
     }
 
-    // Get edge world X bounds
-    var curvStart = evEdgeCurvatures(context, {
-        "edge" : edge,
-        "parameters" : [0.0]
-    });
-    var curvEnd = evEdgeCurvatures(context, {
-        "edge" : edge,
-        "parameters" : [1.0]
-    });
+    // Get path world X bounds
+    var bounds = evPathTangentLines(context, path, [0.0, 1.0]);
 
-    var xStart = curvStart[0].frame.origin[0];
-    var xEnd = curvEnd[0].frame.origin[0];
+    var xStart = bounds.tangentLines[0].origin[0];
+    var xEnd = bounds.tangentLines[1].origin[0];
 
     var xMin = min(xStart, xEnd);
     var xMax = max(xStart, xEnd);
@@ -260,7 +291,7 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     if (fcpX < xMin - BOUND_TOL || fcpX > xMax + BOUND_TOL ||
         acpX < xMin - BOUND_TOL || acpX > xMax + BOUND_TOL)
     {
-        var uniformFrames = getCrossSectionFrames(context, edge, numSections);
+        var uniformFrames = getCrossSectionFrames(context, path, numSections);
         var result = [];
         for (var i = 0; i < size(uniformFrames); i += 1)
         {
@@ -279,7 +310,7 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     // Check for degenerate span
     if (abs(acpXOrdered - fcpXOrdered) < 1e-6 * meter)
     {
-        var uniformFrames = getCrossSectionFrames(context, edge, numSections);
+        var uniformFrames = getCrossSectionFrames(context, path, numSections);
         var result = [];
         for (var i = 0; i < size(uniformFrames); i += 1)
         {
@@ -368,14 +399,14 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
         stationNumbers = append(stationNumbers, numRefSections + i);
     }
 
-    // Convert world-X samples to edge parameters, keeping station labels aligned.
-    // projectXToEdgeParameter returns undefined only for out-of-range X; pairing each
+    // Convert world-X samples to whole-path parameters, keeping station labels aligned.
+    // projectXToPathParameter returns undefined only for out-of-range X; pairing each
     // station number in the same step prevents index drift if any sample is skipped.
     var parameters = [];
     var keptStationNumbers = [];
     for (var i = 0; i < size(xPositions); i += 1)
     {
-        var param = projectXToEdgeParameter(context, edge, xPositions[i]);
+        var param = projectXToPathParameter(context, path, xPositions[i]);
         if (param != undefined)
         {
             parameters = append(parameters, param);
@@ -383,32 +414,9 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
         }
     }
 
-    // Generate frames at computed parameters
-    var curvatures = evEdgeCurvatures(context, {
-        "edge" : edge,
-        "parameters" : parameters
-    });
-
-    var frames = mapArray(curvatures, function(c) { return c.frame; });
-
-    // Force consistent frame orientation (same as getCrossSectionFrames)
-    var worldThickness = vector(0, 0, 1);
-
-    for (var i = 0; i < size(frames); i += 1)
-    {
-        // Force tangent toward positive X
-        var z = frames[i].zAxis;
-        if (z[0] < 0)
-        {
-            z *= -1;
-        }
-
-        // Project world +Z onto plane perpendicular to tangent
-        var rawX = worldThickness - dot(worldThickness, z) * z;
-        var xDir = normalize(rawX);
-
-        frames[i] = coordSystem(frames[i].origin, xDir, z);
-    }
+    // Generate frames at computed parameters (same orientation as getCrossSectionFrames)
+    var tangents = evPathTangentLines(context, path, parameters);
+    var frames = orientPathFrames(tangents.tangentLines);
 
     // Pair frames with station numbers
     var result = [];
