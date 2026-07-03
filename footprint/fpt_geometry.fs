@@ -433,7 +433,9 @@ export function prepExactBase(sections is array, cScale is number) returns map
         for (var i = 0; i < size(sec.xPoints); i += 1)
         {
             gx = append(gx, sec.xPoints[i]);
-            var R = (sec.isArc == true ? sec.arcR0 : sec.radiusPoints[i]) * cScale;
+            // radiusPoints are plain numbers (meters value); arcR0 is a length. Convert both
+            // to a true radius length: R[m] = value * cScale. (matches buildBaseIntegrals scaling)
+            var R = (sec.isArc == true) ? (sec.arcR0 * cScale) : (sec.radiusPoints[i] * cScale * meter);
             if (abs(R) < 1e-12 * meter)
                 throw regenError("Radius too close to zero during exact integration.");
             gk = append(gk, meter / R);
@@ -540,8 +542,9 @@ export function integrateExact(base is map, theta0 is number, y0 is ValueWithUni
                     {
                         // At a section's first sample (i == 0) there is no in-section previous
                         // radius; fall back to the local radius so R indexing is never negative.
-                        var R0 = sec.radiusPoints[i >= 1 ? i - 1 : 0] * cScale;
-                        var R1 = sec.radiusPoints[i] * cScale;
+                        // radiusPoints are plain numbers (meters value) -> convert to length.
+                        var R0 = sec.radiusPoints[i >= 1 ? i - 1 : 0] * cScale * meter;
+                        var R1 = sec.radiusPoints[i] * cScale * meter;
                         var stepped = rk4Step(phi, yCur, dx, R0, R1);
                         phi = stepped.phi;
                         yCur = stepped.y;
