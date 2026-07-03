@@ -66,6 +66,7 @@ is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef
     var solved = solveFootprintConstraints(makeRegions, integrationDef);
 
     var resultMaps = [];
+    var hasArcs = false;
     for (var i = 0; i < size(solved.splineSections); i += 1)
     {
         var section = solved.splineSections[i];
@@ -74,13 +75,33 @@ is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef
         {
             pts = append(pts, vector(section.x[p], section.y[p], 0 * millimeter));
         }
-        resultMaps = append(resultMaps, createFootprintSplineFromPoints(context, id + ('footprintSpline'~i),
-        pts, section.startTheta, section.endTheta, splineDef));
+
+        if (section.isArc == true)
+        {
+            // Exact arc: carry the sample points (which lie exactly on the true arc) so the
+            // feature can draw an analytic sketch arc through start/mid/end. No BSpline is
+            // built for arc sections -- they bypass approximateSpline entirely.
+            hasArcs = true;
+            resultMaps = append(resultMaps, { 'isArc' : true, 'points' : pts });
+        }
+        else
+        {
+            var rm = createFootprintSplineFromPoints(context, id + ('footprintSpline'~i),
+            pts, section.startTheta, section.endTheta, splineDef);
+            rm['isArc'] = false;
+            resultMaps = append(resultMaps, rm);
+        }
     }
 
-    // Refine BSplines against continuous measurement to close the
-    // discrete-vs-continuous gap (~1mm → <0.05mm)
-    resultMaps = refineFootprintBSplines(resultMaps, integrationDef);
+    // Refinement rotates the curve via a control-point SHEAR, which would distort an exact
+    // arc and pull the transition endpoints off the arc joints. So refine only when there are
+    // no arcs; with arcs present the exact solve already places everything precisely.
+    if (!hasArcs)
+    {
+        // Refine BSplines against continuous measurement to close the
+        // discrete-vs-continuous gap (~1mm -> <0.05mm)
+        resultMaps = refineFootprintBSplines(resultMaps, integrationDef);
+    }
 
     return resultMaps;
 }

@@ -142,8 +142,8 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
                 annotation { "Name" : "Number of samples per edge" }
                 isInteger(definition.numSamplesPerEdge, edgeSamplingBounds);
                 
-                annotation { "Name" : "Group output", "Description": "When true, uses opExtractWires to group the output of this feature" }
-                definition.extractWires is boolean; 
+                annotation { "Name" : "Group output", "Default" : true, "Description": "When true, uses opExtractWires to group the output of this feature" }
+                definition.extractWires is boolean;
                 
             }
             
@@ -210,8 +210,25 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
         }
         
         var results = generateFootprintFromRadiusEdges(context, id + ("getFootprintFromDef"), definition.radiusProfiles, definition.footprintCurveBuildMode, samplingDef, integrationDef, splineDef);
-        
-        if (definition.splineExportType == FootprintSplineExportType.FIT)
+
+        var hasFootprintArcs = false;
+        for (var i = 0; i < size(results); i += 1)
+        {
+            if (results[i].isArc == true)
+            {
+                hasFootprintArcs = true;
+            }
+        }
+
+        if (hasFootprintArcs)
+        {
+            // Arc sections must be emitted as ANALYTIC sketch arcs -- opCreateBSplineCurve can
+            // never report a radius, and our designers require a clickable radius on arcs.
+            // Transitions stay ordinary splines. (The arc path always produces a single
+            // extracted composite wire, so the extractWires/unify toggles do not apply here.)
+            emitFootprintWithArcs(context, id, definition, results);
+        }
+        else if (definition.splineExportType == FootprintSplineExportType.FIT)
         {
             
             var pointArrays = mapArray(results, function(x) {return x.points;});
@@ -399,9 +416,95 @@ export function forceQuadraticNurbs(context is Context, id is Id, bSplines is ar
     var polyArcs = approximateSplinesWithPolyArcs(bSplines, 1e-3 * millimeter, 1e-3 * millimeter, dotTol, 1 * millimeter, 16, 8, false);
 
     var NURBS = primitivesToBSplines(polyArcs.segments);
-    
+
     return NURBS;
-    
+
+}
+
+/**
+ * Emit a footprint that contains one or more exact circular-arc sections.
+ *
+ * Onshape only reports an analytic radius for curves whose kernel geometry IS analytic; a
+ * rational-NURBS "circle" from opCreateBSplineCurve always reports as a BSplineCurve (no
+ * radius). So arc sections are drawn as 3-point sketch arcs (analytic), transitions as
+ * ordinary splines, then a single opExtractWires copies everything into a composite wire
+ * (analytic arcs preserved, connected edges merged) and the temporary sketch and spline
+ * bodies are deleted -- leaving arcs that show a radius when clicked.
+ *
+ * results: per-section maps. Arc entries { isArc: true, points: [Vector...] }; transition
+ *          entries { isArc: false, bSpline: map, points: [Vector...] }.
+ */
+function emitFootprintWithArcs(context is Context, id is Id, definition is map, results is array)
+{
+    var origEdges = [];
+    var origBodies = [];
+
+    // 1) Transition (non-arc) sections -> ordinary splines.
+    var tIdx = 0;
+    for (var i = 0; i < size(results); i += 1)
+    {
+        var r = results[i];
+        if (r.isArc == true)
+        {
+            continue;
+        }
+
+        if (definition.splineExportType == FootprintSplineExportType.FIT)
+        {
+            opFitSpline(context, id + ("fpTransFit" ~ tIdx), { "points" : r.points });
+            origEdges = append(origEdges, qCreatedBy(id + ("fpTransFit" ~ tIdx), EntityType.EDGE));
+            origBodies = append(origBodies, qCreatedBy(id + ("fpTransFit" ~ tIdx), EntityType.BODY));
+        }
+        else
+        {
+            opCreateBSplineCurve(context, id + ("fpTrans" ~ tIdx), { "bSplineCurve" : r.bSpline });
+            origEdges = append(origEdges, qCreatedBy(id + ("fpTrans" ~ tIdx), EntityType.EDGE));
+            origBodies = append(origBodies, qCreatedBy(id + ("fpTrans" ~ tIdx), EntityType.BODY));
+        }
+        tIdx += 1;
+    }
+
+    // 2) Arc sections -> analytic 3-point sketch arcs on the world XY plane. On that plane
+    //    sketch (x, y) == world (x, y), so we take the point's x/y components directly.
+    var xyPlane = plane(vector(0, 0, 0) * meter, vector(0, 0, 1), vector(1, 0, 0));
+    var arcSketchId = id + "fpArcSketch";
+    var sk = newSketchOnPlane(context, arcSketchId, { "sketchPlane" : xyPlane });
+
+    var aIdx = 0;
+    for (var i = 0; i < size(results); i += 1)
+    {
+        var r = results[i];
+        if (!(r.isArc == true))
+        {
+            continue;
+        }
+
+        var p = r.points;
+        var nP = size(p);
+        var midI = floor(nP / 2);
+
+        // Samples lie exactly on the true arc; start/mid/end reconstruct it exactly. The
+        // middle sample maximizes the sagitta, avoiding a near-collinear (degenerate) arc.
+        skArc(sk, "fpArc" ~ aIdx, {
+                "start" : vector(p[0][0], p[0][1]),
+                "mid" : vector(p[midI][0], p[midI][1]),
+                "end" : vector(p[nP - 1][0], p[nP - 1][1])
+        });
+        aIdx += 1;
+    }
+
+    skSolve(sk);
+
+    var sketchEdges = qCreatedBy(arcSketchId, EntityType.EDGE);
+
+    // 3) Copy transitions + analytic arcs into one composite wire. opExtractWires preserves
+    //    the arcs' analytic type and merges edges that share endpoints into a single wire.
+    var allEdges = qUnion(append(origEdges, sketchEdges));
+    opExtractWires(context, id + "fpCompositeWire", { "edges" : allEdges });
+
+    // 4) Delete the temporary spline bodies and the sketch, leaving only the composite wire.
+    var toDelete = append(origBodies, qCreatedBy(arcSketchId, EntityType.BODY));
+    opDeleteBodies(context, id + "fpDeleteTemp", { "entities" : qUnion(toDelete) });
 }
 
     
