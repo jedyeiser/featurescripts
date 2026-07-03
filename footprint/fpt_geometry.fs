@@ -43,6 +43,11 @@ export enum RadiusSign
     NEG
 }
 
+// |unit tangent .y| below this => the input edge is treated as a horizontal line
+// (constant radius). Its integrated footprint section is an EXACT circular arc, so we
+// tag it for the exact-arc closed form and (Stage 2) exact rational-NURBS emission.
+const HORIZONTAL_DIR_TOL = 1e-3;
+
 
 export function generateFootprintFromRadiusEdges(context is Context, id is Id, radiusEdgesQuery is Query, mode
 is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef is map) returns array
@@ -94,54 +99,76 @@ is FootprintCurveBuildMode, samplingDef is map, integrationDef is map, splineDef
  {
      var regionBreaks = [];
      var edgeBreaks = [];
-     var regionR = [];
-     var regionX = [];
 
-     var prevSign = undefined;
+     // --- PER_EDGE sections: one section per input edge, carrying its arc tag ---
+     for (var i = 0; i < size(edgeArray); i += 1)
+     {
+         edgeBreaks = append(edgeBreaks, {
+             'xPoints': edgeArray[i]['xPoints'],
+             'radiusPoints': edgeArray[i]['radiusPoints'],
+             'edgeOrder': edgeArray[i]['edgeOrder'],
+             'edgeRadiusSign': edgeArray[i].radiusSign,
+             'isArc': edgeArray[i]['isArc'] == true,
+             'arcR0': edgeArray[i]['arcR0']
+         });
+     }
+
+     // --- PER_REGION sections: merge contiguous, same-sign, NON-arc edges. A horizontal
+     //     line (arc) edge is ALWAYS its own standalone section so it can be integrated and
+     //     emitted as an exact arc; region merging never crosses an arc edge. ---
+     var accX = [];
+     var accR = [];
+     var accSign = undefined;
+     var haveAcc = false;
 
      for (var i = 0; i < size(edgeArray); i += 1)
      {
-        if (prevSign == undefined) // first edge
-        {
-            regionX = concatenateArrays(regionX, edgeArray[i]['xPoints']);
-            regionR = concatenateArrays(regionR, edgeArray[i]['radiusPoints']);
-            edgeBreaks = append(edgeBreaks, {'xPoints': edgeArray[i]['xPoints'], 'radiusPoints': edgeArray[i]
-            ['radiusPoints'], 'edgeOrder': edgeArray[i]['edgeOrder'], 'edgeRadiusSign':
-            edgeArray[i].radiusSign});
-            prevSign = edgeArray[i].radiusSign;
-        }
-        else //We have a previous Sign.
-        {
-            var curSign = edgeArray[i].radiusSign;
-            edgeBreaks = append(edgeBreaks, {'xPoints': edgeArray[i]['xPoints'], 'radiusPoints': edgeArray[i]
-            ['radiusPoints'], 'edgeOrder': edgeArray[i]['edgeOrder'], 'edgeRadiusSign':
-            edgeArray[i].radiusSign}); // break edges per normal
+        var e = edgeArray[i];
 
-            if (curSign == prevSign) //Sign is unchanged. Append edge data to running region totals.
+        if (e['isArc'] == true)
+        {
+            // Flush any pending non-arc accumulation, then push the arc as its own section.
+            if (haveAcc)
             {
-                // sign has flipped. Dump previous arrays into region arrays.
-                regionX = concatenateArrays(regionX, edgeArray[i]['xPoints']);
-                regionR = concatenateArrays(regionR, edgeArray[i]['radiusPoints']);
-                prevSign = edgeArray[i].radiusSign;
+                regionBreaks = append(regionBreaks, {'regionNum': size(regionBreaks), 'xPoints': accX,
+                'radiusPoints': accR, 'regionSign': accSign, 'isArc': false, 'arcR0': 0 * millimeter});
+                haveAcc = false;
+                accX = [];
+                accR = [];
+                accSign = undefined;
             }
-
-            else // curSign != prevSign
-            {
-                regionBreaks = append(regionBreaks, {'regionNum': size(regionBreaks), 'xPoints': regionX,
-                'radiusPoints': regionR, 'regionSign': prevSign});
-                //add this edge's data to cleaned regionR and regionX arrays.
-                regionX = edgeArray[i]['xPoints'];
-                regionR = edgeArray[i]['radiusPoints'];
-                // update sign
-                prevSign = edgeArray[i].radiusSign;
-
-            }
+            regionBreaks = append(regionBreaks, {'regionNum': size(regionBreaks), 'xPoints': e['xPoints'],
+            'radiusPoints': e['radiusPoints'], 'regionSign': e.radiusSign, 'isArc': true, 'arcR0': e['arcR0']});
         }
-        if (i == size(edgeArray)-1) // last edge
+        else
         {
-            regionBreaks = append(regionBreaks, {'regionNum': size(regionBreaks), 'xPoints': regionX,
-            'radiusPoints': regionR, 'regionSign': prevSign});
+            if (!haveAcc)
+            {
+                accX = e['xPoints'];
+                accR = e['radiusPoints'];
+                accSign = e.radiusSign;
+                haveAcc = true;
+            }
+            else if (e.radiusSign == accSign) // same sign: keep merging
+            {
+                accX = concatenateArrays(accX, e['xPoints']);
+                accR = concatenateArrays(accR, e['radiusPoints']);
+            }
+            else // sign flip: flush and start a new accumulation
+            {
+                regionBreaks = append(regionBreaks, {'regionNum': size(regionBreaks), 'xPoints': accX,
+                'radiusPoints': accR, 'regionSign': accSign, 'isArc': false, 'arcR0': 0 * millimeter});
+                accX = e['xPoints'];
+                accR = e['radiusPoints'];
+                accSign = e.radiusSign;
+            }
         }
+     }
+
+     if (haveAcc)
+     {
+         regionBreaks = append(regionBreaks, {'regionNum': size(regionBreaks), 'xPoints': accX,
+         'radiusPoints': accR, 'regionSign': accSign, 'isArc': false, 'arcR0': 0 * millimeter});
      }
 
      return {'regionBreaks': regionBreaks, 'edgeBreaks': edgeBreaks};
@@ -219,8 +246,25 @@ export function sampleRadiusEdges(context is Context, q is Query, samplingDef is
             throw regenError("Edges defining radius progression cannot cross y = 0");
         }
 
+        // Detect a HORIZONTAL STRAIGHT LINE: constant radius => the integrated footprint
+        // section is an exact circular arc. arcR0 is the (constant, signed) radius-profile
+        // Y value; the true radius is arcR0 * curvatureScaleFactor.
+        var isArcEdge = false;
+        var arcR0 = 0 * millimeter;
+        var lineHits = evaluateQuery(context, qGeometry(edgeArray[i], GeometryType.LINE));
+        if (size(lineHits) > 0)
+        {
+            var dirUnit = normalize(startTangent);
+            if (abs(dirUnit[1]) < HORIZONTAL_DIR_TOL)
+            {
+                isArcEdge = true;
+                arcR0 = (endLines[0].origin[1] + endLines[1].origin[1]) / 2;
+            }
+        }
+
         edgeData = append(edgeData, {'edgeNum': i, 'start': startX, 'end': endX, 'startTangent': startTangent,
-        'endTangent': endTangent, 'radiusSign': radiusRegion, 'edgeQuery': edgeArray[i]});
+        'endTangent': endTangent, 'radiusSign': radiusRegion, 'edgeQuery': edgeArray[i], 'isArc': isArcEdge,
+        'arcR0': arcR0});
     }
 
     edgeData = sort(edgeData, function(a, b) {return a.start - b.start;}); // npw ordered smallest to largest.
@@ -359,12 +403,335 @@ returns map
     return {'bSpline': aprx, 'points': pts};
 }
 
+/* =========================================================================
+ * EXACT ODE INTEGRATION (integrate-footprint pipeline only)
+ *
+ * Model, parameterized by ski-X:
+ *     dphi/dx = 1 / (R(x) * cos phi)     phi = true tangent angle (radians)
+ *     dy/dx   = tan phi
+ *
+ * The linear buildBaseIntegrals / evalY / evalTheta path (y'' = 1/R) is the
+ * small-angle linearization of this, and is retained unchanged for scaleFootprint.
+ * Integrating exactly here makes a constant-R (horizontal-line) section a TRUE
+ * circular arc, and keeps section boundaries tangent-continuous in the real angle.
+ *
+ * phi is carried as a plain number in radians; trig takes (phi * radian).
+ * ========================================================================= */
+
+/**
+ * Prepare a base map for exact integration from the ordered section array
+ * (edgeBreaks or regionBreaks). Precomputes the global x[] and a unitless
+ * curvature-scale sample k[] = (1/R)*meter used only to seed the theta0 solver.
+ */
+export function prepExactBase(sections is array, cScale is number) returns map
+{
+    var gx = [];
+    var gk = [];
+    for (var s = 0; s < size(sections); s += 1)
+    {
+        var sec = sections[s];
+        for (var i = 0; i < size(sec.xPoints); i += 1)
+        {
+            gx = append(gx, sec.xPoints[i]);
+            var R = (sec.isArc == true ? sec.arcR0 : sec.radiusPoints[i]) * cScale;
+            if (abs(R) < 1e-12 * meter)
+                throw regenError("Radius too close to zero during exact integration.");
+            gk = append(gk, meter / R);
+        }
+    }
+    return {'sections': sections, 'cScale': cScale, 'x': gx, 'k': gk};
+}
+
+/**
+ * One RK4 step of the exact ODE across [x, x+dx], with the radius linearly
+ * interpolated from R0 (at x) to R1 (at x+dx). Returns the new {phi, y}.
+ */
+function rk4Step(phi is number, y is ValueWithUnits, dx is ValueWithUnits, R0 is ValueWithUnits, R1 is ValueWithUnits) returns map
+{
+    var Rmid = (R0 + R1) / 2;
+
+    var k1p = 1 / (R0 * cos(phi * radian));
+    var k1y = tan(phi * radian);
+
+    var p2 = phi + (dx * k1p) / 2;
+    var k2p = 1 / (Rmid * cos(p2 * radian));
+    var k2y = tan(p2 * radian);
+
+    var p3 = phi + (dx * k2p) / 2;
+    var k3p = 1 / (Rmid * cos(p3 * radian));
+    var k3y = tan(p3 * radian);
+
+    var p4 = phi + dx * k3p;
+    var k4p = 1 / (R1 * cos(p4 * radian));
+    var k4y = tan(p4 * radian);
+
+    var phiNew = phi + (dx / 6) * (k1p + 2 * k2p + 2 * k3p + k4p);
+    var yNew = y + (dx / 6) * (k1y + 2 * k2y + 2 * k3y + k4y);
+
+    return {'phi': phiNew, 'y': yNew};
+}
+
+/**
+ * Integrate the exact footprint ODE over all sections with initial tangent angle
+ * theta0 (radians) and initial height y0. Constant-R (arc) sections use the exact
+ * circular-arc closed form; transitions use RK4. Returns global x/y/theta arrays and
+ * per-section slices with start/end angle, arc geometry, and endpoints.
+ */
+export function integrateExact(base is map, theta0 is number, y0 is ValueWithUnits) returns map
+{
+    var sections = base.sections;
+    var cScale = base.cScale;
+
+    var gx = [];
+    var gy = [];
+    var gth = [];
+
+    var secOut = [];
+
+    var phi = theta0;
+    var yCur = y0;
+    var haveState = false;
+    var prevX = 0 * meter;
+
+    for (var s = 0; s < size(sections); s += 1)
+    {
+        var sec = sections[s];
+        var xs = sec.xPoints;
+        var n = size(xs);
+        var isArc = (sec.isArc == true);
+        var Rconst = sec.arcR0 * cScale;   // meaningful only for arc sections
+
+        var secX = [];
+        var secY = [];
+        var secTh = [];
+        var startPhi = phi;
+        var startY = yCur;
+
+        for (var i = 0; i < n; i += 1)
+        {
+            var xv = xs[i];
+
+            if (!haveState)
+            {
+                // First sample overall: apply initial conditions here.
+                phi = theta0;
+                yCur = y0;
+                haveState = true;
+            }
+            else
+            {
+                var dx = xv - prevX;
+                // Skip shared section-boundary samples (dx ~ 1e-16 m from rounding). Real
+                // sample spacing is mm-scale, so 1 nm is a safe floor that never drops a
+                // legitimate step.
+                if (abs(dx) > 1e-9 * meter)
+                {
+                    if (isArc)
+                    {
+                        // Exact circular arc: d(sin phi)/dx = 1/R  =>  sin phi is linear in x,
+                        // and y advances by R*(cos phi0 - cos phi).
+                        var sinNew = sin(phi * radian) + dx / Rconst;
+                        sinNew = max(-1, min(1, sinNew));
+                        var phiNew = asin(sinNew) / radian;
+                        yCur = yCur + Rconst * (cos(phi * radian) - cos(phiNew * radian));
+                        phi = phiNew;
+                    }
+                    else
+                    {
+                        // At a section's first sample (i == 0) there is no in-section previous
+                        // radius; fall back to the local radius so R indexing is never negative.
+                        var R0 = sec.radiusPoints[i >= 1 ? i - 1 : 0] * cScale;
+                        var R1 = sec.radiusPoints[i] * cScale;
+                        var stepped = rk4Step(phi, yCur, dx, R0, R1);
+                        phi = stepped.phi;
+                        yCur = stepped.y;
+                    }
+                }
+            }
+
+            if (i == 0)
+            {
+                startPhi = phi;
+                startY = yCur;
+            }
+
+            secX = append(secX, xv);
+            secY = append(secY, yCur);
+            secTh = append(secTh, phi);
+
+            gx = append(gx, xv);
+            gy = append(gy, yCur);
+            gth = append(gth, phi);
+
+            prevX = xv;
+        }
+
+        secOut = append(secOut, {
+            'x': secX,
+            'y': secY,
+            'theta': secTh,
+            'startTheta': tan(startPhi * radian),   // slope, for spline start-derivative
+            'endTheta': tan(phi * radian),          // slope, for spline end-derivative
+            'startPhi': startPhi,
+            'endPhi': phi,
+            'isArc': isArc,
+            'arcR0': sec.arcR0,
+            'startPoint': vector(secX[0], secY[0], 0 * meter),
+            'endPoint': vector(last(secX), last(secY), 0 * meter)
+        });
+    }
+
+    return {'x': gx, 'y': gy, 'theta': gth, 'sections': secOut};
+}
+
+/**
+ * Exact-integration residual for the theta0 solvers: measured minus target.
+ */
+function residualExact(theta0 is number, base is map, angleDriver is AngleDriver, targetVal is ValueWithUnits, fcpX) returns ValueWithUnits
+{
+    var r = integrateExact(base, theta0, 0 * meter);
+    var stats = footprintStatsFromDiscrete(r.x, r.y, r.theta, fcpX);
+    if (angleDriver == AngleDriver.WAIST)
+    {
+        return stats.waistLocation - targetVal;
+    }
+    return stats.taperAngle - targetVal;
+}
+
+/**
+ * Exact analogue of solveTheta0ForTaperAngle: secant on the taper-angle residual.
+ */
+function solveTheta0ExactForTaper(base is map, targetTaperAngle is ValueWithUnits, tol is ValueWithUnits,
+maxIter is number, fcpX) returns number
+{
+    var t0 = 0;
+    var f0 = residualExact(t0, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
+
+    var t1 = -average(base['k']);
+    var f1 = residualExact(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
+
+    if (abs(f1 - f0) < tol && abs(f0) > tol)
+    {
+        t1 = (f0 > 0 * f0) ? -0.5 : 0.5;
+        f1 = residualExact(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
+    }
+
+    for (var it = 0; it < maxIter; it += 1)
+    {
+        if (abs(f1) <= tol)
+        {
+            return t1;
+        }
+
+        var denom = (f1 - f0);
+        if (denom == 0 * denom)
+        {
+            if (it < maxIter - 1)
+            {
+                var jumpDir = (f1 > 0 * f1) ? -1 : 1;
+                t0 = t1;
+                f0 = f1;
+                t1 = t1 + jumpDir * 0.5;
+                f1 = residualExact(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
+                continue;
+            }
+            return t1;
+        }
+
+        var t2 = t1 - f1 * (t1 - t0) / denom;
+        t0 = t1;
+        f0 = f1;
+        t1 = t2;
+        f1 = residualExact(t1, base, AngleDriver.TAPER_ANGLE, targetTaperAngle, fcpX);
+    }
+
+    return t1;
+}
+
+/**
+ * Exact analogue of solveWaistViaOuterSecant: outer secant in taper-angle space to
+ * place the waist, reusing the reliable exact taper solver at the inner level.
+ */
+function solveWaistExactOuterSecant(base is map, integrationDef is map, waistTol is ValueWithUnits,
+maxOuterIter is number) returns number
+{
+    var targetWaist = integrationDef.waistLocation;
+    var fcpX = integrationDef.fcpX;
+    var innerTol = 1e-3 * degree;
+    var innerMaxIter = 20;
+
+    var taper0 = 0 * degree;
+    var theta0_a = solveTheta0ExactForTaper(base, taper0, innerTol, innerMaxIter, fcpX);
+    var r_a = integrateExact(base, theta0_a, 0 * meter);
+    var stats_a = footprintStatsFromDiscrete(r_a.x, r_a.y, r_a.theta, fcpX);
+    var f0 = stats_a.waistLocation - targetWaist;
+
+    var taper1 = 0.35 * degree;
+    var theta0_b = solveTheta0ExactForTaper(base, taper1, innerTol, innerMaxIter, fcpX);
+    var r_b = integrateExact(base, theta0_b, 0 * meter);
+    var stats_b = footprintStatsFromDiscrete(r_b.x, r_b.y, r_b.theta, fcpX);
+    var f1 = stats_b.waistLocation - targetWaist;
+
+    var currentTheta0 = theta0_b;
+
+    if (abs(f0) <= waistTol)
+    {
+        return theta0_a;
+    }
+    if (abs(f1) <= waistTol)
+    {
+        return theta0_b;
+    }
+
+    for (var it = 0; it < maxOuterIter; it += 1)
+    {
+        var denom = f1 - f0;
+        if (abs(denom) < 1e-12 * millimeter)
+        {
+            return currentTheta0;
+        }
+
+        var taper2 = taper1 - f1 * (taper1 - taper0) / denom;
+
+        var theta0_c = solveTheta0ExactForTaper(base, taper2, innerTol, innerMaxIter, fcpX);
+        var r_c = integrateExact(base, theta0_c, 0 * meter);
+        var stats_c = footprintStatsFromDiscrete(r_c.x, r_c.y, r_c.theta, fcpX);
+        var f2 = stats_c.waistLocation - targetWaist;
+
+        currentTheta0 = theta0_c;
+
+        if (abs(f2) <= waistTol)
+        {
+            return theta0_c;
+        }
+
+        taper0 = taper1;
+        f0 = f1;
+        taper1 = taper2;
+        f1 = f2;
+    }
+
+    return currentTheta0;
+}
+
+/**
+ * Exact dispatcher: routes to the waist or taper solver, mirroring solveTheta0ForDriver.
+ */
+export function solveTheta0Exact(base is map, integrationDef is map, tol is ValueWithUnits, maxIter is number) returns number
+{
+    if (integrationDef.angleDriver == AngleDriver.WAIST)
+    {
+        return solveWaistExactOuterSecant(base, integrationDef, tol, maxIter);
+    }
+    return solveTheta0ExactForTaper(base, integrationDef.taperAngle, tol, maxIter, integrationDef.fcpX);
+}
+
 export function solveFootprintConstraints(samples is array, integrationDef is map) returns map
 {
     if (size(samples) < 2)
         throw regenError("solveFootprintConstraints: need at least 2 samples.");
 
-    //samples has keys xPoints, radiusPoints, edgeOrder, edgeRadiusSign, edgeQuery, region num, etc
+    //samples has keys xPoints, radiusPoints, isArc, arcR0, regionSign/edgeRadiusSign, etc
 
     // --- inputs ---
     var waistHalf = integrationDef.waistWidth * 0.5;
@@ -379,49 +746,46 @@ export function solveFootprintConstraints(samples is array, integrationDef is ma
         millimeter);
     }
 
-    // --- base integrals: x[] ---
+    // --- exact integration base (no theta0-independent precompute; nonlinear in theta0) ---
+    var base = prepExactBase(samples, cScale);
 
-    var base = buildBaseIntegrals(samples, cScale);
+    // Solve theta0 (initial tangent angle) to hit the waist/taper target.
+    var theta0 = solveTheta0Exact(base, integrationDef, tol, maxIter);
 
-    // Solve theta0 to hit target
-    var theta0 = solveTheta0ForDriver(base.integral, integrationDef, tol, maxIter);
-
-    // Choose y0 to enforce min(y)=waistHalf
-    var yBase = evalY(base.integral, theta0, 0 * meter); // y0=0
-    var minY = min(yBase);
+    // Choose y0 to enforce min(y) = waistHalf.
+    var rBase = integrateExact(base, theta0, 0 * meter);
+    var minY = min(rBase.y);
     var y0 = waistHalf - minY;
 
-    // Final assembled y and points
-    var yFinal = evalY(base.integral, theta0, y0);
+    // Final assembled geometry.
+    var rFinal = integrateExact(base, theta0, y0);
     var pts = [];
-    for (var i = 0; i < size(base.integral.x); i += 1)
+    for (var i = 0; i < size(rFinal.x); i += 1)
     {
-        pts = append(pts, vector(base.integral.x[i], yFinal[i], 0 * meter));
+        pts = append(pts, vector(rFinal.x[i], rFinal.y[i], 0 * meter));
     }
 
     var splineSections = [];
-
-    for (var i = 0; i < size(base.sections); i += 1)
+    for (var i = 0; i < size(rFinal.sections); i += 1)
     {
-        var section = base.sections[i].baseIntegral;
-        var thetaSect = evalTheta(section, theta0);
-        var ySect = evalY(section, theta0, y0);
-        splineSections = append(splineSections, {'x': section.x, 'y': ySect, 'y0': y0, 'theta0': theta0,
-            'startTheta': section.yP[0] + theta0, 'endTheta': last(section.yP) + theta0});
-
-        //y0 = last(ySect);
-        //theta0 = last(thetaSect);
-
+        var sec = rFinal.sections[i];
+        splineSections = append(splineSections, {
+            'x': sec.x, 'y': sec.y, 'y0': y0, 'theta0': theta0,
+            'startTheta': sec.startTheta, 'endTheta': sec.endTheta,
+            'isArc': sec.isArc, 'arcR0': sec.arcR0,
+            'startPhi': sec.startPhi, 'endPhi': sec.endPhi,
+            'startPoint': sec.startPoint, 'endPoint': sec.endPoint
+        });
     }
 
-    var stats = footprintStatsFromDiscrete(base.integral.x, yFinal, evalTheta(base.integral, theta0), integrationDef.fcpX);
+    var stats = footprintStatsFromDiscrete(rFinal.x, rFinal.y, rFinal.theta, integrationDef.fcpX);
 
     return {
         "theta0" : theta0,
         "y0" : y0,
         "points" : pts,
-        "x" : base.integral.x,
-        "y" : yFinal,
+        "x" : rFinal.x,
+        "y" : rFinal.y,
         "stats" : stats,
         "splineSections": splineSections
     };
