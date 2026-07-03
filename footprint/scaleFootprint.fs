@@ -229,6 +229,18 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =================== OUTPUT ===================
         annotation { "Name" : "Keep reference curves", "Default" : true }
         definition.keepReference is boolean;
+
+        // =================== DEBUG ===================
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Show input curve type", "Default" : false,
+                         "Description" : "Highlights the reference input curves by analytic type (via evCurveDefinition): GREEN = arc, BLUE = spline." }
+            definition.showInputCurveType is boolean;
+
+            annotation { "Name" : "Show output curve type", "Default" : false,
+                         "Description" : "Highlights the output curves by analytic type (via evCurveDefinition): GREEN = arc, BLUE = spline." }
+            definition.showOutputCurveType is boolean;
+        }
     }
     {
         // =====================================================================
@@ -251,7 +263,13 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =====================================================================
         var tolerance = 0.001 * millimeter;
         var bsplines = edgesToBSplines(context, definition.refEdges, tolerance);
-        
+
+        // DEBUG: highlight input curves by analytic type (GREEN = arc, BLUE = spline).
+        if (definition.showInputCurveType)
+        {
+            debugCurvesByType(context, evaluateQuery(context, definition.refEdges));
+        }
+
         // =====================================================================
         // STEP 3: Categorize curves (+Y / -Y aware)
         // =====================================================================
@@ -463,7 +481,49 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                 "entities" : qOwnerBody(definition.refEdges)
             });
         }
+
+        // DEBUG: highlight output curves by analytic type (GREEN = arc, BLUE = spline).
+        if (definition.showOutputCurveType)
+        {
+            var outputEdges = evaluateQuery(context, qUnion([
+                qCreatedBy(id + "extractWiresPos", EntityType.EDGE),
+                qCreatedBy(id + "extractWiresNeg", EntityType.EDGE)
+            ]));
+            debugCurvesByType(context, outputEdges);
+        }
     });
+
+/**
+ * DEBUG helper: highlight each edge by its analytic curve type. Uses evCurveDefinition
+ * strictly -- an edge is GREEN only if its kernel geometry is an analytic Circle (arc);
+ * everything else (BSplineCurve, Line, Ellipse, ...) is BLUE ("spline").
+ */
+function debugCurvesByType(context is Context, edges is array)
+{
+    var arcEdges = [];
+    var splineEdges = [];
+    for (var i = 0; i < size(edges); i += 1)
+    {
+        var def = evCurveDefinition(context, { "edge" : edges[i] });
+        if (def is Circle)
+        {
+            arcEdges = append(arcEdges, edges[i]);
+        }
+        else
+        {
+            splineEdges = append(splineEdges, edges[i]);
+        }
+    }
+
+    if (size(arcEdges) > 0)
+    {
+        addDebugEntities(context, qUnion(arcEdges), DebugColor.GREEN);
+    }
+    if (size(splineEdges) > 0)
+    {
+        addDebugEntities(context, qUnion(splineEdges), DebugColor.BLUE);
+    }
+}
 
 // =============================================================================
 // UNIFIED SIDECUT SCALING DISPATCHER
