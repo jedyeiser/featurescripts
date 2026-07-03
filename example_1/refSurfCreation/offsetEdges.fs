@@ -109,10 +109,10 @@ export function generateOffsetEdgesEditingLogic(context is Context, id is Id,
             "intersectionNum" : i + 1,
             "region1"         : regA.regionName,
             "region2"         : regB.regionName,
-            "blend"           : false,
-            "startContinuity" : GeometricContinuity.G0,
+            "blend"           : true,
+            "startContinuity" : GeometricContinuity.G1,
             "startDist"       : 10 * millimeter,
-            "endContinuity"   : GeometricContinuity.G0,
+            "endContinuity"   : GeometricContinuity.G1,
             "endDist"         : 10 * millimeter
         };
 
@@ -266,19 +266,19 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Region 2", "UIHint" : UIHint.READ_ONLY }
             intersection.region2 is string;
 
-            annotation { "Name" : "Blend regions?", "Default" : false }
+            annotation { "Name" : "Blend regions?", "Default" : true }
             intersection.blend is boolean;
 
             if (intersection.blend)
             {
-                annotation { "Name" : "Start continuity", "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "Start continuity", "Default" : GeometricContinuity.G1, "UIHint" : UIHint.SHOW_LABEL }
                 intersection.startContinuity is GeometricContinuity;
 
                 annotation { "Name" : "Start distance",
                              "Description" : "How far the blend reaches back into the first region from its endpoint (0 = connect at endpoint)" }
                 isLength(intersection.startDist, LENGTH_BOUNDS);
 
-                annotation { "Name" : "End continuity", "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "End continuity", "Default" : GeometricContinuity.G1, "UIHint" : UIHint.SHOW_LABEL }
                 intersection.endContinuity is GeometricContinuity;
 
                 annotation { "Name" : "End distance",
@@ -336,7 +336,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
         // Direction indicator: GREEN = + (increasing region start), RED = - (behind reference).
         // Drawn before the region check so it is available while setting the path up. It uses
         // the traversal tangent at the reference point, so it follows the Flip direction toggle.
-        if (definition.showDirection)
+        if (definition.showDirection != false)   // default-on; undefined on legacy instances still draws
         {
             var refArc = pathInfo.refParam * pathInfo.length;
             var dirFr  = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, refArc);
