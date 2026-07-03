@@ -144,71 +144,64 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
             println("arcFit: outputType=" ~ outputType);
         }
 
-        // 5) Curve output (CURVES or BOTH)
-        if (outputType == ArcFitOutputType.CURVES || outputType == ArcFitOutputType.BOTH)
+        // 5) Always build a sketch. Sketch line/arc entities carry true circular-arc
+        //    identity, so any edge extracted from them displays a radius when clicked --
+        //    unlike opCreateBSplineCurve NURBS, which read as generic splines. Curve output
+        //    is now produced by extracting wires from this sketch rather than emitting NURBS.
+        const sketchId = id + "arcSketch";
+        emitSketchFromPrimitives(context, sketchId, fitPlane, segments);
+
+        const wantSketch = (outputType == ArcFitOutputType.SKETCH || outputType == ArcFitOutputType.BOTH);
+        const wantCurves = (outputType == ArcFitOutputType.CURVES || outputType == ArcFitOutputType.BOTH);
+
+        // 6) Curve output: extract the sketch's arcs/lines as standalone wire bodies.
+        if (wantCurves)
         {
-            const NURBS = primitivesToBSplines(segments);
-            if (definition.debug)
-            {
-                println("arcFit: primitivesToBSplines produced " ~ size(NURBS) ~ " NURBS curves");
-            }
-            emitCurves(context, id, NURBS, definition.debug);
+            extractWiresFromSketch(context, id, sketchId, definition.debug);
         }
 
-        // 6) Sketch output (SKETCH or BOTH)
-        if (outputType == ArcFitOutputType.SKETCH || outputType == ArcFitOutputType.BOTH)
+        // 7) If the sketch itself was not requested, delete it -- the extracted wire
+        //    bodies are independent copies and survive the deletion.
+        if (!wantSketch)
         {
-            emitSketchFromPrimitives(context, id + "arcSketch", fitPlane, segments);
+            if (definition.debug)
+            {
+                println("arcFit: sketch not selected as output -- deleting sketch " ~ toString(sketchId));
+            }
+            opDeleteBodies(context, id + "deleteArcSketch", {
+                        "entities" : qCreatedBy(sketchId, EntityType.BODY)
+                    });
         }
     });
 
-function emitCurves(context is Context, id is Id, NURBS is array, debug is boolean)
+/**
+ * Extract the arc/line edges of the freshly-built sketch into a single composite wire body.
+ *
+ * opExtractWires copies the sketch edges into a new wire body (one body per connected chain),
+ * joining edges that share endpoints. Because the source edges are true sketch arcs/lines, the
+ * extracted edges retain arc identity and display a radius when clicked. The extracted body is
+ * independent of the sketch, so the caller may delete the sketch afterward without affecting it.
+ */
+function extractWiresFromSketch(context is Context, id is Id, sketchId is Id, debug is boolean)
 {
-    if (debug)
+    const sketchEdges = qCreatedBy(sketchId, EntityType.EDGE);
+    if (size(evaluateQuery(context, sketchEdges)) == 0)
     {
-        println("arcFit: emitCurves entered with " ~ size(NURBS) ~ " NURBS");
-    }
-
-    var edgeQueries = [];
-    var bodyQueries = [];
-    for (var i = 0; i < size(NURBS); i += 1)
-    {
-        const c = NURBS[i];
-        if (!canBeBSplineCurve(c))
+        if (debug)
         {
-            // LOUD failure instead of silent skip so we can see exactly what's wrong.
-            throw regenError("arcFit: NURBS[" ~ i ~ "] failed canBeBSplineCurve check. "
-                    ~ "degree=" ~ c.degree
-                    ~ " dim=" ~ c.dimension
-                    ~ " nCtrl=" ~ size(c.controlPoints)
-                    ~ " nKnots=" ~ size(c.knots)
-                    ~ " isRational=" ~ c.isRational
-                    ~ " isPeriodic=" ~ c.isPeriodic);
+            println("arcFit: extractWiresFromSketch found no sketch edges to extract");
         }
-
-        opCreateBSplineCurve(context, id + ("arcNURBSFit" ~ i), {
-                    "bSplineCurve" : c
-                });
-        edgeQueries = append(edgeQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.EDGE));
-        bodyQueries = append(bodyQueries, qCreatedBy(id + ("arcNURBSFit" ~ i), EntityType.BODY));
+        return;
     }
 
     if (debug)
     {
-        println("arcFit: emitCurves created " ~ size(bodyQueries) ~ " primitive bodies; consolidating into composite wire body");
+        println("arcFit: extracting wires from sketch " ~ toString(sketchId));
     }
 
-    // Always consolidate the per-primitive bodies into a single composite wire body
-    // (one body per connected chain). opExtractWires joins edges that share endpoints.
-    if (size(bodyQueries) > 0)
-    {
-        opExtractWires(context, id + "compositeWire", {
-                    "edges" : qUnion(edgeQueries)
-                });
-        opDeleteBodies(context, id + "deletePrimitiveBodies", {
-                    "entities" : qUnion(bodyQueries)
-                });
-    }
+    opExtractWires(context, id + "compositeWire", {
+                "edges" : sketchEdges
+            });
 }
 
 function isLineSegment(seg is map) returns boolean
