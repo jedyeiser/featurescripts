@@ -2290,6 +2290,174 @@ function fixG1(curves is array, contactX is ValueWithUnits,
 }
 
 // =============================================================================
+// ARC-PRESERVING SCALE: G1 ARC-CHAIN GEOMETRY (Phase A)
+//
+// Preserves input arcs when scaling: the junction vertices are scaled (fixed),
+// then a G1-continuous chain of ONE circular arc per segment is fit through them.
+// With fixed vertices the whole chain has exactly ONE degree of freedom (the start
+// tangent); each arc = 2 fixed points + inherited start tangent -> fully determined,
+// and its end tangent is forced, which is consumed as the next arc's start tangent
+// (this IS G1). The single free parameter is chosen by a 1-D solve that minimizes an
+// ENDPOINT-WEIGHTED sum of tangent deviations from the scaled-original tangents, so
+// the chain's ends stay close to ideal (splines then absorb any residual G1 at the
+// arc<->spline seams). All geometry is 2-D in the XY footprint plane; tangent angles
+// are plain numbers in radians (trig takes angle * radian).
+// =============================================================================
+
+/**
+ * The unique circular arc from A to B whose tangent at A has angle phiA.
+ * Returns signed radius R (R>0 => center left of travel), 2-D center, and the FORCED
+ * tangent angle phiB at B. isLine=true when the tangent points ~along the chord
+ * (infinite radius) -- the caller handles that segment as a straight line.
+ *   nA = left normal of the start tangent; R = |AB|^2 / (2 (AB).nA).
+ */
+function arcFromStartTangent(A is Vector, B is Vector, phiA is number) returns map
+{
+    var nA = vector(-sin(phiA * radian), cos(phiA * radian));   // unit, unitless
+    var d = vector(B[0] - A[0], B[1] - A[1]);                    // 2-D length
+    var denom = 2 * dot(d, nA);                                  // length
+
+    if (abs(denom) < 1e-9 * meter)
+    {
+        return { "isLine" : true, "R" : 0 * meter,
+                 "center" : vector(0 * meter, 0 * meter), "phiB" : phiA };
+    }
+
+    var R = dot(d, d) / denom;                                   // signed length
+    var center = vector(A[0] + R * nA[0], A[1] + R * nA[1]);     // 2-D length
+    var uB = vector((B[0] - center[0]) / R, (B[1] - center[1]) / R);  // unit, unitless
+    var tB = vector(-uB[1], uB[0]);                              // rotate +90 deg -> tangent at B
+    return { "isLine" : false, "R" : R, "center" : center,
+             "phiB" : atan2(tB[1], tB[0]) / radian };
+}
+
+/**
+ * Point on the arc at tangent angle phi: P(phi) = center + R*(sin phi, -cos phi).
+ * (Verifies: at phiA this returns A.) Returns a 3-D point with z = 0 for emission.
+ */
+function arcPointAtPhi(arc is map, phi is number) returns Vector
+{
+    var c = arc.center;
+    var R = arc.R;
+    return vector(c[0] + R * sin(phi * radian), c[1] - R * cos(phi * radian), 0 * meter);
+}
+
+/** Shortest signed difference a-b wrapped to [-PI, PI] (radians). */
+function angleDiff(a is number, b is number) returns number
+{
+    var dd = a - b;
+    while (dd > PI) { dd = dd - 2 * PI; }
+    while (dd < -PI) { dd = dd + 2 * PI; }
+    return dd;
+}
+
+/**
+ * Propagate the G1 arc chain through fixed vertices given a start tangent phi0.
+ * Returns { arcs: [arcFromStartTangent...], vertexPhis: tangent angle at each vertex }.
+ */
+function propagateArcChain(vertices is array, phi0 is number) returns map
+{
+    var arcs = [];
+    var vertexPhis = [phi0];
+    var phi = phi0;
+    for (var i = 1; i < size(vertices); i += 1)
+    {
+        var arc = arcFromStartTangent(vertices[i - 1], vertices[i], phi);
+        arcs = append(arcs, arc);
+        phi = arc.phiB;
+        vertexPhis = append(vertexPhis, phi);
+    }
+    return { "arcs" : arcs, "vertexPhis" : vertexPhis };
+}
+
+/**
+ * Endpoint-weighted objective: weighted sum of squared tangent deviations between the
+ * propagated chain and the target (scaled-original) tangents at each vertex, with extra
+ * weight on the two end vertices so the chain's ends stay faithful.
+ */
+function arcChainObjective(vertices is array, targetPhis is array, phi0 is number, endpointWeight is number) returns number
+{
+    var phis = propagateArcChain(vertices, phi0).vertexPhis;
+    var n = size(phis);
+    var j = 0;
+    for (var i = 0; i < n; i += 1)
+    {
+        var w = (i == 0 || i == n - 1) ? endpointWeight : 1;
+        var dphi = angleDiff(phis[i], targetPhis[i]);
+        j = j + w * dphi * dphi;
+    }
+    return j;
+}
+
+/**
+ * 1-D solve for the start tangent minimizing the endpoint-weighted objective:
+ * coarse sample over a window around the seed, then golden-section refine.
+ */
+function solveArcChainStartPhi(vertices is array, targetPhis is array, seedPhi0 is number, endpointWeight is number) returns number
+{
+    var span = 0.5;      // +/- radians around the seed
+    var nSamp = 41;
+    var best = seedPhi0;
+    var bestJ = arcChainObjective(vertices, targetPhis, seedPhi0, endpointWeight);
+    for (var i = 0; i < nSamp; i += 1)
+    {
+        var phi = seedPhi0 - span + (2 * span) * i / (nSamp - 1);
+        var j = arcChainObjective(vertices, targetPhis, phi, endpointWeight);
+        if (j < bestJ) { bestJ = j; best = phi; }
+    }
+
+    var step = (2 * span) / (nSamp - 1);
+    var lo = best - step;
+    var hi = best + step;
+    for (var it = 0; it < 40; it += 1)
+    {
+        var m1 = lo + (hi - lo) / 3;
+        var m2 = hi - (hi - lo) / 3;
+        if (arcChainObjective(vertices, targetPhis, m1, endpointWeight)
+            < arcChainObjective(vertices, targetPhis, m2, endpointWeight))
+        {
+            hi = m2;
+        }
+        else
+        {
+            lo = m1;
+        }
+    }
+    return (lo + hi) / 2;
+}
+
+/**
+ * Fit a G1 arc chain through fixed (already-scaled) vertices, returning per-arc
+ * start/mid/end 3-D points ready for analytic skArc emission, plus the chain's end
+ * tangent angles. targetPhis are the scaled-original tangent angles at each vertex
+ * (the shape the chain should resemble); endpointWeight biases the end fit.
+ */
+function fitArcChainThroughVertices(vertices is array, targetPhis is array, endpointWeight is number) returns map
+{
+    var phi0 = solveArcChainStartPhi(vertices, targetPhis, targetPhis[0], endpointWeight);
+    var prop = propagateArcChain(vertices, phi0);
+
+    var segs = [];
+    for (var i = 0; i < size(prop.arcs); i += 1)
+    {
+        var arc = prop.arcs[i];
+        var phiA = prop.vertexPhis[i];
+        var phiB = prop.vertexPhis[i + 1];
+        var phiMid = phiA + angleDiff(phiB, phiA) / 2;   // short-way midpoint angle
+        segs = append(segs, {
+            "isLine" : arc.isLine,
+            "start" : vector(vertices[i][0], vertices[i][1], 0 * meter),
+            "mid" : arc.isLine ? vector((vertices[i][0] + vertices[i + 1][0]) / 2,
+                                        (vertices[i][1] + vertices[i + 1][1]) / 2, 0 * meter)
+                               : arcPointAtPhi(arc, phiMid),
+            "end" : vector(vertices[i + 1][0], vertices[i + 1][1], 0 * meter)
+        });
+    }
+
+    return { "segments" : segs, "startPhi" : phi0, "endPhi" : last(prop.vertexPhis) };
+}
+
+// =============================================================================
 // BSPLINE UTILITIES
 // =============================================================================
 

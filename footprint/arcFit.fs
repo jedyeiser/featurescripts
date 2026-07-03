@@ -808,7 +808,7 @@ function wholeCurveArcLineResidual(c is map, numSamples is number) returns map
  * reliance on stored curve-type metadata. The tolerance is posTol, so a curve is preserved
  * only when a single primitive fits it to the same standard the rest of the pipeline enforces.
  */
-function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is ValueWithUnits, numSamples is number, debug is boolean)
+export function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol is ValueWithUnits, numSamples is number, debug is boolean)
 {
     const dom = getSplineDomain(c);
     const u0 = dom.uMin;
