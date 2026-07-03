@@ -2474,7 +2474,7 @@ function detectArcFlags(curves is array) returns array
     for (var i = 0; i < size(curves); i += 1)
     {
         var seg = detectWholeCurveArcOrLine(curves[i], i, 1e-3 * millimeter, 32, false);
-        flags = append(flags, seg != undefined && seg.type == "arc");
+        flags = append(flags, seg != undefined && seg["type"] == "arc");
     }
     return flags;
 }
