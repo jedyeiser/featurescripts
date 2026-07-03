@@ -291,25 +291,28 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
         return result;
     }
 
-    // Compute region lengths
-    var tipLength = abs(fcpXOrdered - xStart);
-    var refLength = abs(acpXOrdered - fcpXOrdered);
-    var tailLength = abs(xEnd - acpXOrdered);
+    // Compute region lengths (world-X based, independent of edge parameter direction).
+    // Tip = portion of the edge below the reference band (low world X);
+    // Tail = portion above it (high world X). Because fcpXOrdered/acpXOrdered are the
+    // ordered (min/max) boundaries and xMin/xMax are the ordered edge extents, both
+    // lengths are always non-negative -- regardless of FCP/ACP selection order or the
+    // edge's parameter direction.
+    var tipLength = fcpXOrdered - xMin;
+    var refLength = acpXOrdered - fcpXOrdered;
+    var tailLength = xMax - acpXOrdered;
 
     // Allocate ALL requested sections to reference region (FCP to ACP)
     var numRefSections = numSections;  // User's requested count goes entirely to reference
 
-    // Compute reference spacing (for use in tip/tail calculations)
+    // Compute reference spacing (target for tip/tail sampling)
     var refSpacing = refLength / (numRefSections - 1);
 
-    // Allocate ADDITIONAL sections to tip and tail regions (beyond requested numSections)
-    // Use reference spacing as target, but cap to avoid excessive sections
+    // Allocate ADDITIONAL bonus sections to tip and tail regions (beyond numSections),
+    // targeting refSpacing but capped to avoid excess.
     var numTipSections = 0;
     if (tipLength > refSpacing * 0.5)  // Only add tip if region is significant
     {
-        // Add 2-4 sections depending on region length
-        var idealTipCount = ceil(tipLength / refSpacing);
-        numTipSections = min(idealTipCount, 4);  // Cap at 4 to avoid excess
+        numTipSections = min(ceil(tipLength / refSpacing), 4);  // Cap at 4 to avoid excess
     }
     else if (tipLength > 1e-6 * meter)
     {
@@ -319,117 +322,64 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     var numTailSections = 0;
     if (tailLength > refSpacing * 0.5)  // Only add tail if region is significant
     {
-        var idealTailCount = ceil(tailLength / refSpacing);
-        numTailSections = min(idealTailCount, 4);  // Cap at 4 to avoid excess
+        numTailSections = min(ceil(tailLength / refSpacing), 4);  // Cap at 4 to avoid excess
     }
     else if (tailLength > 1e-6 * meter)
     {
         numTailSections = 1;  // Minimal region gets 1 section
     }
 
-    // NOTE: No adjustment needed - tip/tail are bonus sections beyond numSections
+    // NOTE: tip/tail are bonus sections beyond numSections.
     // Total sections = numTipSections + numRefSections + numTailSections
     //                = (0-4) + numSections + (0-4)
 
-    // Determine spatial ordering (does edge go left-to-right or right-to-left?)
-    var tipIsLeft = (xStart < xEnd);  // True if edge goes left-to-right
-
-    // Assign station numbers
+    // Build (worldX, stationNumber) samples in strictly ASCENDING world-X order.
+    // Ordering by world X (rather than by edge parameter direction) guarantees a
+    // monotonic point list for the downstream visualization spline fit, regardless of
+    // how the edge is parameterized or whether FCP/ACP were selected in reverse order.
+    // This is the fix for the "no output wires / folded tip-tail" behavior seen when the
+    // edge runs high-X -> low-X or when FCP/ACP are reversed.
+    var xPositions = [];
     var stationNumbers = [];
 
-    // Tip stations
-    if (numTipSections > 0)
+    // Tip region: [xMin, fcpXOrdered) -- includes the low edge endpoint, excludes the band.
+    // Stations are negative (below reference station 0).
+    for (var i = 0; i < numTipSections; i += 1)
     {
-        if (tipIsLeft)
-        {
-            // Tip is LEFT of reference → negative stations
-            for (var i = 0; i < numTipSections; i += 1)
-            {
-                stationNumbers = append(stationNumbers, -numTipSections + i);
-            }
-        }
-        else
-        {
-            // Tip is RIGHT of reference → positive stations >= N
-            for (var i = 0; i < numTipSections; i += 1)
-            {
-                stationNumbers = append(stationNumbers, numRefSections + i);
-            }
-        }
+        var t = i / numTipSections;  // t in [0, 1): includes xMin, excludes the band boundary
+        xPositions = append(xPositions, xMin + t * (fcpXOrdered - xMin));
+        stationNumbers = append(stationNumbers, -numTipSections + i);
     }
 
-    // Reference stations (always 0 to N-1)
-    for (var i = 0; i < numRefSections; i += 1)
-    {
-        stationNumbers = append(stationNumbers, i);
-    }
-
-    // Tail stations
-    if (numTailSections > 0)
-    {
-        if (tipIsLeft)
-        {
-            // Tail is RIGHT of reference → positive stations >= N
-            for (var i = 0; i < numTailSections; i += 1)
-            {
-                stationNumbers = append(stationNumbers, numRefSections + i);
-            }
-        }
-        else
-        {
-            // Tail is LEFT of reference → negative stations
-            for (var i = 0; i < numTailSections; i += 1)
-            {
-                stationNumbers = append(stationNumbers, -numTailSections + i);
-            }
-        }
-    }
-
-    // Generate X positions for all three regions
-    var xPositions = [];
-
-    // Tip region (EXCLUDE fcpXOrdered boundary to avoid duplication)
-    if (numTipSections > 0)
-    {
-        for (var i = 0; i < numTipSections; i += 1)
-        {
-            // Use i/numTipSections to include xStart (t=0) but exclude FCP (t<1)
-            // This ensures the edge endpoint is included while avoiding duplication with reference region
-            var t = i / numTipSections;
-            var x = xStart + t * (fcpXOrdered - xStart);
-            xPositions = append(xPositions, x);
-        }
-    }
-
-    // Reference region (includes FCP and ACP)
+    // Reference region: [fcpXOrdered, acpXOrdered] inclusive. Stations 0 .. N-1.
     for (var i = 0; i < numRefSections; i += 1)
     {
         var t = i / (numRefSections - 1);
-        var x = fcpXOrdered + t * (acpXOrdered - fcpXOrdered);  // Use signed offset for consistency
-        xPositions = append(xPositions, x);
+        xPositions = append(xPositions, fcpXOrdered + t * (acpXOrdered - fcpXOrdered));
+        stationNumbers = append(stationNumbers, i);
     }
 
-    // Tail region (EXCLUDE acpXOrdered boundary to avoid duplication)
-    if (numTailSections > 0)
+    // Tail region: (acpXOrdered, xMax] -- excludes the band, includes the high edge endpoint.
+    // Stations continue above the reference (>= N).
+    for (var i = 0; i < numTailSections; i += 1)
     {
-        for (var i = 0; i < numTailSections; i += 1)
-        {
-            // Use (i+1)/numTailSections to exclude ACP (t>0) but include xEnd (t=1)
-            // This ensures the edge endpoint is included while avoiding duplication with reference region
-            var t = (i + 1) / numTailSections;
-            var x = acpXOrdered + t * (xEnd - acpXOrdered);
-            xPositions = append(xPositions, x);
-        }
+        var t = (i + 1) / numTailSections;  // t in (0, 1]: excludes the band boundary, includes xMax
+        xPositions = append(xPositions, acpXOrdered + t * (xMax - acpXOrdered));
+        stationNumbers = append(stationNumbers, numRefSections + i);
     }
 
-    // Convert X positions to parameters
+    // Convert world-X samples to edge parameters, keeping station labels aligned.
+    // projectXToEdgeParameter returns undefined only for out-of-range X; pairing each
+    // station number in the same step prevents index drift if any sample is skipped.
     var parameters = [];
-    for (var x in xPositions)
+    var keptStationNumbers = [];
+    for (var i = 0; i < size(xPositions); i += 1)
     {
-        var param = projectXToEdgeParameter(context, edge, x);
+        var param = projectXToEdgeParameter(context, edge, xPositions[i]);
         if (param != undefined)
         {
             parameters = append(parameters, param);
+            keptStationNumbers = append(keptStationNumbers, stationNumbers[i]);
         }
     }
 
@@ -466,7 +416,7 @@ export function getCrossSectionFramesAdaptive(context is Context, edge is Query,
     {
         result = append(result, {
             "frame" : frames[i],
-            "stationNumber" : stationNumbers[i]
+            "stationNumber" : keptStationNumbers[i]
         });
     }
     return result;
