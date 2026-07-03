@@ -180,9 +180,12 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         var xMRS = (xFCP + xACP)/2;
         var xMount = resolveReferencePointX(context, definition.mountQuery,  dummyEdge);
         
-        println('xFCP = ' ~ toString(xFCP));
-        println('xACP = ' ~ toString(xACP));
-        println('xMount = ' ~ toString(xMount));
+        if (definition.debugPrintSetup)
+        {
+            println('xFCP = ' ~ toString(xFCP));
+            println('xACP = ' ~ toString(xACP));
+            println('xMount = ' ~ toString(xMount));
+        }
 
         if (xFCP == undefined || xACP == undefined || xMount == undefined)
         {
@@ -246,7 +249,10 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         
         for (var i = 0; i < 20; i += 1) // main solver loop
         {
-            println('camber delta at the start of iteration ' ~ i ~ ' = ' ~ toString(camberDelta));
+            if (definition.debugPrintSolverIterations)
+            {
+                println('camber delta at the start of iteration ' ~ i ~ ' = ' ~ toString(camberDelta));
+            }
             if (abs(camberDelta) < 0.001 * millimeter)
             {
                 break; //last iteration is sufficent
@@ -378,7 +384,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
                 
                 //d. package, translate and shift. 
                 var minPoints = findMinZBothSides(baselineBSplines, xMRS, stdDir);
-                var translatedCurves = transformCurves(baselineBSplines, minPoints.fbMin, minPoints.abMin);
+                var translatedCurves = transformCurves(baselineBSplines, minPoints.fbMin, minPoints.abMin, xMRS);
                 
                 //2. solve for baseline values
                 
@@ -422,7 +428,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
 
         // Level the output: rotate so the FB/AB contact minima share the same Z (ground plane)
         var outputMinPoints = findMinZBothSides(baselineBSplines, xMRS, stdDir);
-        baselineBSplines = transformCurves(baselineBSplines, outputMinPoints.fbMin, outputMinPoints.abMin);
+        baselineBSplines = transformCurves(baselineBSplines, outputMinPoints.fbMin, outputMinPoints.abMin, xMRS);
 
         var curveBodyQ = qNothing();
         

@@ -484,16 +484,34 @@ export function rotatePointAboutY(pt is Vector, angle is ValueWithUnits) returns
     );
 }
 
-export function transformCurves(curves is array, fbMin is Vector, abMin is Vector) returns array
+export function transformCurves(curves is array, fbMin is Vector, abMin is Vector, pivotX is ValueWithUnits) returns array
 {
-    // Angle of the line fbMin->abMin in the XZ plane
-    // Divide by millimeter to get unitless values for atan2
+    // Tilt of the ground line fbMin->abMin, measured off horizontal.
+    // Divide by millimeter to get unitless values for atan2.
     const dx = (abMin[0] - fbMin[0]) / millimeter;
     const dz = (abMin[2] - fbMin[2]) / millimeter;
-    const theta = atan2(dz, dx);
+    var theta = atan2(dz, dx);
 
-    // Rotate fbMin to find the Z offset we need to remove
-    const rotatedFbMin = rotatePointAboutY(fbMin, -theta);
+    // Reduce to the undirected line tilt in (-90 deg, 90 deg]. When the baseline
+    // runs high-X -> low-X (FCP > ACP), fbMin/abMin swap sides and the raw vector
+    // angle is near 180 deg; leveling by that would mirror and invert the ski.
+    // We only want to remove the small tilt, never flip.
+    if (theta > 90 * degree)
+    {
+        theta -= 180 * degree;
+    }
+    else if (theta <= -90 * degree)
+    {
+        theta += 180 * degree;
+    }
+
+    // Pivot about MRS (mount/reference midpoint) on the ground axis so leveling
+    // rotates the ski in place instead of dragging it sideways in X.
+    const pivot = vector(pivotX, 0 * meter, 0 * meter);
+
+    // Rotate fbMin about the pivot to find the Z offset we need to remove
+    // (seats the fore contact minimum on Z = 0).
+    const rotatedFbMin = pivot + rotatePointAboutY(fbMin - pivot, -theta);
     const zOffset = rotatedFbMin[2];
 
     var result = [];
@@ -504,7 +522,7 @@ export function transformCurves(curves is array, fbMin is Vector, abMin is Vecto
         var newControlPoints = [];
         for (var ptIdx = 0; ptIdx < size(curve.controlPoints); ptIdx += 1)
         {
-            const rotated = rotatePointAboutY(curve.controlPoints[ptIdx], -theta);
+            const rotated = pivot + rotatePointAboutY(curve.controlPoints[ptIdx] - pivot, -theta);
             newControlPoints = append(newControlPoints, rotated - vector(0 * millimeter, 0 * millimeter, zOffset));
         }
 

@@ -424,55 +424,59 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             negCurves = fixG1(negCurves, newAcp[0], false, tolerance);
         }
 
-        // --- Create +Y curves and stitch into wire(s) ---
-        var posEdgeQueries = [];
-        for (var i = 0; i < size(posCurves); i += 1)
+        // =====================================================================
+        // STEP 10: Arc-aware output assembly
+        //
+        // Arc-origin sidecut curves are refit into clean analytic G1 arc chains
+        // through their scaled endpoints; spline-origin curves stay splines. Arcs are
+        // emitted as analytic sketch arcs (so they report a radius). Separate +Y / -Y
+        // extraction (never merge the two sides).
+        // =====================================================================
+        var endpointWeight = 8;
+
+        // Per-sidecut-curve arc flags, detected on the UNSCALED reference curves (still
+        // true circles). Accordion / Keep-Taper keep a 1:1 curve mapping so the flags
+        // align with scaledPos.curves. Scale-Radius RECONSTRUCTS the sidecut (different
+        // curve count), so a size mismatch signals it -- fall back to all-spline there
+        // (Scale-Radius arc preservation is Phase B).
+        var posSidecutIsArc = detectArcFlags(categorized.sidecutPos);
+        if (size(posSidecutIsArc) != size(scaledPos.curves))
         {
-            var curveId = id + ("positiveCurve" ~ i);
-            opCreateBSplineCurve(context, curveId, {
-                "bSplineCurve" : posCurves[i]
-            });
-            posEdgeQueries = append(posEdgeQueries, qCreatedBy(curveId, EntityType.EDGE));
+            posSidecutIsArc = [];
+            for (var i = 0; i < size(scaledPos.curves); i += 1) { posSidecutIsArc = append(posSidecutIsArc, false); }
         }
-        
-        if (size(posEdgeQueries) > 0)
+
+        var negSidecutIsArc = posSidecutIsArc;   // symmetric: -Y mirrors +Y 1:1
+        if (definition.symmetryMode == SymmetryMode.ASYMMETRIC)
         {
-            opExtractWires(context, id + "extractWiresPos", {
-                "edges" : qUnion(posEdgeQueries)
-            });
+            negSidecutIsArc = detectArcFlags(categorized.sidecutNeg);
+            if (size(negSidecutIsArc) != size(scaledNegCurves))
+            {
+                negSidecutIsArc = [];
+                for (var i = 0; i < size(scaledNegCurves); i += 1) { negSidecutIsArc = append(negSidecutIsArc, false); }
+            }
         }
-        
-        // --- Create -Y curves and stitch into wire(s) ---
-        var negEdgeQueries = [];
-        for (var i = 0; i < size(negCurves); i += 1)
-        {
-            var curveId = id + ("negativeCurve" ~ i);
-            opCreateBSplineCurve(context, curveId, {
-                "bSplineCurve" : negCurves[i]
-            });
-            negEdgeQueries = append(negEdgeQueries, qCreatedBy(curveId, EntityType.EDGE));
-        }
-        
-        if (size(negEdgeQueries) > 0)
-        {
-            opExtractWires(context, id + "extractWiresNeg", {
-                "edges" : qUnion(negEdgeQueries)
-            });
-        }
-        
-        // --- Cleanup: delete original loose curve bodies ---
-        var looseBodies = [];
-        for (var i = 0; i < size(posCurves); i += 1)
-        {
-            looseBodies = append(looseBodies, qCreatedBy(id + ("positiveCurve" ~ i), EntityType.BODY));
-        }
-        for (var i = 0; i < size(negCurves); i += 1)
-        {
-            looseBodies = append(looseBodies, qCreatedBy(id + ("negativeCurve" ~ i), EntityType.BODY));
-        }
-        opDeleteBodies(context, id + "deleteLooseCurves", {
-            "entities" : qUnion(looseBodies)
-        });
+
+        // Assemble per-curve isArc arrays aligned with posCurves / negCurves
+        // (layout = [tip..., sidecut..., tail...]; tip and tail are always splines).
+        var posIsArc = [];
+        for (var i = 0; i < size(transformedTipPos); i += 1) { posIsArc = append(posIsArc, false); }
+        for (var f in posSidecutIsArc) { posIsArc = append(posIsArc, f); }
+        for (var i = 0; i < size(transformedTailPos); i += 1) { posIsArc = append(posIsArc, false); }
+
+        var negIsArc = [];
+        for (var i = 0; i < size(transformedTipNeg); i += 1) { negIsArc = append(negIsArc, false); }
+        for (var f in negSidecutIsArc) { negIsArc = append(negIsArc, f); }
+        for (var i = 0; i < size(transformedTailNeg); i += 1) { negIsArc = append(negIsArc, false); }
+
+        var negStrict = (definition.symmetryMode == SymmetryMode.ASYMMETRIC)
+            ? definition.negStrictArcs : strictArcs;
+
+        var taggedPos = buildTaggedCurves(context, id + "tagPos", posCurves, posIsArc, strictArcs, endpointWeight);
+        var taggedNeg = buildTaggedCurves(context, id + "tagNeg", negCurves, negIsArc, negStrict, endpointWeight);
+
+        emitScaledSide(context, id + "posOut", taggedPos);
+        emitScaledSide(context, id + "negOut", taggedNeg);
         
         // Optionally delete reference curves
         if (!definition.keepReference)
@@ -486,8 +490,8 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         if (definition.showOutputCurveType)
         {
             var outputEdges = evaluateQuery(context, qUnion([
-                qCreatedBy(id + "extractWiresPos", EntityType.EDGE),
-                qCreatedBy(id + "extractWiresNeg", EntityType.EDGE)
+                qCreatedBy(id + "posOut" + "wires", EntityType.EDGE),
+                qCreatedBy(id + "negOut" + "wires", EntityType.EDGE)
             ]));
             debugCurvesByType(context, outputEdges);
         }
@@ -1248,11 +1252,10 @@ function scaleAccordion(context is Context, id is Id, sidecutCurves is array, re
     var waist = findWaistPoint(scaledCurveData, xLo, xHi, config);
     var waistWidth = waist.found ? waist.width : (newFcpWidth + newAcpWidth) / 2;
 
-    // Apply strict arcs conversion if requested
-    if (strictArcs)
-    {
-        scaledCurves = forceQuadraticNurbs(context, id + "accordionArcs", scaledCurves);
-    }
+    // NOTE: strictArcs is handled per-segment at output assembly now (arc-origin curves
+    // become clean analytic G1 arcs; only spline-origin curves are best-fit in strict
+    // mode). Converting here would change the curve count and break the 1:1 arc-origin
+    // correlation the output stage relies on, so it is intentionally omitted.
 
     return {
         "curves" : scaledCurves,
@@ -1478,11 +1481,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
     var finalWaistWidth = finalWaist.found ? finalWaist.width :
         getWidthAtX(finalData, (xLo + xHi) / 2, tolerance);
 
-    // Apply strict arcs conversion if requested
-    if (strictArcs)
-    {
-        finalCurves = forceQuadraticNurbs(context, id + "taperArcs", finalCurves);
-    }
+    // NOTE: strictArcs handled per-segment at output assembly (see scaleAccordion note).
 
     return {
         "curves" : finalCurves,
@@ -2455,6 +2454,187 @@ function fitArcChainThroughVertices(vertices is array, targetPhis is array, endp
     }
 
     return { "segments" : segs, "startPhi" : phi0, "endPhi" : last(prop.vertexPhis) };
+}
+
+/** Tangent-direction angle (radians, plain number) of a 2-D vector. */
+function tanAngle(v is Vector) returns number
+{
+    return atan2(v[1], v[0]) / radian;
+}
+
+/**
+ * Per-curve arc classification of the (unscaled) reference sidecut curves, using
+ * arcFit's whole-curve detector. A curve is an arc only if EVERY sample lies on one
+ * fitted circle within posTol -- a real transition spline (varying curvature) fails
+ * this, so near-circular splines are the only false-positive risk (noted).
+ */
+function detectArcFlags(curves is array) returns array
+{
+    var flags = [];
+    for (var i = 0; i < size(curves); i += 1)
+    {
+        var seg = detectWholeCurveArcOrLine(curves[i], i, 1e-3 * millimeter, 32, false);
+        flags = append(flags, seg != undefined && seg.type == "arc");
+    }
+    return flags;
+}
+
+/**
+ * Fit a G1 arc chain to a run of consecutive arc-origin (scaled) curves and return
+ * tagged segments ({kind:"arc"|"line", start/mid/end}). Vertices are the curves'
+ * scaled endpoints; each curve is oriented to ascending X so the chain runs FCP->ACP,
+ * and target tangents come from the curves' endpoint control-point directions.
+ */
+function fitArcRun(runCurves is array, endpointWeight is number) returns array
+{
+    var oriented = [];
+    for (var c in runCurves)
+    {
+        var cps = c.controlPoints;
+        var m = size(cps);
+        var p0 = cps[0];
+        var p1 = cps[m - 1];
+        var t0 = vector(cps[1][0] - cps[0][0], cps[1][1] - cps[0][1]);            // forward tangent at p0
+        var t1 = vector(cps[m - 1][0] - cps[m - 2][0], cps[m - 1][1] - cps[m - 2][1]);  // forward tangent at p1
+
+        if (p0[0] <= p1[0])
+        {
+            oriented = append(oriented, { "lo" : p0, "loTan" : t0, "hi" : p1, "hiTan" : t1 });
+        }
+        else
+        {
+            oriented = append(oriented, { "lo" : p1, "loTan" : vector(-t1[0], -t1[1]),
+                                          "hi" : p0, "hiTan" : vector(-t0[0], -t0[1]) });
+        }
+    }
+    oriented = sort(oriented, function(a, b) { return a.lo[0] - b.lo[0]; });
+
+    var vertices = [oriented[0].lo];
+    for (var o in oriented) { vertices = append(vertices, o.hi); }
+
+    var targetPhis = [tanAngle(oriented[0].loTan)];
+    for (var i = 1; i < size(oriented); i += 1)
+    {
+        var a = tanAngle(oriented[i - 1].hiTan);
+        var b = tanAngle(oriented[i].loTan);
+        targetPhis = append(targetPhis, a + angleDiff(b, a) / 2);   // averaged shared tangent
+    }
+    targetPhis = append(targetPhis, tanAngle(last(oriented).hiTan));
+
+    var fit = fitArcChainThroughVertices(vertices, targetPhis, endpointWeight);
+
+    var segs = [];
+    for (var s in fit.segments)
+    {
+        if (s.isLine)
+        {
+            segs = append(segs, { "kind" : "line", "start" : s.start, "end" : s.end });
+        }
+        else
+        {
+            segs = append(segs, { "kind" : "arc", "start" : s.start, "mid" : s.mid, "end" : s.end });
+        }
+    }
+    return segs;
+}
+
+/**
+ * Convert an assembled curve array + per-curve isArc flags into tagged output segments.
+ * Consecutive arc-origin curves are refit into a single G1 arc chain; spline-origin
+ * curves stay splines (or, in strict mode, are best-fit to poly-arc NURBS).
+ * Tagged kinds: {kind:"arc",start,mid,end} | {kind:"line",start,end} | {kind:"spline",bspline}.
+ */
+function buildTaggedCurves(context is Context, id is Id, curves is array, isArcArray is array,
+    strictArcs is boolean, endpointWeight is number) returns array
+{
+    var tagged = [];
+    var i = 0;
+    var n = size(curves);
+    while (i < n)
+    {
+        if (isArcArray[i])
+        {
+            var run = [];
+            while (i < n && isArcArray[i]) { run = append(run, curves[i]); i += 1; }
+            var segs = fitArcRun(run, endpointWeight);
+            for (var s in segs) { tagged = append(tagged, s); }
+        }
+        else
+        {
+            var runStart = i;
+            var splineRun = [];
+            while (i < n && !isArcArray[i]) { splineRun = append(splineRun, curves[i]); i += 1; }
+            var outSplines = strictArcs ? forceQuadraticNurbs(context, id + ("strict" ~ runStart), splineRun)
+                                        : splineRun;
+            for (var c in outSplines) { tagged = append(tagged, { "kind" : "spline", "bspline" : c }); }
+        }
+    }
+    return tagged;
+}
+
+/**
+ * Emit one side (+Y or -Y) of a scaled footprint from tagged segments: spline segments
+ * via opCreateBSplineCurve, arc/line segments as ANALYTIC sketch entities (so they report
+ * a radius). A single opExtractWires stitches everything into a wire; temporary spline
+ * bodies and the sketch are then deleted. Kept per-side so +Y and -Y never merge.
+ */
+function emitScaledSide(context is Context, id is Id, tagged is array)
+{
+    var looseEdges = [];
+    var looseBodies = [];
+
+    for (var i = 0; i < size(tagged); i += 1)
+    {
+        if (tagged[i].kind == "spline")
+        {
+            var cid = id + ("spl" ~ i);
+            opCreateBSplineCurve(context, cid, { "bSplineCurve" : tagged[i].bspline });
+            looseEdges = append(looseEdges, qCreatedBy(cid, EntityType.EDGE));
+            looseBodies = append(looseBodies, qCreatedBy(cid, EntityType.BODY));
+        }
+    }
+
+    var sketchId = id + "arcSketch";
+    var hasSketch = false;
+    for (var i = 0; i < size(tagged); i += 1)
+    {
+        if (tagged[i].kind == "arc" || tagged[i].kind == "line") { hasSketch = true; }
+    }
+
+    if (hasSketch)
+    {
+        var sk = newSketchOnPlane(context, sketchId,
+            { "sketchPlane" : plane(vector(0, 0, 0) * meter, vector(0, 0, 1), vector(1, 0, 0)) });
+        for (var i = 0; i < size(tagged); i += 1)
+        {
+            var t = tagged[i];
+            if (t.kind == "arc")
+            {
+                skArc(sk, "a" ~ i, { "start" : vector(t.start[0], t.start[1]),
+                                     "mid" : vector(t.mid[0], t.mid[1]),
+                                     "end" : vector(t.end[0], t.end[1]) });
+            }
+            else if (t.kind == "line")
+            {
+                skLineSegment(sk, "l" ~ i, { "start" : vector(t.start[0], t.start[1]),
+                                             "end" : vector(t.end[0], t.end[1]) });
+            }
+        }
+        skSolve(sk);
+        looseEdges = append(looseEdges, qCreatedBy(sketchId, EntityType.EDGE));
+    }
+
+    if (size(looseEdges) > 0)
+    {
+        opExtractWires(context, id + "wires", { "edges" : qUnion(looseEdges) });
+    }
+
+    var toDelete = looseBodies;
+    if (hasSketch) { toDelete = append(toDelete, qCreatedBy(sketchId, EntityType.BODY)); }
+    if (size(toDelete) > 0)
+    {
+        opDeleteBodies(context, id + "delTmp", { "entities" : qUnion(toDelete) });
+    }
 }
 
 // =============================================================================
