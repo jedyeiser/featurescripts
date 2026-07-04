@@ -65,6 +65,11 @@ annotation { "Feature Type Name" : "Generate QC Table Data", "Editing Logic Func
 export const generateQCData = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
+        // Optional table title. When non-blank, overrides the auto-generated
+        // "QC Table (...)" title in the rendered table.
+        annotation { "Name" : "Name" }
+        definition.tableName is string;
+
         // ===== FCP/ACP References =====
         annotation { "Group Name" : "References", "Collapsed By Default" : false }
         {
@@ -410,7 +415,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 "hasCore" : hasCore,
                 "hasSW" : hasSW,
                 "detailLevel" : definition.detailLevel,
-                "format" : formatConfig
+                "format" : formatConfig,
+                "tableName" : definition.tableName
             }
         });
 
@@ -463,9 +469,16 @@ export const qcTable = defineTable(function(context is Context, definition is ma
             rows = append(rows, tableRow(rowData));
         }
 
-        // Return table with appropriate title
+        // Return table with appropriate title. A user-supplied Name overrides
+        // the auto-generated title; older attributes may lack the field.
+        var tableName = (tableAttribute.tableName != undefined) ? tableAttribute.tableName : "";
+
         var title = "QC Table";
-        if (hasCore && hasSW)
+        if (tableName != "")
+        {
+            title = tableName;
+        }
+        else if (hasCore && hasSW)
         {
             title = "QC Table (Core + Sidewall)";
         }
