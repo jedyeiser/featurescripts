@@ -125,9 +125,10 @@ export predicate eiXSectPrecondition(definition is map)
     // Primary Inputs
     // -------------------------------------------------------------------------
     
-    annotation { "Name" : "Edge/wire to cross section along",
-                 "Filter" : EntityType.EDGE || BodyType.WIRE,
-                 "Description" : "One or more connected edges, or a wire body, defining cross-section locations" }
+    annotation { "Name" : "Wire to cross section along",
+                 "Filter" : EntityType.BODY && BodyType.WIRE,
+                 "MaxNumberOfPicks" : 1,
+                 "Description" : "A wire body whose constituent edges define cross-section locations" }
     definition.xSectAlong is Query;
     
     annotation { "Name" : "Analysis name",

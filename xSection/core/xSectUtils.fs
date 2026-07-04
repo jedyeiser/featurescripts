@@ -85,28 +85,23 @@ export function signaturesMatch(sig1 is map, sig2 is map, tolerance is ValueWith
 /**
  * Reduce the "cross section along" selection to an edges Query.
  *
- * Accepts any mix of directly-selected edges and wire bodies. Wire bodies
- * contribute their constituent edges via qOwnedByBody; directly-selected
- * edges pass through qEntityFilter. qUnion gives constructPath a stable
- * evaluation order for stitching the edges into a single path.
+ * The selection is a single wire body; its constituent edges are extracted
+ * via qOwnedByBody and stitched into a single path by constructPath.
  *
- * @param alongQuery {Query} : The user's "cross section along" selection
- * @returns {Query} : Query resolving to the constituent edges
+ * @param alongQuery {Query} : The user's "cross section along" wire selection
+ * @returns {Query} : Query resolving to the wire's constituent edges
  */
 export function edgesFromAlongQuery(alongQuery is Query) returns Query
 {
-    return qUnion([
-        qEntityFilter(alongQuery, EntityType.EDGE),
-        qOwnedByBody(alongQuery, EntityType.EDGE)
-    ]);
+    return qOwnedByBody(alongQuery, EntityType.EDGE);
 }
 
 /**
  * Build a single Path from the "cross section along" selection.
  *
- * This is the unifying abstraction that lets the feature work with a single
- * edge, multiple connected edges, or a wire body. All downstream sampling
- * uses whole-path arc-length parameters [0,1] via the native Path eval API.
+ * Extracts the wire body's edges and stitches them into one connected path.
+ * All downstream sampling uses whole-path arc-length parameters [0,1] via
+ * the native Path eval API.
  *
  * @param context {Context}
  * @param alongQuery {Query} : The user's "cross section along" selection
@@ -249,7 +244,7 @@ export function projectXToPathParameter(context is Context, path is Path, target
  * Fallback: If FCP or ACP undefined → uniform spacing (current behavior)
  *
  * @param context {Context}
- * @param alongQuery {Query} : Selection to cross-section along (single edge, multiple edges, or wire body)
+ * @param alongQuery {Query} : Wire body to cross-section along (its edges are extracted)
  * @param numSections {number} : Total number of frames requested
  * @param fcpX : FCP world X coordinate (or undefined)
  * @param acpX : ACP world X coordinate (or undefined)
