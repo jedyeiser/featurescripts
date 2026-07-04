@@ -120,9 +120,6 @@ export const generatePartQCSketch = defineFeature(function(context is Context, i
             {
                 isPartSpec(part);
             }
-
-            annotation { "Name" : "Include part outline in composite", "Default" : true, "Description" : "Trace the part periphery (WIDTH) or profile (HEIGHT) as rails in the composite, so a drawing of the composite alone shows the outline plus the measurement lines." }
-            definition.includeOutline is boolean;
         }
     }
     {
@@ -169,7 +166,7 @@ export const generatePartQCSketch = defineFeature(function(context is Context, i
                 continue;
             }
 
-            buildPartQCSketch(context, id + ("part" ~ p), part, stationXs, definition.includeOutline);
+            buildPartQCSketch(context, id + ("part" ~ p), part, stationXs);
         }
     });
 
@@ -190,7 +187,7 @@ export const generatePartQCSketch = defineFeature(function(context is Context, i
  * single part. Sketch-derived wires cannot be composited, so the wire bodies
  * are built with opFitSpline rather than taken from the sketch.
  */
-function buildPartQCSketch(context is Context, id is Id, part is map, stationXs is array, includeOutline is boolean)
+function buildPartQCSketch(context is Context, id is Id, part is map, stationXs is array)
 {
     var isWidth = (part.axis == MEASURE_AXIS.WIDTH);
 
@@ -214,12 +211,6 @@ function buildPartQCSketch(context is Context, id is Id, part is map, stationXs 
     });
 
     var wireBodies = [];
-
-    // Per-station extreme points, collected in station order to fit the optional
-    // periphery/profile rails after the loop.
-    var loPoints = [];
-    var hiPoints = [];
-
     for (var i = 0; i < size(stationXs); i += 1)
     {
         var x = stationXs[i];
@@ -254,30 +245,9 @@ function buildPartQCSketch(context is Context, id is Id, part is map, stationXs 
             "points" : [p0, p1]
         });
         wireBodies = append(wireBodies, qCreatedBy(wireId, EntityType.BODY));
-
-        // Collect the extreme points for the optional outline rails.
-        loPoints = append(loPoints, p0);
-        hiPoints = append(hiPoints, p1);
     }
 
     skSolve(sk);
-
-    // Optionally trace the part periphery (WIDTH) / profile (HEIGHT): a rail fit
-    // through the per-station low and high extreme points. Together with the
-    // span "rungs" above, these form the part outline - so a drawing of the
-    // composite alone is self-contained and does not need the full part studio.
-    if (includeOutline && size(loPoints) >= 2)
-    {
-        opFitSpline(context, id + "loRail", {
-            "points" : loPoints
-        });
-        wireBodies = append(wireBodies, qCreatedBy(id + "loRail", EntityType.BODY));
-
-        opFitSpline(context, id + "hiRail", {
-            "points" : hiPoints
-        });
-        wireBodies = append(wireBodies, qCreatedBy(id + "hiRail", EntityType.BODY));
-    }
 
     // Group the wire bodies into a closed composite part and name it. The
     // composite is the identifiable, single-part deliverable per part.
