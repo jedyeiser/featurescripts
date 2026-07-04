@@ -54,6 +54,16 @@ export function elFunction(context is Context, id is Id, oldDefinition is map, d
         definition.showOriginQuery = false;
     }
 
+    // Show/hide the custom station-numbering controls
+    if (definition.stationNumbering == STATION_NUMBERING.CUSTOM)
+    {
+        definition.showStationCustom = true;
+    }
+    else
+    {
+        definition.showStationCustom = false;
+    }
+
     return definition;
 }
 
@@ -158,6 +168,21 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
             annotation { "Name" : "Table Order", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORDER.DESCENDING }
             definition.tableOrder is TABLE_ORDER;
+
+            annotation { "Name" : "Station Numbering", "UIHint" : UIHint.SHOW_LABEL, "Default" : STATION_NUMBERING.DEFAULT }
+            definition.stationNumbering is STATION_NUMBERING;
+
+            annotation { "Name" : "showStationCustom", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            definition.showStationCustom is boolean;
+
+            if (definition.showStationCustom)
+            {
+                annotation { "Name" : "Station 0 Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.station0Ref is Query;
+
+                annotation { "Name" : "Station Numbering Direction", "UIHint" : UIHint.SHOW_LABEL, "Default" : STATION_DIRECTION.INCREASE_WITH_X }
+                definition.stationDirection is STATION_DIRECTION;
+            }
 
             annotation { "Name" : "Language", "Default" : LANGUAGE.ENG }
             definition.language is LANGUAGE;
@@ -384,6 +409,19 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             "language" : definition.language
         } as FormatConfig;
 
+        // Station numbering: DEFAULT numbers from the min-X station; CUSTOM
+        // numbers outward from the station nearest a chosen reference.
+        var stationNumbering = {
+            "mode" : definition.stationNumbering,
+            "direction" : STATION_DIRECTION.INCREASE_WITH_X,
+            "station0X" : 0 * millimeter
+        };
+        if (definition.stationNumbering == STATION_NUMBERING.CUSTOM)
+        {
+            stationNumbering.station0X = extractXPosition(context, definition.station0Ref, "Station 0 Reference");
+            stationNumbering.direction = definition.stationDirection;
+        }
+
         var tableData = mergeStationData(
             stations,
             coreMeasurements,
@@ -392,7 +430,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             coreExtents,
             swExtents,
             tableOriginX,
-            formatConfig
+            formatConfig,
+            stationNumbering
         );
 
         // Sort by table order

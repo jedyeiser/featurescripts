@@ -94,6 +94,12 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
         {
             annotation { "Name" : "Number of Evenly Spaced Points" }
             isInteger(definition.numPoints, sectionCountBounds);
+
+            annotation { "Name" : "Station 0 Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            definition.station0Ref is Query;
+
+            annotation { "Name" : "Station Numbering", "UIHint" : UIHint.SHOW_LABEL, "Default" : STATION_DIRECTION.INCREASE_WITH_X }
+            definition.stationDirection is STATION_DIRECTION;
         }
 
         // ===== Table Formatting =====
@@ -140,6 +146,10 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
         {
             tableOriginX = extractXPosition(context, definition.originReference, "Table Origin");
         }
+
+        // Station 0 datum (required). Numbering counts outward from the station
+        // nearest this X position.
+        var station0X = extractXPosition(context, definition.station0Ref, "Station 0 Reference");
 
         var bodyExtents = evBox3d(context, {
             "topology" : definition.body,
@@ -195,11 +205,35 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
             }
         }
 
-        // Order by world X, then apply the requested direction.
+        // Order by world X ascending so station numbering is independent of the
+        // display order chosen below.
         rows = sort(rows, function(a, b)
         {
             return a.sortX - b.sortX;
         });
+
+        // Station 0 = the row nearest the Station 0 reference. Numbers then count
+        // outward, increasing or decreasing with world X per the chosen mode.
+        var k0 = 0;
+        if (size(rows) > 0)
+        {
+            var bestDist = abs(rows[0].sortX - station0X);
+            for (var i = 1; i < size(rows); i += 1)
+            {
+                var d = abs(rows[i].sortX - station0X);
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    k0 = i;
+                }
+            }
+        }
+
+        for (var i = 0; i < size(rows); i += 1)
+        {
+            var num = (definition.stationDirection == STATION_DIRECTION.INCREASE_WITH_X) ? (i - k0) : (k0 - i);
+            rows[i].station = num ~ "";
+        }
 
         if (definition.tableOrder == TABLE_ORDER.DESCENDING)
         {
@@ -211,6 +245,7 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
         for (var r in rows)
         {
             tableRows = append(tableRows, {
+                "station" : r.station,
                 "x" : r.x,
                 "width" : r.width,
                 "height" : r.height
@@ -285,7 +320,7 @@ function generateGenericStations(context is Context, boundaries is map, bodyExte
 // TABLE DEFINITION
 // ============================================================================
 
-annotation { "Table Type Name" : "Generic QC Table" }
+annotation { "Table Type Name" : "Generic QC Table", "Icon" : IconNamespace::BLOB_DATA }
 export const genericQCTable = defineTable(function(context is Context, definition is map) returns Table
     precondition
     {
@@ -305,6 +340,7 @@ export const genericQCTable = defineTable(function(context is Context, definitio
         });
 
         var columns = [
+            tableColumnDefinition("station", "Station #"),
             tableColumnDefinition("x", "X"),
             tableColumnDefinition("width", "Width"),
             tableColumnDefinition("height", "Height")

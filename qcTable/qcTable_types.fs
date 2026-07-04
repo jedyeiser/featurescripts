@@ -193,6 +193,32 @@ export enum MEASURE_AXIS
     HEIGHT
 }
 
+/**
+ * Direction of station numbering relative to the Station 0 reference. The
+ * nearest station to the reference is numbered 0; numbers then increase or
+ * decrease as world X increases.
+ */
+export enum STATION_DIRECTION
+{
+    annotation { "Name" : "Increase with X" }
+    INCREASE_WITH_X,
+    annotation { "Name" : "Decrease with X" }
+    DECREASE_WITH_X
+}
+
+/**
+ * Station numbering mode. DEFAULT numbers 0-based from the min-X station,
+ * increasing with X (legacy behavior). CUSTOM lets the user pick a Station 0
+ * reference and the direction of increase.
+ */
+export enum STATION_NUMBERING
+{
+    annotation { "Name" : "Default" }
+    DEFAULT,
+    annotation { "Name" : "Custom" }
+    CUSTOM
+}
+
 // ============================================================================
 // CONSTANTS AND BOUNDS
 // ============================================================================

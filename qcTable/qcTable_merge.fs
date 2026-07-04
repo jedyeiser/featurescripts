@@ -29,10 +29,14 @@ export function mergeStationData(
     coreExtents,
     swExtents,
     tableOriginX is ValueWithUnits,
-    formatConfig is FormatConfig) returns array
+    formatConfig is FormatConfig,
+    stationNumbering is map) returns array
 {
     var merged = [];
-    var stationNum = 0;
+
+    // World X of each built row, parallel to `merged`, used to assign station
+    // numbers after all rows are known.
+    var rowXs = [];
 
     // ACP at larger X means the aft (tail) end is the max-X extent; otherwise
     // the part is mirrored and the tail is the min-X extent.
@@ -59,8 +63,10 @@ export function mergeStationData(
         }
 
         // Build base row. "X" is reported relative to the chosen table origin.
+        // The station number is a placeholder here; it is assigned after the
+        // loop once the full set of displayed rows is known.
         var row = {
-            "station" : stationNum,
+            "station" : 0,
             callout: station.callout,
             x_mrs: x - tableOriginX,
             x_acp: x - boundaries.acp
@@ -115,10 +121,56 @@ export function mergeStationData(
         row = formatTableRow(row, formatConfig);
 
         merged = append(merged, row);
-        stationNum += 1;
+        rowXs = append(rowXs, x);
     }
 
+    // Assign station numbers now that the displayed rows are known.
+    merged = assignStationNumbers(merged, rowXs, stationNumbering);
+
     return merged;
+}
+
+/**
+ * Assign the "station" number to each row. Rows arrive in ascending world-X
+ * order, so a row's index is its ascending rank.
+ *
+ * DEFAULT: 0-based ascending-X index (legacy behavior).
+ * CUSTOM:  the row nearest stationNumbering.station0X is 0; numbers then count
+ *          outward, increasing or decreasing with world X per the direction.
+ */
+function assignStationNumbers(rows is array, rowXs is array, stationNumbering is map) returns array
+{
+    if (stationNumbering.mode == STATION_NUMBERING.CUSTOM && size(rows) > 0)
+    {
+        var station0X = stationNumbering.station0X;
+
+        // Nearest row to the reference (ties resolve toward lower X).
+        var k0 = 0;
+        var bestDist = abs(rowXs[0] - station0X);
+        for (var i = 1; i < size(rowXs); i += 1)
+        {
+            var d = abs(rowXs[i] - station0X);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                k0 = i;
+            }
+        }
+
+        for (var i = 0; i < size(rows); i += 1)
+        {
+            rows[i].station = (stationNumbering.direction == STATION_DIRECTION.INCREASE_WITH_X) ? (i - k0) : (k0 - i);
+        }
+    }
+    else
+    {
+        for (var i = 0; i < size(rows); i += 1)
+        {
+            rows[i].station = i;
+        }
+    }
+
+    return rows;
 }
 
 // ============================================================================
