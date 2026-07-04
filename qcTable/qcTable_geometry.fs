@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/geomOperations.fs", version : "2878.0");
 //import table types
-import(path : "ff9221b7148cfda8a449abff", version : "64db5cfaa75066e3080889bb");
+import(path : "ff9221b7148cfda8a449abff", version : "31d87ccebeed70c9ff76b9ed");
 
 
 /**
@@ -131,23 +131,34 @@ export function measureSectionExtents(
     var zMin = points[0][2];
     var zMax = points[0][2];
 
+    // Track the actual boundary points achieving each extent, so callers can
+    // mark exactly where width (Y) and height (Z) are measured.
+    var yMinPoint = points[0];
+    var yMaxPoint = points[0];
+    var zMinPoint = points[0];
+    var zMaxPoint = points[0];
+
     for (var pt in points)
     {
         if (pt[1] < yMin)
         {
             yMin = pt[1];
+            yMinPoint = pt;
         }
         if (pt[1] > yMax)
         {
             yMax = pt[1];
+            yMaxPoint = pt;
         }
         if (pt[2] < zMin)
         {
             zMin = pt[2];
+            zMinPoint = pt;
         }
         if (pt[2] > zMax)
         {
             zMax = pt[2];
+            zMaxPoint = pt;
         }
     }
 
@@ -157,7 +168,11 @@ export function measureSectionExtents(
         "zMin" : zMin,
         "zMax" : zMax,
         "width" : yMax - yMin,
-        "height" : zMax - zMin
+        "height" : zMax - zMin,
+        "yMinPoint" : yMinPoint,
+        "yMaxPoint" : yMaxPoint,
+        "zMinPoint" : zMinPoint,
+        "zMaxPoint" : zMaxPoint
     };
 }
 

@@ -2,13 +2,16 @@ FeatureScript 3008;
 import(path : "onshape/std/common.fs", version : "3008.0");
 
 //import qcTable_types
-export import(path : "ff9221b7148cfda8a449abff", version : "64db5cfaa75066e3080889bb");
+export import(path : "ff9221b7148cfda8a449abff", version : "31d87ccebeed70c9ff76b9ed");
 
 //import qcTable_stations
-import(path : "f78f146e807209053299e5a5", version : "49620face679235389eb77e0");
+import(path : "f78f146e807209053299e5a5", version : "fa07c9bb45b3eb098a649183");
 
 //import qcTable_geometry
-import(path : "0f9cf9b21a3c654880d3167c", version : "87e72a91e63f7e10a07d75c7");
+import(path : "0f9cf9b21a3c654880d3167c", version : "421b5d303f642d54a6110154");
+
+IconNamespace::import(path : "1388cf5d816e3599efec31fa", version : "81e8fdeedc1202b2863f9ddc");
+
 
 //this is similar to qcTable, but is more general.
 //User specifies a single solid body, FCP, ACP, Table Origin (default to world Origin) and number of evenly spaced points between FCP/ACP
@@ -49,7 +52,7 @@ export function genericElFunction(context is Context, id is Id, oldDefinition is
 // FEATURE DEFINITION
 // ============================================================================
 
-annotation { "Feature Type Name" : "Generic QC Table", "Editing Logic Function" : "genericElFunction", "Description" : "Measures width (Y) and height (Z) of a single solid body at evenly spaced stations between FCP and ACP and outputs a QC table." }
+annotation { "Feature Type Name" : "Generic QC Table", "Editing Logic Function" : "genericElFunction", "Icon" : IconNamespace::BLOB_DATA , "Description" : "Measures width (Y) and height (Z) of a single solid body at evenly spaced stations between FCP and ACP and outputs a QC table." }
 export const generateGenericQCData = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -177,9 +180,18 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
 
             if (definition.debug)
             {
+                // Green: section-center marker (measurement axis location).
                 var midY = (m.yMin + m.yMax) / 2;
                 var midZ = (m.zMin + m.zMax) / 2;
                 addDebugPoint(context, vector(station.x, midY, midZ), DebugColor.GREEN);
+
+                // Cyan: the two points that define the measured width (Y extents).
+                addDebugPoint(context, m.yMinPoint, DebugColor.CYAN);
+                addDebugPoint(context, m.yMaxPoint, DebugColor.CYAN);
+
+                // Magenta: the two points that define the measured height (Z extents).
+                addDebugPoint(context, m.zMinPoint, DebugColor.MAGENTA);
+                addDebugPoint(context, m.zMaxPoint, DebugColor.MAGENTA);
             }
         }
 

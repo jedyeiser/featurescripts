@@ -1,14 +1,18 @@
 FeatureScript 3008;
 import(path : "onshape/std/common.fs", version : "3008.0");
+import(path : "onshape/std/geomOperations.fs", version : "3008.0");
 
 //import qcTable_types
-export import(path : "ff9221b7148cfda8a449abff", version : "64db5cfaa75066e3080889bb");
+export import(path : "ff9221b7148cfda8a449abff", version : "31d87ccebeed70c9ff76b9ed");
 
 //import qcTable_stations
-import(path : "f78f146e807209053299e5a5", version : "49620face679235389eb77e0");
+import(path : "f78f146e807209053299e5a5", version : "fa07c9bb45b3eb098a649183");
 
 //import qcTable_geometry
-import(path : "0f9cf9b21a3c654880d3167c", version : "87e72a91e63f7e10a07d75c7");
+import(path : "0f9cf9b21a3c654880d3167c", version : "421b5d303f642d54a6110154");
+
+IconNamespace::import(path : "fa8fd4062687630161065138", version : "078dd389f7e6d81a54b95cf0");
+
 
 // A simple feature that takes up to 10 solid bodies as input along with FCP/ACP references
 // User specifies the number of evenly spaced 'sections' to 'measure' between FCP and ACP
@@ -90,7 +94,7 @@ export function partSketchElFunction(context is Context, id is Id, oldDefinition
 // FEATURE DEFINITION
 // ============================================================================
 
-annotation { "Feature Type Name" : "Part QC Sketch", "Editing Logic Function" : "partSketchElFunction", "Description" : "Builds a construction sketch of each part's width (Y) or height (Z) at evenly spaced stations between FCP and ACP." }
+annotation { "Feature Type Name" : "Part QC Sketch", "Editing Logic Function" : "partSketchElFunction", "Icon" : IconNamespace::BLOB_DATA , "Description" : "Builds a construction sketch of each part's width (Y) or height (Z) at evenly spaced stations between FCP and ACP."}
 export const generatePartQCSketch = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -110,7 +114,7 @@ export const generatePartQCSketch = defineFeature(function(context is Context, i
         // ===== Parts =====
         annotation { "Group Name" : "Parts", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Parts", "Item name" : "part", "Item label template" : "#sketchName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
+            annotation { "Name" : "Parts", "Item name" : "part", "Item label template" : "#sketchName", "UIHint" : UIHint.FOCUS_INNER_QUERY }
             definition.parts is array;
             for (var part in definition.parts)
             {
@@ -171,10 +175,17 @@ export const generatePartQCSketch = defineFeature(function(context is Context, i
 // ============================================================================
 
 /**
- * Build one part's QC sketch: a construction line at each station spanning the
- * measured extent. WIDTH draws on a Top-oriented plane (line spans world Y);
- * HEIGHT draws on a Front-oriented plane (line spans world Z). An override
- * plane only shifts the projection offset; the measured span stays world Y/Z.
+ * Build one part's QC output at each station spanning the measured extent.
+ * WIDTH uses a Top-oriented sketch (span is world Y); HEIGHT uses a
+ * Front-oriented sketch (span is world Z). An override plane only shifts the
+ * projection offset; the measured span stays world Y/Z.
+ *
+ * Two things are produced per station: a construction line in the sketch (kept
+ * for the drawing reference) and a real straight wire body. The sketch cannot
+ * be renamed (Onshape limitation), so the wire bodies are grouped into a closed
+ * composite part - which carries the "<part> QC SKETCH" name and reads as a
+ * single part. Sketch-derived wires cannot be composited, so the wire bodies
+ * are built with opFitSpline rather than taken from the sketch.
  */
 function buildPartQCSketch(context is Context, id is Id, part is map, stationXs is array)
 {
@@ -199,7 +210,7 @@ function buildPartQCSketch(context is Context, id is Id, part is map, stationXs 
         "sketchPlane" : sketchPlane
     });
 
-    var drawn = 0;
+    var wireBodies = [];
     for (var i = 0; i < size(stationXs); i += 1)
     {
         var x = stationXs[i];
@@ -214,25 +225,44 @@ function buildPartQCSketch(context is Context, id is Id, part is map, stationXs 
         var vLo = isWidth ? m.yMin : m.zMin;
         var vHi = isWidth ? m.yMax : m.zMax;
 
+        // Skip degenerate (tangent) sections with no measurable span.
+        if ((vHi - vLo) <= GEOM_TOL)
+        {
+            continue;
+        }
+
         skLineSegment(sk, "line" ~ i, {
             "start" : vector(x, vLo),
             "end" : vector(x, vHi),
             "construction" : true
         });
 
-        drawn += 1;
+        // Coincident real wire body for the nameable composite part.
+        var p0 = isWidth ? vector(x, vLo, offset) : vector(x, offset, vLo);
+        var p1 = isWidth ? vector(x, vHi, offset) : vector(x, offset, vHi);
+        var wireId = id + ("wire" ~ i);
+        opFitSpline(context, wireId, {
+            "points" : [p0, p1]
+        });
+        wireBodies = append(wireBodies, qCreatedBy(wireId, EntityType.BODY));
     }
 
     skSolve(sk);
 
-    // Name the resulting sketch geometry when we drew anything.
-    if (drawn > 0 && part.sketchName != undefined && part.sketchName != "")
+    // Group the wire bodies into a closed composite part and name it. The
+    // composite is the identifiable, single-part deliverable per part.
+    if (size(wireBodies) > 0)
     {
-        var sketchBodies = qCreatedBy(id + "sketch", EntityType.BODY);
-        if (!isQueryEmpty(context, sketchBodies))
+        var compId = id + "composite";
+        opCreateCompositePart(context, compId, {
+            "bodies" : qUnion(wireBodies),
+            "closed" : true
+        });
+
+        if (part.sketchName != undefined && part.sketchName != "")
         {
             setProperty(context, {
-                "entities" : sketchBodies,
+                "entities" : qCreatedBy(compId, EntityType.BODY)->qCompositePartTypeFilter(CompositePartType.CLOSED),
                 "propertyType" : PropertyType.NAME,
                 "value" : part.sketchName
             });
