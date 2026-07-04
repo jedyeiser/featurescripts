@@ -68,10 +68,10 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===== FCP/ACP References =====
         annotation { "Group Name" : "References", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "FCP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "FCP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.fcpReference is Query;
 
-            annotation { "Name" : "ACP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "ACP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.acpReference is Query;
 
             annotation { "Name" : "Table Origin", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORIGIN.ORIGIN }
@@ -83,7 +83,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
             if (definition.showOriginQuery)
             {
-                annotation { "Name" : "Table Origin Reference", "Filter" : EntityType.VERTEX || EntityType.FACE, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Table Origin Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
                 definition.originReference is Query;
             }
         }

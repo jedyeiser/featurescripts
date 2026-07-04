@@ -63,6 +63,16 @@ export function extractXPosition(context is Context, query is Query, label is st
     }
 
     var entity = entities[0];
+
+    // Try mate connector (its own body type). A mate connector is a BODY, so
+    // this must be checked before the generic BODY (construction plane) branch
+    // below, which assumes the body owns faces.
+    if (size(evaluateQuery(context, qBodyType(entity, BodyType.MATE_CONNECTOR))) > 0)
+    {
+        var cs = evMateConnector(context, {"mateConnector" : entity});
+        return cs.origin[0];
+    }
+
     var entityType = evaluateQuery(context, qEntityFilter(entity, EntityType.VERTEX));
 
     // Try vertex
@@ -93,7 +103,7 @@ export function extractXPosition(context is Context, query is Query, label is st
         }
     }
 
-    throw label ~ " must be a vertex, plane, or planar face";
+    throw label ~ " must be a vertex, mate connector, plane, or planar face";
 }
 
 // ============================================================================
