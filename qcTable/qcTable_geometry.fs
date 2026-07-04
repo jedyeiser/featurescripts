@@ -2,7 +2,7 @@ FeatureScript 2878;
 import(path : "onshape/std/common.fs", version : "2878.0");
 import(path : "onshape/std/geomOperations.fs", version : "2878.0");
 //import table types
-import(path : "ff9221b7148cfda8a449abff", version : "2567f5f72109d2808992437d");
+import(path : "ff9221b7148cfda8a449abff", version : "64db5cfaa75066e3080889bb");
 
 
 /**
@@ -68,6 +68,96 @@ export function prepareSidewallBody(context is Context, swQuery is Query) return
     return {
         "bodies" : swQuery,
         "bodyCount" : 1
+    };
+}
+
+// ============================================================================
+// GENERIC SECTION MEASUREMENT
+// ============================================================================
+
+/**
+ * Measure the world-axis cross-section extents of a body at a station X.
+ *
+ * Sections the body with a plane at X (normal +X), collects the boundary
+ * intersection points, and returns their world Y/Z bounding extents. Unlike
+ * measureCoreAtStation this makes no symmetry assumption (core uses 2*maxY), so
+ * it suits arbitrary solid bodies.
+ *
+ * Returns a map { yMin, yMax, zMin, zMax, width, height } on success, or
+ * undefined when the plane finds no intersection (the body does not reach X).
+ * Callers treat undefined as "no data at this station". No declared return type
+ * so the undefined return is legal.
+ */
+export function measureSectionExtents(
+    context is Context,
+    bodyQuery is Query,
+    stationX is ValueWithUnits)
+{
+    if (!isLength(stationX))
+    {
+        throw "stationX must be a length value";
+    }
+
+    var sectionPlane = plane(vector(stationX, 0 * millimeter, 0 * millimeter), vector(1, 0, 0));
+
+    var bodyEdges = qOwnedByBody(bodyQuery, EntityType.EDGE);
+    var crossing = evaluateQuery(context, qIntersectsPlane(bodyEdges, sectionPlane));
+
+    if (size(crossing) == 0)
+    {
+        return undefined;
+    }
+
+    var points = [];
+    for (var edge in crossing)
+    {
+        var pt = evDistance(context, {
+            "side0" : sectionPlane,
+            "side1" : edge
+        }).sides[1].point;
+
+        points = append(points, pt);
+    }
+
+    points = deduplicate(points);
+
+    if (size(points) == 0)
+    {
+        return undefined;
+    }
+
+    var yMin = points[0][1];
+    var yMax = points[0][1];
+    var zMin = points[0][2];
+    var zMax = points[0][2];
+
+    for (var pt in points)
+    {
+        if (pt[1] < yMin)
+        {
+            yMin = pt[1];
+        }
+        if (pt[1] > yMax)
+        {
+            yMax = pt[1];
+        }
+        if (pt[2] < zMin)
+        {
+            zMin = pt[2];
+        }
+        if (pt[2] > zMax)
+        {
+            zMax = pt[2];
+        }
+    }
+
+    return {
+        "yMin" : yMin,
+        "yMax" : yMax,
+        "zMin" : zMin,
+        "zMax" : zMax,
+        "width" : yMax - yMin,
+        "height" : zMax - zMin
     };
 }
 

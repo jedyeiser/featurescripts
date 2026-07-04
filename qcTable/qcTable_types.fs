@@ -181,6 +181,18 @@ export enum TABLE_ORIGIN
     QUERY
 }
 
+/**
+ * Measurement axis for the generic part QC features. WIDTH spans the world Y
+ * extent of a cross-section; HEIGHT spans the world Z extent.
+ */
+export enum MEASURE_AXIS
+{
+    annotation { "Name" : "Width (Y)" }
+    WIDTH,
+    annotation { "Name" : "Height (Z)" }
+    HEIGHT
+}
+
 // ============================================================================
 // CONSTANTS AND BOUNDS
 // ============================================================================
@@ -210,6 +222,16 @@ export const rslBounds =
 export const pointNumBounds =
 {
     (unitless) : [12, 40, 80]
+} as IntegerBoundSpec;
+
+/**
+ * Number of evenly spaced stations for the generic QC features (generic table
+ * and part drawing sketch). Includes the FCP and ACP endpoints.
+ * Default: 10, Range: 2 to 100
+ */
+export const sectionCountBounds =
+{
+    (unitless) : [2, 10, 100]
 } as IntegerBoundSpec;
 
 /**
