@@ -278,6 +278,17 @@ export const filterPointDistBounds =
     (millimeter) : [0.01, 0.5, 5]
 } as LengthBoundSpec;
 
+/**
+ * End inset distance for terminal-station measurement.
+ * How far inside a body end its outermost station is measured, to avoid the
+ * ambiguous section exactly at the end cap.
+ * Default: 1mm, Range: 0.1mm to 25mm
+ */
+export const endInsetBounds =
+{
+    (millimeter) : [0.1, 1, 25]
+} as LengthBoundSpec;
+
 // ============================================================================
 // GEOMETRIC TOLERANCES
 // ============================================================================

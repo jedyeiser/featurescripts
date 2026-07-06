@@ -72,6 +72,76 @@ export function prepareSidewallBody(context is Context, swQuery is Query) return
 }
 
 // ============================================================================
+// TERMINAL-STATION INSET
+// ============================================================================
+
+/**
+ * Identify a body's two "last" stations: the lowest-X and highest-X stations
+ * that fall within the body's X extents. These are the only stations eligible
+ * for end insetting. Returns { loX, hiX } as ValueWithUnits, or undefined
+ * bounds when no station lands within the body.
+ */
+export function terminalStationXs(stations is array, extents is Box3d) returns map
+{
+    var loX = undefined;
+    var hiX = undefined;
+
+    for (var s in stations)
+    {
+        var x = s.x;
+        if (x >= extents.minCorner[0] - EDGE_MARGIN && x <= extents.maxCorner[0] + EDGE_MARGIN)
+        {
+            if (loX == undefined || x < loX)
+            {
+                loX = x;
+            }
+            if (hiX == undefined || x > hiX)
+            {
+                hiX = x;
+            }
+        }
+    }
+
+    return { "loX" : loX, "hiX" : hiX };
+}
+
+/**
+ * Return the X at which to actually section the body for this station. Only the
+ * body's two terminal stations (terminals.loX / terminals.hiX) are moved: the
+ * low end inward by +inset, the high end inward by -inset, measured from the
+ * body's own end cap. Every other station - and every station when the feature
+ * is off (inset <= 0) or the body holds no stations - is returned unchanged.
+ *
+ * The offset is clamped to half the body length so it can never reach or cross
+ * the far end on a very short body.
+ */
+export function insetTerminalX(
+    stationX is ValueWithUnits,
+    extents is Box3d,
+    inset is ValueWithUnits,
+    terminals is map) returns ValueWithUnits
+{
+    if (inset <= 0 * millimeter || terminals.loX == undefined)
+    {
+        return stationX;
+    }
+
+    var eff = min([inset, (extents.maxCorner[0] - extents.minCorner[0]) / 2]);
+
+    // terminals.loX / hiX are exact copies of station X values, so == is safe.
+    if (stationX == terminals.loX)
+    {
+        return extents.minCorner[0] + eff;
+    }
+    if (stationX == terminals.hiX)
+    {
+        return extents.maxCorner[0] - eff;
+    }
+
+    return stationX;
+}
+
+// ============================================================================
 // GENERIC SECTION MEASUREMENT
 // ============================================================================
 

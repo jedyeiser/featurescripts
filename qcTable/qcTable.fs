@@ -160,6 +160,19 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             definition.addtlPoints is Query;
         }
 
+        // ===== Body End Measurement =====
+        annotation { "Group Name" : "Body End Measurement", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Inset measurements at body ends", "Default" : true, "Description" : "Measure each body's two end (tip/tail) stations a small distance inside the body instead of exactly at the end cap. Sectioning a body exactly at its end is numerically ambiguous - the section plane is coincident with the terminal face - and can return a valid-looking but incorrect height. The table still reports these rows at their true station X." }
+            definition.insetBodyEnds is boolean;
+
+            if (definition.insetBodyEnds)
+            {
+                annotation { "Name" : "End inset distance", "Description" : "How far inside a body end to take its terminal measurement. Applies only to the single outermost station at each end of each body; all interior stations are measured exactly." }
+                isLength(definition.endInsetDistance, endInsetBounds);
+            }
+        }
+
         // ===== Table Formatting =====
         annotation { "Group Name" : "Table Formatting", "Collapsed By Default" : true }
         {
@@ -312,19 +325,30 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // CORE MEASUREMENTS
         // ===================================================================
 
+        // End inset distance applied only to each body's two terminal stations.
+        // 0 when the option is off, which disables insetting entirely.
+        var endInset = definition.insetBodyEnds ? definition.endInsetDistance : 0 * millimeter;
+
         var coreMeasurements = {};
 
         if (hasCore)
         {
+            // The lowest- and highest-X stations that fall within the core.
+            var coreTerminals = terminalStationXs(stations, coreExtents);
+
             for (var i = 0; i < size(stations); i += 1)
             {
                 var station = stations[i];
+
+                // Only the two terminal stations are nudged inward; every other
+                // station is sectioned exactly at its own X.
+                var measureX = insetTerminalX(station.x, coreExtents, endInset, coreTerminals);
 
                 var measurement = measureCoreAtStation(
                     context,
                     id + ("core" ~ i ~ "_"),
                     coreData,
-                    station.x,
+                    measureX,
                     coreExtents,
                     definition.verbose,
                     definition.showDebugPoints
@@ -352,14 +376,18 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         {
             // Measure at each station by sectioning the sidewall body fresh at
             // each X (no global edge pre-classification - see measureSidewallAtStation).
+            var swTerminals = terminalStationXs(stations, swExtents);
             var bottomCenterPoints = [];
             var topCenterPoints = [];
             for (var station in stations)
             {
+                // Only the sidewall's two terminal stations are nudged inward.
+                var measureX = insetTerminalX(station.x, swExtents, endInset, swTerminals);
+
                 var measurement = measureSidewallAtStation(
                     context,
                     swData,
-                    station.x,
+                    measureX,
                     swExtents,
                     definition.verbose,
                     definition.showDebugPoints
