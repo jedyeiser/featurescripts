@@ -200,8 +200,11 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===== Options =====
         annotation { "Group Name" : "Options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Verbose Debug (show debug entities)", "Default" : false }
+            annotation { "Name" : "Print Debug Notices (console)", "Default" : false, "Description" : "Print diagnostics (FCP/ACP, station and measurement counts, and any station that finds no data) to the FeatureScript notices panel. Does not add geometry." }
             definition.verbose is boolean;
+
+            annotation { "Name" : "Show Debug Points (3D)", "Default" : false, "Description" : "Add colored construction points at each measured location (core width/thickness, sidewall top/bottom centers). Does not print to the notices panel." }
+            definition.showDebugPoints is boolean;
 
             annotation { "Name" : "Keep Measurement Wires (sidewall)", "Default" : false }
             definition.keepWires is boolean;
@@ -323,7 +326,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                     coreData,
                     station.x,
                     coreExtents,
-                    definition.verbose
+                    definition.verbose,
+                    definition.showDebugPoints
                 );
 
                 if (measurement != undefined)
@@ -357,7 +361,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                     swData,
                     station.x,
                     swExtents,
-                    definition.verbose
+                    definition.verbose,
+                    definition.showDebugPoints
                 );
 
                 if (measurement != undefined)

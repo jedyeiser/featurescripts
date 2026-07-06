@@ -191,7 +191,8 @@ export function measureCoreAtStation(
     coreData is map,
     stationX is ValueWithUnits,
     coreExtents is Box3d,
-    verbose is boolean)
+    verbose is boolean,
+    showDebug is boolean)
 {
     // NOTE: no declared return type. This function returns a measurement map on
     // success but returns undefined when a station plane finds no core
@@ -430,7 +431,7 @@ export function measureCoreAtStation(
     opDeleteBodies(context, id + "deleteMeasurePlane", {"entities" : planeBody});
 
     // Debug visualization
-    if (verbose)
+    if (showDebug)
     {
         addDebugPoint(context, vector(stationX, maxY, maxZ), DebugColor.RED);
         addDebugPoint(context, vector(stationX, -maxY, maxZ), DebugColor.RED);
@@ -478,7 +479,8 @@ export function measureSidewallAtStation(
     swData is map,
     stationX is ValueWithUnits,
     swExtents is Box3d,
-    verbose is boolean)
+    verbose is boolean,
+    showDebug is boolean)
 {
     var measurePlane = plane(vector(stationX, 0 * millimeter, 0 * millimeter), vector(1, 0, 0));
 
@@ -546,7 +548,7 @@ export function measureSidewallAtStation(
 
     var swHeight = topPoint[2] - bottomPoint[2];
 
-    if (verbose)
+    if (showDebug)
     {
         addDebugPoint(context, bottomPoint, DebugColor.MAGENTA);
         addDebugPoint(context, topPoint, DebugColor.GREEN);
