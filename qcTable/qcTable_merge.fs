@@ -125,7 +125,7 @@ export function mergeStationData(
     }
 
     // Assign station numbers now that the displayed rows are known.
-    merged = assignStationNumbers(merged, rowXs, stationNumbering);
+    merged = assignStationNumbers(merged, rowXs, stationNumbering, boundaries);
 
     return merged;
 }
@@ -134,11 +134,17 @@ export function mergeStationData(
  * Assign the "station" number to each row. Rows arrive in ascending world-X
  * order, so a row's index is its ascending rank.
  *
- * DEFAULT: 0-based ascending-X index (legacy behavior).
+ * DEFAULT: 0-based, counting from the FCP/tip end toward the ACP/tail end. This
+ *          is oriented by the FCP->ACP direction (sign of rsl), NOT by world X.
+ *          The legacy code numbered from the min-X row, which only matched the
+ *          tip when FCP happened to sit at a lesser X than ACP; parts modeled
+ *          with FCP at the greater X then numbered backwards (station 0 landing
+ *          on the tail). Anchoring to FCP keeps numbering consistent whichever
+ *          way the part is modeled.
  * CUSTOM:  the row nearest stationNumbering.station0X is 0; numbers then count
  *          outward, increasing or decreasing with world X per the direction.
  */
-function assignStationNumbers(rows is array, rowXs is array, stationNumbering is map) returns array
+function assignStationNumbers(rows is array, rowXs is array, stationNumbering is map, boundaries is map) returns array
 {
     if (stationNumbering.mode == STATION_NUMBERING.CUSTOM && size(rows) > 0)
     {
@@ -164,9 +170,14 @@ function assignStationNumbers(rows is array, rowXs is array, stationNumbering is
     }
     else
     {
-        for (var i = 0; i < size(rows); i += 1)
+        // Station 0 at the FCP/tip end. When FCP is at the lesser X (rsl >= 0)
+        // that is the min-X row (ascending index); when the part is mirrored
+        // (FCP at the greater X) it is the max-X row, so count down from the end.
+        var fcpAtMinX = boundaries.rsl >= 0 * millimeter;
+        var n = size(rows);
+        for (var i = 0; i < n; i += 1)
         {
-            rows[i].station = i;
+            rows[i].station = fcpAtMinX ? i : (n - 1 - i);
         }
     }
 
