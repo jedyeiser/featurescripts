@@ -346,18 +346,17 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
         if (hasSW)
         {
-            // Setup SW measurement infrastructure
-            var swSetup = setupSidewallMeasurement(context, id + "sw_", swData, swExtents);
-
-            // Measure at each station
+            // Measure at each station by sectioning the sidewall body fresh at
+            // each X (no global edge pre-classification - see measureSidewallAtStation).
             var bottomCenterPoints = [];
             var topCenterPoints = [];
             for (var station in stations)
             {
                 var measurement = measureSidewallAtStation(
                     context,
-                    swSetup,
+                    swData,
                     station.x,
+                    swExtents,
                     definition.verbose
                 );
 

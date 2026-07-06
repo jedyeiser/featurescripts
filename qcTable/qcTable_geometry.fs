@@ -237,6 +237,12 @@ export function measureCoreAtStation(
     if (size(allPoints) == 0)
     {
         // No intersection at this station
+        if (verbose)
+        {
+            println("CORE MISS @ X = " ~ stationX
+                ~ " : plane intersects 0 core edges from "
+                ~ size(evIntersectEdges) ~ " candidate edge(s) - core does not reach this X.");
+        }
         opDeleteBodies(context, id + "deleteMeasurePlane", {"entities" : planeBody});
         return undefined;
     }
@@ -449,51 +455,94 @@ export function measureCoreAtStation(
 // ============================================================================
 
 /**
- * Setup sidewall measurement infrastructure
- * Extracts top and bottom edges and creates center splines
- */
-export function setupSidewallMeasurement(
-    context is Context,
-    id is Id,
-    swData is map,
-    swExtents is Box3d) returns map
-{
-    // Get bottom edges
-    var bottomEdges = getBottomEdges(context, id + "bottom", swData.bodies, swExtents);
-
-    // Get top edges
-    var topEdges = getTopEdges(context, id + "top", swData.bodies, swExtents);
-
-    // Return the classified edge sets directly. Measurement intersects each
-    // station plane with these edges, so no continuous Path is required.
-    return {
-        "bottomInside" : bottomEdges.inside,
-        "bottomOutside" : bottomEdges.outside,
-        "topInside" : topEdges.inside,
-        "topOutside" : topEdges.outside
-    };
-}
-
-/**
- * Measure sidewall at a specific X station
+ * Measure sidewall at a specific X station.
+ *
+ * Sections the sidewall body fresh at this station (plane normal +X) and reads
+ * the intersection points directly, exactly like measureCoreAtStation does for
+ * the core. This replaced an earlier approach that pre-classified top/bottom and
+ * inside/outside edge sets from only ~11 sample planes inset 3 mm from each end:
+ * any station landing on a sidewall edge segment those samples never captured
+ * returned no data even though the body clearly reached that X. Fresh sectioning
+ * removes that failure mode entirely.
+ *
+ * The section of a thin sidewall is a near-parallelogram with two top corners
+ * (inside/outside) and two bottom corners. Splitting the points at mid-Z and
+ * averaging each half reproduces the old mid-thickness top and bottom centers.
+ *
+ * No declared return type: returns undefined when the plane finds no section
+ * (the body does not reach this X - legitimate for stations past the sidewall
+ * when the core is longer). Callers treat undefined as "no data at this station".
  */
 export function measureSidewallAtStation(
     context is Context,
-    swSetup is map,
+    swData is map,
     stationX is ValueWithUnits,
+    swExtents is Box3d,
     verbose is boolean)
 {
     var measurePlane = plane(vector(stationX, 0 * millimeter, 0 * millimeter), vector(1, 0, 0));
 
-    // Intersect the station plane directly with the inside/outside sidewall
-    // edges and average to get the mid-thickness center point at this station.
-    var bottomPoint = stationCenterPoint(context, swSetup.bottomInside, swSetup.bottomOutside, measurePlane);
-    var topPoint = stationCenterPoint(context, swSetup.topInside, swSetup.topOutside, measurePlane);
+    var swEdges = qOwnedByBody(swData.bodies, EntityType.EDGE);
+    var crossing = evaluateQuery(context, qIntersectsPlane(swEdges, measurePlane));
 
-    if (bottomPoint == undefined || topPoint == undefined)
+    if (size(crossing) == 0)
     {
+        if (verbose)
+        {
+            var withinExtents = stationX >= swExtents.minCorner[0] - EDGE_MARGIN
+                && stationX <= swExtents.maxCorner[0] + EDGE_MARGIN;
+            println("SW MISS @ X = " ~ stationX
+                ~ " : plane intersects 0 sidewall edges."
+                ~ " Within SW extents [" ~ swExtents.minCorner[0] ~ ", " ~ swExtents.maxCorner[0] ~ "]? " ~ withinExtents
+                ~ (withinExtents ? "  <-- UNEXPECTED: body reaches this X" : "  (expected: past sidewall end)"));
+        }
         return undefined;
     }
+
+    var points = [];
+    for (var edge in crossing)
+    {
+        var pt = evDistance(context, {
+            "side0" : measurePlane,
+            "side1" : edge
+        }).sides[1].point;
+        points = append(points, pt);
+    }
+    points = deduplicate(points);
+
+    if (size(points) < 2)
+    {
+        if (verbose)
+        {
+            println("SW MISS @ X = " ~ stationX
+                ~ " : only " ~ size(points) ~ " section point(s) after dedup from "
+                ~ size(crossing) ~ " crossing edge(s) - section too degenerate to measure.");
+        }
+        return undefined;
+    }
+
+    // Top/bottom split by mid-Z, then average each half so the centers sit at
+    // mid-thickness (inside/outside corners averaged), matching the old result.
+    var maxZ = points[0][2];
+    var minZ = points[0][2];
+    for (var pt in points)
+    {
+        if (pt[2] > maxZ)
+        {
+            maxZ = pt[2];
+        }
+        if (pt[2] < minZ)
+        {
+            minZ = pt[2];
+        }
+    }
+
+    var midZ = (maxZ + minZ) / 2;
+    var topPoints = filter(points, function(p) { return p[2] >= midZ; });
+    var bottomPoints = filter(points, function(p) { return p[2] < midZ; });
+
+    var topPoint = average(topPoints);
+    var bottomPoint = average(bottomPoints);
 
     var swHeight = topPoint[2] - bottomPoint[2];
 
@@ -511,268 +560,3 @@ export function measureSidewallAtStation(
         "topCenter" : topPoint
     };
 }
-
-/**
- * Center point at a station: average the inside and outside edge intersections
- * with the measurement plane. Returns undefined if neither side intersects.
- */
-function stationCenterPoint(context is Context, insideEdges, outsideEdges, measurePlane is Plane)
-{
-    var insidePoint = stationEdgeIntersection(context, insideEdges, measurePlane);
-    var outsidePoint = stationEdgeIntersection(context, outsideEdges, measurePlane);
-
-    if (insidePoint == undefined && outsidePoint == undefined)
-    {
-        return undefined;
-    }
-    if (insidePoint == undefined)
-    {
-        return outsidePoint;
-    }
-    if (outsidePoint == undefined)
-    {
-        return insidePoint;
-    }
-    return average([insidePoint, outsidePoint]);
-}
-
-/**
- * Average intersection point of an edge set with the measurement plane.
- * Returns undefined if no edge in the set crosses the plane.
- */
-function stationEdgeIntersection(context is Context, edges, measurePlane is Plane)
-{
-    var crossing = evaluateQuery(context, qIntersectsPlane(qUnion(edges), measurePlane));
-    if (size(crossing) == 0)
-    {
-        return undefined;
-    }
-
-    var points = [];
-    for (var edge in crossing)
-    {
-        var dist = evDistance(context, {
-            "side0" : edge,
-            "side1" : measurePlane
-        });
-        points = append(points, dist.sides[0].point);
-    }
-    return average(points);
-}
-
-// ============================================================================
-// SIDEWALL HELPER FUNCTIONS (from Generate_Sidewall_Data)
-// ============================================================================
-
-/**
- * Get bottom edges of sidewall (inside and outside)
- */
-function getBottomEdges(context is Context, id is Id, swBody is Query, swExtents is Box3d) returns map
-{
-    var allEdges = qOwnedByBody(swBody, EntityType.EDGE);
-
-    // Create dummy spline for sweep planes
-    opFitSpline(context, id + "dummySpline", {
-        "points" : [
-            vector(swExtents.minCorner[0] + 3 * millimeter, 0 * millimeter, 0 * millimeter),
-            vector(swExtents.maxCorner[0] - 3 * millimeter, 0 * millimeter, 0 * millimeter)
-        ]
-    });
-
-    var dummySpline = qCreatedBy(id + "dummySpline", EntityType.BODY);
-    var insideEdges = [];
-    var outsideEdges = [];
-    var params = range(0, 1, 10);
-
-    for (var i = 0; i < size(params); i += 1)
-    {
-        var planeLine = evEdgeTangentLine(context, {
-            edge: qOwnedByBody(dummySpline, EntityType.EDGE),
-            parameter: params[i]
-        });
-
-        opPlane(context, id + (i ~ "plane"), {
-            "plane" : plane(planeLine.origin, planeLine.direction)
-        });
-
-        var searchPlane = qCreatedBy(id + (i ~ "plane"), EntityType.BODY);
-        var evSearchPlane = evPlane(context, {
-            face: qOwnedByBody(searchPlane, EntityType.FACE)
-        });
-
-        var intersectEdges = qIntersectsPlane(allEdges, evSearchPlane);
-        var evIntersectEdges = evaluateQuery(context, intersectEdges);
-
-        var lowest = {"query" : qNothing(), "zVal" : 200 * millimeter, "yVal" : 0 * millimeter};
-        var secondLowest = {"query" : qNothing(), "zVal" : 200 * millimeter, "yVal" : 0 * millimeter};
-
-        for (var edge in evIntersectEdges)
-        {
-            var edgeDist = evDistance(context, {
-                side0: edge,
-                side1: searchPlane
-            });
-
-            var zVal = edgeDist.sides[0].point[2];
-            var yVal = edgeDist.sides[0].point[1];
-
-            if (zVal <= lowest.zVal)
-            {
-                secondLowest = lowest;
-                lowest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
-            }
-            else if (zVal <= secondLowest.zVal)
-            {
-                secondLowest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
-            }
-        }
-
-        // Inside edge has minimum Y value
-        var minY = min([lowest.yVal, secondLowest.yVal]);
-        if (lowest.yVal == minY)
-        {
-            if (!any(insideEdges, function(x) { return x == lowest.query; }))
-            {
-                insideEdges = append(insideEdges, lowest.query);
-                insideEdges = append(insideEdges, qTangentConnectedEdges(lowest.query));
-            }
-            if (!any(outsideEdges, function(x) { return x == secondLowest.query; }))
-            {
-                outsideEdges = append(outsideEdges, secondLowest.query);
-                outsideEdges = append(outsideEdges, qTangentConnectedEdges(secondLowest.query));
-            }
-        }
-        else
-        {
-            if (!any(insideEdges, function(x) { return x == secondLowest.query; }))
-            {
-                insideEdges = append(insideEdges, secondLowest.query);
-                insideEdges = append(insideEdges, qTangentConnectedEdges(secondLowest.query));
-            }
-            if (!any(outsideEdges, function(x) { return x == lowest.query; }))
-            {
-                outsideEdges = append(outsideEdges, lowest.query);
-                outsideEdges = append(outsideEdges, qTangentConnectedEdges(lowest.query));
-            }
-        }
-
-        opDeleteBodies(context, id + ("deletePlane" ~ i), {"entities" : searchPlane});
-    }
-
-    opDeleteBodies(context, id + "deleteDummy", {"entities" : dummySpline});
-
-    insideEdges = evaluateQuery(context, qUnion(insideEdges));
-    outsideEdges = evaluateQuery(context, qUnion(outsideEdges));
-
-    return {
-        inside: insideEdges,
-        outside: outsideEdges
-    };
-}
-
-/**
- * Get top edges of sidewall (inside and outside)
- */
-function getTopEdges(context is Context, id is Id, swBody is Query, swExtents is Box3d) returns map
-{
-    var allEdges = qOwnedByBody(swBody, EntityType.EDGE);
-
-    // Create dummy spline for sweep planes
-    opFitSpline(context, id + "dummySpline", {
-        points: [
-            vector(swExtents.minCorner[0] + 3 * millimeter, 0 * millimeter, 0 * millimeter),
-            vector(swExtents.maxCorner[0] - 3 * millimeter, 0 * millimeter, 0 * millimeter)
-        ]
-    });
-
-    var dummySpline = qCreatedBy(id + "dummySpline", EntityType.BODY);
-    var insideEdges = [];
-    var outsideEdges = [];
-    var params = range(0, 1, 10);
-
-    for (var i = 0; i < size(params); i += 1)
-    {
-        var planeLine = evEdgeTangentLine(context, {
-            "edge" : qOwnedByBody(dummySpline, EntityType.EDGE),
-            "parameter" : params[i]
-        });
-
-        opPlane(context, id + (i ~ "plane"), {
-            "plane" : plane(planeLine.origin, planeLine.direction)
-        });
-
-        var searchPlane = qCreatedBy(id + (i ~ "plane"), EntityType.BODY);
-        var evSearchPlane = evPlane(context, {
-            face: qOwnedByBody(searchPlane, EntityType.FACE)
-        });
-
-        var intersectEdges = qIntersectsPlane(allEdges, evSearchPlane);
-        var evIntersectEdges = evaluateQuery(context, intersectEdges);
-
-        var highest = {"query" : qNothing(), "zVal" : -200 * millimeter, "yVal" : 0 * millimeter};
-        var secondHighest = {"query" : qNothing(), "zVal" : -200 * millimeter, "yVal" : 0 * millimeter};
-
-        for (var edge in evIntersectEdges)
-        {
-            var edgeDist = evDistance(context, {
-                "side0" : edge,
-                "side1" : searchPlane
-            });
-
-            var zVal = edgeDist.sides[0].point[2];
-            var yVal = edgeDist.sides[0].point[1];
-
-            if (zVal >= highest.zVal)
-            {
-                secondHighest = highest;
-                highest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
-            }
-            else if (zVal >= secondHighest.zVal)
-            {
-                secondHighest = {"query" : edge, "zVal" : zVal, "yVal" : yVal};
-            }
-        }
-
-        // Inside edge has minimum Y value
-        var minY = min([highest.yVal, secondHighest.yVal]);
-        if (highest.yVal == minY)
-        {
-            if (!any(insideEdges, function(x) { return x == highest.query; }))
-            {
-                insideEdges = append(insideEdges, highest.query);
-                insideEdges = append(insideEdges, qTangentConnectedEdges(highest.query));
-            }
-            if (!any(outsideEdges, function(x) { return x == secondHighest.query; }))
-            {
-                outsideEdges = append(outsideEdges, secondHighest.query);
-                outsideEdges = append(outsideEdges, qTangentConnectedEdges(secondHighest.query));
-            }
-        }
-        else
-        {
-            if (!any(insideEdges, function(x) { return x == secondHighest.query; }))
-            {
-                insideEdges = append(insideEdges, secondHighest.query);
-                insideEdges = append(insideEdges, qTangentConnectedEdges(secondHighest.query));
-            }
-            if (!any(outsideEdges, function(x) { return x == highest.query; }))
-            {
-                outsideEdges = append(outsideEdges, highest.query);
-                outsideEdges = append(outsideEdges, qTangentConnectedEdges(highest.query));
-            }
-        }
-
-        opDeleteBodies(context, id + ("deletePlane" ~ i), {"entities" : searchPlane});
-    }
-
-    opDeleteBodies(context, id + "deleteDummy", {"entities" : dummySpline});
-
-    insideEdges = evaluateQuery(context, qUnion(insideEdges));
-    outsideEdges = evaluateQuery(context, qUnion(outsideEdges));
-
-    return {
-        inside: insideEdges,
-        outside: outsideEdges
-    };
-}
-
