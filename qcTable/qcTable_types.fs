@@ -219,6 +219,23 @@ export enum STATION_NUMBERING
     CUSTOM
 }
 
+/**
+ * Which bodies get their terminal (end) stations measured a small distance
+ * inside the body end instead of exactly at the ambiguous end cap. OFF disables
+ * the behavior entirely.
+ */
+export enum END_INSET_SCOPE
+{
+    annotation { "Name" : "Off" }
+    OFF,
+    annotation { "Name" : "Core only" }
+    CORE,
+    annotation { "Name" : "Sidewall only" }
+    SIDEWALL,
+    annotation { "Name" : "Both" }
+    BOTH
+}
+
 // ============================================================================
 // CONSTANTS AND BOUNDS
 // ============================================================================
@@ -282,11 +299,11 @@ export const filterPointDistBounds =
  * End inset distance for terminal-station measurement.
  * How far inside a body end its outermost station is measured, to avoid the
  * ambiguous section exactly at the end cap.
- * Default: 1mm, Range: 0.1mm to 25mm
+ * Default: 0.5mm, Range: 0.01mm to 25mm
  */
 export const endInsetBounds =
 {
-    (millimeter) : [0.1, 1, 25]
+    (millimeter) : [0.01, 0.5, 25]
 } as LengthBoundSpec;
 
 // ============================================================================

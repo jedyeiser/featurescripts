@@ -163,12 +163,12 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // ===== Body End Measurement =====
         annotation { "Group Name" : "Body End Measurement", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Inset measurements at body ends", "Default" : true, "Description" : "Measure each body's two end (tip/tail) stations a small distance inside the body instead of exactly at the end cap. Sectioning a body exactly at its end is numerically ambiguous - the section plane is coincident with the terminal face - and can return a valid-looking but incorrect height. The table still reports these rows at their true station X." }
-            definition.insetBodyEnds is boolean;
+            annotation { "Name" : "Inset measurements at body ends", "UIHint" : UIHint.SHOW_LABEL, "Default" : END_INSET_SCOPE.BOTH, "Description" : "Measure a body's two end (tip/tail) stations a small distance inside the body instead of exactly at the end cap, and choose which bodies it applies to. Sectioning a body exactly at its end is numerically ambiguous - the section plane is coincident with the terminal face - and can return a valid-looking but incorrect height. The table still reports these rows at their true station X." }
+            definition.endInsetScope is END_INSET_SCOPE;
 
-            if (definition.insetBodyEnds)
+            if (definition.endInsetScope != END_INSET_SCOPE.OFF)
             {
-                annotation { "Name" : "End inset distance", "Description" : "How far inside a body end to take its terminal measurement. Applies only to the single outermost station at each end of each body; all interior stations are measured exactly." }
+                annotation { "Name" : "End inset distance", "Description" : "How far inside a body end to take its terminal measurement. Applies only to the single outermost station at each end of the selected bodies; all interior stations are measured exactly." }
                 isLength(definition.endInsetDistance, endInsetBounds);
             }
         }
@@ -325,9 +325,22 @@ export const generateQCData = defineFeature(function(context is Context, id is I
         // CORE MEASUREMENTS
         // ===================================================================
 
-        // End inset distance applied only to each body's two terminal stations.
-        // 0 when the option is off, which disables insetting entirely.
-        var endInset = definition.insetBodyEnds ? definition.endInsetDistance : 0 * millimeter;
+        // Per-body end-inset distance. 0 disables insetting for that body; the
+        // scope enum selects which bodies (if any) get their terminal stations
+        // nudged inward off the ambiguous end cap.
+        var coreInset = 0 * millimeter;
+        var swInset = 0 * millimeter;
+        if (definition.endInsetScope != END_INSET_SCOPE.OFF)
+        {
+            if (definition.endInsetScope != END_INSET_SCOPE.SIDEWALL)
+            {
+                coreInset = definition.endInsetDistance;
+            }
+            if (definition.endInsetScope != END_INSET_SCOPE.CORE)
+            {
+                swInset = definition.endInsetDistance;
+            }
+        }
 
         var coreMeasurements = {};
 
@@ -342,7 +355,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
                 // Only the two terminal stations are nudged inward; every other
                 // station is sectioned exactly at its own X.
-                var measureX = insetTerminalX(station.x, coreExtents, endInset, coreTerminals);
+                var measureX = insetTerminalX(station.x, coreExtents, coreInset, coreTerminals);
 
                 var measurement = measureCoreAtStation(
                     context,
@@ -382,7 +395,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             for (var station in stations)
             {
                 // Only the sidewall's two terminal stations are nudged inward.
-                var measureX = insetTerminalX(station.x, swExtents, endInset, swTerminals);
+                var measureX = insetTerminalX(station.x, swExtents, swInset, swTerminals);
 
                 var measurement = measureSidewallAtStation(
                     context,
