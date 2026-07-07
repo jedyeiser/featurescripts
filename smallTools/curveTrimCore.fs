@@ -28,6 +28,13 @@ export const CTC_MIN_SEGMENT = 1e-5 * meter;
 // an endpoint (which produces a zero-length segment or no split at all).
 export const CTC_FRACTION_EPS = 1e-6;
 
+// Number of equal segments for the even-division mode (this many pieces, so
+// this-minus-one interior cuts).
+export const CTC_DIVISION_BOUNDS =
+{
+    (unitless) : [2, 4, 100]
+} as IntegerBoundSpec;
+
 // ============================================================================
 // LOCATING CUTS (all return an arc-length fraction in 0..1 on the edge)
 // ============================================================================
@@ -142,14 +149,33 @@ export function splitWireWithPlanes(context is Context, id is Id, targetWire is 
 // ============================================================================
 
 /**
- * Of the `segments`, keep only the one whose geometry is closest to `keepPoint`
- * and delete the rest. This is the TRIM operation: keep the help-point side,
- * discard the offcut(s).
+ * Keep exactly one of the `segments` and delete the rest - the TRIM operation.
+ * The kept segment is the one nearest `point` (the help point) when
+ * `keepNearest` is true, or the farthest when false (the "opposite direction"
+ * flip). Distances are measured body-to-point with evDistance. A single-segment
+ * input is left untouched.
  */
-export function keepSegmentNearestPoint(context is Context, id is Id, segments is Query, keepPoint is Vector)
+export function keepSegmentByPoint(context is Context, id is Id, segments is Query, point is Vector, keepNearest is boolean)
 {
-    var keep = qClosestTo(segments, keepPoint);
-    var discard = qSubtraction(segments, keep);
+    var segs = evaluateQuery(context, segments);
+    if (size(segs) <= 1)
+    {
+        return;
+    }
+
+    var bestIdx = 0;
+    var bestDist = evDistance(context, { "side0" : point, "side1" : segs[0] }).distance;
+    for (var i = 1; i < size(segs); i += 1)
+    {
+        var di = evDistance(context, { "side0" : point, "side1" : segs[i] }).distance;
+        if ((keepNearest && di < bestDist) || (!keepNearest && di > bestDist))
+        {
+            bestDist = di;
+            bestIdx = i;
+        }
+    }
+
+    var discard = qSubtraction(segments, segs[bestIdx]);
     if (!isQueryEmpty(context, discard))
     {
         opDeleteBodies(context, id + "discard", { "entities" : discard });
@@ -157,18 +183,18 @@ export function keepSegmentNearestPoint(context is Context, id is Id, segments i
 }
 
 /**
- * Merge the `segments` back into a single wire body. Segments share endpoints at
- * the cut vertices, so a boolean union joins them into one body with multiple
- * edges - the optional "return a single wire" output of a SPLIT.
- *
- * NOTE: boolean union on WIRE bodies needs confirmation on the target FS version;
- * if it is unsupported, callers fall back to leaving the segments as separate
- * bodies (or grouping them into a composite part).
+ * Merge the `segments` into a single wire body - the optional "return a single
+ * wire" output of a SPLIT. opBoolean does NOT combine wires, so this re-extracts
+ * all the segment edges into one fresh wire: the edges stay connected at the cut
+ * vertices (only two meet per cut, so opExtractWires does not hit its ">2 edges
+ * at a point" failure), and opExtractWires stitches coincident endpoints into a
+ * single connected wire body. The original split segments are then deleted so
+ * only the combined wire remains.
  */
 export function unionSegments(context is Context, id is Id, segments is Query)
 {
-    opBoolean(context, id + "unionWire", {
-        "tools" : segments,
-        "operationType" : BooleanOperationType.UNION
+    opExtractWires(context, id + "singleWire", {
+        "edges" : qOwnedByBody(segments, EntityType.EDGE)
     });
+    opDeleteBodies(context, id + "removeSegments", { "entities" : segments });
 }
