@@ -2,7 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // curveTrimCore (same document) - plane-cut trim/split engine
-import(path : "d56d74c24234ab2b885e6fc1", version : "");
+import(path : "d56d74c24234ab2b885e6fc1", version : "7ca8028126823f3fd7c28f56");
+
+IconNamespace::import(path : "a4ceb2cfcdb959208b76a85c", version : "e1d6923ac9355dc407e71a4f");
+
 
 /**
  * betterCurveTrim - a more powerful curve trim/split, in the look and feel of
@@ -89,7 +92,7 @@ export enum INFLECTION_MODE
 // FEATURE
 // ============================================================================
 
-annotation { "Feature Type Name" : "Trim curve +", "Manipulator Change Function" : "onInflectionPick" }
+annotation { "Feature Type Name" : "Trim curve +", "Icon" : IconNamespace::BLOB_DATA, "Manipulator Change Function" : "onInflectionPick" }
 export const betterCurveTrim = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -169,9 +172,9 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             definition.flipHeuristics is boolean;
         }
 
-        // Hidden: which inflection the user clicked in AT_INFLECTION mode (-1 = none).
-        annotation { "Name" : "Chosen inflection", "UIHint" : UIHint.ALWAYS_HIDDEN }
-        isInteger(definition.inflectionIndex, CTC_INFLECTION_INDEX_BOUNDS);
+        // Hidden: which inflections the user toggled in AT_INFLECTION/PICK mode.
+        annotation { "Name" : "Chosen inflections", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.inflectionIndices is array;
     }
     {
         if (isQueryEmpty(context, definition.curves))
@@ -183,8 +186,8 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 
         if (definition.cutBy == CUT_BY.AT_INFLECTION)
         {
-            // One clickable picker per curve; keep to a single curve so one hidden
-            // index maps unambiguously to one manipulator.
+            // One picker per feature; keep to a single curve so the hidden selection
+            // maps unambiguously to one manipulator.
             if (size(wires) != 1)
             {
                 throw regenError("Inflection mode supports one curve at a time", ["curves"]);
@@ -198,6 +201,9 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
                 adjustOneCurve(context, id + ("curve" ~ w), definition, wires[w]);
             }
         }
+    },
+    {
+        "inflectionIndices" : []
     });
 
 // ============================================================================
@@ -217,24 +223,27 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         throw regenError("No valid cut location found on the curve", ["curves"]);
     }
 
+    // For the point-based modes, a trim is a single cut - reduce to the first
+    // location. (Inflection mode trims/splits at every chosen point, so it does
+    // its own thing and calls applyCut directly.)
+    if (definition.operation == OPERATION.TRIM && size(fractions) > 1)
+    {
+        fractions = [fractions[0]];
+    }
+
     applyCut(context, id, definition, wire, edge, fractions);
 }
 
 /**
- * Cut `wire` at the given arc-length `fractions` and apply the operation: SPLIT
- * keeps every piece (optionally recombined into one wire), TRIM keeps one side of
- * a single cut (fractions reduced to the first). Red dots preview each cut.
+ * Cut `wire` at every given arc-length `fraction` and apply the operation: SPLIT
+ * keeps all pieces (optionally recombined into one wire), TRIM keeps one side
+ * (the flip chooses which). Red dots preview each cut.
  */
 function applyCut(context is Context, id is Id, definition is map, wire is Query, edge is Query, fractions is array)
 {
     if (size(fractions) == 0)
     {
         return;
-    }
-
-    if (definition.operation == OPERATION.TRIM && size(fractions) > 1)
-    {
-        fractions = [fractions[0]];
     }
 
     var planes = [];
@@ -274,9 +283,10 @@ function singleEdgeOf(context is Context, wire is Query) returns Query
 }
 
 /**
- * AT_INFLECTION: solve the curve's inflection points, drop a clickable point
- * manipulator at each, and cut at the one the user picked (stored in the hidden
- * inflectionIndex). With nothing picked yet, only the dots are shown.
+ * AT_INFLECTION: solve the curve's inflection points, then either auto-cut at the
+ * inflection nearest each endpoint (NEAR_ENDS), or drop a multi-select toggle dot
+ * at each and cut at every toggled one (PICK). With nothing toggled, only the dots
+ * show.
  */
 function adjustAtInflection(context is Context, id is Id, definition is map, wire is Query)
 {
@@ -295,20 +305,31 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
     }
     else
     {
-        // PICK: a clickable dot at each inflection; cut at the one clicked.
+        // PICK: a toggle dot at each inflection; cut at every toggled one.
         var pts = [];
         for (var i = 0; i < size(fractions); i += 1)
         {
             pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : fractions[i] }).origin);
         }
         addManipulators(context, id, {
-            (INFLECTION_MANIPULATOR) : pointsManipulator({ "points" : pts, "index" : definition.inflectionIndex })
+            (INFLECTION_MANIPULATOR) : togglePointsManipulator({
+                        "points" : pts,
+                        "selectedIndices" : definition.inflectionIndices,
+                        "suppressedIndices" : []
+                    })
         });
 
-        if (definition.inflectionIndex >= 0 && definition.inflectionIndex < size(fractions))
+        // Cut at each toggled inflection, sorted along the curve for the splitter.
+        var chosen = [];
+        for (var idx in definition.inflectionIndices)
         {
-            applyCut(context, id + "inflCut", definition, wire, edge, [fractions[definition.inflectionIndex]]);
+            if (idx >= 0 && idx < size(fractions))
+            {
+                chosen = append(chosen, fractions[idx]);
+            }
         }
+        chosen = sort(chosen, function(a, b) { return a - b; });
+        applyCut(context, id + "inflCut", definition, wire, edge, chosen);
     }
 }
 
@@ -435,15 +456,15 @@ function resolvePoint(context is Context, q is Query) returns Vector
 // ============================================================================
 
 /**
- * Records which inflection dot the user clicked into the hidden inflectionIndex,
- * so the body cuts there on the next regen (and keeps that dot highlighted). Only
+ * Records which inflection dots the user toggled into the hidden inflectionIndices,
+ * so the body cuts at each on the next regen (and keeps them highlighted). Only
  * fires when the inflection picker is present; other modes add no manipulators.
  */
 export function onInflectionPick(context is Context, definition is map, newManipulators is map) returns map
 {
     if (newManipulators[INFLECTION_MANIPULATOR] is map)
     {
-        definition.inflectionIndex = newManipulators[INFLECTION_MANIPULATOR].index;
+        definition.inflectionIndices = newManipulators[INFLECTION_MANIPULATOR].selectedIndices;
     }
     return definition;
 }
