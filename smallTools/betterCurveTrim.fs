@@ -51,8 +51,14 @@ export enum CUT_BY
     annotation { "Name" : "Even division" }
     EVEN_DIVISION,
     annotation { "Name" : "At points" }
-    AT_POINTS
+    AT_POINTS,
+    annotation { "Name" : "At inflections" }
+    AT_INFLECTION
 }
+
+// Manipulator key for the inflection-point picker - shared between the feature
+// body (which adds it) and the change function (which reads the clicked index).
+const INFLECTION_MANIPULATOR = "inflectionManipulator";
 
 /**
  * Even-division style: divide the span between two points into equal parts, or
@@ -70,7 +76,7 @@ export enum DIVISION_MODE
 // FEATURE
 // ============================================================================
 
-annotation { "Feature Type Name" : "Trim curve +" }
+annotation { "Feature Type Name" : "Trim curve +", "Manipulator Change Function" : "onInflectionPick" }
 export const betterCurveTrim = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -127,11 +133,13 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
                 definition.spacingReverse is boolean;
             }
         }
-        else
+        else if (definition.cutBy == CUT_BY.AT_POINTS)
         {
             annotation { "Name" : "Cut points", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             definition.atPoints is Query;
         }
+        // AT_INFLECTION needs no picks - inflections are solved from the curve and
+        // chosen by clicking a manipulator point.
 
         if (definition.operation == OPERATION.SPLIT)
         {
@@ -143,6 +151,10 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Keep opposite side", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Which side of the cut to keep. Trim discards the other side." }
             definition.flipHeuristics is boolean;
         }
+
+        // Hidden: which inflection the user clicked in AT_INFLECTION mode (-1 = none).
+        annotation { "Name" : "Chosen inflection", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        isInteger(definition.inflectionIndex, CTC_INFLECTION_INDEX_BOUNDS);
     }
     {
         if (isQueryEmpty(context, definition.curves))
@@ -151,9 +163,23 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
 
         var wires = evaluateQuery(context, definition.curves);
-        for (var w = 0; w < size(wires); w += 1)
+
+        if (definition.cutBy == CUT_BY.AT_INFLECTION)
         {
-            adjustOneCurve(context, id + ("curve" ~ w), definition, wires[w]);
+            // One clickable picker per curve; keep to a single curve so one hidden
+            // index maps unambiguously to one manipulator.
+            if (size(wires) != 1)
+            {
+                throw regenError("Inflection mode supports one curve at a time", ["curves"]);
+            }
+            adjustAtInflection(context, id, definition, wires[0]);
+        }
+        else
+        {
+            for (var w = 0; w < size(wires); w += 1)
+            {
+                adjustOneCurve(context, id + ("curve" ~ w), definition, wires[w]);
+            }
         }
     });
 
@@ -208,6 +234,55 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
     else if (definition.returnSingleWire)
     {
         combineSplitToSingleWire(context, id, pieces);
+    }
+}
+
+/**
+ * AT_INFLECTION: solve the curve's inflection points, drop a clickable point
+ * manipulator at each, and cut at the one the user picked (stored in the hidden
+ * inflectionIndex). With nothing picked yet, only the dots are shown.
+ */
+function adjustAtInflection(context is Context, id is Id, definition is map, wire is Query)
+{
+    var edges = evaluateQuery(context, qOwnedByBody(wire, EntityType.EDGE));
+    if (size(edges) != 1)
+    {
+        throw regenError("Each curve must currently be a single-edge wire", ["curves"]);
+    }
+    var edge = edges[0];
+
+    var fractions = solveInflectionFractions(context, edge);
+    if (size(fractions) == 0)
+    {
+        throw regenError("No inflection points found on this curve", ["curves"]);
+    }
+
+    // A clickable dot at each inflection; the currently chosen one is highlighted.
+    var pts = [];
+    for (var i = 0; i < size(fractions); i += 1)
+    {
+        pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : fractions[i] }).origin);
+    }
+    addManipulators(context, id, {
+        (INFLECTION_MANIPULATOR) : pointsManipulator({ "points" : pts, "index" : definition.inflectionIndex })
+    });
+
+    // Cut only once a valid inflection has been clicked.
+    if (definition.inflectionIndex >= 0 && definition.inflectionIndex < size(fractions))
+    {
+        var planes = [cutPlaneAtFraction(context, edge, fractions[definition.inflectionIndex])];
+        markCutPoints(context, planes);
+
+        var pieces = splitWireIntoPieces(context, id + "inflCut", wire, planes);
+        if (definition.operation == OPERATION.TRIM)
+        {
+            var keepIndex = definition.flipHeuristics ? 0 : (size(pieces) - 1);
+            keepOnePiece(context, id + "inflCut", pieces, keepIndex);
+        }
+        else if (definition.returnSingleWire)
+        {
+            combineSplitToSingleWire(context, id + "inflCut", pieces);
+        }
     }
 }
 
@@ -313,4 +388,22 @@ function resolvePoint(context is Context, q is Query) returns Vector
         return evMateConnector(context, { "mateConnector" : q }).origin;
     }
     return evVertexPoint(context, { "vertex" : q });
+}
+
+// ============================================================================
+// MANIPULATOR CHANGE FUNCTION
+// ============================================================================
+
+/**
+ * Records which inflection dot the user clicked into the hidden inflectionIndex,
+ * so the body cuts there on the next regen (and keeps that dot highlighted). Only
+ * fires when the inflection picker is present; other modes add no manipulators.
+ */
+export function onInflectionPick(context is Context, definition is map, newManipulators is map) returns map
+{
+    if (newManipulators[INFLECTION_MANIPULATOR] is map)
+    {
+        definition.inflectionIndex = newManipulators[INFLECTION_MANIPULATOR].index;
+    }
+    return definition;
 }

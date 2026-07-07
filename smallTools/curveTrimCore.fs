@@ -51,6 +51,17 @@ export const CTC_SPACING_COUNT_BOUNDS =
     (unitless) : [1, 5, 100]
 } as IntegerBoundSpec;
 
+// Inflection solver: samples for the curvature sign-change scan, and the
+// fraction-space tolerance each root is refined to.
+export const CTC_INFLECTION_SAMPLES = 200;
+export const CTC_INFLECTION_TOL = 1e-5;
+
+// Bound for the hidden "chosen inflection" index (-1 = none picked yet).
+export const CTC_INFLECTION_INDEX_BOUNDS =
+{
+    (unitless) : [-1, -1, 100000]
+} as IntegerBoundSpec;
+
 // ============================================================================
 // LOCATING CUTS (all return an arc-length fraction in 0..1 on the edge)
 // ============================================================================
@@ -91,9 +102,11 @@ export function fractionAtDistanceTowardMid(context is Context, edge is Query, f
 }
 
 /**
- * Interior cut fractions that divide the span between `pointA` and `pointB` into
- * `numParts` equal arc-length pieces - i.e. numParts - 1 cuts. The two points
- * define the span in either order.
+ * Cut fractions dividing the span between `pointA` and `pointB` into `numParts`
+ * equal arc-length pieces. The two endpoints are included as cuts (so the picked
+ * points themselves are split, not just the interior divisions) - k runs 0 to
+ * numParts inclusive. Any cut that lands on a curve end is dropped later by
+ * cleanFractions. The two points define the span in either order.
  */
 export function evenDivisionFractions(context is Context, edge is Query, pointA is Vector, pointB is Vector, numParts is number) returns array
 {
@@ -103,7 +116,7 @@ export function evenDivisionFractions(context is Context, edge is Query, pointA 
     var hi = max([fA, fB]);
 
     var fractions = [];
-    for (var k = 1; k < numParts; k += 1)
+    for (var k = 0; k <= numParts; k += 1)
     {
         fractions = append(fractions, lo + (hi - lo) * k / numParts);
     }
@@ -315,4 +328,117 @@ export function combineSplitToSingleWire(context is Context, id is Id, pieces is
 
     opExtractWires(context, id + "singleWire", { "edges" : edges });
     opDeleteBodies(context, id + "removeSegments", { "entities" : all });
+}
+
+// ============================================================================
+// INFLECTION SOLVING
+// ============================================================================
+
+/**
+ * Arc-length fractions (0..1) of the curve's inflection points - where signed
+ * curvature crosses zero. evEdgeCurvature returns UNSIGNED curvature (it only dips
+ * toward zero, never flips), so we sign it by the curvature binormal against the
+ * curve's plane normal - which is why the curve must be planar. The parameter is
+ * arc-length fraction, the same space the cutter uses, so the returned fractions
+ * feed straight into the cut path.
+ *
+ * Method: sample signed curvature across [0,1] in one evEdgeCurvatures call, then
+ * bisect each sign-change bracket. Throws a clear error on a non-planar curve.
+ */
+export function solveInflectionFractions(context is Context, edge is Query) returns array
+{
+    var pl = planeOfEdge(context, edge);
+    var n = pl.normal;
+
+    var params = [];
+    for (var i = 0; i <= CTC_INFLECTION_SAMPLES; i += 1)
+    {
+        params = append(params, i / CTC_INFLECTION_SAMPLES);
+    }
+
+    var results = evEdgeCurvatures(context, { "edge" : edge, "parameters" : params });
+    var signed = [];
+    for (var i = 0; i < size(results); i += 1)
+    {
+        signed = append(signed, signedFromResult(results[i], n));
+    }
+
+    var roots = [];
+    for (var i = 1; i < size(signed); i += 1)
+    {
+        if (signed[i - 1] * signed[i] < 0)
+        {
+            roots = append(roots, bisectInflection(context, edge, n, params[i - 1], params[i], signed[i - 1]));
+        }
+    }
+    return roots;
+}
+
+/**
+ * The curve's plane, converted from a raw evPlanarEdge failure into an actionable
+ * message. This is a deliberate (rare) use of try/catch: turn a cryptic geometry
+ * throw into "the curve must be planar" for the inflection mode.
+ */
+function planeOfEdge(context is Context, edge is Query) returns Plane
+{
+    try
+    {
+        return evPlanarEdge(context, { "edge" : edge });
+    }
+    catch (e)
+    {
+        throw regenError("Inflection cutting requires a planar curve", ["curves"]);
+    }
+}
+
+/**
+ * Signed curvature (unitless per-meter value) from a curvature result: the
+ * unsigned magnitude times the sign of the Frenet binormal along the plane
+ * normal. The curvature frame has zAxis = tangent and xAxis = normal, so the
+ * binormal is cross(tangent, normal); for a planar curve it is +/- the plane
+ * normal and flips sign across an inflection.
+ */
+function signedFromResult(cr is map, planeNormal is Vector) returns number
+{
+    var binormal = cross(cr.frame.zAxis, cr.frame.xAxis);
+    var sgn = (dot(binormal, planeNormal) >= 0) ? 1 : -1;
+    return cr.curvature.value * sgn;
+}
+
+/**
+ * Signed curvature at a single arc-length fraction (used while refining a root).
+ */
+function signedCurvatureAt(context is Context, edge is Query, s is number, planeNormal is Vector) returns number
+{
+    return signedFromResult(evEdgeCurvature(context, { "edge" : edge, "parameter" : s }), planeNormal);
+}
+
+/**
+ * Bisect a signed-curvature sign-change bracket [a,b] (ka = signed curvature at a)
+ * down to CTC_INFLECTION_TOL in fraction space, returning the inflection fraction.
+ */
+function bisectInflection(context is Context, edge is Query, planeNormal is Vector, a is number, b is number, ka is number) returns number
+{
+    var lo = a;
+    var hi = b;
+    var klo = ka;
+    for (var iter = 0; iter < 60; iter += 1)
+    {
+        if (hi - lo < CTC_INFLECTION_TOL)
+        {
+            break;
+        }
+        var mid = (lo + hi) / 2;
+        var km = signedCurvatureAt(context, edge, mid, planeNormal);
+        if (klo * km <= 0)
+        {
+            hi = mid;
+        }
+        else
+        {
+            lo = mid;
+            klo = km;
+        }
+    }
+    return (lo + hi) / 2;
 }
