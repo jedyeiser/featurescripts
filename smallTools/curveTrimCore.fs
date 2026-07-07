@@ -16,8 +16,8 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *   - locating cuts   : fractionOfPointOnEdge, fractionNearestEntity,
  *                       fractionAtDistanceTowardMid, evenDivisionFractions
  *   - building cuts   : cutPlaneAtFraction
- *   - performing cuts : splitWireWithPlanes
- *   - selecting result: keepSegmentNearestPoint, unionSegments
+ *   - performing cuts : cutWireWithPlanes (returns the split Id, for qSplitBy)
+ *   - selecting result: keepSplitSide, combineSplitToSingleWire
  */
 
 // A resulting segment shorter than this is treated as a degenerate zero-length
@@ -115,17 +115,20 @@ export function cutPlaneAtFraction(context is Context, edge is Query, f is numbe
 // ============================================================================
 
 /**
- * Cut `targetWire` with every plane in `planes` in a single opSplitPart and
- * return the resulting segment bodies. One construction plane is built per cut
- * and all are unioned as the split tool; keepTools is false so the planes are
- * consumed by the split.
+ * Cut `wire` with every plane in `planes` in a single opSplitPart and return the
+ * split feature Id. Callers read the resulting sides with qSplitBy(splitId, ...):
+ * opSplitPart on a wire does NOT register the pieces under qCreatedBy, so
+ * qSplitBy - front = the tool-normal (curve tangent) side, back = the opposite -
+ * is the correct way to get them.
  *
- * The planes are geometrically infinite, so a plane also cuts the wire anywhere
- * else the curve happens to recross it. Callers that need one specific segment
- * select it afterward (keepSegmentNearestPoint); callers that split at points
- * intrinsic to the curve (arc length, even division) normally want every piece.
+ * keepTools is true so the construction planes remain ours to remove: opSplitPart
+ * does not delete plane tools on its own, so they are explicitly deleted here,
+ * leaving only the curve pieces. The planes are geometrically infinite, so a
+ * plane also cuts the wire anywhere else the curve recrosses it; intrinsic-cut
+ * callers (arc length, even division) want every piece anyway, and TRIM selects
+ * a side from the split rather than a specific segment.
  */
-export function splitWireWithPlanes(context is Context, id is Id, targetWire is Query, planes is array) returns Query
+export function cutWireWithPlanes(context is Context, id is Id, wire is Query, planes is array) returns Id
 {
     var planeBodies = [];
     for (var i = 0; i < size(planes); i += 1)
@@ -134,14 +137,21 @@ export function splitWireWithPlanes(context is Context, id is Id, targetWire is 
         planeBodies = append(planeBodies, qCreatedBy(id + ("cutPlane" ~ i), EntityType.BODY));
     }
 
-    opSplitPart(context, id + "split", {
-        "targets" : targetWire,
+    var splitId = id + "split";
+    opSplitPart(context, splitId, {
+        "targets" : wire,
         "tool" : qUnion(planeBodies),
-        "keepTools" : false,
+        "keepTools" : true,
         "keepType" : SplitOperationKeepType.KEEP_ALL
     });
 
-    return qCreatedBy(id + "split", EntityType.BODY);
+    var cutPlanes = qUnion(planeBodies);
+    if (!isQueryEmpty(context, cutPlanes))
+    {
+        opDeleteBodies(context, id + "deletePlanes", { "entities" : cutPlanes });
+    }
+
+    return splitId;
 }
 
 // ============================================================================
@@ -149,55 +159,61 @@ export function splitWireWithPlanes(context is Context, id is Id, targetWire is 
 // ============================================================================
 
 /**
- * Keep exactly one of the `segments` and delete the rest - the TRIM operation.
- * The kept segment is the one nearest `point` when `keepNearest` is true, or the
- * farthest when false. Distances are body-to-point via evDistance. Before the
- * discarded side is deleted it is highlighted in magenta (addDebugEntities), so
- * the removed portion shows during feature preview/edit like the stock trim. A
- * single-segment input is left untouched.
+ * TRIM: keep one side of a single-plane split and delete the other. The sides
+ * come from qSplitBy on the split feature - front is the tool-normal (curve
+ * tangent) side, back is the opposite. `keepBackSide` chooses which to keep; the
+ * discarded side is traced in magenta (shown while the edit dialog is open, like
+ * the stock trim) just before it is deleted. If the cut produced only one side
+ * (a grazing/near-endpoint cut) the discard query is empty and nothing is removed.
  */
-export function keepSegmentByPoint(context is Context, id is Id, segments is Query, point is Vector, keepNearest is boolean)
+export function keepSplitSide(context is Context, id is Id, splitId is Id, keepBackSide is boolean)
 {
-    var segs = evaluateQuery(context, segments);
-    if (size(segs) <= 1)
-    {
-        return;
-    }
-
-    var bestIdx = 0;
-    var bestDist = evDistance(context, { "side0" : point, "side1" : segs[0] }).distance;
-    for (var i = 1; i < size(segs); i += 1)
-    {
-        var di = evDistance(context, { "side0" : point, "side1" : segs[i] }).distance;
-        if ((keepNearest && di < bestDist) || (!keepNearest && di > bestDist))
-        {
-            bestDist = di;
-            bestIdx = i;
-        }
-    }
-
-    var discard = qSubtraction(segments, segs[bestIdx]);
+    var discard = qSplitBy(splitId, EntityType.BODY, !keepBackSide);
     if (!isQueryEmpty(context, discard))
     {
-        // Show the side about to be removed in magenta, then delete it.
-        addDebugEntities(context, discard, DebugColor.MAGENTA);
+        highlightRemovedSegment(context, discard);
         opDeleteBodies(context, id + "discard", { "entities" : discard });
     }
 }
 
 /**
- * Merge the `segments` into a single wire body - the optional "return a single
- * wire" output of a SPLIT. opBoolean does NOT combine wires, so this re-extracts
- * all the segment edges into one fresh wire: the edges stay connected at the cut
- * vertices (only two meet per cut, so opExtractWires does not hit its ">2 edges
- * at a point" failure), and opExtractWires stitches coincident endpoints into a
- * single connected wire body. The original split segments are then deleted so
- * only the combined wire remains.
+ * Trace each edge of `bodies` as a magenta polyline sampled at equal arc-length
+ * steps. addDebugEntities stores a QUERY re-evaluated at render time, so it would
+ * draw nothing once the body is deleted; addDebugLine stores coordinates, which
+ * survive the delete - so the removed side stays visible during the edit.
  */
-export function unionSegments(context is Context, id is Id, segments is Query)
+function highlightRemovedSegment(context is Context, bodies is Query)
 {
-    opExtractWires(context, id + "singleWire", {
-        "edges" : qOwnedByBody(segments, EntityType.EDGE)
-    });
-    opDeleteBodies(context, id + "removeSegments", { "entities" : segments });
+    var nSamples = 24;
+    var edges = evaluateQuery(context, qOwnedByBody(bodies, EntityType.EDGE));
+    for (var e = 0; e < size(edges); e += 1)
+    {
+        var prev = undefined;
+        for (var s = 0; s <= nSamples; s += 1)
+        {
+            var pt = evEdgeTangentLine(context, { "edge" : edges[e], "parameter" : s / nSamples }).origin;
+            if (prev != undefined)
+            {
+                addDebugLine(context, prev, pt, DebugColor.MAGENTA);
+            }
+            prev = pt;
+        }
+    }
+}
+
+/**
+ * SPLIT "return single wire": recombine every piece of the split into one wire
+ * body. opBoolean does NOT combine wires, so all piece edges are re-extracted
+ * into one connected wire with opExtractWires (edges stay joined at the cut
+ * vertices, only two per cut, so no ">2 edges at a point" failure), then the
+ * pieces are deleted. Pieces = the survivor that kept the original wire's
+ * identity (modified, so absent from qCreatedBy) plus the new offcuts (created by
+ * the split), so the original `wire` is unioned with qCreatedBy(splitId).
+ */
+export function combineSplitToSingleWire(context is Context, id is Id, wire is Query, splitId is Id)
+{
+    var pieces = qUnion([wire, qCreatedBy(splitId, EntityType.BODY)]);
+
+    opExtractWires(context, id + "singleWire", { "edges" : qOwnedByBody(pieces, EntityType.EDGE) });
+    opDeleteBodies(context, id + "removeSegments", { "entities" : pieces });
 }

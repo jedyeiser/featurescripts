@@ -149,20 +149,10 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         throw regenError("No valid cut location found on the curve", ["curves"]);
     }
 
-    // Trim is a single-cut operation - keep one side, discard the other - so
-    // reduce to the first cut location. Which side is kept is chosen by the flip
-    // boolean, identified by the curve endpoint it contains (captured here,
-    // before opSplitPart consumes the edge). No help-point pick needed.
-    var startPt = undefined;
-    var endPt = undefined;
-    if (definition.operation == OPERATION.TRIM)
+    // Trim keeps one side of a single cut, so reduce to the first cut location.
+    if (definition.operation == OPERATION.TRIM && size(fractions) > 1)
     {
-        if (size(fractions) > 1)
-        {
-            fractions = [fractions[0]];
-        }
-        startPt = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0 }).origin;
-        endPt = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1 }).origin;
+        fractions = [fractions[0]];
     }
 
     var planes = [];
@@ -171,16 +161,17 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         planes = append(planes, cutPlaneAtFraction(context, edge, fractions[i]));
     }
 
-    var segments = splitWireWithPlanes(context, id, wire, planes);
+    var splitId = cutWireWithPlanes(context, id, wire, planes);
 
     if (definition.operation == OPERATION.TRIM)
     {
-        var reference = definition.flipHeuristics ? endPt : startPt;
-        keepSegmentByPoint(context, id, segments, reference, true);
+        // The cut plane's normal is the curve tangent, so the split's "front" is
+        // the end side and "back" the start side; the flip picks which to keep.
+        keepSplitSide(context, id, splitId, definition.flipHeuristics);
     }
     else if (definition.returnSingleWire)
     {
-        unionSegments(context, id, segments);
+        combineSplitToSingleWire(context, id, wire, splitId);
     }
 }
 
