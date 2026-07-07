@@ -245,6 +245,8 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
             }
             var a = resolvePoint(context, definition.startPoint);
             var b = resolvePoint(context, definition.endPoint);
+            markProjectionToCurve(context, edge, a);
+            markProjectionToCurve(context, edge, b);
             return evenDivisionFractions(context, edge, a, b, definition.divisions);
         }
         if (isQueryEmpty(context, definition.spacingFromPoint))
@@ -265,7 +267,9 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
         var fractions = [];
         for (var i = 0; i < size(pts); i += 1)
         {
-            fractions = append(fractions, fractionOfPointOnEdge(context, edge, resolvePoint(context, pts[i])));
+            var pt = resolvePoint(context, pts[i]);
+            markProjectionToCurve(context, edge, pt);
+            fractions = append(fractions, fractionOfPointOnEdge(context, edge, pt));
         }
         return fractions;
     }
