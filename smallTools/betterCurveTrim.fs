@@ -320,9 +320,9 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
         {
             pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : fractions[i] }).origin);
         }
-        var selectedIdx = mapArray(definition.inflectionIndices, function(inf)
+        var selectedIdx = mapArray(definition.inflectionIndices, function(sel)
             {
-                return inf.index;
+                return sel.index;
             });
         addManipulators(context, id, {
             (INFLECTION_MANIPULATOR) : togglePointsManipulator({
@@ -334,11 +334,11 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
 
         // Cut at each toggled inflection, sorted along the curve for the splitter.
         var chosen = [];
-        for (var inf in definition.inflectionIndices)
+        for (var sel in definition.inflectionIndices)
         {
-            if (inf.index >= 0 && inf.index < size(fractions))
+            if (sel.index >= 0 && sel.index < size(fractions))
             {
-                chosen = append(chosen, fractions[inf.index]);
+                chosen = append(chosen, fractions[sel.index]);
             }
         }
         chosen = sort(chosen, function(a, b) { return a - b; });
