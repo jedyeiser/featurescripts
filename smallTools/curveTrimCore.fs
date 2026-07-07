@@ -150,10 +150,11 @@ export function splitWireWithPlanes(context is Context, id is Id, targetWire is 
 
 /**
  * Keep exactly one of the `segments` and delete the rest - the TRIM operation.
- * The kept segment is the one nearest `point` (the help point) when
- * `keepNearest` is true, or the farthest when false (the "opposite direction"
- * flip). Distances are measured body-to-point with evDistance. A single-segment
- * input is left untouched.
+ * The kept segment is the one nearest `point` when `keepNearest` is true, or the
+ * farthest when false. Distances are body-to-point via evDistance. Before the
+ * discarded side is deleted it is highlighted in magenta (addDebugEntities), so
+ * the removed portion shows during feature preview/edit like the stock trim. A
+ * single-segment input is left untouched.
  */
 export function keepSegmentByPoint(context is Context, id is Id, segments is Query, point is Vector, keepNearest is boolean)
 {
@@ -178,6 +179,8 @@ export function keepSegmentByPoint(context is Context, id is Id, segments is Que
     var discard = qSubtraction(segments, segs[bestIdx]);
     if (!isQueryEmpty(context, discard))
     {
+        // Show the side about to be removed in magenta, then delete it.
+        addDebugEntities(context, discard, DebugColor.MAGENTA);
         opDeleteBodies(context, id + "discard", { "entities" : discard });
     }
 }
