@@ -173,8 +173,17 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
 
         // Hidden: which inflections the user toggled in AT_INFLECTION/PICK mode.
-        annotation { "Name" : "Chosen inflections", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        // An array parameter needs an "Item name" and a for loop over its items
+        // (even when hidden), so each item is a { "index" : n } map. The body and
+        // change function convert to/from the manipulator's plain index array.
+        annotation { "Name" : "Chosen inflections", "Item name" : "inflection", "UIHint" : UIHint.ALWAYS_HIDDEN }
         definition.inflectionIndices is array;
+
+        for (var inflection in definition.inflectionIndices)
+        {
+            annotation { "Name" : "Index" }
+            isInteger(inflection.index, CTC_INFLECTION_INDEX_BOUNDS);
+        }
     }
     {
         if (isQueryEmpty(context, definition.curves))
@@ -314,18 +323,18 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
         addManipulators(context, id, {
             (INFLECTION_MANIPULATOR) : togglePointsManipulator({
                         "points" : pts,
-                        "selectedIndices" : definition.inflectionIndices,
+                        "selectedIndices" : mapArray(definition.inflectionIndices, function(inf) { return inf.index; }),
                         "suppressedIndices" : []
                     })
         });
 
         // Cut at each toggled inflection, sorted along the curve for the splitter.
         var chosen = [];
-        for (var idx in definition.inflectionIndices)
+        for (var inf in definition.inflectionIndices)
         {
-            if (idx >= 0 && idx < size(fractions))
+            if (inf.index >= 0 && inf.index < size(fractions))
             {
-                chosen = append(chosen, fractions[idx]);
+                chosen = append(chosen, fractions[inf.index]);
             }
         }
         chosen = sort(chosen, function(a, b) { return a - b; });
@@ -464,7 +473,8 @@ export function onInflectionPick(context is Context, definition is map, newManip
 {
     if (newManipulators[INFLECTION_MANIPULATOR] is map)
     {
-        definition.inflectionIndices = newManipulators[INFLECTION_MANIPULATOR].selectedIndices;
+        definition.inflectionIndices = mapArray(newManipulators[INFLECTION_MANIPULATOR].selectedIndices,
+                function(i) { return { "index" : i }; });
     }
     return definition;
 }
