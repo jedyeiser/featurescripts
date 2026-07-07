@@ -58,7 +58,7 @@ export enum CUT_BY
 // FEATURE
 // ============================================================================
 
-annotation { "Feature Type Name" : "Better curve trim", "UIHint" : UIHint.NO_PREVIEW_PROVIDED }
+annotation { "Feature Type Name" : "Trim curve +" }
 export const betterCurveTrim = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -108,10 +108,7 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
         else
         {
-            annotation { "Name" : "Keep side", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS, "Description" : "Help point on the side of the cut to keep." }
-            definition.helpPoint is Query;
-
-            annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
+            annotation { "Name" : "Keep opposite side", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Which side of the cut to keep. Trim discards the other side." }
             definition.flipHeuristics is boolean;
         }
     }
@@ -152,6 +149,22 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         throw regenError("No valid cut location found on the curve", ["curves"]);
     }
 
+    // Trim is a single-cut operation - keep one side, discard the other - so
+    // reduce to the first cut location. Which side is kept is chosen by the flip
+    // boolean, identified by the curve endpoint it contains (captured here,
+    // before opSplitPart consumes the edge). No help-point pick needed.
+    var startPt = undefined;
+    var endPt = undefined;
+    if (definition.operation == OPERATION.TRIM)
+    {
+        if (size(fractions) > 1)
+        {
+            fractions = [fractions[0]];
+        }
+        startPt = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0 }).origin;
+        endPt = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 1 }).origin;
+    }
+
     var planes = [];
     for (var i = 0; i < size(fractions); i += 1)
     {
@@ -162,12 +175,8 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
 
     if (definition.operation == OPERATION.TRIM)
     {
-        if (isQueryEmpty(context, definition.helpPoint))
-        {
-            throw regenError("Select a help point on the side to keep", ["helpPoint"]);
-        }
-        var keepPt = resolvePoint(context, definition.helpPoint);
-        keepSegmentByPoint(context, id, segments, keepPt, !definition.flipHeuristics);
+        var reference = definition.flipHeuristics ? endPt : startPt;
+        keepSegmentByPoint(context, id, segments, reference, true);
     }
     else if (definition.returnSingleWire)
     {
