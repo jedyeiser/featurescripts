@@ -72,6 +72,19 @@ export enum DIVISION_MODE
     SPACED_FROM_POINT
 }
 
+/**
+ * How the inflection cut chooses which inflection(s) to cut at: PICK lets the user
+ * click a manipulator point; NEAR_ENDS auto-selects the inflection(s) closest to
+ * the curve's endpoints (which only differs from "all" when there are 3+).
+ */
+export enum INFLECTION_MODE
+{
+    annotation { "Name" : "Pick (click a point)" }
+    PICK,
+    annotation { "Name" : "Nearest each endpoint" }
+    NEAR_ENDS
+}
+
 // ============================================================================
 // FEATURE
 // ============================================================================
@@ -138,8 +151,12 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Cut points", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             definition.atPoints is Query;
         }
-        // AT_INFLECTION needs no picks - inflections are solved from the curve and
-        // chosen by clicking a manipulator point.
+        else if (definition.cutBy == CUT_BY.AT_INFLECTION)
+        {
+            // Inflections are solved from the curve; this only chooses which to cut.
+            annotation { "Name" : "Inflection selection", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : INFLECTION_MODE.PICK }
+            definition.inflectionMode is INFLECTION_MODE;
+        }
 
         if (definition.operation == OPERATION.SPLIT)
         {
@@ -188,18 +205,11 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 // ============================================================================
 
 /**
- * Trim or split a single wire. Phase 1 requires a single-edge wire so arc-length
- * fractions map to one edge; the guard makes that explicit rather than silently
- * mis-measuring a multi-edge wire.
+ * Trim or split a single wire at the cut locations for the selected mode.
  */
 function adjustOneCurve(context is Context, id is Id, definition is map, wire is Query)
 {
-    var edges = evaluateQuery(context, qOwnedByBody(wire, EntityType.EDGE));
-    if (size(edges) != 1)
-    {
-        throw regenError("Each curve must currently be a single-edge wire", ["curves"]);
-    }
-    var edge = edges[0];
+    var edge = singleEdgeOf(context, wire);
 
     var fractions = cleanFractions(cutFractionsFor(context, definition, edge));
     if (size(fractions) == 0)
@@ -207,7 +217,21 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         throw regenError("No valid cut location found on the curve", ["curves"]);
     }
 
-    // Trim keeps one side of a single cut, so reduce to the first cut location.
+    applyCut(context, id, definition, wire, edge, fractions);
+}
+
+/**
+ * Cut `wire` at the given arc-length `fractions` and apply the operation: SPLIT
+ * keeps every piece (optionally recombined into one wire), TRIM keeps one side of
+ * a single cut (fractions reduced to the first). Red dots preview each cut.
+ */
+function applyCut(context is Context, id is Id, definition is map, wire is Query, edge is Query, fractions is array)
+{
+    if (size(fractions) == 0)
+    {
+        return;
+    }
+
     if (definition.operation == OPERATION.TRIM && size(fractions) > 1)
     {
         fractions = [fractions[0]];
@@ -218,8 +242,6 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
     {
         planes = append(planes, cutPlaneAtFraction(context, edge, fractions[i]));
     }
-
-    // Preview: red dots on the curve at every cut location (shown during edit).
     markCutPoints(context, planes);
 
     var pieces = splitWireIntoPieces(context, id, wire, planes);
@@ -238,18 +260,27 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
 }
 
 /**
- * AT_INFLECTION: solve the curve's inflection points, drop a clickable point
- * manipulator at each, and cut at the one the user picked (stored in the hidden
- * inflectionIndex). With nothing picked yet, only the dots are shown.
+ * The single edge of a wire, or a clear error if it is not a single-edge wire.
+ * (Multi-edge wires via constructPath are a follow-up.)
  */
-function adjustAtInflection(context is Context, id is Id, definition is map, wire is Query)
+function singleEdgeOf(context is Context, wire is Query) returns Query
 {
     var edges = evaluateQuery(context, qOwnedByBody(wire, EntityType.EDGE));
     if (size(edges) != 1)
     {
         throw regenError("Each curve must currently be a single-edge wire", ["curves"]);
     }
-    var edge = edges[0];
+    return edges[0];
+}
+
+/**
+ * AT_INFLECTION: solve the curve's inflection points, drop a clickable point
+ * manipulator at each, and cut at the one the user picked (stored in the hidden
+ * inflectionIndex). With nothing picked yet, only the dots are shown.
+ */
+function adjustAtInflection(context is Context, id is Id, definition is map, wire is Query)
+{
+    var edge = singleEdgeOf(context, wire);
 
     var fractions = solveInflectionFractions(context, edge);
     if (size(fractions) == 0)
@@ -257,33 +288,42 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
         throw regenError("No inflection points found on this curve", ["curves"]);
     }
 
-    // A clickable dot at each inflection; the currently chosen one is highlighted.
-    var pts = [];
-    for (var i = 0; i < size(fractions); i += 1)
+    if (definition.inflectionMode == INFLECTION_MODE.NEAR_ENDS)
     {
-        pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : fractions[i] }).origin);
+        // Auto: cut at the inflection(s) nearest the curve endpoints - no pick.
+        applyCut(context, id + "inflCut", definition, wire, edge, endpointClosestFractions(fractions));
     }
-    addManipulators(context, id, {
-        (INFLECTION_MANIPULATOR) : pointsManipulator({ "points" : pts, "index" : definition.inflectionIndex })
-    });
-
-    // Cut only once a valid inflection has been clicked.
-    if (definition.inflectionIndex >= 0 && definition.inflectionIndex < size(fractions))
+    else
     {
-        var planes = [cutPlaneAtFraction(context, edge, fractions[definition.inflectionIndex])];
-        markCutPoints(context, planes);
-
-        var pieces = splitWireIntoPieces(context, id + "inflCut", wire, planes);
-        if (definition.operation == OPERATION.TRIM)
+        // PICK: a clickable dot at each inflection; cut at the one clicked.
+        var pts = [];
+        for (var i = 0; i < size(fractions); i += 1)
         {
-            var keepIndex = definition.flipHeuristics ? 0 : (size(pieces) - 1);
-            keepOnePiece(context, id + "inflCut", pieces, keepIndex);
+            pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : fractions[i] }).origin);
         }
-        else if (definition.returnSingleWire)
+        addManipulators(context, id, {
+            (INFLECTION_MANIPULATOR) : pointsManipulator({ "points" : pts, "index" : definition.inflectionIndex })
+        });
+
+        if (definition.inflectionIndex >= 0 && definition.inflectionIndex < size(fractions))
         {
-            combineSplitToSingleWire(context, id + "inflCut", pieces);
+            applyCut(context, id + "inflCut", definition, wire, edge, [fractions[definition.inflectionIndex]]);
         }
     }
+}
+
+/**
+ * The inflection fractions nearest the two curve endpoints. Inflections arrive
+ * sorted along the curve, so these are just the first and last. Only filters when
+ * there are 3 or more; with 1-2 they are already the endpoint-nearest ones.
+ */
+function endpointClosestFractions(fractions is array) returns array
+{
+    if (size(fractions) < 3)
+    {
+        return fractions;
+    }
+    return [fractions[0], fractions[size(fractions) - 1]];
 }
 
 /**
