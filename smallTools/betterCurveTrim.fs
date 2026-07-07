@@ -122,6 +122,9 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 
                 annotation { "Name" : "Number of cuts" }
                 isInteger(definition.spacingCount, CTC_SPACING_COUNT_BOUNDS);
+
+                annotation { "Name" : "Reverse direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Space the cuts away from the midpoint instead of toward it." }
+                definition.spacingReverse is boolean;
             }
         }
         else
@@ -228,6 +231,7 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
             throw regenError("Select a point to measure from", ["fromPoint"]);
         }
         var from = resolvePoint(context, definition.fromPoint);
+        markProjectionToCurve(context, edge, from);
         return [fractionAtDistanceTowardMid(context, edge, from, definition.distance)];
     }
     else if (definition.cutBy == CUT_BY.EVEN_DIVISION)
@@ -247,7 +251,8 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
             throw regenError("Select a point to space cuts from", ["spacingFromPoint"]);
         }
         var from = resolvePoint(context, definition.spacingFromPoint);
-        return spacedFromPointFractions(context, edge, from, definition.spacing, definition.spacingCount);
+        markProjectionToCurve(context, edge, from);
+        return spacedFromPointFractions(context, edge, from, definition.spacing, definition.spacingCount, definition.spacingReverse);
     }
     else
     {

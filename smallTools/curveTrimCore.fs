@@ -24,6 +24,10 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 // offcut (e.g. a cut landing on an endpoint) and should be filtered by callers.
 export const CTC_MIN_SEGMENT = 1e-5 * meter;
 
+// A picked point closer than this to the curve is treated as already "on" it, so
+// no projection line is drawn.
+export const CTC_ON_CURVE_TOL = 1e-5 * meter;
+
 // Keep cut fractions strictly inside the curve so a cut never lands exactly on
 // an endpoint (which produces a zero-length segment or no split at all).
 export const CTC_FRACTION_EPS = 1e-6;
@@ -108,16 +112,21 @@ export function evenDivisionFractions(context is Context, edge is Query, pointA 
 
 /**
  * Fractions for `count` cuts spaced `spacing` apart along the curve, starting one
- * step from `fromPoint` and running toward the curve midpoint so the cuts stay on
- * the curve (cuts at distance spacing, 2*spacing, ... count*spacing). Fractions
- * that fall past the far end are dropped later by the caller (cleanFractions).
- * spacing / length is unitless, so it scales the fraction directly.
+ * step from `fromPoint` (cuts at distance spacing, 2*spacing, ... count*spacing).
+ * By default the cuts run toward the curve midpoint so they stay on the curve;
+ * `reverse` flips that direction. Fractions that fall past an end are dropped by
+ * the caller (cleanFractions). spacing / length is unitless, so it scales the
+ * fraction directly.
  */
-export function spacedFromPointFractions(context is Context, edge is Query, fromPoint is Vector, spacing is ValueWithUnits, count is number) returns array
+export function spacedFromPointFractions(context is Context, edge is Query, fromPoint is Vector, spacing is ValueWithUnits, count is number, reverse is boolean) returns array
 {
     var f0 = fractionOfPointOnEdge(context, edge, fromPoint);
     var df = spacing / evLength(context, { "entities" : edge });
     var dir = (f0 <= 0.5) ? 1 : -1;
+    if (reverse)
+    {
+        dir = -dir;
+    }
 
     var fractions = [];
     for (var k = 1; k <= count; k += 1)
@@ -153,6 +162,30 @@ export function markCutPoints(context is Context, planes is array)
     for (var i = 0; i < size(planes); i += 1)
     {
         addDebugPoint(context, planes[i].origin, DebugColor.RED);
+    }
+}
+
+/**
+ * If `worldPoint` is off the curve, draw a dashed red line from it to the point
+ * on the curve the measurement is referenced from (its projection). addDebugLine
+ * has no dotted style, so the dashes are a series of short segments. Nothing is
+ * drawn when the point already lies on the curve.
+ */
+export function markProjectionToCurve(context is Context, edge is Query, worldPoint is Vector)
+{
+    var d = evDistance(context, { "side0" : worldPoint, "side1" : edge });
+    if (d.distance <= CTC_ON_CURVE_TOL)
+    {
+        return;
+    }
+
+    var onCurve = d.sides[1].point;
+    var nDashes = 12;
+    for (var i = 0; i < nDashes; i += 1)
+    {
+        var p0 = worldPoint + (onCurve - worldPoint) * (i / nDashes);
+        var p1 = worldPoint + (onCurve - worldPoint) * ((i + 0.5) / nDashes);
+        addDebugLine(context, p0, p1, DebugColor.RED);
     }
 }
 
@@ -252,14 +285,30 @@ function highlightRemovedSegment(context is Context, bodies is Query)
  * body. opBoolean does NOT combine wires, so all piece edges are re-extracted
  * into one connected wire with opExtractWires (edges stay joined at the cut
  * vertices, only two per cut, so no ">2 edges at a point" failure), then the
- * pieces are deleted. Pieces = the survivor that kept the original wire's
- * identity (modified, so absent from qCreatedBy) plus the new offcuts (created by
- * the split), so the original `wire` is unioned with qCreatedBy(splitId).
+ * pieces are deleted.
+ *
+ * Collecting the pieces is the tricky part: how opSplitPart tags wire pieces is
+ * inconsistent - some come back "modified" so qCreatedBy misses them, and
+ * qSplitBy's front/back split is ambiguous once several cut planes are involved.
+ * A single source came up empty on a multi-cut split (opExtractWires then threw
+ * EXTRACT_WIRES_NEEDS_EDGES), so union every candidate source and let qUnion
+ * de-dupe. The empty guard avoids that cryptic op error if nothing resolves.
  */
 export function combineSplitToSingleWire(context is Context, id is Id, wire is Query, splitId is Id)
 {
-    var pieces = qUnion([wire, qCreatedBy(splitId, EntityType.BODY)]);
+    var pieces = qUnion([
+        wire,
+        qCreatedBy(splitId, EntityType.BODY),
+        qSplitBy(splitId, EntityType.BODY, false),
+        qSplitBy(splitId, EntityType.BODY, true)
+    ]);
 
-    opExtractWires(context, id + "singleWire", { "edges" : qOwnedByBody(pieces, EntityType.EDGE) });
+    var edges = qOwnedByBody(pieces, EntityType.EDGE);
+    if (isQueryEmpty(context, edges))
+    {
+        return;
+    }
+
+    opExtractWires(context, id + "singleWire", { "edges" : edges });
     opDeleteBodies(context, id + "removeSegments", { "entities" : pieces });
 }
