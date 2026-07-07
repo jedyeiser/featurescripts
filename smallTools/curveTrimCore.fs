@@ -35,6 +35,18 @@ export const CTC_DIVISION_BOUNDS =
     (unitless) : [2, 4, 100]
 } as IntegerBoundSpec;
 
+// Fixed spacing between cuts for the "every distance from point" division style.
+export const CTC_SPACING_BOUNDS =
+{
+    (millimeter) : [0.1, 10, 1000]
+} as LengthBoundSpec;
+
+// Number of equally spaced cuts for the "every distance from point" style.
+export const CTC_SPACING_COUNT_BOUNDS =
+{
+    (unitless) : [1, 5, 100]
+} as IntegerBoundSpec;
+
 // ============================================================================
 // LOCATING CUTS (all return an arc-length fraction in 0..1 on the edge)
 // ============================================================================
@@ -94,6 +106,27 @@ export function evenDivisionFractions(context is Context, edge is Query, pointA 
     return fractions;
 }
 
+/**
+ * Fractions for `count` cuts spaced `spacing` apart along the curve, starting one
+ * step from `fromPoint` and running toward the curve midpoint so the cuts stay on
+ * the curve (cuts at distance spacing, 2*spacing, ... count*spacing). Fractions
+ * that fall past the far end are dropped later by the caller (cleanFractions).
+ * spacing / length is unitless, so it scales the fraction directly.
+ */
+export function spacedFromPointFractions(context is Context, edge is Query, fromPoint is Vector, spacing is ValueWithUnits, count is number) returns array
+{
+    var f0 = fractionOfPointOnEdge(context, edge, fromPoint);
+    var df = spacing / evLength(context, { "entities" : edge });
+    var dir = (f0 <= 0.5) ? 1 : -1;
+
+    var fractions = [];
+    for (var k = 1; k <= count; k += 1)
+    {
+        fractions = append(fractions, f0 + dir * k * df);
+    }
+    return fractions;
+}
+
 // ============================================================================
 // BUILDING CUTS
 // ============================================================================
@@ -108,6 +141,19 @@ export function cutPlaneAtFraction(context is Context, edge is Query, f is numbe
 {
     var tl = evEdgeTangentLine(context, { "edge" : edge, "parameter" : f });
     return plane(tl.origin, tl.direction);
+}
+
+/**
+ * Mark each cut location with a red debug point so the user can preview where the
+ * curve will be cut (visible while the edit dialog is open). The cut plane origin
+ * sits on the curve at its cut fraction, so it doubles as the cut point.
+ */
+export function markCutPoints(context is Context, planes is array)
+{
+    for (var i = 0; i < size(planes); i += 1)
+    {
+        addDebugPoint(context, planes[i].origin, DebugColor.RED);
+    }
 }
 
 // ============================================================================

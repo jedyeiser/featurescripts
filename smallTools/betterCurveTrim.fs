@@ -54,6 +54,18 @@ export enum CUT_BY
     AT_POINTS
 }
 
+/**
+ * Even-division style: divide the span between two points into equal parts, or
+ * place cuts at a fixed spacing repeated a number of times from one point.
+ */
+export enum DIVISION_MODE
+{
+    annotation { "Name" : "Between two points" }
+    BETWEEN_POINTS,
+    annotation { "Name" : "Every distance from point" }
+    SPACED_FROM_POINT
+}
+
 // ============================================================================
 // FEATURE
 // ============================================================================
@@ -86,14 +98,31 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
         else if (definition.cutBy == CUT_BY.EVEN_DIVISION)
         {
-            annotation { "Name" : "Start point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
-            definition.startPoint is Query;
+            annotation { "Name" : "Division style", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : DIVISION_MODE.BETWEEN_POINTS }
+            definition.divisionMode is DIVISION_MODE;
 
-            annotation { "Name" : "End point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
-            definition.endPoint is Query;
+            if (definition.divisionMode == DIVISION_MODE.BETWEEN_POINTS)
+            {
+                annotation { "Name" : "Start point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.startPoint is Query;
 
-            annotation { "Name" : "Number of segments" }
-            isInteger(definition.divisions, CTC_DIVISION_BOUNDS);
+                annotation { "Name" : "End point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.endPoint is Query;
+
+                annotation { "Name" : "Number of segments" }
+                isInteger(definition.divisions, CTC_DIVISION_BOUNDS);
+            }
+            else
+            {
+                annotation { "Name" : "From point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.spacingFromPoint is Query;
+
+                annotation { "Name" : "Spacing" }
+                isLength(definition.spacing, CTC_SPACING_BOUNDS);
+
+                annotation { "Name" : "Number of cuts" }
+                isInteger(definition.spacingCount, CTC_SPACING_COUNT_BOUNDS);
+            }
         }
         else
         {
@@ -161,6 +190,9 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         planes = append(planes, cutPlaneAtFraction(context, edge, fractions[i]));
     }
 
+    // Preview: red dots on the curve at every cut location (shown during edit).
+    markCutPoints(context, planes);
+
     var splitId = cutWireWithPlanes(context, id, wire, planes);
 
     if (definition.operation == OPERATION.TRIM)
@@ -200,13 +232,22 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
     }
     else if (definition.cutBy == CUT_BY.EVEN_DIVISION)
     {
-        if (isQueryEmpty(context, definition.startPoint) || isQueryEmpty(context, definition.endPoint))
+        if (definition.divisionMode == DIVISION_MODE.BETWEEN_POINTS)
         {
-            throw regenError("Select start and end points for the even division", ["startPoint"]);
+            if (isQueryEmpty(context, definition.startPoint) || isQueryEmpty(context, definition.endPoint))
+            {
+                throw regenError("Select start and end points for the even division", ["startPoint"]);
+            }
+            var a = resolvePoint(context, definition.startPoint);
+            var b = resolvePoint(context, definition.endPoint);
+            return evenDivisionFractions(context, edge, a, b, definition.divisions);
         }
-        var a = resolvePoint(context, definition.startPoint);
-        var b = resolvePoint(context, definition.endPoint);
-        return evenDivisionFractions(context, edge, a, b, definition.divisions);
+        if (isQueryEmpty(context, definition.spacingFromPoint))
+        {
+            throw regenError("Select a point to space cuts from", ["spacingFromPoint"]);
+        }
+        var from = resolvePoint(context, definition.spacingFromPoint);
+        return spacedFromPointFractions(context, edge, from, definition.spacing, definition.spacingCount);
     }
     else
     {
