@@ -17,12 +17,8 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *                       fractionAtDistanceTowardMid, evenDivisionFractions
  *   - building cuts   : cutPlaneAtFraction
  *   - performing cuts : splitWireIntoPieces (iterative, returns ordered pieces)
- *   - selecting result: keepOnePiece, combineSplitToSingleWire
+ *   - selecting result: keepPieceRange / keepOnePiece, combineSplitToSingleWire
  */
-
-// A resulting segment shorter than this is treated as a degenerate zero-length
-// offcut (e.g. a cut landing on an endpoint) and should be filtered by callers.
-export const CTC_MIN_SEGMENT = 1e-5 * meter;
 
 // A picked point closer than this to the curve is treated as already "on" it, so
 // no projection line is drawn.
@@ -255,17 +251,17 @@ export function splitWireIntoPieces(context is Context, id is Id, wire is Query,
 // ============================================================================
 
 /**
- * TRIM: keep exactly one of the ordered `pieces` (by index) and delete the rest.
- * The discarded pieces are traced in magenta (shown while the edit dialog is open,
- * like the stock trim) just before deletion. Nothing is removed when there is only
- * one piece (a grazing/near-endpoint cut that did not divide the wire).
+ * TRIM: keep the contiguous ordered pieces keepLo..keepHi (inclusive) and delete
+ * the rest. Discarded pieces are traced in magenta (shown while the edit dialog is
+ * open, like the stock trim) just before deletion. Deletes nothing when the whole
+ * array is inside the kept span. Callers must pass keepLo <= keepHi.
  */
-export function keepOnePiece(context is Context, id is Id, pieces is array, keepIndex is number)
+export function keepPieceRange(context is Context, id is Id, pieces is array, keepLo is number, keepHi is number)
 {
     var discard = [];
     for (var i = 0; i < size(pieces); i += 1)
     {
-        if (i != keepIndex)
+        if (i < keepLo || i > keepHi)
         {
             discard = append(discard, pieces[i]);
         }
@@ -281,6 +277,16 @@ export function keepOnePiece(context is Context, id is Id, pieces is array, keep
         highlightRemovedSegment(context, discardQ);
         opDeleteBodies(context, id + "discard", { "entities" : discardQ });
     }
+}
+
+/**
+ * TRIM: keep exactly one of the ordered `pieces` (by index), delete the rest.
+ * Thin wrapper over keepPieceRange for the single-cut case. Nothing is removed
+ * when there is only one piece (a grazing cut that did not divide the wire).
+ */
+export function keepOnePiece(context is Context, id is Id, pieces is array, keepIndex is number)
+{
+    keepPieceRange(context, id, pieces, keepIndex, keepIndex);
 }
 
 /**

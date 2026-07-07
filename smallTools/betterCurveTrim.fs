@@ -309,8 +309,42 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
 
     if (definition.inflectionMode == INFLECTION_MODE.NEAR_ENDS)
     {
-        // Auto: cut at the inflection(s) nearest the curve endpoints - no pick.
-        applyCut(context, id + "inflCut", definition, wire, edge, endpointClosestFractions(fractions));
+        // Auto: the inflection nearest each endpoint (first and last, since they
+        // arrive sorted). cleanFractions de-dups a collapsed pair and drops any
+        // root solved right on an endpoint. NEAR_ENDS needs its own keep logic: a
+        // TRIM keeps the MIDDLE (drops both ends), unlike applyCut's single-end trim.
+        var nearFractions = cleanFractions(endpointClosestFractions(fractions));
+        if (size(nearFractions) == 0)
+        {
+            throw regenError("No valid inflection cut on this curve", ["curves"]);
+        }
+
+        var planes = [];
+        for (var i = 0; i < size(nearFractions); i += 1)
+        {
+            planes = append(planes, cutPlaneAtFraction(context, edge, nearFractions[i]));
+        }
+        markCutPoints(context, planes);
+
+        var pieces = splitWireIntoPieces(context, id + "inflCut", wire, planes);
+
+        if (definition.operation == OPERATION.TRIM)
+        {
+            // 2 cuts -> 3 pieces (start | middle | end): keep the middle span. A
+            // single inflection -> 2 pieces: ordinary single-end trim.
+            if (size(pieces) >= 3)
+            {
+                keepPieceRange(context, id + "inflCut", pieces, 1, size(pieces) - 2);
+            }
+            else
+            {
+                keepOnePiece(context, id + "inflCut", pieces, definition.flipHeuristics ? 0 : (size(pieces) - 1));
+            }
+        }
+        else if (definition.returnSingleWire)
+        {
+            combineSplitToSingleWire(context, id + "inflCut", pieces);
+        }
     }
     else
     {
