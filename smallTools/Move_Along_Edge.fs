@@ -62,7 +62,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, edg
 
     var startEval = evalPathAtArcLength(context, path, totalLen, startArcLength);
     var endEval = evalPathAtArcLength(context, path, totalLen, endArcLength);
-
+    
     var motion;
     if (definition.useFrenet)
     {

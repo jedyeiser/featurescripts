@@ -4,9 +4,11 @@
   "document_name": "smallTools",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/14cdaad24a8beab67af40fe4/w/9bfd33d53af778cf02e60d9f",
-  "last_sync": "2026-06-30T16:39:13.014100+00:00",
+  "last_sync": "2026-07-07T09:07:55.248545+00:00",
   "feature_studios": {
-    "Move_Along_Edge": "ab0debbe1dc8fa95294ea68a"
+    "Move_Along_Edge": "ab0debbe1dc8fa95294ea68a",
+    "OS_Trim": "3037b0c2c5e91245deb0807e",
+    "betterCurveTrim": "276be4e4e6bce49e6b1d3c7d"
   },
   "tab_folders": {}
 }
