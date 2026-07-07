@@ -196,17 +196,18 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
     // Preview: red dots on the curve at every cut location (shown during edit).
     markCutPoints(context, planes);
 
-    var splitId = cutWireWithPlanes(context, id, wire, planes);
+    var pieces = splitWireIntoPieces(context, id, wire, planes);
 
     if (definition.operation == OPERATION.TRIM)
     {
-        // The cut plane's normal is the curve tangent, so the split's "front" is
-        // the end side and "back" the start side; the flip picks which to keep.
-        keepSplitSide(context, id, splitId, definition.flipHeuristics);
+        // pieces are ordered start->end; default keeps the end (front) side, and
+        // the flip keeps the start (back) side.
+        var keepIndex = definition.flipHeuristics ? 0 : (size(pieces) - 1);
+        keepOnePiece(context, id, pieces, keepIndex);
     }
     else if (definition.returnSingleWire)
     {
-        combineSplitToSingleWire(context, id, wire, splitId);
+        combineSplitToSingleWire(context, id, pieces);
     }
 }
 

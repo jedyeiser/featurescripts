@@ -16,8 +16,8 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  *   - locating cuts   : fractionOfPointOnEdge, fractionNearestEntity,
  *                       fractionAtDistanceTowardMid, evenDivisionFractions
  *   - building cuts   : cutPlaneAtFraction
- *   - performing cuts : cutWireWithPlanes (returns the split Id, for qSplitBy)
- *   - selecting result: keepSplitSide, combineSplitToSingleWire
+ *   - performing cuts : splitWireIntoPieces (iterative, returns ordered pieces)
+ *   - selecting result: keepOnePiece, combineSplitToSingleWire
  */
 
 // A resulting segment shorter than this is treated as a degenerate zero-length
@@ -194,43 +194,47 @@ export function markProjectionToCurve(context is Context, edge is Query, worldPo
 // ============================================================================
 
 /**
- * Cut `wire` with every plane in `planes` in a single opSplitPart and return the
- * split feature Id. Callers read the resulting sides with qSplitBy(splitId, ...):
- * opSplitPart on a wire does NOT register the pieces under qCreatedBy, so
- * qSplitBy - front = the tool-normal (curve tangent) side, back = the opposite -
- * is the correct way to get them.
+ * Split `wire` at every plane in `planes` and return the resulting pieces as an
+ * array ordered along the curve (start to end). A single opSplitPart cannot cut a
+ * wire at several planes at once - it yields only one front/back partition, so
+ * with N planes it produces 2 pieces, not N+1. We therefore split iteratively:
+ * each pass cuts the current remainder with ONE plane, finalizes the back piece
+ * (smaller arc length) and carries the front remainder forward to the next plane.
+ * Every pass is a single-plane split, so qSplitBy's front/back stays unambiguous.
  *
- * keepTools is true so the construction planes remain ours to remove: opSplitPart
- * does not delete plane tools on its own, so they are explicitly deleted here,
- * leaving only the curve pieces. The planes are geometrically infinite, so a
- * plane also cuts the wire anywhere else the curve recrosses it; intrinsic-cut
- * callers (arc length, even division) want every piece anyway, and TRIM selects
- * a side from the split rather than a specific segment.
+ * `planes` must be ordered along the curve (the caller sorts the cut fractions),
+ * and each plane's normal is the curve tangent, so its "front" is the larger-arc-
+ * length side. Each construction plane is deleted after its split (opSplitPart
+ * does not remove plane tools itself).
  */
-export function cutWireWithPlanes(context is Context, id is Id, wire is Query, planes is array) returns Id
+export function splitWireIntoPieces(context is Context, id is Id, wire is Query, planes is array) returns array
 {
-    var planeBodies = [];
+    var pieces = [];
+    var remainder = wire;
+
     for (var i = 0; i < size(planes); i += 1)
     {
         opPlane(context, id + ("cutPlane" ~ i), { "plane" : planes[i] });
-        planeBodies = append(planeBodies, qCreatedBy(id + ("cutPlane" ~ i), EntityType.BODY));
+        var planeBody = qCreatedBy(id + ("cutPlane" ~ i), EntityType.BODY);
+
+        var splitId = id + ("split" ~ i);
+        opSplitPart(context, splitId, {
+            "targets" : remainder,
+            "tool" : planeBody,
+            "keepTools" : true,
+            "keepType" : SplitOperationKeepType.KEEP_ALL
+        });
+
+        opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : planeBody });
+
+        // Back side (smaller arc length) is done; front side is cut by the next
+        // plane, which lands within it because the planes ascend along the curve.
+        pieces = append(pieces, qSplitBy(splitId, EntityType.BODY, true));
+        remainder = qSplitBy(splitId, EntityType.BODY, false);
     }
 
-    var splitId = id + "split";
-    opSplitPart(context, splitId, {
-        "targets" : wire,
-        "tool" : qUnion(planeBodies),
-        "keepTools" : true,
-        "keepType" : SplitOperationKeepType.KEEP_ALL
-    });
-
-    var cutPlanes = qUnion(planeBodies);
-    if (!isQueryEmpty(context, cutPlanes))
-    {
-        opDeleteBodies(context, id + "deletePlanes", { "entities" : cutPlanes });
-    }
-
-    return splitId;
+    pieces = append(pieces, remainder);
+    return pieces;
 }
 
 // ============================================================================
@@ -238,20 +242,31 @@ export function cutWireWithPlanes(context is Context, id is Id, wire is Query, p
 // ============================================================================
 
 /**
- * TRIM: keep one side of a single-plane split and delete the other. The sides
- * come from qSplitBy on the split feature - front is the tool-normal (curve
- * tangent) side, back is the opposite. `keepBackSide` chooses which to keep; the
- * discarded side is traced in magenta (shown while the edit dialog is open, like
- * the stock trim) just before it is deleted. If the cut produced only one side
- * (a grazing/near-endpoint cut) the discard query is empty and nothing is removed.
+ * TRIM: keep exactly one of the ordered `pieces` (by index) and delete the rest.
+ * The discarded pieces are traced in magenta (shown while the edit dialog is open,
+ * like the stock trim) just before deletion. Nothing is removed when there is only
+ * one piece (a grazing/near-endpoint cut that did not divide the wire).
  */
-export function keepSplitSide(context is Context, id is Id, splitId is Id, keepBackSide is boolean)
+export function keepOnePiece(context is Context, id is Id, pieces is array, keepIndex is number)
 {
-    var discard = qSplitBy(splitId, EntityType.BODY, !keepBackSide);
-    if (!isQueryEmpty(context, discard))
+    var discard = [];
+    for (var i = 0; i < size(pieces); i += 1)
     {
-        highlightRemovedSegment(context, discard);
-        opDeleteBodies(context, id + "discard", { "entities" : discard });
+        if (i != keepIndex)
+        {
+            discard = append(discard, pieces[i]);
+        }
+    }
+    if (size(discard) == 0)
+    {
+        return;
+    }
+
+    var discardQ = qUnion(discard);
+    if (!isQueryEmpty(context, discardQ))
+    {
+        highlightRemovedSegment(context, discardQ);
+        opDeleteBodies(context, id + "discard", { "entities" : discardQ });
     }
 }
 
@@ -281,34 +296,23 @@ function highlightRemovedSegment(context is Context, bodies is Query)
 }
 
 /**
- * SPLIT "return single wire": recombine every piece of the split into one wire
- * body. opBoolean does NOT combine wires, so all piece edges are re-extracted
- * into one connected wire with opExtractWires (edges stay joined at the cut
- * vertices, only two per cut, so no ">2 edges at a point" failure), then the
- * pieces are deleted.
- *
- * Collecting the pieces is the tricky part: how opSplitPart tags wire pieces is
- * inconsistent - some come back "modified" so qCreatedBy misses them, and
- * qSplitBy's front/back split is ambiguous once several cut planes are involved.
- * A single source came up empty on a multi-cut split (opExtractWires then threw
- * EXTRACT_WIRES_NEEDS_EDGES), so union every candidate source and let qUnion
- * de-dupe. The empty guard avoids that cryptic op error if nothing resolves.
+ * SPLIT "return single wire": recombine the `pieces` into one wire body. opBoolean
+ * does NOT combine wires, so all piece edges are re-extracted into one connected
+ * wire with opExtractWires (edges stay joined at the cut vertices, only two per
+ * cut, so no ">2 edges at a point" failure), then the pieces are deleted. The
+ * pieces come straight from splitWireIntoPieces, so there is no created-vs-modified
+ * guessing; the empty guard just avoids opExtractWires' cryptic error if the split
+ * produced nothing.
  */
-export function combineSplitToSingleWire(context is Context, id is Id, wire is Query, splitId is Id)
+export function combineSplitToSingleWire(context is Context, id is Id, pieces is array)
 {
-    var pieces = qUnion([
-        wire,
-        qCreatedBy(splitId, EntityType.BODY),
-        qSplitBy(splitId, EntityType.BODY, false),
-        qSplitBy(splitId, EntityType.BODY, true)
-    ]);
-
-    var edges = qOwnedByBody(pieces, EntityType.EDGE);
+    var all = qUnion(pieces);
+    var edges = qOwnedByBody(all, EntityType.EDGE);
     if (isQueryEmpty(context, edges))
     {
         return;
     }
 
     opExtractWires(context, id + "singleWire", { "edges" : edges });
-    opDeleteBodies(context, id + "removeSegments", { "entities" : pieces });
+    opDeleteBodies(context, id + "removeSegments", { "entities" : all });
 }
