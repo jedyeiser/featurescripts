@@ -172,6 +172,15 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             definition.flipHeuristics is boolean;
         }
 
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print inflection solve", "Default" : false, "Description" : "Print the solved inflection fractions with their distance from each curve end." }
+            definition.debugInflections is boolean;
+
+            annotation { "Name" : "Print cuts", "Default" : false, "Description" : "Print the cut fractions used and the resulting piece count." }
+            definition.debugCuts is boolean;
+        }
+
         // Hidden: which inflections the user toggled in AT_INFLECTION/PICK mode.
         // An array parameter needs an "Item name" and a for loop over its items
         // (even when hidden), so each item is a { "index" : n } map. The body and
@@ -263,6 +272,10 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
     markCutPoints(context, planes);
 
     var pieces = splitWireIntoPieces(context, id, wire, planes);
+    if (definition.debugCuts)
+    {
+        println("applyCut: " ~ size(fractions) ~ " fraction(s), " ~ size(planes) ~ " plane(s) -> " ~ size(pieces) ~ " piece(s)");
+    }
 
     if (definition.operation == OPERATION.TRIM)
     {
@@ -302,6 +315,15 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
     var edge = singleEdgeOf(context, wire);
 
     var fractions = solveInflectionFractions(context, edge);
+    if (definition.debugInflections)
+    {
+        var edgeLen = evLength(context, { "entities" : edge });
+        println("== inflections: " ~ size(fractions) ~ " found, edge length " ~ edgeLen ~ " ==");
+        for (var i = 0; i < size(fractions); i += 1)
+        {
+            println("  [" ~ i ~ "] f=" ~ fractions[i] ~ "  fromStart=" ~ (fractions[i] * edgeLen) ~ "  fromEnd=" ~ ((1 - fractions[i]) * edgeLen));
+        }
+    }
     if (size(fractions) == 0)
     {
         throw regenError("No inflection points found on this curve", ["curves"]);
@@ -327,6 +349,10 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
         markCutPoints(context, planes);
 
         var pieces = splitWireIntoPieces(context, id + "inflCut", wire, planes);
+        if (definition.debugCuts)
+        {
+            println("NEAR_ENDS: nearFractions=" ~ nearFractions ~ " -> " ~ size(planes) ~ " plane(s), " ~ size(pieces) ~ " piece(s)");
+        }
 
         if (definition.operation == OPERATION.TRIM)
         {

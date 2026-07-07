@@ -52,6 +52,12 @@ export const CTC_SPACING_COUNT_BOUNDS =
 export const CTC_INFLECTION_SAMPLES = 200;
 export const CTC_INFLECTION_TOL = 1e-5;
 
+// Skip the extreme ends of the curve when scanning for inflections: the curvature
+// frame is unreliable at the exact endpoints and reports phantom inflections there
+// (a real inflection this close to an end is not meaningful). Fraction of the
+// curve ignored at each end - increase if phantom near-end inflections persist.
+export const CTC_INFLECTION_END_MARGIN = 1e-3;
+
 // Bound for the hidden "chosen inflection" index (-1 = none picked yet).
 export const CTC_INFLECTION_INDEX_BOUNDS =
 {
@@ -356,10 +362,15 @@ export function solveInflectionFractions(context is Context, edge is Query) retu
     var pl = planeOfEdge(context, edge);
     var n = pl.normal;
 
+    // Scan the interior only - skip the degenerate curvature frames at the exact
+    // endpoints, which otherwise report phantom near-end inflections that then get
+    // picked as the "nearest each end" cut.
+    var lo = CTC_INFLECTION_END_MARGIN;
+    var hi = 1 - CTC_INFLECTION_END_MARGIN;
     var params = [];
     for (var i = 0; i <= CTC_INFLECTION_SAMPLES; i += 1)
     {
-        params = append(params, i / CTC_INFLECTION_SAMPLES);
+        params = append(params, lo + (hi - lo) * i / CTC_INFLECTION_SAMPLES);
     }
 
     var results = evEdgeCurvatures(context, { "edge" : edge, "parameters" : params });
