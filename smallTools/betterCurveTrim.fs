@@ -11,19 +11,19 @@ IconNamespace::import(path : "a4ceb2cfcdb959208b76a85c", version : "e1d6923ac935
  * betterCurveTrim - a more powerful curve trim/split, in the look and feel of
  * the stock Onshape "Trim curve" (see OS_Trim.fs, reference only - not imported).
  *
- * Roadmap:
- *   1. Trim OR split (split keeps all geometry; optionally return one wire).   [Phase 1]
- *   2. Cut at multiple points, or evenly along arc length between two points.  [Phase 1]
- *   3. Cut a blind arc-length distance from a help point, toward the midpoint.  [Phase 1]
- *   4. EXTEND (pass-through to opMoveCurveBoundary) to fully supersede OS_Trim.  [Phase 1.5]
- *   5. Cut at solved inflection points, picked via interactive manipulators.    [Phase 2]
+ * Capabilities:
+ *   - Trim OR split (split keeps all geometry; optionally return one wire).     [done]
+ *   - Cut at points, evenly between two points, or every X from a point.        [done]
+ *   - Cut a blind arc-length distance from a help point, toward the midpoint.   [done]
+ *   - Cut at solved inflection points: pick any (toggle), or nearest each end.  [done]
+ *   - EXTEND (pass-through to opMoveCurveBoundary) to fully supersede OS_Trim.   [pending]
  *
  * All cutting is done by building a plane perpendicular to the curve at each cut
- * location and letting opSplitPart do the work (see curveTrimCore.fs). This
- * keeps everything in arc-length space - no BSpline knot handling.
+ * location and letting opSplitPart do the work (see curveTrimCore.fs). This keeps
+ * everything in arc-length space - no BSpline knot handling.
  *
- * Phase 1 note: the arc-length cut modes operate on single-edge wires. Multi-
- * edge wires (via constructPath) are a follow-up.
+ * Note: the cut modes operate on single-edge wires. Multi-edge wires (via
+ * constructPath) are a follow-up.
  */
 
 // ============================================================================
@@ -31,8 +31,8 @@ IconNamespace::import(path : "a4ceb2cfcdb959208b76a85c", version : "e1d6923ac935
 // ============================================================================
 
 /**
- * Top-level operation. TRIM keeps one side of a single cut; SPLIT keeps every
- * piece. (EXTEND is added in Phase 1.5.)
+ * Top-level operation. TRIM keeps one side of a cut; SPLIT keeps every piece.
+ * (An EXTEND mode is still pending - see the file header.)
  */
 export enum OPERATION
 {
@@ -59,10 +59,6 @@ export enum CUT_BY
     AT_INFLECTION
 }
 
-// Manipulator key for the inflection-point picker - shared between the feature
-// body (which adds it) and the change function (which reads the clicked index).
-const INFLECTION_MANIPULATOR = "inflectionManipulator";
-
 /**
  * Even-division style: divide the span between two points into equal parts, or
  * place cuts at a fixed spacing repeated a number of times from one point.
@@ -87,6 +83,10 @@ export enum INFLECTION_MODE
     annotation { "Name" : "Nearest each endpoint" }
     NEAR_ENDS
 }
+
+// Manipulator key for the inflection-point picker - shared between the feature
+// body (which adds it) and the change function (which reads the toggled indices).
+const INFLECTION_MANIPULATOR = "inflectionManipulator";
 
 // ============================================================================
 // FEATURE
@@ -317,11 +317,11 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
     var fractions = solveInflectionFractions(context, edge);
     if (definition.debugInflections)
     {
-        var edgeLen = evLength(context, { "entities" : edge });
-        println("== inflections: " ~ size(fractions) ~ " found, edge length " ~ edgeLen ~ " ==");
+        var lenMm = evLength(context, { "entities" : edge }) / millimeter;
+        println("== inflections: " ~ size(fractions) ~ " found, edge length " ~ lenMm ~ " mm ==");
         for (var i = 0; i < size(fractions); i += 1)
         {
-            println("  [" ~ i ~ "] f=" ~ fractions[i] ~ "  fromStart=" ~ (fractions[i] * edgeLen) ~ "  fromEnd=" ~ ((1 - fractions[i]) * edgeLen));
+            println("  [" ~ i ~ "] f=" ~ fractions[i] ~ "  fromStart=" ~ (fractions[i] * lenMm) ~ " mm  fromEnd=" ~ ((1 - fractions[i]) * lenMm) ~ " mm");
         }
     }
     if (size(fractions) == 0)
@@ -396,7 +396,7 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
         var chosen = [];
         for (var sel in definition.inflectionIndices)
         {
-            if (sel.index >= 0 && sel.index < size(fractions))
+            if (sel.index < size(fractions))
             {
                 chosen = append(chosen, fractions[sel.index]);
             }
@@ -440,8 +440,7 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
         {
             throw regenError("Select a point to measure from", ["fromPoint"]);
         }
-        var from = resolvePoint(context, definition.fromPoint);
-        markProjectionToCurve(context, edge, from);
+        var from = resolveAndMark(context, edge, definition.fromPoint);
         return [fractionAtDistanceTowardMid(context, edge, from, definition.distance)];
     }
     else if (definition.cutBy == CUT_BY.EVEN_DIVISION)
@@ -452,18 +451,15 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
             {
                 throw regenError("Select start and end points for the even division", ["startPoint"]);
             }
-            var a = resolvePoint(context, definition.startPoint);
-            var b = resolvePoint(context, definition.endPoint);
-            markProjectionToCurve(context, edge, a);
-            markProjectionToCurve(context, edge, b);
+            var a = resolveAndMark(context, edge, definition.startPoint);
+            var b = resolveAndMark(context, edge, definition.endPoint);
             return evenDivisionFractions(context, edge, a, b, definition.divisions);
         }
         if (isQueryEmpty(context, definition.spacingFromPoint))
         {
             throw regenError("Select a point to space cuts from", ["spacingFromPoint"]);
         }
-        var from = resolvePoint(context, definition.spacingFromPoint);
-        markProjectionToCurve(context, edge, from);
+        var from = resolveAndMark(context, edge, definition.spacingFromPoint);
         return spacedFromPointFractions(context, edge, from, definition.spacing, definition.spacingCount, definition.spacingReverse);
     }
     else
@@ -476,8 +472,7 @@ function cutFractionsFor(context is Context, definition is map, edge is Query) r
         var fractions = [];
         for (var i = 0; i < size(pts); i += 1)
         {
-            var pt = resolvePoint(context, pts[i]);
-            markProjectionToCurve(context, edge, pt);
+            var pt = resolveAndMark(context, edge, pts[i]);
             fractions = append(fractions, fractionOfPointOnEdge(context, edge, pt));
         }
         return fractions;
@@ -522,6 +517,18 @@ function resolvePoint(context is Context, q is Query) returns Vector
         return evMateConnector(context, { "mateConnector" : q }).origin;
     }
     return evVertexPoint(context, { "vertex" : q });
+}
+
+/**
+ * Resolve a pick to a world point and, if it lies off the curve, draw the dashed
+ * reference line to its projection - the shared "measure from this point" step for
+ * the point-based cut modes.
+ */
+function resolveAndMark(context is Context, edge is Query, q is Query) returns Vector
+{
+    var pt = resolvePoint(context, q);
+    markProjectionToCurve(context, edge, pt);
+    return pt;
 }
 
 // ============================================================================

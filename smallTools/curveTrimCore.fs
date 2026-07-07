@@ -58,10 +58,11 @@ export const CTC_INFLECTION_TOL = 1e-5;
 // curve ignored at each end - increase if phantom near-end inflections persist.
 export const CTC_INFLECTION_END_MARGIN = 1e-3;
 
-// Bound for the hidden "chosen inflection" index (-1 = none picked yet).
+// Bound for the hidden chosen-inflection index items (0-based into the solved
+// inflection list; "none selected" is simply the empty array).
 export const CTC_INFLECTION_INDEX_BOUNDS =
 {
-    (unitless) : [-1, -1, 100000]
+    (unitless) : [0, 0, 100000]
 } as IntegerBoundSpec;
 
 // ============================================================================
@@ -354,7 +355,8 @@ export function combineSplitToSingleWire(context is Context, id is Id, pieces is
  * arc-length fraction, the same space the cutter uses, so the returned fractions
  * feed straight into the cut path.
  *
- * Method: sample signed curvature across [0,1] in one evEdgeCurvatures call, then
+ * Method: sample signed curvature across the curve interior (the exact endpoints
+ * are skipped - see CTC_INFLECTION_END_MARGIN) in one evEdgeCurvatures call, then
  * bisect each sign-change bracket. Throws a clear error on a non-planar curve.
  */
 export function solveInflectionFractions(context is Context, edge is Query) returns array
