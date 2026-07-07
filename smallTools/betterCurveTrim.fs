@@ -320,10 +320,14 @@ function adjustAtInflection(context is Context, id is Id, definition is map, wir
         {
             pts = append(pts, evEdgeTangentLine(context, { "edge" : edge, "parameter" : fractions[i] }).origin);
         }
+        var selectedIdx = mapArray(definition.inflectionIndices, function(inf)
+            {
+                return inf.index;
+            });
         addManipulators(context, id, {
             (INFLECTION_MANIPULATOR) : togglePointsManipulator({
                         "points" : pts,
-                        "selectedIndices" : mapArray(definition.inflectionIndices, function(inf) { return inf.index; }),
+                        "selectedIndices" : selectedIdx,
                         "suppressedIndices" : []
                     })
         });
@@ -473,8 +477,12 @@ export function onInflectionPick(context is Context, definition is map, newManip
 {
     if (newManipulators[INFLECTION_MANIPULATOR] is map)
     {
-        definition.inflectionIndices = mapArray(newManipulators[INFLECTION_MANIPULATOR].selectedIndices,
-                function(i) { return { "index" : i }; });
+        var items = [];
+        for (var i in newManipulators[INFLECTION_MANIPULATOR].selectedIndices)
+        {
+            items = append(items, { "index" : i });
+        }
+        definition.inflectionIndices = items;
     }
     return definition;
 }
