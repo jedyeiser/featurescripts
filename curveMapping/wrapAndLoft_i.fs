@@ -57,6 +57,7 @@ import(path : "6863116065bf5063633f30ac", version : "e692ba3166b7cd2cbc1a7da2");
 
 
 const ZERO_INCLUSIVE_OFFSET_BOUND = { (millimeter) : [0, 0, 100] } as LengthBoundSpec;
+const PRIMARY_OFFSET_BOUND        = { (millimeter) : [0, 20, 100] } as LengthBoundSpec;
 
 export enum OutputCurveMode
 {
@@ -203,7 +204,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         annotation { "Group Name" : "Offset", "Collapsed By Default" : false }
         {
             annotation { "Name" : "Primary offset" }
-            isLength(definition.primaryOffset, ZERO_INCLUSIVE_OFFSET_BOUND);
+            isLength(definition.primaryOffset, PRIMARY_OFFSET_BOUND);
+
+            annotation { "Name" : "Flip offset direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
+            definition.flipOffset is boolean;
 
             annotation { "Name" : "Second direction", "Default" : false }
             definition.secondDirection is boolean;
@@ -488,6 +492,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var allJunctionCurvatures         = [];
         var segCountPerSourceCurve        = [];
         var spanIsFast                    = [];   // per wrapped-span: true if it is a linear fast-path move
+        var offsetSign                    = definition.flipOffset ? -1 : 1;   // flips which side the offsets go
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             // Fast path: whole source curve in a doubly-linear region -> the wrap and
@@ -518,7 +523,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         // Primary offset = wrapped translated by primaryOffset along the constant normal.
                         opExtractWires(context, linId + "p", { "edges": sourceCurveArray[i] });
                         opTransform(context, linId + "px", { "bodies": qCreatedBy(linId + "p", EntityType.BODY),
-                                "transform": transform(definition.primaryOffset * lin.offsetDir) * lin.transform });
+                                "transform": transform(offsetSign * definition.primaryOffset * lin.offsetDir) * lin.transform });
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(linId + "p", EntityType.EDGE));
                         allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(linId + "p", EntityType.BODY));
 
@@ -527,7 +532,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         {
                             opExtractWires(context, linId + "s", { "edges": sourceCurveArray[i] });
                             opTransform(context, linId + "sx", { "bodies": qCreatedBy(linId + "s", EntityType.BODY),
-                                    "transform": transform(-1 * definition.secondOffset * lin.offsetDir) * lin.transform });
+                                    "transform": transform(-1 * offsetSign * definition.secondOffset * lin.offsetDir) * lin.transform });
                             allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(linId + "s", EntityType.EDGE));
                             allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(linId + "s", EntityType.BODY));
                         }
@@ -862,11 +867,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     for (var k = 0; k < size(segPoints); k += 1)
                     {
                         primaryOffsetPoints = append(primaryOffsetPoints,
-                            segPoints[k] + definition.primaryOffset * segOffsetDirs[k]);
+                            segPoints[k] + offsetSign * definition.primaryOffset * segOffsetDirs[k]);
                         if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                         {
                             secondaryOffsetPoints = append(secondaryOffsetPoints,
-                                segPoints[k] - definition.secondOffset * segOffsetDirs[k]);
+                                segPoints[k] - offsetSign * definition.secondOffset * segOffsetDirs[k]);
                         }
                     }
 
