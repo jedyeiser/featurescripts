@@ -487,8 +487,59 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var wrappedIds                    = [];
         var allJunctionCurvatures         = [];
         var segCountPerSourceCurve        = [];
+        var spanIsFast                    = [];   // per wrapped-span: true if it is a linear fast-path move
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
+            // Fast path: whole source curve in a doubly-linear region -> the wrap and
+            // both offsets are rigid transforms. Move copies of the source instead of
+            // sample-and-refit (arcs/lines preserved exactly). Emitted as one span for
+            // this source curve; falls through to the normal path below if ineligible.
+            if (CM_LINEAR_FASTPATH)
+            {
+                var probePts = mapArray(evEdgeTangentLines(context, {
+                    "edge"       : sourceCurveArray[i],
+                    "parameters" : [0, 0.25, 0.5, 0.75, 1]
+                }), function(x) { return x.origin; });
+                var lin = linearRegionMove(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, probePts);
+                if (lin.eligible)
+                {
+                    var wBefore = size(allWrappedSegQueries);
+                    var linId   = id + (toString(i) ~ "lin");
+                    try
+                    {
+                        // Wrapped curve = rigid move of the source.
+                        opExtractWires(context, linId + "w", { "edges": sourceCurveArray[i] });
+                        opTransform(context, linId + "wx", { "bodies": qCreatedBy(linId + "w", EntityType.BODY), "transform": lin.transform });
+                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(linId + "w", EntityType.EDGE));
+                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(linId + "w", EntityType.BODY));
+                        spanIsFast           = append(spanIsFast, true);
+
+                        // Primary offset = wrapped translated by primaryOffset along the constant normal.
+                        opExtractWires(context, linId + "p", { "edges": sourceCurveArray[i] });
+                        opTransform(context, linId + "px", { "bodies": qCreatedBy(linId + "p", EntityType.BODY),
+                                "transform": transform(definition.primaryOffset * lin.offsetDir) * lin.transform });
+                        allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(linId + "p", EntityType.EDGE));
+                        allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(linId + "p", EntityType.BODY));
+
+                        // Secondary offset (opposite side), when enabled.
+                        if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
+                        {
+                            opExtractWires(context, linId + "s", { "edges": sourceCurveArray[i] });
+                            opTransform(context, linId + "sx", { "bodies": qCreatedBy(linId + "s", EntityType.BODY),
+                                    "transform": transform(-1 * definition.secondOffset * lin.offsetDir) * lin.transform });
+                            allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(linId + "s", EntityType.EDGE));
+                            allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(linId + "s", EntityType.BODY));
+                        }
+                    }
+                    catch (e) { println("ERROR wrapAndLoft linearFastPath " ~ toString(i) ~ ": " ~ toString(e)); }
+
+                    // One entry per source curve (0 if the ops failed) so the loft slicing stays aligned.
+                    segCountPerSourceCurve = append(segCountPerSourceCurve, size(allWrappedSegQueries) - wBefore);
+                    continue;
+                }
+            }
+
             var srcBSpline = (definition.keepDegree || definition.sourceSamplingMode == SamplingMode.CP_BASED)
                 ? evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] })
                 : undefined;
@@ -899,6 +950,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
                         allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
                         allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
+                        spanIsFast           = append(spanIsFast, false);
                         wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
@@ -957,9 +1009,32 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
         if (size(wrappedBSplines) >= 2)
         {
+            var preWrapped       = allWrappedSegQueries;
+            var preWrappedBodies = allWrappedSegBodies;
             var jostleResult     = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures, true);
-            allWrappedSegQueries = jostleResult.edgeQueries;
-            allWrappedSegBodies  = jostleResult.bodyQueries;
+
+            // jostle reprocessed only the slow (created-BSpline) spans, in order. Rebuild
+            // the wrapped arrays keeping every span in its original position so they stay
+            // index-aligned with the (un-jostled) offset arrays and the loft slicing.
+            var rebuiltEdges  = [];
+            var rebuiltBodies = [];
+            var jIdx = 0;
+            for (var pos = 0; pos < size(spanIsFast); pos += 1)
+            {
+                if (spanIsFast[pos])
+                {
+                    rebuiltEdges  = append(rebuiltEdges,  preWrapped[pos]);
+                    rebuiltBodies = append(rebuiltBodies, preWrappedBodies[pos]);
+                }
+                else
+                {
+                    rebuiltEdges  = append(rebuiltEdges,  jostleResult.edgeQueries[jIdx]);
+                    rebuiltBodies = append(rebuiltBodies, jostleResult.bodyQueries[jIdx]);
+                    jIdx += 1;
+                }
+            }
+            allWrappedSegQueries = rebuiltEdges;
+            allWrappedSegBodies  = rebuiltBodies;
         }
 
         // ===== Per-source-curve loft =====

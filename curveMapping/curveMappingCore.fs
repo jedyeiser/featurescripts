@@ -850,7 +850,7 @@ function edgeIndexAtArcLength(frenetPath is map, arcLength) returns number
  * origin + xAxis*normal + yAxis*binormal + zAxis*tangent.
  */
 function linearRegionTransformAt(context is Context, fromMap is map, toMap is map,
-    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits, flipToNormal is boolean, sFrom is ValueWithUnits) returns Transform
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits, flipToNormal is boolean, sFrom is ValueWithUnits) returns map
 {
     var fromRes = getFrameAtArcLength(context, fromMap, sFrom);
     var toRes   = getFrameAtArcLength(context, toMap, toRefArc + (sFrom - fromRefArc));
@@ -862,7 +862,12 @@ function linearRegionTransformAt(context is Context, fromMap is map, toMap is ma
         toFrame = coordSystem(toRes.frame.origin, -1 * toRes.frame.xAxis, toRes.frame.zAxis);
     }
 
-    return toWorld(toFrame) * fromWorld(fromRes.frame);
+    // offsetDir is the constant to-frame normal (xAxis) in the linear region -
+    // the loft-offset direction, so offset curves are this transform + a translation.
+    return {
+        "transform" : toWorld(toFrame) * fromWorld(fromRes.frame),
+        "offsetDir" : toFrame.xAxis
+    };
 }
 
 /**
@@ -916,10 +921,12 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
         return { "eligible" : false };
     }
 
+    var res = linearRegionTransformAt(context, fromMap, toMap,
+                  fromRefArc, toRefArc, flipToNormal, (sMin + sMax) / 2);
     return {
         "eligible"  : true,
-        "transform" : linearRegionTransformAt(context, fromMap, toMap,
-                          fromRefArc, toRefArc, flipToNormal, (sMin + sMax) / 2)
+        "transform" : res.transform,
+        "offsetDir" : res.offsetDir
     };
 }
 

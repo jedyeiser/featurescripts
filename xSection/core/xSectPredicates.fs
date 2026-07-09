@@ -14,7 +14,9 @@ export import(path : "a0fab52ee4d0b16ffbc1c603", version : "0a2d87d104de4def429c
  *
  * Body Selection Flow:
  * --------------------
- * 1. User picks bodies via selBodies (solid bodies only, no composites)
+ * 1. User picks bodies via selBodies (solid bodies and/or composite parts)
+ * 1a. Editing logic recursively unwraps any composite parts (including nested
+ *     sub-composites) down to their constituent solid bodies
  * 2. Editing logic evaluates selBodies, populates bodyArray automatically
  * 3. For each body, editing logic reads the Onshape material name
  *    (stored in materialName -- this is the name from Onshape's material
@@ -148,9 +150,9 @@ export predicate eiXSectPrecondition(definition is map)
                  "Description" : "Rear support location. Vertex, planar face normal to ski axis, or mate connector." }
     definition.acpQuery is Query;
     
-    annotation { "Name" : "Cross section bodies", 
-                 "Filter" : EntityType.BODY && BodyType.SOLID,
-                 "Description" : "Solid bodies to include in analysis" }
+    annotation { "Name" : "Cross section bodies",
+                 "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.COMPOSITE),
+                 "Description" : "Solid bodies or composite parts to include in analysis. Composite parts (including nested sub-composites) are unwrapped to their constituent solid bodies." }
     definition.selBodies is Query;
     
     annotation { "Name" : "Material library",

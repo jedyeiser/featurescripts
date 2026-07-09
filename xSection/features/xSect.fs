@@ -88,6 +88,72 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "89b4cc8e90bbf5e1f5232333");
 
 
 // =============================================================================
+// BODY RESOLUTION
+// =============================================================================
+
+/**
+ * Recursively unwrap composite parts in `selection` down to their constituent
+ * solid bodies. A composite part may itself contain sub-composites, so
+ * unwrapping is repeated one level at a time until only non-composite bodies
+ * remain. Only solid bodies are returned (any wire/sheet constituents of a
+ * composite are dropped), and duplicates are removed (a body may be reachable
+ * both directly and through a composite it belongs to).
+ *
+ * @param context {Context}
+ * @param selection {Query} : User selection, may mix solid bodies and composite parts
+ * @returns {array} : Array of individual solid-body queries, in selection order
+ */
+function resolveSelectedBodies(context is Context, selection is Query) returns array
+{
+    var bodies = evaluateQuery(context, selection);
+
+    // Iteratively unwrap composite parts until none remain in the working set.
+    // The guard bounds pathological/cyclic definitions; real nesting is shallow.
+    var guard = 0;
+    var hasComposite = true;
+    while (hasComposite && guard < 100)
+    {
+        guard += 1;
+        hasComposite = false;
+        var flattened = [];
+        for (var b in bodies)
+        {
+            if (size(evaluateQuery(context, qBodyType(b, BodyType.COMPOSITE))) > 0)
+            {
+                hasComposite = true;
+                var constituents = evaluateQuery(context, qContainedInCompositeParts(b));
+                flattened = concatenateArrays([flattened, constituents]);
+            }
+            else
+            {
+                flattened = append(flattened, b);
+            }
+        }
+        bodies = flattened;
+    }
+
+    // Keep only solid bodies, removing duplicates.
+    var solids = [];
+    for (var b in bodies)
+    {
+        if (size(evaluateQuery(context, qBodyType(b, BodyType.SOLID))) == 0)
+        {
+            continue;
+        }
+        var isDup = any(solids, function(s is Query) returns boolean
+        {
+            return areQueriesEquivalent(context, s, b);
+        });
+        if (!isDup)
+        {
+            solids = append(solids, b);
+        }
+    }
+    return solids;
+}
+
+
+// =============================================================================
 // EDITING LOGIC
 // =============================================================================
 
@@ -103,7 +169,8 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "89b4cc8e90bbf5e1f5232333");
  * @param id {Id}
  * @param oldDefinition {map} : Previous definition snapshot (used to preserve user overrides)
  * @param definition {map} : Current definition map. Relevant fields read/written:
- *   - `definition.selBodies` {Query} : User-selected solid bodies to analyze
+ *   - `definition.selBodies` {Query} : User-selected solid bodies and/or composite parts to analyze
+ *       (composites are recursively unwrapped to solid bodies by resolveSelectedBodies)
  *   - `definition.materialCSV` {map} : CSV blob with `.csvData` array (material database)
  *   - `definition.bodyArray` {array} : Rebuilt each call — array of per-body entries:
  *       { bodyQuery, bodyName, bodyNum, hasMaterialData, materialName,
@@ -153,9 +220,10 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
     }
 
     // -----------------------------------------------------------------
-    // Step 2: Evaluate selBodies into individual body queries
+    // Step 2: Evaluate selBodies into individual solid-body queries,
+    //         recursively unwrapping any selected composite parts.
     // -----------------------------------------------------------------
-    var selectedBodies = evaluateQuery(context, definition.selBodies);
+    var selectedBodies = resolveSelectedBodies(context, definition.selBodies);
 
     // -----------------------------------------------------------------
     // Step 3: Build bodyArray from selected bodies
