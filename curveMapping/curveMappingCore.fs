@@ -808,6 +808,123 @@ export function mapWorldPoints(context is Context,
 
 
 // ============================================================================
+// LINEAR-REGION FAST PATH
+// ============================================================================
+//
+// Where the from- and to-reference are BOTH straight over a source edge's span,
+// the Frenet wrap collapses to a single constant rigid transform: the isometric
+// arc-length shift (s_to = toRefArc + (s_from - fromRefArc)) plus constant line
+// frames make the arc-length dependence cancel. Such an edge can be copied and
+// moved with opExtractWires + opTransform instead of sample-and-refit - which also
+// preserves EXACT geometry (an arc stays a true arc, rational weights stay intact).
+// Ineligible edges fall back to the normal mapping path, so this is a pure
+// optimization with no behavior change.
+
+// Master switch (flip to false to A/B against the sample-and-refit path).
+export const CM_LINEAR_FASTPATH = true;
+
+/**
+ * Index of the edge whose span contains `arcLength` (last edge with
+ * startArcLength <= arcLength) - the same rule getFrameAtArcLength uses.
+ */
+function edgeIndexAtArcLength(frenetPath is map, arcLength) returns number
+{
+    var edgeData = frenetPath.edgeData;
+    var idx = 0;
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        if (edgeData[i].startArcLength <= arcLength)
+        {
+            idx = i;
+        }
+    }
+    return idx;
+}
+
+/**
+ * The constant rigid transform mapping a point from the from-frame to the to-frame
+ * at arc-length `sFrom`. In a doubly-linear region the frames are constant, so this
+ * one transform is the exact deformation for the whole region; it reproduces
+ * mapSinglePoint's reconstruction (with the same normal-sign reconciliation).
+ * toWorld(toFrame) . fromWorld(fromFrame) is world -> from-local -> to-world, i.e.
+ * origin + xAxis*normal + yAxis*binormal + zAxis*tangent.
+ */
+function linearRegionTransformAt(context is Context, fromMap is map, toMap is map,
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits, flipToNormal is boolean, sFrom is ValueWithUnits) returns Transform
+{
+    var fromRes = getFrameAtArcLength(context, fromMap, sFrom);
+    var toRes   = getFrameAtArcLength(context, toMap, toRefArc + (sFrom - fromRefArc));
+
+    var toSign  = flipToNormal ? (-1 * toRes.sign) : toRes.sign;
+    var toFrame = toRes.frame;
+    if (toSign != fromRes.sign)
+    {
+        toFrame = coordSystem(toRes.frame.origin, -1 * toRes.frame.xAxis, toRes.frame.zAxis);
+    }
+
+    return toWorld(toFrame) * fromWorld(fromRes.frame);
+}
+
+/**
+ * Decide whether the source edge sampled by `samplePts` (world points) lies wholly
+ * within a region where both references are straight, and if so return the single
+ * rigid transform to move it. Returns { "eligible" : boolean, "transform" : Transform }.
+ *
+ * Eligible when every sample projects onto the SAME from-edge and that edge is a
+ * line, and the shifted arc-length span stays within a SINGLE line to-edge that is
+ * in-bounds. The first-sample line check is a cheap reject for curved regions.
+ */
+export function linearRegionMove(context is Context, fromMap is map, toMap is map,
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits, flipToNormal is boolean, samplePts is array) returns map
+{
+    if (size(samplePts) == 0)
+    {
+        return { "eligible" : false };
+    }
+
+    var proj0       = projectOntoFrenetPath(fromMap, samplePts[0], undefined);
+    var fromEdgeIdx = proj0.hint.edgeIndex;
+    if (!fromMap.edgeData[fromEdgeIdx].isLine)
+    {
+        return { "eligible" : false };   // cheap reject: source is not over a line
+    }
+
+    var sMin = proj0.arcLength;
+    var sMax = proj0.arcLength;
+    for (var k = 1; k < size(samplePts); k += 1)
+    {
+        var proj = projectOntoFrenetPath(fromMap, samplePts[k], undefined);
+        if (proj.hint.edgeIndex != fromEdgeIdx)
+        {
+            return { "eligible" : false };   // straddles two from-edges
+        }
+        if (proj.arcLength < sMin) { sMin = proj.arcLength; }
+        if (proj.arcLength > sMax) { sMax = proj.arcLength; }
+    }
+
+    // The shifted span must land inside a single line to-edge, in-bounds.
+    var delta  = toRefArc - fromRefArc;
+    var sToMin = sMin + delta;
+    var sToMax = sMax + delta;
+    if (sToMin < 0 * meter || sToMax > toMap.totalLength)
+    {
+        return { "eligible" : false };
+    }
+    var toIdx = edgeIndexAtArcLength(toMap, sToMin);
+    if (toIdx != edgeIndexAtArcLength(toMap, sToMax) || !toMap.edgeData[toIdx].isLine)
+    {
+        return { "eligible" : false };
+    }
+
+    return {
+        "eligible"  : true,
+        "transform" : linearRegionTransformAt(context, fromMap, toMap,
+                          fromRefArc, toRefArc, flipToNormal, (sMin + sMax) / 2)
+    };
+}
+
+
+// ============================================================================
 // alignIsolatedLineFrames
 // ============================================================================
 
@@ -1416,6 +1533,39 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
     for (var i = 0; i < size(edgeArray); i += 1)
     {
         var edge    = edgeArray[i];
+
+        // Fast path: if the whole edge sits in a doubly-linear region, the wrap is
+        // one rigid transform - copy and move the edge, preserving exact geometry
+        // (arcs stay arcs, weights intact). Ineligible edges fall through below.
+        if (CM_LINEAR_FASTPATH)
+        {
+            var probePts = mapArray(evEdgeTangentLines(context, {
+                "edge"       : edge,
+                "parameters" : [0, 0.25, 0.5, 0.75, 1]
+            }), function(x) { return x.origin; });
+            var lin = linearRegionMove(context, fromMap, toMap,
+                settings.fromRefArc, settings.toRefArc, settings.flipToNormal, probePts);
+            if (lin.eligible)
+            {
+                var linId = id + (toString(i) ~ "linmove");
+                try
+                {
+                    opExtractWires(context, linId, { "edges": edge });
+                    opTransform(context, linId + "xf", {
+                        "bodies"    : qCreatedBy(linId, EntityType.BODY),
+                        "transform" : lin.transform
+                    });
+                    result = append(result, {
+                        "sourceEdge" : edge,
+                        "wrappedEdge": qCreatedBy(linId, EntityType.EDGE),
+                        "wrappedBody": qCreatedBy(linId, EntityType.BODY)
+                    });
+                }
+                catch (e) { println("ERROR linearFastPath " ~ i ~ ": " ~ toString(e)); }
+                continue;
+            }
+        }
+
         var edgeLen = evLength(context, { "entities": edge });
         var edgeBSpline;
         if (settings.samplingMode == SamplingMode.CP_BASED || settings.keepDegree)
