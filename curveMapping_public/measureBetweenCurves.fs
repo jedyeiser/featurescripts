@@ -2,6 +2,9 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "onshape/std/path.fs", version : "2892.0");
 
+IconNamespace::import(path : "010318fea6f2c95303990c0e", version : "a06cd2e9297f4b40538de361");
+
+
 /**
  * Measures the distance between two groups of Edges or Wire Bodies. Results are output in a table. 
  */
@@ -596,7 +599,7 @@ function fitPlaneNormal(points is array) returns Vector
 }
 
 
-annotation { "Feature Type Name" : "Measure curve distance", "Feature Type Description" : "Measures the distance between two groups of edges/wires and outputs results in a table" }
+annotation { "Feature Type Name" : "Measure curve distance", "Feature Type Description" : "Measures the distance between two groups of edges/wires and outputs results in a table", "Icon" : IconNamespace::BLOB_DATA }
 export const measureBetweenCurves = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
