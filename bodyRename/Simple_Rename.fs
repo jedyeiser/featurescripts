@@ -1,7 +1,7 @@
 FeatureScript 3008;
 import(path : "onshape/std/common.fs", version : "3008.0");
 
-annotation { "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select bodies to rename, with an optional shared prefix and suffix applied to every body." }
+annotation { "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select bodies or composite parts to rename, with an optional shared prefix and suffix applied to every name." }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -9,7 +9,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         definition.usePrefix is boolean;
         if (definition.usePrefix)
         {
-            annotation { "Name" : "Prefix", "Description" : "Prepended to every body name below." }
+            annotation { "Name" : "Prefix", "Description" : "Prepended to every name below." }
             definition.prefix is string;
         }
 
@@ -17,19 +17,19 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         definition.useSuffix is boolean;
         if (definition.useSuffix)
         {
-            annotation { "Name" : "Suffix", "Description" : "Appended to every body name below." }
+            annotation { "Name" : "Suffix", "Description" : "Appended to every name below." }
             definition.suffix is string;
         }
 
-        annotation { "Name" : "Bodies to Rename", "Item name" : "Body",
+        annotation { "Name" : "Bodies and parts to rename", "Item name" : "Item",
                 "Driven query" : "query", "Item label template" : "#renameString" }
         definition.renameArray is array;
         for (var body in definition.renameArray)
         {
-            annotation { "Name" : "Body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), "MaxNumberOfPicks" : 1, "UIHint" : UIHint.FOCUS_INNER_QUERY }
+            annotation { "Name" : "Body or composite part", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE || BodyType.COMPOSITE), "MaxNumberOfPicks" : 1, "UIHint" : UIHint.FOCUS_INNER_QUERY }
             body.query is Query;
 
-            annotation { "Name" : "New Body Name" }
+            annotation { "Name" : "New name" }
             body.renameString is string;
         }
     }
