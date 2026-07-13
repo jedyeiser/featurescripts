@@ -9,11 +9,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/6bea70280b268cd8effd28c5/683d867c35fdab9c98d47556", version : "0910d732f6ed365db370957e");
+export import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/683d867c35fdab9c98d47556", version : "08ced7a9bfddd7090ead6e97");
 
 
 //import wrapCurve.fs
-import(path : "0e53e9b1145a1bd7bbfa0193", version : "e0b3c355b2abc3c5a812222a");
+import(path : "0e53e9b1145a1bd7bbfa0193", version : "42a5ccaf79b723bb155f9350");
 
 IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
 
@@ -493,6 +493,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // OFFSET edge scaled by the offset distance. Whichever neighbor is processed first
         // wins; the other adopts its offsetDir so the offset endpoints coincide exactly.
         var junctionOffsetCache           = [];
+        var clusteredSpanCount            = 0;    // sliver spans seen when fixClustering is off (for the recommend-the-toggle banner)
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             // Fast path: whole source curve in a doubly-linear region -> rigid move
@@ -716,6 +717,32 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         mappedData[k] = mergeMaps(mappedData[k], { "edgeIndex": targetEdge });
                     }
                     merging = true;
+                }
+            }
+
+            // Detection only (toggle off): count sliver spans so we can recommend enabling
+            // the fix. Same cheap run-length scan as the merge, but no relabel and no
+            // geometry -- negligible next to the fit/loft ops, so it never bloats the build.
+            if (!definition.fixClustering && size(mappedData) > 1)
+            {
+                var ds = 0;
+                while (ds < size(mappedData))
+                {
+                    var de = ds;
+                    while (de + 1 < size(mappedData) && mappedData[de + 1].edgeIndex == mappedData[ds].edgeIndex)
+                    {
+                        de += 1;
+                    }
+                    var dLen = 0 * meter;
+                    for (var k = ds; k < de; k += 1)
+                    {
+                        dLen += norm(mappedData[k + 1].point - mappedData[k].point);
+                    }
+                    if (dLen < CLUSTER_MERGE_MIN_SPAN)
+                    {
+                        clusteredSpanCount += 1;
+                    }
+                    ds = de + 1;
                 }
             }
 
@@ -1135,6 +1162,15 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             }
 
             segCountPerSourceCurve = append(segCountPerSourceCurve, size(allWrappedSegQueries) - wrappedCountBefore);
+        }
+
+        // Recommend the fix when it is off and slivers are actually present (default is on,
+        // so an untouched feature never sees this).
+        if (!definition.fixClustering && clusteredSpanCount > 0)
+        {
+            reportFeatureInfo(context, id, toString(clusteredSpanCount) ~
+                " span(s) have clustered control points (a source endpoint met a reference line/arc seam). " ~
+                "Enable 'Fix control-point clustering' to merge them.");
         }
 
         // ===== G2 junction smoothing =====
