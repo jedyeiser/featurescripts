@@ -56,6 +56,7 @@ export const DelayBounds           = {(millimeter) : [0, 0, 1000]}         as Le
 export const ApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]}     as LengthBoundSpec;
 export const ApproxDegreeBounds    = {(unitless)   : [2, 3, 5]}            as IntegerBoundSpec;
 export const ApproxMaxCPBounds     = {(unitless)   : [10, 100, 500]}       as IntegerBoundSpec;
+export const StationCountBounds    = {(unitless)   : [0, 0, 5]}            as IntegerBoundSpec;
 
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
@@ -266,44 +267,165 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                          "Description" : "Distance in from the region end over which the end offset is held constant (0 = no dwell)" }
             isLength(region.endDelay, DelayBounds);
 
-            annotation { "Name" : "Interior stations", "Item name" : "Station",
-                         "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
-                         "Description" : "Interior control points that pin the offset to a specific value at a location inside this region. The profile re-solves through them, keeping the region's transfer type between pins." }
-            region.stations is array;
-            for (var station in region.stations)
+            // Interior stations. FeatureScript forbids an array parameter inside another
+            // array parameter's loop, so stations are fixed per-region slots revealed by a
+            // count (up to StationCountBounds max) rather than a nested array.
+            annotation { "Name" : "Interior stations",
+                         "Description" : "Number of interior control points that pin the offset to a value at a location inside this region. The profile re-solves through them, keeping the region's transfer type between pins." }
+            isInteger(region.numStations, StationCountBounds);
+
+            if (region.numStations >= 1)
             {
-                annotation { "Name" : "Location type", "Default" : RegionExtentType.X_EXTENTS,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM,
-                             "Description" : "How this station's position along the path is specified" }
-                station.locationType is RegionExtentType;
+                annotation { "Name" : "Station 1 location", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                region.station1LocationType is RegionExtentType;
 
-                if (station.locationType == RegionExtentType.X_EXTENTS)
+                if (region.station1LocationType == RegionExtentType.X_EXTENTS)
                 {
-                    annotation { "Name" : "Position",
+                    annotation { "Name" : "Station 1 position",
                                  "Description" : "Distance along path from reference point (negative = behind reference)" }
-                    isLength(station.position, LENGTH_BOUNDS);
+                    isLength(region.station1Position, LENGTH_BOUNDS);
                 }
-
-                if (station.locationType == RegionExtentType.QUERY)
+                if (region.station1LocationType == RegionExtentType.QUERY)
                 {
-                    annotation { "Name" : "Location point",
+                    annotation { "Name" : "Station 1 point",
                                  "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
                                  "MaxNumberOfPicks" : 1 }
-                    station.locationQuery is Query;
+                    region.station1Query is Query;
                 }
-
                 if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
                 {
-                    annotation { "Name" : "Normal offset",
-                                 "Description" : "Frenet normal offset pinned at this station" }
-                    isLength(station.normalOffset, OffsetBounds);
+                    annotation { "Name" : "Station 1 normal offset" }
+                    isLength(region.station1NormalOffset, OffsetBounds);
                 }
-
                 if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
                 {
-                    annotation { "Name" : "Binormal offset",
-                                 "Description" : "Frenet binormal offset pinned at this station" }
-                    isLength(station.binormalOffset, OffsetBounds);
+                    annotation { "Name" : "Station 1 binormal offset" }
+                    isLength(region.station1BinormalOffset, OffsetBounds);
+                }
+            }
+
+            if (region.numStations >= 2)
+            {
+                annotation { "Name" : "Station 2 location", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                region.station2LocationType is RegionExtentType;
+
+                if (region.station2LocationType == RegionExtentType.X_EXTENTS)
+                {
+                    annotation { "Name" : "Station 2 position",
+                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
+                    isLength(region.station2Position, LENGTH_BOUNDS);
+                }
+                if (region.station2LocationType == RegionExtentType.QUERY)
+                {
+                    annotation { "Name" : "Station 2 point",
+                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
+                                 "MaxNumberOfPicks" : 1 }
+                    region.station2Query is Query;
+                }
+                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 2 normal offset" }
+                    isLength(region.station2NormalOffset, OffsetBounds);
+                }
+                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 2 binormal offset" }
+                    isLength(region.station2BinormalOffset, OffsetBounds);
+                }
+            }
+
+            if (region.numStations >= 3)
+            {
+                annotation { "Name" : "Station 3 location", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                region.station3LocationType is RegionExtentType;
+
+                if (region.station3LocationType == RegionExtentType.X_EXTENTS)
+                {
+                    annotation { "Name" : "Station 3 position",
+                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
+                    isLength(region.station3Position, LENGTH_BOUNDS);
+                }
+                if (region.station3LocationType == RegionExtentType.QUERY)
+                {
+                    annotation { "Name" : "Station 3 point",
+                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
+                                 "MaxNumberOfPicks" : 1 }
+                    region.station3Query is Query;
+                }
+                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 3 normal offset" }
+                    isLength(region.station3NormalOffset, OffsetBounds);
+                }
+                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 3 binormal offset" }
+                    isLength(region.station3BinormalOffset, OffsetBounds);
+                }
+            }
+
+            if (region.numStations >= 4)
+            {
+                annotation { "Name" : "Station 4 location", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                region.station4LocationType is RegionExtentType;
+
+                if (region.station4LocationType == RegionExtentType.X_EXTENTS)
+                {
+                    annotation { "Name" : "Station 4 position",
+                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
+                    isLength(region.station4Position, LENGTH_BOUNDS);
+                }
+                if (region.station4LocationType == RegionExtentType.QUERY)
+                {
+                    annotation { "Name" : "Station 4 point",
+                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
+                                 "MaxNumberOfPicks" : 1 }
+                    region.station4Query is Query;
+                }
+                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 4 normal offset" }
+                    isLength(region.station4NormalOffset, OffsetBounds);
+                }
+                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 4 binormal offset" }
+                    isLength(region.station4BinormalOffset, OffsetBounds);
+                }
+            }
+
+            if (region.numStations >= 5)
+            {
+                annotation { "Name" : "Station 5 location", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                region.station5LocationType is RegionExtentType;
+
+                if (region.station5LocationType == RegionExtentType.X_EXTENTS)
+                {
+                    annotation { "Name" : "Station 5 position",
+                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
+                    isLength(region.station5Position, LENGTH_BOUNDS);
+                }
+                if (region.station5LocationType == RegionExtentType.QUERY)
+                {
+                    annotation { "Name" : "Station 5 point",
+                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
+                                 "MaxNumberOfPicks" : 1 }
+                    region.station5Query is Query;
+                }
+                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 5 normal offset" }
+                    isLength(region.station5NormalOffset, OffsetBounds);
+                }
+                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Station 5 binormal offset" }
+                    isLength(region.station5BinormalOffset, OffsetBounds);
                 }
             }
 
@@ -868,45 +990,46 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
         var useNormal   = (ot == OffsetType.NORMAL   || ot == OffsetType.BOTH);
         var useBinormal = (ot == OffsetType.BINORMAL || ot == OffsetType.BOTH);
 
-        // --- Resolve interior stations into {alpha, normalOff, binormalOff} ---
-        var warnings    = [];
-        var stationList = (region.stations != undefined) ? region.stations : [];
-        var resolved    = [];
+        // --- Resolve interior stations (fixed per-region slots) into {alpha, normalOff, binormalOff} ---
+        var warnings  = [];
+        var nStations = (region.numStations != undefined) ? min(region.numStations, 5) : 0;
+        var resolved  = [];
 
-        for (var si = 0; si < size(stationList); si += 1)
+        for (var si = 1; si <= nStations; si += 1)
         {
-            var st = stationList[si];
+            var pfx     = "station" ~ toString(si);
+            var locType = region[pfx ~ "LocationType"];
 
             var stT;
-            if (st.locationType == RegionExtentType.X_EXTENTS)
+            if (locType == RegionExtentType.QUERY)
             {
-                stT = pathInfo.refParam + st.position / pathInfo.length;
-            }
-            else // QUERY
-            {
-                var stPts = evaluateQuery(context, st.locationQuery);
+                var stPts = evaluateQuery(context, region[pfx ~ "Query"]);
                 if (size(stPts) != 1)
                 {
                     warnings = append(warnings, "Region '" ~ region.regionName ~
-                        "' station " ~ toString(si + 1) ~ ": location must resolve to exactly 1 point; skipped.");
+                        "' station " ~ toString(si) ~ ": location must resolve to exactly 1 point; skipped.");
                     continue;
                 }
                 var stPt  = getRefPoint(context, stPts[0]);
                 var stRes = projectOntoFrenetPath(pathInfo.frenetPath, stPt, undefined);
                 stT = stRes.arcLength / pathInfo.length;
             }
+            else // X_EXTENTS (also the default when locType is unset)
+            {
+                stT = pathInfo.refParam + region[pfx ~ "Position"] / pathInfo.length;
+            }
 
             var alpha = (span > 1e-10) ? (stT - tStart) / span : 0.0;
             if (alpha < -1e-6 || alpha > 1 + 1e-6)
             {
                 warnings = append(warnings, "Region '" ~ region.regionName ~
-                    "' station " ~ toString(si + 1) ~ " lies outside the region extent; skipped.");
+                    "' station " ~ toString(si) ~ " lies outside the region extent; skipped.");
                 continue;
             }
             alpha = min(max(alpha, 0.0), 1.0);
 
-            var nOff = (useNormal   && st.normalOffset   != undefined) ? st.normalOffset   : undefined;
-            var bOff = (useBinormal && st.binormalOffset != undefined) ? st.binormalOffset : undefined;
+            var nOff = (useNormal   && region[pfx ~ "NormalOffset"]   != undefined) ? region[pfx ~ "NormalOffset"]   : undefined;
+            var bOff = (useBinormal && region[pfx ~ "BinormalOffset"] != undefined) ? region[pfx ~ "BinormalOffset"] : undefined;
 
             resolved = append(resolved, { "alpha" : alpha, "normalOff" : nOff, "binormalOff" : bOff });
         }

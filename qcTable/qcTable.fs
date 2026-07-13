@@ -367,11 +367,6 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             stations = mergeCoincidentStations(stations);
         }
 
-        // Phantom stations sit beyond the body extents; add them after all filtering
-        // so they are never dropped. They are not sectioned - their measurements are
-        // cloned from the nearest real terminal station after measurement (below).
-        stations = addPhantomStations(context, stations, definition, coreExtents, swExtents);
-
         if (definition.verbose)
         {
             println("Total stations: " ~ size(stations));
@@ -429,21 +424,6 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 }
             }
 
-            // Phantom core stations clone the nearest real terminal measurement
-            // (no geometry exists to section beyond the core extents).
-            var coreMid = (coreExtents.minCorner[0] + coreExtents.maxCorner[0]) / 2;
-            for (var station in stations)
-            {
-                if (station.phantomBody == "core" && coreMeasurements[station.x] == undefined)
-                {
-                    var srcX = (station.x < coreMid) ? coreTerminals.loX : coreTerminals.hiX;
-                    if (srcX != undefined && coreMeasurements[srcX] != undefined)
-                    {
-                        coreMeasurements[station.x] = coreMeasurements[srcX];
-                    }
-                }
-            }
-
             if (definition.verbose)
             {
                 println("Core measurements: " ~ size(keys(coreMeasurements)));
@@ -485,20 +465,6 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 }
             }
 
-            // Phantom sidewall stations clone the nearest real terminal measurement.
-            var swMid = (swExtents.minCorner[0] + swExtents.maxCorner[0]) / 2;
-            for (var station in stations)
-            {
-                if (station.phantomBody == "sw" && swMeasurements[station.x] == undefined)
-                {
-                    var srcX = (station.x < swMid) ? swTerminals.loX : swTerminals.hiX;
-                    if (srcX != undefined && swMeasurements[srcX] != undefined)
-                    {
-                        swMeasurements[station.x] = swMeasurements[srcX];
-                    }
-                }
-            }
-
             if (definition.verbose)
             {
                 println("SW measurements: " ~ size(keys(swMeasurements)));
@@ -526,6 +492,19 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 });
             }
         }
+
+        // ===================================================================
+        // PHANTOM END RELOCATION
+        // ===================================================================
+
+        // Move each enabled body's outermost station to its phantom end (the whole
+        // row relocates; its measurement travels with it). No-op when both phantom
+        // modes are Off.
+        var phantomResult = relocatePhantomEnds(context, stations, coreMeasurements, swMeasurements,
+            definition, coreExtents, swExtents);
+        stations = phantomResult.stations;
+        coreMeasurements = phantomResult.core;
+        swMeasurements = phantomResult.sw;
 
         // ===================================================================
         // MERGE DATA AND COMPUTE DELTAS

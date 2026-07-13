@@ -436,7 +436,6 @@ export const CALLOUT_CORE_TIP = "CORE_TIP";
 export const CALLOUT_CORE_TAIL = "CORE_TAIL";
 export const CALLOUT_SW_TIP = "SW_TIP";
 export const CALLOUT_SW_TAIL = "SW_TAIL";
-export const CALLOUT_PHANTOM = "PH";
 
 // ============================================================================
 // UNIT CONVERSION

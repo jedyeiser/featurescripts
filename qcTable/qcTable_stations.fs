@@ -566,76 +566,109 @@ export function addUserPoints(
 }
 
 /**
- * Append phantom (beyond-extent) start/end stations for the core and/or sidewall.
- * A phantom station sits past a body end (OFFSET mode) or at a picked reference
- * (QUERY mode). It carries a `phantomBody` tag ("core"/"sw") so the measurement
- * pass clones that body's nearest terminal measurement into it instead of
- * sectioning empty space. Call this AFTER the boundary/off-grid filters so phantom
- * stations are never dropped.
+ * Relocate each enabled body's outermost (terminal) station to a phantom X: beyond
+ * the body extents (OFFSET mode) or onto a picked reference (QUERY mode). The whole
+ * row moves - the terminal station's world X is replaced and its already-measured
+ * core/sidewall values are carried along (repeat-terminal semantics; no new rows,
+ * no re-sectioning). Call this AFTER measurement so the values are available.
  *
- * Core is assumed to be at least as long as the sidewall, so a core phantom point
- * is always beyond the sidewall too (sidewall reads blank there); a sidewall
- * phantom point may still fall within the core (which then measures normally).
+ * The core is at least as long as the sidewall, so the core's terminals are
+ * core-only rows (clean). A sidewall terminal may also carry core data - the whole
+ * shared row moves, which is the accepted behavior.
+ *
+ * Returns { stations, core, sw }: the updated stations array and measurement maps.
  */
-export function addPhantomStations(
+export function relocatePhantomEnds(
     context is Context,
     stations is array,
+    coreMeasurements is map,
+    swMeasurements is map,
     definition is map,
     coreExtents,
-    swExtents) returns array
+    swExtents) returns map
 {
-    var result = stations;
+    var bundle = { "stations" : stations, "core" : coreMeasurements, "sw" : swMeasurements };
 
     if (coreExtents != undefined && definition.corePhantomMode != PHANTOM_MODE.OFF)
     {
-        result = concatenateArrays([result, phantomStationsForBody(context, definition.corePhantomMode,
-            definition.corePhantomOffset, definition.corePhantomStart, definition.corePhantomEnd,
-            coreExtents, "core")]);
+        bundle = relocateBodyEnds(context, bundle, definition.corePhantomMode,
+            definition.corePhantomOffset, definition.corePhantomStart, definition.corePhantomEnd, coreExtents);
     }
     if (swExtents != undefined && definition.swPhantomMode != PHANTOM_MODE.OFF)
     {
-        result = concatenateArrays([result, phantomStationsForBody(context, definition.swPhantomMode,
-            definition.swPhantomOffset, definition.swPhantomStart, definition.swPhantomEnd,
-            swExtents, "sw")]);
+        bundle = relocateBodyEnds(context, bundle, definition.swPhantomMode,
+            definition.swPhantomOffset, definition.swPhantomStart, definition.swPhantomEnd, swExtents);
     }
 
-    return result;
+    return bundle;
 }
 
-// Build 0-2 phantom stations for one body. `offset`/`startQuery`/`endQuery` are
-// only read in the branch that uses them, so the unused ones may be undefined
-// (the precondition only defines the fields relevant to the active mode).
-function phantomStationsForBody(context is Context, mode, offset, startQuery, endQuery,
-    extents is Box3d, bodyTag is string) returns array
+// Relocate one body's lo/hi terminal stations. `offset`/`startQuery`/`endQuery`
+// are only read in the branch that uses them (the others may be undefined). In
+// QUERY mode the start pick moves the low-X terminal, the end pick the high-X one.
+function relocateBodyEnds(context is Context, bundle is map, mode, offset, startQuery, endQuery, extents is Box3d) returns map
 {
-    var out = [];
+    var terminals = terminalStationXs(bundle.stations, extents);
+    if (terminals.loX == undefined)
+    {
+        return bundle;   // no stations fall within this body
+    }
 
+    var loTarget = undefined;
+    var hiTarget = undefined;
     if (mode == PHANTOM_MODE.OFFSET)
     {
-        out = append(out, makePhantomStation(extents.minCorner[0] - offset, bodyTag));
-        out = append(out, makePhantomStation(extents.maxCorner[0] + offset, bodyTag));
+        loTarget = extents.minCorner[0] - offset;
+        hiTarget = extents.maxCorner[0] + offset;
     }
     else if (mode == PHANTOM_MODE.QUERY)
     {
         if (!isQueryEmpty(context, startQuery))
         {
-            out = append(out, makePhantomStation(extractXPosition(context, startQuery, "Phantom start"), bodyTag));
+            loTarget = extractXPosition(context, startQuery, "Phantom start");
         }
         if (!isQueryEmpty(context, endQuery))
         {
-            out = append(out, makePhantomStation(extractXPosition(context, endQuery, "Phantom end"), bodyTag));
+            hiTarget = extractXPosition(context, endQuery, "Phantom end");
         }
     }
 
-    return out;
+    if (loTarget != undefined)
+    {
+        bundle = relocateStation(bundle, terminals.loX, loTarget);
+    }
+    if (hiTarget != undefined)
+    {
+        bundle = relocateStation(bundle, terminals.hiX, hiTarget);
+    }
+
+    return bundle;
 }
 
-function makePhantomStation(stationX is ValueWithUnits, bodyTag is string) returns map
+// Move the (untagged) station whose x == oldX to newX and carry its measurements.
+// The `moved` tag keeps terminalStationXs and a later pass from re-selecting it.
+function relocateStation(bundle is map, oldX is ValueWithUnits, newX is ValueWithUnits) returns map
 {
-    return {
-        "x" : stationX,
-        callout: CALLOUT_PHANTOM,
-        preferred: true,
-        phantomBody: bodyTag
-    };
+    var stations = bundle.stations;
+    for (var i = 0; i < size(stations); i += 1)
+    {
+        if (stations[i].x == oldX && stations[i].phantomBody == undefined)
+        {
+            stations[i] = mergeMaps(stations[i], { "x" : newX, "phantomBody" : "moved" });
+            break;
+        }
+    }
+
+    var core = bundle.core;
+    var sw = bundle.sw;
+    if (core[oldX] != undefined)
+    {
+        core[newX] = core[oldX];
+    }
+    if (sw[oldX] != undefined)
+    {
+        sw[newX] = sw[oldX];
+    }
+
+    return { "stations" : stations, "core" : core, "sw" : sw };
 }
