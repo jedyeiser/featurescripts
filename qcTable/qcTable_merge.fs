@@ -397,15 +397,16 @@ export function buildColumnDefinitions(
         columns = append(columns, tableColumnDefinition("coreWidth", translateColumnName("Core Width", language)));
     }
 
+    // SW X: distance along X from a picked reference. Shown at all detail levels
+    // when set; slots between Core Width and SW Height.
+    if (hasSW && hasSwFromEnd)
+    {
+        columns = append(columns, tableColumnDefinition("sw_from_end", translateColumnName("SW X", language)));
+    }
+
     if (hasSW)
     {
         columns = append(columns, tableColumnDefinition("sw_height", translateColumnName("SW Height", language)));
-    }
-
-    // SW From-End distance (shown at all detail levels when a reference was picked).
-    if (hasSW && hasSwFromEnd)
-    {
-        columns = append(columns, tableColumnDefinition("sw_from_end", translateColumnName("SW From End", language)));
     }
 
     // Core/SW delta (only if both present)

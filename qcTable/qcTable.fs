@@ -102,7 +102,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 definition.originReference is Query;
             }
 
-            annotation { "Name" : "SW From-End Reference (optional)", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "When picked, adds a 'SW From End' column reporting each station's distance along X from this reference. Use the sidewall endpoint your SW profile is programmed from." }
+            annotation { "Name" : "SW X Reference (optional)", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "When picked, adds a 'SW X' column reporting each station's distance along X from this reference. Use the sidewall endpoint your SW profile is programmed from." }
             definition.swFromEndRef is Query;
         }
 

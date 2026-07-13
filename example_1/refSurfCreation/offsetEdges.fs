@@ -1727,7 +1727,7 @@ function biarcArcMid(pStart is Vector, tStartOut is Vector, pEnd is Vector) retu
     const ve = pEnd - center;
     const ex = dot(ve, e0);
     const ey = dot(ve, yA);
-    var sweep = atan2(ey, ex) / radian;
+    var sweep = atan2(ey / meter, ex / meter) / radian;
     if (sweep <= 0)
     {
         sweep = sweep + 2 * PI;
@@ -1961,27 +1961,70 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             var wireId = id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si));
             var tMid   = (tA + tB) / 2;
 
-            // Arc preservation: when this sub-curve lies on a single circular source edge and
-            // the offset is constant across it, the offset is an exact concentric/translated
-            // arc. Emit it as a sketch arc so the extracted output edge reports a radius.
-            if (sourceEdgeIsArc(context, pathInfo.frenetPath, tMid, pathInfo.length)
-                && offsetConstantOver(reg, tA, tB))
+            // Arc preservation. When this sub-curve lies on a single circular source edge:
+            //   - constant offset            -> exact concentric/translated arc (always)
+            //   - varying offset + BIARC mode -> two tangent arcs matching both endpoint
+            //                                    offsets and staying tangent to neighbors
+            // Anything else falls through to the best-fit spline below.
+            if (sourceEdgeIsArc(context, pathInfo.frenetPath, tMid, pathInfo.length))
             {
-                var arcBody = emitOffsetArc(context, wireId, pathInfo, definition, reg, tA, tB);
-                if (arcBody != undefined)
+                if (offsetConstantOver(reg, tA, tB))
                 {
-                    allWireBodies = append(allWireBodies, arcBody);
-                    allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
-                    if (definition.printCurveDetails)
+                    var arcBody = emitOffsetArc(context, wireId, pathInfo, definition, reg, tA, tB);
+                    if (arcBody != undefined)
                     {
-                        println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [ARC] ===");
-                        println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+                        allWireBodies = append(allWireBodies, arcBody);
+                        allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
+                        if (definition.printCurveDetails)
+                        {
+                            println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [ARC] ===");
+                            println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+                        }
+                        if (definition.showRegions)
+                        {
+                            addDebugEntities(context, arcBody, (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+                        }
+                        continue;
                     }
-                    if (definition.showRegions)
+                }
+                else if (definition.arcMode == VaryingArcMode.BIARC)
+                {
+                    var oA = computeOffsetsAt(reg, tA);
+                    var oB = computeOffsetsAt(reg, tB);
+                    var p0 = computeOffsetPoint(context, pathInfo, definition, tA, oA.normalOff, oA.binormalOff);
+                    var p1 = computeOffsetPoint(context, pathInfo, definition, tB, oB.normalOff, oB.binormalOff);
+                    var t0 = offsetTangentAt(context, pathInfo, definition, reg, tA);
+                    var t1 = offsetTangentAt(context, pathInfo, definition, reg, tB);
+                    var bi = computeBiarcPoints(p0, t0, p1, t1);
+
+                    // Pre-check both legs are non-collinear (same threshold emitArc3Point uses),
+                    // so we only create sketches when BOTH will succeed -- no orphan bodies.
+                    var legAOk = norm(cross(bi.midA - p0,       bi.joint - p0)) >= 1e-9 * meter * meter;
+                    var legBOk = norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
+
+                    if (bi.ok && legAOk && legBOk)
                     {
-                        addDebugEntities(context, arcBody, (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+                        var idA = wireId + "A";
+                        var idB = wireId + "B";
+                        emitArc3Point(context, idA, p0, bi.midA, bi.joint);
+                        emitArc3Point(context, idB, bi.joint, bi.midB, p1);
+                        allWireBodies = append(allWireBodies, qCreatedBy(idA, EntityType.BODY));
+                        allWireBodies = append(allWireBodies, qCreatedBy(idB, EntityType.BODY));
+                        allWireEdges  = append(allWireEdges, qCreatedBy(idA, EntityType.EDGE));
+                        allWireEdges  = append(allWireEdges, qCreatedBy(idB, EntityType.EDGE));
+                        if (definition.printCurveDetails)
+                        {
+                            println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [BIARC] ===");
+                            println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+                        }
+                        if (definition.showRegions)
+                        {
+                            addDebugEntities(context, qCreatedBy(idA, EntityType.BODY), (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+                            addDebugEntities(context, qCreatedBy(idB, EntityType.BODY), (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+                        }
+                        continue;
                     }
-                    continue;
+                    // biarc degenerate or a near-straight leg -> fall through to spline
                 }
             }
 
