@@ -1,7 +1,7 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
-import(path : "onshape/std/table.fs", version : "2878.0");
-import(path : "onshape/std/geomOperations.fs", version : "2878.0");
+FeatureScript 3008;
+import(path : "onshape/std/common.fs", version : "3008.0");
+import(path : "onshape/std/table.fs", version : "3008.0");
+import(path : "onshape/std/geomOperations.fs", version : "3008.0");
 
 IconNamespace::import(path : "0000309041e9c3b92133b446", version : "a9dc4faab1eebbe16277a197");
 ImageNamespace::import(path : "d2436a000fa53adb2c26a3e5", version : "82746b7d7ae306a6e3685e54");

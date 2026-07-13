@@ -39,6 +39,14 @@ export enum OffsetType
     BOTH
 }
 
+export enum VaryingArcMode
+{
+    annotation { "Name" : "Convert to spline" }
+    SPLINE,
+    annotation { "Name" : "Best-fit biarc" }
+    BIARC
+}
+
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
@@ -169,6 +177,11 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
         annotation { "Name" : "Flip binormal", "Default" : false,
                      "Description" : "Inverts the Frenet binormal direction" }
         definition.flipBinormal is boolean;
+
+        annotation { "Name" : "Varying-offset arc handling", "Default" : VaryingArcMode.SPLINE,
+                     "UIHint" : UIHint.HORIZONTAL_ENUM,
+                     "Description" : "For a circular source edge whose offset VARIES along it: 'Convert to spline' approximates it as a best-fit BSpline (default); 'Best-fit biarc' emits two tangent arcs that match the endpoint offsets exactly and stay tangent to the neighboring curves on both sides. Constant-offset arcs are always kept as exact arcs regardless of this setting." }
+        definition.arcMode is VaryingArcMode;
 
         annotation { "Name" : "Sampling density",
                      "Description" : "Number of points evaluated per region (and per blend)" }
@@ -1337,6 +1350,40 @@ function computeOffsetPoint(context is Context, pathInfo is map, definition is m
 }
 
 
+/**
+ * Unit tangent of the offset curve at path parameter t, in the direction of increasing t
+ * (the travel direction). Central finite difference of computeOffsetPoint, clamped so the
+ * step stays inside [region.tStart, region.tEnd]; falls back to the frame tangent if the
+ * offset curve is momentarily stationary. Used to seed the best-fit biarc endpoints.
+ */
+function offsetTangentAt(context is Context, pathInfo is map, definition is map,
+    region is map, t is number) returns Vector
+{
+    var dtp = 1e-4;
+    var tHi = min(t + dtp, region.tEnd);
+    var tLo = max(t - dtp, region.tStart);
+    if (tHi - tLo < 1e-12)
+    {
+        tHi = min(t + dtp, 1.0);
+        tLo = max(t - dtp, 0.0);
+    }
+
+    var oHi = computeOffsetsAt(region, tHi);
+    var oLo = computeOffsetsAt(region, tLo);
+    var pHi = computeOffsetPoint(context, pathInfo, definition, tHi, oHi.normalOff, oHi.binormalOff);
+    var pLo = computeOffsetPoint(context, pathInfo, definition, tLo, oLo.normalOff, oLo.binormalOff);
+
+    var dir  = pHi - pLo;
+    var dLen = norm(dir);
+    if (dLen / meter < 1e-12)
+    {
+        var fr = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length);
+        return fr.frame.zAxis;
+    }
+    return dir / dLen;
+}
+
+
 // ─── Point arrays ─────────────────────────────────────────────────────────────
 
 /**
@@ -1639,6 +1686,155 @@ function offsetConstantOver(region is map, tA is number, tB is number) returns b
 }
 
 
+// Point at the mid of the circular arc that STARTS at pStart travelling along tStartOut
+// (unit, outgoing tangent) and ENDS at pEnd. The returned point lies on the actual traveled
+// arc at HALF the swept angle -- the correct side / branch, so it uniquely reconstructs the
+// intended arc via a 3-point skArc. pStart/pEnd carry length units; tStartOut is unitless.
+// Returns { "mid" : Vector, "straight" : boolean }. When the arc degenerates to a straight
+// line (chord parallel to the tangent) the chord midpoint is returned with straight = true.
+function biarcArcMid(pStart is Vector, tStartOut is Vector, pEnd is Vector) returns map
+{
+    const c = pEnd - pStart;
+    const cLen = norm(c);
+    if (cLen / meter < 1e-12)
+    {
+        return { "mid" : pStart, "straight" : true };
+    }
+
+    // Straightness: chord parallel to the tangent -> zero curvature.
+    const sinTheta = norm(cross(tStartOut, c / cLen));
+    if (sinTheta < 1e-7)
+    {
+        return { "mid" : pStart + 0.5 * c, "straight" : true };
+    }
+
+    // Plane of the arc, and the in-plane unit normal to the tangent.
+    const nPlane = normalize(cross(tStartOut, c));
+    const mPerp  = normalize(cross(nPlane, tStartOut));
+
+    // Center on the perpendicular through pStart, equidistant from pStart and pEnd:
+    //   |s*mPerp|^2 = |s*mPerp - c|^2  =>  s = |c|^2 / (2 * mPerp . c).
+    const s      = dot(c, c) / (2 * dot(mPerp, c));
+    const center = pStart + s * mPerp;
+    const R      = abs(s);
+
+    // Circle frame oriented so travel from pStart along tStartOut is CCW (+) about nTravel.
+    const e0      = (pStart - center) / R;
+    const nTravel = normalize(cross(e0, tStartOut));
+    const yA      = cross(nTravel, e0);
+
+    // Signed sweep from pStart (angle 0) to pEnd, on the positive (traveled) branch.
+    const ve = pEnd - center;
+    const ex = dot(ve, e0);
+    const ey = dot(ve, yA);
+    var sweep = atan2(ey, ex) / radian;
+    if (sweep <= 0)
+    {
+        sweep = sweep + 2 * PI;
+    }
+
+    const midAng = (sweep / 2) * radian;
+    const mid    = center + R * (cos(midAng) * e0 + sin(midAng) * yA);
+    return { "mid" : mid, "straight" : false };
+}
+
+
+// Constructs an equal-tangent-length (Bolton/Sabin k=1) 3D biarc interpolating POSITION and
+// TANGENT at both endpoints, meeting G1 at a joint J. Returns one mid point on each sub-arc so
+// each can be drawn as skArc({start, mid, end}): arc A = (p0, midA, J), arc B = (J, midB, p1).
+// p0/p1 length units; t0/t1 unit tangents in the DIRECTION OF TRAVEL from p0 toward p1.
+// Returns { "ok" : boolean, "joint" : Vector, "midA" : Vector, "midB" : Vector }.
+function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector) returns map
+{
+    const fail = { "ok" : false, "joint" : p0, "midA" : p0, "midB" : p1 };
+
+    const d    = p1 - p0;
+    const dd   = dot(d, d);
+    const dLen = norm(d);
+    if (dLen / meter < 1e-9)
+    {
+        return fail;
+    }
+
+    const ct = dot(t0, t1);          // cos(angle between tangents)
+    const a  = 1 - ct;               // >= 0; 0 iff tangents identical
+    const ds = dot(d, t0 + t1);
+
+    // Equal-tangent-length condition |Q0 - Q1| = 2*alpha yields
+    //   2*a*alpha^2 + 2*ds*alpha - dd = 0 , a = 1 - t0.t1 .
+    var alpha;
+    if (a < 1e-12)
+    {
+        // Parallel, same-direction tangents: quadratic collapses to the linear special case.
+        if (ds / dLen < 1e-9)
+        {
+            return fail;
+        }
+        alpha = dd / (2 * ds);
+    }
+    else
+    {
+        const disc = ds * ds + 2 * a * dd;
+        alpha = (-ds + sqrt(disc)) / (2 * a);
+    }
+
+    if (alpha / meter < 1e-12)
+    {
+        return fail;
+    }
+
+    const Q0 = p0 + alpha * t0;
+    const Q1 = p1 - alpha * t1;
+    const J  = 0.5 * (Q0 + Q1);
+
+    const jm = Q1 - Q0;
+    if (norm(jm) / meter < 1e-12)
+    {
+        return fail;
+    }
+    const tJ = normalize(jm);
+
+    if (norm(J - p0) / meter < 1e-9 || norm(p1 - J) / meter < 1e-9)
+    {
+        return fail;
+    }
+
+    const resA = biarcArcMid(p0, t0, J);
+    const resB = biarcArcMid(J, tJ, p1);
+
+    return {
+        "ok"    : true,
+        "joint" : J,
+        "midA"  : resA.mid,
+        "midB"  : resB.mid
+    };
+}
+
+
+// Builds a sketch arc through 3 world points on their common plane, under arcId.
+// Returns qCreatedBy(arcId, EntityType.BODY), or undefined if the points are collinear
+// (no unique arc) so the caller can fall back to a spline.
+function emitArc3Point(context is Context, arcId is Id, pStart is Vector, pMid is Vector, pEnd is Vector)
+{
+    var nrm = cross(pMid - pStart, pEnd - pStart);
+    if (norm(nrm) < 1e-9 * meter * meter)
+    {
+        return undefined;
+    }
+
+    var pl = plane(pStart, normalize(nrm));
+    var sk = newSketchOnPlane(context, arcId, { "sketchPlane" : pl });
+    skArc(sk, "arc", {
+        "start" : worldToPlane(pl, pStart),
+        "mid"   : worldToPlane(pl, pMid),
+        "end"   : worldToPlane(pl, pEnd)
+    });
+    skSolve(sk);
+
+    return qCreatedBy(arcId, EntityType.BODY);
+}
+
+
 // Emits the constant-offset arc over [tA, tB] as a sketch arc (3-point start/mid/end) so the
 // output edge shows a radius. Returns the created sketch body query, or undefined when the
 // three sample points are collinear (not a real arc) so the caller falls back to a spline.
@@ -1653,22 +1849,7 @@ function emitOffsetArc(context is Context, wireId is Id, pathInfo is map, defini
     var pM   = computeOffsetPoint(context, pathInfo, definition, tMid, oM.normalOff, oM.binormalOff);
     var p1   = computeOffsetPoint(context, pathInfo, definition, tB,   oB.normalOff, oB.binormalOff);
 
-    var nrm = cross(pM - p0, p1 - p0);
-    if (norm(nrm) < 1e-9 * meter * meter)
-    {
-        return undefined;   // collinear sample: let the caller fall back to a spline
-    }
-
-    var pl = plane(p0, normalize(nrm));
-    var sk = newSketchOnPlane(context, wireId, { "sketchPlane" : pl });
-    skArc(sk, "arc", {
-        "start" : worldToPlane(pl, p0),
-        "mid"   : worldToPlane(pl, pM),
-        "end"   : worldToPlane(pl, p1)
-    });
-    skSolve(sk);
-
-    return qCreatedBy(wireId, EntityType.BODY);
+    return emitArc3Point(context, wireId, p0, pM, p1);
 }
 
 
@@ -1811,17 +1992,21 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                 continue;
             }
 
-            if (size(seg.interpolateIndices) > definition.approxMaxCP)
+            // Ensure the CP cap can accommodate all interior pins (endpoints + stations +
+            // plateau edges); otherwise approximateSpline can fail rather than just warn.
+            var effMaxCP = max([definition.approxMaxCP, size(seg.interpolateIndices) + 2]);
+            if (effMaxCP > definition.approxMaxCP)
             {
                 reportFeatureWarning(context, id, "Region '" ~ reg.regionName ~
-                    "': more interior constraints than Max control points. Increase Max control points for a tighter fit.");
+                    "': raised max control points to " ~ toString(effMaxCP) ~
+                    " to honor all interior station/dwell pins.");
             }
 
             var bspline = approximateSpline(context, {
                 "degree"             : definition.approxDegree,
                 "tolerance"          : definition.approxTolerance,
                 "isPeriodic"         : false,
-                "maxControlPoints"   : definition.approxMaxCP,
+                "maxControlPoints"   : effMaxCP,
                 "targets"            : [approximationTarget({ "positions" : pts })],
                 "interpolateIndices" : seg.interpolateIndices
             })[0];
