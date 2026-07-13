@@ -326,12 +326,43 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 4. For each source curve: sample, map, fit, create
         var allSegEdges           = [];
         var allSegBodies          = [];
+        var fastSegEdges          = [];   // linear-region fast-path outputs (kept out of the G2 jostle)
+        var fastSegBodies         = [];
         var wrappedBSplines       = [];
         var wrappedIds            = [];
         var allJunctionCurvatures = [];
         var sourceCurveArray = evaluateQuery(context, expandEdgeQuery(definition.sourceCurves));
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
+            // Fast path: whole source curve inside a doubly-linear region -> rigid
+            // move (arcs and lines preserved exactly). Skips sampling, span
+            // splitting, and the G2 jostle. Ineligible curves fall through below.
+            if (CM_LINEAR_FASTPATH)
+            {
+                var probePts = mapArray(evEdgeTangentLines(context, {
+                    "edge"       : sourceCurveArray[i],
+                    "parameters" : [0, 0.25, 0.5, 0.75, 1]
+                }), function(x) { return x.origin; });
+                var lin = linearRegionMove(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, probePts);
+                if (lin.eligible)
+                {
+                    var linId = id + (toString(i) ~ "linmove");
+                    try
+                    {
+                        opExtractWires(context, linId, { "edges": sourceCurveArray[i] });
+                        opTransform(context, linId + "xf", {
+                            "bodies"    : qCreatedBy(linId, EntityType.BODY),
+                            "transform" : lin.transform
+                        });
+                        fastSegEdges  = append(fastSegEdges,  qCreatedBy(linId, EntityType.EDGE));
+                        fastSegBodies = append(fastSegBodies, qCreatedBy(linId, EntityType.BODY));
+                    }
+                    catch (e) { println("ERROR wrapCurve linearFastPath " ~ toString(i) ~ ": " ~ toString(e)); }
+                    continue;
+                }
+            }
+
             var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
             var srcLen = evLength(context, {
                     "entities" : sourceCurveArray[i]
@@ -741,6 +772,14 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 allSegEdges  = append(allSegEdges,  qCreatedBy(wrappedIds[k], EntityType.EDGE));
                 allSegBodies = append(allSegBodies, qCreatedBy(wrappedIds[k], EntityType.BODY));
             }
+        }
+
+        // Merge in the linear fast-path outputs (already exact and rigid; kept out
+        // of the jostle, which replaces allSegEdges wholesale above).
+        for (var fi = 0; fi < size(fastSegEdges); fi += 1)
+        {
+            allSegEdges  = append(allSegEdges,  fastSegEdges[fi]);
+            allSegBodies = append(allSegBodies, fastSegBodies[fi]);
         }
 
         // Single opExtractWires for all source curves — all output owned by id + "wire".

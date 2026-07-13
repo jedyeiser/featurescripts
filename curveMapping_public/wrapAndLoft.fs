@@ -60,6 +60,7 @@ IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3
 
 
 const ZERO_INCLUSIVE_OFFSET_BOUND = { (millimeter) : [0, 0, 100] } as LengthBoundSpec;
+const PRIMARY_OFFSET_BOUND        = { (millimeter) : [0, 20, 100] } as LengthBoundSpec;
 
 export enum OutputCurveMode
 {
@@ -205,7 +206,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         annotation { "Group Name" : "Offset", "Collapsed By Default" : false }
         {
             annotation { "Name" : "Primary offset" }
-            isLength(definition.primaryOffset, ZERO_INCLUSIVE_OFFSET_BOUND);
+            isLength(definition.primaryOffset, PRIMARY_OFFSET_BOUND);
+
+            annotation { "Name" : "Flip offset direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
+            definition.flipOffset is boolean;
 
             annotation { "Name" : "Second direction", "Default" : false }
             definition.secondDirection is boolean;
@@ -472,8 +476,57 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var wrappedIds                    = [];
         var allJunctionCurvatures         = [];
         var segCountPerSourceCurve        = [];
+        var spanIsFast                    = [];   // per wrapped-span: true if it is a linear fast-path move
+        var offsetSign                    = definition.flipOffset ? -1 : 1;   // flips which side the offsets go
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
+            // Fast path: whole source curve in a doubly-linear region -> rigid move
+            // (arcs and lines preserved exactly). Emits the wrapped span plus its
+            // primary/secondary offsets as composed rigid transforms, then skips the
+            // sampling/mapping/G2 pipeline. Ineligible curves fall through below.
+            if (CM_LINEAR_FASTPATH)
+            {
+                var probePts = mapArray(evEdgeTangentLines(context, {
+                    "edge"       : sourceCurveArray[i],
+                    "parameters" : [0, 0.25, 0.5, 0.75, 1]
+                }), function(x) { return x.origin; });
+                var lin = linearRegionMove(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, probePts);
+                if (lin.eligible)
+                {
+                    var wBefore = size(allWrappedSegQueries);
+                    var linId   = id + (toString(i) ~ "lin");
+                    try
+                    {
+                        opExtractWires(context, linId + "w", { "edges": sourceCurveArray[i] });
+                        opTransform(context, linId + "wx", { "bodies": qCreatedBy(linId + "w", EntityType.BODY), "transform": lin.transform });
+                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(linId + "w", EntityType.EDGE));
+                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(linId + "w", EntityType.BODY));
+                        spanIsFast           = append(spanIsFast, true);
+
+                        // Primary offset = wrapped translated by primaryOffset along the constant normal.
+                        opExtractWires(context, linId + "p", { "edges": sourceCurveArray[i] });
+                        opTransform(context, linId + "px", { "bodies": qCreatedBy(linId + "p", EntityType.BODY),
+                                "transform": transform(offsetSign * definition.primaryOffset * lin.offsetDir) * lin.transform });
+                        allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(linId + "p", EntityType.EDGE));
+                        allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(linId + "p", EntityType.BODY));
+
+                        if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
+                        {
+                            opExtractWires(context, linId + "s", { "edges": sourceCurveArray[i] });
+                            opTransform(context, linId + "sx", { "bodies": qCreatedBy(linId + "s", EntityType.BODY),
+                                    "transform": transform(-1 * offsetSign * definition.secondOffset * lin.offsetDir) * lin.transform });
+                            allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(linId + "s", EntityType.EDGE));
+                            allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(linId + "s", EntityType.BODY));
+                        }
+                    }
+                    catch (e) { println("ERROR wrapAndLoft linearFastPath " ~ toString(i) ~ ": " ~ toString(e)); }
+
+                    segCountPerSourceCurve = append(segCountPerSourceCurve, size(allWrappedSegQueries) - wBefore);
+                    continue;
+                }
+            }
+
             var srcSamplingMode = (definition.sourceSamplingMode != undefined)
                 ? definition.sourceSamplingMode
                 : SamplingMode.CP_BASED;
@@ -823,11 +876,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     for (var k = 0; k < size(segPoints); k += 1)
                     {
                         primaryOffsetPoints = append(primaryOffsetPoints,
-                            segPoints[k] + definition.primaryOffset * segOffsetDirs[k]);
+                            segPoints[k] + offsetSign * definition.primaryOffset * segOffsetDirs[k]);
                         if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
                         {
                             secondaryOffsetPoints = append(secondaryOffsetPoints,
-                                segPoints[k] - definition.secondOffset * segOffsetDirs[k]);
+                                segPoints[k] - offsetSign * definition.secondOffset * segOffsetDirs[k]);
                         }
                     }
 
@@ -905,6 +958,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
                         allWrappedSegQueries  = append(allWrappedSegQueries,  qCreatedBy(wrappedId, EntityType.EDGE));
                         allWrappedSegBodies   = append(allWrappedSegBodies,   qCreatedBy(wrappedId, EntityType.BODY));
+                        spanIsFast            = append(spanIsFast, false);
                         wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
@@ -962,9 +1016,32 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // ===== G2 junction smoothing =====
         if (size(wrappedBSplines) >= 2)
         {
+            var preWrapped       = allWrappedSegQueries;
+            var preWrappedBodies = allWrappedSegBodies;
             var jostleResult     = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures, true);
-            allWrappedSegQueries = jostleResult.edgeQueries;
-            allWrappedSegBodies  = jostleResult.bodyQueries;
+
+            // jostle reprocessed only the slow (created-BSpline) spans, in order. Rebuild
+            // the full arrays so linear fast-path spans stay in their original positions
+            // (and remain index-aligned with the primary/secondary offset arrays).
+            var rebuiltEdges  = [];
+            var rebuiltBodies = [];
+            var jIdx = 0;
+            for (var pos = 0; pos < size(spanIsFast); pos += 1)
+            {
+                if (spanIsFast[pos])
+                {
+                    rebuiltEdges  = append(rebuiltEdges,  preWrapped[pos]);
+                    rebuiltBodies = append(rebuiltBodies, preWrappedBodies[pos]);
+                }
+                else
+                {
+                    rebuiltEdges  = append(rebuiltEdges,  jostleResult.edgeQueries[jIdx]);
+                    rebuiltBodies = append(rebuiltBodies, jostleResult.bodyQueries[jIdx]);
+                    jIdx += 1;
+                }
+            }
+            allWrappedSegQueries = rebuiltEdges;
+            allWrappedSegBodies  = rebuiltBodies;
         }
 
         // ===== Per-source-curve loft =====
