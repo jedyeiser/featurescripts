@@ -1,6 +1,6 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
-import(path : "onshape/std/approximationUtils.fs", version : "2892.0");
+FeatureScript 3008;
+import(path : "onshape/std/common.fs", version : "3008.0");
+import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
 
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
@@ -61,6 +61,10 @@ IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3
 
 const ZERO_INCLUSIVE_OFFSET_BOUND = { (millimeter) : [0, 0, 100] } as LengthBoundSpec;
 const PRIMARY_OFFSET_BOUND        = { (millimeter) : [0, 20, 100] } as LengthBoundSpec;
+// A to-edge span whose mapped chord length is below this is treated as a seam
+// artifact (endpoint on a reference line/arc joint) and merged into its neighbor,
+// which otherwise fits a near-degenerate span with clustered control points.
+const CLUSTER_MERGE_MIN_SPAN      = 0.25 * millimeter;
 
 export enum OutputCurveMode
 {
@@ -264,6 +268,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
                 annotation { "Name" : "Tolerance" }
                 isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+
+                annotation { "Name" : "Fix control-point clustering", "Default" : true,
+                            "Description" : "Merge sliver spans (a source endpoint landing on a reference line/arc seam produces a near-zero-length span with stacked control points). Merges any span shorter than the internal floor into its neighbor." }
+                definition.fixClustering is boolean;
             }
 
         }
@@ -478,6 +486,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var segCountPerSourceCurve        = [];
         var spanIsFast                    = [];   // per wrapped-span: true if it is a linear fast-path move
         var offsetSign                    = definition.flipOffset ? -1 : 1;   // flips which side the offsets go
+        // Cross-curve offset-direction weld: [{point, offsetDir}] for every source-curve
+        // endpoint mapped so far. Adjacent source curves share an endpoint; the spine
+        // coincides there by construction, but the offset direction is recomputed per
+        // curve and can disagree (worst at a to-path line/arc seam), opening a gap on the
+        // OFFSET edge scaled by the offset distance. Whichever neighbor is processed first
+        // wins; the other adopts its offsetDir so the offset endpoints coincide exactly.
+        var junctionOffsetCache           = [];
         for (var i = 0; i < size(sourceCurveArray); i += 1)
         {
             // Fast path: whole source curve in a doubly-linear region -> rigid move
@@ -604,6 +619,104 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 for (var ri = size(mappedData) - 1; ri >= 0; ri -= 1)
                     flippedData = append(flippedData, mappedData[ri]);
                 mappedData = flippedData;
+            }
+
+            // Weld offset direction at shared source-curve endpoints. Only mappedData[0]
+            // and mappedData[-1] are shared with neighbors (interior samples are not). If a
+            // neighbor already registered a coincident endpoint, adopt its offsetDir (and
+            // exact point) so this curve's offset endpoint lands on the neighbor's -> the
+            // loft rib closes. Otherwise register this endpoint as the winner. O(n^2) over
+            // endpoints, but n is the source-curve count (tiny). This mirrors the intra-curve
+            // junctionOffsetDir carry-over, which resets per source curve and so never
+            // spanned across curves.
+            if (size(mappedData) > 0)
+            {
+                var weldIdxs = (size(mappedData) > 1) ? [0, size(mappedData) - 1] : [0];
+                for (var ei in weldIdxs)
+                {
+                    var welded = false;
+                    for (var c = 0; c < size(junctionOffsetCache); c += 1)
+                    {
+                        if (norm(mappedData[ei].point - junctionOffsetCache[c].point) < 1e-6 * meter)
+                        {
+                            mappedData[ei] = mergeMaps(mappedData[ei], {
+                                "offsetDir" : junctionOffsetCache[c].offsetDir,
+                                "point"     : junctionOffsetCache[c].point
+                            });
+                            welded = true;
+                            break;
+                        }
+                    }
+                    if (!welded)
+                    {
+                        junctionOffsetCache = append(junctionOffsetCache, {
+                            "point"     : mappedData[ei].point,
+                            "offsetDir" : mappedData[ei].offsetDir
+                        });
+                    }
+                }
+            }
+
+            // Fix control-point clustering: a source endpoint landing on a to-path line/arc
+            // seam yields a sliver to-edge run (a few samples spanning ~microns), which the
+            // span fit turns into a near-degenerate curve with stacked control points. Merge
+            // any run shorter than CLUSTER_MERGE_MIN_SPAN into its longer neighbor by
+            // relabeling its samples' edgeIndex; the existing span loop then groups them as
+            // one span. Only edgeIndex changes here -- mapped points and offset directions are
+            // untouched, so this is purely a fit-grouping change. Iterates because merging can
+            // expose a new sub-floor run.
+            if (definition.fixClustering && size(mappedData) > 1)
+            {
+                var merging = true;
+                while (merging)
+                {
+                    merging = false;
+                    // Build contiguous runs of equal edgeIndex with their mapped chord length.
+                    var runs = [];
+                    var rs = 0;
+                    while (rs < size(mappedData))
+                    {
+                        var re = rs;
+                        while (re + 1 < size(mappedData) && mappedData[re + 1].edgeIndex == mappedData[rs].edgeIndex)
+                        {
+                            re += 1;
+                        }
+                        var runLen = 0 * meter;
+                        for (var k = rs; k < re; k += 1)
+                        {
+                            runLen += norm(mappedData[k + 1].point - mappedData[k].point);
+                        }
+                        runs = append(runs, { "start": rs, "end": re, "edge": mappedData[rs].edgeIndex, "len": runLen });
+                        rs = re + 1;
+                    }
+                    if (size(runs) < 2)
+                    {
+                        break;
+                    }
+                    // Pick the shortest sub-floor run.
+                    var minRun = -1;
+                    for (var r = 0; r < size(runs); r += 1)
+                    {
+                        if (runs[r].len < CLUSTER_MERGE_MIN_SPAN && (minRun == -1 || runs[r].len < runs[minRun].len))
+                        {
+                            minRun = r;
+                        }
+                    }
+                    if (minRun == -1)
+                    {
+                        break;
+                    }
+                    // Merge into the longer neighbor (the only neighbor at an end).
+                    var nb = (minRun == 0) ? 1
+                        : ((minRun == size(runs) - 1) ? size(runs) - 2
+                        : (runs[minRun - 1].len >= runs[minRun + 1].len ? minRun - 1 : minRun + 1));
+                    var targetEdge = runs[nb].edge;
+                    for (var k = runs[minRun].start; k <= runs[minRun].end; k += 1)
+                    {
+                        mappedData[k] = mergeMaps(mappedData[k], { "edgeIndex": targetEdge });
+                    }
+                    merging = true;
+                }
             }
 
             // Emit one output curve per to-edge span (prevents ringing at line/curve joints)
@@ -882,6 +995,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             secondaryOffsetPoints = append(secondaryOffsetPoints,
                                 segPoints[k] - offsetSign * definition.secondOffset * segOffsetDirs[k]);
                         }
+                    }
+
+                    // Offset-edge gap diagnostic: compare curve i's LAST span primaryOffset[-1]
+                    // to curve i+1's FIRST span primaryOffset[0] -- these should now match after
+                    // the cross-curve offset-direction weld.
+                    if (definition.debugWrappedCurves || definition.debugFromBSplines)
+                    {
+                        println("  primaryOffset[0]="  ~ toString(primaryOffsetPoints[0]) ~
+                                " primaryOffset[-1]=" ~ toString(primaryOffsetPoints[size(primaryOffsetPoints) - 1]));
+                        println("  offsetDir[0]="      ~ toString(segOffsetDirs[0]) ~
+                                " offsetDir[-1]="      ~ toString(segOffsetDirs[size(segOffsetDirs) - 1]));
                     }
 
                     // Offset curves: no interpolateIndices (avoids the ~36s runtime penalty documented in MEMORY.md)

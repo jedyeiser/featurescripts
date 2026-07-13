@@ -1,6 +1,6 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
-import(path : "onshape/std/path.fs", version : "2892.0");
+FeatureScript 3008;
+import(path : "onshape/std/common.fs", version : "3008.0");
+import(path : "onshape/std/path.fs", version : "3008.0");
 
 IconNamespace::import(path : "010318fea6f2c95303990c0e", version : "a06cd2e9297f4b40538de361");
 

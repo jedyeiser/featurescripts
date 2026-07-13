@@ -1,7 +1,7 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
-import(path : "onshape/std/approximationUtils.fs", version : "2878.0");
-import(path : "onshape/std/path.fs", version : "2878.0");
+FeatureScript 3008;
+import(path : "onshape/std/common.fs", version : "3008.0");
+import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
+import(path : "onshape/std/path.fs", version : "3008.0");
 
 
 //import tools/bspline_data
