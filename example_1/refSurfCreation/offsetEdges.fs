@@ -56,7 +56,6 @@ export const DelayBounds           = {(millimeter) : [0, 0, 1000]}         as Le
 export const ApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]}     as LengthBoundSpec;
 export const ApproxDegreeBounds    = {(unitless)   : [2, 3, 5]}            as IntegerBoundSpec;
 export const ApproxMaxCPBounds     = {(unitless)   : [10, 100, 500]}       as IntegerBoundSpec;
-export const StationCountBounds    = {(unitless)   : [0, 0, 5]}            as IntegerBoundSpec;
 
 
 // ─── Editing logic ────────────────────────────────────────────────────────────
@@ -267,14 +266,13 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                          "Description" : "Distance in from the region end over which the end offset is held constant (0 = no dwell)" }
             isLength(region.endDelay, DelayBounds);
 
-            // Interior stations. FeatureScript forbids an array parameter inside another
-            // array parameter's loop, so stations are fixed per-region slots revealed by a
-            // count (up to StationCountBounds max) rather than a nested array.
-            annotation { "Name" : "Interior stations",
-                         "Description" : "Number of interior control points that pin the offset to a value at a location inside this region. The profile re-solves through them, keeping the region's transfer type between pins." }
-            isInteger(region.numStations, StationCountBounds);
-
-            if (region.numStations >= 1)
+            // Interior stations. FeatureScript forbids an array parameter inside another array
+            // parameter's loop, and precondition visibility conditions reject ordered comparisons
+            // (>=), so each station is a fixed per-region slot toggled by its own boolean.
+            annotation { "Name" : "Station 1", "Default" : false,
+                         "Description" : "Pin the offset to a value at an interior location inside this region. The profile re-solves through the enabled stations, keeping the region's transfer type between pins." }
+            region.station1Enabled is boolean;
+            if (region.station1Enabled)
             {
                 annotation { "Name" : "Station 1 location", "Default" : RegionExtentType.X_EXTENTS,
                              "UIHint" : UIHint.HORIZONTAL_ENUM }
@@ -305,7 +303,9 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 }
             }
 
-            if (region.numStations >= 2)
+            annotation { "Name" : "Station 2", "Default" : false }
+            region.station2Enabled is boolean;
+            if (region.station2Enabled)
             {
                 annotation { "Name" : "Station 2 location", "Default" : RegionExtentType.X_EXTENTS,
                              "UIHint" : UIHint.HORIZONTAL_ENUM }
@@ -336,7 +336,9 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 }
             }
 
-            if (region.numStations >= 3)
+            annotation { "Name" : "Station 3", "Default" : false }
+            region.station3Enabled is boolean;
+            if (region.station3Enabled)
             {
                 annotation { "Name" : "Station 3 location", "Default" : RegionExtentType.X_EXTENTS,
                              "UIHint" : UIHint.HORIZONTAL_ENUM }
@@ -367,7 +369,9 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 }
             }
 
-            if (region.numStations >= 4)
+            annotation { "Name" : "Station 4", "Default" : false }
+            region.station4Enabled is boolean;
+            if (region.station4Enabled)
             {
                 annotation { "Name" : "Station 4 location", "Default" : RegionExtentType.X_EXTENTS,
                              "UIHint" : UIHint.HORIZONTAL_ENUM }
@@ -398,7 +402,9 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 }
             }
 
-            if (region.numStations >= 5)
+            annotation { "Name" : "Station 5", "Default" : false }
+            region.station5Enabled is boolean;
+            if (region.station5Enabled)
             {
                 annotation { "Name" : "Station 5 location", "Default" : RegionExtentType.X_EXTENTS,
                              "UIHint" : UIHint.HORIZONTAL_ENUM }
@@ -992,12 +998,15 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
 
         // --- Resolve interior stations (fixed per-region slots) into {alpha, normalOff, binormalOff} ---
         var warnings  = [];
-        var nStations = (region.numStations != undefined) ? min(region.numStations, 5) : 0;
         var resolved  = [];
 
-        for (var si = 1; si <= nStations; si += 1)
+        for (var si = 1; si <= 5; si += 1)
         {
-            var pfx     = "station" ~ toString(si);
+            var pfx = "station" ~ toString(si);
+            if (region[pfx ~ "Enabled"] != true)
+            {
+                continue;   // slot disabled (or legacy region without this field)
+            }
             var locType = region[pfx ~ "LocationType"];
 
             var stT;

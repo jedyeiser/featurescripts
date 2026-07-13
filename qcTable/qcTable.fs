@@ -613,11 +613,28 @@ export const qcTable = defineTable(function(context is Context, definition is ma
         // Build dynamic column definitions
         var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel, language, hasSwFromEnd);
 
-        // Build table rows
+        // Build table rows. Each stored row carries every measured field regardless
+        // of the active detail level (and some never-shown fields like the deltas),
+        // so filter each row's cells to the ids that actually have a column -
+        // otherwise the renderer warns about cell values for undefined column ids.
+        var columnIds = {};
+        for (var col in columns)
+        {
+            columnIds[col.id] = true;
+        }
+
         var rows = [];
         for (var rowData in tableData)
         {
-            rows = append(rows, tableRow(rowData));
+            var cells = {};
+            for (var key in keys(rowData))
+            {
+                if (columnIds[key] == true)
+                {
+                    cells[key] = rowData[key];
+                }
+            }
+            rows = append(rows, tableRow(cells));
         }
 
         // Return table with appropriate title. A user-supplied Name overrides
