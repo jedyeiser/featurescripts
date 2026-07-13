@@ -29,6 +29,7 @@ export function mergeStationData(
     coreExtents,
     swExtents,
     tableOriginX is ValueWithUnits,
+    swFromEndX,
     formatConfig is FormatConfig,
     stationNumbering is map) returns array
 {
@@ -107,6 +108,14 @@ export function mergeStationData(
             var swTailX = acpAtLargerX ? swExtents.maxCorner[0] : swExtents.minCorner[0];
             row.x_sw = abs(x - swTailX);
             row.sw_height = swData.swHeight;
+
+            // Distance along X from a user-picked reference to this station. Cores and
+            // sidewalls are programmed from their own (often shifted) endpoints; the
+            // core's end is served by the primary X column, so this is SW-specific.
+            if (swFromEndX != undefined)
+            {
+                row.sw_from_end = abs(x - swFromEndX);
+            }
         }
 
         // Compute delta if both present (how much thicker is core than SW?)
@@ -222,6 +231,11 @@ function formatTableRow(row is map, formatConfig is FormatConfig) returns map
     if (row.x_sw != undefined)
     {
         formatted.x_sw = formatValue(row.x_sw, scaleFactor, formatConfig.sigFigs, suffix);
+    }
+
+    if (row.sw_from_end != undefined)
+    {
+        formatted.sw_from_end = formatValue(row.sw_from_end, scaleFactor, formatConfig.sigFigs, suffix);
     }
 
     // Format core fields. These can hold the NO_DATA string when a core
@@ -367,7 +381,8 @@ export function buildColumnDefinitions(
     hasCore is boolean,
     hasSW is boolean,
     detailLevel is DETAIL_LEVEL,
-    language is LANGUAGE) returns array
+    language is LANGUAGE,
+    hasSwFromEnd is boolean) returns array
 {
     var columns = [];
 
@@ -385,6 +400,12 @@ export function buildColumnDefinitions(
     if (hasSW)
     {
         columns = append(columns, tableColumnDefinition("sw_height", translateColumnName("SW Height", language)));
+    }
+
+    // SW From-End distance (shown at all detail levels when a reference was picked).
+    if (hasSW && hasSwFromEnd)
+    {
+        columns = append(columns, tableColumnDefinition("sw_from_end", translateColumnName("SW From End", language)));
     }
 
     // Core/SW delta (only if both present)

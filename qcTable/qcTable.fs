@@ -101,6 +101,9 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Table Origin Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
                 definition.originReference is Query;
             }
+
+            annotation { "Name" : "SW From-End Reference (optional)", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "When picked, adds a 'SW From End' column reporting each station's distance along X from this reference. Use the sidewall endpoint your SW profile is programmed from." }
+            definition.swFromEndRef is Query;
         }
 
         // ===== Body Selection =====
@@ -170,6 +173,46 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             {
                 annotation { "Name" : "End inset distance", "Description" : "How far inside a body end to take its terminal measurement. Applies only to the single outermost station at each end of the selected bodies; all interior stations are measured exactly." }
                 isLength(definition.endInsetDistance, endInsetBounds);
+            }
+        }
+
+        // ===== Phantom End Points =====
+        annotation { "Group Name" : "Phantom End Points", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Core phantom ends", "UIHint" : UIHint.SHOW_LABEL, "Default" : PHANTOM_MODE.OFF, "Description" : "Add first/last table rows beyond the core's actual extents. The phantom row repeats the nearest real (terminal) core measurement; its X and distance columns are computed at the phantom location." }
+            definition.corePhantomMode is PHANTOM_MODE;
+
+            if (definition.corePhantomMode == PHANTOM_MODE.OFFSET)
+            {
+                annotation { "Name" : "Core phantom offset", "Description" : "Distance beyond each core end for the phantom rows." }
+                isLength(definition.corePhantomOffset, phantomOffsetBounds);
+            }
+
+            if (definition.corePhantomMode == PHANTOM_MODE.QUERY)
+            {
+                annotation { "Name" : "Core phantom start", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.corePhantomStart is Query;
+
+                annotation { "Name" : "Core phantom end", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.corePhantomEnd is Query;
+            }
+
+            annotation { "Name" : "Sidewall phantom ends", "UIHint" : UIHint.SHOW_LABEL, "Default" : PHANTOM_MODE.OFF, "Description" : "Same as above, applied independently to the sidewall." }
+            definition.swPhantomMode is PHANTOM_MODE;
+
+            if (definition.swPhantomMode == PHANTOM_MODE.OFFSET)
+            {
+                annotation { "Name" : "Sidewall phantom offset", "Description" : "Distance beyond each sidewall end for the phantom rows." }
+                isLength(definition.swPhantomOffset, phantomOffsetBounds);
+            }
+
+            if (definition.swPhantomMode == PHANTOM_MODE.QUERY)
+            {
+                annotation { "Name" : "Sidewall phantom start", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.swPhantomStart is Query;
+
+                annotation { "Name" : "Sidewall phantom end", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                definition.swPhantomEnd is Query;
             }
         }
 
@@ -249,6 +292,14 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             tableOriginX = extractXPosition(context, definition.originReference, "Table Origin");
         }
 
+        // Resolve the optional SW From-End reference (X of a picked point). Drives the
+        // per-row "SW From End" column; undefined when no reference is picked.
+        var swFromEndX = undefined;
+        if (!isQueryEmpty(context, definition.swFromEndRef))
+        {
+            swFromEndX = extractXPosition(context, definition.swFromEndRef, "SW From-End Reference");
+        }
+
         if (definition.verbose)
         {
             println("FCP: " ~ boundaries.fcp);
@@ -316,6 +367,11 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             stations = mergeCoincidentStations(stations);
         }
 
+        // Phantom stations sit beyond the body extents; add them after all filtering
+        // so they are never dropped. They are not sectioned - their measurements are
+        // cloned from the nearest real terminal station after measurement (below).
+        stations = addPhantomStations(context, stations, definition, coreExtents, swExtents);
+
         if (definition.verbose)
         {
             println("Total stations: " ~ size(stations));
@@ -373,6 +429,21 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 }
             }
 
+            // Phantom core stations clone the nearest real terminal measurement
+            // (no geometry exists to section beyond the core extents).
+            var coreMid = (coreExtents.minCorner[0] + coreExtents.maxCorner[0]) / 2;
+            for (var station in stations)
+            {
+                if (station.phantomBody == "core" && coreMeasurements[station.x] == undefined)
+                {
+                    var srcX = (station.x < coreMid) ? coreTerminals.loX : coreTerminals.hiX;
+                    if (srcX != undefined && coreMeasurements[srcX] != undefined)
+                    {
+                        coreMeasurements[station.x] = coreMeasurements[srcX];
+                    }
+                }
+            }
+
             if (definition.verbose)
             {
                 println("Core measurements: " ~ size(keys(coreMeasurements)));
@@ -411,6 +482,20 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                     swMeasurements[station.x] = measurement;
                     bottomCenterPoints = append(bottomCenterPoints, measurement.bottomCenter);
                     topCenterPoints = append(topCenterPoints, measurement.topCenter);
+                }
+            }
+
+            // Phantom sidewall stations clone the nearest real terminal measurement.
+            var swMid = (swExtents.minCorner[0] + swExtents.maxCorner[0]) / 2;
+            for (var station in stations)
+            {
+                if (station.phantomBody == "sw" && swMeasurements[station.x] == undefined)
+                {
+                    var srcX = (station.x < swMid) ? swTerminals.loX : swTerminals.hiX;
+                    if (srcX != undefined && swMeasurements[srcX] != undefined)
+                    {
+                        swMeasurements[station.x] = swMeasurements[srcX];
+                    }
                 }
             }
 
@@ -475,6 +560,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             coreExtents,
             swExtents,
             tableOriginX,
+            swFromEndX,
             formatConfig,
             stationNumbering
         );
@@ -498,6 +584,7 @@ export const generateQCData = defineFeature(function(context is Context, id is I
                 "data" : tableData,
                 "hasCore" : hasCore,
                 "hasSW" : hasSW,
+                "hasSwFromEnd" : (swFromEndX != undefined),
                 "detailLevel" : definition.detailLevel,
                 "format" : formatConfig,
                 "tableName" : definition.tableName
@@ -542,9 +629,10 @@ export const qcTable = defineTable(function(context is Context, definition is ma
         var detailLevel = tableAttribute.detailLevel;
         var formatConfig = tableAttribute.format;
         var language = (formatConfig.language != undefined) ? formatConfig.language : LANGUAGE.ENG;
+        var hasSwFromEnd = (tableAttribute.hasSwFromEnd != undefined) ? tableAttribute.hasSwFromEnd : false;
 
         // Build dynamic column definitions
-        var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel, language);
+        var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel, language, hasSwFromEnd);
 
         // Build table rows
         var rows = [];

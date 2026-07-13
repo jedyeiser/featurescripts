@@ -44,6 +44,7 @@ export enum OffsetType
 
 export const RegionPointsBounds    = {(unitless)   : [20, 50, 100]}        as IntegerBoundSpec;
 export const OffsetBounds          = {(millimeter) : [-100, 0, 100]}       as LengthBoundSpec;
+export const DelayBounds           = {(millimeter) : [0, 0, 1000]}         as LengthBoundSpec;
 export const ApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]}     as LengthBoundSpec;
 export const ApproxDegreeBounds    = {(unitless)   : [2, 3, 5]}            as IntegerBoundSpec;
 export const ApproxMaxCPBounds     = {(unitless)   : [10, 100, 500]}       as IntegerBoundSpec;
@@ -244,6 +245,55 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 isLength(region.endBinormalOffset, OffsetBounds);
             }
 
+            annotation { "Name" : "Start dwell",
+                         "Description" : "Distance in from the region start over which the start offset is held constant before the profile ramps (0 = no dwell)" }
+            isLength(region.startDelay, DelayBounds);
+
+            annotation { "Name" : "End dwell",
+                         "Description" : "Distance in from the region end over which the end offset is held constant (0 = no dwell)" }
+            isLength(region.endDelay, DelayBounds);
+
+            annotation { "Name" : "Interior stations", "Item name" : "Station",
+                         "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
+                         "Description" : "Interior control points that pin the offset to a specific value at a location inside this region. The profile re-solves through them, keeping the region's transfer type between pins." }
+            region.stations is array;
+            for (var station in region.stations)
+            {
+                annotation { "Name" : "Location type", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM,
+                             "Description" : "How this station's position along the path is specified" }
+                station.locationType is RegionExtentType;
+
+                if (station.locationType == RegionExtentType.X_EXTENTS)
+                {
+                    annotation { "Name" : "Position",
+                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
+                    isLength(station.position, LENGTH_BOUNDS);
+                }
+
+                if (station.locationType == RegionExtentType.QUERY)
+                {
+                    annotation { "Name" : "Location point",
+                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
+                                 "MaxNumberOfPicks" : 1 }
+                    station.locationQuery is Query;
+                }
+
+                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Normal offset",
+                                 "Description" : "Frenet normal offset pinned at this station" }
+                    isLength(station.normalOffset, OffsetBounds);
+                }
+
+                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Binormal offset",
+                                 "Description" : "Frenet binormal offset pinned at this station" }
+                    isLength(station.binormalOffset, OffsetBounds);
+                }
+            }
+
             annotation { "Name" : "Region length", "UIHint" : UIHint.READ_ONLY }
             isLength(region.length, LENGTH_BOUNDS);
         }
@@ -356,6 +406,16 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 
         var processedRegions = processRegions(context, definition, pathInfo);
         validateNoOverlap(context, id, processedRegions);
+        for (var pr in processedRegions)
+        {
+            if (pr.stationWarnings != undefined)
+            {
+                for (var w in pr.stationWarnings)
+                {
+                    reportFeatureWarning(context, id, w);
+                }
+            }
+        }
         var sortedRegions = sortRegionsByTStart(processedRegions);
         buildOutputWire(context, id, definition, pathInfo, sortedRegions);
 
@@ -763,7 +823,9 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
         {
             var queryPts = evaluateQuery(context, region.extentQueries);
             if (size(queryPts) != 2)
+            {
                 throw regenError("Region '" ~ region.regionName ~ "': extent query must resolve to exactly 2 points");
+            }
 
             var pt0 = getRefPoint(context, queryPts[0]);
             var pt1 = getRefPoint(context, queryPts[1]);
@@ -787,6 +849,95 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
         region.tStart = tStart;
         region.tEnd   = tEnd;
         region.length = (tEnd - tStart) * pathInfo.length;
+
+        var span = tEnd - tStart;
+        var ot = (region.offsetType != undefined) ? region.offsetType : OffsetType.BOTH;
+        var useNormal   = (ot == OffsetType.NORMAL   || ot == OffsetType.BOTH);
+        var useBinormal = (ot == OffsetType.BINORMAL || ot == OffsetType.BOTH);
+
+        // --- Resolve interior stations into {alpha, normalOff, binormalOff} ---
+        var warnings    = [];
+        var stationList = (region.stations != undefined) ? region.stations : [];
+        var resolved    = [];
+
+        for (var si = 0; si < size(stationList); si += 1)
+        {
+            var st = stationList[si];
+
+            var stT;
+            if (st.locationType == RegionExtentType.X_EXTENTS)
+            {
+                stT = pathInfo.refParam + st.position / pathInfo.length;
+            }
+            else // QUERY
+            {
+                var stPts = evaluateQuery(context, st.locationQuery);
+                if (size(stPts) != 1)
+                {
+                    warnings = append(warnings, "Region '" ~ region.regionName ~
+                        "' station " ~ toString(si + 1) ~ ": location must resolve to exactly 1 point; skipped.");
+                    continue;
+                }
+                var stPt  = getRefPoint(context, stPts[0]);
+                var stRes = projectOntoFrenetPath(pathInfo.frenetPath, stPt, undefined);
+                stT = stRes.arcLength / pathInfo.length;
+            }
+
+            var alpha = (span > 1e-10) ? (stT - tStart) / span : 0.0;
+            if (alpha < -1e-6 || alpha > 1 + 1e-6)
+            {
+                warnings = append(warnings, "Region '" ~ region.regionName ~
+                    "' station " ~ toString(si + 1) ~ " lies outside the region extent; skipped.");
+                continue;
+            }
+            alpha = min(max(alpha, 0.0), 1.0);
+
+            var nOff = (useNormal   && st.normalOffset   != undefined) ? st.normalOffset   : undefined;
+            var bOff = (useBinormal && st.binormalOffset != undefined) ? st.binormalOffset : undefined;
+
+            resolved = append(resolved, { "alpha" : alpha, "normalOff" : nOff, "binormalOff" : bOff });
+        }
+
+        // Sort interior stations by alpha (insertion sort; counts are small)
+        for (var a = 1; a < size(resolved); a += 1)
+        {
+            var key = resolved[a];
+            var b   = a - 1;
+            while (b >= 0 && resolved[b].alpha > key.alpha)
+            {
+                resolved[b + 1] = resolved[b];
+                b -= 1;
+            }
+            resolved[b + 1] = key;
+        }
+
+        for (var a = 1; a < size(resolved); a += 1)
+        {
+            if (abs(resolved[a].alpha - resolved[a - 1].alpha) < 1e-4)
+            {
+                warnings = append(warnings, "Region '" ~ region.regionName ~
+                    "': coincident interior stations detected.");
+            }
+        }
+
+        region.stations = resolved;
+
+        // --- Dwell fractions (alpha-space), clamped ---
+        var startDelay = (region.startDelay != undefined) ? region.startDelay : 0 * meter;
+        var endDelay   = (region.endDelay   != undefined) ? region.endDelay   : 0 * meter;
+        var d0 = (region.length / meter > 1e-12) ? startDelay / region.length : 0.0;
+        var d1 = (region.length / meter > 1e-12) ? endDelay   / region.length : 0.0;
+        d0 = min(max(d0, 0.0), 1.0);
+        d1 = min(max(d1, 0.0), 1.0);
+        if (d0 + d1 > 1.0 + 1e-9)
+        {
+            warnings = append(warnings, "Region '" ~ region.regionName ~
+                "': start + end dwell exceed the region length; dwell clamped.");
+        }
+        region.startDelayFrac = d0;
+        region.endDelayFrac   = d1;
+
+        region.stationWarnings = warnings;
 
         processed = append(processed, region);
     }
@@ -867,7 +1018,201 @@ function profileValueAt(t is number, startVal is ValueWithUnits, endVal is Value
 
 
 /**
- * Returns { normalOff, binormalOff } at path parameter tPath from the region's profile.
+ * Evaluates a single control-point segment with optional start/end dwell plateaus.
+ *   u   : segment-local parameter in [0,1]
+ *   dd0 : fraction of the segment (from u=0) held flat at startVal
+ *   dd1 : fraction of the segment (up to u=1) held flat at endVal
+ * The ramp is compressed into [dd0, 1-dd1] and the region transfer is applied there.
+ */
+function segmentValueAt(u is number, startVal is ValueWithUnits, endVal is ValueWithUnits,
+    regionType, quadZeroSlope, dd0 is number, dd1 is number) returns ValueWithUnits
+{
+    var a = min(max(dd0, 0), 1);
+    var b = 1 - min(max(dd1, 0), 1);
+
+    if (a >= b)
+    {
+        // Degenerate dwell (plateaus meet or overlap): collapse to a step at the crossover.
+        var c = min(max(0.5 * (a + b), 0), 1);
+        if (u <= c)
+        {
+            return startVal;
+        }
+        return endVal;
+    }
+
+    if (u <= a)
+    {
+        return startVal;
+    }
+    if (u >= b)
+    {
+        return endVal;
+    }
+
+    var uRamp = (u - a) / (b - a);
+    return profileValueAt(uRamp, startVal, endVal, regionType, quadZeroSlope);
+}
+
+
+/**
+ * Builds the ordered control-point list [{alpha, value}, ...] for one Frenet component,
+ * pinning start (alpha 0), any interior stations that carry this component, and end (alpha 1).
+ * component is "normal" or "binormal". Stations arrive pre-sorted by alpha from processRegions;
+ * stations that do not pin this component (value undefined) are skipped.
+ */
+function getComponentCPs(region is map, component is string) returns array
+{
+    var startVal;
+    var endVal;
+    if (component == "normal")
+    {
+        startVal = region.startNormalOffset;
+        endVal   = region.endNormalOffset;
+    }
+    else
+    {
+        startVal = region.startBinormalOffset;
+        endVal   = region.endBinormalOffset;
+    }
+
+    var cps = [{ "alpha" : 0, "value" : startVal }];
+    var stations = (region.stations != undefined) ? region.stations : [];
+
+    for (var st in stations)
+    {
+        var v = (component == "normal") ? st.normalOff : st.binormalOff;
+        if (v == undefined)
+        {
+            continue;
+        }
+        var a = min(max(st.alpha, 0), 1);
+        if (a <= 1e-9 || a >= 1 - 1e-9)
+        {
+            continue;   // coincident with an endpoint pin
+        }
+        var last = cps[size(cps) - 1];
+        if (abs(a - last.alpha) < 1e-9)
+        {
+            cps[size(cps) - 1] = { "alpha" : a, "value" : v };   // collapse coincident, later wins
+        }
+        else
+        {
+            cps = append(cps, { "alpha" : a, "value" : v });
+        }
+    }
+
+    cps = append(cps, { "alpha" : 1, "value" : endVal });
+    return cps;
+}
+
+
+/**
+ * Evaluates a multi-station piecewise profile at alpha in [0,1].
+ * The region transfer is applied on each segment; start/end dwell (d0,d1, alpha-space
+ * fractions of the whole region) become plateaus on the first/last segments only.
+ */
+function evalComponentProfile(cps is array, alpha is number,
+    regionType, quadZeroSlope, d0 is number, d1 is number) returns ValueWithUnits
+{
+    var m = size(cps);
+    if (m == 0)
+    {
+        return 0 * meter;
+    }
+    if (m == 1)
+    {
+        return cps[0].value;
+    }
+
+    var nSeg = m - 1;
+
+    // Locate the segment: largest i with cps[i].alpha <= alpha
+    var i = 0;
+    for (var k = 0; k < nSeg; k += 1)
+    {
+        if (alpha >= cps[k].alpha)
+        {
+            i = k;
+        }
+    }
+
+    var a0      = cps[i].alpha;
+    var a1      = cps[i + 1].alpha;
+    var segSpan = a1 - a0;
+    var u       = (segSpan > 1e-10) ? min(max((alpha - a0) / segSpan, 0), 1) : 0;
+
+    // Dwell only on the outer segments; convert region-space fraction to segment-local fraction.
+    var dd0 = 0;
+    var dd1 = 0;
+    if (i == 0 && segSpan > 1e-10)
+    {
+        dd0 = d0 / segSpan;
+    }
+    if (i == nSeg - 1 && segSpan > 1e-10)
+    {
+        dd1 = d1 / segSpan;
+    }
+
+    return segmentValueAt(u, cps[i].value, cps[i + 1].value, regionType, quadZeroSlope, dd0, dd1);
+}
+
+
+/**
+ * Returns the sorted t-space breakpoints of the region profile: endpoints, dwell-plateau
+ * edges, and station positions. Used to (a) keep finite differences inside a single smooth
+ * segment and (b) land sample nodes on kinks during wire construction.
+ */
+function getBreakpointsT(region is map) returns array
+{
+    var tS   = region.tStart;
+    var tE   = region.tEnd;
+    var span = tE - tS;
+
+    var d0 = (region.startDelayFrac != undefined) ? min(max(region.startDelayFrac, 0), 1) : 0;
+    var d1 = (region.endDelayFrac   != undefined) ? min(max(region.endDelayFrac,   0), 1) : 0;
+
+    var alphas = [0, 1];
+    if (d0 > 1e-9)
+    {
+        alphas = append(alphas, d0);
+    }
+    if (d1 > 1e-9)
+    {
+        alphas = append(alphas, 1 - d1);
+    }
+
+    var stations = (region.stations != undefined) ? region.stations : [];
+    for (var st in stations)
+    {
+        alphas = append(alphas, min(max(st.alpha, 0), 1));
+    }
+
+    var ts = [];
+    for (var av in alphas)
+    {
+        ts = append(ts, tS + av * span);
+    }
+
+    for (var i = 1; i < size(ts); i += 1)
+    {
+        var key = ts[i];
+        var j = i - 1;
+        while (j >= 0 && ts[j] > key)
+        {
+            ts[j + 1] = ts[j];
+            j -= 1;
+        }
+        ts[j + 1] = key;
+    }
+    return ts;
+}
+
+
+/**
+ * Returns { normalOff, binormalOff } at path parameter tPath from the region's profile,
+ * supporting interior stations and start/end dwell. With no stations and zero dwell this
+ * reduces exactly to the legacy single-transfer ramp.
  */
 function computeOffsetsAt(region is map, tPath is number) returns map
 {
@@ -881,35 +1226,89 @@ function computeOffsetsAt(region is map, tPath is number) returns map
     var useNormal   = (ot == OffsetType.NORMAL   || ot == OffsetType.BOTH);
     var useBinormal = (ot == OffsetType.BINORMAL || ot == OffsetType.BOTH);
 
-    return {
-        "normalOff"   : useNormal
-            ? profileValueAt(alpha, region.startNormalOffset,   region.endNormalOffset,   region.regionType, quadZS)
-            : 0 * meter,
-        "binormalOff" : useBinormal
-            ? profileValueAt(alpha, region.startBinormalOffset, region.endBinormalOffset, region.regionType, quadZS)
-            : 0 * meter
-    };
+    var d0 = (region.startDelayFrac != undefined) ? min(max(region.startDelayFrac, 0), 1) : 0;
+    var d1 = (region.endDelayFrac   != undefined) ? min(max(region.endDelayFrac,   0), 1) : 0;
+
+    var normalOff = 0 * meter;
+    if (useNormal)
+    {
+        var nCPs  = getComponentCPs(region, "normal");
+        normalOff = evalComponentProfile(nCPs, alpha, region.regionType, quadZS, d0, d1);
+    }
+
+    var binormalOff = 0 * meter;
+    if (useBinormal)
+    {
+        var bCPs    = getComponentCPs(region, "binormal");
+        binormalOff = evalComponentProfile(bCPs, alpha, region.regionType, quadZS, d0, d1);
+    }
+
+    return { "normalOff" : normalOff, "binormalOff" : binormalOff };
 }
 
 
 /**
  * Returns { normalOff, binormalOff, normalSlope, binormalSlope, normalCurv, binormalCurv }
- * using central finite differences in t-space.
+ * using central finite differences in t-space (VWU per t, VWU per t^2).
  *
- * Slope and curv are in t-space (VWU/t, VWU/t²).
- * Scale to s-space before passing to blendOffsetAt: multiply slope × L, curv × L².
+ * The step is confined to the smooth segment containing tPath (bounded by getBreakpointsT),
+ * so kinks at stations and dwell-plateau edges never contaminate the slope/curvature that the
+ * blend logic consumes. Scale to s-space before blendOffsetAt: slope * L, curv * L^2.
  */
 function computeOffsetDerivativesAt(region is map, tPath is number) returns map
 {
-    var dt   = 1e-4;
-    var tHi  = min(tPath + dt, 1.0);
-    var tLo  = max(tPath - dt, 0.0);
-    var h    = (tHi - tLo) / 2;  // effective half-step (dimensionless)
+    var dt  = 1e-4;
+    var bps = getBreakpointsT(region);
+
+    // Open segment (segLo, segHi) strictly containing tPath.
+    var segLo   = region.tStart;
+    var segHi   = region.tEnd;
+    var onBreak = false;
+    for (var bp in bps)
+    {
+        if (abs(bp - tPath) < 1e-9)
+        {
+            onBreak = true;
+        }
+        else if (bp < tPath && bp > segLo)
+        {
+            segLo = bp;
+        }
+        else if (bp > tPath && bp < segHi)
+        {
+            segHi = bp;
+        }
+    }
 
     var offMid = computeOffsetsAt(region, tPath);
-    var offHi  = computeOffsetsAt(region, tHi);
-    var offLo  = computeOffsetsAt(region, tLo);
+    var h      = min(dt, min(tPath - segLo, segHi - tPath));
 
+    if (onBreak || h <= 1e-9)
+    {
+        // tPath sits on a kink; step one-sided into the roomier neighbor segment.
+        var roomHi = segHi - tPath;
+        var roomLo = tPath - segLo;
+        var dir    = (roomHi >= roomLo) ? 1 : -1;
+        var hh     = min(dt, (dir > 0) ? roomHi : roomLo);
+        if (hh <= 1e-12)
+        {
+            hh = dt;   // fully degenerate region; fall back so we never divide by ~0
+        }
+        var offA = offMid;
+        var offB = computeOffsetsAt(region, tPath + dir * hh);
+        var offC = computeOffsetsAt(region, tPath + dir * 2 * hh);
+        return {
+            "normalOff"     : offMid.normalOff,
+            "binormalOff"   : offMid.binormalOff,
+            "normalSlope"   : dir * (offB.normalOff   - offA.normalOff)   / hh,
+            "binormalSlope" : dir * (offB.binormalOff - offA.binormalOff) / hh,
+            "normalCurv"    : (offC.normalOff   - 2 * offB.normalOff   + offA.normalOff)   / (hh * hh),
+            "binormalCurv"  : (offC.binormalOff - 2 * offB.binormalOff + offA.binormalOff) / (hh * hh)
+        };
+    }
+
+    var offHi = computeOffsetsAt(region, tPath + h);
+    var offLo = computeOffsetsAt(region, tPath - h);
     return {
         "normalOff"     : offMid.normalOff,
         "binormalOff"   : offMid.binormalOff,
@@ -941,21 +1340,67 @@ function computeOffsetPoint(context is Context, pathInfo is map, definition is m
 // ─── Point arrays ─────────────────────────────────────────────────────────────
 
 /**
- * Samples n points along [tSegStart, tSegEnd], evaluating the region's profile at each.
+ * Samples points along [tSegStart, tSegEnd], evaluating the region profile at each, and
+ * returns { points, interpolateIndices }. Sample nodes are forced to land exactly on every
+ * interior profile breakpoint (station or dwell-plateau edge) inside the segment, and those
+ * node indices are returned so approximateSpline pins them. Stations only SHAPE and CONSTRAIN
+ * the fit here; they do not split the output curve (edge-boundary splitting is separate).
  * tSegStart/tSegEnd may differ from region.tStart/tEnd when trimmed by an adjacent blend.
  */
 function generateSegmentPoints(context is Context, pathInfo is map, definition is map,
-    region is map, tSegStart is number, tSegEnd is number) returns array
+    region is map, tSegStart is number, tSegEnd is number) returns map
 {
-    var n = definition.numRegionPoints;
-    var points = [];
-    for (var i = 0; i < n; i += 1)
+    var nTotal = definition.numRegionPoints;
+    var minPer = max([2, definition.approxDegree + 1]);
+
+    // Interior breakpoints strictly inside this sub-curve (getBreakpointsT is sorted ascending).
+    var bounds = [tSegStart];
+    for (var bp in getBreakpointsT(region))
     {
-        var t    = tSegStart + (tSegEnd - tSegStart) * i / (n - 1);
-        var offs = computeOffsetsAt(region, t);
-        points = append(points, computeOffsetPoint(context, pathInfo, definition, t, offs.normalOff, offs.binormalOff));
+        if (bp > tSegStart + 1e-9 && bp < tSegEnd - 1e-9 && bp - bounds[size(bounds) - 1] > 1e-9)
+        {
+            bounds = append(bounds, bp);
+        }
     }
-    return points;
+    bounds = append(bounds, tSegEnd);
+
+    var nSub      = size(bounds) - 1;
+    var totalSpan = tSegEnd - tSegStart;
+
+    var points    = [];
+    var interpIdx = [];
+
+    for (var s = 0; s < nSub; s += 1)
+    {
+        var a    = bounds[s];
+        var b    = bounds[s + 1];
+        var frac = (totalSpan > 1e-12) ? (b - a) / totalSpan : (1.0 / nSub);
+        var nSeg = max([minPer, floor(nTotal * frac + 0.5)]);
+
+        // First sub-interval contributes its start node; later ones share the previous end node.
+        var startI = (s == 0) ? 0 : 1;
+        for (var i = startI; i < nSeg; i += 1)
+        {
+            var t    = a + (b - a) * i / (nSeg - 1);
+            var offs = computeOffsetsAt(region, t);
+            points = append(points, computeOffsetPoint(context, pathInfo, definition, t, offs.normalOff, offs.binormalOff));
+        }
+
+        // The node just added at b is an interior breakpoint (pin it) unless it is segEnd.
+        if (s < nSub - 1)
+        {
+            interpIdx = append(interpIdx, size(points) - 1);
+        }
+    }
+
+    var finalInterp = [0];
+    for (var idx in interpIdx)
+    {
+        finalInterp = append(finalInterp, idx);
+    }
+    finalInterp = append(finalInterp, size(points) - 1);
+
+    return { "points" : points, "interpolateIndices" : finalInterp };
 }
 
 
@@ -1134,10 +1579,104 @@ function generateBlendPoints(context is Context, pathInfo is map, definition is 
 
 // ─── Wire construction ────────────────────────────────────────────────────────
 
+// True when the source edge covering path parameter t is a circular arc.
+function sourceEdgeIsArc(context is Context, frenetPath is map, t is number, totalLength is ValueWithUnits) returns boolean
+{
+    var edgeData = frenetPath.edgeData;
+    var n        = size(edgeData);
+    var arcLen   = t * totalLength;
+
+    var ei = n - 1;
+    for (var i = 0; i < n - 1; i += 1)
+    {
+        if (edgeData[i + 1].startArcLength > arcLen)
+        {
+            ei = i;
+            break;
+        }
+    }
+
+    var curveDef = evCurveDefinition(context, { "edge" : edgeData[ei].query });
+    return curveDef.curveType == CurveType.CIRCLE;
+}
+
+
+// True when both offset components are constant (within tolerance) across [tA, tB].
+// A constant offset over a circular source edge yields an exact concentric/translated arc.
+function offsetConstantOver(region is map, tA is number, tB is number) returns boolean
+{
+    var nSamp = 5;
+    var n0    = 0 * meter;
+    var b0    = 0 * meter;
+    var maxN  = 0 * meter;
+    var maxB  = 0 * meter;
+
+    for (var i = 0; i < nSamp; i += 1)
+    {
+        var t    = tA + (tB - tA) * i / (nSamp - 1);
+        var offs = computeOffsetsAt(region, t);
+        if (i == 0)
+        {
+            n0 = offs.normalOff;
+            b0 = offs.binormalOff;
+        }
+        else
+        {
+            var dn = abs(offs.normalOff - n0);
+            var db = abs(offs.binormalOff - b0);
+            if (dn > maxN)
+            {
+                maxN = dn;
+            }
+            if (db > maxB)
+            {
+                maxB = db;
+            }
+        }
+    }
+
+    return (maxN < 1e-6 * meter) && (maxB < 1e-6 * meter);
+}
+
+
+// Emits the constant-offset arc over [tA, tB] as a sketch arc (3-point start/mid/end) so the
+// output edge shows a radius. Returns the created sketch body query, or undefined when the
+// three sample points are collinear (not a real arc) so the caller falls back to a spline.
+function emitOffsetArc(context is Context, wireId is Id, pathInfo is map, definition is map,
+    region is map, tA is number, tB is number)
+{
+    var tMid = (tA + tB) / 2;
+    var oA   = computeOffsetsAt(region, tA);
+    var oM   = computeOffsetsAt(region, tMid);
+    var oB   = computeOffsetsAt(region, tB);
+    var p0   = computeOffsetPoint(context, pathInfo, definition, tA,   oA.normalOff, oA.binormalOff);
+    var pM   = computeOffsetPoint(context, pathInfo, definition, tMid, oM.normalOff, oM.binormalOff);
+    var p1   = computeOffsetPoint(context, pathInfo, definition, tB,   oB.normalOff, oB.binormalOff);
+
+    var nrm = cross(pM - p0, p1 - p0);
+    if (norm(nrm) < 1e-9 * meter * meter)
+    {
+        return undefined;   // collinear sample: let the caller fall back to a spline
+    }
+
+    var pl = plane(p0, normalize(nrm));
+    var sk = newSketchOnPlane(context, wireId, { "sketchPlane" : pl });
+    skArc(sk, "arc", {
+        "start" : worldToPlane(pl, p0),
+        "mid"   : worldToPlane(pl, pM),
+        "end"   : worldToPlane(pl, p1)
+    });
+    skSolve(sk);
+
+    return qCreatedBy(wireId, EntityType.BODY);
+}
+
+
 function buildOutputWire(context is Context, id is Id, definition is map,
     pathInfo is map, sortedRegions is array)
 {
     var allWireBodies = [];
+    var allWireEdges  = [];
 
     // Collect active blend zones
     var blendZones = [];
@@ -1233,10 +1772,50 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         {
             var tA = splitTs[si];
             var tB = splitTs[si + 1];
-            if (tB - tA < 1e-6) continue;
+            if (tB - tA < 1e-6)
+            {
+                continue;
+            }
 
-            var pts = generateSegmentPoints(context, pathInfo, definition, reg, tA, tB);
-            if (size(pts) < 2) continue;
+            var wireId = id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si));
+            var tMid   = (tA + tB) / 2;
+
+            // Arc preservation: when this sub-curve lies on a single circular source edge and
+            // the offset is constant across it, the offset is an exact concentric/translated
+            // arc. Emit it as a sketch arc so the extracted output edge reports a radius.
+            if (sourceEdgeIsArc(context, pathInfo.frenetPath, tMid, pathInfo.length)
+                && offsetConstantOver(reg, tA, tB))
+            {
+                var arcBody = emitOffsetArc(context, wireId, pathInfo, definition, reg, tA, tB);
+                if (arcBody != undefined)
+                {
+                    allWireBodies = append(allWireBodies, arcBody);
+                    allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
+                    if (definition.printCurveDetails)
+                    {
+                        println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [ARC] ===");
+                        println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+                    }
+                    if (definition.showRegions)
+                    {
+                        addDebugEntities(context, arcBody, (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+                    }
+                    continue;
+                }
+            }
+
+            var seg = generateSegmentPoints(context, pathInfo, definition, reg, tA, tB);
+            var pts = seg.points;
+            if (size(pts) < 2)
+            {
+                continue;
+            }
+
+            if (size(seg.interpolateIndices) > definition.approxMaxCP)
+            {
+                reportFeatureWarning(context, id, "Region '" ~ reg.regionName ~
+                    "': more interior constraints than Max control points. Increase Max control points for a tighter fit.");
+            }
 
             var bspline = approximateSpline(context, {
                 "degree"             : definition.approxDegree,
@@ -1244,12 +1823,12 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                 "isPeriodic"         : false,
                 "maxControlPoints"   : definition.approxMaxCP,
                 "targets"            : [approximationTarget({ "positions" : pts })],
-                "interpolateIndices" : [0, size(pts) - 1]
+                "interpolateIndices" : seg.interpolateIndices
             })[0];
 
-            var wireId = id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si));
             opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
             allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
+            allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
 
             if (definition.printCurveDetails)
             {
@@ -1261,8 +1840,10 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             }
 
             if (definition.showRegions)
+            {
                 addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY),
                     (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+            }
         }
     }
 
@@ -1286,6 +1867,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         var wireId = id + ("blend_" ~ toString(bzi));
         opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
         allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
+        allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
 
         if (definition.printCurveDetails)
         {
@@ -1303,7 +1885,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
     if (size(allWireBodies) > 0)
     {
         opExtractWires(context, id + "mergeWires", {
-            "edges" : qOwnedByBody(qUnion(allWireBodies), EntityType.EDGE)
+            "edges" : qUnion(allWireEdges)
         });
         opDeleteBodies(context, id + "deleteSourceWires", {
             "entities" : qUnion(allWireBodies)

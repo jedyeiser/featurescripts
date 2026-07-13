@@ -88,6 +88,13 @@ export function terminalStationXs(stations is array, extents is Box3d) returns m
 
     for (var s in stations)
     {
+        // Phantom stations are not real body stations; a sidewall phantom can fall
+        // inside the (longer) core, so exclude them from terminal identification.
+        if (s.phantomBody != undefined)
+        {
+            continue;
+        }
+
         var x = s.x;
         if (x >= extents.minCorner[0] - EDGE_MARGIN && x <= extents.maxCorner[0] + EDGE_MARGIN)
         {

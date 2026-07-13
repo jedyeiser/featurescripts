@@ -564,3 +564,78 @@ export function addUserPoints(
 
     return stations;
 }
+
+/**
+ * Append phantom (beyond-extent) start/end stations for the core and/or sidewall.
+ * A phantom station sits past a body end (OFFSET mode) or at a picked reference
+ * (QUERY mode). It carries a `phantomBody` tag ("core"/"sw") so the measurement
+ * pass clones that body's nearest terminal measurement into it instead of
+ * sectioning empty space. Call this AFTER the boundary/off-grid filters so phantom
+ * stations are never dropped.
+ *
+ * Core is assumed to be at least as long as the sidewall, so a core phantom point
+ * is always beyond the sidewall too (sidewall reads blank there); a sidewall
+ * phantom point may still fall within the core (which then measures normally).
+ */
+export function addPhantomStations(
+    context is Context,
+    stations is array,
+    definition is map,
+    coreExtents,
+    swExtents) returns array
+{
+    var result = stations;
+
+    if (coreExtents != undefined && definition.corePhantomMode != PHANTOM_MODE.OFF)
+    {
+        result = concatenateArrays([result, phantomStationsForBody(context, definition.corePhantomMode,
+            definition.corePhantomOffset, definition.corePhantomStart, definition.corePhantomEnd,
+            coreExtents, "core")]);
+    }
+    if (swExtents != undefined && definition.swPhantomMode != PHANTOM_MODE.OFF)
+    {
+        result = concatenateArrays([result, phantomStationsForBody(context, definition.swPhantomMode,
+            definition.swPhantomOffset, definition.swPhantomStart, definition.swPhantomEnd,
+            swExtents, "sw")]);
+    }
+
+    return result;
+}
+
+// Build 0-2 phantom stations for one body. `offset`/`startQuery`/`endQuery` are
+// only read in the branch that uses them, so the unused ones may be undefined
+// (the precondition only defines the fields relevant to the active mode).
+function phantomStationsForBody(context is Context, mode, offset, startQuery, endQuery,
+    extents is Box3d, bodyTag is string) returns array
+{
+    var out = [];
+
+    if (mode == PHANTOM_MODE.OFFSET)
+    {
+        out = append(out, makePhantomStation(extents.minCorner[0] - offset, bodyTag));
+        out = append(out, makePhantomStation(extents.maxCorner[0] + offset, bodyTag));
+    }
+    else if (mode == PHANTOM_MODE.QUERY)
+    {
+        if (!isQueryEmpty(context, startQuery))
+        {
+            out = append(out, makePhantomStation(extractXPosition(context, startQuery, "Phantom start"), bodyTag));
+        }
+        if (!isQueryEmpty(context, endQuery))
+        {
+            out = append(out, makePhantomStation(extractXPosition(context, endQuery, "Phantom end"), bodyTag));
+        }
+    }
+
+    return out;
+}
+
+function makePhantomStation(x is ValueWithUnits, bodyTag is string) returns map
+{
+    return {
+        x: x,
+        callout: CALLOUT_PHANTOM,
+        preferred: true,
+        phantomBody: bodyTag
+    };
+}

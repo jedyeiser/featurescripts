@@ -27,6 +27,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
          "X from ACP" : "X from ACP",
          "X from Core Tail" : "X from Core Tail",
          "X from SW Tail" : "X from SW Tail",
+         "SW From End" : "SW From End",
          "Core Width" : "Core Width",
          "Grooved Thickness" : "Grooved Thickness",
          "Top Width" : "Top Width",
@@ -44,6 +45,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
          "X from ACP" : "Abstand von EDA",
          "X from Core Tail" : "Abstand vom Kernende",
          "X from SW Tail" : "Abstand von SW ende",
+         "SW From End" : "SW vom Ende",
          "Core Width" : "Kernbereite",
          "Grooved Thickness" : "Grooved dicke",
          "Top Width" : "Oberer breite",
@@ -61,6 +63,7 @@ import(path : "onshape/std/common.fs", version : "2878.0");
          "X from ACP" : "距离ACP",
          "X from Core Tail" : "距核心尾部距离",
          "X from SW Tail" : "距侧壁尾部距离",
+         "SW From End" : "从端部看侧壁",
          "Core Width" : "芯宽",
          "Grooved Thickness" : "沟槽厚度",
          "Top Width" : "顶部宽度",
@@ -236,6 +239,22 @@ export enum END_INSET_SCOPE
     BOTH
 }
 
+/**
+ * How the phantom (beyond-extent) start/end stations for a body are located.
+ * OFF     - no phantom stations.
+ * OFFSET  - a fixed distance beyond each end of the body.
+ * QUERY   - explicit picked references for the start and/or end.
+ */
+export enum PHANTOM_MODE
+{
+    annotation { "Name" : "Off" }
+    OFF,
+    annotation { "Name" : "Offset beyond ends" }
+    OFFSET,
+    annotation { "Name" : "Pick references" }
+    QUERY
+}
+
 // ============================================================================
 // CONSTANTS AND BOUNDS
 // ============================================================================
@@ -304,6 +323,15 @@ export const filterPointDistBounds =
 export const endInsetBounds =
 {
     (millimeter) : [0.01, 0.5, 25]
+} as LengthBoundSpec;
+
+/**
+ * Distance a phantom station sits beyond a body end (OFFSET mode).
+ * Default: 5mm, Range: 0.1mm to 100mm
+ */
+export const phantomOffsetBounds =
+{
+    (millimeter) : [0.1, 5, 100]
 } as LengthBoundSpec;
 
 // ============================================================================
@@ -408,6 +436,7 @@ export const CALLOUT_CORE_TIP = "CORE_TIP";
 export const CALLOUT_CORE_TAIL = "CORE_TAIL";
 export const CALLOUT_SW_TIP = "SW_TIP";
 export const CALLOUT_SW_TAIL = "SW_TAIL";
+export const CALLOUT_PHANTOM = "PH";
 
 // ============================================================================
 // UNIT CONVERSION
