@@ -8,7 +8,7 @@ import(path : "onshape/std/loft.fs", version : "2892.0");
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
 // import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
-export import(path : "7e3b271854475bf6cf878b2b", version : "7a7ace076afa389075c27fee");
+export import(path : "7e3b271854475bf6cf878b2b", version : "ca95f9eb7a06969a3e46df7b");
 
 
 export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 10]} as IntegerBoundSpec;

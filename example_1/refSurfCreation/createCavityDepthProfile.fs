@@ -3,7 +3,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2892.0");
 
 // real import path for refSurfUtils (managed by sync)
-import(path : "d41884a96244793beb462449", version : "2311652bc87faaf67ce79c7d");
+import(path : "d41884a96244793beb462449", version : "e522a3d9a77edb81b97e9bfb");
 
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
