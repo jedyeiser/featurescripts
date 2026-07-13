@@ -2,6 +2,8 @@ FeatureScript 3008;
 import(path : "onshape/std/common.fs", version : "3008.0");
 //import qcTable_types
 import(path : "ff9221b7148cfda8a449abff", version : "31d87ccebeed70c9ff76b9ed");
+//import qcTable_geometry
+import(path : "0f9cf9b21a3c654880d3167c", version : "421b5d303f642d54a6110154");
 
 
 /**
