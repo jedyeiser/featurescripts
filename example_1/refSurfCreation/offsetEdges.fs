@@ -374,14 +374,14 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 annotation { "Name" : "Offset type", "Default" : OffsetType.NORMAL,
                              "UIHint" : UIHint.HORIZONTAL_ENUM,
                              "Description" : "Which Frenet offsets this control point pins" }
-                off.offsetType is OffsetType;
+                off.pointOffsetType is OffsetType;
 
-                if (off.offsetType == OffsetType.NORMAL || off.offsetType == OffsetType.BOTH)
+                if (off.pointOffsetType == OffsetType.NORMAL || off.pointOffsetType == OffsetType.BOTH)
                 {
                     annotation { "Name" : "Normal offset" }
                     isLength(off.normalOffset, OffsetBounds);
                 }
-                if (off.offsetType == OffsetType.BINORMAL || off.offsetType == OffsetType.BOTH)
+                if (off.pointOffsetType == OffsetType.BINORMAL || off.pointOffsetType == OffsetType.BOTH)
                 {
                     annotation { "Name" : "Binormal offset" }
                     isLength(off.binormalOffset, OffsetBounds);
@@ -1026,7 +1026,7 @@ function assembleSingleRegion(context is Context, definition is map, pathInfo is
     for (var i = 0; i < size(offsets); i += 1)
     {
         var off  = offsets[i];
-        var ot   = off.offsetType;
+        var ot   = off.pointOffsetType;
         var useN = (ot == OffsetType.NORMAL   || ot == OffsetType.BOTH);
         var useB = (ot == OffsetType.BINORMAL || ot == OffsetType.BOTH);
 
