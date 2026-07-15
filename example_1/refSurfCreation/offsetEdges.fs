@@ -47,6 +47,14 @@ export enum VaryingArcMode
     BIARC
 }
 
+export enum OffsetMode
+{
+    annotation { "Name" : "Multiple regions" }
+    MULTI_REGION,
+    annotation { "Name" : "Single region" }
+    SINGLE_REGION
+}
+
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +72,12 @@ export function generateOffsetEdgesEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
+    // Single-region mode has no regions/intersections arrays to auto-manage.
+    if (definition.offsetMode == OffsetMode.SINGLE_REGION)
+    {
+        return definition;
+    }
+
     var pathInfo = undefined;
     try silent
     {
@@ -187,6 +201,16 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                      "Description" : "Number of points evaluated per region (and per blend)" }
         isInteger(definition.numRegionPoints, RegionPointsBounds);
 
+        annotation { "Name" : "Offset layout", "Default" : OffsetMode.MULTI_REGION,
+                     "UIHint" : UIHint.HORIZONTAL_ENUM,
+                     "Description" : "Multiple regions: define separate zones and join them with blends. Single region: one continuous run whose profile flows through a list of interior offsets (cleaner for a simple shaped sweep)." }
+        definition.offsetMode is OffsetMode;
+
+        // Gate on != SINGLE_REGION (not == MULTI_REGION) so a legacy instance whose offsetMode
+        // resolves to undefined still shows its regions rather than hiding everything.
+        if (definition.offsetMode != OffsetMode.SINGLE_REGION)
+        {
+
         annotation { "Name" : "Regions", "Item name" : "Region",
                      "Item label template" : "#regionName",
                      "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -266,175 +290,6 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                          "Description" : "Distance in from the region end over which the end offset is held constant (0 = no dwell)" }
             isLength(region.endDelay, DelayBounds);
 
-            // Interior stations. FeatureScript forbids an array parameter inside another array
-            // parameter's loop, and precondition visibility conditions reject ordered comparisons
-            // (>=), so each station is a fixed per-region slot toggled by its own boolean.
-            annotation { "Name" : "Station 1", "Default" : false,
-                         "Description" : "Pin the offset to a value at an interior location inside this region. The profile re-solves through the enabled stations, keeping the region's transfer type between pins." }
-            region.station1Enabled is boolean;
-            if (region.station1Enabled)
-            {
-                annotation { "Name" : "Station 1 location", "Default" : RegionExtentType.X_EXTENTS,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
-                region.station1LocationType is RegionExtentType;
-
-                if (region.station1LocationType == RegionExtentType.X_EXTENTS)
-                {
-                    annotation { "Name" : "Station 1 position",
-                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
-                    isLength(region.station1Position, LENGTH_BOUNDS);
-                }
-                if (region.station1LocationType == RegionExtentType.QUERY)
-                {
-                    annotation { "Name" : "Station 1 point",
-                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
-                                 "MaxNumberOfPicks" : 1 }
-                    region.station1Query is Query;
-                }
-                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 1 normal offset" }
-                    isLength(region.station1NormalOffset, OffsetBounds);
-                }
-                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 1 binormal offset" }
-                    isLength(region.station1BinormalOffset, OffsetBounds);
-                }
-            }
-
-            annotation { "Name" : "Station 2", "Default" : false }
-            region.station2Enabled is boolean;
-            if (region.station2Enabled)
-            {
-                annotation { "Name" : "Station 2 location", "Default" : RegionExtentType.X_EXTENTS,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
-                region.station2LocationType is RegionExtentType;
-
-                if (region.station2LocationType == RegionExtentType.X_EXTENTS)
-                {
-                    annotation { "Name" : "Station 2 position",
-                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
-                    isLength(region.station2Position, LENGTH_BOUNDS);
-                }
-                if (region.station2LocationType == RegionExtentType.QUERY)
-                {
-                    annotation { "Name" : "Station 2 point",
-                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
-                                 "MaxNumberOfPicks" : 1 }
-                    region.station2Query is Query;
-                }
-                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 2 normal offset" }
-                    isLength(region.station2NormalOffset, OffsetBounds);
-                }
-                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 2 binormal offset" }
-                    isLength(region.station2BinormalOffset, OffsetBounds);
-                }
-            }
-
-            annotation { "Name" : "Station 3", "Default" : false }
-            region.station3Enabled is boolean;
-            if (region.station3Enabled)
-            {
-                annotation { "Name" : "Station 3 location", "Default" : RegionExtentType.X_EXTENTS,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
-                region.station3LocationType is RegionExtentType;
-
-                if (region.station3LocationType == RegionExtentType.X_EXTENTS)
-                {
-                    annotation { "Name" : "Station 3 position",
-                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
-                    isLength(region.station3Position, LENGTH_BOUNDS);
-                }
-                if (region.station3LocationType == RegionExtentType.QUERY)
-                {
-                    annotation { "Name" : "Station 3 point",
-                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
-                                 "MaxNumberOfPicks" : 1 }
-                    region.station3Query is Query;
-                }
-                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 3 normal offset" }
-                    isLength(region.station3NormalOffset, OffsetBounds);
-                }
-                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 3 binormal offset" }
-                    isLength(region.station3BinormalOffset, OffsetBounds);
-                }
-            }
-
-            annotation { "Name" : "Station 4", "Default" : false }
-            region.station4Enabled is boolean;
-            if (region.station4Enabled)
-            {
-                annotation { "Name" : "Station 4 location", "Default" : RegionExtentType.X_EXTENTS,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
-                region.station4LocationType is RegionExtentType;
-
-                if (region.station4LocationType == RegionExtentType.X_EXTENTS)
-                {
-                    annotation { "Name" : "Station 4 position",
-                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
-                    isLength(region.station4Position, LENGTH_BOUNDS);
-                }
-                if (region.station4LocationType == RegionExtentType.QUERY)
-                {
-                    annotation { "Name" : "Station 4 point",
-                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
-                                 "MaxNumberOfPicks" : 1 }
-                    region.station4Query is Query;
-                }
-                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 4 normal offset" }
-                    isLength(region.station4NormalOffset, OffsetBounds);
-                }
-                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 4 binormal offset" }
-                    isLength(region.station4BinormalOffset, OffsetBounds);
-                }
-            }
-
-            annotation { "Name" : "Station 5", "Default" : false }
-            region.station5Enabled is boolean;
-            if (region.station5Enabled)
-            {
-                annotation { "Name" : "Station 5 location", "Default" : RegionExtentType.X_EXTENTS,
-                             "UIHint" : UIHint.HORIZONTAL_ENUM }
-                region.station5LocationType is RegionExtentType;
-
-                if (region.station5LocationType == RegionExtentType.X_EXTENTS)
-                {
-                    annotation { "Name" : "Station 5 position",
-                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
-                    isLength(region.station5Position, LENGTH_BOUNDS);
-                }
-                if (region.station5LocationType == RegionExtentType.QUERY)
-                {
-                    annotation { "Name" : "Station 5 point",
-                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
-                                 "MaxNumberOfPicks" : 1 }
-                    region.station5Query is Query;
-                }
-                if (region.offsetType == OffsetType.NORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 5 normal offset" }
-                    isLength(region.station5NormalOffset, OffsetBounds);
-                }
-                if (region.offsetType == OffsetType.BINORMAL || region.offsetType == OffsetType.BOTH)
-                {
-                    annotation { "Name" : "Station 5 binormal offset" }
-                    isLength(region.station5BinormalOffset, OffsetBounds);
-                }
-            }
-
             annotation { "Name" : "Region length", "UIHint" : UIHint.READ_ONLY }
             isLength(region.length, LENGTH_BOUNDS);
         }
@@ -475,6 +330,62 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                 annotation { "Name" : "End distance",
                              "Description" : "How far the blend reaches into the second region from its start (0 = connect at endpoint)" }
                 isLength(intersection.endDist, LENGTH_BOUNDS);
+            }
+        }
+        }
+
+        if (definition.offsetMode == OffsetMode.SINGLE_REGION)
+        {
+            annotation { "Name" : "Transfer type", "Default" : RegionType.SMOOTH,
+                         "UIHint" : UIHint.HORIZONTAL_ENUM,
+                         "Description" : "How the offset moves between consecutive interior offsets" }
+            definition.singleTransfer is RegionType;
+
+            if (definition.singleTransfer == RegionType.QUADRATIC)
+            {
+                annotation { "Name" : "Zero slope at", "Default" : QuadraticZeroSlope.AT_START }
+                definition.singleQuadZeroSlope is QuadraticZeroSlope;
+            }
+
+            annotation { "Name" : "Interior offsets", "Item name" : "Offset",
+                         "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
+                         "Description" : "Ordered offset control points along the path. The profile flows through them with the transfer type and holds flat beyond the first and last." }
+            definition.interiorOffsets is array;
+            for (var off in definition.interiorOffsets)
+            {
+                annotation { "Name" : "Location type", "Default" : RegionExtentType.X_EXTENTS,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM }
+                off.locationType is RegionExtentType;
+
+                if (off.locationType == RegionExtentType.X_EXTENTS)
+                {
+                    annotation { "Name" : "Position",
+                                 "Description" : "Distance along path from reference point (negative = behind reference)" }
+                    isLength(off.position, LENGTH_BOUNDS);
+                }
+                if (off.locationType == RegionExtentType.QUERY)
+                {
+                    annotation { "Name" : "Location point",
+                                 "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
+                                 "MaxNumberOfPicks" : 1 }
+                    off.locationQuery is Query;
+                }
+
+                annotation { "Name" : "Offset type", "Default" : OffsetType.NORMAL,
+                             "UIHint" : UIHint.HORIZONTAL_ENUM,
+                             "Description" : "Which Frenet offsets this control point pins" }
+                off.offsetType is OffsetType;
+
+                if (off.offsetType == OffsetType.NORMAL || off.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Normal offset" }
+                    isLength(off.normalOffset, OffsetBounds);
+                }
+                if (off.offsetType == OffsetType.BINORMAL || off.offsetType == OffsetType.BOTH)
+                {
+                    annotation { "Name" : "Binormal offset" }
+                    isLength(off.binormalOffset, OffsetBounds);
+                }
             }
         }
 
@@ -539,14 +450,26 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             addDebugArrow(context, dOrg, dOrg - dLen * dTan, dRad, DebugColor.RED);    // - direction
         }
 
-        if (size(definition.regions) == 0)
+        var processedRegions;
+        if (definition.offsetMode == OffsetMode.SINGLE_REGION)
         {
-            reportFeatureWarning(context, id, "No regions defined — nothing to generate");
-            return;
+            if (definition.interiorOffsets == undefined || size(definition.interiorOffsets) == 0)
+            {
+                reportFeatureWarning(context, id, "No interior offsets defined -- output follows the source path.");
+            }
+            processedRegions = assembleSingleRegion(context, definition, pathInfo);
+        }
+        else
+        {
+            if (size(definition.regions) == 0)
+            {
+                reportFeatureWarning(context, id, "No regions defined -- nothing to generate");
+                return;
+            }
+            processedRegions = processRegions(context, definition, pathInfo);
+            validateNoOverlap(context, id, processedRegions);
         }
 
-        var processedRegions = processRegions(context, definition, pathInfo);
-        validateNoOverlap(context, id, processedRegions);
         for (var pr in processedRegions)
         {
             if (pr.stationWarnings != undefined)
@@ -1088,6 +1011,99 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
     }
 
     return processed;
+}
+
+
+// Builds one synthetic region for SINGLE_REGION mode from the top-level interiorOffsets array.
+// The region spans the whole path (tStart 0, tEnd 1); each offset point becomes a resolved
+// station, and the per-component endpoint values are the first/last pinning point's value so
+// the profile holds flat beyond the outer points. Returns [region] for the normal pipeline.
+function assembleSingleRegion(context is Context, definition is map, pathInfo is map) returns array
+{
+    var offsets  = (definition.interiorOffsets != undefined) ? definition.interiorOffsets : [];
+    var resolved = [];
+
+    for (var i = 0; i < size(offsets); i += 1)
+    {
+        var off  = offsets[i];
+        var ot   = off.offsetType;
+        var useN = (ot == OffsetType.NORMAL   || ot == OffsetType.BOTH);
+        var useB = (ot == OffsetType.BINORMAL || ot == OffsetType.BOTH);
+
+        var t;
+        if (off.locationType == RegionExtentType.QUERY)
+        {
+            var pts = evaluateQuery(context, off.locationQuery);
+            if (size(pts) != 1)
+            {
+                continue;
+            }
+            var res = projectOntoFrenetPath(pathInfo.frenetPath, getRefPoint(context, pts[0]), undefined);
+            t = res.arcLength / pathInfo.length;
+        }
+        else // X_EXTENTS (also default)
+        {
+            t = pathInfo.refParam + off.position / pathInfo.length;
+        }
+        t = min(max(t, 0), 1);
+
+        var nOff = (useN && off.normalOffset   != undefined) ? off.normalOffset   : undefined;
+        var bOff = (useB && off.binormalOffset != undefined) ? off.binormalOffset : undefined;
+        resolved = append(resolved, { "alpha" : t, "normalOff" : nOff, "binormalOff" : bOff });
+    }
+
+    // Sort by alpha (insertion sort; counts are small)
+    for (var a = 1; a < size(resolved); a += 1)
+    {
+        var key = resolved[a];
+        var b   = a - 1;
+        while (b >= 0 && resolved[b].alpha > key.alpha)
+        {
+            resolved[b + 1] = resolved[b];
+            b -= 1;
+        }
+        resolved[b + 1] = key;
+    }
+
+    // Per-component flat-hold endpoint values: first/last point that pins that component.
+    var startN = 0 * meter; var endN = 0 * meter; var haveN = false;
+    var startB = 0 * meter; var endB = 0 * meter; var haveB = false;
+    for (var i = 0; i < size(resolved); i += 1)
+    {
+        if (resolved[i].normalOff != undefined)
+        {
+            if (!haveN) { startN = resolved[i].normalOff; haveN = true; }
+            endN = resolved[i].normalOff;
+        }
+        if (resolved[i].binormalOff != undefined)
+        {
+            if (!haveB) { startB = resolved[i].binormalOff; haveB = true; }
+            endB = resolved[i].binormalOff;
+        }
+    }
+
+    var qzs = (definition.singleQuadZeroSlope != undefined) ? definition.singleQuadZeroSlope : QuadraticZeroSlope.AT_START;
+
+    var region = {
+        "regionNum"           : 0,
+        "regionName"          : "Region 1",
+        "regionType"          : definition.singleTransfer,
+        "quadZeroSlope"       : qzs,
+        "offsetType"          : OffsetType.BOTH,
+        "tStart"              : 0,
+        "tEnd"                : 1,
+        "length"              : pathInfo.length,
+        "startNormalOffset"   : startN,
+        "endNormalOffset"     : endN,
+        "startBinormalOffset" : startB,
+        "endBinormalOffset"   : endB,
+        "startDelayFrac"      : 0,
+        "endDelayFrac"        : 0,
+        "stations"            : resolved,
+        "stationWarnings"     : []
+    };
+
+    return [region];
 }
 
 
@@ -1991,9 +2007,10 @@ function buildOutputWire(context is Context, id is Id, definition is map,
     var allWireBodies = [];
     var allWireEdges  = [];
 
-    // Collect active blend zones
+    // Collect active blend zones (SINGLE_REGION mode declares no intersections)
     var blendZones = [];
-    for (var intr in definition.intersections)
+    var intersections = (definition.intersections != undefined) ? definition.intersections : [];
+    for (var intr in intersections)
     {
         if (!intr.isValid || !intr.blend)
             continue;
