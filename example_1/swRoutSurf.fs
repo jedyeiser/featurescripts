@@ -50,10 +50,10 @@ export const PointsPerEdgeBounds = {(unitless) : [10, 20, 50]} as IntegerBoundSp
 export const CutterRadiusBounds = {(millimeter) : [5, 10, 20]} as LengthBoundSpec;
 
 // ---- Implementation constants (centralized; tune here) --------------------
-// Total reference frames sampled across the ENTIRE intersection wire (not per
-// edge), distributed by arc length with a minimum of 2 per edge.  Drives both
-// the cached frame table and the showRefFrames visualization, so the count stays
-// flat regardless of how many edges the intersection produces.
+// Maximum number of frames DRAWN by showRefFrames (an evenly-spaced subset of
+// the cache), so the visualization stays readable no matter how dense the cache
+// is.  The cache itself is sampled per-edge from the sampling parameters -- see
+// buildEdgeMapCache.
 const TARGET_FRAME_COUNT = 20;
 // Debug arrow length for the drawn reference frames.
 const FRAME_ARROW_LEN = 10 * millimeter;
@@ -209,7 +209,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         //   yAxis (binormal) = inward, toward the ski centerline  -> WIDTH offsets
         //   zAxis (tangent)  = along the intersection wire (sign irrelevant)
         const edgeMaps = buildEdgeMapCache(context, qCreatedBy(intId, EntityType.BODY),
-                bottomFaces, bottomCentroid);
+                bottomFaces, bottomCentroid, definition);
 
         if (definition.showRefFrames)
         {
@@ -224,9 +224,14 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         if (definition.printDebug)
         {
             var ptCount = 0;
-            for (var em in edgeMaps) { ptCount += size(em.pointArray); }
+            var perEdge = "";
+            for (var em in edgeMaps)
+            {
+                ptCount += size(em.pointArray);
+                perEdge = perEdge ~ toString(size(em.pointArray)) ~ " ";
+            }
             println("[SW Rout] edge-map cache: " ~ toString(size(edgeMaps)) ~ " edges, " ~
-                    toString(ptCount) ~ " sampled frames.");
+                    toString(ptCount) ~ " sampled frames (per-edge: " ~ perEdge ~ ").");
         }
 
         // ====================================================================
@@ -362,7 +367,7 @@ function swRoutFrameAt(context is Context, pt is Vector, tangentDir is Vector,
 // Edges are ordered along the continuous path (constructPath) and then flipped
 // as a whole so the table runs lowest X to highest X (design convention).
 function buildEdgeMapCache(context is Context, wireQuery is Query,
-        bottomFaces is array, bottomCentroid is Vector) returns array
+        bottomFaces is array, bottomCentroid is Vector, definition is map) returns array
 {
     const allEdges = evaluateQuery(context, qOwnedByBody(wireQuery, EntityType.EDGE));
     if (size(allEdges) == 0)
@@ -373,23 +378,27 @@ function buildEdgeMapCache(context is Context, wireQuery is Query,
     // Continuous tip-to-tail ordering, independent of X-monotonicity at the tip.
     const pl = constructPath(context, qUnion(allEdges));
 
-    // Distribute a flat total of ~TARGET_FRAME_COUNT frames across the whole wire
-    // by arc length (min 2 per edge so every edge keeps its endpoints).  This
-    // keeps the total independent of edge count -- a 10-edge wire yields ~20
-    // frames, not 40-per-edge.
-    var totalLen = 0 * meter;
-    for (var e in pl.edges)
-    {
-        totalLen += evLength(context, { "entities" : e });
-    }
-
     var edgeMaps = [];
     for (var i = 0; i < size(pl.edges); i += 1)
     {
         const e       = pl.edges[i];
         const flipped = pl.flipped[i];
-        const eLen    = evLength(context, { "entities" : e });
-        const nPts    = max([2, round(TARGET_FRAME_COUNT * eLen / totalLen)]);
+
+        // Samples per edge, driven by the sampling parameters:
+        //   CTRL_POINTS : (edge control-point count) * ctrlPointMultiplier
+        //   NUM_POINTS  : pointsPerEdge
+        // Floored at 4 so every edge fits and approximateSpline has enough points.
+        var nPts;
+        if (definition.edgeSamplingDef == SamplingType.CTRL_POINTS)
+        {
+            const bs = evApproximateBSplineCurve(context, { "edge" : e });
+            nPts = size(bs.controlPoints) * definition.ctrlPointMultiplier;
+        }
+        else
+        {
+            nPts = definition.pointsPerEdge;
+        }
+        nPts = max([4, nPts]);
 
         var params = [];
         for (var k = 0; k < nPts; k += 1)
@@ -760,18 +769,25 @@ function offsetPoints(stations is array, height is ValueWithUnits, width is Valu
     return pts;
 }
 
-// Fits a single BSpline wire through the given ordered points (degree adapts to
-// the point count so short regions still fit) and returns its edge query.  The
-// created body is scratch geometry; the caller deletes it after lofting.
-function makeWireFromPoints(context is Context, wId is Id, pts is array) returns Query
+// Fits a smooth BSpline wire through the given ordered points via approximateSpline
+// (controlled control-point count -- an interpolating spline would chase sampling
+// noise).  maxControlPoints is floored at 4, approximateSpline's minimum.
+function makeWireFromPoints(context is Context, wId is Id, pts is array,
+        label is string, printDebug is boolean) returns Query
 {
     const deg   = min([3, size(pts) - 1]);
+    const maxCP = max([4, size(pts)]);
+    if (printDebug)
+    {
+        println("[SW Rout]   wire " ~ label ~ ": " ~ toString(size(pts)) ~ " input pts, degree " ~
+                toString(deg) ~ ", maxControlPoints " ~ toString(maxCP));
+    }
     const curve = approximateSpline(context, {
             "targets"          : [approximationTarget({ "positions" : pts })],
             "degree"           : deg,
             "tolerance"        : 1e-5 * meter,
             "isPeriodic"       : false,
-            "maxControlPoints" : max([deg + 1, size(pts)])
+            "maxControlPoints" : maxCP
     })[0];
     opCreateBSplineCurve(context, wId, { "bSplineCurve" : curve });
     return qCreatedBy(wId, EntityType.EDGE);
@@ -810,7 +826,8 @@ function buildRegionWires(context is Context, id is Id, ri is number,
     for (var si = 0; si < size(specs); si += 1)
     {
         const wId = id + ("swW" ~ suffix ~ "_" ~ toString(si));
-        makeWireFromPoints(context, wId, offsetPoints(rg.stations, specs[si].h, specs[si].w));
+        makeWireFromPoints(context, wId, offsetPoints(rg.stations, specs[si].h, specs[si].w),
+                rg.name ~ " " ~ specs[si].tag, definition.printDebug);
         const body = qCreatedBy(wId, EntityType.BODY);
         setBodyName(context, body, "SW Rout wire [" ~ rg.name ~ "] " ~ specs[si].tag);
         wireBodies = append(wireBodies, body);
