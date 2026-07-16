@@ -261,10 +261,11 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         var regionSurfaces = [];
         for (var ri = 0; ri < size(regions); ri += 1)
         {
-            regionSurfaces = append(regionSurfaces, {
-                    "name" : regions[ri].name,
-                    "body" : buildRegionSurface(context, id, ri, regions[ri], definition)
-            });
+            const segs = buildRegionSurface(context, id, ri, regions[ri], definition);
+            for (var sb in segs)
+            {
+                regionSurfaces = append(regionSurfaces, { "name" : regions[ri].name, "body" : sb });
+            }
         }
 
         if (definition.showRegions)
@@ -776,60 +777,63 @@ function makeWireFromPoints(context is Context, wId is Id, pts is array) returns
     return qCreatedBy(wId, EntityType.EDGE);
 }
 
-// Builds one region's rout surface: bottom / start / [step-in] / top wires
-// lofted together.  Wire heights/widths (per design step 5):
-//   bottom : height 0,          width 0
+// Builds one region's rout surface from bottom / start / [step-in] / top wires.
+// Wire heights/widths (per design step 5):
+//   bottom : height 0,            width 0
 //   start  : height swRoutBottom, width 0
 //   stepIn : height swRoutBottom, width swRoutStepIn   (SW Rout region only)
 //   top    : height swRoutHeight, width {stepIn} + (swRoutHeight - swRoutBottom)*tan(angle)
-// Returns the lofted surface body.  Scratch wires are deleted after the loft.
+// The wires are lofted in CONSECUTIVE PAIRS (ruled patches) rather than one
+// multi-section loft: the profile has a hard corner at start/step, and a single
+// loft through it returns LOFT_INVALID.  Returns the array of segment surface
+// bodies (M4 knits them).  Scratch wires are deleted after lofting.
 function buildRegionSurface(context is Context, id is Id, ri is number,
-        rg is map, definition is map) returns Query
+        rg is map, definition is map) returns array
 {
     const hStart = definition.swRoutBottom;
     const hTop   = definition.swRoutHeight;
     const stepIn = rg.hasStepIn ? definition.swRoutStepIn : 0 * millimeter;
     const wTop   = stepIn + (hTop - hStart) * tan(rg.angle);
+    const suffix = toString(ri);
 
-    const suffix   = toString(ri);
-    const bottomId = id + ("swBottomW" ~ suffix);
-    const startId  = id + ("swStartW" ~ suffix);
-    const stepId   = id + ("swStepW" ~ suffix);
-    const topId    = id + ("swTopW" ~ suffix);
+    // Ordered wire cross-section stations: (height, width).
+    var specs = [{ "h" : 0 * millimeter, "w" : 0 * millimeter },
+                 { "h" : hStart,         "w" : 0 * millimeter }];
+    if (rg.hasStepIn)
+    {
+        specs = append(specs, { "h" : hStart, "w" : stepIn });
+    }
+    specs = append(specs, { "h" : hTop, "w" : wTop });
 
     var profiles   = [];
     var wireBodies = [];
-
-    profiles   = append(profiles, makeWireFromPoints(context, bottomId, offsetPoints(rg.stations, 0 * millimeter, 0 * millimeter)));
-    wireBodies = append(wireBodies, qCreatedBy(bottomId, EntityType.BODY));
-
-    profiles   = append(profiles, makeWireFromPoints(context, startId, offsetPoints(rg.stations, hStart, 0 * millimeter)));
-    wireBodies = append(wireBodies, qCreatedBy(startId, EntityType.BODY));
-
-    if (rg.hasStepIn)
+    for (var si = 0; si < size(specs); si += 1)
     {
-        profiles   = append(profiles, makeWireFromPoints(context, stepId, offsetPoints(rg.stations, hStart, stepIn)));
-        wireBodies = append(wireBodies, qCreatedBy(stepId, EntityType.BODY));
+        const wId = id + ("swW" ~ suffix ~ "_" ~ toString(si));
+        profiles   = append(profiles, makeWireFromPoints(context, wId, offsetPoints(rg.stations, specs[si].h, specs[si].w)));
+        wireBodies = append(wireBodies, qCreatedBy(wId, EntityType.BODY));
     }
 
-    profiles   = append(profiles, makeWireFromPoints(context, topId, offsetPoints(rg.stations, hTop, wTop)));
-    wireBodies = append(wireBodies, qCreatedBy(topId, EntityType.BODY));
-
-    const loftId = id + ("swRegionLoft" ~ suffix);
-    opLoft(context, loftId, {
-            "profileSubqueries" : profiles,
-            "bodyType"          : ToolBodyType.SURFACE
-    });
-    const surfBody = qCreatedBy(loftId, EntityType.BODY);
-    if (isQueryEmpty(context, surfBody))
+    var segs = [];
+    for (var pi = 0; pi < size(profiles) - 1; pi += 1)
     {
-        throw regenError("SW Rout: loft produced no surface for region '" ~ rg.name ~ "'.");
+        const segId = id + ("swSeg" ~ suffix ~ "_" ~ toString(pi));
+        opLoft(context, segId, {
+                "profileSubqueries" : [profiles[pi], profiles[pi + 1]],
+                "bodyType"          : ToolBodyType.SURFACE
+        });
+        const segBody = qCreatedBy(segId, EntityType.BODY);
+        if (isQueryEmpty(context, segBody))
+        {
+            throw regenError("SW Rout: loft segment " ~ toString(pi) ~ " produced no surface " ~
+                    "for region '" ~ rg.name ~ "'.");
+        }
+        setBodyName(context, segBody, "SW Rout surface [" ~ rg.name ~ "] " ~ toString(pi));
+        segs = append(segs, segBody);
     }
-    setBodyName(context, surfBody, "SW Rout surface [" ~ rg.name ~ "]");
 
     opDeleteBodies(context, id + ("swDelWires" ~ suffix), { "entities" : qUnion(wireBodies) });
-
-    return surfBody;
+    return segs;
 }
 
 // Sets a body's display name.
