@@ -90,16 +90,16 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "SW rout height", "Description" : "Height above bottom surface SW Rout Surface ends" }
         isLength(definition.swRoutHeight, SWRoutHeightBounds);
         
-        annotation { "Name" : "FCP", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        annotation { "Name" : "FCP", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.fcp is Query;
         
-        annotation { "Name" : "ACP", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        annotation { "Name" : "ACP", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.acp is Query;
         
-        annotation { "Name" : "Forebody rout start", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        annotation { "Name" : "Forebody rout start", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.fbRoutStart is Query;
         
-        annotation { "Name" : "Aftbody rout end", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        annotation { "Name" : "Aftbody rout end", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.abRoutEnd is Query;
         
         annotation { "Name" : "SW rout begins above Bottom" }
@@ -169,6 +169,9 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Print ref frames", "Default" : false }
             definition.printRefFrames is boolean;
 
+            annotation { "Name" : "Show regions", "Default" : false }
+            definition.showRegions is boolean;
+
             annotation { "Name" : "Print debug", "Default" : false }
             definition.printDebug is boolean;
             
@@ -223,7 +226,34 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                     toString(ptCount) ~ " sampled frames.");
         }
 
-        // ---- M2+ (region division, wires, lofts, revolve, blend) to follow ----
+        // ====================================================================
+        // M2: region division -- Tip / SW Rout / Tail (design step 4)
+        // ====================================================================
+        // Internal boundaries are fbRoutStart and abRoutEnd; FCP/ACP only mark
+        // which physical wire end is the forebody/tip side vs aftbody/tail side.
+        const regions = divideRegions(context, edgeMaps, definition, bottomFaces, bottomCentroid);
+
+        // Unconditional validation: every region must have enough points to build
+        // a wire (and this keeps region assignment honest before M3 consumes it).
+        for (var rg in regions)
+        {
+            if (size(rg.stations) < 2)
+            {
+                throw regenError("SW Rout: region '" ~ rg.name ~ "' has too few points -- " ~
+                        "check the FCP/ACP and rout start/end picks.");
+            }
+        }
+
+        if (definition.printDebug)
+        {
+            printRegionSummary(regions);
+        }
+        if (definition.showRegions)
+        {
+            drawRegions(context, regions);
+        }
+
+        // ---- M3+ (per-region wires, lofts, revolve, blend) to follow ----
     });
 
 
@@ -464,6 +494,246 @@ function printRefFramesTable(context is Context, edgeMaps is array)
                     "  Y" ~ fmtAxis(frameWidthAxis(f)) ~
                     "  Z" ~ fmtAxis(f.zAxis));
             idx += 1;
+        }
+    }
+}
+
+
+// ===========================================================================
+// M2 helpers: region division (Tip / SW Rout / Tail)
+// ===========================================================================
+
+// Flattens the per-edge cache into a single ordered station list, dropping the
+// duplicate points shared between consecutive edges (edge i's endpoint == edge
+// i+1's start point), which would otherwise create zero-length wire segments.
+function flattenStations(edgeMaps is array) returns array
+{
+    var out = [];
+    for (var em in edgeMaps)
+    {
+        for (var pm in em.pointArray)
+        {
+            if (size(out) == 0 ||
+                norm(pm.point - out[size(out) - 1].point) > STATION_DEDUP_EPS)
+            {
+                out = append(out, pm);
+            }
+        }
+    }
+    return out;
+}
+
+// Resolves a picked query (mate connector or vertex) to a single 3D point via
+// its tight bounding-box center.  Both a mate connector and a vertex are point
+// entities, so their tight box is degenerate at the point -- one code path for
+// either pick type.
+function queryPoint(context is Context, q is Query, label is string) returns Vector
+{
+    if (isQueryEmpty(context, q))
+    {
+        throw regenError("SW Rout: '" ~ label ~ "' is not selected.");
+    }
+    const bb = evBox3d(context, { "topology" : q, "tight" : true });
+    return (bb.minCorner + bb.maxCorner) / 2;
+}
+
+// Projects a 3D point onto the intersection wire and returns a station
+// { point, frame } exactly at that projection (closest edge + its parameter),
+// so a region boundary lands on the real wire rather than snapping to a cached
+// sample.
+function stationAtProjection(context is Context, pt is Vector, edgeMaps is array,
+        bottomFaces is array, geometryCenter is Vector) returns map
+{
+    var bestDist  = undefined;
+    var bestEdge  = edgeMaps[0].edgeQuery;
+    var bestParam = 0;
+    for (var em in edgeMaps)
+    {
+        const d = evDistance(context, { "side0" : em.edgeQuery, "side1" : pt });
+        if (bestDist == undefined || d.distance < bestDist)
+        {
+            bestDist  = d.distance;
+            bestEdge  = em.edgeQuery;
+            bestParam = d.sides[0].parameter;
+        }
+    }
+    const ln = evEdgeTangentLine(context, { "edge" : bestEdge, "parameter" : bestParam });
+    return { "point" : ln.origin, "frame" : swRoutFrameAt(context, ln.origin, ln.direction, bottomFaces, geometryCenter) };
+}
+
+// Parameter t in [0, 1] of the closest point on segment a->b to point B.
+function closestSegmentParam(pB is Vector, a is Vector, b is Vector) returns number
+{
+    const ab   = b - a;
+    const len2 = dot(ab, ab);
+    if (len2 < 1e-12 * meter * meter)
+    {
+        return 0;
+    }
+    return clamp(dot(pB - a, ab) / len2, 0, 1);
+}
+
+// Index at which to insert a boundary point into the ordered station list: the
+// index of the station just AFTER the boundary (i.e. the far endpoint of the
+// segment the boundary projects onto).
+function segmentInsertionIndex(stations is array, pB is Vector) returns number
+{
+    var bestDist = undefined;
+    var bestIdx  = 1;
+    for (var i = 0; i < size(stations) - 1; i += 1)
+    {
+        const a  = stations[i].point;
+        const b  = stations[i + 1].point;
+        const t  = closestSegmentParam(pB, a, b);
+        const cp = a + t * (b - a);
+        const d  = norm(pB - cp);
+        if (bestDist == undefined || d < bestDist)
+        {
+            bestDist = d;
+            bestIdx  = i + 1;
+        }
+    }
+    return bestIdx;
+}
+
+// Inclusive slice arr[a..b].
+function sliceInclusive(arr is array, a is number, b is number) returns array
+{
+    var out = [];
+    for (var i = a; i <= b; i += 1)
+    {
+        out = append(out, arr[i]);
+    }
+    return out;
+}
+
+// Divides the ordered station list into the three regions.  Boundaries are the
+// projections of fbRoutStart and abRoutEnd; the tip (forebody) end is whichever
+// physical wire end is nearer FCP.  Returns [Tip, SW Rout, Tail], each a map:
+//   { name, angle, hasStepIn, stations }
+function divideRegions(context is Context, edgeMaps is array, definition is map,
+        bottomFaces is array, geometryCenter is Vector) returns array
+{
+    var stations = flattenStations(edgeMaps);
+    if (size(stations) < 3)
+    {
+        throw regenError("SW Rout: not enough sampled points along the wire to form regions.");
+    }
+
+    // Resolve picks to points.
+    const fcpPt = queryPoint(context, definition.fcp, "FCP");
+    const fbPt  = queryPoint(context, definition.fbRoutStart, "Forebody rout start");
+    const abPt  = queryPoint(context, definition.abRoutEnd, "Aftbody rout end");
+    const acpPt = queryPoint(context, definition.acp, "ACP");
+
+    // Exact boundary stations on the wire.
+    const bFb = stationAtProjection(context, fbPt, edgeMaps, bottomFaces, geometryCenter);
+    const bAb = stationAtProjection(context, abPt, edgeMaps, bottomFaces, geometryCenter);
+
+    // Insert both boundary stations into the ordered list.
+    var ins = [{ "idx" : segmentInsertionIndex(stations, bFb.point), "key" : "fb", "st" : bFb },
+               { "idx" : segmentInsertionIndex(stations, bAb.point), "key" : "ab", "st" : bAb }];
+    if (ins[0].idx > ins[1].idx)
+    {
+        ins = [ins[1], ins[0]];
+    }
+
+    var aug = [];
+    var pos = {};
+    var nextIns = 0;
+    for (var i = 0; i <= size(stations); i += 1)
+    {
+        while (nextIns < size(ins) && ins[nextIns].idx == i)
+        {
+            aug = append(aug, ins[nextIns].st);
+            pos[ins[nextIns].key] = size(aug) - 1;
+            nextIns += 1;
+        }
+        if (i < size(stations))
+        {
+            aug = append(aug, stations[i]);
+        }
+    }
+    const idxFb   = pos["fb"];
+    const idxAb   = pos["ab"];
+    const lastIdx = size(aug) - 1;
+
+    // Which physical end is the tip (forebody)?  The one nearer FCP.
+    const tipEndIsLow = norm(aug[0].point - fcpPt) < norm(aug[lastIdx].point - fcpPt);
+
+    // ACP sanity: the tail end should be nearer ACP; warn (non-fatal) if not.
+    if (definition.printDebug)
+    {
+        const tailEndPt = tipEndIsLow ? aug[lastIdx].point : aug[0].point;
+        const tipEndPt  = tipEndIsLow ? aug[0].point : aug[lastIdx].point;
+        if (norm(tailEndPt - acpPt) > norm(tipEndPt - acpPt))
+        {
+            println("[SW Rout] WARNING: ACP is nearer the tip end than the tail end -- " ~
+                    "FCP/ACP may be swapped.");
+        }
+        println("[SW Rout] tip end is the " ~ (tipEndIsLow ? "low-X" : "high-X") ~ " end; " ~
+                "boundary indices fb=" ~ toString(idxFb) ~ " ab=" ~ toString(idxAb) ~
+                " of " ~ toString(lastIdx) ~ ".");
+    }
+
+    var tipStations; var swStations; var tailStations;
+    if (tipEndIsLow)
+    {
+        // Along index 0->last: tipEnd(0) .. fbRoutStart .. abRoutEnd .. tailEnd(last)
+        if (!(idxFb < idxAb))
+        {
+            throw regenError("SW Rout: fbRoutStart/abRoutEnd resolve out of order along " ~
+                    "the wire -- check that they are on the correct forebody/aftbody sides.");
+        }
+        tipStations  = sliceInclusive(aug, 0, idxFb);
+        swStations   = sliceInclusive(aug, idxFb, idxAb);
+        tailStations = sliceInclusive(aug, idxAb, lastIdx);
+    }
+    else
+    {
+        // Along index 0->last: tailEnd(0) .. abRoutEnd .. fbRoutStart .. tipEnd(last)
+        if (!(idxAb < idxFb))
+        {
+            throw regenError("SW Rout: fbRoutStart/abRoutEnd resolve out of order along " ~
+                    "the wire -- check that they are on the correct forebody/aftbody sides.");
+        }
+        tailStations = sliceInclusive(aug, 0, idxAb);
+        swStations   = sliceInclusive(aug, idxAb, idxFb);
+        tipStations  = sliceInclusive(aug, idxFb, lastIdx);
+    }
+
+    return [
+        { "name" : "Tip",     "angle" : definition.tipRoutAngle,  "hasStepIn" : false,
+          "stations" : tipStations },
+        { "name" : "SW Rout", "angle" : definition.swRoutAngle,   "hasStepIn" : (definition.swRoutStepIn > 0 * millimeter),
+          "stations" : swStations },
+        { "name" : "Tail",    "angle" : definition.tailRoutAngle, "hasStepIn" : false,
+          "stations" : tailStations }
+    ];
+}
+
+// Prints a one-line-per-region summary.
+function printRegionSummary(regions is array)
+{
+    println("[SW Rout] Regions:");
+    for (var rg in regions)
+    {
+        println("  " ~ rg.name ~ ": " ~ toString(size(rg.stations)) ~ " pts, angle=" ~
+                toString(rg.angle / degree) ~ " deg, stepIn=" ~ toString(rg.hasStepIn));
+    }
+}
+
+// Draws each region's station points color-coded: Tip = red, SW Rout = green,
+// Tail = blue.  (Boundary points belong to two regions and are drawn twice.)
+function drawRegions(context is Context, regions is array)
+{
+    const colors = { "Tip" : DebugColor.RED, "SW Rout" : DebugColor.GREEN, "Tail" : DebugColor.BLUE };
+    for (var rg in regions)
+    {
+        const c = colors[rg.name];
+        for (var st in rg.stations)
+        {
+            addDebugPoint(context, st.point, c);
         }
     }
 }
