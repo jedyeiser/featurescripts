@@ -251,12 +251,28 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         {
             printRegionSummary(regions);
         }
-        if (definition.showRegions)
+
+        // ====================================================================
+        // M3: per-region offset wires + loft (design step 5)
+        // ====================================================================
+        // Per region, build bottom / start / [step-in] / top wires by offsetting
+        // the cached station points along each frame's HEIGHT (xAxis) and WIDTH
+        // (yAxis) axes, then loft them into the region's rout surface.
+        var regionSurfaces = [];
+        for (var ri = 0; ri < size(regions); ri += 1)
         {
-            drawRegions(context, regions);
+            regionSurfaces = append(regionSurfaces, {
+                    "name" : regions[ri].name,
+                    "body" : buildRegionSurface(context, id, ri, regions[ri], definition)
+            });
         }
 
-        // ---- M3+ (per-region wires, lofts, revolve, blend) to follow ----
+        if (definition.showRegions)
+        {
+            colorRegionSurfaces(context, regionSurfaces);
+        }
+
+        // ---- M4+ (offset-face copy, knit, cleanup) to follow ----
     });
 
 
@@ -726,17 +742,119 @@ function printRegionSummary(regions is array)
     }
 }
 
-// Draws each region's station points color-coded: Tip = red, SW Rout = green,
-// Tail = blue.  (Boundary points belong to two regions and are drawn twice.)
-function drawRegions(context is Context, regions is array)
+// ===========================================================================
+// M3 helpers: per-region offset wires + loft
+// ===========================================================================
+
+// Offsets each station point by (height along the frame normal/xAxis, width
+// along the frame binormal/yAxis).  Returns the ordered array of 3D points.
+function offsetPoints(stations is array, height is ValueWithUnits, width is ValueWithUnits) returns array
 {
-    const colors = { "Tip" : DebugColor.RED, "SW Rout" : DebugColor.GREEN, "Tail" : DebugColor.BLUE };
-    for (var rg in regions)
+    var pts = [];
+    for (var st in stations)
     {
-        const c = colors[rg.name];
-        for (var st in rg.stations)
-        {
-            addDebugPoint(context, st.point, c);
-        }
+        const f = st.frame;
+        pts = append(pts, st.point + height * f.xAxis + width * frameWidthAxis(f));
+    }
+    return pts;
+}
+
+// Fits a single BSpline wire through the given ordered points (degree adapts to
+// the point count so short regions still fit) and returns its edge query.  The
+// created body is scratch geometry; the caller deletes it after lofting.
+function makeWireFromPoints(context is Context, wId is Id, pts is array) returns Query
+{
+    const deg   = min([3, size(pts) - 1]);
+    const curve = approximateSpline(context, {
+            "targets"          : [approximationTarget({ "positions" : pts })],
+            "degree"           : deg,
+            "tolerance"        : 1e-5 * meter,
+            "isPeriodic"       : false,
+            "maxControlPoints" : max([deg + 1, size(pts)])
+    })[0];
+    opCreateBSplineCurve(context, wId, { "bSplineCurve" : curve });
+    return qCreatedBy(wId, EntityType.EDGE);
+}
+
+// Builds one region's rout surface: bottom / start / [step-in] / top wires
+// lofted together.  Wire heights/widths (per design step 5):
+//   bottom : height 0,          width 0
+//   start  : height swRoutBottom, width 0
+//   stepIn : height swRoutBottom, width swRoutStepIn   (SW Rout region only)
+//   top    : height swRoutHeight, width {stepIn} + (swRoutHeight - swRoutBottom)*tan(angle)
+// Returns the lofted surface body.  Scratch wires are deleted after the loft.
+function buildRegionSurface(context is Context, id is Id, ri is number,
+        rg is map, definition is map) returns Query
+{
+    const hStart = definition.swRoutBottom;
+    const hTop   = definition.swRoutHeight;
+    const stepIn = rg.hasStepIn ? definition.swRoutStepIn : 0 * millimeter;
+    const wTop   = stepIn + (hTop - hStart) * tan(rg.angle);
+
+    const suffix   = toString(ri);
+    const bottomId = id + ("swBottomW" ~ suffix);
+    const startId  = id + ("swStartW" ~ suffix);
+    const stepId   = id + ("swStepW" ~ suffix);
+    const topId    = id + ("swTopW" ~ suffix);
+
+    var profiles   = [];
+    var wireBodies = [];
+
+    profiles   = append(profiles, makeWireFromPoints(context, bottomId, offsetPoints(rg.stations, 0 * millimeter, 0 * millimeter)));
+    wireBodies = append(wireBodies, qCreatedBy(bottomId, EntityType.BODY));
+
+    profiles   = append(profiles, makeWireFromPoints(context, startId, offsetPoints(rg.stations, hStart, 0 * millimeter)));
+    wireBodies = append(wireBodies, qCreatedBy(startId, EntityType.BODY));
+
+    if (rg.hasStepIn)
+    {
+        profiles   = append(profiles, makeWireFromPoints(context, stepId, offsetPoints(rg.stations, hStart, stepIn)));
+        wireBodies = append(wireBodies, qCreatedBy(stepId, EntityType.BODY));
+    }
+
+    profiles   = append(profiles, makeWireFromPoints(context, topId, offsetPoints(rg.stations, hTop, wTop)));
+    wireBodies = append(wireBodies, qCreatedBy(topId, EntityType.BODY));
+
+    const loftId = id + ("swRegionLoft" ~ suffix);
+    opLoft(context, loftId, {
+            "profileSubqueries" : profiles,
+            "bodyType"          : ToolBodyType.SURFACE
+    });
+    const surfBody = qCreatedBy(loftId, EntityType.BODY);
+    if (isQueryEmpty(context, surfBody))
+    {
+        throw regenError("SW Rout: loft produced no surface for region '" ~ rg.name ~ "'.");
+    }
+    setBodyName(context, surfBody, "SW Rout surface [" ~ rg.name ~ "]");
+
+    opDeleteBodies(context, id + ("swDelWires" ~ suffix), { "entities" : qUnion(wireBodies) });
+
+    return surfBody;
+}
+
+// Sets a body's display name.
+function setBodyName(context is Context, body is Query, name is string)
+{
+    setProperty(context, { "entities" : body, "propertyType" : PropertyType.NAME, "value" : name });
+}
+
+// Region debug color: Tip = red, SW Rout = green, Tail = blue.
+function regionColor(name is string) returns Color
+{
+    if (name == "Tip")     { return color(0.85, 0.15, 0.15); }
+    if (name == "SW Rout") { return color(0.15, 0.70, 0.20); }
+    return color(0.15, 0.30, 0.85);   // Tail
+}
+
+// Applies the region debug colors to the lofted surfaces.
+function colorRegionSurfaces(context is Context, regionSurfaces is array)
+{
+    for (var rs in regionSurfaces)
+    {
+        setProperty(context, {
+                "entities"     : rs.body,
+                "propertyType" : PropertyType.APPEARANCE,
+                "value"        : regionColor(rs.name)
+        });
     }
 }
