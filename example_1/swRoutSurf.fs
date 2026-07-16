@@ -253,24 +253,24 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         }
 
         // ====================================================================
-        // M3: per-region offset wires + loft (design step 5)
+        // M3: per-region offset wires (design step 5) -- LOFTS DISABLED for now
         // ====================================================================
         // Per region, build bottom / start / [step-in] / top wires by offsetting
         // the cached station points along each frame's HEIGHT (xAxis) and WIDTH
-        // (yAxis) axes, then loft them into the region's rout surface.
-        var regionSurfaces = [];
+        // (yAxis) axes.  Lofting is temporarily off so the wires can be inspected.
+        var regionBodies = [];
         for (var ri = 0; ri < size(regions); ri += 1)
         {
-            const segs = buildRegionSurface(context, id, ri, regions[ri], definition);
-            for (var sb in segs)
+            const wires = buildRegionWires(context, id, ri, regions[ri], definition);
+            for (var wb in wires)
             {
-                regionSurfaces = append(regionSurfaces, { "name" : regions[ri].name, "body" : sb });
+                regionBodies = append(regionBodies, { "name" : regions[ri].name, "body" : wb });
             }
         }
 
         if (definition.showRegions)
         {
-            colorRegionSurfaces(context, regionSurfaces);
+            colorRegionSurfaces(context, regionBodies);
         }
 
         // ---- M4+ (offset-face copy, knit, cleanup) to follow ----
@@ -777,17 +777,18 @@ function makeWireFromPoints(context is Context, wId is Id, pts is array) returns
     return qCreatedBy(wId, EntityType.EDGE);
 }
 
-// Builds one region's rout surface from bottom / start / [step-in] / top wires.
+// Builds one region's cross-section wires from the cached stations.
 // Wire heights/widths (per design step 5):
 //   bottom : height 0,            width 0
 //   start  : height swRoutBottom, width 0
 //   stepIn : height swRoutBottom, width swRoutStepIn   (SW Rout region only)
 //   top    : height swRoutHeight, width {stepIn} + (swRoutHeight - swRoutBottom)*tan(angle)
-// The wires are lofted in CONSECUTIVE PAIRS (ruled patches) rather than one
-// multi-section loft: the profile has a hard corner at start/step, and a single
-// loft through it returns LOFT_INVALID.  Returns the array of segment surface
-// bodies (M4 knits them).  Scratch wires are deleted after lofting.
-function buildRegionSurface(context is Context, id is Id, ri is number,
+// Returns the wire bodies (kept in context for inspection).  Lofting is disabled
+// for now -- to re-enable, fit each wire's edge (qCreatedBy(wId, EDGE)), loft
+// CONSECUTIVE PAIRS into ruled surface patches (a single multi-section loft
+// through the hard corner at start/step returns LOFT_INVALID), delete the scratch
+// wires, and return the surface segments instead.
+function buildRegionWires(context is Context, id is Id, ri is number,
         rg is map, definition is map) returns array
 {
     const hStart = definition.swRoutBottom;
@@ -796,44 +797,26 @@ function buildRegionSurface(context is Context, id is Id, ri is number,
     const wTop   = stepIn + (hTop - hStart) * tan(rg.angle);
     const suffix = toString(ri);
 
-    // Ordered wire cross-section stations: (height, width).
-    var specs = [{ "h" : 0 * millimeter, "w" : 0 * millimeter },
-                 { "h" : hStart,         "w" : 0 * millimeter }];
+    // Ordered wire cross-section stations: (height, width, tag).
+    var specs = [{ "h" : 0 * millimeter, "w" : 0 * millimeter, "tag" : "bottom" },
+                 { "h" : hStart,         "w" : 0 * millimeter, "tag" : "start" }];
     if (rg.hasStepIn)
     {
-        specs = append(specs, { "h" : hStart, "w" : stepIn });
+        specs = append(specs, { "h" : hStart, "w" : stepIn, "tag" : "step" });
     }
-    specs = append(specs, { "h" : hTop, "w" : wTop });
+    specs = append(specs, { "h" : hTop, "w" : wTop, "tag" : "top" });
 
-    var profiles   = [];
     var wireBodies = [];
     for (var si = 0; si < size(specs); si += 1)
     {
         const wId = id + ("swW" ~ suffix ~ "_" ~ toString(si));
-        profiles   = append(profiles, makeWireFromPoints(context, wId, offsetPoints(rg.stations, specs[si].h, specs[si].w)));
-        wireBodies = append(wireBodies, qCreatedBy(wId, EntityType.BODY));
+        makeWireFromPoints(context, wId, offsetPoints(rg.stations, specs[si].h, specs[si].w));
+        const body = qCreatedBy(wId, EntityType.BODY);
+        setBodyName(context, body, "SW Rout wire [" ~ rg.name ~ "] " ~ specs[si].tag);
+        wireBodies = append(wireBodies, body);
     }
 
-    var segs = [];
-    for (var pi = 0; pi < size(profiles) - 1; pi += 1)
-    {
-        const segId = id + ("swSeg" ~ suffix ~ "_" ~ toString(pi));
-        opLoft(context, segId, {
-                "profileSubqueries" : [profiles[pi], profiles[pi + 1]],
-                "bodyType"          : ToolBodyType.SURFACE
-        });
-        const segBody = qCreatedBy(segId, EntityType.BODY);
-        if (isQueryEmpty(context, segBody))
-        {
-            throw regenError("SW Rout: loft segment " ~ toString(pi) ~ " produced no surface " ~
-                    "for region '" ~ rg.name ~ "'.");
-        }
-        setBodyName(context, segBody, "SW Rout surface [" ~ rg.name ~ "] " ~ toString(pi));
-        segs = append(segs, segBody);
-    }
-
-    opDeleteBodies(context, id + ("swDelWires" ~ suffix), { "entities" : qUnion(wireBodies) });
-    return segs;
+    return wireBodies;
 }
 
 // Sets a body's display name.
