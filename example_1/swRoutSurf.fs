@@ -59,6 +59,10 @@ const TARGET_FRAME_COUNT = 20;
 const FRAME_ARROW_LEN = 10 * millimeter;
 // Minimum length treated as non-degenerate when normalizing sampled tangents.
 const TANGENT_EPS = 1e-9;
+// Below this |y| a sampled point is treated as sitting ON the centerline (the
+// nose/tail apex, where there is no lateral direction); the binormal then points
+// toward the geometry center instead of toward the y=0 plane.  Tune here.
+const CENTERLINE_EPS = 1 * millimeter;
 
 export enum SamplingType
 {
@@ -177,7 +181,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         // ====================================================================
         // M1: intersection wire + Frenet edge-map cache (design steps 1-3)
         // ====================================================================
-        const bottomFace     = qNthElement(qOwnedByBody(definition.bottomSheet, EntityType.FACE), 0);
+        const bottomFaces    = evaluateQuery(context, qOwnedByBody(definition.bottomSheet, EntityType.FACE));
         const botBox         = evBox3d(context, { "topology" : definition.bottomSheet, "tight" : true });
         const bottomCentroid = (botBox.minCorner + botBox.maxCorner) / 2;
 
@@ -199,7 +203,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         //   yAxis (binormal) = inward, toward the ski centerline  -> WIDTH offsets
         //   zAxis (tangent)  = along the intersection wire (sign irrelevant)
         const edgeMaps = buildEdgeMapCache(context, qCreatedBy(intId, EntityType.BODY),
-                bottomFace, bottomCentroid);
+                bottomFaces, bottomCentroid);
 
         if (definition.showRefFrames)
         {
@@ -235,20 +239,45 @@ function frameWidthAxis(f is CoordSystem) returns Vector
     return cross(f.zAxis, f.xAxis);
 }
 
+// Bottom-surface normal at pt, oriented "up" (+Z side).  Projects onto the
+// CLOSEST of all the bottom-sheet faces (not just face 0), so a multi-face bottom
+// -- e.g. a flat center face plus curved rocker faces at tip/tail -- reports the
+// true local normal instead of the flat center's vertical normal everywhere.
+function bottomNormalAt(context is Context, pt is Vector, bottomFaces is array) returns Vector
+{
+    var bestFace = bottomFaces[0];
+    var bestUv   = undefined;
+    var bestDist = undefined;
+    for (var f in bottomFaces)
+    {
+        const d = evDistance(context, { "side0" : f, "side1" : pt });
+        if (bestDist == undefined || d.distance < bestDist)
+        {
+            bestDist = d.distance;
+            bestFace = f;
+            bestUv   = d.sides[0].parameter;
+        }
+    }
+    const nrm = evFaceTangentPlane(context, { "face" : bestFace, "parameter" : bestUv }).normal;
+    return (nrm[2] >= 0) ? nrm : -1 * nrm;
+}
+
 // Builds the orthonormal Frenet-style frame at one sampled point:
-//   xAxis = bottom-surface normal, oriented "up" (+Z side)  -> HEIGHT axis
-//   yAxis = inward binormal, toward the bottom-sheet centroid -> WIDTH axis
+//   xAxis = bottom-surface normal, oriented "up" (+Z side)   -> HEIGHT axis
+//   yAxis = binormal, toward the ski centerline (y = 0)       -> WIDTH axis
 //   zAxis = intersection-wire tangent (sign chosen so yAxis points inward)
-// The inward direction is derived GEOMETRICALLY (horizontal vector toward the
-// bottom-sheet centroid), so it is robust to rotated/mirrored parts rather than
-// assuming a fixed global-Y layout.
+// The binormal is cross(tangent, normal) (always lateral, in the bottom's
+// tangent plane); its SIGN is chosen so it points toward the X-axis (the y = 0
+// symmetry plane).  For points sitting essentially ON the centerline (the
+// nose/tail apex, |y| < CENTERLINE_EPS) there is no lateral direction, so it
+// falls back to pointing toward the geometry center.
+// NOTE: this convention assumes the standard ski orientation -- length along X,
+// symmetry plane at y = 0.
 function swRoutFrameAt(context is Context, pt is Vector, tangentDir is Vector,
-        bottomFace is Query, bottomCentroid is Vector) returns CoordSystem
+        bottomFaces is array, geometryCenter is Vector) returns CoordSystem
 {
     // Up-normal from the bottom surface at the projected point.
-    const uv  = evDistance(context, { "side0" : bottomFace, "side1" : pt }).sides[0].parameter;
-    var   nrm = evFaceTangentPlane(context, { "face" : bottomFace, "parameter" : uv }).normal;
-    const upNormal = (nrm[2] >= 0) ? nrm : -1 * nrm;
+    const upNormal = bottomNormalAt(context, pt, bottomFaces);
 
     // Tangent, orthogonalized against the normal (the intersection tangent lies
     // in the bottom surface, so this is a tiny correction).
@@ -259,10 +288,19 @@ function swRoutFrameAt(context is Context, pt is Vector, tangentDir is Vector,
     }
     tang = normalize(tang);
 
-    // Choose the tangent sign so cross(tang, upNormal) points inward.
-    var inward = bottomCentroid - pt;
-    inward = inward - vector(0, 0, 1) * inward[2];   // horizontal component only
-    if (norm(inward) > TOLERANCE.zeroLength * meter && dot(cross(tang, upNormal), inward) < 0)
+    // Reference direction the binormal should point toward: the y = 0 plane (the
+    // X-axis).  Purely lateral -- no longitudinal component to contaminate the
+    // sign at the tip/tail transitions.
+    var ref = vector(0 * meter, -pt[1], 0 * meter);
+    if (norm(ref) < CENTERLINE_EPS)
+    {
+        // On the centerline (nose/tail apex): aim at the geometry center instead.
+        ref = geometryCenter - pt;
+    }
+    ref = ref - vector(0, 0, 1) * ref[2];   // horizontal component only
+
+    // Flip the tangent (hence the binormal) so cross(tang, upNormal) points to ref.
+    if (norm(ref) > TOLERANCE.zeroLength * meter && dot(cross(tang, upNormal), ref) < 0)
     {
         tang = -1 * tang;
     }
@@ -274,7 +312,7 @@ function swRoutFrameAt(context is Context, pt is Vector, tangentDir is Vector,
 // Edges are ordered along the continuous path (constructPath) and then flipped
 // as a whole so the table runs lowest X to highest X (design convention).
 function buildEdgeMapCache(context is Context, wireQuery is Query,
-        bottomFace is Query, bottomCentroid is Vector) returns array
+        bottomFaces is array, bottomCentroid is Vector) returns array
 {
     const allEdges = evaluateQuery(context, qOwnedByBody(wireQuery, EntityType.EDGE));
     if (size(allEdges) == 0)
@@ -317,7 +355,7 @@ function buildEdgeMapCache(context is Context, wireQuery is Query,
             const pt = lines[j].origin;
             var tang = lines[j].direction;
             if (flipped) { tang = -1 * tang; }
-            const frame = swRoutFrameAt(context, pt, tang, bottomFace, bottomCentroid);
+            const frame = swRoutFrameAt(context, pt, tang, bottomFaces, bottomCentroid);
             pointArray = append(pointArray, { "point" : pt, "frame" : frame });
         }
 
