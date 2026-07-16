@@ -50,10 +50,11 @@ export const PointsPerEdgeBounds = {(unitless) : [10, 20, 50]} as IntegerBoundSp
 export const CutterRadiusBounds = {(millimeter) : [5, 10, 20]} as LengthBoundSpec;
 
 // ---- Implementation constants (centralized; tune here) --------------------
-// Cache density: points sampled per intersection edge for the frame table.
-const FRAME_SAMPLES_PER_EDGE = 40;
-// Number of Frenet frames drawn when showRefFrames is on.
-const REF_FRAME_COUNT = 20;
+// Total reference frames sampled across the ENTIRE intersection wire (not per
+// edge), distributed by arc length with a minimum of 2 per edge.  Drives both
+// the cached frame table and the showRefFrames visualization, so the count stays
+// flat regardless of how many edges the intersection produces.
+const TARGET_FRAME_COUNT = 20;
 // Debug arrow length for the drawn reference frames.
 const FRAME_ARROW_LEN = 10 * millimeter;
 // Minimum length treated as non-degenerate when normalizing sampled tangents.
@@ -85,16 +86,16 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "SW rout height", "Description" : "Height above bottom surface SW Rout Surface ends" }
         isLength(definition.swRoutHeight, SWRoutHeightBounds);
         
-        annotation { "Name" : "FCP", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "FCP", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.fcp is Query;
         
-        annotation { "Name" : "ACP", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "ACP", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.acp is Query;
         
-        annotation { "Name" : "Forebody rout start", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Forebody rout start", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.fbRoutStart is Query;
         
-        annotation { "Name" : "Aftbody rout end", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Aftbody rout end", "Filter" : (EntityType.BODY && BodyType.MATE_CONNECTOR) || EntityType.VERTEX, "MaxNumberOfPicks" : 1, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.abRoutEnd is Query;
         
         annotation { "Name" : "SW rout begins above Bottom" }
@@ -160,7 +161,10 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         {
             annotation { "Name" : "Show ref frames", "Default" : true }
             definition.showRefFrames is boolean;
-            
+
+            annotation { "Name" : "Print ref frames", "Default" : false }
+            definition.printRefFrames is boolean;
+
             annotation { "Name" : "Print debug", "Default" : false }
             definition.printDebug is boolean;
             
@@ -200,6 +204,11 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         if (definition.showRefFrames)
         {
             drawRefFrames(context, edgeMaps);
+        }
+
+        if (definition.printRefFrames)
+        {
+            printRefFramesTable(context, edgeMaps);
         }
 
         if (definition.printDebug)
@@ -276,10 +285,14 @@ function buildEdgeMapCache(context is Context, wireQuery is Query,
     // Continuous tip-to-tail ordering, independent of X-monotonicity at the tip.
     const pl = constructPath(context, qUnion(allEdges));
 
-    var params = [];
-    for (var k = 0; k <= FRAME_SAMPLES_PER_EDGE; k += 1)
+    // Distribute a flat total of ~TARGET_FRAME_COUNT frames across the whole wire
+    // by arc length (min 2 per edge so every edge keeps its endpoints).  This
+    // keeps the total independent of edge count -- a 10-edge wire yields ~20
+    // frames, not 40-per-edge.
+    var totalLen = 0 * meter;
+    for (var e in pl.edges)
     {
-        params = append(params, k / FRAME_SAMPLES_PER_EDGE);
+        totalLen += evLength(context, { "entities" : e });
     }
 
     var edgeMaps = [];
@@ -287,6 +300,14 @@ function buildEdgeMapCache(context is Context, wireQuery is Query,
     {
         const e       = pl.edges[i];
         const flipped = pl.flipped[i];
+        const eLen    = evLength(context, { "entities" : e });
+        const nPts    = max([2, round(TARGET_FRAME_COUNT * eLen / totalLen)]);
+
+        var params = [];
+        for (var k = 0; k < nPts; k += 1)
+        {
+            params = append(params, k / (nPts - 1));
+        }
         const useParams = flipped ? reverse(params) : params;
 
         const lines = evEdgeTangentLines(context, { "edge" : e, "parameters" : useParams });
@@ -355,7 +376,7 @@ function drawRefFrames(context is Context, edgeMaps is array)
     if (n == 0) { return; }
 
     const rad   = FRAME_ARROW_LEN * 0.06;
-    const count = min([REF_FRAME_COUNT, n]);
+    const count = min([TARGET_FRAME_COUNT, n]);
     for (var i = 0; i < count; i += 1)
     {
         const idx = (count == 1) ? 0 : floor(i * (n - 1) / (count - 1) + 0.5);
@@ -364,5 +385,47 @@ function drawRefFrames(context is Context, edgeMaps is array)
         addDebugArrow(context, o, o + FRAME_ARROW_LEN * f.xAxis,          rad,           DebugColor.RED);
         addDebugArrow(context, o, o + FRAME_ARROW_LEN * frameWidthAxis(f), rad * (2 / 3), DebugColor.GREEN);
         addDebugArrow(context, o, o + FRAME_ARROW_LEN * f.zAxis,          rad * 0.5,     DebugColor.BLUE);
+    }
+}
+
+// Rounds a unitless number to 3 decimals for compact printing.
+function fmtScalar(x) returns string
+{
+    return toString(round(x * 1000) / 1000);
+}
+
+// Formats a unitless (direction) vector as [x, y, z].
+function fmtAxis(v is Vector) returns string
+{
+    return "[" ~ fmtScalar(v[0]) ~ ", " ~ fmtScalar(v[1]) ~ ", " ~ fmtScalar(v[2]) ~ "]";
+}
+
+// Formats a position vector as (x, y, z) in millimeters.
+function fmtOriginMM(v is Vector) returns string
+{
+    return "(" ~ fmtScalar(v[0] / millimeter) ~ ", " ~ fmtScalar(v[1] / millimeter) ~
+           ", " ~ fmtScalar(v[2] / millimeter) ~ ")";
+}
+
+// Prints one condensed line per cached frame:
+//   #i  O(x, y, z)mm  X[..]  Y[..]  Z[..]
+// (origin in mm; X/Y/Z are the unit normal/binormal/tangent axes.)
+function printRefFramesTable(context is Context, edgeMaps is array)
+{
+    println("[SW Rout] Reference frames -- O = origin(mm), X = normal/height, " ~
+            "Y = binormal/width, Z = tangent:");
+    var idx = 0;
+    for (var em in edgeMaps)
+    {
+        for (var pm in em.pointArray)
+        {
+            const f = pm.frame;
+            println("  #" ~ toString(idx) ~
+                    "  O" ~ fmtOriginMM(f.origin) ~
+                    "  X" ~ fmtAxis(f.xAxis) ~
+                    "  Y" ~ fmtAxis(frameWidthAxis(f)) ~
+                    "  Z" ~ fmtAxis(f.zAxis));
+            idx += 1;
+        }
     }
 }
