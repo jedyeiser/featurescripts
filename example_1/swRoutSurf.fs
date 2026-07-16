@@ -63,6 +63,9 @@ const TANGENT_EPS = 1e-9;
 // nose/tail apex, where there is no lateral direction); the binormal then points
 // toward the geometry center instead of toward the y=0 plane.  Tune here.
 const CENTERLINE_EPS = 1 * millimeter;
+// Consecutive cached points closer than this are treated as the same station
+// (the duplicate point shared between adjacent edges) when flattening the cache.
+const STATION_DEDUP_EPS = 1e-5 * meter;
 
 export enum SamplingType
 {
@@ -426,7 +429,7 @@ function reverseEdgeMaps(edgeMaps is array) returns array
     return out;
 }
 
-// Draws REF_FRAME_COUNT evenly-spaced frames along the cache:
+// Draws TARGET_FRAME_COUNT evenly-spaced frames along the cache:
 //   red   = xAxis (normal, HEIGHT axis)
 //   green = yAxis (binormal, WIDTH axis)
 //   blue  = zAxis (tangent)
