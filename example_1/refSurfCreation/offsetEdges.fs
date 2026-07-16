@@ -58,7 +58,7 @@ export enum OffsetMode
 
 // ─── Bounds ───────────────────────────────────────────────────────────────────
 
-export const RegionPointsBounds    = {(unitless)   : [20, 50, 100]}        as IntegerBoundSpec;
+export const RegionPointsBounds    = {(unitless)   : [20, 20, 100]}        as IntegerBoundSpec;
 export const OffsetBounds          = {(millimeter) : [-100, 0, 100]}       as LengthBoundSpec;
 export const DelayBounds           = {(millimeter) : [0, 0, 1000]}         as LengthBoundSpec;
 export const ApproxToleranceBounds = {(millimeter) : [0.001, 0.01, 1]}     as LengthBoundSpec;
@@ -72,9 +72,23 @@ export function generateOffsetEdgesEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
-    // Single-region mode has no regions/intersections arrays to auto-manage.
+    // Single-region mode: auto-name the interior offsets ("Offset 1", ...); nothing else to manage.
     if (definition.offsetMode == OffsetMode.SINGLE_REGION)
     {
+        if (definition.interiorOffsets != undefined)
+        {
+            var namedOffsets = [];
+            for (var i = 0; i < size(definition.interiorOffsets); i += 1)
+            {
+                var off = definition.interiorOffsets[i];
+                if (off.offsetName == "" || off.offsetName == undefined)
+                {
+                    off.offsetName = "Offset " ~ toString(i + 1);
+                }
+                namedOffsets = append(namedOffsets, off);
+            }
+            definition.interiorOffsets = namedOffsets;
+        }
         return definition;
     }
 
@@ -348,12 +362,16 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             }
 
             annotation { "Name" : "Interior offsets", "Item name" : "Offset",
+                         "Item label template" : "#offsetName",
                          "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
                          "Description" : "Ordered offset control points along the path. The profile flows through them with the transfer type and holds flat beyond the first and last." }
             definition.interiorOffsets is array;
             for (var off in definition.interiorOffsets)
             {
-                annotation { "Name" : "Location type", "Default" : RegionExtentType.X_EXTENTS,
+                annotation { "Name" : "Offset name" }
+                off.offsetName is string;
+
+                annotation { "Name" : "Location type", "Default" : RegionExtentType.QUERY,
                              "UIHint" : UIHint.HORIZONTAL_ENUM }
                 off.locationType is RegionExtentType;
 
