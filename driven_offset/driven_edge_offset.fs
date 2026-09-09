@@ -626,6 +626,11 @@ function crossingStation(context is Context, chain is map, stations is array, in
     // about axes that no longer exist -- and crossings are always run endpoints.
     return mergeMaps(previous, {
                 "arc" : arc,
+                // An inserted crossing is not a vertex between two source edges, so
+                // it must not inherit the neighbour's junction record -- that was
+                // reporting one welded junction three times.
+                "junctionBreak" : undefined,
+                "welded" : undefined,
                 "origin" : tangentLine.origin,
                 "tangent" : tangent,
                 "normal" : normal,

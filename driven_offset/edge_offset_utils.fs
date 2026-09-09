@@ -937,6 +937,7 @@ export function chainStations(context is Context, chain is map, spacing is map) 
 
             const results = evEdgeCurvatures(context, { "edge" : edgeData.query, "parameters" : parameters });
 
+            var edgeStations = [];
             for (var i = 0; i < count; i += 1)
             {
                 // Both sides of a shared vertex are kept. At a G0 junction the two
@@ -944,7 +945,7 @@ export function chainStations(context is Context, chain is map, spacing is map) 
                 const frame = results[i].frame;
                 const tangent = edgeData.flipped ? -1 * frame.zAxis : frame.zAxis;
 
-                raw = append(raw, {
+                edgeStations = append(edgeStations, {
                             "arc" : edgeData.startArc + fractions[i] * edgeData.length,
                             "origin" : frame.origin,
                             "tangent" : tangent,
@@ -955,10 +956,90 @@ export function chainStations(context is Context, chain is map, spacing is map) 
                             "atEdgeEnd" : (i == 0 || i == count - 1)
                         });
             }
+
+            raw = concatenateArrays([raw, relaxEndCurvature(edgeStations)]);
         }
     }
 
     return finishStations(weldJunctions(raw), chain.zeroArc);
+}
+
+/**
+ * The curvature vector dT/ds at a station.
+ *
+ * This is what every downstream use actually wants: curvatureWidth and
+ * curvatureHeight are just its components on the frame axes. Carrying magnitude
+ * and direction together is what lets a station be averaged or extrapolated at
+ * all -- the kernel normal can point either way about the tangent, so averaging
+ * the scalar curvature of two stations whose normals disagree produces nonsense
+ * while averaging the vectors is simply correct.
+ */
+function curvatureVector(station is map) returns Vector
+{
+    return station.curvature * station.rawNormal;
+}
+
+/**
+ * Split a curvature vector back into the magnitude and unit normal the rest of the
+ * code expects. Any component along the tangent is dropped: dT/ds is perpendicular
+ * to T by construction, so a nonzero one is interpolation error, not geometry.
+ *
+ * Below ZERO_CURVATURE the direction carries no information -- the kernel normal is
+ * documented as arbitrary there -- so the station is left exactly as it was.
+ */
+function withCurvatureVector(station is map, kVector is Vector) returns map
+{
+    const perpendicular = kVector - dot(kVector, station.tangent) * station.tangent;
+    const magnitude = norm(perpendicular);
+
+    if (magnitude < ZERO_CURVATURE)
+    {
+        return station;
+    }
+
+    return mergeMaps(station, {
+                "curvature" : magnitude,
+                "rawNormal" : perpendicular / magnitude
+            });
+}
+
+/**
+ * Replace the curvature at an edge's two end stations with their nearest interior
+ * neighbour's.
+ *
+ * evEdgeCurvatures evaluated exactly at parameter 0 or 1 is not trustworthy. On a
+ * real ski tip the first station of an edge came back at +42.6/m while every other
+ * station on that edge sat near -14/m: a sign flip, at 1.2 mm sampling, inside a
+ * single spline. That is the endpoint evaluation, not the geometry.
+ *
+ * A hold, deliberately, and not an extrapolation. Extrapolating needs two clean
+ * interior samples and on the same tip the SECOND station from the end was also
+ * junk (-43.2/m between -7.2 and +7.0), which a two-point rule would have amplified
+ * to -79/m -- worse than the value it replaced. A hold cannot amplify anything. Its
+ * error is one station-gap of curvature change, which is far inside what the only
+ * two consumers need.
+ *
+ * Those consumers are offsetShrink -- the fold-back guard, which throws a
+ * user-facing error, and where a spurious value could reject a perfectly good
+ * offset -- and the debug tables. No offset point and no tangent depends on the
+ * source curvature: offsetTangent takes the -kappaW*T component from the
+ * finite-differenced frame rates instead, and surfaceOffsetTangent uses the
+ * reference's curvature, not the source's. So this buys a trustworthy guard and a
+ * readable table, and changes no geometry at all.
+ */
+function relaxEndCurvature(stations is array) returns array
+{
+    const count = size(stations);
+    if (count < 3)
+    {
+        return stations;
+    }
+
+    var relaxed = stations;
+    relaxed[0] = withCurvatureVector(stations[0], curvatureVector(stations[1]));
+    relaxed[count - 1] = withCurvatureVector(stations[count - 1], curvatureVector(stations[count - 2]));
+
+    return relaxed;
 }
 
 /**
@@ -1012,8 +1093,23 @@ function weldJunctions(raw is array) returns array
         if (weld)
         {
             const shared = normalize(sum);
-            welded[i] = mergeMaps(left, { "tangent" : shared });
-            welded[i + 1] = mergeMaps(welded[i + 1], { "tangent" : shared, "origin" : left.origin });
+
+            // Curvature is welded along with tangent and origin, so the two halves
+            // of one vertex report one curvature rather than two. Below
+            // G1_JUNCTION_ANGLE the two sides are meant to be one curve, and the
+            // curvature of a curve is single-valued.
+            //
+            // This is a guard-and-diagnostics fix, not a geometric one: nothing
+            // downstream of offsetShrink reads the source curvature. Without it the
+            // fold-back guard sees two different values at one point -- 7.0/m and
+            // 14.2/m across a 0 mrad vertex on a real ski tip -- and either could be
+            // the one that throws.
+            const sharedCurvature = 0.5 * (curvatureVector(left) + curvatureVector(right));
+
+            welded[i] = withCurvatureVector(mergeMaps(left, { "tangent" : shared }), sharedCurvature);
+            welded[i + 1] = withCurvatureVector(
+                    mergeMaps(welded[i + 1], { "tangent" : shared, "origin" : left.origin }),
+                    sharedCurvature);
         }
     }
 
