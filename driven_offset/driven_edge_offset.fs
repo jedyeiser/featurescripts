@@ -122,6 +122,12 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
             annotation { "Name" : "Visualize continuity", "Default" : false, "Description" : "Mark where the output is split into separate curves" }
             definition.debugVisualizeContinuity is boolean;
+
+            annotation { "Name" : "Print offset table", "Default" : false, "Description" : "Every station's coordinate, offset and resulting point, grouped by source edge" }
+            definition.debugPrintOffsetTable is boolean;
+
+            annotation { "Name" : "Print frame table", "Default" : false, "Description" : "Every station's tangent, width axis and height axis, grouped by source edge" }
+            definition.debugPrintFrameTable is boolean;
         }
     }
     {
@@ -152,9 +158,9 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
             throw regenError("The offset profile does not reach any of the offset edges.", definition.offsetProfile);
         }
 
-        emitRuns(context, id, definition, stations, coords, points, upper, lower, runs, alongRef);
+        const emitted = emitRuns(context, id, definition, stations, coords, points, upper, lower, runs, alongRef);
 
-        debugOutput(context, definition, sourceChain, profile, alongRef, stations, points, runs);
+        debugOutput(context, definition, sourceChain, profile, alongRef, stations, coords, upper, points, emitted);
     });
 
 // ============================================================================
@@ -428,10 +434,11 @@ function isJunction(coord is ValueWithUnits, junctions is array) returns boolean
  * Emit one curve per run, then extract one wire per G0 path.
  */
 function emitRuns(context is Context, id is Id, definition is map, stations is array,
-    coords is map, points is array, upper is array, lower is array, runs is array, alongRef)
+    coords is map, points is array, upper is array, lower is array, runs is array, alongRef) returns array
 {
     const approximation = approximationSettings(definition);
     var bodiesByLink = {};
+    var emitted = [];
 
     for (var r = 0; r < size(runs); r += 1)
     {
@@ -464,6 +471,11 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
                 approximation);
         }
 
+        emitted = append(emitted, mergeMaps(run, {
+                        "kind" : shape.kind,
+                        "radius" : (shape.kind == "arc") ? shape.radius : undefined
+                    }));
+
         const key = "link" ~ run.linkIndex;
         bodiesByLink[key] = append(bodiesByLink[key] == undefined ? [] : bodiesByLink[key],
             qCreatedBy(runId, EntityType.EDGE));
@@ -478,6 +490,8 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 
     // The extracted wires are independent copies, so the curves they came from go.
     opDeleteBodies(context, id + "cleanup", { "entities" : qOwnerBody(qUnion(created)) });
+
+    return emitted;
 }
 
 /**
@@ -505,7 +519,7 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
 // ============================================================================
 
 function debugOutput(context is Context, definition is map, sourceChain is map, profile is map,
-    alongRef, stations is array, points is array, runs is array)
+    alongRef, stations is array, coords is map, offsets is array, points is array, runs is array)
 {
     if (definition.debugPrintFromChain)
     {
@@ -549,6 +563,16 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
         }
     }
 
+    if (definition.debugPrintOffsetTable)
+    {
+        printOffsetTable(definition, sourceChain, stations, coords, offsets, points, runs);
+    }
+
+    if (definition.debugPrintFrameTable)
+    {
+        printFrameTable(definition, sourceChain, stations, alongRef);
+    }
+
     if (definition.debugVisualizeContinuity)
     {
         for (var run in runs)
@@ -557,4 +581,186 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
             addDebugPoint(context, points[run.end], DebugColor.YELLOW);
         }
     }
+}
+
+/**
+ * Walk the stations one source edge at a time, calling back with the index range.
+ * Stations are already ordered, so a change of edge is just a change of index.
+ */
+function edgeBlocks(stations is array) returns array
+{
+    var blocks = [];
+    var index = 0;
+
+    while (index < size(stations))
+    {
+        var last = index;
+        while (last + 1 < size(stations)
+            && stations[last + 1].linkIndex == stations[index].linkIndex
+            && stations[last + 1].edgeIndex == stations[index].edgeIndex)
+        {
+            last += 1;
+        }
+
+        blocks = append(blocks, {
+                    "first" : index,
+                    "last" : last,
+                    "linkIndex" : stations[index].linkIndex,
+                    "edgeIndex" : stations[index].edgeIndex
+                });
+        index = last + 1;
+    }
+
+    return blocks;
+}
+
+/**
+ * Header line naming one source edge.
+ */
+function edgeHeading(sourceChain is map, block is map) returns string
+{
+    const edgeData = sourceChain.links[block.linkIndex].edges[block.edgeIndex];
+
+    return "--- link " ~ toString(block.linkIndex) ~ " edge " ~ toString(block.edgeIndex)
+        ~ "  " ~ toString(edgeData.curveType)
+        ~ (edgeData.flipped ? " (reversed)" : "")
+        ~ "  length " ~ fmtMM(edgeData.length, 3, 0) ~ " mm"
+        ~ "  stations " ~ toString(block.last - block.first + 1);
+}
+
+/**
+ * Print every station grouped by the source edge it came from.
+ *
+ * Columns are arc length from the zero point, the profile coordinate that arc
+ * mapped to, the width and height offsets read there, the (1 - w * kappa) factor
+ * (which approaches zero as the offset approaches the centre of curvature), and
+ * the resulting point. Stations the profile does not reach print as "--".
+ */
+function printOffsetTable(definition is map, sourceChain is map, stations is array,
+    coords is map, offsets is array, points is array, runs is array)
+{
+    println("");
+    println("=== offsets: " ~ toString(size(stations)) ~ " stations, "
+        ~ toString(size(runs)) ~ " output curve(s) ===");
+
+    for (var block in edgeBlocks(stations))
+    {
+        println("");
+        println(edgeHeading(sourceChain, block) ~ "  ->  " ~ describeRuns(runs, block.first, block.last));
+        println("     i        arc      coord      width     height     shrink"
+            ~ "          x          y          z");
+
+        for (var i = block.first; i <= block.last; i += 1)
+        {
+            const offset = offsets[i];
+            const point = points[i];
+
+            println(padLeft(toString(i), 6)
+                ~ fmtMM(stations[i].arc, 3, 11)
+                ~ fmtMM(coords.values[i], 3, 11)
+                ~ fmtMM(offset == undefined ? undefined : offset.width, 3, 11)
+                ~ fmtMM(offset == undefined ? undefined : offset.height, 3, 11)
+                ~ fmtNum(shrinkAt(stations[i], offset), 4, 11)
+                ~ fmtMM(point == undefined ? undefined : point[0], 3, 11)
+                ~ fmtMM(point == undefined ? undefined : point[1], 3, 11)
+                ~ fmtMM(point == undefined ? undefined : point[2], 3, 11));
+        }
+    }
+
+    println("");
+}
+
+/**
+ * Print the frame at every station, grouped by source edge.
+ *
+ * The axes shown are the ones offsets are actually applied along, so this is the
+ * table to read when a result leans the wrong way. Watch for the tangent flipping
+ * sign inside one edge, the width and height columns swapping roles between edges,
+ * or a normal that stops being perpendicular to the tangent.
+ */
+function printFrameTable(definition is map, sourceChain is map, stations is array, alongRef)
+{
+    println("");
+    println("=== frames: alignment " ~ toString(definition.frameAlignment)
+        ~ (isConstrained(definition, alongRef) ? ", held to the reference surface" : "") ~ " ===");
+
+    if (size(stations) > 0 && stations[0].roles != undefined)
+    {
+        const roles = stations[0].roles;
+        println("roles fixed at the zero station: width is "
+            ~ (roles.widthIsNormal ? "the curvature normal" : "the binormal")
+            ~ ", width sign " ~ toString(roles.widthSign)
+            ~ ", height sign " ~ toString(roles.heightSign));
+    }
+
+    if (alongRef != undefined)
+    {
+        println("reference plane normal: " ~ fmtVec(alongRef.planeNormal, 4, 10));
+    }
+
+    for (var block in edgeBlocks(stations))
+    {
+        println("");
+        println(edgeHeading(sourceChain, block));
+        println("     i        arc         tangent x/y/z             width x/y/z"
+            ~ "            height x/y/z         kappaW    kappaH     perp");
+
+        for (var i = block.first; i <= block.last; i += 1)
+        {
+            const frame = stationFrame(stations[i], definition, alongRef);
+
+            // Perpendicularity check: dot(tangent, width) should be zero. A drifting
+            // value means the frame is skewing, which bends the offset direction.
+            const perp = dot(frame.tangent, frame.widthAxis);
+
+            println(padLeft(toString(i), 6)
+                ~ fmtMM(stations[i].arc, 3, 11)
+                ~ "  " ~ fmtVec(frame.tangent, 4, 10)
+                ~ "  " ~ fmtVec(frame.widthAxis, 4, 10)
+                ~ "  " ~ fmtVec(frame.heightAxis, 4, 10)
+                ~ fmtNum(frame.curvatureWidth * meter, 4, 10)
+                ~ fmtNum(frame.curvatureHeight * meter, 4, 10)
+                ~ fmtNum(perp, 6, 11));
+        }
+    }
+
+    println("");
+}
+
+/**
+ * The output curves covering a station range, as "[0..11] arc R=345.200".
+ */
+function describeRuns(runs is array, first is number, last is number) returns string
+{
+    var parts = [];
+
+    for (var run in runs)
+    {
+        if (run.end < first || run.start > last)
+        {
+            continue;
+        }
+
+        var text = "[" ~ toString(run.start) ~ ".." ~ toString(run.end) ~ "] " ~ run.kind;
+        if (run.radius != undefined)
+        {
+            text = text ~ " R=" ~ fmtMM(run.radius, 3, 0);
+        }
+        parts = append(parts, text);
+    }
+
+    return (size(parts) == 0) ? "no output (profile does not reach)" : join(parts, " | ");
+}
+
+/**
+ * The (1 - w * kappa) factor at a station. Undefined where the profile does not reach.
+ */
+function shrinkAt(station is map, offset)
+{
+    if (offset == undefined)
+    {
+        return undefined;
+    }
+
+    return 1 - offset.width * station.curvatureWidth - offset.height * station.curvatureHeight;
 }

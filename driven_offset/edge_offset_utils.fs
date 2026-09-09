@@ -548,13 +548,13 @@ function buildLink(context is Context, candidate is Path) returns map
         edges = describeEdges(context, pathToUse);
     }
 
-    var length = 0 * meter;
+    var linkLength = 0 * meter;
     for (var edgeData in edges)
     {
-        length += edgeData.length;
+        linkLength += edgeData.length;
     }
 
-    return { "path" : pathToUse, "edges" : edges, "length" : length, "startArc" : 0 * meter };
+    return { "path" : pathToUse, "edges" : edges, "length" : linkLength, "startArc" : 0 * meter };
 }
 
 /**
@@ -571,19 +571,19 @@ function describeEdges(context is Context, pathToDescribe is Path) returns array
         const flipped = pathToDescribe.flipped[i];
         const ends = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
         const definition = evCurveDefinition(context, { "edge" : edge, "returnBSplinesAsOther" : true });
-        const length = evLength(context, { "entities" : edge });
+        const edgeLength = evLength(context, { "entities" : edge });
 
         edges = append(edges, {
                     "query" : edge,
                     "flipped" : flipped,
-                    "length" : length,
+                    "length" : edgeLength,
                     "startArc" : runningArc,
                     "curveType" : definition.curveType,
                     "startPoint" : flipped ? ends[1].origin : ends[0].origin,
                     "endPoint" : flipped ? ends[0].origin : ends[1].origin
                 });
 
-        runningArc += length;
+        runningArc += edgeLength;
     }
 
     return edges;
@@ -791,6 +791,7 @@ function finishStations(raw is array, zeroArc is ValueWithUnits) returns array
         const towardCentre = normals[i];
 
         stations = append(stations, mergeMaps(raw[i], {
+                        "roles" : roles,
                         "arc" : raw[i].arc - zeroArc,
                         "normal" : continuous[i],
                         "widthAxis" : axes.widthAxis,
@@ -1399,4 +1400,63 @@ export function emitSplineCurve(context is Context, id is Id, points is array, s
             });
 
     opCreateBSplineCurve(context, id, { "bSplineCurve" : curves[0] });
+}
+
+
+// ============================================================================
+// Formatting (debug output)
+// ============================================================================
+
+/**
+ * Right-align text in a fixed-width column.
+ */
+export function padLeft(text is string, width is number) returns string
+{
+    const deficit = width - length(text);
+
+    return (deficit > 0) ? repeatString(" ", deficit) ~ text : text;
+}
+
+/**
+ * Left-align text in a fixed-width column.
+ */
+export function padRight(text is string, width is number) returns string
+{
+    const deficit = width - length(text);
+
+    return (deficit > 0) ? text ~ repeatString(" ", deficit) : text;
+}
+
+/**
+ * A length in millimetres, fixed decimals, right-aligned. Undefined prints as "--".
+ */
+export function fmtMM(value, decimals is number, width is number) returns string
+{
+    if (value == undefined)
+    {
+        return padLeft("--", width);
+    }
+
+    return padLeft(toString(roundToPrecision(value / millimeter, decimals)), width);
+}
+
+/**
+ * A plain number, fixed decimals, right-aligned. Undefined prints as "--".
+ */
+export function fmtNum(value, decimals is number, width is number) returns string
+{
+    if (value == undefined)
+    {
+        return padLeft("--", width);
+    }
+
+    return padLeft(toString(roundToPrecision(value, decimals)), width);
+}
+
+/**
+ * A unitless vector as three fixed-width, fixed-decimal columns.
+ */
+export function fmtVec(v is Vector, decimals is number, width is number) returns string
+{
+    return fmtNum(v[0], decimals, width) ~ fmtNum(v[1], decimals, width) ~ fmtNum(v[2], decimals, width);
 }
