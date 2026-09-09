@@ -157,7 +157,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         const upper = profileAt(profile, allCoords.values, false);
         const lower = profileAt(profile, allCoords.values, true);
 
-        const points = offsetPoints(allStations, allCoords, upper, lower, definition, alongRef);
+        const points = offsetPoints(allStations, upper, lower, definition, alongRef);
         const runs = buildRuns(allStations, upper);
 
         if (size(runs) == 0)
@@ -380,7 +380,7 @@ function usesReferenceFrame(definition is map, alongRef) returns boolean
  * The (1 - w * kappa) factor is checked here: at or below zero the offset has passed
  * the centre of curvature, and the result would fold back through itself.
  */
-function offsetPoints(stations is array, coords is map, upper is array, lower is array, definition is map, alongRef) returns array
+function offsetPoints(stations is array, upper is array, lower is array, definition is map, alongRef) returns array
 {
     var points = [];
 
@@ -396,11 +396,10 @@ function offsetPoints(stations is array, coords is map, upper is array, lower is
         }
 
         const frame = stationFrame(stations[i], definition, alongRef);
-        const tangent = offsetTangent(frame,
-            { "width" : offsets[i].width, "height" : offsets[i].height },
-            { "width" : offsets[i].widthSlope * coords.scales[i], "height" : offsets[i].heightSlope * coords.scales[i] });
 
-        if (tangent.shrink <= 0)
+        // Only the fold-back test is wanted here. The direction is a run-end
+        // question, asked separately where the frame's roll rate is available.
+        if (offsetShrink(frame, offsets[i]) <= 0)
         {
             throw regenError("The offset is larger than the radius of curvature at "
                 ~ toString(roundToPrecision(stations[i].arc / millimeter, 1))
@@ -684,8 +683,8 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
             // A run starts on the upper side of any slope break and ends on the lower
             // side of the next one, so each end takes the slope that actually applies.
             emitSplineCurve(context, runId, runPoints,
-                runTangent(stations, coords, upper, definition, alongRef, run.start),
-                runTangent(stations, coords, lower, definition, alongRef, run.end),
+                runTangent(stations, coords, upper, definition, alongRef, run, run.start),
+                runTangent(stations, coords, lower, definition, alongRef, run, run.end),
                 approximation);
         }
 
@@ -714,13 +713,19 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 
 /**
  * Exact offset tangent at one end of a run, for the fit to interpolate.
+ *
+ * Everything needed is determined at a run end: the source curve has a tangent and
+ * a curvature there, the profile has a value and a slope there, and the frame has a
+ * rate of roll there. Only the roll used to be missing, so reference-driven frames
+ * were handed back undefined rather than a tangent that quietly ignored it, and the
+ * fit was left to guess from the point cloud. frameRoll supplies it, so every run
+ * end gets its exact tangent -- which is what holds a junction G1, and what pins the
+ * last curve of a chain onto the mirror plane at the tip.
  */
-function runTangent(stations is array, coords is map, offsets is array, definition is map, alongRef, index is number)
+function runTangent(stations is array, coords is map, offsets is array, definition is map, alongRef,
+    run is map, index is number)
 {
-    // In the constrained frame the axes rotate along the path, so the closed-form
-    // offset tangent no longer applies. Rather than hand the fit a derivative that
-    // is subtly wrong, let it choose its own from the points.
-    if (offsets[index] == undefined || usesReferenceFrame(definition, alongRef))
+    if (offsets[index] == undefined)
     {
         return undefined;
     }
@@ -729,7 +734,69 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
 
     return offsetTangent(frame,
         { "width" : offsets[index].width, "height" : offsets[index].height },
-        { "width" : offsets[index].widthSlope * coords.scales[index], "height" : offsets[index].heightSlope * coords.scales[index] }).direction;
+        { "width" : offsets[index].widthSlope * coords.scales[index], "height" : offsets[index].heightSlope * coords.scales[index] },
+        frameRoll(stations, definition, alongRef, run, index)).direction;
+}
+
+/**
+ * Rate the offset frame rolls about its own tangent at one station, per unit length.
+ *
+ * Differenced from neighbouring stations rather than derived in closed form. The
+ * frame is a composition of the source curve, a reference lookup and a projection;
+ * differencing it is exact for whatever that composition turns out to be, costs no
+ * kernel calls, and stays correct if any part of it changes later.
+ *
+ * Samples are taken inwards from the run end, so they never cross an edge junction
+ * or a profile break into a frame that belongs to the other side. Second order where
+ * the run has three stations to work with, first order where it has only two.
+ */
+function frameRoll(stations is array, definition is map, alongRef, run is map, index is number)
+{
+    const step = (index == run.end) ? -1 : 1;
+    const one = index + step;
+
+    if (one < run.start || one > run.end)
+    {
+        return 0 / meter;
+    }
+
+    const here = stationFrame(stations[index], definition, alongRef);
+    const first = rollAgainst(here, stationFrame(stations[one], definition, alongRef));
+    const h1 = stations[one].arc - stations[index].arc;
+
+    if (abs(h1) < TOLERANCE.zeroLength * meter)
+    {
+        return 0 / meter;
+    }
+
+    const two = index + 2 * step;
+    if (two < run.start || two > run.end)
+    {
+        return first / h1;
+    }
+
+    const second = rollAgainst(here, stationFrame(stations[two], definition, alongRef));
+    const h2 = stations[two].arc - stations[index].arc;
+
+    if (abs(h2) < TOLERANCE.zeroLength * meter || abs(h2 - h1) < TOLERANCE.zeroLength * meter)
+    {
+        return first / h1;
+    }
+
+    // Three-point one-sided derivative on uneven spacing. Stations inside one edge
+    // are evenly spaced in arc length, but an inserted crossing can break that.
+    // The value at the station itself is dot(W, H) of one frame with itself, which
+    // is zero, so that term drops out of the stencil.
+    return first * (h2 / (h1 * (h2 - h1))) - second * (h1 / (h2 * (h2 - h1)));
+}
+
+/**
+ * dot(W of a neighbouring frame, H of this one) -- the part of the neighbour's width
+ * axis that has rotated into this station's height axis, which is what roll means.
+ */
+function rollAgainst(here is map, other is map) returns number
+{
+    return dot(other.widthAxis, here.heightAxis);
 }
 
 // ============================================================================
@@ -744,6 +811,7 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
         println("offset edges: " ~ toString(size(sourceChain.links)) ~ " link(s), length "
             ~ toString(sourceChain.totalLength) ~ ", zero at " ~ toString(sourceChain.zeroArc));
         println("stations: " ~ toString(size(stations)) ~ ", runs: " ~ toString(size(runs)));
+        printJunctions(stations);
     }
 
     if (definition.debugPrintProfileChain)
@@ -805,7 +873,7 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
 
     if (definition.debugPrintOffsetTable)
     {
-        printOffsetTable(definition, sourceChain, stations, coords, offsets, points, runs);
+        printOffsetTable(definition, sourceChain, stations, coords, offsets, points, runs, alongRef);
     }
 
     if (definition.debugPrintFrameTable)
@@ -820,6 +888,29 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
             addDebugPoint(context, points[run.start], DebugColor.RED);
             addDebugPoint(context, points[run.end], DebugColor.YELLOW);
         }
+    }
+}
+
+/**
+ * What was decided at each shared vertex between two source edges.
+ *
+ * A break well under G1_JUNCTION_ANGLE that is still listed as a corner, or a real
+ * corner listed as welded, means the threshold wants moving. A welded junction is
+ * the only reason two adjacent output curves can be relied on to share an endpoint.
+ */
+function printJunctions(stations is array)
+{
+    for (var i = 0; i < size(stations); i += 1)
+    {
+        if (stations[i].junctionBreak == undefined)
+        {
+            continue;
+        }
+
+        println("  junction at station " ~ toString(i)
+            ~ ": tangent break " ~ fmtNum(stations[i].junctionBreak / radian / 1e-3, 3, 0) ~ " mrad"
+            ~ ", vertex gap " ~ fmtNum(stations[i].junctionGap / (1e-6 * meter), 3, 0) ~ " um  ->  "
+            ~ (stations[i].welded ? "welded" : "left open"));
     }
 }
 
@@ -885,7 +976,7 @@ function edgeHeading(sourceChain is map, block is map) returns string
  * the resulting point. Stations the profile does not reach print as "--".
  */
 function printOffsetTable(definition is map, sourceChain is map, stations is array,
-    coords is map, offsets is array, points is array, runs is array)
+    coords is map, offsets is array, points is array, runs is array, alongRef)
 {
     println("");
     println("=== offsets: " ~ toString(size(stations)) ~ " stations, "
@@ -909,7 +1000,7 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
                 ~ fmtNum(offset == undefined ? undefined : offset.profileEdge, 0, 5)
                 ~ fmtMM(offset == undefined ? undefined : offset.width, 3, 11)
                 ~ fmtMM(offset == undefined ? undefined : offset.height, 3, 11)
-                ~ fmtNum(shrinkAt(stations[i], offset), 4, 11)
+                ~ fmtNum(shrinkAt(stationFrame(stations[i], definition, alongRef), offset), 4, 11)
                 ~ fmtMM(point == undefined ? undefined : point[0], 3, 11)
                 ~ fmtMM(point == undefined ? undefined : point[1], 3, 11)
                 ~ fmtMM(point == undefined ? undefined : point[2], 3, 11));
@@ -1012,13 +1103,17 @@ function describeRuns(runs is array, first is number, last is number) returns st
 
 /**
  * The (1 - w * kappa) factor at a station. Undefined where the profile does not reach.
+ *
+ * Takes the resolved frame, not the raw station: with a reference wire the
+ * curvatures are measured about the reference's axes, and reading the chain's own
+ * made this column disagree with the number the offset was actually built from.
  */
-function shrinkAt(station is map, offset)
+function shrinkAt(frame is map, offset)
 {
     if (offset == undefined)
     {
         return undefined;
     }
 
-    return 1 - offset.width * station.curvatureWidth - offset.height * station.curvatureHeight;
+    return offsetShrink(frame, offset);
 }

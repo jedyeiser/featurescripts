@@ -49,6 +49,18 @@ export const TURNING_SAMPLES = 25;
 /** Most frames or offset vectors any debug view will draw. Each costs a sketch solve. */
 export const DEBUG_MAX_MARKERS = 60;
 
+/**
+ * Largest tangent break, in radians, that still counts as a tangent-continuous
+ * junction between two source edges. Below it the two edges are welded: both sides
+ * of the shared vertex take one averaged tangent, so the offset lands on one point
+ * instead of two. Above it the junction is a real corner and both sides keep their
+ * own frame, which is what makes G0 input stay G0.
+ *
+ * 1e-2 rad is 0.57 degrees. A sketch-solved or filleted tangency lands orders of
+ * magnitude inside that; a corner drawn on purpose is well outside it.
+ */
+export const G1_JUNCTION_ANGLE = 1e-2;
+
 export const MAX_STATIONS_PER_EDGE = 200;
 export const MIN_STATIONS_PER_EDGE = 5;
 
@@ -458,25 +470,52 @@ export function offsetAxes(tangent is Vector, normal is Vector, roles is map) re
 }
 
 /**
+ * Arc-length scale factor of the offset at a station: how much faster or slower
+ * the offset curve runs than the curve it is offset from.
+ *
+ * At or below zero the offset has reached the centre of curvature and would fold
+ * back through itself, so this doubles as the degeneracy test.
+ */
+export function offsetShrink(frame is map, offsets is map) returns number
+{
+    return 1 - offsets.width * frame.curvatureWidth - offsets.height * frame.curvatureHeight;
+}
+
+/**
  * Exact tangent of an offset curve.
  *
- *   P(s)  = C(s) + w(s) * W + h(s) * H
- *   P'(s) = (1 - w * kappaW - h * kappaH) * T + w' * W + h' * H
+ *   P(s)  = C(s) + w(s) * W(s) + h(s) * H(s)
+ *   P'(s) = T + w' W + h' H + w W' + h H'
  *
- * where kappaW and kappaH are the curvatures signed about the width and height
- * axes. Verified against finite differences to 4e-11 on a planar curve. Torsion
- * cross-terms are dropped; they are identically zero for a planar chain, which
- * is what the offset frame assumes elsewhere.
+ * W and H are unit and mutually perpendicular, so each derivative splits into a
+ * part along T and a part along the other axis, with one scalar shared between
+ * them because dot(W, H) is constant:
  *
- * The leading factor is also the degeneracy test: at or below zero the offset
- * has reached the centre of curvature and the result would fold back on itself.
+ *   W' = -kappaW T + r H       H' = -kappaH T - r W       r = dot(W', H)
  *
+ * which collapses the whole thing to
+ *
+ *   P'(s) = (1 - w kappaW - h kappaH) T + w' W + h' H + r (w H - h W)
+ *
+ * r is the rate the frame rolls about its own tangent. For the chain's own
+ * transported frame it is identically zero -- that is what minimal-rotation
+ * transport means -- so the last term vanishes and this reduces to the form
+ * verified against finite differences to 4e-11 on a planar curve. It is not zero
+ * once the frame is slaved to a reference surface: the reference normal turns on
+ * its own schedule as the source curve runs across it. Dropping the term there
+ * was the reason this function used to be refused in reference-driven modes and
+ * the fit left to guess its own end tangents.
+ *
+ * @param roll : dot(dW/ds, H), per unit length. Zero for a frame that does not roll.
  * @returns {map} : { "direction" : unit Vector, "shrink" : number }
  */
-export function offsetTangent(frame is map, offsets is map, slopes is map) returns map
+export function offsetTangent(frame is map, offsets is map, slopes is map, roll) returns map
 {
-    const shrink = 1 - offsets.width * frame.curvatureWidth - offsets.height * frame.curvatureHeight;
-    const direction = shrink * frame.tangent + slopes.width * frame.widthAxis + slopes.height * frame.heightAxis;
+    const shrink = offsetShrink(frame, offsets);
+    const direction = shrink * frame.tangent
+        + slopes.width * frame.widthAxis
+        + slopes.height * frame.heightAxis
+        + roll * (offsets.width * frame.heightAxis - offsets.height * frame.widthAxis);
 
     return {
         "direction" : (norm(direction) < 1e-9) ? frame.tangent : normalize(direction),
@@ -807,7 +846,66 @@ export function chainStations(context is Context, chain is map, spacing is map) 
         }
     }
 
-    return finishStations(raw, chain.zeroArc);
+    return finishStations(weldJunctions(raw), chain.zeroArc);
+}
+
+/**
+ * Make the two stations either side of a tangent-continuous edge junction agree.
+ *
+ * Every source edge contributes its own copy of a shared vertex, evaluated from
+ * its own side, and the two tangents can differ slightly even where the source was
+ * drawn tangent-continuous -- measured at 1 mrad on a real ski chain. That feeds
+ * straight through to the result: the two frames rotate apart by the same angle, so
+ * the two offset points land width * angle apart. At 11.7 mm of width, 1 mrad is an
+ * 11 micron gap between two output curves that were meant to meet, and
+ * opExtractWires cannot stitch across it.
+ *
+ * Below G1_JUNCTION_ANGLE both sides take one averaged tangent and one shared
+ * origin, so their offset positions come out of identical arithmetic and agree bit
+ * for bit. Above it the junction is a real corner and is left alone. Either way the
+ * measured break is recorded, so the debug output can show what was decided.
+ */
+function weldJunctions(raw is array) returns array
+{
+    var welded = raw;
+
+    for (var i = 0; i < size(welded) - 1; i += 1)
+    {
+        const left = welded[i];
+        const right = welded[i + 1];
+
+        // Adjacent stations from consecutive edges of one link are the two halves
+        // of a shared vertex.
+        if (left.linkIndex != right.linkIndex || right.edgeIndex != left.edgeIndex + 1)
+        {
+            continue;
+        }
+
+        // Both are recorded even when the weld is declined: a junction that stayed
+        // open is exactly what a gap in the output looks like from here, and the
+        // reason -- too far apart, or too sharp -- is the thing worth seeing.
+        const gap = norm(right.origin - left.origin);
+        const breakAngle = angleBetween(left.tangent, right.tangent);
+        const sum = left.tangent + right.tangent;
+        const weld = gap <= OFFSET_GEOM_TOL
+            && breakAngle / radian <= G1_JUNCTION_ANGLE
+            && norm(sum) > 1e-9;
+
+        welded[i + 1] = mergeMaps(right, {
+                    "junctionGap" : gap,
+                    "junctionBreak" : breakAngle,
+                    "welded" : weld
+                });
+
+        if (weld)
+        {
+            const shared = normalize(sum);
+            welded[i] = mergeMaps(left, { "tangent" : shared });
+            welded[i + 1] = mergeMaps(welded[i + 1], { "tangent" : shared, "origin" : left.origin });
+        }
+    }
+
+    return welded;
 }
 
 /**
@@ -1334,25 +1432,48 @@ export function buildAlongReference(context is Context, selection is Query, zero
         previousCurvature = curvature;
     }
 
-    // Rebase so theta is zero at the zero station, matching the coordinate origin.
-    const thetaAtZero = interpolate(arcs, thetas, 0 * meter);
-    for (var i = 0; i < size(thetas); i += 1)
-    {
-        thetas[i] = thetas[i] - thetaAtZero;
-    }
-
-    // Table for turning world X into arc length on this chain. The samples already
-    // carry tangents, so d(arc)/dX is known and the lookup can be cubic Hermite.
+    // Table for turning world X into arc length on this chain. Everything the
+    // stations ask of this reference is wanted on the reference OFFSET BY DELTA,
+    // never on the wire itself, so the table is keyed by the offset curve's X.
+    //
+    // A parallel curve shares its parent's tangent and normal directions exactly,
+    // so the frame at a given parameter does not move -- only the X that parameter
+    // sits at does, by delta * offsetDir_x. That is nothing in the flat middle of a
+    // ski base and tens of millimetres up the tip kick, which is precisely where
+    // the frame was coming out wrong.
+    //
+    //   offset(s) = C(s) + delta * offsetDir(s),   d(offsetDir)/ds = -kappa * T
+    //   so   dX_offset/ds = T_x * (1 - delta * kappa)
+    //
+    // arcSlopes stays d(arc along the wire)/dX, since arcs is what it interpolates.
     var xs = [];
     var arcSlopes = [];
-    for (var sample in samples)
+    for (var i = 0; i < size(samples); i += 1)
     {
-        if (sample.tangent[0] < 1e-6)
+        const sample = samples[i];
+        const offsetDir = normalize(cross(planeNormal, sample.tangent));
+        const slope = sample.tangent[0] * (1 - delta * curvatures[i]);
+
+        if (slope < 1e-6)
         {
-            throw regenError("The reference wire doubles back in X, so a position along it is ambiguous.", selection);
+            throw regenError("The reference wire, offset by the offset delta, doubles back in X, "
+                    ~ "so a position along it is ambiguous. Reduce the offset delta.", selection);
         }
-        xs = append(xs, sample.x);
-        arcSlopes = append(arcSlopes, 1 / sample.tangent[0]);
+
+        xs = append(xs, sample.x + delta * offsetDir[0]);
+        arcSlopes = append(arcSlopes, 1 / slope);
+    }
+
+    // Coordinate zero is the point of the OFFSET reference at the zero point's X.
+    // sampleTurning zeroed the arcs on the point of the wire itself at that X,
+    // which is a different station whenever the offset direction leans in X, so
+    // rebase both tables onto the offset curve's own origin.
+    const originArc = hermiteAt(xs, arcs, arcSlopes, zeroPoint[0]);
+    const thetaAtOrigin = interpolate(arcs, thetas, originArc);
+    for (var i = 0; i < size(arcs); i += 1)
+    {
+        thetas[i] = thetas[i] - thetaAtOrigin;
+        arcs[i] = arcs[i] - originArc;
     }
 
     var tangents = [];
@@ -1377,10 +1498,19 @@ export function buildAlongReference(context is Context, selection is Query, zero
 /**
  * The frame of the reference surface at a world X.
  *
- * The reference surface is the reference wire extruded along its plane normal.
- * Its own normal is planeNormal x tangent, so a height offset moves off the
- * surface while tangent and width offsets slide along it -- which is what keeps
- * a point's height above the reference fixed when it moves in length or width.
+ * The reference surface is the reference wire, offset by delta, extruded along its
+ * plane normal. Its own normal is planeNormal x tangent, so a height offset moves
+ * off the surface while tangent and width offsets slide along it -- which is what
+ * keeps a point's height above the reference fixed when it moves in length or width.
+ *
+ * The offset is already baked into alongRef.xs, so x is read on the offset curve
+ * and no delta appears here: a parallel curve's tangent and normal at corresponding
+ * points are its parent's.
+ *
+ * stationFrame deliberately takes only heightAxis from this. Length keeps following
+ * the edge being offset, because where the source runs across the reference -- a tip
+ * curling round while the reference runs fore-aft -- the reference's own tangent
+ * would put width along the direction the source is travelling.
  *
  * The width axis is signed for +Y independently of planeNormal's own orientation,
  * which is pinned by the turning-angle sign convention and must not be flipped.

@@ -41,9 +41,26 @@ var result = getBSplineParamRange(myCurve);
 ## Development Workflow
 
 1. Write code in `.fs` files locally
-2. Copy to Onshape FeatureStudio for testing
-3. Fix issues, update local code
-4. Update corrections log with any new issues discovered
+2. **Run `python fscheck.py <files>` before pushing** - static checks that catch the
+   errors that otherwise cost an Onshape round trip (see below)
+3. Copy to Onshape FeatureStudio for testing
+4. Fix issues, update local code
+5. Update corrections log with any new issues discovered
+
+### fscheck.py - pre-push static checker
+
+```bash
+python fscheck.py driven_offset/*.fs      # pass ALL tabs of a document together
+```
+
+Catches: calls to functions that do not exist, wrong argument counts, duplicate
+definitions with the same name and arity ("Multiple visible overloads with identical
+signature"), dot access on reserved words (`m.type` must be `m["type"]`), unbalanced
+braces, non-ASCII bytes, a BOM. Resolves names against the local `std/` mirror, so
+keep that current. Exits non-zero on any finding.
+
+It does NOT type-check, unit-check, or verify enum reachability or runtime behaviour.
+Clean means "worth pushing", not "correct".
 
 ## Documentation
 
