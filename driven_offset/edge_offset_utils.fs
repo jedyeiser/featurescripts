@@ -40,6 +40,9 @@ export const NEWTON_ITERATIONS = 4;
 /** Seed samples used to bracket an inversion before Newton refines it. */
 export const SEED_SAMPLES = 9;
 
+/** How close two profile edge ends must be to count as joined. */
+export const PROFILE_JOIN_TOL = 1e-5 * meter;
+
 /** Samples per edge used to build the turning-angle table on a reference chain. */
 export const TURNING_SAMPLES = 25;
 
@@ -857,73 +860,43 @@ function seedNormalFor(tangents is array, kernelNormals is array, curvatures is 
  */
 export function buildProfile(context is Context, selection is Query, zeroPoint is Vector) returns map
 {
-    const edges = expandEdgeQuery(selection);
-    if (isQueryEmpty(context, edges))
+    const edges = evaluateQuery(context, expandEdgeQuery(selection));
+    if (size(edges) == 0)
     {
         throw regenError("No edges found in the offset profile.", selection);
     }
-
-    var paths;
-    try silent
-    {
-        paths = constructPaths(context, edges, { "adjacentSeedFaces" : qNothing() });
-    }
-    catch
-    {
-        throw regenError("Could not order the offset profile into a chain. Profile edges must connect end to end without branching.", selection);
-    }
-
-    // Order the profile the way it is drawn, not by which edge spans which X. Two
-    // edges may cover the same X -- that is a profile that doubles back, and it is
-    // legitimate: it means two offsets exist there. Which one applies is decided by
-    // the direction the point is approached from, which is what walking the chain in
-    // order gives us. Sorting by X instead would let a long baseline edge win a
-    // coordinate that belongs to the edge actually being traversed.
-    var links = [];
-    for (var candidate in paths)
-    {
-        links = append(links, buildLink(context, candidate));
-    }
-
-    links = sort(links, function(a, b)
-        {
-            return (a.edges[0].startPoint[0] - b.edges[0].startPoint[0]) / meter;
-        });
 
     const zeroX = zeroPoint[0];
     var described = [];
     var steps = [];
 
-    for (var link in links)
+    for (var piece in orderProfileEdges(context, edges))
     {
-        for (var edgeData in link.edges)
+        const minCoord = piece.start[0] - zeroX;
+        const maxCoord = piece.end[0] - zeroX;
+
+        // No X extent: the offset steps here rather than sloping. Inverting x(u) on
+        // it would return an arbitrary point on the jump, so it is recorded as a
+        // boundary and never used for a lookup.
+        if (abs((maxCoord - minCoord) / meter) <= OFFSET_GEOM_TOL / meter)
         {
-            const minCoord = edgeData.startPoint[0] - zeroX;
-            const maxCoord = edgeData.endPoint[0] - zeroX;
-
-            // No X extent: the offset steps here rather than sloping. Inverting x(u)
-            // on it would return an arbitrary point on the jump, so it is recorded as
-            // a boundary and never used for a lookup.
-            if (abs((maxCoord - minCoord) / meter) <= OFFSET_GEOM_TOL / meter)
-            {
-                steps = append(steps, 0.5 * (minCoord + maxCoord));
-                continue;
-            }
-
-            const curve = evApproximateBSplineCurve(context, { "edge" : edgeData.query });
-            const knots = curve.knots;
-            checkMonotonicX(evaluateSpline({
-                            "spline" : curve,
-                            "parameters" : range(knots[0], knots[size(knots) - 1], SEED_SAMPLES)
-                        })[0], edgeData.query);
-
-            described = append(described, {
-                        "query" : edgeData.query,
-                        "curve" : curve,
-                        "minCoord" : min(minCoord, maxCoord),
-                        "maxCoord" : max(minCoord, maxCoord)
-                    });
+            steps = append(steps, 0.5 * (minCoord + maxCoord));
+            continue;
         }
+
+        const curve = evApproximateBSplineCurve(context, { "edge" : piece.query });
+        const knots = curve.knots;
+        checkMonotonicX(evaluateSpline({
+                        "spline" : curve,
+                        "parameters" : range(knots[0], knots[size(knots) - 1], SEED_SAMPLES)
+                    })[0], piece.query);
+
+        described = append(described, {
+                    "query" : piece.query,
+                    "curve" : curve,
+                    "minCoord" : min(minCoord, maxCoord),
+                    "maxCoord" : max(minCoord, maxCoord)
+                });
     }
 
     if (size(described) == 0)
@@ -939,6 +912,93 @@ export function buildProfile(context is Context, selection is Query, zeroPoint i
         "minCoord" : described[0].minCoord,
         "maxCoord" : largestCoord(described)
     };
+}
+
+/**
+ * Order profile edges the way the profile is drawn, and orient each one so it runs
+ * in increasing X.
+ *
+ * Ordering follows endpoint connectivity, because that is what "the direction the
+ * point is approached from" means when the profile doubles back. Where connectivity
+ * runs out -- a disjoint piece, or a selection that also caught a baseline line --
+ * the next run simply starts at the unused edge furthest back in X.
+ *
+ * Deliberately not constructPaths: that throws on a branching selection, and a
+ * profile with an extra line touching it is a drawing to be read, not an error.
+ *
+ * @returns {array} : each { "query", "start", "end" }, in traversal order.
+ */
+function orderProfileEdges(context is Context, edges is array) returns array
+{
+    var starts = [];
+    var ends = [];
+    for (var edge in edges)
+    {
+        const tangentLines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
+        starts = append(starts, tangentLines[0].origin);
+        ends = append(ends, tangentLines[1].origin);
+    }
+
+    var used = makeArray(size(edges), false);
+    var ordered = [];
+
+    for (var placed = 0; placed < size(edges); placed += 1)
+    {
+        var index = undefined;
+        var flipped = false;
+
+        // Continue from the tip of the run we are on, if anything joins it.
+        if (size(ordered) > 0)
+        {
+            const tip = ordered[size(ordered) - 1].end;
+            for (var i = 0; i < size(edges); i += 1)
+            {
+                if (used[i])
+                {
+                    continue;
+                }
+                if (norm(starts[i] - tip) < PROFILE_JOIN_TOL)
+                {
+                    index = i;
+                    flipped = false;
+                    break;
+                }
+                if (norm(ends[i] - tip) < PROFILE_JOIN_TOL)
+                {
+                    index = i;
+                    flipped = true;
+                    break;
+                }
+            }
+        }
+
+        // Otherwise start a new run at whatever is left that begins furthest back.
+        if (index == undefined)
+        {
+            for (var i = 0; i < size(edges); i += 1)
+            {
+                if (used[i])
+                {
+                    continue;
+                }
+                const low = min(starts[i][0], ends[i][0]);
+                if (index == undefined || low < min(starts[index][0], ends[index][0]))
+                {
+                    index = i;
+                }
+            }
+            flipped = ends[index][0] < starts[index][0];
+        }
+
+        used[index] = true;
+        ordered = append(ordered, {
+                    "query" : edges[index],
+                    "start" : flipped ? ends[index] : starts[index],
+                    "end" : flipped ? starts[index] : ends[index]
+                });
+    }
+
+    return ordered;
 }
 
 /**
