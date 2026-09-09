@@ -501,7 +501,7 @@ export function buildChain(context is Context, selection is Query, zeroPoint is 
     {
         paths = constructPaths(context, edges, { "adjacentSeedFaces" : qNothing() });
     }
-    catch (error)
+    catch
     {
         throw regenError("Could not order these edges into a chain. Edges must connect end to end without branching.", selection);
     }
@@ -857,48 +857,73 @@ function seedNormalFor(tangents is array, kernelNormals is array, curvatures is 
  */
 export function buildProfile(context is Context, selection is Query, zeroPoint is Vector) returns map
 {
-    const edges = evaluateQuery(context, expandEdgeQuery(selection));
-    if (size(edges) == 0)
+    const edges = expandEdgeQuery(selection);
+    if (isQueryEmpty(context, edges))
     {
         throw regenError("No edges found in the offset profile.", selection);
     }
+
+    var paths;
+    try silent
+    {
+        paths = constructPaths(context, edges, { "adjacentSeedFaces" : qNothing() });
+    }
+    catch
+    {
+        throw regenError("Could not order the offset profile into a chain. Profile edges must connect end to end without branching.", selection);
+    }
+
+    // Order the profile the way it is drawn, not by which edge spans which X. Two
+    // edges may cover the same X -- that is a profile that doubles back, and it is
+    // legitimate: it means two offsets exist there. Which one applies is decided by
+    // the direction the point is approached from, which is what walking the chain in
+    // order gives us. Sorting by X instead would let a long baseline edge win a
+    // coordinate that belongs to the edge actually being traversed.
+    var links = [];
+    for (var candidate in paths)
+    {
+        links = append(links, buildLink(context, candidate));
+    }
+
+    links = sort(links, function(a, b)
+        {
+            return (a.edges[0].startPoint[0] - b.edges[0].startPoint[0]) / meter;
+        });
 
     const zeroX = zeroPoint[0];
     var described = [];
     var steps = [];
 
-    for (var edge in edges)
+    for (var link in links)
     {
-        const curve = evApproximateBSplineCurve(context, { "edge" : edge });
-        const knots = curve.knots;
-        const samples = evaluateSpline({
-                    "spline" : curve,
-                    "parameters" : range(knots[0], knots[size(knots) - 1], SEED_SAMPLES)
-                })[0];
-
-        const xStart = samples[0][0];
-        const xEnd = samples[size(samples) - 1][0];
-        const edgeMin = min(xStart, xEnd) - zeroX;
-        const edgeMax = max(xStart, xEnd) - zeroX;
-
-        // A profile edge with no X extent is a step: the offset jumps there. It is
-        // not a function of X, so it must never be used for a lookup -- inverting
-        // x(u) on it returns an arbitrary point on the jump. Record where it is and
-        // let the two neighbouring edges own the coordinates on either side.
-        if (edgeMax - edgeMin <= OFFSET_GEOM_TOL)
+        for (var edgeData in link.edges)
         {
-            steps = append(steps, 0.5 * (edgeMin + edgeMax));
-            continue;
+            const minCoord = edgeData.startPoint[0] - zeroX;
+            const maxCoord = edgeData.endPoint[0] - zeroX;
+
+            // No X extent: the offset steps here rather than sloping. Inverting x(u)
+            // on it would return an arbitrary point on the jump, so it is recorded as
+            // a boundary and never used for a lookup.
+            if (abs((maxCoord - minCoord) / meter) <= OFFSET_GEOM_TOL / meter)
+            {
+                steps = append(steps, 0.5 * (minCoord + maxCoord));
+                continue;
+            }
+
+            const curve = evApproximateBSplineCurve(context, { "edge" : edgeData.query });
+            const knots = curve.knots;
+            checkMonotonicX(evaluateSpline({
+                            "spline" : curve,
+                            "parameters" : range(knots[0], knots[size(knots) - 1], SEED_SAMPLES)
+                        })[0], edgeData.query);
+
+            described = append(described, {
+                        "query" : edgeData.query,
+                        "curve" : curve,
+                        "minCoord" : min(minCoord, maxCoord),
+                        "maxCoord" : max(minCoord, maxCoord)
+                    });
         }
-
-        checkMonotonicX(samples, edge);
-
-        described = append(described, {
-                    "query" : edge,
-                    "curve" : curve,
-                    "minCoord" : edgeMin,
-                    "maxCoord" : edgeMax
-                });
     }
 
     if (size(described) == 0)
@@ -906,21 +931,10 @@ export function buildProfile(context is Context, selection is Query, zeroPoint i
         throw regenError("Every offset profile edge is vertical, so the profile never defines an offset.", selection);
     }
 
-    described = sort(described, function(a, b)
-        {
-            return (a.minCoord - b.minCoord) / meter;
-        });
-
-    const overlaps = overlappingEdges(described);
-    if (size(overlaps) > 0)
-    {
-        throw regenError(describeOverlaps(described, overlaps), selection);
-    }
-
     return {
         "edges" : described,
         "steps" : steps,
-        "overlaps" : overlaps,
+        "doublesBack" : doublingBacks(described),
         "zeroX" : zeroX,
         "minCoord" : described[0].minCoord,
         "maxCoord" : largestCoord(described)
@@ -928,8 +942,8 @@ export function buildProfile(context is Context, selection is Query, zeroPoint i
 }
 
 /**
- * Largest coordinate any profile edge reaches. Not simply the last edge's, since
- * edges are sorted by where they start.
+ * Largest coordinate any profile edge reaches. Not simply the last edge's, since a
+ * profile that doubles back can reach its furthest point before its final edge.
  */
 function largestCoord(described is array) returns ValueWithUnits
 {
@@ -943,6 +957,35 @@ function largestCoord(described is array) returns ValueWithUnits
     }
 
     return result;
+}
+
+/**
+ * Places where the profile, walked in order, covers a coordinate it has already
+ * covered. Informational: the chain walk resolves which offset applies, but it is
+ * worth saying so, because it is also what an accidentally selected baseline edge
+ * looks like.
+ */
+function doublingBacks(described is array) returns array
+{
+    var found = [];
+    var reached = described[0].maxCoord;
+
+    for (var i = 1; i < size(described); i += 1)
+    {
+        if (described[i].minCoord < reached - OFFSET_GEOM_TOL)
+        {
+            found = append(found, {
+                        "edge" : i,
+                        "overlap" : reached - described[i].minCoord
+                    });
+        }
+        if (described[i].maxCoord > reached)
+        {
+            reached = described[i].maxCoord;
+        }
+    }
+
+    return found;
 }
 
 /**
@@ -978,55 +1021,6 @@ function checkMonotonicX(samples is array, edge is Query)
 }
 
 /**
- * Pairs of profile edges whose coordinate ranges overlap.
- *
- * Overlap means two different offsets are defined at the same coordinate, so the
- * profile is not a function and any lookup there is a coin toss. Reported rather
- * than thrown, because a hair of overlap at a shared vertex is normal.
- */
-function overlappingEdges(described is array) returns array
-{
-    var found = [];
-
-    for (var i = 0; i < size(described) - 1; i += 1)
-    {
-        const overlap = described[i].maxCoord - described[i + 1].minCoord;
-        if (overlap > OFFSET_GEOM_TOL)
-        {
-            found = append(found, { "first" : i, "second" : i + 1, "overlap" : overlap });
-        }
-    }
-
-    return found;
-}
-
-/**
- * Explain an overlap in the terms the user can act on.
- *
- * An edge spanning most of the profile is almost always a baseline or axis line
- * that came along with the selection, so name the widest offender first.
- */
-function describeOverlaps(described is array, overlaps is array) returns string
-{
-    var widest = 0;
-    for (var i = 1; i < size(described); i += 1)
-    {
-        if (described[i].maxCoord - described[i].minCoord > described[widest].maxCoord - described[widest].minCoord)
-        {
-            widest = i;
-        }
-    }
-
-    return "The offset profile defines two different offsets at the same X, so it is not a "
-        ~ "function and the offset there is ambiguous. " ~ toString(size(overlaps))
-        ~ " overlapping pair(s) found. The widest edge spans "
-        ~ fmtMM(described[widest].maxCoord - described[widest].minCoord, 1, 0)
-        ~ " mm of a " ~ fmtMM(largestCoord(described) - described[0].minCoord, 1, 0)
-        ~ " mm profile, which usually means a baseline or axis line was selected along with "
-        ~ "the profile. Deselect it, or trim the profile so each X has one offset.";
-}
-
-/**
  * Coordinates where two profile edges meet, plus every vertical step. These are
  * the only places the offset can break.
  */
@@ -1050,33 +1044,13 @@ export function profileBoundaries(profile is map) returns array
 }
 
 /**
- * Coordinates at which the profile has a slope discontinuity: the shared X of two
- * profile edges. A station landing here has two valid offset vectors, so the
- * caller splits the output there instead of averaging them into a smooth lie.
- */
-export function profileJunctions(profile is map) returns array
-{
-    var junctions = profile.steps;
-
-    for (var i = 0; i < size(profile.edges) - 1; i += 1)
-    {
-        const gap = abs(profile.edges[i + 1].minCoord - profile.edges[i].maxCoord);
-        if (gap < OFFSET_GEOM_TOL)
-        {
-            junctions = append(junctions, profile.edges[i].maxCoord);
-        }
-    }
-
-    return junctions;
-}
-
-/**
  * Look up offsets and slopes at many coordinates at once.
  *
  * Coordinates are grouped by the profile edge that owns them, so each edge is
  * inverted and evaluated once for its whole group.
  *
- * @param coords {array} : coordinates (ValueWithUnits), profile X minus zeroX.
+ * @param coords {array} : coordinates (ValueWithUnits), profile X minus zeroX,
+ *        in ascending order -- the walk relies on it.
  * @param preferLower {boolean} : at an exact junction, take the lower-X edge.
  * @returns {array} : one entry per coordinate, or undefined where the profile does
  *          not reach: { "profileEdge", "width", "height", "widthSlope", "heightSlope" }.
@@ -1088,15 +1062,17 @@ export function profileAt(profile is map, coords is array, preferLower is boolea
 
     // One bucket per profile edge, so each edge is inverted once for its whole group.
     var groups = makeArray(size(profile.edges), []);
+    var cursor = 0;
 
     for (var i = 0; i < size(coords); i += 1)
     {
-        const edgeIndex = profileEdgeFor(profile, coords[i], preferLower);
+        const edgeIndex = locateCoord(profile, cursor, coords[i], preferLower);
         if (edgeIndex == undefined)
         {
             results[i] = undefined;
             continue;
         }
+        cursor = edgeIndex;
         groups[edgeIndex] = append(groups[edgeIndex], i);
     }
 
@@ -1140,28 +1116,44 @@ export function profileAt(profile is map, coords is array, preferLower is boolea
 /**
  * Index of the profile edge owning a coordinate, or undefined if none does.
  */
-function profileEdgeFor(profile is map, coord is ValueWithUnits, preferLower is boolean)
+function locateCoord(profile is map, cursor is number, coord is ValueWithUnits, preferLower is boolean)
 {
-    var containing = [];
+    const edges = profile.edges;
 
-    for (var i = 0; i < size(profile.edges); i += 1)
+    // Forward from where the last lookup left off: the profile is walked in the
+    // order it is drawn, so a coordinate belongs to the edge we have reached, not to
+    // whichever edge also happens to span it.
+    for (var index = cursor; index < size(edges); index += 1)
     {
-        const profileEdge = profile.edges[i];
-        if (coord >= profileEdge.minCoord - OFFSET_GEOM_TOL && coord <= profileEdge.maxCoord + OFFSET_GEOM_TOL)
+        if (coord < edges[index].minCoord - OFFSET_GEOM_TOL || coord > edges[index].maxCoord + OFFSET_GEOM_TOL)
         {
-            containing = append(containing, i);
+            continue;
+        }
+
+        // At a shared end, the approach direction picks the side: coming up to the
+        // boundary keeps the edge below it, leaving it takes the edge above.
+        if (!preferLower && index + 1 < size(edges)
+            && coord >= edges[index].maxCoord - OFFSET_GEOM_TOL
+            && coord >= edges[index + 1].minCoord - OFFSET_GEOM_TOL
+            && coord <= edges[index + 1].maxCoord + OFFSET_GEOM_TOL)
+        {
+            return index + 1;
+        }
+
+        return index;
+    }
+
+    // Nothing ahead owns it: fall back to a full scan, which covers a profile that
+    // runs backwards relative to the source and any gap the walk stepped over.
+    for (var index = 0; index < cursor; index += 1)
+    {
+        if (coord >= edges[index].minCoord - OFFSET_GEOM_TOL && coord <= edges[index].maxCoord + OFFSET_GEOM_TOL)
+        {
+            return index;
         }
     }
 
-    if (size(containing) == 0)
-    {
-        return undefined;
-    }
-
-    // A coordinate lands on two edges only at a shared end, which is exactly where
-    // the two sides of a slope break must be told apart. Taking the first or last
-    // deliberately is what gives each side of a break its own tangent.
-    return preferLower ? containing[0] : containing[size(containing) - 1];
+    return undefined;
 }
 
 // ============================================================================

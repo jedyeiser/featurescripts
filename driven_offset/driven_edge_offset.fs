@@ -693,11 +693,11 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
         {
             println("  step at " ~ fmtMM(step, 3, 0) ~ " mm (vertical edge, offset jumps here)");
         }
-        for (var overlap in profile.overlaps)
+        for (var back in profile.doublesBack)
         {
-            println("  WARNING: profile edges " ~ toString(overlap.first) ~ " and "
-                ~ toString(overlap.second) ~ " overlap by " ~ fmtMM(overlap.overlap, 3, 0)
-                ~ " mm -- two offsets are defined there and the lookup is ambiguous");
+            println("  note: profile edge " ~ toString(back.edge) ~ " re-covers "
+                ~ fmtMM(back.overlap, 3, 0) ~ " mm already covered. Two offsets exist there; "
+                ~ "the one that applies is chosen by walking the profile in order.");
         }
     }
 
