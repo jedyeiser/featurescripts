@@ -9,14 +9,15 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "c2271b618a87575d9a9a
  * The profile curve is read as a function: its X is a coordinate along the edges
  * being offset, its Y is the width offset there, its Z is the height offset.
  *
- * Mapping (how profile X becomes a position on the source edges)
- *   WORLD_X     the offset at a source point is the profile value at that point's world X.
- *   ALONG_FROM  the offset at distance c from the zero point is the profile value at X = c.
- *   ALONG_REF   distances are measured along a reference wire, offset from the selected
- *               one by "Offset delta" -- so an offset stated along the core bottom stays
- *               stated along the core bottom. Distance along a curve offset by h is
- *               s - h * theta(s), theta being cumulative turning angle, so no offset
- *               curve is ever built.
+ * Measure along (what the profile's X axis measures, always from the zero point)
+ *   WORLD_X        the offset at a source point is the profile value at that point's world X.
+ *   OFFSET_EDGES   the offset at distance c along the edges being offset is the profile
+ *                  value at X = c.
+ *   REFERENCE_WIRE distance is measured along a separate reference wire, itself offset by
+ *                  "Offset delta" -- so an offset stated along the core bottom stays stated
+ *                  along the core bottom. Distance along a curve offset by h is s - h *
+ *                  theta(s), theta being cumulative turning angle, so no offset curve is
+ *                  ever built.
  *
  * Frame (what "width" and "height" mean at a point)
  *   ALONG   the chain's own frame. The width axis is the frame axis with the larger
@@ -42,15 +43,15 @@ annotation { "Feature Type Name" : "Driven edge offset", "Feature Type Descripti
 export const drivenEdgeOffset = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Offset definition", "Default" : OffsetSpacing.ALONG_FROM, "Description" : "How to map the offset profile's X axis onto the offset edges", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
-        definition.offsetAllignment is OffsetSpacing;
+        annotation { "Name" : "Measure along", "Default" : MeasureAlong.OFFSET_EDGES, "Description" : "What the offset profile's X axis measures: a world X coordinate, distance along the edges being offset, or distance along a separate reference wire. All three are measured from the zero point.", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+        definition.measureAlong is MeasureAlong;
 
-        if (definition.offsetAllignment == OffsetSpacing.ALONG_REF)
+        if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
         {
             annotation { "Group Name" : "Offset spacing definition", "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Offset along", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1, "Description" : "The wire along which offsets are spaced" }
-                definition.offsetAlong is Query;
+                annotation { "Name" : "Reference wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1, "Description" : "The wire that profile X is measured along" }
+                definition.referenceWire is Query;
 
                 annotation { "Name" : "Offset delta", "Description" : "Measure along a curve this far from the selected wire, so an offset stated along the core bottom stays stated along the core bottom" }
                 isLength(definition.alongOffsetDelta, OffsetHeightBounds);
@@ -58,7 +59,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
                 annotation { "Name" : "Flip offset delta", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
                 definition.flipAlongOffsetDir is boolean;
 
-                annotation { "Name" : "Binormal offset on profile", "Default" : false, "Description" : "Take the offset frame from the reference wire, so length and width offsets hold their height above it" }
+                annotation { "Name" : "Hold height above reference", "Default" : false, "Description" : "Take the offset frame from the reference wire, so length and width offsets do not change a point's height above it" }
                 definition.constrainProfile is boolean;
             }
         }
@@ -93,7 +94,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
             if (definition.edgeOffsetSpacingDef == OffsetPointSpacing.DISTANCE_ALONG)
             {
                 annotation { "Name" : "Point spacing" }
-                isLength(definition.targetPointSpacing, OffsetSpacingBounds);
+                isLength(definition.targetPointSpacing, PointSpacingBounds);
             }
 
             annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
@@ -129,10 +130,10 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         const profile = buildProfile(context, definition.offsetProfile, zeroPoint);
 
         var alongRef = undefined;
-        if (definition.offsetAllignment == OffsetSpacing.ALONG_REF)
+        if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
         {
             const delta = definition.flipAlongOffsetDir ? -1 * definition.alongOffsetDelta : definition.alongOffsetDelta;
-            alongRef = buildAlongReference(context, definition.offsetAlong, zeroPoint, delta);
+            alongRef = buildAlongReference(context, definition.referenceWire, zeroPoint, delta);
         }
 
         const stations = chainStations(context, sourceChain, spacingSettings(definition));
@@ -218,12 +219,12 @@ function stationCoordinates(stations is array, definition is map, alongRef, zero
 
     for (var station in stations)
     {
-        if (definition.offsetAllignment == OffsetSpacing.ALONG_FROM)
+        if (definition.measureAlong == MeasureAlong.OFFSET_EDGES)
         {
             values = append(values, station.arc);
             scales = append(scales, 1);
         }
-        else if (definition.offsetAllignment == OffsetSpacing.WORLD_X)
+        else if (definition.measureAlong == MeasureAlong.WORLD_X)
         {
             values = append(values, station.origin[0] - zeroPoint[0]);
             scales = append(scales, station.tangent[0]);

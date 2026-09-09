@@ -10,9 +10,10 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  *   CHAIN     an ordered set of G0-connected LINKS; a link is one Path.
  *             Chains are oriented so increasing arc length means increasing world X.
  *   STATION   one evaluation point on a chain, carrying its frame and coordinate.
- *   COORD     the value looked up in the offset profile. What it measures depends
- *             on the mapping mode: world X, arc length from zero, or distance
- *             along a reference curve.
+ *   COORD     the value looked up in the offset profile. What it measures is set
+ *             by MeasureAlong: a world X coordinate, arc length along the edges
+ *             being offset, or distance along a separate reference wire. All three
+ *             are measured from the zero point.
  *   FRAME     tangent + width axis + height axis. A profile point (x, y, z) offsets
  *             by y along width and z along height at coordinate x.
  *
@@ -49,15 +50,20 @@ export const MIN_STATIONS_PER_EDGE = 5;
 // Enums and bounds
 // ============================================================================
 
-/** How profile X maps onto a position along the edges being offset. */
-export enum OffsetSpacing
+/**
+ * What the offset profile's X axis measures.
+ *
+ * Labels are kept short so the horizontal enum fits on one row; nothing in
+ * FeatureScript can widen the dialog, so label length is the only lever.
+ */
+export enum MeasureAlong
 {
     annotation { "Name" : "World X" }
     WORLD_X,
-    annotation { "Name" : "Along from zero" }
-    ALONG_FROM,
-    annotation { "Name" : "Along reference" }
-    ALONG_REF
+    annotation { "Name" : "Offset edges" }
+    OFFSET_EDGES,
+    annotation { "Name" : "Reference" }
+    REFERENCE_WIRE
 }
 
 /** How the offset frame is oriented at each station. */
@@ -83,7 +89,7 @@ export enum OffsetPointSpacing
 export const OffsetHeightBounds = { (millimeter) : [-50, 0, 50] } as LengthBoundSpec;
 export const CtrlPointMultiplierBounds = { (unitless) : [2, 3, 10] } as IntegerBoundSpec;
 export const PointsPerEdgeBounds = { (unitless) : [10, 25, 50] } as IntegerBoundSpec;
-export const OffsetSpacingBounds = { (millimeter) : [0.1, 10, 50] } as LengthBoundSpec;
+export const PointSpacingBounds = { (millimeter) : [0.1, 10, 50] } as LengthBoundSpec;
 
 // ============================================================================
 // Selection
