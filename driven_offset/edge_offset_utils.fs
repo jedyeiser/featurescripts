@@ -940,6 +940,38 @@ function largestCoord(described is array) returns ValueWithUnits
 }
 
 /**
+ * A profile edge that doubles back in X cannot define a single offset, so say so
+ * against the offending edge rather than returning a silently wrong lookup.
+ *
+ * Vertical edges never reach here: buildProfile records them as steps first. That
+ * matters, because a vertical edge's X-steps are all ~0, which leaves both the
+ * increasing and decreasing flags true and would pass this check.
+ */
+function checkMonotonicX(samples is array, edge is Query)
+{
+    var increasing = true;
+    var decreasing = true;
+
+    for (var i = 0; i < size(samples) - 1; i += 1)
+    {
+        const step = (samples[i + 1][0] - samples[i][0]) / meter;
+        if (step < -1e-12)
+        {
+            increasing = false;
+        }
+        if (step > 1e-12)
+        {
+            decreasing = false;
+        }
+    }
+
+    if (!increasing && !decreasing)
+    {
+        throw regenError("An offset profile edge doubles back in X, so it does not define a single offset.", edge);
+    }
+}
+
+/**
  * Pairs of profile edges whose coordinate ranges overlap.
  *
  * Overlap means two different offsets are defined at the same coordinate, so the
