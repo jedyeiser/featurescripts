@@ -40,6 +40,13 @@ export const NEWTON_ITERATIONS = 4;
 /** Seed samples used to bracket an inversion before Newton refines it. */
 export const SEED_SAMPLES = 9;
 
+/**
+ * Steps taken to walk a reference station from "same world X" onto the foot of the
+ * normal. Two holds a ski's standing height to well under a micron; the seed is
+ * already exact for a point lying on the surface, which most of them do.
+ */
+export const REFERENCE_FOOT_STEPS = 2;
+
 /** How close two profile edge ends must be to count as joined. */
 export const PROFILE_JOIN_TOL = 1e-5 * meter;
 
@@ -516,6 +523,115 @@ export function offsetTangent(frame is map, offsets is map, slopes is map, rates
     return {
         "direction" : (norm(direction) < 1e-9) ? frame.tangent : normalize(direction),
         "shrink" : offsetShrink(frame, offsets)
+    };
+}
+
+/**
+ * Offset point that follows the reference surface instead of stepping off it.
+ *
+ * The straight-line offset P = C + w W + h H is right only where the surface is
+ * flat in the direction the width runs. Down the middle of a ski the width axis is
+ * along the surface's rulings, which ARE straight, so the two agree to the last
+ * bit. At the tip the source edge turns to run across the reference and the width
+ * axis swings round onto the reference's own tangent, where a straight step leaves
+ * the surface by w^2 / 2R -- half a millimetre on a 200 mm tip kick. A point that
+ * started on the reference is supposed to slide along it and stay on it.
+ *
+ * So the width offset is applied IN the chart: the width axis is perpendicular to
+ * the height axis, which is the surface normal, so it always lies in the tangent
+ * plane and splits cleanly into a component along the reference and a component
+ * along the rulings. Those two are added to the point's own surface coordinates and
+ * the result is mapped back. Because the chart is flat, that is exactly a geodesic
+ * of length w -- no integration, and no approximation beyond the sample tables.
+ *
+ * Height is unchanged in kind: it still moves along the surface normal, but at the
+ * arc the point has slid to rather than the one it started at.
+ *
+ * @returns {map} : the placed surface coordinates, the decomposition used to get
+ *          them, and "point", the world position.
+ */
+export function surfaceOffset(alongRef is map, frame is map, offsets is map) returns map
+{
+    const surf = referenceSurfaceCoords(alongRef, frame.origin);
+    const alpha = dot(frame.widthAxis, surf.tangent);
+    const beta = dot(frame.widthAxis, alongRef.planeNormal);
+
+    // The height axis is the surface normal up to the +Z sign referenceFrameAt
+    // applies, so this is exactly +1 or -1, never anything between.
+    const heightSign = (dot(frame.heightAxis, surf.normal) < 0) ? -1 : 1;
+
+    // alpha is a distance along the offset curve; the tables are keyed by arc along
+    // the wire, and the two run at a ratio of scale.
+    const advance = (abs(surf.scale) < 1e-9) ? 0 * meter : offsets.width * alpha / surf.scale;
+    const arc = surf.arc + advance;
+    const v = surf.v + offsets.width * beta;
+    const height = surf.height + heightSign * offsets.height;
+
+    return {
+        "surf" : surf,
+        "arc" : arc,
+        "v" : v,
+        "height" : height,
+        "alpha" : alpha,
+        "beta" : beta,
+        "heightSign" : heightSign,
+        "point" : referenceSurfacePoint(alongRef, arc, v, height)
+    };
+}
+
+/**
+ * Exact tangent of the surface-following offset.
+ *
+ * With the reference parameterized by arc u along the wire, the offset curve is
+ * A(u), the surface is A(u) + v n, and dt/du = kappa N, dN/du = -kappa t. Writing
+ * the offset point as A(u) + v n + H N(u),
+ *
+ *   P'(s) = u' (scale - kappa H) t  +  v' n  +  H' N        [t, N at the placed u]
+ *
+ * and each rate comes from the source point's own travel through the chart:
+ *
+ *   u0' = dot(T, t) / (scale - kappa h0)      v0' = dot(T, n)     h0' = dot(T, N)
+ *   u'  = u0' + (w' alpha + w dot(W', t)) / scale
+ *   v'  = v0' + w' beta + w dot(W', n)
+ *   H'  = h0' + heightSign * h'
+ *
+ * The N component of W' drops out of both -- W stays perpendicular to the surface
+ * normal -- which is why the scalar roll this used to carry was not enough and the
+ * full dW/ds is wanted.
+ *
+ * This supersedes offsetTangent in reference-driven modes rather than extending it:
+ * the two are tangents to different maps, and they agree only where the width
+ * offset is zero or the reference is locally straight.
+ *
+ * @param rates {map} : { "width" : dW/ds, "height" : dH/ds }, per unit length.
+ */
+export function surfaceOffsetTangent(alongRef is map, frame is map, offsets is map, slopes is map,
+    rates is map) returns map
+{
+    const placed = surfaceOffset(alongRef, frame, offsets);
+    const surf = placed.surf;
+    const target = referenceBasisAtArc(alongRef, placed.arc);
+
+    const denominator = surf.scale - surf.curvature * surf.height;
+    const sourceRate = (abs(denominator) < 1e-9) ? 0 : dot(frame.tangent, surf.tangent) / denominator;
+
+    // d(scale)/du is dropped. It is -delta * d(kappa)/du: second order in delta, and
+    // identically zero whenever the reference is not being measured at an offset.
+    const arcRate = sourceRate
+        + (slopes.width * placed.alpha + offsets.width * dot(rates.width, surf.tangent)) / surf.scale;
+    const vRate = dot(frame.tangent, alongRef.planeNormal)
+        + slopes.width * placed.beta
+        + offsets.width * dot(rates.width, alongRef.planeNormal);
+    const heightRate = dot(frame.tangent, surf.normal) + placed.heightSign * slopes.height;
+
+    const direction = arcRate * (target.scale - target.curvature * placed.height) * target.tangent
+        + vRate * alongRef.planeNormal
+        + heightRate * target.normal;
+
+    return {
+        "direction" : (norm(direction) < 1e-9) ? frame.tangent : normalize(direction),
+        "point" : placed.point,
+        "surfaceShrink" : target.scale - target.curvature * placed.height
     };
 }
 
@@ -1607,6 +1723,135 @@ export function hermiteAt(xs is array, ys is array, slopes is array, x)
         + span * slopes[i] * (t3 - 2 * t2 + t)
         + ys[i + 1] * (-2 * t3 + 3 * t2)
         + span * slopes[i + 1] * (t3 - t2);
+}
+
+// ============================================================================
+// The reference surface as a chart
+// ============================================================================
+
+/**
+ * d(offset point)/d(wire arc) at one reference sample.
+ *
+ * The tables are keyed by arc length along the wire, but the curve they describe is
+ * the wire offset by delta, and a parallel curve runs (1 - delta * kappa) times as
+ * fast as its parent. So this is not the unit tangent unless delta is zero.
+ */
+function referenceRate(alongRef is map, index is number) returns Vector
+{
+    return (1 - alongRef.delta * alongRef.curvatures[index]) * alongRef.tangents[index];
+}
+
+/**
+ * Position on the delta-offset reference at an arc length along the wire.
+ *
+ * Cubic Hermite through the sampled positions with the rate above as the slope --
+ * the same stencil as hermiteAt, which only takes scalars.
+ */
+export function referencePointAtArc(alongRef is map, arc is ValueWithUnits) returns Vector
+{
+    const arcs = alongRef.arcs;
+    const points = alongRef.points;
+    const count = size(arcs);
+
+    if (arc <= arcs[0])
+    {
+        return points[0] + (arc - arcs[0]) * referenceRate(alongRef, 0);
+    }
+    if (arc >= arcs[count - 1])
+    {
+        return points[count - 1] + (arc - arcs[count - 1]) * referenceRate(alongRef, count - 1);
+    }
+
+    const i = spanIndex(arcs, arc);
+    const span = arcs[i + 1] - arcs[i];
+    if (abs(span / meter) < 1e-15)
+    {
+        return points[i];
+    }
+
+    const f = (arc - arcs[i]) / span;
+    const f2 = f * f;
+    const f3 = f2 * f;
+
+    return (2 * f3 - 3 * f2 + 1) * points[i]
+        + (f3 - 2 * f2 + f) * span * referenceRate(alongRef, i)
+        + (-2 * f3 + 3 * f2) * points[i + 1]
+        + (f3 - f2) * span * referenceRate(alongRef, i + 1);
+}
+
+/**
+ * Tangent, surface normal, curvature and parallel scale at an arc length.
+ *
+ * The normal is cross(planeNormal, tangent) with no sign correction applied, so
+ * that dN/d(wire arc) = -kappa * t holds and the tangent formula below can rely on
+ * it. referenceFrameAt flips that normal toward +Z before handing it to a frame as
+ * a height axis; that flip is a display convention, and it is reapplied where the
+ * profile's height is added rather than being baked in here.
+ */
+export function referenceBasisAtArc(alongRef is map, arc is ValueWithUnits) returns map
+{
+    const tangent = interpolateVector(alongRef.arcs, alongRef.tangents, arc);
+    const curvature = interpolate(alongRef.arcs, alongRef.curvatures, arc);
+
+    return {
+        "tangent" : tangent,
+        "normal" : normalize(cross(alongRef.planeNormal, tangent)),
+        "curvature" : curvature,
+        "scale" : 1 - alongRef.delta * curvature
+    };
+}
+
+/**
+ * Surface coordinates of a world point: where it sits on the reference surface and
+ * how far off it.
+ *
+ * The surface is a planar curve swept along that plane's own normal -- a cylinder.
+ * Its Gaussian curvature is zero, so (arc, v) is a FLAT chart on it: distances
+ * measured in the chart are true distances on the surface, and a straight line in
+ * the chart is a geodesic. That is the whole reason a width offset can be applied
+ * by adding to a coordinate rather than by integrating along the surface.
+ *
+ * Every point reconstructs exactly as A(arc) + v * planeNormal + height * N(arc).
+ *
+ * The seed station is the one at the same world X, which is already the foot of the
+ * normal for a point lying on the surface. Each step then slides it by the leftover
+ * tangential component, which is Newton on dot(P - A(u), t(u)) = 0 with the
+ * curvature term dropped. The seed degenerates where the reference turns vertical
+ * and the source curve stops advancing in X -- the ski tip, exactly where this
+ * matters -- and the walk is what recovers from that.
+ */
+export function referenceSurfaceCoords(alongRef is map, point is Vector) returns map
+{
+    var arc = referenceArcAtX(alongRef, point[0]);
+    var basis = referenceBasisAtArc(alongRef, arc);
+    var toPoint = point - referencePointAtArc(alongRef, arc);
+
+    for (var step = 0; step < REFERENCE_FOOT_STEPS; step += 1)
+    {
+        if (abs(basis.scale) > 1e-9)
+        {
+            arc = arc + dot(toPoint, basis.tangent) / basis.scale;
+            basis = referenceBasisAtArc(alongRef, arc);
+            toPoint = point - referencePointAtArc(alongRef, arc);
+        }
+    }
+
+    return mergeMaps(basis, {
+                "arc" : arc,
+                "v" : dot(toPoint, alongRef.planeNormal),
+                "height" : dot(toPoint, basis.normal)
+            });
+}
+
+/**
+ * The world point at given surface coordinates. Inverse of referenceSurfaceCoords.
+ */
+export function referenceSurfacePoint(alongRef is map, arc is ValueWithUnits, v is ValueWithUnits,
+    height is ValueWithUnits) returns Vector
+{
+    const basis = referenceBasisAtArc(alongRef, arc);
+
+    return referencePointAtArc(alongRef, arc) + v * alongRef.planeNormal + height * basis.normal;
 }
 
 /**

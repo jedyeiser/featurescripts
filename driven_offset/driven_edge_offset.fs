@@ -406,6 +406,26 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
                 ~ " mm from the zero point, so the result would fold back on itself. Reduce the offset there.");
         }
 
+        if (usesReferenceFrame(definition, alongRef))
+        {
+            const placed = surfaceOffset(alongRef, frame, offsets[i]);
+
+            // The source curve's own fold-back is caught above. This is the other
+            // one: a height offset that reaches the centre of curvature of the
+            // reference itself. offsetShrink cannot see it, because it is built
+            // from the SOURCE curvature and a straight source edge over a curved
+            // reference leaves it sitting at exactly 1.
+            if (placed.surf.scale - placed.surf.curvature * placed.height <= 0)
+            {
+                throw regenError("The height offset reaches the centre of curvature of the reference at "
+                    ~ toString(roundToPrecision(stations[i].arc / millimeter, 1))
+                    ~ " mm from the zero point, so the result would fold back on itself. Reduce the height offset there.");
+            }
+
+            points = append(points, placed.point);
+            continue;
+        }
+
         points = append(points, frame.origin + offsets[i].width * frame.widthAxis + offsets[i].height * frame.heightAxis);
     }
 
@@ -731,11 +751,21 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
     }
 
     const frame = stationFrame(stations[index], definition, alongRef);
+    const amounts = { "width" : offsets[index].width, "height" : offsets[index].height };
+    const slopes = {
+            "width" : offsets[index].widthSlope * coords.scales[index],
+            "height" : offsets[index].heightSlope * coords.scales[index]
+        };
+    const rates = frameRates(stations, definition, alongRef, run, index);
 
-    return offsetTangent(frame,
-        { "width" : offsets[index].width, "height" : offsets[index].height },
-        { "width" : offsets[index].widthSlope * coords.scales[index], "height" : offsets[index].heightSlope * coords.scales[index] },
-        frameRates(stations, definition, alongRef, run, index)).direction;
+    // The two are tangents to different maps, so which one applies follows exactly
+    // the same test that decides which map placed the points.
+    if (usesReferenceFrame(definition, alongRef))
+    {
+        return surfaceOffsetTangent(alongRef, frame, amounts, slopes, rates).direction;
+    }
+
+    return offsetTangent(frame, amounts, slopes, rates).direction;
 }
 
 /**
