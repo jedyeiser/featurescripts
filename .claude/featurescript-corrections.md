@@ -853,6 +853,34 @@ var tl   = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 });
 
 ---
 
+## Reserved Words Also Break Map Field Access
+
+**Date**: 2026-09-09
+**Issue**: The reserved-identifier rule is not limited to variable names -- it also applies to **dot access on a map field**. A map built with a `"type"` key parses fine, but reading it back as `myMap.type` fails with `mismatched input 'type' expecting ID`, and the error points at the read site, not at the line where the key was created.
+
+```featurescript
+// Parses fine -- quoted keys are just strings
+const shape = { "type" : "arc", "radius" : r };
+
+// WRONG -- parse error at the '.type'
+if (shape.type == "arc") { ... }
+
+// WORKS -- bracket access sidesteps the keyword
+if (shape["type"] == "arc") { ... }
+
+// BETTER -- do not name the key a keyword in the first place
+const shape = { "kind" : "arc", "radius" : r };
+if (shape.kind == "arc") { ... }
+```
+
+**Why `footprint/arcFit.fs` looks the way it does**: it uses `seg["type"]` throughout. That bracket access is not a style choice, it is the workaround for this exact error.
+
+**Fix**: Prefer a non-keyword key name (`kind`, `curveKind`, `shapeKind`). Use bracket access only when an existing key name cannot be changed.
+
+**Lesson Learned**: Apply the reserved-word check to map *keys* that will be read with dot access, not just to variable names. Found while compiling `driven_offset/driven_edge_offset.fs`.
+
+---
+
 ## Annotations Must Use Printable ASCII Only
 
 **Date**: 2026-03-14

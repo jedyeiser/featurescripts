@@ -1,12 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-// IMPORT: edge_offset_utils (element a2665e22c07b7a6929ce4e80, this document)
-// Insert this import in Onshape so the version hash is real, and make it an
-// EXPORT import: the offset enums are feature parameter types, so they must be
-// reachable from this file's exports.
-//
-//   export import(path : "a2665e22c07b7a6929ce4e80", version : "<from Onshape>");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "c2271b618a87575d9a9a5e41");
 
 /**
  * Offset a set of edges by an amount driven by a second set of edges.
@@ -450,11 +445,11 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 
         const shape = classifyPoints(runPoints, approximation.approximationTolerance);
 
-        if (shape.type == "line")
+        if (shape.kind == "line")
         {
             emitLineCurve(context, runId, shape.start, shape.end);
         }
-        else if (shape.type == "arc")
+        else if (shape.kind == "arc")
         {
             emitArcCurve(context, runId, shape);
         }

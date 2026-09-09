@@ -258,7 +258,9 @@ function distanceToCircle(point is Vector, circleData is map) returns ValueWithU
  *
  * @param points {array} : ordered sample positions, at least three.
  * @param tolerance {ValueWithUnits} : maximum allowed deviation.
- * @returns {map} : { "type" : "line" | "arc" | "freeform" } plus geometry for line/arc.
+ * @returns {map} : { "kind" : "line" | "arc" | "freeform" } plus geometry for line/arc.
+ *          The key is "kind", not "type": "type" is a FeatureScript keyword and
+ *          cannot be read back with dot access.
  */
 export function classifyPoints(points is array, tolerance is ValueWithUnits) returns map
 {
@@ -268,7 +270,7 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
 
     if (count < 3)
     {
-        return { "type" : "line", "start" : first, "end" : last };
+        return { "kind" : "line", "start" : first, "end" : last };
     }
 
     const chord = last - first;
@@ -289,7 +291,7 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
 
         if (maxLineError <= tolerance)
         {
-            return { "type" : "line", "start" : first, "end" : last };
+            return { "kind" : "line", "start" : first, "end" : last };
         }
     }
 
@@ -297,7 +299,7 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
     const fit = circleThrough(first, points[midIndex], last);
     if (fit == undefined)
     {
-        return { "type" : "freeform" };
+        return { "kind" : "freeform" };
     }
 
     var maxArcError = 0 * meter;
@@ -312,11 +314,11 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
 
     if (maxArcError > tolerance)
     {
-        return { "type" : "freeform" };
+        return { "kind" : "freeform" };
     }
 
     return {
-        "type" : "arc",
+        "kind" : "arc",
         "start" : first,
         "mid" : points[midIndex],
         "end" : last,
