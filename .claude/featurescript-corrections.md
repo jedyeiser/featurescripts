@@ -853,6 +853,19 @@ var tl   = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 });
 
 ---
 
+## addDebugLine / addDebugPoint Cost a Full Sketch Solve Each
+
+**Date**: 2026-09-09
+**Issue**: `addDebugLine` looks like a cheap annotation. It is not. `std/debug.fs:429` expands to `startFeature` -> `createSketchLine` -> `addDebugEntities` -> `abortFeature`, and `createSketchLine` (`std/debug.fs:405-417`) does `newSketchOnPlane` + `skLineSegment` + **`skSolve`**. So every debug line is a sketch creation and a constraint solve. `addDebugPoint` (`std/debug.fs:363`) is the same shape with `opPoint`.
+
+**Measured (driven_offset, 2026-09-09)**: drawing two axes at each of 379 stations = 758 `addDebugLine` calls = 758 sketch solves, costing **+2.17 s** on a feature whose entire non-debug regen was 1.5 s. Capping debug markers at 60 via a stride took the whole feature to 1.41 s *with all debug on* -- i.e. below its previous debug-off time.
+
+**Fix**: never draw one debug entity per sample. Either stride the samples (`stride = max(1, ceil(count / MAX_MARKERS))`) or accumulate geometry inside a single `startFeature`/`abortFeature` scope and make one `addDebugEntities` call. Note `opPolyline` does NOT exist in this std version -- verify before reaching for it.
+
+**Lesson Learned**: treat `addDebugLine`/`addDebugPoint` as modelling operations, not print statements. `println` by comparison is cheap; ~870 println calls in the same feature were not the bottleneck.
+
+---
+
 ## Reserved Words Also Break Map Field Access
 
 **Date**: 2026-09-09

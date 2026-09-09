@@ -244,7 +244,11 @@ export function circleThrough(p0 is Vector, p1 is Vector, p2 is Vector)
         return undefined;
     }
 
-    const toCenter = (dot(a, a) * cross(axb, a) + dot(b, b) * cross(b, axb)) / (2 * dot(axb, axb));
+    // center = p0 + ((|a|^2 b - |b|^2 a) x n) / 2|n|^2, expanded. The pairing matters:
+    // |a|^2 goes with (b x n) and |b|^2 with (n x a). Swapping them yields a circle
+    // that does not pass through its own defining points except when |a| == |b|, and
+    // classifyPoints always picks the midpoint, so |a| ~ |b|/2 and it never does.
+    const toCenter = (dot(a, a) * cross(b, axb) + dot(b, b) * cross(axb, a)) / (2 * dot(axb, axb));
 
     return {
         "center" : p0 + toCenter,
