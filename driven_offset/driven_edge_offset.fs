@@ -530,8 +530,25 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
 
     if (definition.debugPrintProfileChain)
     {
-        println("profile: " ~ toString(size(profile.edges)) ~ " edge(s), coordinate range "
-            ~ toString(profile.minCoord) ~ " to " ~ toString(profile.maxCoord));
+        println("profile: " ~ toString(size(profile.edges)) ~ " usable edge(s), "
+            ~ toString(size(profile.steps)) ~ " vertical step(s), coordinate range "
+            ~ fmtMM(profile.minCoord, 3, 0) ~ " to " ~ fmtMM(profile.maxCoord, 3, 0) ~ " mm");
+
+        for (var i = 0; i < size(profile.edges); i += 1)
+        {
+            println("  edge " ~ toString(i) ~ ": " ~ fmtMM(profile.edges[i].minCoord, 3, 12)
+                ~ " to" ~ fmtMM(profile.edges[i].maxCoord, 3, 12) ~ " mm");
+        }
+        for (var step in profile.steps)
+        {
+            println("  step at " ~ fmtMM(step, 3, 0) ~ " mm (vertical edge, offset jumps here)");
+        }
+        for (var overlap in profile.overlaps)
+        {
+            println("  WARNING: profile edges " ~ toString(overlap.first) ~ " and "
+                ~ toString(overlap.second) ~ " overlap by " ~ fmtMM(overlap.overlap, 3, 0)
+                ~ " mm -- two offsets are defined there and the lookup is ambiguous");
+        }
     }
 
     if (definition.debugPrintAlongChain && alongRef != undefined)
@@ -647,7 +664,7 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
     {
         println("");
         println(edgeHeading(sourceChain, block) ~ "  ->  " ~ describeRuns(runs, block.first, block.last));
-        println("     i        arc      coord      width     height     shrink"
+        println("     i        arc      coord   pE      width     height     shrink"
             ~ "          x          y          z");
 
         for (var i = block.first; i <= block.last; i += 1)
@@ -658,6 +675,7 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
             println(padLeft(toString(i), 6)
                 ~ fmtMM(stations[i].arc, 3, 11)
                 ~ fmtMM(coords.values[i], 3, 11)
+                ~ fmtNum(offset == undefined ? undefined : offset.profileEdge, 0, 5)
                 ~ fmtMM(offset == undefined ? undefined : offset.width, 3, 11)
                 ~ fmtMM(offset == undefined ? undefined : offset.height, 3, 11)
                 ~ fmtNum(shrinkAt(stations[i], offset), 4, 11)

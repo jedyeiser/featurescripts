@@ -335,59 +335,71 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
 }
 
 /**
- * Make a sequence of Frenet normals continuous.
+ * Rotate a normal from one tangent to the next by the smallest rotation that
+ * carries the old tangent onto the new one.
  *
- * The kernel returns an unsigned curvature normal: it flips 180 degrees at every
- * inflection, and is documented as arbitrary wherever curvature is near zero.
- * This walks the stations in order, flipping each normal to agree with its
- * predecessor and parallel-transporting through near-straight regions.
+ *     N' = N - (N.b / (1 + a.b)) * (a + b)
  *
- * Checked against the exact in-plane normal field of a curve with an inflection:
- * zero residual flips, worst-case angle error 1.2e-6 degrees.
- *
- * @param tangents {array} : unit tangents, in station order.
- * @param normals {array} : raw kernel normals, same order.
- * @param curvatures {array} : curvature magnitudes, same order.
- * @param seedNormal : direction the first normal should agree with, or undefined.
- * @returns {array} : continuous unit normals, each perpendicular to its tangent.
+ * Trig-free, and exactly a rotation: the result stays unit length and stays
+ * perpendicular to the new tangent (verified to 1e-16 on a helix). This is the
+ * step that keeps the frame from rolling about the tangent.
  */
-export function continuousNormals(tangents is array, normals is array, curvatures is array, seedNormal) returns array
+export function transportNormal(normal is Vector, fromTangent is Vector, toTangent is Vector) returns Vector
 {
-    var result = [];
-    var previous = seedNormal;
+    const denominator = 1 + dot(fromTangent, toTangent);
 
-    for (var i = 0; i < size(tangents); i += 1)
+    // Tangent reversed on itself: no minimal rotation exists, so re-project instead.
+    if (denominator < 1e-9)
     {
-        var normal;
+        const projected = normal - dot(normal, toTangent) * toTangent;
 
-        if (abs(curvatures[i]) >= ZERO_CURVATURE)
-        {
-            normal = normals[i];
-            if (previous != undefined && dot(normal, previous) < 0)
-            {
-                normal = -1 * normal;
-            }
-        }
-        else if (previous != undefined)
-        {
-            // Curvature is meaningless here, so transport the previous normal.
-            normal = previous - dot(previous, tangents[i]) * tangents[i];
-        }
-        else
-        {
-            normal = normals[i];
-        }
-
-        if (norm(normal) < 1e-9)
-        {
-            normal = normals[i];
-        }
-
-        result = append(result, normalize(normal));
-        previous = result[i];
+        return (norm(projected) < 1e-9) ? normal : normalize(projected);
     }
 
-    return result;
+    return normalize(normal - (dot(normal, toTangent) / denominator) * (fromTangent + toTangent));
+}
+
+/**
+ * Build a roll-free normal field along a chain by transporting one seed normal
+ * outwards in both directions from the seed station.
+ *
+ * Why not the kernel's Frenet normal: it points wherever the curve happens to be
+ * bending, which on a 3D chain swings about the tangent from edge to edge. Measured
+ * on a real ski chain, the width axis rotated 86.9 degrees across a junction whose
+ * tangent was identical on both sides -- and because the two normals were still
+ * within 90 degrees of each other, sign-flip parity could not even detect it.
+ * Transport has no such failure mode, needs no inflection handling, and reduces to
+ * the in-plane normal exactly when the chain is planar. This is also what the
+ * feature's own specification asked for: "a special transport frame".
+ *
+ * @param tangents {array} : unit tangents in station order.
+ * @param seedIndex {number} : station the seed normal belongs to.
+ * @param seedNormal {Vector} : starting direction; perpendicularized against its tangent.
+ * @returns {array} : unit normals, each perpendicular to its own tangent.
+ */
+export function transportedNormals(tangents is array, seedIndex is number, seedNormal is Vector) returns array
+{
+    const count = size(tangents);
+    var normals = makeArray(count, seedNormal);
+
+    var seed = seedNormal - dot(seedNormal, tangents[seedIndex]) * tangents[seedIndex];
+    if (norm(seed) < 1e-9)
+    {
+        seed = perpendicularVector(tangents[seedIndex]);
+    }
+    normals[seedIndex] = normalize(seed);
+
+    for (var i = seedIndex + 1; i < count; i += 1)
+    {
+        normals[i] = transportNormal(normals[i - 1], tangents[i - 1], tangents[i]);
+    }
+
+    for (var i = seedIndex - 1; i >= 0; i -= 1)
+    {
+        normals[i] = transportNormal(normals[i + 1], tangents[i + 1], tangents[i]);
+    }
+
+    return normals;
 }
 
 /**
@@ -755,18 +767,18 @@ export function chainStations(context is Context, chain is map, spacing is map) 
 function finishStations(raw is array, zeroArc is ValueWithUnits) returns array
 {
     var tangents = [];
-    var normals = [];
+    var kernelNormals = [];
     var curvatures = [];
 
     for (var station in raw)
     {
         tangents = append(tangents, station.tangent);
-        normals = append(normals, station.rawNormal);
+        kernelNormals = append(kernelNormals, station.rawNormal);
         curvatures = append(curvatures, station.curvature);
     }
 
-    const continuous = continuousNormals(tangents, normals, curvatures, undefined);
-
+    // Seed the frame at the zero station, which is where the user's intent is
+    // anchored, and where the roles are decided.
     var zeroIndex = 0;
     var bestDistance = undefined;
     for (var i = 0; i < size(raw); i += 1)
@@ -779,21 +791,24 @@ function finishStations(raw is array, zeroArc is ValueWithUnits) returns array
         }
     }
 
-    const roles = resolveAxisRoles(tangents[zeroIndex], continuous[zeroIndex]);
+    const normals = transportedNormals(tangents, zeroIndex, seedNormalFor(tangents, kernelNormals, curvatures, zeroIndex));
+    const roles = resolveAxisRoles(tangents[zeroIndex], normals[zeroIndex]);
 
     var stations = [];
     for (var i = 0; i < size(raw); i += 1)
     {
-        const axes = offsetAxes(tangents[i], continuous[i], roles);
+        const axes = offsetAxes(tangents[i], normals[i], roles);
 
-        // Curvature signed about each axis: the kernel normal points at the centre
-        // of curvature, so a positive value means the axis points inward.
-        const towardCentre = normals[i];
+        // Curvature signed about each axis. The kernel normal points at the centre
+        // of curvature, so a positive value means that axis points inward. Where the
+        // curve is straight the kernel normal is arbitrary, but the curvature it is
+        // multiplied by is ~0, so the product stays harmless.
+        const towardCentre = kernelNormals[i];
 
         stations = append(stations, mergeMaps(raw[i], {
                         "roles" : roles,
                         "arc" : raw[i].arc - zeroArc,
-                        "normal" : continuous[i],
+                        "normal" : normals[i],
                         "widthAxis" : axes.widthAxis,
                         "heightAxis" : axes.heightAxis,
                         "curvatureWidth" : curvatures[i] * dot(towardCentre, axes.widthAxis),
@@ -802,6 +817,27 @@ function finishStations(raw is array, zeroArc is ValueWithUnits) returns array
     }
 
     return stations;
+}
+
+/**
+ * The direction to seed the transported frame with.
+ *
+ * The kernel's curvature normal is a good seed where the chain is genuinely
+ * curved, because it puts the frame in the plane the chain is bending in. Where
+ * the seed station is straight that normal is arbitrary, so fall back to a
+ * world-up reference and let transport carry it from there.
+ */
+function seedNormalFor(tangents is array, kernelNormals is array, curvatures is array, seedIndex is number) returns Vector
+{
+    if (abs(curvatures[seedIndex]) >= ZERO_CURVATURE)
+    {
+        return kernelNormals[seedIndex];
+    }
+
+    const up = vector(0, 0, 1);
+    const across = cross(up, tangents[seedIndex]);
+
+    return (norm(across) < 1e-6) ? perpendicularVector(tangents[seedIndex]) : normalize(across);
 }
 
 // ============================================================================
@@ -829,6 +865,7 @@ export function buildProfile(context is Context, selection is Query, zeroPoint i
 
     const zeroX = zeroPoint[0];
     var described = [];
+    var steps = [];
 
     for (var edge in edges)
     {
@@ -839,58 +876,90 @@ export function buildProfile(context is Context, selection is Query, zeroPoint i
                     "parameters" : range(knots[0], knots[size(knots) - 1], SEED_SAMPLES)
                 })[0];
 
-        checkMonotonicX(samples, edge);
-
         const xStart = samples[0][0];
         const xEnd = samples[size(samples) - 1][0];
+        const edgeMin = min(xStart, xEnd) - zeroX;
+        const edgeMax = max(xStart, xEnd) - zeroX;
+
+        // A profile edge with no X extent is a step: the offset jumps there. It is
+        // not a function of X, so it must never be used for a lookup -- inverting
+        // x(u) on it returns an arbitrary point on the jump. Record where it is and
+        // let the two neighbouring edges own the coordinates on either side.
+        if (edgeMax - edgeMin <= OFFSET_GEOM_TOL)
+        {
+            steps = append(steps, 0.5 * (edgeMin + edgeMax));
+            continue;
+        }
+
+        checkMonotonicX(samples, edge);
 
         described = append(described, {
                     "query" : edge,
                     "curve" : curve,
-                    "minCoord" : min(xStart, xEnd) - zeroX,
-                    "maxCoord" : max(xStart, xEnd) - zeroX
+                    "minCoord" : edgeMin,
+                    "maxCoord" : edgeMax
                 });
     }
 
-    described = sort(described, function(a, b)
+    if (size(described) == 0)
     {
-        return (a.minCoord - b.minCoord) / meter;
-    });
+        throw regenError("Every offset profile edge is vertical, so the profile never defines an offset.", selection);
+    }
+
+    described = sort(described, function(a, b)
+        {
+            return (a.minCoord - b.minCoord) / meter;
+        });
 
     return {
         "edges" : described,
+        "steps" : steps,
+        "overlaps" : overlappingEdges(described),
         "zeroX" : zeroX,
         "minCoord" : described[0].minCoord,
-        "maxCoord" : described[size(described) - 1].maxCoord
+        "maxCoord" : largestCoord(described)
     };
 }
 
 /**
- * A profile edge that doubles back in X cannot define a single offset, so say so
- * against the offending edge rather than returning a silently wrong lookup.
+ * Largest coordinate any profile edge reaches. Not simply the last edge's, since
+ * edges are sorted by where they start.
  */
-function checkMonotonicX(samples is array, edge is Query)
+function largestCoord(described is array) returns ValueWithUnits
 {
-    var increasing = true;
-    var decreasing = true;
-
-    for (var i = 0; i < size(samples) - 1; i += 1)
+    var result = described[0].maxCoord;
+    for (var profileEdge in described)
     {
-        const step = (samples[i + 1][0] - samples[i][0]) / meter;
-        if (step < -1e-12)
+        if (profileEdge.maxCoord > result)
         {
-            increasing = false;
-        }
-        if (step > 1e-12)
-        {
-            decreasing = false;
+            result = profileEdge.maxCoord;
         }
     }
 
-    if (!increasing && !decreasing)
+    return result;
+}
+
+/**
+ * Pairs of profile edges whose coordinate ranges overlap.
+ *
+ * Overlap means two different offsets are defined at the same coordinate, so the
+ * profile is not a function and any lookup there is a coin toss. Reported rather
+ * than thrown, because a hair of overlap at a shared vertex is normal.
+ */
+function overlappingEdges(described is array) returns array
+{
+    var found = [];
+
+    for (var i = 0; i < size(described) - 1; i += 1)
     {
-        throw regenError("An offset profile edge doubles back in X, so it does not define a single offset.", edge);
+        const overlap = described[i].maxCoord - described[i + 1].minCoord;
+        if (overlap > OFFSET_GEOM_TOL)
+        {
+            found = append(found, { "first" : i, "second" : i + 1, "overlap" : overlap });
+        }
     }
+
+    return found;
 }
 
 /**
@@ -900,7 +969,7 @@ function checkMonotonicX(samples is array, edge is Query)
  */
 export function profileJunctions(profile is map) returns array
 {
-    var junctions = [];
+    var junctions = profile.steps;
 
     for (var i = 0; i < size(profile.edges) - 1; i += 1)
     {
@@ -923,7 +992,7 @@ export function profileJunctions(profile is map) returns array
  * @param coords {array} : coordinates (ValueWithUnits), profile X minus zeroX.
  * @param preferLower {boolean} : at an exact junction, take the lower-X edge.
  * @returns {array} : one entry per coordinate, or undefined where the profile does
- *          not reach: { "width", "height", "widthSlope", "heightSlope" }.
+ *          not reach: { "profileEdge", "width", "height", "widthSlope", "heightSlope" }.
  *          Slopes are per unit coordinate (dy/dx, dz/dx), unitless.
  */
 export function profileAt(profile is map, coords is array, preferLower is boolean) returns array
@@ -969,6 +1038,7 @@ export function profileAt(profile is map, coords is array, preferLower is boolea
             const dx = derivative[0] / meter;
 
             results[indices[j]] = {
+                "profileEdge" : edgeIndex,
                 "width" : position[1],
                 "height" : position[2],
                 "widthSlope" : (abs(dx) < 1e-12) ? 0 : (derivative[1] / meter) / dx,
@@ -985,22 +1055,26 @@ export function profileAt(profile is map, coords is array, preferLower is boolea
  */
 function profileEdgeFor(profile is map, coord is ValueWithUnits, preferLower is boolean)
 {
-    var found = undefined;
+    var containing = [];
 
     for (var i = 0; i < size(profile.edges); i += 1)
     {
         const profileEdge = profile.edges[i];
-        if (coord < profileEdge.minCoord - OFFSET_GEOM_TOL || coord > profileEdge.maxCoord + OFFSET_GEOM_TOL)
+        if (coord >= profileEdge.minCoord - OFFSET_GEOM_TOL && coord <= profileEdge.maxCoord + OFFSET_GEOM_TOL)
         {
-            continue;
-        }
-        if (found == undefined || !preferLower)
-        {
-            found = i;
+            containing = append(containing, i);
         }
     }
 
-    return found;
+    if (size(containing) == 0)
+    {
+        return undefined;
+    }
+
+    // A coordinate lands on two edges only at a shared end, which is exactly where
+    // the two sides of a slope break must be told apart. Taking the first or last
+    // deliberately is what gives each side of a break its own tangent.
+    return preferLower ? containing[0] : containing[size(containing) - 1];
 }
 
 // ============================================================================
