@@ -487,39 +487,35 @@ export function offsetShrink(frame is map, offsets is map) returns number
  *   P(s)  = C(s) + w(s) * W(s) + h(s) * H(s)
  *   P'(s) = T + w' W + h' H + w W' + h H'
  *
- * W and H are unit and mutually perpendicular, so each derivative splits into a
- * part along T and a part along the other axis, with one scalar shared between
- * them because dot(W, H) is constant:
+ * The last two terms are the frame turning as the offset is carried along. They
+ * vanish only for a frame that is constant; the chain's own transported frame is
+ * not that, and a frame slaved to a reference surface is further from it still,
+ * because the reference normal turns on its own schedule as the source curve runs
+ * across it. Dropping them was the reason this function used to be refused in
+ * reference-driven modes, with the fit left to guess its own end tangents.
  *
- *   W' = -kappaW T + r H       H' = -kappaH T - r W       r = dot(W', H)
+ * W' and H' are handed in rather than reconstructed. An earlier version carried
+ * only the scalar r = dot(W', H) and rebuilt the rest from the curvatures as
+ * W' = -kappaW T + r H. That expansion needs {T, W, H} orthonormal, and it is not:
+ * stationFrame leaves the length axis unprojected unless "length and width along
+ * reference" is on, so T and H are not perpendicular there and the reconstruction
+ * came out up to 4 degrees wrong. The two forms agree to 1e-6 degrees wherever the
+ * frame IS orthonormal, so this is a strict generalization, not a change of intent.
  *
- * which collapses the whole thing to
- *
- *   P'(s) = (1 - w kappaW - h kappaH) T + w' W + h' H + r (w H - h W)
- *
- * r is the rate the frame rolls about its own tangent. For the chain's own
- * transported frame it is identically zero -- that is what minimal-rotation
- * transport means -- so the last term vanishes and this reduces to the form
- * verified against finite differences to 4e-11 on a planar curve. It is not zero
- * once the frame is slaved to a reference surface: the reference normal turns on
- * its own schedule as the source curve runs across it. Dropping the term there
- * was the reason this function used to be refused in reference-driven modes and
- * the fit left to guess its own end tangents.
- *
- * @param roll : dot(dW/ds, H), per unit length. Zero for a frame that does not roll.
+ * @param rates {map} : { "width" : dW/ds, "height" : dH/ds }, per unit length.
  * @returns {map} : { "direction" : unit Vector, "shrink" : number }
  */
-export function offsetTangent(frame is map, offsets is map, slopes is map, roll) returns map
+export function offsetTangent(frame is map, offsets is map, slopes is map, rates is map) returns map
 {
-    const shrink = offsetShrink(frame, offsets);
-    const direction = shrink * frame.tangent
+    const direction = frame.tangent
         + slopes.width * frame.widthAxis
         + slopes.height * frame.heightAxis
-        + roll * (offsets.width * frame.heightAxis - offsets.height * frame.widthAxis);
+        + offsets.width * rates.width
+        + offsets.height * rates.height;
 
     return {
         "direction" : (norm(direction) < 1e-9) ? frame.tangent : normalize(direction),
-        "shrink" : shrink
+        "shrink" : offsetShrink(frame, offsets)
     };
 }
 

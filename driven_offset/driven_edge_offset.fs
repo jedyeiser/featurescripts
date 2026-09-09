@@ -398,7 +398,7 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
         const frame = stationFrame(stations[i], definition, alongRef);
 
         // Only the fold-back test is wanted here. The direction is a run-end
-        // question, asked separately where the frame's roll rate is available.
+        // question, asked separately where the frame's turn rates are available.
         if (offsetShrink(frame, offsets[i]) <= 0)
         {
             throw regenError("The offset is larger than the radius of curvature at "
@@ -716,9 +716,9 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
  *
  * Everything needed is determined at a run end: the source curve has a tangent and
  * a curvature there, the profile has a value and a slope there, and the frame has a
- * rate of roll there. Only the roll used to be missing, so reference-driven frames
+ * rate of turn there. Only that turn used to be missing, so reference-driven frames
  * were handed back undefined rather than a tangent that quietly ignored it, and the
- * fit was left to guess from the point cloud. frameRoll supplies it, so every run
+ * fit was left to guess from the point cloud. frameRates supplies it, so every run
  * end gets its exact tangent -- which is what holds a junction G1, and what pins the
  * last curve of a chain onto the mirror plane at the tip.
  */
@@ -735,68 +735,74 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
     return offsetTangent(frame,
         { "width" : offsets[index].width, "height" : offsets[index].height },
         { "width" : offsets[index].widthSlope * coords.scales[index], "height" : offsets[index].heightSlope * coords.scales[index] },
-        frameRoll(stations, definition, alongRef, run, index)).direction;
+        frameRates(stations, definition, alongRef, run, index)).direction;
 }
 
 /**
- * Rate the offset frame rolls about its own tangent at one station, per unit length.
+ * How fast the offset frame's axes turn at one station, per unit length.
  *
  * Differenced from neighbouring stations rather than derived in closed form. The
  * frame is a composition of the source curve, a reference lookup and a projection;
  * differencing it is exact for whatever that composition turns out to be, costs no
- * kernel calls, and stays correct if any part of it changes later.
+ * kernel calls, assumes nothing about the axes being mutually perpendicular, and
+ * stays correct if any part of the composition changes later.
  *
  * Samples are taken inwards from the run end, so they never cross an edge junction
- * or a profile break into a frame that belongs to the other side. Second order where
+ * or a profile break into a frame belonging to the other side. Second order where
  * the run has three stations to work with, first order where it has only two.
+ *
+ * @returns {map} : { "width" : dW/ds, "height" : dH/ds }
  */
-function frameRoll(stations is array, definition is map, alongRef, run is map, index is number)
+function frameRates(stations is array, definition is map, alongRef, run is map, index is number) returns map
 {
+    const still = { "width" : vector(0, 0, 0) / meter, "height" : vector(0, 0, 0) / meter };
     const step = (index == run.end) ? -1 : 1;
     const one = index + step;
 
     if (one < run.start || one > run.end)
     {
-        return 0 / meter;
+        return still;
     }
 
     const here = stationFrame(stations[index], definition, alongRef);
-    const first = rollAgainst(here, stationFrame(stations[one], definition, alongRef));
+    const near = stationFrame(stations[one], definition, alongRef);
     const h1 = stations[one].arc - stations[index].arc;
 
     if (abs(h1) < TOLERANCE.zeroLength * meter)
     {
-        return 0 / meter;
+        return still;
     }
+
+    const secant = {
+            "width" : (near.widthAxis - here.widthAxis) / h1,
+            "height" : (near.heightAxis - here.heightAxis) / h1
+        };
 
     const two = index + 2 * step;
     if (two < run.start || two > run.end)
     {
-        return first / h1;
+        return secant;
     }
 
-    const second = rollAgainst(here, stationFrame(stations[two], definition, alongRef));
+    const far = stationFrame(stations[two], definition, alongRef);
     const h2 = stations[two].arc - stations[index].arc;
 
     if (abs(h2) < TOLERANCE.zeroLength * meter || abs(h2 - h1) < TOLERANCE.zeroLength * meter)
     {
-        return first / h1;
+        return secant;
     }
 
-    // Three-point one-sided derivative on uneven spacing. Stations inside one edge
-    // are evenly spaced in arc length, but an inserted crossing can break that.
-    // The value at the station itself is dot(W, H) of one frame with itself, which
-    // is zero, so that term drops out of the stencil.
-    return first * (h2 / (h1 * (h2 - h1))) - second * (h1 / (h2 * (h2 - h1)));
-}
+    // Three-point one-sided derivative on uneven spacing, applied to each axis.
+    // Stations inside one edge are evenly spaced in arc length, but an inserted
+    // crossing can break that. Written on differences from this station because the
+    // stencil's own coefficient for it is identically zero.
+    const c1 = h2 / (h1 * (h2 - h1));
+    const c2 = h1 / (h2 * (h2 - h1));
 
-/**
- * dot(W of a neighbouring frame, H of this one) -- the part of the neighbour's width
- * axis that has rotated into this station's height axis, which is what roll means.
- */
-function rollAgainst(here is map, other is map) returns number
-{
-    return dot(other.widthAxis, here.heightAxis);
+    return {
+        "width" : c1 * (near.widthAxis - here.widthAxis) - c2 * (far.widthAxis - here.widthAxis),
+        "height" : c1 * (near.heightAxis - here.heightAxis) - c2 * (far.heightAxis - here.heightAxis)
+    };
 }
 
 // ============================================================================
