@@ -55,6 +55,10 @@ export const CutterRadiusBounds = {(millimeter) : [5, 10, 20]} as LengthBoundSpe
 // is.  The cache itself is sampled per-edge from the sampling parameters -- see
 // buildEdgeMapCache.
 const TARGET_FRAME_COUNT = 20;
+// Hard cap on samples per edge.  A high-control-point intersection edge
+// (e.g. 139 CPs * multiplier 3 = 417) must not blow up the cache; no curve is
+// ever sampled with more than this many points.
+const MAX_SAMPLES_PER_EDGE = 50;
 // Debug arrow length for the drawn reference frames.
 const FRAME_ARROW_LEN = 10 * millimeter;
 // Minimum length treated as non-degenerate when normalizing sampled tangents.
@@ -258,28 +262,29 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         }
 
         // ====================================================================
-        // M3: per-region offset wires (design step 5) -- LOFTS DISABLED for now
+        // M3: per-region offset wires + loft (design step 5)
         // ====================================================================
         // Per region, build bottom / start / [step-in] / top wires by offsetting
         // the cached station points along each frame's HEIGHT (xAxis) and WIDTH
-        // (yAxis) axes.  Lofting is temporarily off so the wires can be inspected.
-        var regionBodies = [];
+        // (yAxis) axes, then loft them (consecutive pairs) into rout surfaces.
+        var regionSurfaces = [];
         for (var ri = 0; ri < size(regions); ri += 1)
         {
-            const wires = buildRegionWires(context, id, ri, regions[ri], definition);
-            for (var wb in wires)
+            const segs = buildRegionSurface(context, id, ri, regions[ri], definition);
+            for (var sb in segs)
             {
-                regionBodies = append(regionBodies, { "name" : regions[ri].name, "body" : wb });
+                regionSurfaces = append(regionSurfaces, { "name" : regions[ri].name, "body" : sb });
             }
         }
 
         if (definition.showRegions)
         {
-            colorRegionSurfaces(context, regionBodies);
+            colorRegionSurfaces(context, regionSurfaces);
         }
 
         // ---- M4+ (offset-face copy, knit, cleanup) to follow ----
-    });
+    },
+    { "approximate" : true, "keepStartDerivative" : true, "keepEndDerivative" : true });
 
 
 // ===========================================================================
@@ -398,7 +403,7 @@ function buildEdgeMapCache(context is Context, wireQuery is Query,
         {
             nPts = definition.pointsPerEdge;
         }
-        nPts = max([4, nPts]);
+        nPts = min([MAX_SAMPLES_PER_EDGE, max([4, nPts])]);
 
         var params = [];
         for (var k = 0; k < nPts; k += 1)
@@ -769,23 +774,37 @@ function offsetPoints(stations is array, height is ValueWithUnits, width is Valu
     return pts;
 }
 
-// Fits a smooth BSpline wire through the given ordered points via approximateSpline
-// (controlled control-point count -- an interpolating spline would chase sampling
-// noise).  maxControlPoints is floored at 4, approximateSpline's minimum.
-function makeWireFromPoints(context is Context, wId is Id, pts is array,
-        label is string, printDebug is boolean) returns Query
+// Fits a smooth BSpline wire through the given ordered points via approximateSpline.
+// Degree, tolerance and the control-point cap come from the UI (the standard
+// curveApproximationPredicate).  Only the endpoints and endpoint tangents are
+// forced -- the interior is approximated within tolerance -- so adjacent region
+// wires meet cleanly while the middle stays smooth.
+function makeWireFromPoints(context is Context, wId is Id, pts is array, maxCP is number,
+        definition is map, label is string) returns Query
 {
-    const deg   = min([3, size(pts) - 1]);
-    const maxCP = max([4, size(pts)]);
-    if (printDebug)
+    const deg = min([definition.approximationDegree, size(pts) - 1]);
+
+    var tgt = { "positions" : pts };
+    if (definition.keepStartDerivative)
     {
-        println("[SW Rout]   wire " ~ label ~ ": " ~ toString(size(pts)) ~ " input pts, degree " ~
-                toString(deg) ~ ", maxControlPoints " ~ toString(maxCP));
+        tgt.startDerivative = normalize(pts[1] - pts[0]);
     }
+    if (definition.keepEndDerivative)
+    {
+        tgt.endDerivative = normalize(pts[size(pts) - 1] - pts[size(pts) - 2]);
+    }
+
+    if (definition.printDebug)
+    {
+        println("[SW Rout]   wire " ~ label ~ ": " ~ toString(size(pts)) ~ " pts, degree " ~
+                toString(deg) ~ ", maxCP " ~ toString(maxCP) ~ ", tol " ~
+                toString(definition.approximationTolerance / millimeter) ~ "mm");
+    }
+
     const curve = approximateSpline(context, {
-            "targets"          : [approximationTarget({ "positions" : pts })],
+            "targets"          : [approximationTarget(tgt)],
             "degree"           : deg,
-            "tolerance"        : 1e-5 * meter,
+            "tolerance"        : definition.approximationTolerance,
             "isPeriodic"       : false,
             "maxControlPoints" : maxCP
     })[0];
@@ -793,20 +812,25 @@ function makeWireFromPoints(context is Context, wId is Id, pts is array,
     return qCreatedBy(wId, EntityType.EDGE);
 }
 
-// Builds one region's cross-section wires from the cached stations.
+// Builds one region's rout surface from bottom / start / [step-in] / top wires.
 // Wire heights/widths (per design step 5):
 //   bottom : height 0,            width 0
 //   start  : height swRoutBottom, width 0
 //   stepIn : height swRoutBottom, width swRoutStepIn   (SW Rout region only)
 //   top    : height swRoutHeight, width {stepIn} + (swRoutHeight - swRoutBottom)*tan(angle)
-// Returns the wire bodies (kept in context for inspection).  Lofting is disabled
-// for now -- to re-enable, fit each wire's edge (qCreatedBy(wId, EDGE)), loft
-// CONSECUTIVE PAIRS into ruled surface patches (a single multi-section loft
-// through the hard corner at start/step returns LOFT_INVALID), delete the scratch
-// wires, and return the surface segments instead.
-function buildRegionWires(context is Context, id is Id, ri is number,
+// The wires are lofted in CONSECUTIVE PAIRS (ruled patches) rather than one
+// multi-section loft: the profile has a hard corner at start/step, and a single
+// loft through it returns LOFT_INVALID.  Returns the segment surface bodies (M4
+// knits them).  Scratch wires are deleted after lofting.
+function buildRegionSurface(context is Context, id is Id, ri is number,
         rg is map, definition is map) returns array
 {
+    if (!definition.approximate)
+    {
+        throw regenError("SW Rout: enable 'Approximate' (Sampling and approximation group) so the " ~
+                "wire fit is driven by the UI tolerance / degree / control points.", ["approximate"]);
+    }
+
     const hStart = definition.swRoutBottom;
     const hTop   = definition.swRoutHeight;
     const stepIn = rg.hasStepIn ? definition.swRoutStepIn : 0 * millimeter;
@@ -822,18 +846,46 @@ function buildRegionWires(context is Context, id is Id, ri is number,
     }
     specs = append(specs, { "h" : hTop, "w" : wTop, "tag" : "top" });
 
+    // Cap the fitted control-point count.  With useExistingCPCount in CTRL mode
+    // the dense samples oversample the source by ctrlPointMultiplier, so dividing
+    // the region's point count by the multiplier recovers ~the source CP count --
+    // a smooth fit.  Otherwise allow up to the full sample count.
+    const nStations = size(rg.stations);
+    const cpCap = (definition.useExistingCPCount && definition.edgeSamplingDef == SamplingType.CTRL_POINTS)
+            ? max([4, round(nStations / definition.ctrlPointMultiplier)])
+            : max([4, nStations]);
+
+    var profiles   = [];
     var wireBodies = [];
     for (var si = 0; si < size(specs); si += 1)
     {
         const wId = id + ("swW" ~ suffix ~ "_" ~ toString(si));
-        makeWireFromPoints(context, wId, offsetPoints(rg.stations, specs[si].h, specs[si].w),
-                rg.name ~ " " ~ specs[si].tag, definition.printDebug);
-        const body = qCreatedBy(wId, EntityType.BODY);
-        setBodyName(context, body, "SW Rout wire [" ~ rg.name ~ "] " ~ specs[si].tag);
-        wireBodies = append(wireBodies, body);
+        profiles   = append(profiles, makeWireFromPoints(context, wId,
+                offsetPoints(rg.stations, specs[si].h, specs[si].w),
+                cpCap, definition, rg.name ~ " " ~ specs[si].tag));
+        wireBodies = append(wireBodies, qCreatedBy(wId, EntityType.BODY));
     }
 
-    return wireBodies;
+    var segs = [];
+    for (var pi = 0; pi < size(profiles) - 1; pi += 1)
+    {
+        const segId = id + ("swSeg" ~ suffix ~ "_" ~ toString(pi));
+        opLoft(context, segId, {
+                "profileSubqueries" : [profiles[pi], profiles[pi + 1]],
+                "bodyType"          : ToolBodyType.SURFACE
+        });
+        const segBody = qCreatedBy(segId, EntityType.BODY);
+        if (isQueryEmpty(context, segBody))
+        {
+            throw regenError("SW Rout: loft segment " ~ toString(pi) ~ " produced no surface " ~
+                    "for region '" ~ rg.name ~ "'.");
+        }
+        setBodyName(context, segBody, "SW Rout surface [" ~ rg.name ~ "] " ~ toString(pi));
+        segs = append(segs, segBody);
+    }
+
+    opDeleteBodies(context, id + ("swDelWires" ~ suffix), { "entities" : qUnion(wireBodies) });
+    return segs;
 }
 
 // Sets a body's display name.
