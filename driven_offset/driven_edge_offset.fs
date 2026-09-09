@@ -50,7 +50,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         {
             annotation { "Group Name" : "Offset spacing definition", "Collapsed By Default" : false }
             {
-                annotation { "Name" : "Reference wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1, "Description" : "The wire that profile X is measured along" }
+                annotation { "Name" : "Reference wire", "Filter" : EntityType.BODY && BodyType.WIRE && ConstructionObject.NO, "MaxNumberOfPicks" : 1, "Description" : "The wire that profile X is measured along" }
                 definition.referenceWire is Query;
 
                 annotation { "Name" : "Offset delta", "Description" : "Measure along a curve this far from the selected wire, so an offset stated along the core bottom stays stated along the core bottom" }
@@ -59,15 +59,15 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
                 annotation { "Name" : "Flip offset delta", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
                 definition.flipAlongOffsetDir is boolean;
 
-                annotation { "Name" : "Hold height above reference", "Default" : false, "Description" : "Take the offset frame from the reference wire, so length and width offsets do not change a point's height above it" }
+                annotation { "Name" : "Length and width along reference", "Default" : false, "Description" : "Also take length and width from the reference wire, so those offsets slide along it. Height is always measured normal to the reference." }
                 definition.constrainProfile is boolean;
             }
         }
 
-        annotation { "Name" : "Offset edges", "Filter" : EntityType.EDGE || BodyType.WIRE }
+        annotation { "Name" : "Offset edges", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO }
         definition.offsetEdges is Query;
 
-        annotation { "Name" : "Offset profile", "Filter" : EntityType.EDGE || BodyType.WIRE, "Description" : "The edges defining the offset. X maps to position along the offset edges, Y to width offset, Z to height offset" }
+        annotation { "Name" : "Offset profile", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO, "Description" : "The edges defining the offset. X maps to position along the offset edges, Y to width offset, Z to height offset" }
         definition.offsetProfile is Query;
 
         annotation { "Name" : "Offset alignment", "Default" : OffsetFrameAlignment.ALONG, "Description" : "How the offset frame is oriented at each point along the offset edges" }
@@ -274,23 +274,54 @@ function arcSlopeAt(alongRef is map, x is ValueWithUnits) returns number
  */
 function stationFrame(station is map, definition is map, alongRef) returns map
 {
-    if (isConstrained(definition, alongRef))
+    if (definition.frameAlignment == OffsetFrameAlignment.WORLD)
     {
-        // Offsets are taken in the reference surface's frame, so moving in length or
-        // width slides along the surface and only a height offset leaves it.
-        const referenceFrame = referenceFrameAt(alongRef, station.origin[0]);
-
-        return mergeMaps(station, mergeMaps(referenceFrame, {
-                        "curvatureWidth" : station.curvature * dot(station.rawNormal, referenceFrame.widthAxis),
-                        "curvatureHeight" : station.curvature * dot(station.rawNormal, referenceFrame.heightAxis)
-                    }));
+        return worldFrame(station);
     }
 
-    if (definition.frameAlignment == OffsetFrameAlignment.ALONG)
+    if (alongRef == undefined)
     {
+        // Nothing to be normal to: the chain's own transported frame stands.
         return station;
     }
 
+    const referenceFrame = referenceFrameAt(alongRef, station.origin[0]);
+
+    // Height is normal to the reference whenever a reference exists. An offset
+    // stated as a height above the core bottom has to be measured from the core
+    // bottom, not from whichever way the edge being offset happens to lean.
+    const heightAxis = referenceFrame.heightAxis;
+    var tangent = referenceFrame.tangent;
+    var widthAxis = referenceFrame.widthAxis;
+
+    if (!isConstrained(definition, alongRef))
+    {
+        // Only the height is borrowed. Length still runs along the edge being
+        // offset, and width completes the frame: perpendicular to both, so a width
+        // offset changes no height and a height offset changes no width.
+        tangent = station.tangent;
+        const across = cross(heightAxis, tangent);
+
+        if (norm(across) > 1e-9)
+        {
+            widthAxis = (across[1] < 0) ? -1 * normalize(across) : normalize(across);
+        }
+    }
+
+    return mergeMaps(station, {
+                "tangent" : tangent,
+                "widthAxis" : widthAxis,
+                "heightAxis" : heightAxis,
+                "curvatureWidth" : station.curvature * dot(station.rawNormal, widthAxis),
+                "curvatureHeight" : station.curvature * dot(station.rawNormal, heightAxis)
+            });
+}
+
+/**
+ * World axes, for the WORLD alignment.
+ */
+function worldFrame(station is map) returns map
+{
     const widthAxis = vector(0, 1, 0);
     const heightAxis = vector(0, 0, 1);
 
@@ -304,12 +335,21 @@ function stationFrame(station is map, definition is map, alongRef) returns map
 }
 
 /**
- * Whether offsets are taken in the reference surface's frame rather than the
- * source chain's own.
+ * Whether length and width are also taken from the reference, rather than only
+ * height. The height axis follows the reference either way.
  */
 function isConstrained(definition is map, alongRef) returns boolean
 {
     return alongRef != undefined && definition.constrainProfile == true;
+}
+
+/**
+ * Whether the frame borrows anything from the reference. The reference axes rotate
+ * along the path, so the closed-form offset tangent does not apply when they do.
+ */
+function usesReferenceFrame(definition is map, alongRef) returns boolean
+{
+    return alongRef != undefined && definition.frameAlignment == OffsetFrameAlignment.ALONG;
 }
 
 /**
@@ -652,7 +692,7 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
     // In the constrained frame the axes rotate along the path, so the closed-form
     // offset tangent no longer applies. Rather than hand the fit a derivative that
     // is subtly wrong, let it choose its own from the points.
-    if (offsets[index] == undefined || isConstrained(definition, alongRef))
+    if (offsets[index] == undefined || usesReferenceFrame(definition, alongRef))
     {
         return undefined;
     }
@@ -849,8 +889,17 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
 function printFrameTable(definition is map, sourceChain is map, stations is array, alongRef)
 {
     println("");
-    println("=== frames: alignment " ~ toString(definition.frameAlignment)
-        ~ (isConstrained(definition, alongRef) ? ", held to the reference surface" : "") ~ " ===");
+    println("=== frames: alignment " ~ toString(definition.frameAlignment) ~ " ===");
+    if (usesReferenceFrame(definition, alongRef))
+    {
+        println("height axis: normal to the reference wire"
+            ~ (isConstrained(definition, alongRef) ? "; length and width also from the reference"
+                                                   : "; length from the offset edges, width perpendicular to both"));
+    }
+    else if (definition.frameAlignment == OffsetFrameAlignment.ALONG)
+    {
+        println("height axis: from the transported frame (no reference wire supplied)");
+    }
 
     if (size(stations) > 0 && stations[0].roles != undefined)
     {

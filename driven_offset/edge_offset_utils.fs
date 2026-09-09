@@ -100,6 +100,11 @@ export const PointSpacingBounds = { (millimeter) : [0.1, 10, 50] } as LengthBoun
 
 /**
  * Expand a mixed edge / wire-body / composite-part selection into a flat edge query.
+ *
+ * Construction geometry is dropped. Selecting a whole sketch otherwise drags in its
+ * centrelines, and a construction line spanning the sketch looks exactly like a
+ * profile edge that covers every coordinate -- it silently competes for the offset
+ * at every X.
  */
 export function expandEdgeQuery(selection is Query) returns Query
 {
@@ -107,8 +112,9 @@ export function expandEdgeQuery(selection is Query) returns Query
     const bodies = qEntityFilter(selection, EntityType.BODY);
     const wireEdges = qOwnedByBody(qBodyType(bodies, BodyType.WIRE), EntityType.EDGE);
     const compositeWires = qBodyType(qContainedInCompositeParts(qBodyType(bodies, BodyType.COMPOSITE)), BodyType.WIRE);
+    const allEdges = qUnion([directEdges, wireEdges, qOwnedByBody(compositeWires, EntityType.EDGE)]);
 
-    return qUnion([directEdges, wireEdges, qOwnedByBody(compositeWires, EntityType.EDGE)]);
+    return qConstructionFilter(allEdges, ConstructionObject.NO);
 }
 
 /**
