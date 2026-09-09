@@ -225,6 +225,17 @@
       "last_push": "2026-07-07T15:50:59.535745+00:00",
       "document_id": "14cdaad24a8beab67af40fe4",
       "workspace_id": "9bfd33d53af778cf02e60d9f"
+    },
+    {
+      "name": "driven_offset",
+      "description": "additional edge offseting tools",
+      "working_directory": "./driven_offset",
+      "onshape_url": "https://k2-sports.onshape.com/documents/f61d2c000ab2d1240776342e/w/5b11f323ab31b04cba8b36ef/e/786f62f4d67ed8d9c7d56d16",
+      "references": [],
+      "last_pull": "2026-09-09T06:12:38.728714+00:00",
+      "last_push": null,
+      "document_id": "f61d2c000ab2d1240776342e",
+      "workspace_id": "5b11f323ab31b04cba8b36ef"
     }
   ],
   "sync_metadata": {}
