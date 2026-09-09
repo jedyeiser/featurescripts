@@ -206,10 +206,14 @@ function approximationSettings(definition is map) returns map
         };
     }
 
+    // Bounded deliberately. approximateSpline raises its control-point count until
+    // tolerance is met, so an unreachable tolerance on a long run would grind all the
+    // way to MAX_CONTROL_POINTS (100). 15 matches the standard library's own UI
+    // default; a user who needs more can turn Approximate on and raise it.
     return {
         "approximationDegree" : 3,
         "approximationTolerance" : 1e-5 * meter,
-        "approximationMaxCPs" : MAX_CONTROL_POINTS
+        "approximationMaxCPs" : 15
     };
 }
 
@@ -291,20 +295,38 @@ function stationFrame(station is map, definition is map, alongRef) returns map
     // stated as a height above the core bottom has to be measured from the core
     // bottom, not from whichever way the edge being offset happens to lean.
     const heightAxis = referenceFrame.heightAxis;
-    var tangent = referenceFrame.tangent;
-    var widthAxis = referenceFrame.widthAxis;
 
-    if (!isConstrained(definition, alongRef))
+    // Length always follows the edge being offset, never the reference's own
+    // direction. Where the source runs across the reference -- a tip curling round
+    // while the reference runs fore-aft -- borrowing the reference's tangent leaves
+    // length and width pointing at unrelated things.
+    var tangent = station.tangent;
+
+    if (isConstrained(definition, alongRef))
     {
-        // Only the height is borrowed. Length still runs along the edge being
-        // offset, and width completes the frame: perpendicular to both, so a width
-        // offset changes no height and a height offset changes no width.
-        tangent = station.tangent;
-        const across = cross(heightAxis, tangent);
-
-        if (norm(across) > 1e-9)
+        // Constrained: hold the length direction in the surface, so a length offset
+        // cannot change a point's height above the reference either.
+        const inSurface = tangent - dot(tangent, heightAxis) * heightAxis;
+        if (norm(inSurface) > 1e-9)
         {
-            widthAxis = (across[1] < 0) ? -1 * normalize(across) : normalize(across);
+            tangent = normalize(inSurface);
+        }
+    }
+
+    // Width completes the frame: perpendicular to both, so it always lies in the
+    // reference surface. Its sign follows the chain's own width axis rather than a
+    // world-Y test, which is unstable wherever width runs nearly fore-aft.
+    var widthAxis = cross(heightAxis, tangent);
+    if (norm(widthAxis) < 1e-9)
+    {
+        widthAxis = station.widthAxis;
+    }
+    else
+    {
+        widthAxis = normalize(widthAxis);
+        if (dot(widthAxis, station.widthAxis) < 0)
+        {
+            widthAxis = -1 * widthAxis;
         }
     }
 
@@ -579,13 +601,19 @@ function crossingStation(context is Context, chain is map, stations is array, in
     const normal = transportNormal(previous.normal, previous.tangent, tangent);
     const axes = offsetAxes(tangent, normal, previous.roles);
 
+    // The curvature magnitude is inherited from the neighbouring station, but it has
+    // to be re-resolved against THIS station's axes. Leaving the neighbour's values
+    // would feed the fold-back guard and the shrink factor a curvature measured
+    // about axes that no longer exist -- and crossings are always run endpoints.
     return mergeMaps(previous, {
                 "arc" : arc,
                 "origin" : tangentLine.origin,
                 "tangent" : tangent,
                 "normal" : normal,
                 "widthAxis" : axes.widthAxis,
-                "heightAxis" : axes.heightAxis
+                "heightAxis" : axes.heightAxis,
+                "curvatureWidth" : previous.curvature * dot(previous.rawNormal, axes.widthAxis),
+                "curvatureHeight" : previous.curvature * dot(previous.rawNormal, axes.heightAxis)
             });
 }
 
@@ -748,12 +776,17 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
             ~ " rad, plane normal " ~ toString(alongRef.planeNormal));
     }
 
+    // Every addDebugLine is a full sketch plus a constraint solve of its own
+    // (std/debug.fs:405-417), so drawing one per station at 379 stations costs
+    // hundreds of sketch solves. Draw a representative subset instead.
+    const stride = debugStride(size(stations));
+
     if (definition.debugShowOffsetFrames)
     {
         const scale = 5 * millimeter;
-        for (var station in stations)
+        for (var i = 0; i < size(stations); i += stride)
         {
-            const frame = stationFrame(station, definition, alongRef);
+            const frame = stationFrame(stations[i], definition, alongRef);
             addDebugLine(context, frame.origin, frame.origin + scale * frame.widthAxis, DebugColor.GREEN);
             addDebugLine(context, frame.origin, frame.origin + scale * frame.heightAxis, DebugColor.BLUE);
         }
@@ -761,7 +794,7 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
 
     if (definition.debugShowOffsets)
     {
-        for (var i = 0; i < size(stations); i += 1)
+        for (var i = 0; i < size(stations); i += stride)
         {
             if (points[i] != undefined)
             {
@@ -788,6 +821,14 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
             addDebugPoint(context, points[run.end], DebugColor.YELLOW);
         }
     }
+}
+
+/**
+ * Draw at most DEBUG_MAX_MARKERS frames, however many stations there are.
+ */
+function debugStride(count is number) returns number
+{
+    return max(1, ceil(count / DEBUG_MAX_MARKERS));
 }
 
 /**
@@ -892,9 +933,9 @@ function printFrameTable(definition is map, sourceChain is map, stations is arra
     println("=== frames: alignment " ~ toString(definition.frameAlignment) ~ " ===");
     if (usesReferenceFrame(definition, alongRef))
     {
-        println("height axis: normal to the reference wire"
-            ~ (isConstrained(definition, alongRef) ? "; length and width also from the reference"
-                                                   : "; length from the offset edges, width perpendicular to both"));
+        println("height axis: normal to the reference wire; length along the offset edges"
+            ~ (isConstrained(definition, alongRef) ? ", projected into the reference surface" : "")
+            ~ "; width perpendicular to both");
     }
     else if (definition.frameAlignment == OffsetFrameAlignment.ALONG)
     {
