@@ -206,14 +206,14 @@ function approximationSettings(definition is map) returns map
         };
     }
 
-    // Bounded deliberately. approximateSpline raises its control-point count until
-    // tolerance is met, so an unreachable tolerance on a long run would grind all the
-    // way to MAX_CONTROL_POINTS (100). 15 matches the standard library's own UI
-    // default; a user who needs more can turn Approximate on and raise it.
+    // "Approximate" defaults to OFF, so this is the normal path, not a corner case.
+    // The cap stays at MAX_CONTROL_POINTS: these are freeform offset curves and
+    // starving the fit of control points loses shape. approximateSpline stops as
+    // soon as tolerance is met, so the cap only binds on a run that cannot reach it.
     return {
         "approximationDegree" : 3,
         "approximationTolerance" : 1e-5 * meter,
-        "approximationMaxCPs" : 15
+        "approximationMaxCPs" : MAX_CONTROL_POINTS
     };
 }
 
