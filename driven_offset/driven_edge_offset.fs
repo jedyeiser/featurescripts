@@ -147,20 +147,27 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         // Two lookups: identical positions, but each side of a profile slope break
         // needs its own slope. Positions are taken from the upper-side pass.
-        const upper = profileAt(profile, coords.values, false);
-        const lower = profileAt(profile, coords.values, true);
+        // Put an exact station on each offset discontinuity before anything is
+        // evaluated, so the break lands on the profile's own boundary rather than
+        // on whichever sample happened to fall nearest it.
+        const split = insertCrossings(context, sourceChain, stations, coords, profile);
+        const allStations = split.stations;
+        const allCoords = split.coords;
 
-        const points = offsetPoints(stations, coords, upper, definition, alongRef);
-        const runs = buildRuns(stations, upper, profileJunctions(profile), coords.values);
+        const upper = profileAt(profile, allCoords.values, false);
+        const lower = profileAt(profile, allCoords.values, true);
+
+        const points = offsetPoints(allStations, allCoords, upper, lower, definition, alongRef);
+        const runs = buildRuns(allStations, upper);
 
         if (size(runs) == 0)
         {
             throw regenError("The offset profile does not reach any of the offset edges.", definition.offsetProfile);
         }
 
-        const emitted = emitRuns(context, id, definition, stations, coords, points, upper, lower, runs, alongRef);
+        const emitted = emitRuns(context, id, definition, allStations, allCoords, points, upper, lower, runs, alongRef);
 
-        debugOutput(context, definition, sourceChain, profile, alongRef, stations, coords, upper, points, emitted);
+        debugOutput(context, definition, sourceChain, profile, alongRef, allStations, allCoords, upper, points, emitted);
     });
 
 // ============================================================================
@@ -311,12 +318,15 @@ function isConstrained(definition is map, alongRef) returns boolean
  * The (1 - w * kappa) factor is checked here: at or below zero the offset has passed
  * the centre of curvature, and the result would fold back through itself.
  */
-function offsetPoints(stations is array, coords is map, offsets is array, definition is map, alongRef) returns array
+function offsetPoints(stations is array, coords is map, upper is array, lower is array, definition is map, alongRef) returns array
 {
     var points = [];
 
     for (var i = 0; i < size(stations); i += 1)
     {
+        // The left half of a crossing belongs to the profile edge below it.
+        const offsets = (stations[i].crossing == "left") ? lower : upper;
+
         if (offsets[i] == undefined)
         {
             points = append(points, undefined);
@@ -348,23 +358,22 @@ function offsetPoints(stations is array, coords is map, offsets is array, defini
 /**
  * Group stations into runs, each of which becomes one output curve.
  *
- * A run breaks at a source edge boundary (so G0 input stays G0), where the profile
- * stops providing data, and at a profile slope break. A slope break is shared: the
- * station belongs to the run on each side, so the two curves meet at a point but
- * arrive with different tangents.
+ * A run breaks at a source edge boundary, so G0 input stays G0; where the profile
+ * stops providing data; and at an offset discontinuity, which arrives as a pair of
+ * stations sharing one coordinate. The pair's left half ends a run and its right
+ * half starts the next, so a step in the offset produces a step in the output and
+ * a kink produces a kink -- rather than one curve smoothed through the break.
  *
  * @returns {array} : each { "start", "end", "linkIndex" }, inclusive indices.
  */
-function buildRuns(stations is array, offsets is array, junctions is array, coords is array) returns array
+function buildRuns(stations is array, offsets is array) returns array
 {
     var runs = [];
     var start = undefined;
 
     for (var i = 0; i < size(stations); i += 1)
     {
-        const usable = (offsets[i] != undefined);
-
-        if (!usable)
+        if (offsets[i] == undefined)
         {
             runs = closeRun(runs, stations, start, i - 1);
             start = undefined;
@@ -380,16 +389,9 @@ function buildRuns(stations is array, offsets is array, junctions is array, coor
         const newEdge = (stations[i].linkIndex != stations[start].linkIndex
                 || stations[i].edgeIndex != stations[start].edgeIndex);
 
-        if (newEdge)
+        if (newEdge || stations[i].crossing == "right")
         {
             runs = closeRun(runs, stations, start, i - 1);
-            start = i;
-            continue;
-        }
-
-        if (isJunction(coords[i], junctions) && i > start)
-        {
-            runs = closeRun(runs, stations, start, i);
             start = i;
         }
     }
@@ -410,20 +412,168 @@ function closeRun(runs is array, stations is array, start, end is number) return
     return append(runs, { "start" : start, "end" : end, "linkIndex" : stations[start].linkIndex });
 }
 
+// ============================================================================
+// Offset discontinuities
+// ============================================================================
+
 /**
- * Whether a coordinate sits on a profile slope break.
+ * Insert a pair of stations at every coordinate where the offset actually breaks.
+ *
+ * Crossing into a new profile edge is not by itself a discontinuity -- profile
+ * edges usually join smoothly, and splitting at every one of them would litter the
+ * output with needless seams. Only a step in the offset value or a break in its
+ * slope earns a split.
+ *
+ * The inserted pair shares one coordinate: the left station reads the profile edge
+ * below the boundary, the right station the one above. Where the offset only kinks
+ * they land on the same point and the output stays connected; where it steps they
+ * separate by exactly the step.
  */
-function isJunction(coord is ValueWithUnits, junctions is array) returns boolean
+function insertCrossings(context is Context, chain is map, stations is array, coords is map, profile is map) returns map
 {
-    for (var junction in junctions)
+    const breaks = discontinuityCoords(profile);
+    if (size(breaks) == 0 || size(stations) < 2)
     {
-        if (abs(coord - junction) < OFFSET_GEOM_TOL)
+        return { "stations" : stations, "coords" : coords };
+    }
+
+    var outStations = [];
+    var values = [];
+    var scales = [];
+    var next = 0;
+
+    for (var i = 0; i < size(stations); i += 1)
+    {
+        while (i > 0 && next < size(breaks)
+            && breaks[next] > coords.values[i - 1] && breaks[next] <= coords.values[i])
         {
-            return true;
+            const arc = arcAtCoord(stations, coords, i, breaks[next]);
+            const crossing = crossingStation(context, chain, stations, i, arc);
+
+            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "left" }));
+            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "right" }));
+            values = append(values, breaks[next]);
+            values = append(values, breaks[next]);
+            scales = append(scales, coords.scales[i]);
+            scales = append(scales, coords.scales[i]);
+            next += 1;
+        }
+
+        outStations = append(outStations, stations[i]);
+        values = append(values, coords.values[i]);
+        scales = append(scales, coords.scales[i]);
+    }
+
+    return { "stations" : outStations, "coords" : { "values" : values, "scales" : scales } };
+}
+
+/**
+ * Profile boundaries where the offset genuinely breaks, in ascending order.
+ */
+function discontinuityCoords(profile is map) returns array
+{
+    var found = [];
+
+    for (var boundary in profileBoundaries(profile))
+    {
+        const left = profileAt(profile, [boundary], true)[0];
+        const right = profileAt(profile, [boundary], false)[0];
+
+        if (left == undefined || right == undefined)
+        {
+            continue;
+        }
+
+        const steps = abs(left.width - right.width) > OFFSET_GEOM_TOL
+            || abs(left.height - right.height) > OFFSET_GEOM_TOL;
+        const kinks = abs(left.widthSlope - right.widthSlope) > 1e-6
+            || abs(left.heightSlope - right.heightSlope) > 1e-6;
+
+        if (steps || kinks)
+        {
+            found = append(found, boundary);
         }
     }
 
-    return false;
+    return found;
+}
+
+/**
+ * Arc length at a coordinate, by cubic Hermite between the two stations that
+ * bracket it. The coordinate scales are d(coord)/d(arc), so their reciprocals are
+ * exactly the slopes this inversion needs.
+ */
+function arcAtCoord(stations is array, coords is map, index is number, coord is ValueWithUnits) returns ValueWithUnits
+{
+    const scaleBefore = coords.scales[index - 1];
+    const scaleAfter = coords.scales[index];
+
+    if (abs(scaleBefore) < 1e-9 || abs(scaleAfter) < 1e-9)
+    {
+        const span = coords.values[index] - coords.values[index - 1];
+        const fraction = (abs(span / meter) < 1e-12) ? 0 : (coord - coords.values[index - 1]) / span;
+
+        return stations[index - 1].arc + fraction * (stations[index].arc - stations[index - 1].arc);
+    }
+
+    return hermiteAt([coords.values[index - 1], coords.values[index]],
+        [stations[index - 1].arc, stations[index].arc],
+        [1 / scaleBefore, 1 / scaleAfter], coord);
+}
+
+/**
+ * A station at an arbitrary arc length, for a discontinuity that falls between
+ * samples. Costs one kernel call; the frame is transported from the station before
+ * it so it joins the same roll-free field as the rest.
+ */
+function crossingStation(context is Context, chain is map, stations is array, index is number, arc is ValueWithUnits) returns map
+{
+    const previous = stations[index - 1];
+    const located = edgeAtArc(chain, arc);
+    const tangentLine = evEdgeTangentLines(context, {
+                "edge" : located.edgeData.query,
+                "parameters" : [edgeParam(located.edgeData, located.fraction)]
+            })[0];
+
+    const tangent = located.edgeData.flipped ? -1 * tangentLine.direction : tangentLine.direction;
+    const normal = transportNormal(previous.normal, previous.tangent, tangent);
+    const axes = offsetAxes(tangent, normal, previous.roles);
+
+    return mergeMaps(previous, {
+                "arc" : arc,
+                "origin" : tangentLine.origin,
+                "tangent" : tangent,
+                "normal" : normal,
+                "widthAxis" : axes.widthAxis,
+                "heightAxis" : axes.heightAxis
+            });
+}
+
+/**
+ * The chain edge containing an arc length, and how far along it that arc falls.
+ * Station arcs are measured from the zero point, edge arcs from the chain start.
+ */
+function edgeAtArc(chain is map, arc is ValueWithUnits) returns map
+{
+    const absolute = arc + chain.zeroArc;
+    var last = undefined;
+
+    for (var link in chain.links)
+    {
+        for (var edgeData in link.edges)
+        {
+            last = edgeData;
+            if (absolute >= edgeData.startArc && absolute <= edgeData.startArc + edgeData.length)
+            {
+                return {
+                    "edgeData" : edgeData,
+                    "fraction" : clamp((absolute - edgeData.startArc) / edgeData.length, 0, 1)
+                };
+            }
+        }
+    }
+
+    return { "edgeData" : last, "fraction" : 1 };
 }
 
 // ============================================================================

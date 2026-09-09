@@ -60,9 +60,9 @@ export enum MeasureAlong
 {
     annotation { "Name" : "World X" }
     WORLD_X,
-    annotation { "Name" : "Offset edges" }
+    annotation { "Name" : "Along source" }
     OFFSET_EDGES,
-    annotation { "Name" : "Reference" }
+    annotation { "Name" : "Along reference" }
     REFERENCE_WIRE
 }
 
@@ -911,10 +911,16 @@ export function buildProfile(context is Context, selection is Query, zeroPoint i
             return (a.minCoord - b.minCoord) / meter;
         });
 
+    const overlaps = overlappingEdges(described);
+    if (size(overlaps) > 0)
+    {
+        throw regenError(describeOverlaps(described, overlaps), selection);
+    }
+
     return {
         "edges" : described,
         "steps" : steps,
-        "overlaps" : overlappingEdges(described),
+        "overlaps" : overlaps,
         "zeroX" : zeroX,
         "minCoord" : described[0].minCoord,
         "maxCoord" : largestCoord(described)
@@ -992,6 +998,55 @@ function overlappingEdges(described is array) returns array
     }
 
     return found;
+}
+
+/**
+ * Explain an overlap in the terms the user can act on.
+ *
+ * An edge spanning most of the profile is almost always a baseline or axis line
+ * that came along with the selection, so name the widest offender first.
+ */
+function describeOverlaps(described is array, overlaps is array) returns string
+{
+    var widest = 0;
+    for (var i = 1; i < size(described); i += 1)
+    {
+        if (described[i].maxCoord - described[i].minCoord > described[widest].maxCoord - described[widest].minCoord)
+        {
+            widest = i;
+        }
+    }
+
+    return "The offset profile defines two different offsets at the same X, so it is not a "
+        ~ "function and the offset there is ambiguous. " ~ toString(size(overlaps))
+        ~ " overlapping pair(s) found. The widest edge spans "
+        ~ fmtMM(described[widest].maxCoord - described[widest].minCoord, 1, 0)
+        ~ " mm of a " ~ fmtMM(largestCoord(described) - described[0].minCoord, 1, 0)
+        ~ " mm profile, which usually means a baseline or axis line was selected along with "
+        ~ "the profile. Deselect it, or trim the profile so each X has one offset.";
+}
+
+/**
+ * Coordinates where two profile edges meet, plus every vertical step. These are
+ * the only places the offset can break.
+ */
+export function profileBoundaries(profile is map) returns array
+{
+    var boundaries = profile.steps;
+
+    for (var i = 0; i < size(profile.edges) - 1; i += 1)
+    {
+        const gap = abs(profile.edges[i + 1].minCoord - profile.edges[i].maxCoord);
+        if (gap < OFFSET_GEOM_TOL)
+        {
+            boundaries = append(boundaries, profile.edges[i].maxCoord);
+        }
+    }
+
+    return sort(boundaries, function(a, b)
+        {
+            return (a - b) / meter;
+        });
 }
 
 /**
@@ -1405,8 +1460,12 @@ export function alongCoordinate(alongRef is map, arc is ValueWithUnits) returns 
 
 /**
  * Linear interpolation in a monotonically increasing table, clamped at both ends.
+ *
+ * Deliberately untyped in its return: the tables it reads hold plain numbers
+ * (turning angle, d(arc)/dX) in some places and ValueWithUnits (curvature) in
+ * others, and a `returns number` here rejects the latter as a map.
  */
-export function interpolate(xs is array, ys is array, x) returns number
+export function interpolate(xs is array, ys is array, x)
 {
     const count = size(xs);
     if (x <= xs[0])
