@@ -845,9 +845,29 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
 
     if (definition.debugPrintAlongChain && alongRef != undefined)
     {
+        const turning = alongRef.thetas[size(alongRef.thetas) - 1];
+
         println("reference: length " ~ toString(alongRef.chain.totalLength)
-            ~ ", total turning " ~ toString(alongRef.thetas[size(alongRef.thetas) - 1])
+            ~ ", total turning " ~ toString(turning)
             ~ " rad, plane normal " ~ toString(alongRef.planeNormal));
+
+        // delta earns its keep only through the turning: the coordinate it produces
+        // differs from the wire's own arc length by exactly delta * theta, which is
+        // zero wherever the reference is straight. Printing that product says at a
+        // glance whether a delta can possibly be doing anything here.
+        // thetas is a bare number, not an angle with units: it accumulates
+        // curvature * arc, which cancels to unitless. Do not divide it by radian.
+        println("  offset delta " ~ fmtMM(alongRef.delta, 3, 0) ~ " mm  ->  coordinate shifted "
+            ~ fmtMM(-alongRef.delta * turning, 3, 0) ~ " mm at the far end");
+    }
+
+    // The curve the coordinate is actually measured along, whenever that is not the
+    // selected wire itself. delta never moves an offset point -- it only re-indexes
+    // the profile -- so drawing the offset curve is the only way to confirm from the
+    // graphics that it landed where it was meant to.
+    if (alongRef != undefined && abs(alongRef.delta) > TOLERANCE.zeroLength * meter)
+    {
+        drawReferenceOffset(context, alongRef);
     }
 
     // Every addDebugLine is a full sketch plus a constraint solve of its own
@@ -894,6 +914,40 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
             addDebugPoint(context, points[run.start], DebugColor.RED);
             addDebugPoint(context, points[run.end], DebugColor.YELLOW);
         }
+    }
+}
+
+/**
+ * Draw the delta-offset reference as a magenta polyline.
+ *
+ * Drawn whenever the delta is nonzero, without a debug flag of its own: a delta is
+ * a deliberate act, and the curve it names is invisible otherwise -- it is neither
+ * the wire the user picked nor anything that appears in the output.
+ *
+ * Every addDebugLine is a sketch plus a constraint solve, so the same stride the
+ * frame markers use caps the cost. The last sample is always drawn, so the polyline
+ * reaches the end of the reference rather than stopping at the last strided index.
+ */
+function drawReferenceOffset(context is Context, alongRef is map)
+{
+    const points = alongRef.points;
+    const count = size(points);
+    const stride = debugStride(count);
+    var previous = undefined;
+
+    for (var i = 0; i < count; i += stride)
+    {
+        if (previous != undefined && norm(points[i] - previous) > OFFSET_GEOM_TOL)
+        {
+            addDebugLine(context, previous, points[i], DebugColor.MAGENTA);
+        }
+        previous = points[i];
+    }
+
+    const last = points[count - 1];
+    if (previous != undefined && norm(last - previous) > OFFSET_GEOM_TOL)
+    {
+        addDebugLine(context, previous, last, DebugColor.MAGENTA);
     }
 }
 

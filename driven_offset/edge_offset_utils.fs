@@ -1394,7 +1394,9 @@ function locateCoord(profile is map, cursor is number, coord is ValueWithUnits, 
  * across an inflection.
  *
  * @param delta {ValueWithUnits} : signed offset of the reference from the selected wire.
- * @returns {map} : { "chain", "arcs", "thetas", "delta" }
+ * @returns {map} : { "chain", "arcs", "thetas", "curvatures", "xs", "arcSlopes",
+ *          "points", "tangents", "delta", "planeNormal" }. "points" is the offset
+ *          curve in world space, carried for the debug view only.
  */
 export function buildAlongReference(context is Context, selection is Query, zeroPoint is Vector, delta is ValueWithUnits) returns map
 {
@@ -1442,8 +1444,13 @@ export function buildAlongReference(context is Context, selection is Query, zero
     //   so   dX_offset/ds = T_x * (1 - delta * kappa)
     //
     // arcSlopes stays d(arc along the wire)/dX, since arcs is what it interpolates.
+    // points is the offset curve itself, in world space. Nothing in the offset
+    // arithmetic needs it -- delta moves the coordinate, never a point -- so it
+    // exists to be drawn. That the curve cannot be seen is exactly why a delta
+    // that was landing in the wrong place was hard to catch.
     var xs = [];
     var arcSlopes = [];
+    var points = [];
     for (var i = 0; i < size(samples); i += 1)
     {
         const sample = samples[i];
@@ -1458,6 +1465,7 @@ export function buildAlongReference(context is Context, selection is Query, zero
 
         xs = append(xs, sample.x + delta * offsetDir[0]);
         arcSlopes = append(arcSlopes, 1 / slope);
+        points = append(points, sample.point + delta * offsetDir);
     }
 
     // Coordinate zero is the point of the OFFSET reference at the zero point's X.
@@ -1485,6 +1493,7 @@ export function buildAlongReference(context is Context, selection is Query, zero
         "curvatures" : curvatures,
         "xs" : xs,
         "arcSlopes" : arcSlopes,
+        "points" : points,
         "tangents" : tangents,
         "delta" : delta,
         "planeNormal" : planeNormal
@@ -1601,8 +1610,8 @@ export function hermiteAt(xs is array, ys is array, slopes is array, x)
 }
 
 /**
- * Sample tangent, curvature and curvature direction along a reference chain.
- * One kernel call per edge.
+ * Sample position, tangent, curvature and curvature direction along a reference
+ * chain. One kernel call per edge.
  */
 function sampleTurning(context is Context, chain is map) returns array
 {
@@ -1628,6 +1637,7 @@ function sampleTurning(context is Context, chain is map) returns array
                 samples = append(samples, {
                             "arc" : edgeData.startArc + fractions[i] * edgeData.length - chain.zeroArc,
                             "x" : frame.origin[0],
+                            "point" : frame.origin,
                             "tangent" : edgeData.flipped ? -1 * frame.zAxis : frame.zAxis,
                             "towardCentre" : frame.xAxis,
                             "curvature" : results[i].curvature
