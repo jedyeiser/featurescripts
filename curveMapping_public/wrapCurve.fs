@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/683d867c35fdab9c98d47556", version : "08ced7a9bfddd7090ead6e97");
+export import(path : "08e8748f2ef24eea16072b75/b51a369d724ce2629fd5ae61/683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");
@@ -504,13 +504,28 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
 
             while (segStartIdx < size(mappedData))
             {
-                // Collect the run of consecutive points on the same to-edge
-                var currentEdge = mappedData[segStartIdx].edgeIndex;
-                var segEndIdx   = segStartIdx;
-                while (segEndIdx + 1 < size(mappedData) && mappedData[segEndIdx + 1].edgeIndex == currentEdge)
+                // Collect the run of points the to-path carries smoothly. See
+                // pathIsSmoothAcross: with a G1 chain and a transported normal, a split at a
+                // tangent-continuous to-edge boundary buys nothing and risks leaving a span
+                // on a short edge with too few points to fit.
+                var segEndIdx = segStartIdx;
+                while (segEndIdx + 1 < size(mappedData)
+                       && pathIsSmoothAcross(toFrenetPath, mappedData[segEndIdx].edgeIndex,
+                                             mappedData[segEndIdx + 1].edgeIndex))
                 {
                     segEndIdx += 1;
                 }
+
+                // A trailing span of one sample cannot be fitted and would be dropped,
+                // leaving a gap at the very end of the curve. It has no interior gap to
+                // subdivide, so absorb it instead.
+                if (segEndIdx + 2 == size(mappedData))
+                {
+                    segEndIdx += 1;
+                }
+
+                // The edge the span ENDS on drives the boundary below; a span may cover several.
+                var currentEdge = mappedData[segEndIdx].edgeIndex;
 
                 var segPoints = [];
 
@@ -526,9 +541,29 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 }
                 junctionPt = undefined;
 
+                // Sample count is chosen per source curve but spans are cut by the
+                // to-path, so a span can still land below the degree+1 the fit needs.
+                // Subdivide this span's own gaps rather than sampling the whole curve more
+                // densely: the deficit is local.
+                var spanShortfall = (degree + 1) - (size(segPoints) + segEndIdx - segStartIdx + 1);
+                var perGap        = (spanShortfall > 0 && segEndIdx > segStartIdx)
+                    ? ceil(spanShortfall / (segEndIdx - segStartIdx))
+                    : 0;
+
                 for (var k = segStartIdx; k <= segEndIdx; k += 1)
                 {
                     segPoints = append(segPoints, mappedData[k].point);
+
+                    if (perGap > 0 && k < segEndIdx)
+                    {
+                        for (var ex = 1; ex <= perGap; ex += 1)
+                        {
+                            segPoints = append(segPoints, mapBetweenSamples(context,
+                                    definition.flipToNormal, sourceCurveArray[i], srcFlipped,
+                                    numSamples, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc,
+                                    mappedData, k, ex / (perGap + 1.0)).point);
+                        }
+                    }
                 }
 
                 // Inject exact boundary point at the junction to the next span
@@ -668,7 +703,20 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     segPoints = deduped;
                 }
 
-                if (size(segPoints) >= degree + 1)
+                // Never discard a span. Falling back to a lower degree keeps the wire
+                // whole; dropping it opened a gap, and did so silently unless
+                // debugWrappedCurves happened to be on.
+                var fitDegree = degree;
+                if (size(segPoints) < degree + 1)
+                {
+                    fitDegree = max([1, size(segPoints) - 1]);
+                    println("WARNING: wrapCurve span " ~ toString(i) ~ "." ~ toString(segCount)
+                        ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
+                        ~ toString(degree + 1) ~ " for degree " ~ toString(degree)
+                        ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
+                }
+
+                if (size(segPoints) >= 2)
                 {
                     // Scale for derivative constraints: total chord length of this segment.
                     // approximateSpline uses [0,1] parameterization, so the natural derivative
@@ -696,7 +744,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         "targets"          : [approximationTarget(wrappedTargetDef)],
                         "tolerance"        : definition.approximationTolerance,
                         "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : degree,
+                        "degree"           : fitDegree,
                         "isPeriodic"       : false
                     };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
@@ -747,10 +795,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                             addDebugPoint(context, segPoints[di], DebugColor.MAGENTA);
                     }
                 }
-                else if (definition.debugWrappedCurves)
+                else
                 {
-                    println("  [skipped span " ~ toString(i) ~ "." ~ toString(segCount) ~
-                            ": only " ~ toString(size(segPoints)) ~ " points, need " ~ toString(degree + 1) ~ "]");
+                    // One point cannot be a curve. This is the only remaining way to lose a
+                    // span, and it is now always reported.
+                    println("WARNING: wrapCurve span " ~ toString(i) ~ "." ~ toString(segCount)
+                        ~ " has only " ~ toString(size(segPoints))
+                        ~ " point(s) and cannot be fitted; the output will have a gap here.");
                 }
 
                 segStartIdx = segEndIdx + 1;
