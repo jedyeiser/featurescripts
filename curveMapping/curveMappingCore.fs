@@ -25,10 +25,11 @@ export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpe
 
 // ── Frame normal mode ───────────────────────────────────────────────────────
 // Controls how getFrameAtArcLength orients the frame normal (xAxis) along a path.
-//   FRENET   : kernel curvature normal + inflection-parity sign tracking (legacy).
-//              The curvature normal flips 180 deg at every inflection; the parity
-//              counter compensates, but mis-detected inflections in near-flat regions
-//              leave one-sample sign errors (cusps).
+//   FRENET   : a normal seeded from the kernel curvature normal at the first curved
+//              edge, then parallel-transported along the whole path. It cannot flip at
+//              an inflection -- there is no curvature sign in transport at all -- but
+//              its absolute roll about the tangent is fixed by that one seed, so only
+//              roll DIFFERENCES along a path are meaningful.
 //   BINORMAL : build an in-plane normal from a supplied plane normal (the binormal):
 //              N = normalize(ref x tangent), B = ref. Independent of curvature sign or
 //              magnitude, so it never flips at inflections. Requires the path to be
@@ -341,12 +342,31 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
     // inflection list, and reduces to the in-plane normal exactly when the chain is
     // planar. It is seeded from the old convention at the path start, so the frame there
     // is unchanged and it diverges only where the parity was already wrong.
-    var seedTangent = edgeData[0].isLine
-        ? edgeData[0].lineFrame.zAxis
-        : edgeData[0].frameSamples.tangents[0];
-    var seed = edgeData[0].isLine
-        ? edgeData[0].lineFrame.xAxis
-        : edgeData[0].frameSamples.normals[0];
+    // Seed from the first genuinely curved edge, NOT from edge 0.
+    //
+    // A line has no curvature normal of its own: lineFrenetFrame picks whichever world
+    // axis is least parallel to the tangent, which is arbitrary and generally out of the
+    // path's plane. Seeding the transport from that would roll every downstream frame by
+    // an arbitrary angle. The pass this replaced had the same problem and solved it by
+    // borrowing a line's normal from an adjacent curve; seeding at the curve and
+    // transporting outwards in both directions is the same idea, done once.
+    var seedIdx = 0;
+    while (seedIdx < size(edgeData) && edgeData[seedIdx].isLine)
+    {
+        seedIdx += 1;
+    }
+    if (seedIdx >= size(edgeData))
+    {
+        // Every edge is a line. Nothing prefers any orientation, so edge 0 will do.
+        seedIdx = 0;
+    }
+
+    var seedTangent = edgeData[seedIdx].isLine
+        ? edgeData[seedIdx].lineFrame.zAxis
+        : edgeData[seedIdx].frameSamples.tangents[0];
+    var seed = edgeData[seedIdx].isLine
+        ? edgeData[seedIdx].lineFrame.xAxis
+        : edgeData[seedIdx].frameSamples.normals[0];
 
     seed = seed - dot(seed, seedTangent) * seedTangent;
     seed = (norm(seed) < 1e-9) ? perpendicularVector(seedTangent) : normalize(seed);
@@ -354,7 +374,7 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
     var carried         = seed;
     var previousTangent = seedTangent;
 
-    for (var i = 0; i < size(edgeData); i += 1)
+    for (var i = seedIdx; i < size(edgeData); i += 1)
     {
         if (edgeData[i].isLine)
         {
@@ -378,6 +398,39 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
 
             edgeData[i] = mergeMaps(edgeData[i], {
                 "frameSamples": mergeMaps(edgeData[i].frameSamples, { "normals": carriedNormals })
+            });
+        }
+    }
+
+    // Backwards from the seed, so a leading line inherits the curve's orientation
+    // instead of dictating an arbitrary one.
+    carried         = seed;
+    previousTangent = seedTangent;
+
+    for (var i = seedIdx - 1; i >= 0; i -= 1)
+    {
+        if (edgeData[i].isLine)
+        {
+            var backTangent = edgeData[i].lineFrame.zAxis;
+            carried         = cmTransportNormal(carried, previousTangent, backTangent);
+            previousTangent = backTangent;
+
+            edgeData[i] = mergeMaps(edgeData[i], { "transportedNormal": carried });
+        }
+        else
+        {
+            var backTangents = edgeData[i].frameSamples.tangents;
+            var backNormals  = makeArray(CM_FRAME_SAMPLES, carried);
+
+            for (var j = CM_FRAME_SAMPLES - 1; j >= 0; j -= 1)
+            {
+                carried         = cmTransportNormal(carried, previousTangent, backTangents[j]);
+                previousTangent = backTangents[j];
+                backNormals[j]  = carried;
+            }
+
+            edgeData[i] = mergeMaps(edgeData[i], {
+                "frameSamples": mergeMaps(edgeData[i].frameSamples, { "normals": backNormals })
             });
         }
     }
@@ -441,21 +494,6 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
 // getFrameAtArcLength
 // ============================================================================
 
-/**
- * Return a globally consistent Frenet frame at any arc-length along the path.
- *
- * Handles multi-edge chains, non-standard traversal (stdDir=false), and
- * inflection points. The normal (xAxis) sign is tracked cumulatively so it
- * never discontinuously flips across the entire chain.
- *
- * @param context    {Context}
- * @param frenetPath {map}           - result from buildFrenetPath
- * @param arcLength  {ValueWithUnits}- global arc-length position (clamped)
- * @returns {map} :
- *   "frame"     {CoordSystem} - zAxis=tangent, xAxis=sign-corrected normal
- *   "sign"      {number}      - current normal sign (+1 or -1)
- *   "edgeIndex" {number}      - index of the edge containing this position
- */
 /**
  * Whether the transplant matches arc length on the curve the point ACTUALLY lies on,
  * rather than on the reference.
@@ -712,12 +750,12 @@ function cmTransportNormal(normal is Vector, fromTangent is Vector, toTangent is
 }
 
 /**
- * Signed curvature at one end of the path, about that end frame's own normal.
+ * Signed curvature at one end of the path, resolved about a caller-supplied axis.
  *
  * Only used to continue the path past its ends. A line, or an edge whose end samples
  * are collinear, returns zero and the extension stays straight.
  */
-function boundaryCurvature(frenetPath is map, boundaryArc is ValueWithUnits)
+function endCurvature(frenetPath is map, boundaryArc is ValueWithUnits, aboutAxis is Vector)
 {
     var edgeData = frenetPath.edgeData;
     var edgeDat  = (boundaryArc <= 0 * meter) ? edgeData[0] : edgeData[size(edgeData) - 1];
@@ -732,8 +770,12 @@ function boundaryCurvature(frenetPath is map, boundaryArc is ValueWithUnits)
     var span    = edgeDat.length / last;
     var i       = (boundaryArc <= 0 * meter) ? 0 : last - 1;
 
-    // kappa = dT/ds resolved on the stored normal: positive when the turn is toward it.
-    return dot((samples.tangents[i + 1] - samples.tangents[i]) / span, samples.normals[i]);
+    // Resolved about the axis the caller will actually rotate toward, not about the
+    // stored normal. In BINORMAL mode the frame's xAxis has been replaced by
+    // planeNormalAxis(ref, T), which is +/- the transported normal -- reading the stored
+    // one there could return the wrong sign and bend the extension away from the curve,
+    // which is worse than the straight tangent it replaced.
+    return dot((samples.tangents[i + 1] - samples.tangents[i]) / span, aboutAxis);
 }
 
 /** Frames sampled per curved edge at build time. One batched kernel call each. */
@@ -839,6 +881,25 @@ function frameAtLocalArc(edgeDat is map, localArc is ValueWithUnits) returns map
     return { "origin": origin, "tangent": tangent, "normal": normalize(normal) };
 }
 
+/**
+ * A frame at any arc-length along the path, continuous by construction.
+ *
+ * Handles multi-edge chains and reversed traversal (stdDir=false). The normal is
+ * transported along the whole path at build time rather than derived per point, so it
+ * never flips: there is no inflection handling here and no sign to track.
+ *
+ * Past either end the path is continued along its own osculating circle, not along a
+ * straight tangent -- consumers shift arc lengths without clamping, so running off the
+ * end is ordinary rather than exceptional.
+ *
+ * @param arcLength {ValueWithUnits} : global arc-length position; outside [0, totalLength]
+ *          the frame is extrapolated rather than clamped.
+ * @returns {map} :
+ *   "frame"     {CoordSystem} - zAxis = tangent, xAxis = transported normal
+ *   "sign"      {number}      - always +1; kept so callers that compare a from-sign
+ *                               against a to-sign collapse to "flip iff flipToNormal"
+ *   "edgeIndex" {number}      - index of the edge containing this position
+ */
 export function getFrameAtArcLength(context is Context, frenetPath is map, arcLength) returns map
 {
     var edgeData    = frenetPath.edgeData;
@@ -862,7 +923,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
 
         var tangent  = boundary.frame.zAxis;
         var toCentre = boundary.frame.xAxis;
-        var kappa    = boundaryCurvature(frenetPath, boundaryArc);
+        var kappa    = endCurvature(frenetPath, boundaryArc, toCentre);
         var theta    = kappa * overflow;
         var straight = (abs(theta) < 1e-7);
 

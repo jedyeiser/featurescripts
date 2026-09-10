@@ -84,7 +84,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Frame orientation", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet uses the curvature normal (can flip at inflections on near-flat curves). Binormal builds a flip-free in-plane normal from a supplied plane normal; requires planar, coplanar references." }
+            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet transports one normal along the whole reference; flip-free, and works on any G1 chain. Binormal builds an in-plane normal from a supplied plane normal; requires planar, coplanar references." }
             definition.frameNormalMode is FrameNormalMode;
 
             if (definition.frameNormalMode == FrameNormalMode.BINORMAL)

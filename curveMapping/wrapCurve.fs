@@ -407,6 +407,15 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     segEndIdx += 1;
                 }
 
+                // A trailing span of one sample cannot be fitted and would be dropped,
+                // leaving a gap at the very end of the curve -- the exact failure the
+                // top-up exists to prevent, but out of its reach because a single-sample
+                // span has no interior gap to subdivide. Absorb it instead.
+                if (segEndIdx + 2 == size(mappedData))
+                {
+                    segEndIdx += 1;
+                }
+
                 // The edge the span ENDS on drives the boundary below, not the one it began
                 // on -- a span may now cover several.
                 var currentEdge = mappedData[segEndIdx].edgeIndex;

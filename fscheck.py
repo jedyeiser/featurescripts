@@ -41,10 +41,18 @@ KEYWORDS = {
     "case", "default", "do", "loopBody",
 }
 
+# Words the parser will not accept after a "." -- `m.type` is a parse error and
+# `m["type"]` is required.
+#
+# These are language KEYWORDS only. Do not add std function or type names here:
+# `box`, `line`, `plane` and `transform` cannot be used as VARIABLE names, which is a
+# different rule, but they are perfectly legal as map fields read with dot access --
+# `res.transform` ships and works in curveMapping's linear fast path. Listing them
+# produced false positives that cost two separate code reviews.
 RESERVED_DOT = {
     "type", "function", "const", "var", "is", "as", "if", "else", "for", "while",
     "return", "map", "array", "string", "number", "boolean", "import", "export",
-    "enum", "box", "line", "plane", "transform",
+    "enum",
 }
 
 
