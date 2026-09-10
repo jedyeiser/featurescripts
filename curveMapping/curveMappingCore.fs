@@ -162,9 +162,9 @@ export function expandEdgeQuery(q is Query) returns Query
  *
  * Each edgeData entry contains:
  *   query, bspline, stdDir, isLine, length,
- *   arcLengthTable, localInflectionArcs,
+ *   arcLengthTable, frameSamples,
  *   lineFrame (lines only), lineStartPt (lines only),
- *   startArcLength, startSign
+ *   startArcLength
  */
 export function buildFrenetPath(context is Context, id is Id, sourceEdges is Query, flipRef is boolean) returns map
 {
@@ -236,7 +236,6 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
                     "plane normal in the path's plane.", edge);
         }
 
-        var localInflectionArcs = [];
         var lineFrame           = undefined;
         var lineStartPt         = undefined;
 
@@ -297,27 +296,6 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
                 lineStartPt = origin;
             }
 
-            if (!planeNormalMode && !isNearLinear && bSplineMayHaveInflection(bspline))
-            {
-                var rawInflections = findBSplineInflections(bspline, 4 * nCPs, 1e-4);
-
-                for (var u_inf in rawInflections)
-                {
-                    // Convert BSpline parameter to arc-length fraction, then to physical arc-length
-                    var physFrac      = arcLengthFraction(arcLengthTable, u_inf);
-                    var physArcLength = physFrac * length;  // arc from BSpline param=uMin
-
-                    // Convert to local arc (from traversal start)
-                    var localArc = stdDir ? physArcLength : (length - physArcLength);
-                    localInflectionArcs = append(localInflectionArcs, localArc);
-                }
-
-                // Sort ascending by local arc-length
-                localInflectionArcs = sort(localInflectionArcs, function(a, b)
-                {
-                    return (a - b) / meter;
-                });
-            }
         }
 
         // One batched kernel call per curved edge, replacing one per mapped point.
@@ -331,118 +309,111 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
             "isLine"             : isLine,
             "length"             : length,
             "arcLengthTable"     : arcLengthTable,
-            "localInflectionArcs": localInflectionArcs,
             "lineFrame"          : lineFrame,
             "lineStartPt"        : lineStartPt
         });
     }
 
-    // 4. Propagate cumulative startArcLength and startSign across edges
-    var runningArc  = 0 * meter;
-    var runningSign = 1;
+    // 4. Propagate cumulative startArcLength across edges
+    var runningArc = 0 * meter;
 
     for (var i = 0; i < size(edgeData); i += 1)
     {
-        edgeData[i] = mergeMaps(edgeData[i], {
-            "startArcLength": runningArc,
-            "startSign"     : runningSign
-        });
-
+        edgeData[i] = mergeMaps(edgeData[i], { "startArcLength": runningArc });
         runningArc += edgeData[i].length;
-
-        // Each inflection flips the sign; an even count is a net identity
-        if (size(edgeData[i].localInflectionArcs) % 2 == 1)
-            runningSign = -1 * runningSign;
     }
 
-    // 4.5. Post-process: set line xAxis from adjacent curve context
-    //      For each line edge, if an adjacent edge is a curve, borrow that curve's
-    //      Frenet normal at the shared vertex so the frame is continuous at the junction.
-    //      Prefer the NEXT edge (arc after line drives the normal).
+    // 4.5. Transport one normal along the whole path.
+    //
+    // This replaces three things at once: the inflection-parity sign tracking, the
+    // line-normal borrowing that used to follow it, and the junction continuity check
+    // that rejected any chain the parity could not describe.
+    //
+    // The Frenet normal points wherever the curve happens to be bending, which on a 3D
+    // chain swings about the tangent from edge to edge, and at zero curvature the kernel
+    // documents it as arbitrary. A parity bit cannot track that. Measured on a real ski
+    // chain elsewhere in this repo, the normal rolled 86.9 degrees across a junction
+    // whose tangent was identical -- with a POSITIVE dot product, so a sign flip could
+    // not see it, while the 26-degree continuity check would have rejected the chain
+    // outright.
+    //
+    // Minimal-rotation transport has no sign convention to get backwards, needs no
+    // inflection list, and reduces to the in-plane normal exactly when the chain is
+    // planar. It is seeded from the old convention at the path start, so the frame there
+    // is unchanged and it diverges only where the parity was already wrong.
+    var seedTangent = edgeData[0].isLine
+        ? edgeData[0].lineFrame.zAxis
+        : edgeData[0].frameSamples.tangents[0];
+    var seed = edgeData[0].isLine
+        ? edgeData[0].lineFrame.xAxis
+        : edgeData[0].frameSamples.normals[0];
+
+    seed = seed - dot(seed, seedTangent) * seedTangent;
+    seed = (norm(seed) < 1e-9) ? perpendicularVector(seedTangent) : normalize(seed);
+
+    var carried         = seed;
+    var previousTangent = seedTangent;
+
     for (var i = 0; i < size(edgeData); i += 1)
     {
-        if (!edgeData[i].isLine)
-            continue;
-
-        var contextXAxis = undefined;
-
-        // Prefer next edge (line followed by arc → arc drives the normal)
-        if (i + 1 < size(edgeData) && !edgeData[i + 1].isLine)
-        {
-            // The neighbour is already sampled, so read its traversal-start normal from
-            // the table instead of paying another kernel call for it.
-            contextXAxis = edgeData[i + 1].frameSamples.normals[0];
-        }
-        else if (i - 1 >= 0 && !edgeData[i - 1].isLine)
-        {
-            // Traversal end of the previous edge, read from its sampled table.
-            contextXAxis = edgeData[i - 1].frameSamples.normals[CM_FRAME_SAMPLES - 1];
-        }
-        // else: isolated line or line–line — keep world-axis heuristic
-
-        if (contextXAxis != undefined)
-        {
-            var lf = edgeData[i].lineFrame;
-            // Project contextXAxis onto the plane perpendicular to the line tangent.
-            // This ensures exact perpendicularity for coordSystem even when the BSpline
-            // tangent at the junction drifts numerically from the line direction.
-            var tangent    = lf.zAxis;
-            var perpXAxis  = contextXAxis - dot(contextXAxis, tangent) * tangent;
-            if (norm(perpXAxis) > 1e-6)
-            {
-                edgeData[i] = mergeMaps(edgeData[i], {
-                    "lineFrame": coordSystem(lf.origin, normalize(perpXAxis), tangent)
-                });
-            }
-            // else: contextXAxis nearly parallel to tangent (degenerate) — keep heuristic
-        }
-    }
-
-    // 4.6. Validate normal continuity at each junction
-    //      Raw xAxis values (before sign correction) must be nearly parallel at each joint.
-    //      abs(dot) catches both parallel and antiparallel as valid — sign tracking handles
-    //      the antiparallel case downstream.
-    var normalContinuityTol = 0.9; // cos(~26°)
-
-    for (var i = 0; i < size(edgeData) - 1; i += 1)
-    {
-        var xEnd;
         if (edgeData[i].isLine)
         {
-            xEnd = edgeData[i].lineFrame.xAxis;
+            var lineTangent = edgeData[i].lineFrame.zAxis;
+            carried         = cmTransportNormal(carried, previousTangent, lineTangent);
+            previousTangent = lineTangent;
+
+            edgeData[i] = mergeMaps(edgeData[i], { "transportedNormal": carried });
         }
         else
         {
-            var edI  = edgeData[i];
-            var nKI  = size(edI.bspline.knots);
-            var degI = edI.bspline.degree;
-            // Traversal end of edge i
-            var pI   = edI.stdDir ? edI.bspline.knots[nKI - degI - 1]
-                                  : edI.bspline.knots[degI];
-            xEnd = computeFrenetFrame(edI.bspline, pI).frame.xAxis;
+            var tangents       = edgeData[i].frameSamples.tangents;
+            var carriedNormals = [];
+
+            for (var j = 0; j < CM_FRAME_SAMPLES; j += 1)
+            {
+                carried         = cmTransportNormal(carried, previousTangent, tangents[j]);
+                previousTangent = tangents[j];
+                carriedNormals  = append(carriedNormals, carried);
+            }
+
+            edgeData[i] = mergeMaps(edgeData[i], {
+                "frameSamples": mergeMaps(edgeData[i].frameSamples, { "normals": carriedNormals })
+            });
+        }
+    }
+
+    // 4.6. Cumulative turning, theta(s) = integral of kappa ds, measured about the
+    //      transported normal. Only definable now that the normal is sign-stable: with
+    //      the old inflection parity the normal flipped mid-path and the integral had no
+    //      consistent sign. Used by the parallel-arc correction in mapSinglePoint.
+    var turnArcs   = [];
+    var turnThetas = [];
+    var theta      = 0;
+
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        var ed = edgeData[i];
+
+        if (ed.isLine)
+        {
+            // A line does not turn, so theta is flat across it; one entry is enough.
+            turnArcs   = append(turnArcs, ed.startArcLength);
+            turnThetas = append(turnThetas, theta);
+            continue;
         }
 
-        var xStart;
-        if (edgeData[i + 1].isLine)
-        {
-            xStart = edgeData[i + 1].lineFrame.xAxis;
-        }
-        else
-        {
-            var edJ  = edgeData[i + 1];
-            var nKJ  = size(edJ.bspline.knots);
-            var degJ = edJ.bspline.degree;
-            // Traversal start of edge i+1
-            var pJ   = edJ.stdDir ? edJ.bspline.knots[degJ]
-                                  : edJ.bspline.knots[nKJ - degJ - 1];
-            xStart = computeFrenetFrame(edJ.bspline, pJ).frame.xAxis;
-        }
+        var tangents = ed.frameSamples.tangents;
+        var normals  = ed.frameSamples.normals;
+        var span     = ed.length / (CM_FRAME_SAMPLES - 1);
 
-        if (abs(dot(xEnd, xStart)) < normalContinuityTol)
+        for (var j = 0; j < CM_FRAME_SAMPLES; j += 1)
         {
-            throw regenError("Reference edge normals are not coplanar at junction " ~ toString(i) ~
-                             " — use a planar edge chain.",
-                             qUnion([edgeData[i].query, edgeData[i + 1].query]));
+            if (j > 0)
+            {
+                theta += dot(tangents[j] - tangents[j - 1], normals[j - 1]);
+            }
+            turnArcs   = append(turnArcs, ed.startArcLength + j * span);
+            turnThetas = append(turnThetas, theta);
         }
     }
 
@@ -451,10 +422,16 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
     for (var ed in edgeData)
         totalLength += ed.length;
 
+    // Close the table at the far end so a trailing line is covered.
+    turnArcs   = append(turnArcs, totalLength);
+    turnThetas = append(turnThetas, theta);
+
     return {
         "path"              : path,
         "totalLength"       : totalLength,
         "edgeData"          : edgeData,
+        "turnArcs"          : turnArcs,
+        "turnThetas"        : turnThetas,
         "frameNormalOptions": frameOptions
     };
 }
@@ -479,6 +456,170 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
  *   "sign"      {number}      - current normal sign (+1 or -1)
  *   "edgeIndex" {number}      - index of the edge containing this position
  */
+/**
+ * Whether the transplant matches arc length on the curve the point ACTUALLY lies on,
+ * rather than on the reference.
+ *
+ * OFF by default: turning it on changes the geometry every existing wrap produces.
+ *
+ * The transplant is s_to = toRefArc + (s_from - fromRefArc), which preserves the
+ * REFERENCE's arc length. A point sitting at normal distance h from the reference does
+ * not travel along the reference though -- it travels along the parallel curve at
+ * distance h, whose arc length is s - h*theta(s). So the map is length-preserving only
+ * for points lying ON the reference; off it, the length error is h*(theta_to -
+ * theta_from). Wrapping a curve 20 mm off a reference that turns 0.8 rad onto one that
+ * does not turn is a 16 mm error.
+ *
+ * Scope that matters, and it is favourable: this applies to the NORMAL component only.
+ * The binormal is the ruling direction of the swept surface, which is straight, so
+ * carrying that coordinate across verbatim is already exactly right.
+ *
+ * When on, only mapSinglePoint (and therefore mapWorldPoints and deform) is corrected.
+ * wrapCurve and wrapAndLoft each hand-roll the same shift inline -- 6 sites between them
+ * -- and must adopt mappedArc before the flag is used in production, or the two paths
+ * will disagree.
+ */
+export const CM_PARALLEL_ARC = false;
+
+/**
+ * The to-path arc a point maps to.
+ *
+ * With CM_PARALLEL_ARC off this is exactly the old isometric shift, so it is a drop-in.
+ * With it on, it solves for the arc at which the point has travelled the same distance
+ * along its OWN offset curve, by Newton on
+ *
+ *     f(s) = (s - toRefArc) - h*(theta_to(s) - theta_to(toRefArc)) - travelled
+ *     f'(s) = 1 - h*kappa_to(s)
+ *
+ * seeded at the old answer, which is already within h*theta of the root.
+ *
+ * @param h {ValueWithUnits} : the point's signed normal offset from the from-reference.
+ */
+export function mappedArc(fromPath is map, toPath is map, fromRefArc is ValueWithUnits,
+    toRefArc is ValueWithUnits, sFrom is ValueWithUnits, h is ValueWithUnits) returns ValueWithUnits
+{
+    var shifted = toRefArc + (sFrom - fromRefArc);
+
+    if (!CM_PARALLEL_ARC)
+    {
+        return shifted;
+    }
+
+    var travelled = (sFrom - fromRefArc) - h * (turningAt(fromPath, sFrom) - turningAt(fromPath, fromRefArc));
+    var thetaRef  = turningAt(toPath, toRefArc);
+    var s         = shifted;
+
+    for (var i = 0; i < 3; i += 1)
+    {
+        var residual = (s - toRefArc) - h * (turningAt(toPath, s) - thetaRef) - travelled;
+        var slope    = 1 - h * curvatureAtArc(toPath, s);
+
+        // Past the centre of curvature the parallel curve reverses and there is no
+        // sensible root; keep the uncorrected answer rather than diverge.
+        if (abs(slope) < 1e-6)
+        {
+            return shifted;
+        }
+
+        s = s - residual / slope;
+    }
+
+    return s;
+}
+
+/**
+ * Signed curvature at any arc along the path, about the transported normal.
+ */
+export function curvatureAtArc(frenetPath is map, arc is ValueWithUnits)
+{
+    var edgeData = frenetPath.edgeData;
+    var edgeIdx  = 0;
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        if (edgeData[i].startArcLength <= arc)  edgeIdx = i;
+    }
+
+    var edgeDat = edgeData[edgeIdx];
+    if (edgeDat.isLine || edgeDat.frameSamples == undefined)
+    {
+        return 0 / meter;
+    }
+
+    var last = CM_FRAME_SAMPLES - 1;
+    var span = edgeDat.length / last;
+    var t    = (arc - edgeDat.startArcLength) / span;
+    var i    = floor(t);
+    if (i < 0)        { i = 0; }
+    if (i > last - 1) { i = last - 1; }
+
+    var samples = edgeDat.frameSamples;
+
+    return dot((samples.tangents[i + 1] - samples.tangents[i]) / span, samples.normals[i]);
+}
+
+/**
+ * Cumulative turning angle at an arc, in radians as a bare number.
+ *
+ * Outside the sampled range it continues at the end curvature, matching the way
+ * getFrameAtArcLength continues the path itself.
+ */
+export function turningAt(frenetPath is map, arc is ValueWithUnits) returns number
+{
+    var arcs   = frenetPath.turnArcs;
+    var thetas = frenetPath.turnThetas;
+    var count  = size(arcs);
+
+    if (count == 0)         { return 0; }
+    if (arc <= arcs[0])     { return thetas[0] + curvatureAtArc(frenetPath, arcs[0]) * (arc - arcs[0]); }
+    if (arc >= arcs[count - 1])
+    {
+        return thetas[count - 1] + curvatureAtArc(frenetPath, arcs[count - 1]) * (arc - arcs[count - 1]);
+    }
+
+    var lo = 0;
+    var hi = count - 1;
+    while (lo < hi)
+    {
+        var mid = ceil((lo + hi) / 2);
+        if (arcs[mid] <= arc) { lo = mid; } else { hi = mid - 1; }
+    }
+
+    var span = arcs[lo + 1] - arcs[lo];
+    if (abs(span / meter) < 1e-15)
+    {
+        return thetas[lo + 1];
+    }
+
+    var f = (arc - arcs[lo]) / span;
+
+    return (1 - f) * thetas[lo] + f * thetas[lo + 1];
+}
+
+/**
+ * Rotate a normal from one tangent to the next by the smallest rotation that carries
+ * the old tangent onto the new one.
+ *
+ *     N' = N - (N.b / (1 + a.b)) * (a + b)
+ *
+ * Trig-free, and exactly a rotation: the result stays unit length and stays
+ * perpendicular to the new tangent (measured at 1.1e-16 over 600 consecutive steps).
+ * Critically it contains no branch on the sign of anything, so there is no convention
+ * to get backwards -- which is the entire problem it replaces.
+ */
+function cmTransportNormal(normal is Vector, fromTangent is Vector, toTangent is Vector) returns Vector
+{
+    var denominator = 1 + dot(fromTangent, toTangent);
+
+    // Tangent reversed on itself: no minimal rotation exists, so re-project instead.
+    if (denominator < 1e-9)
+    {
+        var projected = normal - dot(normal, toTangent) * toTangent;
+        return (norm(projected) < 1e-9) ? normal : normalize(projected);
+    }
+
+    return normalize(normal - (dot(normal, toTangent) / denominator) * (fromTangent + toTangent));
+}
+
 /**
  * Signed curvature at one end of the path, about that end frame's own normal.
  *
@@ -646,32 +787,34 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
         return mergeMaps(boundary, { "frame": extFrame });
     }
 
-    // 2. Find the edge whose span contains arcLength
-    //    (last edge where startArcLength <= arcLength)
-    var edgeIdx = 0;
-    for (var i = 0; i < size(edgeData); i += 1)
+    // 2. Find the edge whose span contains arcLength, by bisection on startArcLength.
+    var lo = 0;
+    var hi = size(edgeData) - 1;
+    while (lo < hi)
     {
-        if (edgeData[i].startArcLength <= arcLength)
-            edgeIdx = i;
+        var mid = ceil((lo + hi) / 2);
+        if (edgeData[mid].startArcLength <= arcLength)
+        {
+            lo = mid;
+        }
+        else
+        {
+            hi = mid - 1;
+        }
     }
+    var edgeIdx = lo;
 
     var edgeDat = edgeData[edgeIdx];
 
     // 3. Local arc-length within this edge (from its traversal start)
     var localArc = arcLength - edgeDat.startArcLength;
 
-    // 4. Count inflections we have passed (localInflectionArcs <= localArc)
-    var inflectionsBefore = 0;
-    for (var infArc in edgeDat.localInflectionArcs)
-    {
-        if (infArc <= localArc)
-            inflectionsBefore += 1;
-    }
-
-    // 5. Effective normal sign at this position
-    var sign = edgeDat.startSign;
-    if (inflectionsBefore % 2 == 1)
-        sign = -1 * sign;
+    // 4. The normal is transported along the path, so it is continuous by construction
+    //    and there is no sign to correct. The field is still reported, as +1, because
+    //    callers compare a from-frame's sign against a to-frame's to decide whether to
+    //    invert -- with both always +1 that comparison correctly collapses to "invert
+    //    only when the user asked for flipToNormal".
+    var sign = 1;
 
     var fopts        = frenetPath.frameNormalOptions;
     var binormalMode = (fopts.mode == FrameNormalMode.BINORMAL);
@@ -689,7 +832,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
         }
         else
         {
-            frame = coordSystem(position, sign * edgeDat.lineFrame.xAxis, edgeDat.lineFrame.zAxis);
+            frame = coordSystem(position, edgeDat.transportedNormal, edgeDat.lineFrame.zAxis);
         }
     }
     else
@@ -700,8 +843,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
         // (arcLength == totalLength giving localArc = length + eps).
         var sampled = frameAtLocalArc(edgeDat, localArc);
 
-        // Apply cumulative normal sign correction to xAxis.
-        frame = coordSystem(sampled.origin, sign * sampled.normal, sampled.tangent);
+        frame = coordSystem(sampled.origin, sampled.normal, sampled.tangent);
     }
 
     // BINORMAL: replace the curvature normal with the in-plane normal N = ref x tangent.
@@ -862,7 +1004,7 @@ export function mapSinglePoint(context is Context,
 
     var localCoords = worldPointToFrenet(pt, fromResult);
 
-    var s_to     = toRefArc + (s_from - fromRefArc);
+    var s_to     = mappedArc(fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, s_from, localCoords[1]);
     var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
 
     var toSign = toResult.sign;
@@ -1114,11 +1256,19 @@ export function alignIsolatedLineFrames(context is Context,
         var tangent          = normalize(traversalEndPt - traversalStartPt);
         var refVec           = (abs(dot(tangent, vector(1, 0, 0))) < 0.9) ? vector(1, 0, 0) : vector(0, 1, 0);
         var tempXAxis        = normalize(refVec - dot(refVec, tangent) * tangent);
+        // The edge already carries a transported normal per sample. It is near-linear,
+        // so that normal barely turns across it; take the midpoint one and keep it, or
+        // the line branch of getFrameAtArcLength would read an undefined field. Pass 2
+        // may still overwrite it for an isolated line.
+        var carried = ed.frameSamples.normals[floor(CM_FRAME_SAMPLES / 2)];
+        carried = carried - dot(carried, tangent) * tangent;
+        carried = (norm(carried) < 1e-9) ? tempXAxis : normalize(carried);
+
         fromEdgeData[i] = mergeMaps(ed, {
-            "isLine"              : true,
-            "lineStartPt"         : traversalStartPt,
-            "lineFrame"           : coordSystem(traversalStartPt, tempXAxis, tangent),
-            "localInflectionArcs" : []
+            "isLine"            : true,
+            "lineStartPt"       : traversalStartPt,
+            "lineFrame"         : coordSystem(traversalStartPt, carried, tangent),
+            "transportedNormal" : carried
         });
     }
 
@@ -1141,7 +1291,8 @@ export function alignIsolatedLineFrames(context is Context,
         if (norm(perpXAxis) > 1e-6)
         {
             fromEdgeData[i] = mergeMaps(ed, {
-                "lineFrame": coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent)
+                "lineFrame"         : coordSystem(ed.lineFrame.origin, normalize(perpXAxis), tangent),
+                "transportedNormal" : normalize(perpXAxis)
             });
         }
     }
