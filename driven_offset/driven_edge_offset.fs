@@ -59,7 +59,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
                 annotation { "Name" : "Flip offset delta", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
                 definition.flipAlongOffsetDir is boolean;
 
-                annotation { "Name" : "Length and width along reference", "Default" : false, "Description" : "Also take length and width from the reference wire, so those offsets slide along it. Height is always measured normal to the reference." }
+                annotation { "Name" : "Hold length in the reference surface", "Default" : false, "Description" : "Project the length direction into the reference surface, so a length offset cannot change a point's height above it. Height is always measured normal to the reference, and width always lies in the surface, with or without this." }
                 definition.constrainProfile is boolean;
             }
         }
@@ -120,6 +120,9 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
             annotation { "Name" : "Show offsets", "Default" : false, "Description" : "Draw each source point to its offset point" }
             definition.debugShowOffsets is boolean;
 
+            annotation { "Name" : "Show reference offset", "Default" : false, "Description" : "Draw the curve the coordinate is actually measured along -- the reference wire moved by the offset delta. Invisible otherwise: it is neither the wire you picked nor anything in the output." }
+            definition.debugShowReference is boolean;
+
             annotation { "Name" : "Visualize continuity", "Default" : false, "Description" : "Mark where the output is split into separate curves" }
             definition.debugVisualizeContinuity is boolean;
 
@@ -151,13 +154,19 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         // evaluated, so the break lands on the profile's own boundary rather than
         // on whichever sample happened to fall nearest it.
         const split = insertCrossings(context, sourceChain, stations, coords, profile);
-        const allStations = split.stations;
         const allCoords = split.coords;
+
+        // Resolve the alignment once and stamp it onto the stations. Everything
+        // downstream -- placement, run-end tangents, the frame differences behind
+        // them, and both debug tables -- then reads one settled frame instead of
+        // rebuilding it two or three times per station.
+        const allStations = resolveFrames(split.stations, definition, alongRef);
 
         const upper = profileAt(profile, allCoords.values, false);
         const lower = profileAt(profile, allCoords.values, true);
 
-        const points = offsetPoints(allStations, upper, lower, definition, alongRef);
+        const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
+        const points = placed.points;
         const runs = buildRuns(allStations, upper);
 
         if (size(runs) == 0)
@@ -167,7 +176,8 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         const emitted = emitRuns(context, id, definition, allStations, allCoords, points, upper, lower, runs, alongRef);
 
-        debugOutput(context, definition, sourceChain, profile, alongRef, allStations, allCoords, upper, points, emitted);
+        debugOutput(context, id + "debug", definition, sourceChain, profile, alongRef, allStations, allCoords,
+            upper, lower, placed, emitted);
     });
 
 // ============================================================================
@@ -271,10 +281,26 @@ function arcSlopeAt(alongRef is map, x is ValueWithUnits) returns number
 }
 
 /**
+ * Apply the chosen alignment to every station, once.
+ */
+function resolveFrames(stations is array, definition is map, alongRef) returns array
+{
+    var resolved = [];
+
+    for (var station in stations)
+    {
+        resolved = append(resolved, stationFrame(station, definition, alongRef));
+    }
+
+    return resolved;
+}
+
+/**
  * The frame at one station, honouring the chosen alignment.
  *
- * WORLD replaces the chain frame with the world axes; the curvatures are then
- * measured about those axes, since they drive the arc-length scaling of the offset.
+ * WORLD replaces the chain frame with the world axes; the curvatures are re-resolved
+ * about those axes so the fold-back guard measures what it thinks it measures.
+ * Source curvature reaches nothing else -- see offsetShrink.
  */
 function stationFrame(station is map, definition is map, alongRef) returns map
 {
@@ -289,12 +315,10 @@ function stationFrame(station is map, definition is map, alongRef) returns map
         return station;
     }
 
-    const referenceFrame = referenceFrameAt(alongRef, station.origin[0]);
-
     // Height is normal to the reference whenever a reference exists. An offset
     // stated as a height above the core bottom has to be measured from the core
     // bottom, not from whichever way the edge being offset happens to lean.
-    const heightAxis = referenceFrame.heightAxis;
+    const heightAxis = referenceHeightAxisAt(alongRef, station.origin[0]);
 
     // Length always follows the edge being offset, never the reference's own
     // direction. Where the source runs across the reference -- a tip curling round
@@ -330,12 +354,14 @@ function stationFrame(station is map, definition is map, alongRef) returns map
         }
     }
 
+    const resolved = curvatureOn(station, widthAxis, heightAxis);
+
     return mergeMaps(station, {
                 "tangent" : tangent,
                 "widthAxis" : widthAxis,
                 "heightAxis" : heightAxis,
-                "curvatureWidth" : station.curvature * dot(station.rawNormal, widthAxis),
-                "curvatureHeight" : station.curvature * dot(station.rawNormal, heightAxis)
+                "curvatureWidth" : resolved.curvatureWidth,
+                "curvatureHeight" : resolved.curvatureHeight
             });
 }
 
@@ -346,13 +372,14 @@ function worldFrame(station is map) returns map
 {
     const widthAxis = vector(0, 1, 0);
     const heightAxis = vector(0, 0, 1);
+    const resolved = curvatureOn(station, widthAxis, heightAxis);
 
     return mergeMaps(station, {
                 "tangent" : vector(1, 0, 0),
                 "widthAxis" : widthAxis,
                 "heightAxis" : heightAxis,
-                "curvatureWidth" : station.curvature * dot(station.rawNormal, widthAxis),
-                "curvatureHeight" : station.curvature * dot(station.rawNormal, heightAxis)
+                "curvatureWidth" : resolved.curvatureWidth,
+                "curvatureHeight" : resolved.curvatureHeight
             });
 }
 
@@ -366,8 +393,13 @@ function isConstrained(definition is map, alongRef) returns boolean
 }
 
 /**
- * Whether the frame borrows anything from the reference. The reference axes rotate
- * along the path, so the closed-form offset tangent does not apply when they do.
+ * Whether this station is placed on the reference surface rather than by a straight
+ * step from the source point.
+ *
+ * The one test that picks the map: surfaceOffset/surfaceOffsetTangent when true,
+ * offsetPoints' straight step and offsetTangent when false. The two are tangents to
+ * different maps, so placement and direction must agree on this or the fitted end
+ * tangent describes a curve the points do not lie on.
  */
 function usesReferenceFrame(definition is map, alongRef) returns boolean
 {
@@ -380,9 +412,22 @@ function usesReferenceFrame(definition is map, alongRef) returns boolean
  * The (1 - w * kappa) factor is checked here: at or below zero the offset has passed
  * the centre of curvature, and the result would fold back through itself.
  */
-function offsetPoints(stations is array, upper is array, lower is array, definition is map, alongRef) returns array
+/**
+ * Offset position at every station, and the fold-back margin each one was tested
+ * against. Stations the profile does not reach get undefined for both.
+ *
+ * The margin is returned rather than recomputed for the debug table, because the two
+ * maps are guarded by different quantities: the straight step by offsetShrink, built
+ * from source curvature, and the surface-following step by the reference's own
+ * (scale - kappa * height). Printing the source one in reference mode showed ~1.0000
+ * for ever while the number that could actually fail was never displayed.
+ *
+ * @returns {map} : { "points" : array, "margins" : array }
+ */
+function offsetPoints(stations is array, upper is array, lower is array, definition is map, alongRef) returns map
 {
     var points = [];
+    var margins = [];
 
     for (var i = 0; i < size(stations); i += 1)
     {
@@ -392,14 +437,16 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
         if (offsets[i] == undefined)
         {
             points = append(points, undefined);
+            margins = append(margins, undefined);
             continue;
         }
 
-        const frame = stationFrame(stations[i], definition, alongRef);
+        const frame = stations[i];
 
         // Only the fold-back test is wanted here. The direction is a run-end
         // question, asked separately where the frame's turn rates are available.
-        if (offsetShrink(frame, offsets[i]) <= 0)
+        const sourceMargin = offsetShrink(frame, offsets[i]);
+        if (sourceMargin <= 0)
         {
             throw regenError("The offset is larger than the radius of curvature at "
                 ~ toString(roundToPrecision(stations[i].arc / millimeter, 1))
@@ -415,7 +462,8 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
             // reference itself. offsetShrink cannot see it, because it is built
             // from the SOURCE curvature and a straight source edge over a curved
             // reference leaves it sitting at exactly 1.
-            if (placed.surf.scale - placed.surf.curvature * placed.height <= 0)
+            const surfaceMargin = placed.surf.scale - placed.surf.curvature * placed.height;
+            if (surfaceMargin <= 0)
             {
                 throw regenError("The height offset reaches the centre of curvature of the reference at "
                     ~ toString(roundToPrecision(stations[i].arc / millimeter, 1))
@@ -423,13 +471,15 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
             }
 
             points = append(points, placed.point);
+            margins = append(margins, surfaceMargin);
             continue;
         }
 
         points = append(points, frame.origin + offsets[i].width * frame.widthAxis + offsets[i].height * frame.heightAxis);
+        margins = append(margins, sourceMargin);
     }
 
-    return points;
+    return { "points" : points, "margins" : margins };
 }
 
 // ============================================================================
@@ -620,10 +670,12 @@ function crossingStation(context is Context, chain is map, stations is array, in
     const normal = transportNormal(previous.normal, previous.tangent, tangent);
     const axes = offsetAxes(tangent, normal, previous.roles);
 
-    // The curvature magnitude is inherited from the neighbouring station, but it has
-    // to be re-resolved against THIS station's axes. Leaving the neighbour's values
-    // would feed the fold-back guard and the shrink factor a curvature measured
-    // about axes that no longer exist -- and crossings are always run endpoints.
+    // The curvature vector is inherited from the neighbouring station, but it has to
+    // be re-resolved against THIS station's axes. Leaving the neighbour's components
+    // would feed the fold-back guard a curvature measured about axes that no longer
+    // exist -- and crossings are always run endpoints.
+    const resolved = curvatureOn(previous, axes.widthAxis, axes.heightAxis);
+
     return mergeMaps(previous, {
                 "arc" : arc,
                 // An inserted crossing is not a vertex between two source edges, so
@@ -636,8 +688,8 @@ function crossingStation(context is Context, chain is map, stations is array, in
                 "normal" : normal,
                 "widthAxis" : axes.widthAxis,
                 "heightAxis" : axes.heightAxis,
-                "curvatureWidth" : previous.curvature * dot(previous.rawNormal, axes.widthAxis),
-                "curvatureHeight" : previous.curvature * dot(previous.rawNormal, axes.heightAxis)
+                "curvatureWidth" : resolved.curvatureWidth,
+                "curvatureHeight" : resolved.curvatureHeight
             });
 }
 
@@ -755,13 +807,13 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
         return undefined;
     }
 
-    const frame = stationFrame(stations[index], definition, alongRef);
+    const frame = stations[index];
     const amounts = { "width" : offsets[index].width, "height" : offsets[index].height };
     const slopes = {
             "width" : offsets[index].widthSlope * coords.scales[index],
             "height" : offsets[index].heightSlope * coords.scales[index]
         };
-    const rates = frameRates(stations, definition, alongRef, run, index);
+    const rates = frameRates(stations, run, index);
 
     // The two are tangents to different maps, so which one applies follows exactly
     // the same test that decides which map placed the points.
@@ -770,7 +822,7 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
         return surfaceOffsetTangent(alongRef, frame, amounts, slopes, rates).direction;
     }
 
-    return offsetTangent(frame, amounts, slopes, rates).direction;
+    return offsetTangent(frame, amounts, slopes, rates);
 }
 
 /**
@@ -788,7 +840,7 @@ function runTangent(stations is array, coords is map, offsets is array, definiti
  *
  * @returns {map} : { "width" : dW/ds, "height" : dH/ds }
  */
-function frameRates(stations is array, definition is map, alongRef, run is map, index is number) returns map
+function frameRates(stations is array, run is map, index is number) returns map
 {
     const still = { "width" : vector(0, 0, 0) / meter, "height" : vector(0, 0, 0) / meter };
     const step = (index == run.end) ? -1 : 1;
@@ -799,8 +851,8 @@ function frameRates(stations is array, definition is map, alongRef, run is map, 
         return still;
     }
 
-    const here = stationFrame(stations[index], definition, alongRef);
-    const near = stationFrame(stations[one], definition, alongRef);
+    const here = stations[index];
+    const near = stations[one];
     const h1 = stations[one].arc - stations[index].arc;
 
     if (abs(h1) < TOLERANCE.zeroLength * meter)
@@ -819,7 +871,7 @@ function frameRates(stations is array, definition is map, alongRef, run is map, 
         return secant;
     }
 
-    const far = stationFrame(stations[two], definition, alongRef);
+    const far = stations[two];
     const h2 = stations[two].arc - stations[index].arc;
 
     if (abs(h2) < TOLERANCE.zeroLength * meter || abs(h2 - h1) < TOLERANCE.zeroLength * meter)
@@ -844,9 +896,11 @@ function frameRates(stations is array, definition is map, alongRef, run is map, 
 // Debug
 // ============================================================================
 
-function debugOutput(context is Context, definition is map, sourceChain is map, profile is map,
-    alongRef, stations is array, coords is map, offsets is array, points is array, runs is array)
+function debugOutput(context is Context, id is Id, definition is map, sourceChain is map, profile is map,
+    alongRef, stations is array, coords is map, upper is array, lower is array, placed is map, runs is array)
 {
+    const points = placed.points;
+
     if (definition.debugPrintFromChain)
     {
         println("offset edges: " ~ toString(size(sourceChain.links)) ~ " link(s), length "
@@ -900,41 +954,48 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
     // selected wire itself. delta never moves an offset point -- it only re-indexes
     // the profile -- so drawing the offset curve is the only way to confirm from the
     // graphics that it landed where it was meant to.
-    if (alongRef != undefined && abs(alongRef.delta) > TOLERANCE.zeroLength * meter)
+    if (definition.debugShowReference && alongRef != undefined)
     {
-        drawReferenceOffset(context, alongRef);
+        drawReferenceOffset(context, id + "debugReference", alongRef);
     }
 
-    // Every addDebugLine is a full sketch plus a constraint solve of its own
-    // (std/debug.fs:405-417), so drawing one per station at 379 stations costs
-    // hundreds of sketch solves. Draw a representative subset instead.
+    // Markers are batched into one feature per colour by drawDebugSegments now, but
+    // a marker at every station is unreadable long before it is slow. Draw a
+    // representative subset.
     const stride = debugStride(size(stations));
 
     if (definition.debugShowOffsetFrames)
     {
-        const scale = 5 * millimeter;
+        var widthAxes = [];
+        var heightAxes = [];
         for (var i = 0; i < size(stations); i += stride)
         {
-            const frame = stationFrame(stations[i], definition, alongRef);
-            addDebugLine(context, frame.origin, frame.origin + scale * frame.widthAxis, DebugColor.GREEN);
-            addDebugLine(context, frame.origin, frame.origin + scale * frame.heightAxis, DebugColor.BLUE);
+            const frame = stations[i];
+            widthAxes = append(widthAxes,
+                { "start" : frame.origin, "end" : frame.origin + DEBUG_AXIS_LENGTH * frame.widthAxis });
+            heightAxes = append(heightAxes,
+                { "start" : frame.origin, "end" : frame.origin + DEBUG_AXIS_LENGTH * frame.heightAxis });
         }
+        drawDebugSegments(context, id + "debugWidthAxes", widthAxes, DebugColor.GREEN);
+        drawDebugSegments(context, id + "debugHeightAxes", heightAxes, DebugColor.BLUE);
     }
 
     if (definition.debugShowOffsets)
     {
+        var reach = [];
         for (var i = 0; i < size(stations); i += stride)
         {
             if (points[i] != undefined)
             {
-                addDebugLine(context, stations[i].origin, points[i], DebugColor.MAGENTA);
+                reach = append(reach, { "start" : stations[i].origin, "end" : points[i] });
             }
         }
+        drawDebugSegments(context, id + "debugOffsets", reach, DebugColor.MAGENTA);
     }
 
     if (definition.debugPrintOffsetTable)
     {
-        printOffsetTable(definition, sourceChain, stations, coords, offsets, points, runs, alongRef);
+        printOffsetTable(sourceChain, stations, coords, upper, lower, placed, runs);
     }
 
     if (definition.debugPrintFrameTable)
@@ -959,31 +1020,29 @@ function debugOutput(context is Context, definition is map, sourceChain is map, 
  * a deliberate act, and the curve it names is invisible otherwise -- it is neither
  * the wire the user picked nor anything that appears in the output.
  *
- * Every addDebugLine is a sketch plus a constraint solve, so the same stride the
- * frame markers use caps the cost. The last sample is always drawn, so the polyline
- * reaches the end of the reference rather than stopping at the last strided index.
+ * Strided like the frame markers: a polyline needs only enough points to show where
+ * it sits. The last sample is always included, so it reaches the end of the
+ * reference rather than stopping wherever the stride happened to land.
  */
-function drawReferenceOffset(context is Context, alongRef is map)
+function drawReferenceOffset(context is Context, id is Id, alongRef is map)
 {
     const points = alongRef.points;
     const count = size(points);
     const stride = debugStride(count);
-    var previous = undefined;
+    var segments = [];
+    var previous = points[0];
 
-    for (var i = 0; i < count; i += stride)
+    for (var i = stride; i < count; i += stride)
     {
-        if (previous != undefined && norm(points[i] - previous) > OFFSET_GEOM_TOL)
-        {
-            addDebugLine(context, previous, points[i], DebugColor.MAGENTA);
-        }
+        segments = append(segments, { "start" : previous, "end" : points[i] });
         previous = points[i];
     }
 
-    const last = points[count - 1];
-    if (previous != undefined && norm(last - previous) > OFFSET_GEOM_TOL)
-    {
-        addDebugLine(context, previous, last, DebugColor.MAGENTA);
-    }
+    // Always finish on the last sample, so the polyline reaches the end of the
+    // reference rather than stopping at whatever the stride last landed on.
+    segments = append(segments, { "start" : previous, "end" : points[count - 1] });
+
+    drawDebugSegments(context, id, segments, DebugColor.MAGENTA);
 }
 
 /**
@@ -1010,6 +1069,41 @@ function printJunctions(stations is array)
 }
 
 /**
+ * Draw many debug segments for the cost of one feature.
+ *
+ * std/debug.fs:429 wraps each addDebugLine in its own startFeature + newSketchOnPlane
+ * + skLineSegment + skSolve + abortFeature. At this feature's stride that is a couple
+ * of hundred constraint solves per regen, and it was the largest single cost here.
+ *
+ * addDebugEntities takes a Query, so the whole set can be built under one throwaway
+ * id as degree-one B-spline curves -- no sketch and no solver at all -- and handed
+ * over in one call. abortFeature then rolls the curves back while the debug entities
+ * survive, which is the same contract addDebugLine itself relies on.
+ *
+ * @param segments {array} : each { "start" : Vector, "end" : Vector }.
+ */
+function drawDebugSegments(context is Context, id is Id, segments is array, color is DebugColor)
+{
+    var drawn = 0;
+
+    startFeature(context, id, {});
+    for (var i = 0; i < size(segments); i += 1)
+    {
+        // A zero-length segment has no direction for opCreateBSplineCurve to use.
+        if (norm(segments[i].end - segments[i].start) > OFFSET_GEOM_TOL)
+        {
+            emitLineCurve(context, id + ("seg" ~ i), segments[i].start, segments[i].end);
+            drawn += 1;
+        }
+    }
+    if (drawn > 0)
+    {
+        addDebugEntities(context, qCreatedBy(id, EntityType.EDGE), color);
+    }
+    abortFeature(context, id);
+}
+
+/**
  * Draw at most DEBUG_MAX_MARKERS frames, however many stations there are.
  */
 function debugStride(count is number) returns number
@@ -1018,7 +1112,7 @@ function debugStride(count is number) returns number
 }
 
 /**
- * Walk the stations one source edge at a time, calling back with the index range.
+ * Split the stations into one index range per source edge.
  * Stations are already ordered, so a change of edge is just a change of index.
  */
 function edgeBlocks(stations is array) returns array
@@ -1070,8 +1164,8 @@ function edgeHeading(sourceChain is map, block is map) returns string
  * (which approaches zero as the offset approaches the centre of curvature), and
  * the resulting point. Stations the profile does not reach print as "--".
  */
-function printOffsetTable(definition is map, sourceChain is map, stations is array,
-    coords is map, offsets is array, points is array, runs is array, alongRef)
+function printOffsetTable(sourceChain is map, stations is array, coords is map,
+    upper is array, lower is array, placed is map, runs is array)
 {
     println("");
     println("=== offsets: " ~ toString(size(stations)) ~ " stations, "
@@ -1081,13 +1175,16 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
     {
         println("");
         println(edgeHeading(sourceChain, block) ~ "  ->  " ~ describeRuns(runs, block.first, block.last));
-        println("     i        arc      coord   pE      width     height     shrink"
+        println("     i        arc      coord   pE      width     height     margin"
             ~ "          x          y          z");
 
         for (var i = block.first; i <= block.last; i += 1)
         {
-            const offset = offsets[i];
-            const point = points[i];
+            // The side offsetPoints actually used. Printing "upper" unconditionally
+            // described one side of a crossing while its x/y/z came from the other,
+            // which is precisely the row you read first when a step looks wrong.
+            const offset = (stations[i].crossing == "left") ? lower[i] : upper[i];
+            const point = placed.points[i];
 
             println(padLeft(toString(i), 6)
                 ~ fmtMM(stations[i].arc, 3, 11)
@@ -1095,7 +1192,7 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
                 ~ fmtNum(offset == undefined ? undefined : offset.profileEdge, 0, 5)
                 ~ fmtMM(offset == undefined ? undefined : offset.width, 3, 11)
                 ~ fmtMM(offset == undefined ? undefined : offset.height, 3, 11)
-                ~ fmtNum(shrinkAt(stationFrame(stations[i], definition, alongRef), offset), 4, 11)
+                ~ fmtNum(placed.margins[i], 4, 11)
                 ~ fmtMM(point == undefined ? undefined : point[0], 3, 11)
                 ~ fmtMM(point == undefined ? undefined : point[1], 3, 11)
                 ~ fmtMM(point == undefined ? undefined : point[2], 3, 11));
@@ -1111,7 +1208,7 @@ function printOffsetTable(definition is map, sourceChain is map, stations is arr
  * The axes shown are the ones offsets are actually applied along, so this is the
  * table to read when a result leans the wrong way. Watch for the tangent flipping
  * sign inside one edge, the width and height columns swapping roles between edges,
- * or a normal that stops being perpendicular to the tangent.
+ * or the T.H column drifting off zero.
  */
 function printFrameTable(definition is map, sourceChain is map, stations is array, alongRef)
 {
@@ -1146,16 +1243,26 @@ function printFrameTable(definition is map, sourceChain is map, stations is arra
     {
         println("");
         println(edgeHeading(sourceChain, block));
-        println("     i        arc         tangent x/y/z             width x/y/z"
-            ~ "            height x/y/z         kappaW    kappaH     perp");
+        // Widths must track the row below exactly: 6 + 11 + 3 * (2 + 3 * 10) + 10 + 10 + 11.
+        println("     i        arc"
+            ~ padLeft("tangent x/y/z", 32)
+            ~ padLeft("width x/y/z", 32)
+            ~ padLeft("height x/y/z", 32)
+            ~ padLeft("kappaW", 10)
+            ~ padLeft("kappaH", 10)
+            ~ padLeft("T.H", 11));
 
         for (var i = block.first; i <= block.last; i += 1)
         {
-            const frame = stationFrame(stations[i], definition, alongRef);
+            const frame = stations[i];
 
-            // Perpendicularity check: dot(tangent, width) should be zero. A drifting
-            // value means the frame is skewing, which bends the offset direction.
-            const perp = dot(frame.tangent, frame.widthAxis);
+            // dot(T, W) is identically zero by construction -- W is built as
+            // normalize(cross(H, T)) -- so printing it proves nothing. dot(T, H) is
+            // the one that can drift: the length axis is only projected into the
+            // surface when "hold length in the reference surface" is on, and an
+            // unprojected T against a reference-derived H is exactly the
+            // non-orthonormality that once cost 4 degrees of end tangent.
+            const skew = dot(frame.tangent, frame.heightAxis);
 
             println(padLeft(toString(i), 6)
                 ~ fmtMM(stations[i].arc, 3, 11)
@@ -1164,7 +1271,7 @@ function printFrameTable(definition is map, sourceChain is map, stations is arra
                 ~ "  " ~ fmtVec(frame.heightAxis, 4, 10)
                 ~ fmtNum(frame.curvatureWidth * meter, 4, 10)
                 ~ fmtNum(frame.curvatureHeight * meter, 4, 10)
-                ~ fmtNum(perp, 6, 11));
+                ~ fmtNum(skew, 6, 11));
         }
     }
 
@@ -1196,19 +1303,3 @@ function describeRuns(runs is array, first is number, last is number) returns st
     return (size(parts) == 0) ? "no output (profile does not reach)" : join(parts, " | ");
 }
 
-/**
- * The (1 - w * kappa) factor at a station. Undefined where the profile does not reach.
- *
- * Takes the resolved frame, not the raw station: with a reference wire the
- * curvatures are measured about the reference's axes, and reading the chain's own
- * made this column disagree with the number the offset was actually built from.
- */
-function shrinkAt(frame is map, offset)
-{
-    if (offset == undefined)
-    {
-        return undefined;
-    }
-
-    return offsetShrink(frame, offset);
-}

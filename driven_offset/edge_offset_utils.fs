@@ -31,10 +31,19 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  */
 export const ZERO_CURVATURE = 1e-3 / meter;
 
+/**
+ * A direction vector this short carries no direction. Used wherever a cross product
+ * or a sum of vectors may collapse, to decide whether normalizing it means anything.
+ */
+export const ZERO_DIRECTION = 1e-9;
+
+/** A table span this small is a repeated abscissa: interpolating across it divides by zero. */
+export const ZERO_SPAN = 1e-15;
+
 /** Position tolerance for geometric classification (line / arc detection). */
 export const OFFSET_GEOM_TOL = 1e-6 * meter;
 
-/** Newton iterations for inverting x(u) on a profile edge. Three reaches 1e-12 m. */
+/** Newton iterations for inverting x(u) on a profile edge. Three already reach 1e-12 m. */
 export const NEWTON_ITERATIONS = 4;
 
 /** Seed samples used to bracket an inversion before Newton refines it. */
@@ -53,7 +62,10 @@ export const PROFILE_JOIN_TOL = 1e-5 * meter;
 /** Samples per edge used to build the turning-angle table on a reference chain. */
 export const TURNING_SAMPLES = 25;
 
-/** Most frames or offset vectors any debug view will draw. Each costs a sketch solve. */
+/** How long the drawn frame axes are: long enough to see, short enough not to clutter. */
+export const DEBUG_AXIS_LENGTH = 5 * millimeter;
+
+/** Most frames or offset vectors any debug view will draw. */
 export const DEBUG_MAX_MARKERS = 60;
 
 /**
@@ -510,9 +522,9 @@ export function offsetShrink(frame is map, offsets is map) returns number
  * frame IS orthonormal, so this is a strict generalization, not a change of intent.
  *
  * @param rates {map} : { "width" : dW/ds, "height" : dH/ds }, per unit length.
- * @returns {map} : { "direction" : unit Vector, "shrink" : number }
+ * @returns {Vector} : unit direction. The arc-length scale is offsetShrink's job.
  */
-export function offsetTangent(frame is map, offsets is map, slopes is map, rates is map) returns map
+export function offsetTangent(frame is map, offsets is map, slopes is map, rates is map) returns Vector
 {
     const direction = frame.tangent
         + slopes.width * frame.widthAxis
@@ -520,10 +532,7 @@ export function offsetTangent(frame is map, offsets is map, slopes is map, rates
         + offsets.width * rates.width
         + offsets.height * rates.height;
 
-    return {
-        "direction" : (norm(direction) < 1e-9) ? frame.tangent : normalize(direction),
-        "shrink" : offsetShrink(frame, offsets)
-    };
+    return (norm(direction) < ZERO_DIRECTION) ? frame.tangent : normalize(direction);
 }
 
 /**
@@ -556,7 +565,7 @@ export function surfaceOffset(alongRef is map, frame is map, offsets is map) ret
     const alpha = dot(frame.widthAxis, surf.tangent);
     const beta = dot(frame.widthAxis, alongRef.planeNormal);
 
-    // The height axis is the surface normal up to the +Z sign referenceFrameAt
+    // The height axis is the surface normal up to the +Z sign referenceHeightAxisAt
     // applies, so this is exactly +1 or -1, never anything between.
     const heightSign = (dot(frame.heightAxis, surf.normal) < 0) ? -1 : 1;
 
@@ -912,8 +921,9 @@ export function stationCount(context is Context, edgeData is map, spacing is map
  *
  * @param spacing {map} : { mode, pointsPerEdge, targetSpacing, ctrlPointMultiplier }
  * @returns {array} : stations, each
- *   { arc, coordArc, origin, tangent, normal, widthAxis, heightAxis,
- *     curvatureWidth, curvatureHeight, linkIndex, edgeIndex, atEdgeEnd }
+ *   { arc, origin, tangent, rawNormal, curvature, normal, widthAxis, heightAxis,
+ *     curvatureWidth, curvatureHeight, roles, linkIndex, edgeIndex }
+ *   and, on the second half of a welded vertex, { junctionGap, junctionBreak, welded }.
  */
 export function chainStations(context is Context, chain is map, spacing is map) returns array
 {
@@ -952,8 +962,7 @@ export function chainStations(context is Context, chain is map, spacing is map) 
                             "rawNormal" : frame.xAxis,
                             "curvature" : results[i].curvature,
                             "linkIndex" : linkIndex,
-                            "edgeIndex" : edgeIndex,
-                            "atEdgeEnd" : (i == 0 || i == count - 1)
+                            "edgeIndex" : edgeIndex
                         });
             }
 
@@ -974,9 +983,25 @@ export function chainStations(context is Context, chain is map, spacing is map) 
  * the scalar curvature of two stations whose normals disagree produces nonsense
  * while averaging the vectors is simply correct.
  */
-function curvatureVector(station is map) returns Vector
+export function curvatureVector(station is map) returns Vector
 {
     return station.curvature * station.rawNormal;
+}
+
+/**
+ * Resolve a station's curvature onto a pair of frame axes.
+ *
+ * dot(dT/ds, axis) for each. Four call sites used to spell this out; they all mean
+ * the same thing and all have to agree, because offsetShrink subtracts them.
+ */
+export function curvatureOn(station is map, widthAxis is Vector, heightAxis is Vector) returns map
+{
+    const kVector = curvatureVector(station);
+
+    return {
+        "curvatureWidth" : dot(kVector, widthAxis),
+        "curvatureHeight" : dot(kVector, heightAxis)
+    };
 }
 
 /**
@@ -1153,6 +1178,7 @@ function finishStations(raw is array, zeroArc is ValueWithUnits) returns array
     for (var i = 0; i < size(raw); i += 1)
     {
         const axes = offsetAxes(tangents[i], normals[i], roles);
+        const resolved = curvatureOn(raw[i], axes.widthAxis, axes.heightAxis);
 
         // Curvature signed about each axis. The kernel normal points at the centre
         // of curvature, so a positive value means that axis points inward. Where the
@@ -1166,8 +1192,8 @@ function finishStations(raw is array, zeroArc is ValueWithUnits) returns array
                         "normal" : normals[i],
                         "widthAxis" : axes.widthAxis,
                         "heightAxis" : axes.heightAxis,
-                        "curvatureWidth" : curvatures[i] * dot(towardCentre, axes.widthAxis),
-                        "curvatureHeight" : curvatures[i] * dot(towardCentre, axes.heightAxis)
+                        "curvatureWidth" : resolved.curvatureWidth,
+                        "curvatureHeight" : resolved.curvatureHeight
                     }));
     }
 
@@ -1208,7 +1234,9 @@ function seedNormalFor(tangents is array, kernelNormals is array, curvatures is 
  * a function rather than a curve.
  *
  * @param zeroPoint {Vector} : world position whose X is profile coordinate zero.
- * @returns {map} : { "edges" : array ordered by X, "minCoord", "maxCoord", "zeroX" }
+ * @returns {map} : { "edges", "steps", "doublesBack", "minCoord", "maxCoord", "zeroX" }.
+ *          "edges" is in traversal order along the profile chain, NOT sorted by X --
+ *          see orderProfileEdges. That is why smallestCoord/largestCoord exist.
  */
 export function buildProfile(context is Context, selection is Query, zeroPoint is Vector) returns map
 {
@@ -1732,19 +1760,14 @@ export function buildAlongReference(context is Context, selection is Query, zero
  * The width axis is signed for +Y independently of planeNormal's own orientation,
  * which is pinned by the turning-angle sign convention and must not be flipped.
  *
- * @returns {map} : { "tangent", "widthAxis", "heightAxis" }
+ * @returns {Vector} : the surface normal, signed towards +Z.
  */
-export function referenceFrameAt(alongRef is map, x is ValueWithUnits) returns map
+export function referenceHeightAxisAt(alongRef is map, x is ValueWithUnits) returns Vector
 {
     const tangent = interpolateVector(alongRef.xs, alongRef.tangents, x);
     const surfaceNormal = normalize(cross(alongRef.planeNormal, tangent));
-    const widthAxis = (alongRef.planeNormal[1] < 0) ? -1 * alongRef.planeNormal : alongRef.planeNormal;
 
-    return {
-        "tangent" : tangent,
-        "widthAxis" : widthAxis,
-        "heightAxis" : (surfaceNormal[2] < 0) ? -1 * surfaceNormal : surfaceNormal
-    };
+    return (surfaceNormal[2] < 0) ? -1 * surfaceNormal : surfaceNormal;
 }
 
 /**
@@ -1764,7 +1787,7 @@ export function interpolateVector(xs is array, vectors is array, x) returns Vect
 
     const i = spanIndex(xs, x);
     const span = (xs[i + 1] - xs[i]) / meter;
-    if (abs(span) < 1e-15)
+    if (abs(span) < ZERO_SPAN)
     {
         return vectors[i];
     }
@@ -1788,7 +1811,12 @@ export function referenceArcAtX(alongRef is map, x is ValueWithUnits) returns Va
 }
 
 /**
- * Cubic Hermite lookup in an increasing table with known slopes, clamped at both ends.
+ * Cubic Hermite lookup in an increasing table with known slopes.
+ *
+ * Outside the table it EXTRAPOLATES along the end slope -- it does not clamp. A
+ * lookup that runs off the end therefore returns a straight-line continuation of
+ * the curve, silently. interpolate() flat-clamps instead; the two are not
+ * interchangeable at the ends.
  *
  * @param slopes {array} : dy/dx at each sample.
  */
@@ -1806,7 +1834,7 @@ export function hermiteAt(xs is array, ys is array, slopes is array, x)
 
     const i = spanIndex(xs, x);
     const span = xs[i + 1] - xs[i];
-    if (abs(span / meter) < 1e-15)
+    if (abs(span / meter) < ZERO_SPAN)
     {
         return ys[i];
     }
@@ -1860,7 +1888,7 @@ export function referencePointAtArc(alongRef is map, arc is ValueWithUnits) retu
 
     const i = spanIndex(arcs, arc);
     const span = arcs[i + 1] - arcs[i];
-    if (abs(span / meter) < 1e-15)
+    if (abs(span / meter) < ZERO_SPAN)
     {
         return points[i];
     }
@@ -1880,7 +1908,7 @@ export function referencePointAtArc(alongRef is map, arc is ValueWithUnits) retu
  *
  * The normal is cross(planeNormal, tangent) with no sign correction applied, so
  * that dN/d(wire arc) = -kappa * t holds and the tangent formula below can rely on
- * it. referenceFrameAt flips that normal toward +Z before handing it to a frame as
+ * it. referenceHeightAxisAt flips that normal toward +Z before handing it to a frame as
  * a height axis; that flip is a display convention, and it is reapplied where the
  * profile's height is added rather than being baked in here.
  */
@@ -2086,7 +2114,7 @@ export function interpolate(xs is array, ys is array, x)
 
     const i = spanIndex(xs, x);
     const span = (xs[i + 1] - xs[i]) / meter;
-    if (abs(span) < 1e-15)
+    if (abs(span) < ZERO_SPAN)
     {
         return ys[i];
     }
@@ -2215,13 +2243,6 @@ export function padLeft(text is string, width is number) returns string
 /**
  * Left-align text in a fixed-width column.
  */
-export function padRight(text is string, width is number) returns string
-{
-    const deficit = width - length(text);
-
-    return (deficit > 0) ? text ~ repeatString(" ", deficit) : text;
-}
-
 /**
  * A length in millimetres, fixed decimals, right-aligned. Undefined prints as "--".
  */
@@ -2232,7 +2253,40 @@ export function fmtMM(value, decimals is number, width is number) returns string
         return padLeft("--", width);
     }
 
-    return padLeft(toString(roundToPrecision(value / millimeter, decimals)), width);
+    return padLeft(fixedDecimals(toString(roundToPrecision(value / millimeter, decimals)), decimals), width);
+}
+
+/**
+ * Pad a number's text out to a fixed number of decimals.
+ *
+ * toString drops trailing zeros, so 345.2 and 345.213 right-align with their decimal
+ * points in different columns. In a table read by scanning a column for the place a
+ * value stops behaving, that is not cosmetic -- it is the whole job of the table.
+ *
+ * Scientific notation is left alone: padding it would produce nonsense, and a value
+ * small enough to trigger it is telling you something on its own.
+ */
+function fixedDecimals(text is string, decimals is number) returns string
+{
+    if (indexOf(text, "e") >= 0 || indexOf(text, "E") >= 0)
+    {
+        return text;
+    }
+
+    const point = indexOf(text, ".");
+
+    if (decimals <= 0)
+    {
+        return (point < 0) ? text : substring(text, 0, point);
+    }
+    if (point < 0)
+    {
+        return text ~ "." ~ repeatString("0", decimals);
+    }
+
+    const have = length(text) - point - 1;
+
+    return (have >= decimals) ? text : text ~ repeatString("0", decimals - have);
 }
 
 /**
@@ -2245,7 +2299,7 @@ export function fmtNum(value, decimals is number, width is number) returns strin
         return padLeft("--", width);
     }
 
-    return padLeft(toString(roundToPrecision(value, decimals)), width);
+    return padLeft(fixedDecimals(toString(roundToPrecision(value, decimals)), decimals), width);
 }
 
 /**
