@@ -320,8 +320,12 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
             }
         }
 
+        // One batched kernel call per curved edge, replacing one per mapped point.
+        var frameSamples = isLine ? undefined : sampleEdgeFrames(context, edge, stdDir);
+
         edgeData = append(edgeData, {
             "query"              : edge,
+            "frameSamples"       : frameSamples,
             "bspline"            : bspline,
             "stdDir"             : stdDir,
             "isLine"             : isLine,
@@ -365,25 +369,14 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
         // Prefer next edge (line followed by arc → arc drives the normal)
         if (i + 1 < size(edgeData) && !edgeData[i + 1].isLine)
         {
-            var nextEd    = edgeData[i + 1];
-            // Traversal start of next edge: arcFrac=0 if stdDir, arcFrac=1 if reversed
-            var nextArcFrac = nextEd.stdDir ? 0 : 1;
-            contextXAxis = evEdgeCurvature(context, {
-                "edge"                      : nextEd.query,
-                "parameter"                 : nextArcFrac,
-                "arcLengthParameterization" : true
-            }).frame.xAxis;
+            // The neighbour is already sampled, so read its traversal-start normal from
+            // the table instead of paying another kernel call for it.
+            contextXAxis = edgeData[i + 1].frameSamples.normals[0];
         }
         else if (i - 1 >= 0 && !edgeData[i - 1].isLine)
         {
-            var prevEd    = edgeData[i - 1];
-            // Traversal end of prev edge: arcFrac=1 if stdDir, arcFrac=0 if reversed
-            var prevArcFrac = prevEd.stdDir ? 1 : 0;
-            contextXAxis = evEdgeCurvature(context, {
-                "edge"                      : prevEd.query,
-                "parameter"                 : prevArcFrac,
-                "arcLengthParameterization" : true
-            }).frame.xAxis;
+            // Traversal end of the previous edge, read from its sampled table.
+            contextXAxis = edgeData[i - 1].frameSamples.normals[CM_FRAME_SAMPLES - 1];
         }
         // else: isolated line or line–line — keep world-axis heuristic
 
@@ -486,19 +479,170 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
  *   "sign"      {number}      - current normal sign (+1 or -1)
  *   "edgeIndex" {number}      - index of the edge containing this position
  */
+/**
+ * Signed curvature at one end of the path, about that end frame's own normal.
+ *
+ * Only used to continue the path past its ends. A line, or an edge whose end samples
+ * are collinear, returns zero and the extension stays straight.
+ */
+function boundaryCurvature(frenetPath is map, boundaryArc is ValueWithUnits)
+{
+    var edgeData = frenetPath.edgeData;
+    var edgeDat  = (boundaryArc <= 0 * meter) ? edgeData[0] : edgeData[size(edgeData) - 1];
+
+    if (edgeDat.isLine || edgeDat.frameSamples == undefined)
+    {
+        return 0 / meter;
+    }
+
+    var samples = edgeDat.frameSamples;
+    var last    = CM_FRAME_SAMPLES - 1;
+    var span    = edgeDat.length / last;
+    var i       = (boundaryArc <= 0 * meter) ? 0 : last - 1;
+
+    // kappa = dT/ds resolved on the stored normal: positive when the turn is toward it.
+    return dot((samples.tangents[i + 1] - samples.tangents[i]) / span, samples.normals[i]);
+}
+
+/** Frames sampled per curved edge at build time. One batched kernel call each. */
+export const CM_FRAME_SAMPLES = 100;
+
+/**
+ * Sample one edge's frames in traversal order, with a single batched kernel call.
+ *
+ * getFrameAtArcLength used to issue its own unbatched evEdgeCurvature every time it
+ * was asked for a frame, and mapSinglePoint asks twice per point -- once on the
+ * from-path and once on the to-path. Mapping N points therefore cost 2N kernel round
+ * trips. evEdgeCurvatures takes a parameters ARRAY, so the whole edge can be
+ * evaluated once here and every later lookup becomes arithmetic.
+ *
+ * Parameters are requested at the same arc-length fractions the old per-point call
+ * would have used, so at a sample the result is bit-identical to before; only the
+ * interpolation between samples is new.
+ *
+ * Tangents are stored already turned into traversal direction. Normals are stored raw
+ * (+N from the kernel); the cumulative sign correction stays where it was, in
+ * getFrameAtArcLength.
+ */
+function sampleEdgeFrames(context is Context, edge is Query, stdDir is boolean) returns map
+{
+    var parameters = [];
+    for (var j = 0; j < CM_FRAME_SAMPLES; j += 1)
+    {
+        var frac = j / (CM_FRAME_SAMPLES - 1);
+        parameters = append(parameters, stdDir ? frac : 1 - frac);
+    }
+
+    var raw = evEdgeCurvatures(context, {
+        "edge"                      : edge,
+        "parameters"                : parameters,
+        "arcLengthParameterization" : true
+    });
+
+    var origins  = [];
+    var tangents = [];
+    var normals  = [];
+    for (var j = 0; j < CM_FRAME_SAMPLES; j += 1)
+    {
+        var fr = raw[j].frame;
+        origins  = append(origins,  fr.origin);
+        tangents = append(tangents, stdDir ? fr.zAxis : -1 * fr.zAxis);
+        normals  = append(normals,  fr.xAxis);
+    }
+
+    return { "origins": origins, "tangents": tangents, "normals": normals };
+}
+
+/**
+ * The sampled frame at a local traversal arc length.
+ *
+ * Position is cubic Hermite with the stored unit tangents as slopes -- d(origin)/d(arc)
+ * IS the tangent, so those slopes are exact rather than fitted, and the interpolant
+ * osculates the real curve. Samples are uniform in arc length by construction, so the
+ * span is constant and the index is a division rather than a search.
+ */
+function frameAtLocalArc(edgeDat is map, localArc is ValueWithUnits) returns map
+{
+    var samples = edgeDat.frameSamples;
+    var last    = CM_FRAME_SAMPLES - 1;
+    var span    = edgeDat.length / last;
+
+    var t = localArc / span;
+    var i = floor(t);
+    if (i < 0)         { i = 0; }
+    if (i > last - 1)  { i = last - 1; }
+
+    var f = t - i;
+    if (f < 0) { f = 0; }
+    if (f > 1) { f = 1; }
+
+    var t0 = samples.tangents[i];
+    var t1 = samples.tangents[i + 1];
+
+    var f2 = f * f;
+    var f3 = f2 * f;
+    var origin = (2 * f3 - 3 * f2 + 1) * samples.origins[i]
+        + (f3 - 2 * f2 + f) * span * t0
+        + (-2 * f3 + 3 * f2) * samples.origins[i + 1]
+        + (f3 - f2) * span * t1;
+
+    var tangent = (1 - f) * t0 + f * t1;
+    tangent = (norm(tangent) < 1e-9) ? t0 : normalize(tangent);
+
+    // Where curvature is ~0 the kernel normal is arbitrary, so two neighbours can
+    // point opposite ways and cancel. Fall back to the nearer sample, then to any
+    // perpendicular -- the same situation the old code met one point at a time.
+    var normal = (1 - f) * samples.normals[i] + f * samples.normals[i + 1];
+    normal = normal - dot(normal, tangent) * tangent;
+    if (norm(normal) < 1e-9)
+    {
+        var nearer = (f < 0.5) ? samples.normals[i] : samples.normals[i + 1];
+        normal = nearer - dot(nearer, tangent) * tangent;
+    }
+    if (norm(normal) < 1e-9)
+    {
+        normal = perpendicularVector(tangent);
+    }
+
+    return { "origin": origin, "tangent": tangent, "normal": normalize(normal) };
+}
+
 export function getFrameAtArcLength(context is Context, frenetPath is map, arcLength) returns map
 {
     var edgeData    = frenetPath.edgeData;
     var totalLength = frenetPath.totalLength;
 
-    // 1. Out-of-bounds: extrapolate tangentially from the boundary frame
+    // 1. Out-of-bounds: continue the path along its own osculating circle.
+    //
+    // This is not a rare guard. s_to = toRefArc + (s_from - fromRefArc) in mapSinglePoint
+    // is an UNCLAMPED shift, so any difference in length between the two references, or an
+    // off-centre reference point, pushes ordinary points past the end.
+    //
+    // A straight tangent extension leaves the true curve by d^2/2R: on a 200 mm tip radius
+    // that is 0.25 mm only 10 mm past the end. Carrying the boundary curvature through
+    // costs nothing -- the sampled table already knows it -- and collapses back to exactly
+    // the old straight line as curvature goes to zero.
     if (arcLength < 0 * meter || arcLength > totalLength)
     {
         var boundaryArc = (arcLength < 0 * meter) ? 0 * meter : totalLength;
         var overflow    = arcLength - boundaryArc;   // negative at start, positive at end
         var boundary    = getFrameAtArcLength(context, frenetPath, boundaryArc);
-        var extPos      = boundary.frame.origin + overflow * boundary.frame.zAxis;
-        var extFrame    = coordSystem(extPos, boundary.frame.xAxis, boundary.frame.zAxis);
+
+        var tangent  = boundary.frame.zAxis;
+        var toCentre = boundary.frame.xAxis;
+        var kappa    = boundaryCurvature(frenetPath, boundaryArc);
+        var theta    = kappa * overflow;
+        var straight = (abs(theta) < 1e-7);
+
+        var alongTangent = straight ? overflow : sin(theta * radian) / kappa;
+        var towardCentre = straight ? 0 * meter : (1 - cos(theta * radian)) / kappa;
+        var extTan       = straight
+            ? tangent
+            : normalize(cos(theta * radian) * tangent + sin(theta * radian) * toCentre);
+
+        var extPos   = boundary.frame.origin + alongTangent * tangent + towardCentre * toCentre;
+        var extFrame = coordSystem(extPos, boundary.frame.xAxis, extTan);
+
         return mergeMaps(boundary, { "frame": extFrame });
     }
 
@@ -550,36 +694,14 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     }
     else
     {
-        // 6b. Curved: evaluate the exact Frenet frame on the actual edge geometry.
-        // arcFrac maps local traversal arc-length → [0,1] arc-length fraction on the edge.
-        // Clamp to [0,1] to guard against floating-point overshoot at the boundary
-        // (e.g. arcLength == totalLength but float subtraction gives localArc = length + eps).
-        var arcFrac = localArc.value / edgeDat.length.value;
-        if (arcFrac < 0) { arcFrac = 0; }
-        if (arcFrac > 1) { arcFrac = 1; }
-        if (!edgeDat.stdDir)
-        {
-            arcFrac = 1 - arcFrac;  // traversal is reversed: start=1, end=0
-        }
-
-        var rawResult = evEdgeCurvature(context, {
-            "edge"                      : edgeDat.query,
-            "parameter"                 : arcFrac,
-            "arcLengthParameterization" : true
-        });
-
-        if (!edgeDat.stdDir)
-        {
-            // Flip zAxis so it points in the traversal direction.
-            frame = coordSystem(rawResult.frame.origin, rawResult.frame.xAxis, -1 * rawResult.frame.zAxis);
-        }
-        else
-        {
-            frame = rawResult.frame;
-        }
+        // 6b. Curved: read the frame sampled at build time. Tangents in the table are
+        // already in traversal direction, so no stdDir flip is needed here. frameAtLocalArc
+        // clamps its own index, which absorbs the float overshoot at the boundary
+        // (arcLength == totalLength giving localArc = length + eps).
+        var sampled = frameAtLocalArc(edgeDat, localArc);
 
         // Apply cumulative normal sign correction to xAxis.
-        frame = coordSystem(frame.origin, sign * frame.xAxis, frame.zAxis);
+        frame = coordSystem(sampled.origin, sign * sampled.normal, sampled.tangent);
     }
 
     // BINORMAL: replace the curvature normal with the in-plane normal N = ref x tangent.
