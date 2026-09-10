@@ -764,13 +764,20 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             while (segStartIdx < size(mappedData))
             {
-                // Collect the run of consecutive points on the same to-edge
-                var currentEdge = mappedData[segStartIdx].edgeIndex;
-                var segEndIdx   = segStartIdx;
-                while (segEndIdx + 1 < size(mappedData) && mappedData[segEndIdx + 1].edgeIndex == currentEdge)
+                // Collect the run of points the to-path carries smoothly. See
+                // pathIsSmoothAcross: with a G1 chain and a transported normal, a split at a
+                // tangent-continuous to-edge boundary buys nothing and risks leaving a span
+                // on a short edge with too few points to fit.
+                var segEndIdx = segStartIdx;
+                while (segEndIdx + 1 < size(mappedData)
+                       && pathIsSmoothAcross(toFrenetPath, mappedData[segEndIdx].edgeIndex,
+                                             mappedData[segEndIdx + 1].edgeIndex))
                 {
                     segEndIdx += 1;
                 }
+
+                // The edge the span ENDS on drives the boundary below; a span may cover several.
+                var currentEdge = mappedData[segEndIdx].edgeIndex;
 
                 var segPoints     = [];
                 var segOffsetDirs = [];
@@ -790,10 +797,30 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
                 junctionPt = undefined;
 
+                // Top a thin span up from its own gaps rather than letting it fall below
+                // degree+1 and be discarded. Offset dirs stay in lockstep with the points.
+                var spanShortfall = (approxDegree + 1) - (size(segPoints) + segEndIdx - segStartIdx + 1);
+                var perGap        = (spanShortfall > 0 && segEndIdx > segStartIdx)
+                    ? ceil(spanShortfall / (segEndIdx - segStartIdx))
+                    : 0;
+
                 for (var k = segStartIdx; k <= segEndIdx; k += 1)
                 {
                     segPoints     = append(segPoints,     mappedData[k].point);
                     segOffsetDirs = append(segOffsetDirs, mappedData[k].offsetDir);
+
+                    if (perGap > 0 && k < segEndIdx)
+                    {
+                        for (var ex = 1; ex <= perGap; ex += 1)
+                        {
+                            var extra = mapBetweenSamples(context, definition.flipToNormal,
+                                    sourceCurveArray[i], srcFlipped, numSamples,
+                                    fromFrenetPath, toFrenetPath, fromRefArc, toRefArc,
+                                    mappedData, k, ex / (perGap + 1.0));
+                            segPoints     = append(segPoints,     extra.point);
+                            segOffsetDirs = append(segOffsetDirs, extra.offsetDir);
+                        }
+                    }
                 }
 
                 // Inject exact boundary point at the junction to the next span
@@ -946,7 +973,19 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     segOffsetDirs = dedupedDirs;
                 }
 
-                if (size(segPoints) >= approxDegree + 1)
+                // Never discard a span. Dropping it opened a gap in the wrapped curve, and
+                // did so with no message at all here -- not even a debug-gated one.
+                var fitDegree = approxDegree;
+                if (size(segPoints) < approxDegree + 1)
+                {
+                    fitDegree = max([1, size(segPoints) - 1]);
+                    println("WARNING: wrapAndLoft span " ~ toString(i) ~ "." ~ toString(segCount)
+                        ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
+                        ~ toString(approxDegree + 1) ~ " for degree " ~ toString(approxDegree)
+                        ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
+                }
+
+                if (size(segPoints) >= 2)
                 {
                     // Scale for derivative constraints: total chord length of this segment.
                     var totalChord = 0 * meter;
@@ -969,7 +1008,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         "targets"          : [approximationTarget(wrappedTargetDef)],
                         "tolerance"        : definition.approximationTolerance,
                         "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : approxDegree,
+                        "degree"           : fitDegree,
                         "isPeriodic"       : false
                     };
                     var mappedCurve = approximateSpline(context, approxDef)[0];
@@ -1030,7 +1069,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var offsetApproxBase = {
                         "tolerance"        : definition.approximationTolerance,
                         "maxControlPoints" : definition.approximationMaxCPs,
-                        "degree"           : approxDegree,
+                        "degree"           : fitDegree,
                         "isPeriodic"       : false
                     };
 

@@ -527,6 +527,97 @@ export function mappedArc(fromPath is map, toPath is map, fromRefArc is ValueWit
     return s;
 }
 
+/** Two adjacent to-path edges meeting within this angle count as one smooth run. */
+export const CM_SPAN_MERGE_ANGLE = 0.5 * degree;
+
+/** Traversal-direction tangent at an edge's start. */
+function edgeStartTangent(edgeDat is map) returns Vector
+{
+    return edgeDat.isLine ? edgeDat.lineFrame.zAxis : edgeDat.frameSamples.tangents[0];
+}
+
+/** Traversal-direction tangent at an edge's end. */
+function edgeEndTangent(edgeDat is map) returns Vector
+{
+    return edgeDat.isLine ? edgeDat.lineFrame.zAxis
+        : edgeDat.frameSamples.tangents[CM_FRAME_SAMPLES - 1];
+}
+
+/**
+ * Map a point lying between two existing samples of a source curve.
+ *
+ * Same route as the junction oversampling: evaluate the source curve at an intermediate
+ * parameter, read its coordinates in the from-frame there, rebuild them in the to-frame.
+ * Used to top up a span that the to-path cut too short to fit.
+ *
+ * @param k    {number} : index of the sample this point follows.
+ * @param frac {number} : position between sample k and k+1, in (0, 1).
+ * @returns {map} : { "point" : Vector, "offsetDir" : Vector }
+ */
+export function mapBetweenSamples(context is Context, flipToNormal is boolean, sourceEdge is Query,
+    srcFlipped is boolean, numSamples is number, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits,
+    mappedData is array, k is number, frac is number) returns map
+{
+    var param    = (k + frac) / (numSamples - 1);
+    var srcParam = srcFlipped ? 1 - param : param;
+
+    var line = evEdgeTangentLines(context, { "edge": sourceEdge, "parameters": [srcParam] })[0];
+
+    var sFrom   = mappedData[k].sFrom + frac * (mappedData[k + 1].sFrom - mappedData[k].sFrom);
+    var fromRes = getFrameAtArcLength(context, fromFrenetPath, sFrom);
+    var local   = worldPointToFrenet(line.origin, fromRes);
+
+    var sTo   = mappedArc(fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, sFrom, local[1]);
+    var toRes = getFrameAtArcLength(context, toFrenetPath, sTo);
+
+    var toSign  = flipToNormal ? -1 * toRes.sign : toRes.sign;
+    var toFrame = (toSign != fromRes.sign)
+        ? mergeMaps(toRes, { "frame": coordSystem(toRes.frame.origin, -1 * toRes.frame.xAxis, toRes.frame.zAxis) })
+        : toRes;
+
+    return {
+        "point"     : frenetPointToWorld(local, toFrame),
+        "offsetDir" : toFrame.frame.xAxis
+    };
+}
+
+/**
+ * Whether the path runs smoothly from one edge into the next.
+ *
+ * Consumers split a mapped curve wherever the to-path edge index changes, because the
+ * frame used to jump at those boundaries. It no longer does: the position and tangent
+ * come from a G1 chain, and the normal is now transported, so across a tangent-continuous
+ * boundary the map is continuous and a split there buys nothing. It costs plenty though --
+ * each split is an independently fitted span that only rejoins through jostleG2Junctions,
+ * and a span landing on a short edge can end up with too few points to fit at all.
+ *
+ * Non-adjacent indices never merge: the traversal has genuinely jumped.
+ */
+export function pathIsSmoothAcross(frenetPath is map, edgeA is number, edgeB is number) returns boolean
+{
+    if (edgeA == edgeB)
+    {
+        return true;
+    }
+
+    var lo = min([edgeA, edgeB]);
+    var hi = max([edgeA, edgeB]);
+    if (hi != lo + 1)
+    {
+        return false;
+    }
+
+    var edgeData = frenetPath.edgeData;
+    if (lo < 0 || hi >= size(edgeData))
+    {
+        return false;
+    }
+
+    return dot(edgeEndTangent(edgeData[lo]), edgeStartTangent(edgeData[hi]))
+        >= cos(CM_SPAN_MERGE_ANGLE);
+}
+
 /**
  * Signed curvature at any arc along the path, about the transported normal.
  */
