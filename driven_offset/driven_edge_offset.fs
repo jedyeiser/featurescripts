@@ -4,6 +4,9 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 export import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da639ec");
 import(path : "d009ddf4a8dd9534fc4dc4b5", version : "e11a408e487b65a9b42efac8");
 import(path : "6479d7fbd0ec7d11e0ae6c69", version : "4f533950f9fcbe2083572c8b");
+// design_map_query_utils: embedVariableMap and the extractable wrappers.
+import(path : "2b6b313ac740a0146d5bef7c", version : "000000000000000000000000");
+
 
 
 /**
@@ -221,6 +224,8 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         debugOutput(context, id + "debug", definition, sourceChain, profile, alongRef, allStations, allCoords,
             upper, lower, placed, emitted);
+
+        publishOutputs(context, id, definition, emitted);
     });
 
 // ============================================================================
@@ -908,6 +913,95 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
     }
 
     return emitted;
+}
+
+/**
+ * Expose this feature's results to a later Extract variables feature.
+ *
+ * Two kinds of thing go out. The queries are what another feature would otherwise have to
+ * pick in the viewport -- published as query variables they appear in any selection dropdown
+ * and survive a regeneration that moves the geometry, which a viewport pick does not.
+ *
+ * The variables are measurements this feature already computes and, until now, only ever
+ * printed. Squareness in particular is the number that diagnosed the tail drift: as a
+ * variable a QC feature can assert on it, where a println can only be read by a person.
+ *
+ * Costs one setVariable and no kernel calls, so it runs unconditionally rather than behind
+ * a toggle -- the slot is keyed by feature id and is not reachable from `#`, so it adds
+ * nothing a user has to look at.
+ */
+function publishOutputs(context is Context, id is Id, definition is map, emitted is array)
+{
+    var variables = {
+            "curveCount" : extractableVariable(size(emitted),
+                    "Number of curves this offset emitted.")
+        };
+
+    var radii = [];
+
+    for (var run in emitted)
+    {
+        if (run.fill != undefined && run.fill.kind == "arc")
+        {
+            radii = append(radii, run.fill.radius);
+        }
+
+        // Both ends can land on the same run when the whole chain is one run, so these are
+        // read independently rather than as an either/or.
+        if (run.terminalStart != undefined)
+        {
+            variables = withTerminalVariables(variables, "start", run.terminalStart);
+        }
+        if (run.terminalEnd != undefined)
+        {
+            variables = withTerminalVariables(variables, "end", run.terminalEnd);
+        }
+    }
+
+    variables["cornerArcCount"] = extractableVariable(size(radii),
+        "G0 corners that were rounded with a true arc.");
+
+    if (size(radii) > 0)
+    {
+        variables["cornerArcRadii"] = extractableVariable(radii,
+            "Radius of each rounded corner, in chain order.");
+    }
+
+    embedVariableMap(context, id, {
+                "variable" : variables,
+                "query" : {
+                    "offsetBodies" : extractableQuery(qCreatedBy(id, EntityType.BODY),
+                            "Bodies produced by this offset.", DebugColor.GREEN),
+                    "offsetEdges" : extractableQuery(qCreatedBy(id, EntityType.EDGE),
+                            "Edges of the offset result.", DebugColor.GREEN),
+                    "sourceEdges" : extractableQuery(definition.offsetEdges,
+                            "The edges this offset was taken from.", DebugColor.BLUE)
+                }
+            });
+}
+
+/**
+ * Fold one end's terminal record into the published variables.
+ */
+function withTerminalVariables(variables is map, side is string, record is map) returns map
+{
+    var out = variables;
+
+    out[side ~ "Action"] = extractableVariable(record.action,
+        "What happened where the offset met its " ~ side ~ " plane.");
+    out[side ~ "Distance"] = extractableVariable(abs(record.distance),
+        "How far the " ~ side ~ " of the offset was trimmed or extended.");
+    out[side ~ "Squareness"] = extractableVariable(record.squareness,
+        "Angle between the source tangent and the " ~ side ~ " plane normal. Zero means the "
+        ~ "source ended square and the offset would have landed on the plane unaided.");
+
+    if (record.kink != undefined)
+    {
+        out[side ~ "Kink"] = extractableVariable(record.kink,
+            "Angle between the offset's own heading and the direction it was told to arrive at.");
+    }
+
+    return out;
 }
 
 /**
