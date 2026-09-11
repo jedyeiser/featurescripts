@@ -175,6 +175,9 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         annotation { "Name" : "Profile from", "Default" : ProfileSource.EDGES, "UIHint" : UIHint.SHOW_LABEL }
         definition.profileSource is ProfileSource;
 
+        annotation { "Name" : "Name", "Description" : "Name given to the result. A part yields several curves, so each takes this name with its role appended -- \"core top\", \"core bottom\". Clear it to leave them unnamed." }
+        definition.outputName is string;
+
         if (definition.profileSource == ProfileSource.EDGES)
         {
             annotation { "Name" : "Edges to project", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO }
@@ -200,9 +203,6 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
 
         annotation { "Name" : "Output", "Default" : ProfileGrouping.SINGLE, "UIHint" : UIHint.SHOW_LABEL }
         definition.grouping is ProfileGrouping;
-
-        annotation { "Name" : "Name", "Description" : "Name given to the resulting wire. Clear it to leave it unnamed." }
-        definition.outputName is string;
 
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
         {
@@ -442,8 +442,10 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         if (verbose)
         {
             const surveyHeading = resolveHeading(context, definition, plane, loopEdges);
-            printRunSurvey(splitByAlignment(context, path, surveyHeading), surveyHeading);
-            splitAtExtremes(context, path, surveyHeading, upwardAcross(plane, surveyHeading), true);
+            const surveyEdges = peripheryEdges(context, path, surveyHeading);
+            const surveyNamed = pickProfiles(groupEdges(surveyEdges, path.closed), surveyEdges,
+                    upwardAcross(plane, surveyHeading), true);
+            printPeripheryCurves(context, surveyEdges, surveyNamed);
         }
     }
     else
@@ -455,13 +457,11 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         traceStep(verbose, "heading " ~ headingText(heading) ~ "; scanning the loop for runs");
 
         const across = upwardAcross(plane, heading);
+        const edgeData = peripheryEdges(context, path, heading);
 
-        if (verbose)
-        {
-            printRunSurvey(splitByAlignment(context, path, heading), heading);
-        }
+        traceStep(verbose, "read " ~ toString(size(edgeData)) ~ " periphery edges; grouping them");
 
-        const named = splitAtExtremes(context, path, heading, across, verbose);
+        const named = pickProfiles(groupEdges(edgeData, path.closed), edgeData, across, verbose);
 
         traceStep(verbose, "top and bottom identified; sampling and fitting");
 
@@ -471,8 +471,8 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
 
         // Sampled once and shared: the middle is built from the same points the top and
         // bottom are fitted from, so re-sampling would cost a kernel call to reproduce them.
-        const top = (wantsTop || wantsMiddle) ? samplePeriphery(context, path, named.top, definition, plane) : [];
-        const bottom = (wantsBottom || wantsMiddle) ? samplePeriphery(context, path, named.bottom, definition, plane) : [];
+        const top = (wantsTop || wantsMiddle) ? sampleGroup(context, edgeData, named.top, definition, plane) : [];
+        const bottom = (wantsBottom || wantsMiddle) ? sampleGroup(context, edgeData, named.bottom, definition, plane) : [];
 
         if (wantsTop)
         {
@@ -489,6 +489,12 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         }
 
         profiles["connectors"] = named.connectors;
+        profiles["edgeData"] = edgeData;
+
+        if (definition.debugPrintScan)
+        {
+            printPeripheryCurves(context, edgeData, named);
+        }
 
         if (wantsMiddle)
         {
@@ -579,316 +585,6 @@ function longestWire(context is Context, wires is Query) returns Query
 }
 
 /**
- * Cut the loop wherever its tangent stops running along the prevailing direction.
- *
- * Returns spans of path parameter, each tagged with whether it runs along the heading.
- * Scanning rather than solving is right here: on a real outline the boundary between along
- * and across is usually a corner, so there is nothing smooth to bisect, and the scan already
- * resolves far finer than the shortest joining piece.
- *
- * The loop is closed, so a profile straddling the seam at parameter 0 arrives as two runs.
- * They are stitched back together at the end, which is why a run's end may exceed 1.
- */
-function splitByAlignment(context is Context, path is Path, heading is Vector) returns array
-{
-    var parameters = [];
-    for (var i = 0; i < PROFILE_SCAN_SAMPLES; i += 1)
-    {
-        parameters = append(parameters, i / (PROFILE_SCAN_SAMPLES - 1));
-    }
-
-    const lines = evPathTangentLines(context, path, parameters).tangentLines;
-
-    // Absolute value, not signed: a closed loop traverses its top and its bottom in opposite
-    // senses, and both are running along the heading.
-    var runs = [];
-    var runStart = 0;
-    var runAlong = abs(dot(lines[0].direction, heading)) >= PROFILE_ALONG_COS;
-
-    for (var i = 1; i < PROFILE_SCAN_SAMPLES; i += 1)
-    {
-        const along = abs(dot(lines[i].direction, heading)) >= PROFILE_ALONG_COS;
-        if (along != runAlong)
-        {
-            runs = append(runs, { "start" : parameters[runStart], "end" : parameters[i - 1], "along" : runAlong });
-            runStart = i;
-            runAlong = along;
-        }
-    }
-    runs = append(runs, { "start" : parameters[runStart], "end" : 1, "along" : runAlong });
-
-    const last = size(runs) - 1;
-    if (path.closed && last > 0 && runs[0].along == runs[last].along)
-    {
-        // Rejoin across the seam. The wrapped run reaches past 1 and is unwrapped at sampling
-        // time; left as two it would halve a profile and could lose it to the length test.
-        runs = append(subArray(runs, 1, last), {
-                    "start" : runs[last].start,
-                    "end" : runs[0].end + 1,
-                    "along" : runs[0].along
-                });
-    }
-
-    return runs;
-}
-
-/**
- * Split the closed periphery at its extremes along the heading.
- *
- * This replaced a split by tangent alignment, which cannot see the turnaround at an end
- * that is a corner rather than an arc: the tangent swings through perpendicular between two
- * samples and never lands in the band, so the whole loop reads as one run. A ski in side
- * view does exactly that -- measured on a real core, one sample in four hundred registered
- * as running across, and no sampling density fixes a turn with zero arc length.
- *
- * The extremes are always there. The point furthest along the heading and the point
- * furthest against it are what the header means by a profile's "endpoints near the extents",
- * and they cut the loop into exactly two chains whatever shape the ends take.
- *
- * Alignment still has a job, but a smaller one: carving the joining sections off the ends of
- * those chains, where such sections exist. Where they do not, the two profiles simply meet.
- */
-function splitAtExtremes(context is Context, path is Path, heading is Vector, across is Vector,
-    verbose is boolean) returns map
-{
-    const n = PROFILE_SCAN_SAMPLES;
-
-    var parameters = [];
-    for (var i = 0; i < n; i += 1)
-    {
-        parameters = append(parameters, i / (n - 1));
-    }
-
-    const lines = evPathTangentLines(context, path, parameters).tangentLines;
-
-    // The last sample repeats the first on a closed loop, so it is excluded from the search
-    // to keep an extreme from being found twice at the seam.
-    const span = n - 1;
-    var lo = 0;
-    var hi = 0;
-
-    for (var i = 1; i < span; i += 1)
-    {
-        const reach = dot(lines[i].origin, heading);
-        if (reach < dot(lines[lo].origin, heading))
-        {
-            lo = i;
-        }
-        if (reach > dot(lines[hi].origin, heading))
-        {
-            hi = i;
-        }
-    }
-
-    if (lo == hi)
-    {
-        throw regenError("The outline has no extent along the prevailing direction, so it "
-            ~ "cannot be split into a top and a bottom. Heading " ~ headingText(heading) ~ ".");
-    }
-
-    const first = chainBetween(lines, lo, hi, span, heading);
-    const second = chainBetween(lines, hi, lo, span, heading);
-
-    const firstHeight = chainHeight(lines, first, span, across);
-    const secondHeight = chainHeight(lines, second, span, across);
-
-    const top = (firstHeight >= secondHeight) ? first : second;
-    const bottom = (firstHeight >= secondHeight) ? second : first;
-
-    if (verbose)
-    {
-        println("[profiles] extremes at parameters "
-            ~ toString(roundToPrecision(lo / (n - 1), 5)) ~ " and "
-            ~ toString(roundToPrecision(hi / (n - 1), 5)));
-        printChain("top   ", top, n);
-        printChain("bottom", bottom, n);
-    }
-
-    return {
-        "top" : top,
-        "bottom" : bottom,
-        "connectors" : concatenateArrays([top.connectors, bottom.connectors])
-    };
-}
-
-/**
- * One chain of the periphery, from one extreme forward to the other, with any joining
- * section at either end carved off.
- *
- * Walking in from each end while the tangent still runs across the heading is what
- * separates a profile from the piece that joins it to its opposite number. On an end that
- * is a corner nothing is carved and the chain simply reaches the extreme, which is the
- * right answer for that shape.
- */
-function chainBetween(lines is array, from is number, to is number, span is number,
-    heading is Vector) returns map
-{
-    var count = to - from;
-    if (count <= 0)
-    {
-        count += span;
-    }
-
-    // In from the start while the tangent is still turning across the heading.
-    var lead = 0;
-    while (lead < count
-        && abs(dot(lines[(from + lead) % span].direction, heading)) < PROFILE_ALONG_COS)
-    {
-        lead += 1;
-    }
-
-    var trail = 0;
-    while (trail < count - lead
-        && abs(dot(lines[(from + count - trail) % span].direction, heading)) < PROFILE_ALONG_COS)
-    {
-        trail += 1;
-    }
-
-    var connectors = [];
-    if (lead > 0)
-    {
-        connectors = append(connectors, paramRange(from, from + lead, span));
-    }
-    if (trail > 0)
-    {
-        connectors = append(connectors, paramRange(from + count - trail, from + count, span));
-    }
-
-    const body = paramRange(from + lead, from + count - trail, span);
-
-    return mergeMaps(body, { "connectors" : connectors });
-}
-
-/**
- * A sample-index range as a path-parameter range, wrapping past 1 where it crosses the seam.
- */
-function paramRange(from is number, to is number, span is number) returns map
-{
-    const start = (from % span) / span;
-    var end = (to % span) / span;
-
-    if (end <= start)
-    {
-        end += 1;
-    }
-
-    return { "start" : start, "end" : end };
-}
-
-/**
- * Mean position of a chain across the heading, which is what tells top from bottom.
- */
-function chainHeight(lines is array, chain is map, span is number, across is Vector) returns ValueWithUnits
-{
-    var total = 0 * meter;
-    const steps = 8;
-
-    for (var i = 0; i <= steps; i += 1)
-    {
-        const at = chain.start + (chain.end - chain.start) * i / steps;
-        const index = floor(wrapParameter(at) * span) % span;
-        total += dot(lines[index].origin, across);
-    }
-
-    return total / (steps + 1);
-}
-
-/**
- * One chain, for the log.
- */
-function printChain(label is string, chain is map, n is number)
-{
-    var line = "[profiles]   " ~ label ~ ": "
-        ~ toString(roundToPrecision(chain.start, 5)) ~ " -> "
-        ~ toString(roundToPrecision(chain.end, 5))
-        ~ "   span " ~ toString(roundToPrecision(chain.end - chain.start, 5));
-
-    for (var connector in chain.connectors)
-    {
-        line = line ~ "   [joiner " ~ toString(roundToPrecision(connector.start, 5))
-            ~ " -> " ~ toString(roundToPrecision(connector.end, 5)) ~ "]";
-    }
-
-    println(line);
-}
-
-/**
- * Pick the top and bottom profiles out of the runs.
- *
- * Of the runs that go along the heading, the long ones are profiles and the rest are joins.
- * That is the header's "significantly shorter", made explicit as a fraction of the longest.
- * Top against bottom is then simply which side of each other they sit on, measured across
- * the heading -- their own mean positions separate them, where the outline's centroid would
- * be thrown off by an asymmetric periphery.
- */
-function classifyRuns(runs is array, heading is Vector, across is Vector, path is Path,
-    context is Context, verbose is boolean) returns map
-{
-    var longest = 0;
-    for (var run in runs)
-    {
-        if (run.along && run.end - run.start > longest)
-        {
-            longest = run.end - run.start;
-        }
-    }
-
-    var measured = [];
-    for (var run in runs)
-    {
-        if (!run.along || run.end - run.start < PROFILE_SHORT_RUN_FRACTION * longest)
-        {
-            continue;
-        }
-
-        const mid = evPathTangentLines(context, path,
-                [wrapParameter(0.5 * (run.start + run.end))]).tangentLines[0].origin;
-        measured = append(measured, mergeMaps(run, { "height" : dot(mid, across) }));
-    }
-
-    if (verbose || size(measured) < 2)
-    {
-        printRunSurvey(runs, heading);
-    }
-
-    if (size(measured) < 2)
-    {
-        // The numbers go in the message as well as the log. A throw is the one thing
-        // guaranteed to reach the user; print output is not.
-        throw regenError("The outline does not separate into a top and a bottom profile. "
-            ~ "Heading " ~ headingText(heading) ~ "; the scan cut the loop into "
-            ~ toString(size(runs)) ~ " run(s), of which " ~ toString(alongCount(runs))
-            ~ " run along that heading and " ~ toString(size(measured))
-            ~ " were long enough to count as profiles. Two are needed.");
-    }
-
-    var high = measured[0];
-    var low = measured[0];
-    for (var m in measured)
-    {
-        if (m.height > high.height)
-        {
-            high = m;
-        }
-        if (m.height < low.height)
-        {
-            low = m;
-        }
-    }
-
-    // Two qualifying runs at the same height leave high and low as the same run, which
-    // would emit one curve twice and average it with itself for the middle.
-    if (high.start == low.start && high.end == low.end)
-    {
-        throw regenError("The two candidate profiles sit at the same distance across the "
-            ~ "heading, so there is no top and bottom to tell apart. Heading "
-            ~ headingText(heading) ~ ".");
-    }
-
-    return { "top" : high, "bottom" : low, "candidates" : measured };
-}
-
-/**
  * The in-plane axis that separates top from bottom, oriented so that top means top.
  *
  * cross(normal, heading) alone is not enough: on the Front plane, with the heading along X,
@@ -936,42 +632,6 @@ function resolveHeading(context is Context, definition is map, plane is Plane,
 }
 
 /**
- * How many runs read as running along the heading.
- */
-function alongCount(runs is array) returns number
-{
-    var total = 0;
-
-    for (var run in runs)
-    {
-        if (run.along)
-        {
-            total += 1;
-        }
-    }
-
-    return total;
-}
-
-/**
- * The longest along-run's share of the loop, which sets the bar the others must clear.
- */
-function longestAlongSpan(runs is array) returns number
-{
-    var longest = 0;
-
-    for (var run in runs)
-    {
-        if (run.along && run.end - run.start > longest)
-        {
-            longest = run.end - run.start;
-        }
-    }
-
-    return longest;
-}
-
-/**
  * A direction, short enough to sit in an error message.
  */
 function headingText(heading is Vector) returns string
@@ -993,80 +653,234 @@ function traceStep(verbose is boolean, message is string)
 }
 
 /**
- * Every run the alignment scan found, and why each did or did not qualify.
+ * Read every edge of the periphery once.
  *
- * Printed whenever the split fails, because the throw happens long before the debug output
- * would otherwise run, and the run table is the only thing that distinguishes the three
- * ways this goes wrong: a heading pointing the wrong way (nothing reads as "along"), a
- * threshold set badly for this outline (everything reads as one or the other), or a profile
- * arriving in pieces (several short along-runs where one long one was expected).
+ * Edges, not sampled parameters, are the right unit for this. A ski tail is a flat face at
+ * constant X, so along it every sample ties for "furthest along the heading" and an extreme
+ * lands arbitrarily in the middle of the face -- which put half the tail on the top profile
+ * and half on the bottom, and left no joining section to find. The tail is one edge. Treat
+ * it as one and it becomes a joiner by construction.
+ *
+ * Direction comes from the chord rather than a tangent: a tangent read anywhere on a curved
+ * edge describes that point, while the chord describes the edge, which is what is being
+ * classified. Chord length stands in for arc length for the same reason and at no extra
+ * cost -- a joiner is short by either measure.
  */
-function printRunSurvey(runs is array, heading is Vector)
+function peripheryEdges(context is Context, path is Path, heading is Vector) returns array
 {
-    const longest = longestAlongSpan(runs);
+    var out = [];
 
-    var qualified = 0;
-    for (var run in runs)
+    for (var i = 0; i < size(path.edges); i += 1)
     {
-        if (run.along && run.end - run.start >= PROFILE_SHORT_RUN_FRACTION * longest)
-        {
-            qualified += 1;
-        }
+        const flipped = path.flipped[i];
+        const ends = evEdgeTangentLines(context, {
+                    "edge" : path.edges[i],
+                    "parameters" : flipped ? [1, 0] : [0, 1]
+                });
+
+        const chord = ends[1].origin - ends[0].origin;
+        const reach = norm(chord);
+        const direction = (reach < TOLERANCE.zeroLength * meter)
+            ? (flipped ? -ends[0].direction : ends[0].direction)
+            : chord / reach;
+
+        out = append(out, {
+                    "index" : i,
+                    "edge" : path.edges[i],
+                    "flipped" : flipped,
+                    "from" : ends[0].origin,
+                    "to" : ends[1].origin,
+                    "direction" : direction,
+                    "length" : reach,
+                    "along" : abs(dot(direction, heading)) >= PROFILE_ALONG_COS
+                });
     }
 
-    println("[profiles] split survey: heading " ~ headingText(heading)
-        ~ " -- " ~ toString(size(runs)) ~ " runs, " ~ toString(alongCount(runs))
-        ~ " along, " ~ toString(qualified) ~ " qualified as profiles");
-    println("  a run is \"along\" when |tangent . heading| >= " ~ toString(PROFILE_ALONG_COS)
-        ~ ", and a profile when its span >= " ~ toString(PROFILE_SHORT_RUN_FRACTION)
-        ~ " x the longest along-run (" ~ toString(roundToPrecision(longest, 4)) ~ ")");
-
-    for (var i = 0; i < size(runs); i += 1)
-    {
-        const run = runs[i];
-        println("  run " ~ toString(i) ~ ": " ~ (run.along ? "along " : "across")
-            ~ "  " ~ toString(roundToPrecision(run.start, 4))
-            ~ " -> " ~ toString(roundToPrecision(run.end, 4))
-            ~ "   span " ~ toString(roundToPrecision(run.end - run.start, 4)));
-    }
+    return out;
 }
 
 /**
- * Sample one run of the periphery.
+ * Gather consecutive edges that agree into groups, closing the group across the seam.
  *
- * Separate from sampleSpan because a run may straddle the seam and so reach past parameter
- * 1. Curvature is differenced from the tangents, as there: evPathTangentLines parameterises
- * by arc length, so dT/ds falls out of neighbouring samples for no extra kernel call.
+ * The seam is wherever constructPath happened to start, which is arbitrary and never
+ * meaningful; a profile split across it would read as two half-length runs and could lose
+ * the length test.
  */
-function samplePeriphery(context is Context, path is Path, run is map, definition is map,
-    plane is Plane) returns array
+function groupEdges(edgeData is array, closed is boolean) returns array
 {
-    const count = definition.samplesPerCurve;
-    const step = (run.end - run.start) * evPathLength(context, path) / (count - 1);
-
-    var parameters = [];
-    for (var i = 0; i < count; i += 1)
+    if (size(edgeData) == 0)
     {
-        parameters = append(parameters, wrapParameter(run.start + (run.end - run.start) * i / (count - 1)));
+        return [];
     }
 
-    const lines = evPathTangentLines(context, path, parameters).tangentLines;
+    var groups = [];
+    var members = [0];
+
+    for (var i = 1; i < size(edgeData); i += 1)
+    {
+        if (edgeData[i].along == edgeData[i - 1].along)
+        {
+            members = append(members, i);
+            continue;
+        }
+
+        groups = append(groups, makeGroup(edgeData, members));
+        members = [i];
+    }
+    groups = append(groups, makeGroup(edgeData, members));
+
+    const last = size(groups) - 1;
+    if (closed && last > 0 && groups[0].along == groups[last].along)
+    {
+        groups = append(subArray(groups, 1, last),
+            makeGroup(edgeData, concatenateArrays([groups[last].members, groups[0].members])));
+    }
+
+    return groups;
+}
+
+/**
+ * One group, with the chord length that decides whether it is a profile or a joiner.
+ */
+function makeGroup(edgeData is array, members is array) returns map
+{
+    var total = 0 * meter;
+    for (var m in members)
+    {
+        total += edgeData[m].length;
+    }
+
+    return { "members" : members, "along" : edgeData[members[0]].along, "length" : total };
+}
+
+/**
+ * The two longest groups running along the heading are the profiles; everything else joins.
+ *
+ * Nothing is discarded. A group that runs along the heading but is too short to be a profile
+ * is still part of the outline, so it is reported as a joiner rather than dropped -- which
+ * is what makes the magenta in the debug view trustworthy.
+ */
+function pickProfiles(groups is array, edgeData is array, across is Vector,
+    verbose is boolean) returns map
+{
+    var best = undefined;
+    var second = undefined;
+
+    for (var g = 0; g < size(groups); g += 1)
+    {
+        if (!groups[g].along)
+        {
+            continue;
+        }
+        if (best == undefined || groups[g].length > groups[best].length)
+        {
+            second = best;
+            best = g;
+        }
+        else if (second == undefined || groups[g].length > groups[second].length)
+        {
+            second = g;
+        }
+    }
+
+    if (verbose)
+    {
+        printGroupSurvey(groups, edgeData, best, second);
+    }
+
+    if (second == undefined)
+    {
+        throw regenError("The outline does not separate into a top and a bottom profile: "
+            ~ toString(size(groups)) ~ " group(s) of edges, and fewer than two of them run "
+            ~ "along the prevailing direction. The print log lists every group.");
+    }
+
+    const bestHeight = groupHeight(edgeData, groups[best], across);
+    const secondHeight = groupHeight(edgeData, groups[second], across);
+    const topIndex = (bestHeight >= secondHeight) ? best : second;
+    const bottomIndex = (bestHeight >= secondHeight) ? second : best;
+
+    var connectors = [];
+    for (var g = 0; g < size(groups); g += 1)
+    {
+        if (g != topIndex && g != bottomIndex)
+        {
+            connectors = append(connectors, groups[g]);
+        }
+    }
+
+    return { "top" : groups[topIndex], "bottom" : groups[bottomIndex], "connectors" : connectors };
+}
+
+/**
+ * Mean position of a group across the heading, which is what tells top from bottom.
+ */
+function groupHeight(edgeData is array, group is map, across is Vector) returns ValueWithUnits
+{
+    var total = 0 * meter;
+
+    for (var m in group.members)
+    {
+        total += 0.5 * (dot(edgeData[m].from, across) + dot(edgeData[m].to, across));
+    }
+
+    return total / size(group.members);
+}
+
+/**
+ * Sample a group of edges end to end.
+ *
+ * Each edge is sampled in its own arc-length parameter and the results concatenated, so
+ * there is no path parameter to map and no seam to wrap around. Points are shared at the
+ * joins, so the duplicate is dropped as it appears.
+ */
+function sampleGroup(context is Context, edgeData is array, group is map, definition is map,
+    plane is Plane) returns array
+{
+    const budget = definition.samplesPerCurve;
+
+    var points = [];
+    var tangents = [];
+
+    for (var m in group.members)
+    {
+        const data = edgeData[m];
+        const share = (group.length > TOLERANCE.zeroLength * meter)
+            ? ceil(budget * data.length / group.length)
+            : 2;
+        const count = max(2, share);
+
+        var parameters = [];
+        for (var i = 0; i < count; i += 1)
+        {
+            const t = i / (count - 1);
+            parameters = append(parameters, data.flipped ? 1 - t : t);
+        }
+
+        const sampled = evEdgeTangentLines(context, { "edge" : data.edge, "parameters" : parameters });
+
+        for (var i = 0; i < count; i += 1)
+        {
+            const at = sampled[i].origin;
+
+            if (size(points) > 0 && norm(at - points[size(points) - 1]) < TOLERANCE.zeroLength * meter)
+            {
+                continue;
+            }
+
+            points = append(points, at);
+            tangents = append(tangents, data.flipped ? -sampled[i].direction : sampled[i].direction);
+        }
+    }
 
     var samples = [];
-    for (var i = 0; i < count; i += 1)
+    for (var i = 0; i < size(points); i += 1)
     {
-        const before = lines[max(0, i - 1)].direction;
-        const after = lines[min(count - 1, i + 1)].direction;
-        const spanCount = min(count - 1, i + 1) - max(0, i - 1);
-        const curvature = (spanCount > 0 && step > 0 * meter)
-            ? norm(after - before) / (spanCount * step)
-            : 0 / meter;
-
         samples = append(samples, {
-                    "point" : lines[i].origin,
-                    "tangent" : lines[i].direction,
-                    "normal" : cross(plane.normal, lines[i].direction),
-                    "curvature" : curvature,
+                    "point" : points[i],
+                    "tangent" : tangents[i],
+                    "normal" : cross(plane.normal, tangents[i]),
+                    "curvature" : 0 / meter,
                     "startsGroup" : (i == 0)
                 });
     }
@@ -1075,15 +889,120 @@ function samplePeriphery(context is Context, path is Path, run is map, definitio
 }
 
 /**
- * Bring a seam-crossing path parameter back into range.
- *
- * A single subtraction rather than a modulo, deliberately: parameters here never reach 2,
- * and it leaves an unwrapped run's final 1.0 as 1.0. Wrapping that to 0 would send the last
- * sample of every untouched run back to the seam.
+ * Every group the scan found, and which two became the profiles.
  */
-function wrapParameter(parameter is number) returns number
+function printGroupSurvey(groups is array, edgeData is array, best, second)
 {
-    return (parameter > 1) ? parameter - 1 : parameter;
+    println("[profiles] edge groups: " ~ toString(size(groups))
+        ~ " (a group runs \"along\" when |chord . heading| >= " ~ toString(PROFILE_ALONG_COS) ~ ")");
+
+    for (var g = 0; g < size(groups); g += 1)
+    {
+        var role = "joiner";
+        if (g == best)
+        {
+            role = "PROFILE (longest)";
+        }
+        else if (g == second)
+        {
+            role = "PROFILE (second)";
+        }
+
+        println("[profiles]   group " ~ toString(g) ~ ": "
+            ~ (groups[g].along ? "along " : "across")
+            ~ "  " ~ toString(size(groups[g].members)) ~ " edge(s)"
+            ~ "  " ~ fmtLength(groups[g].length) ~ " mm   " ~ role);
+    }
+}
+
+/**
+ * What every periphery edge is, and which profile it ended up in.
+ *
+ * The whole point of always building the periphery first is that this table exists: if the
+ * decomposition puts an edge somewhere surprising, the edge itself is right here to look at.
+ */
+function printPeripheryCurves(context is Context, edgeData is array, named is map)
+{
+    var role = {};
+    for (var m in named.top.members)
+    {
+        role[m] = "top";
+    }
+    for (var m in named.bottom.members)
+    {
+        role[m] = "bottom";
+    }
+    for (var connector in named.connectors)
+    {
+        for (var m in connector.members)
+        {
+            role[m] = "joiner";
+        }
+    }
+
+    println("[profiles] periphery edges:");
+
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        const data = edgeData[i];
+        println("[profiles]   " ~ padLeft(toString(i), 3) ~ "  "
+            ~ padLeft((role[i] == undefined) ? "-" : role[i], 7)
+            ~ "  " ~ (data.along ? "along " : "across")
+            ~ "  " ~ fmtLength(data.length) ~ " mm"
+            ~ "  " ~ describeCurve(context, data.edge));
+    }
+}
+
+/**
+ * A curve, named by what it actually is.
+ */
+function describeCurve(context is Context, edge is Query) returns string
+{
+    const definition = evCurveDefinition(context, { "edge" : edge });
+
+    if (definition is Line)
+    {
+        return "line";
+    }
+    if (definition is Circle)
+    {
+        return "arc R=" ~ fmtLength(definition.radius) ~ " mm";
+    }
+    if (definition is Ellipse)
+    {
+        return "ellipse";
+    }
+    if (definition is BSplineCurve)
+    {
+        return "bspline degree " ~ toString(definition.degree)
+            ~ ", " ~ toString(size(definition.controlPoints)) ~ " control points"
+            ~ (definition.weights == undefined ? "" : ", rational");
+    }
+
+    return "other";
+}
+
+/**
+ * Right-align a short string. This tab is standalone, so it carries its own.
+ */
+function padLeft(value is string, width is number) returns string
+{
+    var out = value;
+
+    while (length(out) < width)
+    {
+        out = " " ~ out;
+    }
+
+    return out;
+}
+
+/**
+ * A length in millimetres, three decimals, for the log.
+ */
+function fmtLength(value is ValueWithUnits) returns string
+{
+    return toString(roundToPrecision(value / millimeter, 3));
 }
 
 /**
@@ -1551,7 +1470,7 @@ function showProfiles(context is Context, id is Id, definition is map, path is P
 
     for (var c = 0; c < size(connectors); c += 1)
     {
-        const samples = samplePeriphery(context, path, connectors[c], definition, plane);
+        const samples = sampleGroup(context, profiles["edgeData"], connectors[c], definition, plane);
 
         var points = [];
         for (var sample in samples)
