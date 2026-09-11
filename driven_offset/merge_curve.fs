@@ -35,6 +35,11 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  * Notices: only regenError turns the feature red. Everything expected (rebuild, absorbed
  * slivers, arc loss) is reportFeatureInfo so a successful run never looks like a failure.
  *
+ * Callable core: mergeCurves / mergedCurveThrough / mergedCurveThroughPath do the fit for any
+ * number of chained edges and are what other features in this document call. The feature adds
+ * only what depends on the user's picks -- which body survives, naming, notices -- so a caller
+ * building fresh geometry pays for none of it.
+ *
  * opEditCurve is marked @internal in the standard library (std/geomOperations.fs). This
  * document already depends on internal opCreateOutline (evaluate_profiles.fs) under the same
  * caveat. Fallback if it ever breaks: opExtractWires the new curve, delete the seed wire,
@@ -53,6 +58,130 @@ export const MERGE_MAX_CPS_BOUND =
 
 /** Endpoint gap tolerance for chaining the two edges (same value std Edit curve uses). */
 export const MERGE_CHAIN_TOLERANCE = 1e-5 * meter;
+
+// ============================================================================
+// Callable core
+// ============================================================================
+
+/**
+ * Chain edges into a single path, reporting a break as the G0 failure it is.
+ *
+ * constructPath throwing IS the connectivity test; there is nothing else to check. The
+ * feature keeps its own copy of this so it can point the error at the offending parameter,
+ * which a programmatic caller has no use for.
+ */
+export function chainEdges(context is Context, edges is Query) returns Path
+{
+    var path;
+
+    try silent
+    {
+        path = constructPath(context, edges, { "tolerance" : MERGE_CHAIN_TOLERANCE }).path;
+    }
+    catch
+    {
+        throw regenError("The edges to merge are not G0 connected; they must meet end to end.", edges);
+    }
+
+    return path;
+}
+
+/**
+ * The two ends of a path, in path order.
+ */
+export function pathEndPoints(context is Context, path is Path) returns array
+{
+    const ends = evPathTangentLines(context, path, [0, 1]).tangentLines;
+
+    return [ends[0].origin, ends[1].origin];
+}
+
+/**
+ * Fit one spline through an already-chained path.
+ *
+ * This is the whole merge: there is no kernel primitive that joins two curves, so every
+ * native route is fit-then-replace, and this is the fit. Separated from the feature because
+ * a caller assembling its own geometry wants the curve and nothing else -- no wire
+ * bookkeeping, no naming, no notices.
+ *
+ * @param options {{
+ *      @field degree {number}
+ *      @field tolerance {ValueWithUnits}
+ *      @field maxControlPoints {number}
+ *      @field keepStartDerivative {boolean} : @optional Default true.
+ *      @field keepEndDerivative {boolean} : @optional Default true.
+ *      @field snapTo {array} : @optional Two points to force the ends onto. Default is the
+ *              chain's own ends, which is what an isolated caller wants; the feature passes
+ *              neighbour points instead so the result chains with the wire it is joining.
+ *      @field debugPrint {boolean} : @optional Report the pre-snap end error.
+ * }}
+ */
+export function mergedCurveThroughPath(context is Context, path is Path, options is map) returns BSplineCurve
+{
+    const keepStart = (options.keepStartDerivative == undefined) ? true : options.keepStartDerivative;
+    const keepEnd = (options.keepEndDerivative == undefined) ? true : options.keepEndDerivative;
+
+    const target = makeApproximationTarget(context, path, keepStart, keepEnd);
+
+    var spline = approximateSpline(context, {
+                    "degree" : options.degree,
+                    "tolerance" : options.tolerance,
+                    "isPeriodic" : path.closed,
+                    "targets" : [target],
+                    "maxControlPoints" : options.maxControlPoints
+                })[0];
+
+    if (options.debugPrint == true)
+    {
+        const last = size(spline.controlPoints) - 1;
+        const lastPosition = size(target.positions) - 1;
+        println("[merge] fit end error before snap: start "
+            ~ roundToPrecision(norm(spline.controlPoints[0] - target.positions[0]) / millimeter, 6)
+            ~ " mm, end "
+            ~ roundToPrecision(norm(spline.controlPoints[last] - target.positions[lastPosition]) / millimeter, 6)
+            ~ " mm");
+    }
+
+    if (spline.isPeriodic)
+    {
+        return spline;
+    }
+
+    // approximateSpline only promises the fit within tolerance, so the ends can miss the
+    // chain's vertices by that much and then fail to chain with whatever they meet.
+    const ends = (options.snapTo == undefined)
+        ? [target.positions[0], target.positions[size(target.positions) - 1]]
+        : options.snapTo;
+
+    return snapSplineEnds(spline, ends);
+}
+
+/**
+ * Fit one spline through any number of G0-connected edges.
+ *
+ * Two edges or twenty: the chain is fitted once, so a long run costs one approximation rather
+ * than one per junction. Merging pairwise and re-approximating at each step would compound the
+ * error and cost more.
+ */
+export function mergedCurveThrough(context is Context, edges is Query, options is map) returns BSplineCurve
+{
+    return mergedCurveThroughPath(context, chainEdges(context, edges), options);
+}
+
+/**
+ * Merge a chain of edges into one curve body and return its edge.
+ *
+ * The body belongs to the caller: nothing is deleted, nothing is named, and the owners of the
+ * input edges are untouched.
+ */
+export function mergeCurves(context is Context, id is Id, edges is Query, options is map) returns Query
+{
+    opCreateBSplineCurve(context, id, {
+                "bSplineCurve" : mergedCurveThrough(context, edges, options)
+            });
+
+    return qCreatedBy(id, EntityType.EDGE);
+}
 
 // ============================================================================
 // Feature
@@ -125,8 +254,10 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         {
             path = constructPath(context, edges, { "tolerance" : MERGE_CHAIN_TOLERANCE }).path;
         }
-        catch (error)
+        catch
         {
+            // Not chainEdges: the feature can say which pick was wrong, and that is worth
+            // more here than sharing eight lines with the core.
             throw regenError("Seed and merge edges are not G0 connected (they must meet end to end).", ["mergeEdge"], edges);
         }
         checkApproximationParameters(definition, path);
@@ -159,31 +290,25 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         }
 
         // 5. Fit one spline through the chained path.
-        const target = makeApproximationTarget(context, path, definition.keepStartDerivative, definition.keepEndDerivative);
-        var spline = approximateSpline(context, {
-                        "degree" : definition.approximationDegree,
-                        "tolerance" : definition.approximationTolerance,
-                        "isPeriodic" : path.closed,
-                        "targets" : [target],
-                        "maxControlPoints" : definition.approximationMaxCPs
-                    })[0];
-        // approximateSpline only promises the fit within tolerance; the ends can miss the
-        // chain's vertices by that much and then fail to chain with their neighbours.
-        if (definition.debugPrint)
-        {
-            const last = size(spline.controlPoints) - 1;
-            println("[merge] fit end error before snap: start " ~ roundToPrecision(norm(spline.controlPoints[0] - target.positions[0]) / millimeter, 6)
-                ~ " mm, end " ~ roundToPrecision(norm(spline.controlPoints[last] - target.positions[size(target.positions) - 1]) / millimeter, 6) ~ " mm");
-        }
-        if (!spline.isPeriodic)
-        {
-            // Snap to the NEIGHBOUR edges' curve endpoints, not merely to the path ends: on a
-            // wire with tolerant vertices the two differ by a micron, and opExtractWires
-            // chains only on exact coincidence. A free chain end keeps the path end.
-            const pathEnds = [target.positions[0], target.positions[size(target.positions) - 1]];
-            const snapTo = neighbourSnapPoints(context, plan, removed, pathEnds, definition.debugPrint);
-            spline = snapSplineEnds(spline, snapTo);
-        }
+        // Snap to the NEIGHBOUR edges' curve endpoints, not merely to the path ends: on a
+        // wire with tolerant vertices the two differ by a micron, and opExtractWires chains
+        // only on exact coincidence. A free chain end keeps the path end. This is the one
+        // part of the fit that depends on wire membership, so it stays here rather than in
+        // the core; everything else is mergedCurveThroughPath.
+        const snapTo = path.closed
+            ? undefined
+            : neighbourSnapPoints(context, plan, removed, pathEndPoints(context, path), definition.debugPrint);
+
+        const spline = mergedCurveThroughPath(context, path, {
+                    "degree" : definition.approximationDegree,
+                    "tolerance" : definition.approximationTolerance,
+                    "maxControlPoints" : definition.approximationMaxCPs,
+                    "keepStartDerivative" : definition.keepStartDerivative,
+                    "keepEndDerivative" : definition.keepEndDerivative,
+                    "snapTo" : snapTo,
+                    "debugPrint" : definition.debugPrint
+                });
+
         opCreateBSplineCurve(context, id + "new", { "bSplineCurve" : spline });
         const newEdge = qCreatedBy(id + "new", EntityType.EDGE);
         const newBody = qCreatedBy(id + "new", EntityType.BODY);

@@ -43,9 +43,28 @@ var result = getBSplineParamRange(myCurve);
 1. Write code in `.fs` files locally
 2. **Run `python fscheck.py <files>` before pushing** - static checks that catch the
    errors that otherwise cost an Onshape round trip (see below)
-3. Copy to Onshape FeatureStudio for testing
-4. Fix issues, update local code
-5. Update corrections log with any new issues discovered
+3. Push with `python -m sync.main pushproject <project> --files <f.fs> --check` - the
+   `--check` reads Onshape's real compile notices back (see below)
+4. `python -m sync.main notices <project> --monitor "<Part Studio>"` to regenerate a
+   test Part Studio and read runtime errors (with stack traces), `println` output and
+   per-feature status
+5. Fix issues, update local code
+6. Update corrections log with any new issues discovered
+
+### Onshape notices - `pushproject --check` / `notices`
+
+```bash
+python -m sync.main login                                   # once; saves browser session
+python -m sync.main pushproject driven_offset --files merge_curve.fs --check
+python -m sync.main notices driven_offset --monitor "Design Master"
+```
+
+Drives a headless browser to the document and scrapes the FeatureScript notices pane,
+which the REST API does not expose. Output is `tab:line:col  message` with severity;
+`--monitor` adds runtime notices, console output and feature OK/INFO/WARNING/ERROR.
+Onshape rates "function not found" a *warning*, so `--check` is strict (fails on
+warnings). ~15 s for compile notices, ~35 s with a monitored regen. Details in
+`sync/README.md`.
 
 ### fscheck.py - pre-push static checker
 

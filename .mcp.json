@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--isolated",
+        "--storage-state", "${USERPROFILE}/.fs-sync/onshape-state.json",
+        "--viewport-size", "1600,1000"
+      ]
+    }
+  }
+}

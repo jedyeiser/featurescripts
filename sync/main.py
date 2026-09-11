@@ -574,10 +574,70 @@ def cmd_push_new(args: argparse.Namespace) -> int:
             auto_push_backup=args.auto_push,
             tab_folder=args.folder if hasattr(args, "folder") else None,
         )
-        return 0 if result["success"] else 1
     except Exception as e:
         console.print(f"[red]Error: {e}")
         return 1
+    if not result["success"]:
+        return 1
+    if args.check and not args.dry_run:
+        pushed = [r.filepath for r in result["results"] if r.success and not r.skipped]
+        # Only the tabs we touched; a full-document read is `notices <project>`.
+        # Pre-flight is strict: "function not found" is only a warning to Onshape.
+        args.strict = True
+        return _run_check(args, files=pushed or args.files)
+    return 0
+
+
+def _run_check(args: argparse.Namespace, files: list[str] | None) -> int:
+    """Read Onshape notices for a project and print them; non-zero on errors."""
+    from .core.check import check_project, print_report, report_exit_code
+
+    base_dir = get_base_dir()
+    settings = FeatureScriptSettings.load(base_dir / "featurescriptSettings.json")
+    proj = settings.get_project(args.project_name)
+    if proj is None:
+        console.print(f"[red]Project '{args.project_name}' not found[/red]")
+        return 1
+    try:
+        client = OnshapeClient()
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}")
+        return 1
+
+    monitor = args.monitor or proj.metadata.get("monitor")
+    scope = ", ".join(files) if files else "all Feature Studios"
+    console.print(f"[blue]Reading Onshape notices for {proj.name} ({scope})...[/blue]")
+    try:
+        report = check_project(
+            proj, client, files=files, headless=not args.headed,
+            settle_ms=args.settle * 1000, monitor=monitor, regen_timeout_s=args.regen_timeout,
+        )
+    except Exception as e:
+        console.print(f"[red]Check failed: {e}[/red]")
+        return 1
+    print_report(report, errors_only=args.errors_only, as_json=args.json)
+    return report_exit_code(report, strict=args.strict)
+
+
+def cmd_login(args: argparse.Namespace) -> int:
+    """Sign in to Onshape in a browser window and persist the session."""
+    from .core.browser import OnshapeBrowser, state_file
+
+    with OnshapeBrowser(headless=False) as b:
+        if b.is_logged_in():
+            console.print(f"[green]Already signed in[/green] (session: {state_file()})")
+            return 0
+        console.print("[blue]Sign in to Onshape in the browser window...[/blue]")
+        if b.login_interactive(timeout_s=args.timeout):
+            console.print(f"[green]Signed in; session saved to {state_file()}[/green]")
+            return 0
+    console.print("[red]Timed out waiting for sign-in[/red]")
+    return 1
+
+
+def cmd_notices(args: argparse.Namespace) -> int:
+    """Read Onshape's FeatureScript notices for a project."""
+    return _run_check(args, files=args.files)
 
 
 def cmd_create(args: argparse.Namespace) -> int:
@@ -695,6 +755,16 @@ def cmd_reference(args: argparse.Namespace) -> int:
             return 1
 
     return 1
+
+
+def _add_check_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--errors-only", action="store_true", help="Hide warnings and info")
+    p.add_argument("--strict", action="store_true", help="Exit non-zero on warnings too")
+    p.add_argument("--json", action="store_true", help="Print notices as JSON")
+    p.add_argument("--headed", action="store_true", help="Show the browser window")
+    p.add_argument("--settle", type=int, default=15, help="Max seconds to wait for Onshape to finish compiling")
+    p.add_argument("--monitor", metavar="PART_STUDIO", help="Also regenerate this Part Studio and report runtime notices, println output and feature status (default: project metadata 'monitor')")
+    p.add_argument("--regen-timeout", type=int, default=120, help="Max seconds to wait for the monitored Part Studio to regenerate")
 
 
 def main() -> int:
@@ -828,6 +898,18 @@ def main() -> int:
     push_new_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     push_new_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before push")
     push_new_parser.add_argument("--auto-push", action="store_true", help="Push backup commit to Git remote")
+    push_new_parser.add_argument("--check", action="store_true", help="After pushing, read Onshape compile notices for the pushed tabs (fails on warnings)")
+    _add_check_args(push_new_parser)
+
+    # login command (browser session for notices/check)
+    login_parser = subparsers.add_parser("login", help="Sign in to Onshape in a browser and save the session")
+    login_parser.add_argument("--timeout", type=int, default=300, help="Seconds to wait for sign-in")
+
+    # notices command
+    notices_parser = subparsers.add_parser("notices", help="Read Onshape FeatureScript notices (compile errors/warnings) for a project")
+    notices_parser.add_argument("project_name", help="Project name")
+    notices_parser.add_argument("--files", nargs="+", help="Only these local .fs files' tabs")
+    _add_check_args(notices_parser)
 
     # create command
     create_parser = subparsers.add_parser("create", help="Create a new Feature Studio file in an Onshape project")
@@ -902,6 +984,10 @@ def main() -> int:
         return cmd_push_new(args)
     elif args.command == "create":
         return cmd_create(args)
+    elif args.command == "login":
+        return cmd_login(args)
+    elif args.command == "notices":
+        return cmd_notices(args)
     elif args.command == "reference":
         if args.reference_command:
             return cmd_reference(args)

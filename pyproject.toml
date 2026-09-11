@@ -8,6 +8,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
     "rich>=13.0.0",
+    "playwright>=1.40.0",
 ]
 
 [project.optional-dependencies]

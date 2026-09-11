@@ -147,7 +147,44 @@ python -m sync.main pushproject <project_name> [OPTIONS]
   --files FILE1 FILE2...   Specific files to push
   --force                  Overwrite remote changes
   --dry-run                Show what would happen
+  --check                  After pushing, read Onshape's compile notices for the
+                           pushed tabs (browser; fails on errors AND warnings)
+  --monitor PART_STUDIO    With --check: also regenerate this Part Studio and
+                           report runtime notices, println output, feature status
 ```
+
+### Onshape Notices (browser-driven)
+
+The REST API cannot tell you whether a pushed Feature Studio compiles. These
+commands drive a headless Chromium (Playwright) to the document and scrape the
+FeatureScript notices pane instead.
+
+```bash
+# One-time: sign in to Onshape in a browser window. The session is saved to
+# ~/.fs-sync/onshape-state.json (override with FS_SYNC_BROWSER_STATE) and
+# refreshed on every run.
+python -m sync.main login
+
+# Compile notices (errors / warnings / info with tab:line:col) for a project
+python -m sync.main notices <project_name> [OPTIONS]
+  --files FILE1 FILE2...   Only these tabs (default: every Feature Studio)
+  --monitor PART_STUDIO    Also regenerate this Part Studio ("Monitor" in the
+                           notices pane): runtime errors with stack traces,
+                           println output, and per-feature OK/INFO/WARNING/ERROR
+  --errors-only            Hide warnings and info
+  --strict                 Exit non-zero on warnings too (function-not-found is
+                           only a warning to Onshape)
+  --json                   Machine-readable output
+  --headed                 Show the browser window
+  --settle N               Max seconds to wait for compilation (default 15)
+  --regen-timeout N        Max seconds for the monitored regen (default 120)
+```
+
+A project can name a default Part Studio to monitor in `featurescriptSettings.json`
+under `"metadata": {"monitor": "Design Master"}`; `--monitor` overrides it.
+
+Typical loop: `python fscheck.py proj/*.fs` (static, instant) -> `pushproject proj --check`
+(compile, ~15 s) -> `notices proj --monitor "Test PS"` (regen, ~35 s).
 
 ### Legacy Commands (Backward Compatible)
 
