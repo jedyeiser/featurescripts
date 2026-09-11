@@ -145,7 +145,7 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         const sliverCount = size(evaluateQuery(context, slivers));
         if (sliverCount > 0)
         {
-            reportFeatureWarning(context, id, sliverCount ~ " zero-length edge(s) between the seed and merge edges were absorbed into the merged curve.");
+            reportFeatureInfo(context, id, sliverCount ~ " zero-length edge(s) between the seed and merge edges were absorbed into the merged curve.");
         }
         const removed = qUnion([edges, slivers]);
 
@@ -466,8 +466,8 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
         {
             printFeatureBodies(context, id);
         }
-        reportFeatureWarning(context, id, "The seed wire had other edges; it was rebuilt as "
-            ~ size(evaluateQuery(context, output)) ~ " new wire body(ies). Body identity changed.");
+        reportFeatureInfo(context, id, "Rebuilt the seed wire as " ~ size(evaluateQuery(context, output))
+            ~ " new wire body(ies) with the merged curve; the original body was replaced.");
         return output;
     }
 
