@@ -30,7 +30,10 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  * only when the seed is its wire's sole edge.
  *
  * Arc caveat: the result is always a fitted NURBS. A circular arc (or ellipse) input loses its
- * analytic type -- the radius no longer reads in Onshape. Reported as a warning, not refused.
+ * analytic type -- the radius no longer reads in Onshape. Reported as an info notice, not refused.
+ *
+ * Notices: only regenError turns the feature red. Everything expected (rebuild, absorbed
+ * slivers, arc loss) is reportFeatureInfo so a successful run never looks like a failure.
  *
  * opEditCurve is marked @internal in the standard library (std/geomOperations.fs). This
  * document already depends on internal opCreateOutline (evaluate_profiles.fs) under the same
@@ -89,7 +92,7 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         annotation { "Name" : "Output name", "Description" : "Optional name for the resulting wire body." }
         definition.outputName is string;
 
-        annotation { "Name" : "Warn on arc loss", "Description" : "Report a warning when an input arc or ellipse becomes a spline." }
+        annotation { "Name" : "Note arc loss", "Description" : "Add an info notice when an input arc or ellipse becomes a spline." }
         definition.warnOnArcLoss is boolean;
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
@@ -152,7 +155,7 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         // 4. Arc / ellipse inputs become a spline.
         if (definition.warnOnArcLoss && (isArcLike(context, definition.seedEdge) || isArcLike(context, definition.mergeEdge)))
         {
-            reportFeatureWarning(context, id, "Merged result is a spline; the arc radius is not preserved.");
+            reportFeatureInfo(context, id, "Merged result is a spline; the arc radius is not preserved.");
         }
 
         // 5. Fit one spline through the chained path.

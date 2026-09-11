@@ -70,7 +70,7 @@ export const extractVariables = defineFeature(function(context is Context, id is
         if (definition.printKeys)
         {
             printEmbeddedKeys(available);
-            reportFeatureWarning(context, id, "Print keys is on: " ~ (size(available.variable) + size(available.query)) ~ " keys listed in the FeatureScript notices. Turn it off after reading.");
+            reportFeatureInfo(context, id, "Print keys is on: " ~ (size(available.variable) + size(available.query)) ~ " keys listed in the FeatureScript notices. Turn it off after reading.");
         }
 
         // key -> { "name", "evaluateOnUse" }; "Extract every key" first, entries override.
@@ -135,7 +135,7 @@ export const extractVariables = defineFeature(function(context is Context, id is
         }
         if (size(available.duplicateVariableKeys) > 0)
         {
-            reportFeatureWarning(context, id, "Several sources embed these variable keys; the first source wins: " ~ join(available.duplicateVariableKeys, ", "));
+            reportFeatureInfo(context, id, "Several sources embed these variable keys; the first source wins: " ~ join(available.duplicateVariableKeys, ", "));
         }
         if (size(published) == 0)
         {
