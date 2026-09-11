@@ -1,6 +1,11 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
+// ProjectionType lives in its own module and common.fs does not re-export it, so it is
+// out of scope on a plain common import even though geomOperations documents opDropCurve
+// in terms of it.
+import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
+
 /**
  * Creates wires (or returns bSpline data) obeying special rules from either a solid body, an edge, or a chain of edges
  *
@@ -167,7 +172,7 @@ annotation { "Feature Type Name" : "Evaluate profiles",
 export const evaluateProfiles = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Profile from", "Default" : ProfileSource.EDGES, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+        annotation { "Name" : "Profile from", "Default" : ProfileSource.EDGES, "UIHint" : UIHint.SHOW_LABEL }
         definition.profileSource is ProfileSource;
 
         if (definition.profileSource == ProfileSource.EDGES)
@@ -180,7 +185,7 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
             annotation { "Name" : "Part to outline", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1 }
             definition.profilePart is Query;
 
-            annotation { "Name" : "Return", "Default" : ProfilePart.ALL, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+            annotation { "Name" : "Return", "Default" : ProfilePart.ALL, "UIHint" : UIHint.SHOW_LABEL }
             definition.profileParts is ProfilePart;
         }
 
@@ -193,7 +198,7 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         annotation { "Name" : "Flip prevailing direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
         definition.flipPrevailing is boolean;
 
-        annotation { "Name" : "Output", "Default" : ProfileGrouping.SINGLE, "UIHint" : UIHint.HORIZONTAL_ENUM }
+        annotation { "Name" : "Output", "Default" : ProfileGrouping.SINGLE, "UIHint" : UIHint.SHOW_LABEL }
         definition.grouping is ProfileGrouping;
 
         annotation { "Name" : "Name", "Description" : "Name given to the resulting wire. Clear it to leave it unnamed." }
@@ -227,11 +232,19 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         }
     }
     {
+        if (definition.debugPrintScan)
+        {
+            println("");
+            println("========== evaluate profiles: start ==========");
+        }
+
         const result = projectedProfile(context, id, definition);
 
         if (definition.debugPrintScan)
         {
             printProfileScan(result);
+            println("========== evaluate profiles: end ============");
+            println("");
         }
         if (definition.debugShowComb)
         {
@@ -289,14 +302,25 @@ export function projectedProfile(context is Context, id is Id, definition is map
     {
         path = constructPath(context, dropped);
     }
-    catch (error)
+    catch
     {
         throw regenError("The projected edges do not form a single connected chain.",
             definition.profileEdges);
     }
 
     const ends = evPathTangentLines(context, path, [0, 1]).tangentLines;
-    const heading = prevailingDirection(context, definition, plane, ends[1].origin - ends[0].origin);
+    const chord = ends[1].origin - ends[0].origin;
+
+    // Reduced to a direction here rather than inside prevailingDirection. The two callers
+    // supply different kinds of thing -- a chain's chord carries length, a picked axis and
+    // a bounding-box axis do not -- and no single tolerance can be written that means the
+    // same for both. A projection that closes on itself has no chord at all, so its own
+    // start tangent stands in.
+    const chordDirection = (norm(chord) < TOLERANCE.zeroLength * meter)
+        ? ends[0].direction
+        : normalize(chord);
+
+    const heading = prevailingDirection(context, definition, plane, chordDirection);
     const scan = scanForReversals(context, path, heading);
 
     const samples = sampleSpan(context, path, scan.start, scan.end, definition, plane);
@@ -416,7 +440,7 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
 
         traceStep(verbose, "heading " ~ headingText(heading) ~ "; scanning the loop for runs");
 
-        const across = normalize(cross(plane.normal, heading));
+        const across = upwardAcross(plane, heading);
         const runs = splitByAlignment(context, path, heading);
 
         traceStep(verbose, "scan found " ~ toString(size(runs)) ~ " run(s); classifying them");
@@ -649,7 +673,43 @@ function classifyRuns(runs is array, heading is Vector, across is Vector, path i
         }
     }
 
+    // Two qualifying runs at the same height leave high and low as the same run, which
+    // would emit one curve twice and average it with itself for the middle.
+    if (high.start == low.start && high.end == low.end)
+    {
+        throw regenError("The two candidate profiles sit at the same distance across the "
+            ~ "heading, so there is no top and bottom to tell apart. Heading "
+            ~ headingText(heading) ~ ".");
+    }
+
     return { "top" : high, "bottom" : low, "candidates" : measured };
+}
+
+/**
+ * The in-plane axis that separates top from bottom, oriented so that top means top.
+ *
+ * cross(normal, heading) alone is not enough: on the Front plane, with the heading along X,
+ * it points along -Z, so the higher curve gets the lower coordinate and the two profiles
+ * come out labelled backwards. Agreeing with world up fixes the case that matters and
+ * leaves a deterministic answer for the rest.
+ */
+function upwardAcross(plane is Plane, heading is Vector) returns Vector
+{
+    const across = normalize(cross(plane.normal, heading));
+
+    // On a horizontal face there is no "up" in the plane, so Y then X stand in, in that
+    // order -- the same order a plan view would read as up the page.
+    for (var reference in [vector(0, 0, 1), vector(0, 1, 0), vector(1, 0, 0)])
+    {
+        const agreement = dot(across, reference);
+
+        if (abs(agreement) > PROFILE_ALONG_COS / 2)
+        {
+            return (agreement < 0) ? -across : across;
+        }
+    }
+
+    return across;
 }
 
 /**
@@ -1026,11 +1086,12 @@ function prevailingDirection(context is Context, definition is map, plane is Pla
     // distinguish advancing from doubling back, because the projection has removed it.
     heading = heading - dot(heading, plane.normal) * plane.normal;
 
-    if (norm(heading) < PROFILE_ZERO_DIRECTION * meter)
+    // Unitless throughout: every caller now hands in a direction, never a displacement.
+    if (norm(heading) < PROFILE_ZERO_DIRECTION)
     {
         throw regenError("The prevailing direction lies along the projection direction, so it "
             ~ "cannot say which way the profile advances. Its in-plane part measured "
-            ~ toString(roundToPrecision(norm(heading) / meter, 9))
+            ~ toString(roundToPrecision(norm(heading), 9))
             ~ " -- picking the face you are projecting onto does this.",
             definition.prevailingDirection);
     }
