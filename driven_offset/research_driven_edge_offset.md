@@ -1,5 +1,15 @@
 # driven_edge_offset: publishing its outputs (research, 2026-09-10, rev 2)
 
+> **Decision revised 2026-09-11.** Queries are no longer stored in map variables and the
+> Design map feature has been removed. Selections are published as native query variables by
+> the **Extract variables** feature (our FS 3070 implementation of Evan Reese's approach, in
+> the `design_map` tab); scalars that belong together go in a std Variable holding a map
+> literal; an optional manifest records what was published for the API viewer (see
+> `extract_variables_schema.md`). Reason: a map-held Query is usable only by our own custom
+> features and is a workaround of Onshape's native selection mechanism. Sections below that
+> describe Design map, `#core.bottom` query entries, or `designMap/1` are superseded.
+
+
 Refs: DEO = driven_offset/driven_edge_offset.fs, U = driven_offset/edge_offset_utils.fs,
 T = driven_offset/offset_run_treatment.fs, LIB = driven_offset/Reese_IMPORT_THIS.fs,
 EV = driven_offset/Reese_Extract_Variables.fs. Std line numbers are the local 2878 mirror.

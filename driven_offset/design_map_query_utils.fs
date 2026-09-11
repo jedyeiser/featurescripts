@@ -4,21 +4,21 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "onshape/std/queryVariable.fs", version : "3070.0");
 
 /**
- * Design map support library.
+ * Extract variables support library (Evan Reese's "Extract Variables" approach, ported to
+ * FS 3070 and kept as our own code).
  *
  * Two halves live here:
  *
- * 1. The embed library (ported from Reese's "IMPORT THIS" studio, FS 3044 -> 3070).
- *    A producer feature builds one map { "variable" : {...}, "query" : {...} } and calls
- *    [embedVariableMap] (or [embedFeatureDefinition]) at the end of its body. The map is
- *    stored in a hidden context variable named toString(id), which is not an identifier
- *    and therefore never shows up under `#` in expression fields. Queries in the map stay
- *    symbolic; nothing here evaluates them.
+ * 1. The embed library (producer side). A producer feature builds one map
+ *    { "variable" : {...}, "query" : {...} } and calls [embedVariableMap] (or
+ *    [embedFeatureDefinition]) at the end of its body. The map is stored in a hidden context
+ *    variable named toString(id), which is not an identifier and therefore never shows up
+ *    under `#` in expression fields. Queries in the map stay symbolic; nothing here
+ *    evaluates them.
  *
- * 2. The consumer helpers used by the "Design map" feature (design_map.fs): reading and
- *    merging the hidden maps of a FeatureList of producers, the entry kind enum and the
- *    entry array predicate, kind dispatch, and query-variable publishing with the std
- *    robust freeze.
+ * 2. The consumer helpers used by the "Extract variables" feature (design_map.fs tab):
+ *    reading and merging the hidden maps of a FeatureList of producers, printing the
+ *    available keys, and query-variable publishing with the std robust freeze.
  *
  * Type tags (ExtractableVariable, ExtractableQuery, EmbeddedVariables) are kept for
  * producer-side typecheck diagnostics only. The consumer path gates on the structural
@@ -42,8 +42,8 @@ import(path : "onshape/std/queryVariable.fs", version : "3070.0");
  * rejected by the predicate).
  */
 
-/** Value of the `schema` key written into every design map. Bump on breaking changes. */
-export const DESIGN_MAP_SCHEMA = "designMap/1";
+/** Value of the `schema` key written into an Extract variables manifest. Bump on breaking changes. */
+export const EXTRACT_MANIFEST_SCHEMA = "extractManifest/1";
 
 // ---------------------------------------------------------------------------------
 // Embed library (producer side)
@@ -243,7 +243,7 @@ export function extractableQuery(value is Query, description is string, color is
 }
 
 /**
- * Embeds every value a producer feature wishes to expose to a later Design map feature.
+ * Embeds every value a producer feature wishes to expose to a later Extract variables feature.
  * The feature id, rendered by toString, is used as the context-variable name; it is not an
  * identifier, so the slot is unreachable from `#` and adds no visible setup variable.
  *
@@ -476,271 +476,6 @@ export function describeSuffix(description) returns string
 }
 
 // ---------------------------------------------------------------------------------
-// Consumer side: entry array
-// ---------------------------------------------------------------------------------
-
-/** What one Design map entry contributes to the map. */
-export enum DesignMapKind
-{
-    annotation { "Name" : "From source feature" }
-    EMBEDDED,
-    annotation { "Name" : "Query" }
-    QUERY,
-    annotation { "Name" : "Length" }
-    LENGTH,
-    annotation { "Name" : "Angle" }
-    ANGLE,
-    annotation { "Name" : "Number" }
-    NUMBER,
-    annotation { "Name" : "Reference" }
-    REFERENCE
-}
-
-/** Whether the Design map feature creates a new map variable or adds to an existing one. */
-export enum DesignMapMode
-{
-    annotation { "Name" : "Create map" }
-    CREATE,
-    annotation { "Name" : "Add to existing map" }
-    EXTEND
-}
-
-/**
- * Splits a dot-separated key path ("outputs.deo") into its segments. An empty or
- * whitespace-only string means the top level and yields []. Every segment must be an
- * identifier; the caller passes the parameter id used for the error.
- */
-export function splitKeyPath(pathInMap is string, faultyParameter is string) returns array
-{
-    const trimmed = replace(pathInMap, "^\\s+|\\s+$", "");
-    if (trimmed == "")
-    {
-        return [];
-    }
-    const segments = splitByPeriod(trimmed);
-    for (var segment in segments)
-    {
-        verifyVariableNameIsValid(segment, faultyParameter);
-    }
-    return segments;
-}
-
-/** Splits on "."; empty segments are kept so they fail identifier validation. */
-export function splitByPeriod(text is string) returns array
-{
-    return splitByRegexp(text, "[.]");
-}
-
-/** Renders a path for messages: "outputs.deo", or "the top level" for []. */
-export function describeKeyPath(pathSegments is array) returns string
-{
-    if (size(pathSegments) == 0)
-    {
-        return "the top level";
-    }
-    return "'" ~ join(pathSegments, ".") ~ "'";
-}
-
-/**
- * Returns the map found at `pathSegments` inside `target`, or undefined when any segment
- * is missing or not a map. Used for REFERENCE lookups against an existing map.
- */
-export function mapAtPath(target is map, pathSegments is array)
-{
-    var current = target;
-    for (var segment in pathSegments)
-    {
-        if (!(current[segment] is map))
-        {
-            return undefined;
-        }
-        current = current[segment];
-    }
-    return current;
-}
-
-/**
- * Pure: returns a copy of `target` with every key of `entries` inserted at the nested
- * location named by `pathSegments` ([] = top level). Intermediate maps are created when
- * missing. Throws a regenError when an intermediate exists but is not a map, or when a key
- * of `entries` already exists at the target location (no silent overwrite).
- */
-export function placeInMap(target is map, pathSegments is array, entries is map) returns map
-{
-    return placeInMapAt(target, pathSegments, 0, entries);
-}
-
-/** Recursive worker for [placeInMap]; `depth` is the index of the next segment to descend. */
-export function placeInMapAt(target is map, pathSegments is array, depth is number, entries is map) returns map
-{
-    var out = target;
-    if (depth >= size(pathSegments))
-    {
-        for (var item in entries)
-        {
-            if (out[item.key] != undefined)
-            {
-                throw regenError("Key '" ~ item.key ~ "' already exists at " ~ describeKeyPath(pathSegments) ~ " of the map.");
-            }
-            out[item.key] = item.value;
-        }
-        return out;
-    }
-
-    const segment = pathSegments[depth];
-    var child = out[segment];
-    if (child == undefined)
-    {
-        child = {};
-    }
-    else if (!(child is map))
-    {
-        throw regenError("'" ~ join(subArray(pathSegments, 0, depth + 1), ".") ~ "' exists in the map but is not a map.");
-    }
-    out[segment] = placeInMapAt(child, pathSegments, depth + 1, entries);
-    return out;
-}
-
-/** Bounds for a NUMBER entry, matching the std Variable feature. */
-export const DESIGN_MAP_NUMBER_BOUNDS = { (unitless) : [-1e12, 0, 1e12] } as RealBoundSpec;
-
-/**
- * Predicate for one item of the Design map `entries` array. Item parameter ids are prefixed
- * `e_` so they cannot collide with any top-level parameter (array item ids must be unique
- * across the whole feature).
- *
- * EMBEDDED   : `e_sourceKey` names a key from the merged sources; `e_rename` + `e_key`
- *              store it under another name.
- * QUERY      : `e_selection` is stored symbolically under `e_key`.
- * LENGTH / ANGLE / NUMBER : the typed value is stored under `e_key`.
- * REFERENCE  : `result[e_ref]` (an earlier entry or an auto-added embedded key) is copied
- *              under `e_key`.
- * Every kind : `e_publish` also publishes a Query value as query variable `<map>_<key>`.
- */
-export predicate designMapEntryPredicate(entry is map)
-{
-    annotation { "Name" : "Kind", "Default" : DesignMapKind.EMBEDDED }
-    entry.e_kind is DesignMapKind;
-
-    if (entry.e_kind == DesignMapKind.EMBEDDED)
-    {
-        annotation { "Name" : "Key in source feature", "MaxLength" : 256, "Description" : "Name of a value a source feature published (turn on Print keys to list them). Nothing is available until a producer feature embeds a map." }
-        entry.e_sourceKey is string;
-
-        annotation { "Name" : "Rename", "Default" : false, "Description" : "Store the embedded value under a different key." }
-        entry.e_rename is boolean;
-    }
-
-    // Declared exactly once: a parameter may not appear in two branches of a precondition.
-    if (entry.e_kind != DesignMapKind.EMBEDDED || entry.e_rename)
-    {
-        annotation { "Name" : "Key", "MaxLength" : 256, "Description" : "Key in the design map. Must be an identifier." }
-        entry.e_key is string;
-    }
-
-    if (entry.e_kind != DesignMapKind.EMBEDDED)
-    {
-        if (entry.e_kind == DesignMapKind.QUERY)
-        {
-            annotation { "Name" : "Selection", "Filter" : EntityType.EDGE || EntityType.FACE || EntityType.VERTEX || EntityType.BODY }
-            entry.e_selection is Query;
-        }
-        else if (entry.e_kind == DesignMapKind.LENGTH)
-        {
-            annotation { "Name" : "Length" }
-            isLength(entry.e_length, LENGTH_BOUNDS);
-        }
-        else if (entry.e_kind == DesignMapKind.ANGLE)
-        {
-            annotation { "Name" : "Angle" }
-            isAngle(entry.e_angle, ANGLE_360_BOUNDS);
-        }
-        else if (entry.e_kind == DesignMapKind.NUMBER)
-        {
-            annotation { "Name" : "Number" }
-            isReal(entry.e_number, DESIGN_MAP_NUMBER_BOUNDS);
-        }
-        else if (entry.e_kind == DesignMapKind.REFERENCE)
-        {
-            annotation { "Name" : "Reference key", "MaxLength" : 256, "Description" : "A key already in this map: an earlier entry or an embedded key." }
-            entry.e_ref is string;
-        }
-    }
-
-    annotation { "Name" : "Publish as query variable", "Default" : false, "Description" : "Also create query variable <map>_<key> so native dialogs can pick it. Query values only." }
-    entry.e_publish is boolean;
-
-    if (entry.e_publish)
-    {
-        annotation { "Name" : "Evaluate on use", "Default" : false, "Description" : "Off: the query variable holds the entities selected now (like the standard Query variable). On: it re-resolves wherever it is used. The map entry itself is always symbolic." }
-        entry.e_evaluateOnUse is boolean;
-    }
-}
-
-/** The key under which an entry lands in the map. */
-export function designMapEntryKey(entry is map) returns string
-{
-    if (entry.e_kind == DesignMapKind.EMBEDDED && entry.e_rename != true)
-    {
-        return entry.e_sourceKey;
-    }
-    return entry.e_key;
-}
-
-/** The inner parameter id that carries an entry's key, for error reporting. */
-export function designMapEntryKeyParameter(entry is map) returns string
-{
-    if (entry.e_kind == DesignMapKind.EMBEDDED && entry.e_rename != true)
-    {
-        return "e_sourceKey";
-    }
-    return "e_key";
-}
-
-/**
- * Kind dispatch for one entry.
- *
- * @param entry : One item of `entries`.
- * @param available : Result of [readEmbeddedSources].
- * @param result : The map built so far (REFERENCE looks here).
- * @returns : `{ value, description }`, or undefined when an EMBEDDED source key or a
- *      REFERENCE target does not exist.
- */
-export function designMapEntryValue(entry is map, available is map, result is map)
-{
-    const kind = entry.e_kind;
-    if (kind == DesignMapKind.EMBEDDED)
-    {
-        return findEmbeddedKey(available, entry.e_sourceKey);
-    }
-    if (kind == DesignMapKind.QUERY)
-    {
-        return { "value" : entry.e_selection, "description" : "" };
-    }
-    if (kind == DesignMapKind.LENGTH)
-    {
-        return { "value" : entry.e_length, "description" : "" };
-    }
-    if (kind == DesignMapKind.ANGLE)
-    {
-        return { "value" : entry.e_angle, "description" : "" };
-    }
-    if (kind == DesignMapKind.NUMBER)
-    {
-        return { "value" : entry.e_number, "description" : "" };
-    }
-    if (kind == DesignMapKind.REFERENCE)
-    {
-        if (result[entry.e_ref] == undefined)
-        {
-            return undefined;
-        }
-        return { "value" : result[entry.e_ref], "description" : "" };
-    }
-    return undefined;
-}
-
-// ---------------------------------------------------------------------------------
 // Consumer side: publishing
 // ---------------------------------------------------------------------------------
 
@@ -750,7 +485,7 @@ export function designMapEntryValue(entry is map, available is map, result is ma
  */
 export function checkQueryVariableName(context is Context, name is string)
 {
-    verifyVariableNameIsValid(name, "mapName");
+    verifyVariableNameIsValid(name, "extractEntries");
     var exists = false;
     try silent
     {
@@ -759,7 +494,7 @@ export function checkQueryVariableName(context is Context, name is string)
     }
     if (exists)
     {
-        throw regenError(ErrorStringEnum.QUERY_VARIABLE_NAME_ALREADY_USED_IN_NON_QUERY_VARIABLE, ["mapName"]);
+        throw regenError(ErrorStringEnum.QUERY_VARIABLE_NAME_ALREADY_USED_IN_NON_QUERY_VARIABLE, ["extractEntries"]);
     }
 }
 
