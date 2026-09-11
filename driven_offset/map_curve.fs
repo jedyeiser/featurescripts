@@ -2,9 +2,9 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs
-export import(path : "a2665e22c07b7a6929ce4e80", version : "000000000000000000000000");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da639ec");
 // IMPORT: merge_curve.fs
-import(path : "f531550fd26c49415f9c443a", version : "000000000000000000000000");
+import(path : "f531550fd26c49415f9c443a", version : "38e6742293e654b12c3cffd4");
 
 /**
  * Map curve
