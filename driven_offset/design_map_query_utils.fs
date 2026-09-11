@@ -482,7 +482,7 @@ export function describeSuffix(description) returns string
 /** What one Design map entry contributes to the map. */
 export enum DesignMapKind
 {
-    annotation { "Name" : "Embedded" }
+    annotation { "Name" : "From source feature" }
     EMBEDDED,
     annotation { "Name" : "Query" }
     QUERY,
@@ -624,7 +624,7 @@ export predicate designMapEntryPredicate(entry is map)
 
     if (entry.e_kind == DesignMapKind.EMBEDDED)
     {
-        annotation { "Name" : "Source key", "MaxLength" : 256, "Description" : "A key embedded by one of the source features. Turn on Print keys to list them." }
+        annotation { "Name" : "Key in source feature", "MaxLength" : 256, "Description" : "Name of a value a source feature published (turn on Print keys to list them). Nothing is available until a producer feature embeds a map." }
         entry.e_sourceKey is string;
 
         annotation { "Name" : "Rename", "Default" : false, "Description" : "Store the embedded value under a different key." }
@@ -669,6 +669,12 @@ export predicate designMapEntryPredicate(entry is map)
 
     annotation { "Name" : "Publish as query variable", "Default" : false, "Description" : "Also create query variable <map>_<key> so native dialogs can pick it. Query values only." }
     entry.e_publish is boolean;
+
+    if (entry.e_publish)
+    {
+        annotation { "Name" : "Evaluate on use", "Default" : false, "Description" : "Off: the query variable holds the entities selected now (like the standard Query variable). On: it re-resolves wherever it is used. The map entry itself is always symbolic." }
+        entry.e_evaluateOnUse is boolean;
+    }
 }
 
 /** The key under which an entry lands in the map. */
@@ -758,14 +764,16 @@ export function checkQueryVariableName(context is Context, name is string)
 }
 
 /**
- * Publishes `q` as query variable `name` after checking the name. The stored query is the
- * std robust freeze `qUnion(makeRobustQueriesBatched(context, q))`: the entities present
- * now, each tracked through identity-preserving edits. This is what the std Query variable
- * feature stores when "Evaluate on use" is off; it is NOT `qUnion(evaluateQuery(...))`,
- * whose transient ids die at the next context change.
+ * Publishes `q` as query variable `name` after checking the name. With `evaluateOnUse` off
+ * the stored query is the std robust freeze `qUnion(makeRobustQueriesBatched(context, q))`:
+ * the entities present now, each tracked through identity-preserving edits (what the std
+ * Query variable feature stores when "Evaluate on use" is off; NOT `qUnion(evaluateQuery)`,
+ * whose transient ids die at the next context change). With it on, `q` is stored symbolic
+ * and re-resolves wherever it is used.
  */
-export function publishQueryVariable(context is Context, name is string, description is string, q is Query)
+export function publishQueryVariable(context is Context, name is string, description is string, q is Query, evaluateOnUse is boolean)
 {
     checkQueryVariableName(context, name);
-    setQueryVariable(context, name, description, qUnion(makeRobustQueriesBatched(context, q)));
+    const stored = evaluateOnUse ? q : qUnion(makeRobustQueriesBatched(context, q));
+    setQueryVariable(context, name, description, stored);
 }

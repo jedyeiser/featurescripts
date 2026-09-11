@@ -17,12 +17,11 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  *   1. seed on wire W = {seed}, merge not on a wire      -> W edited in place; W keeps id + name
  *   2. seed on wire W = {seed}, merge on separate wire V -> W edited in place; V deleted if
  *                                                           V = {merge}, otherwise left alone
- *   3. seed and merge on the same wire W                 -> W = {seed, merge}: edited in place.
- *                                                           W has other edges: those are
+ *   3. seed and merge on the same wire W                 -> W's other edges (if any) are
  *                                                           re-extracted to their own wire(s),
- *                                                           seed U merge extracted to a copy,
- *                                                           W deleted, the copy edited. Body
- *                                                           identity CHANGES (warned).
+ *                                                           the seed alone is extracted to a
+ *                                                           copy, W deleted, the copy edited.
+ *                                                           Body identity CHANGES (warned).
  *   4. seed not on a wire (solid / sheet / sketch edge)  -> opExtractWires(seed U merge), that
  *                                                           new wire edited; owners untouched
  * Scenarios 1-2 where W has edges beyond the seed reduce to the second half of scenario 3:
@@ -158,7 +157,7 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         const newEdge = qCreatedBy(id + "new", EntityType.EDGE);
 
         // Now that the path has been consumed it is safe to extract / delete wires.
-        const targetWire = prepareTargetWire(context, id, plan, edges, definition.debugPrint);
+        const targetWire = prepareTargetWire(context, id, plan, definition.seedEdge, edges, definition.debugPrint);
 
         // opEditCurve wants exactly one wire body and exactly one edge. Say which one is
         // wrong, and by how much, instead of letting it fail with TOO_MANY_ENTITIES_SELECTED.
@@ -324,9 +323,9 @@ export function planMergeTarget(context is Context, seedInfo is map, mergeInfo i
     }
 
     const sameWire = isSameWire(context, seedInfo, mergeInfo);
-    // The seed wire may be edited in place only when its edges are exactly the ones being merged.
-    const expectedCount = sameWire ? 2 : 1;
-    const inPlace = seedInfo.edgeCount == expectedCount;
+    // The seed wire may be edited in place only when the seed is its only edge: opEditCurve
+    // replaces one single-edge wire body. Anything else is rebuilt around a copy of the seed.
+    const inPlace = seedInfo.edgeCount == 1;
 
     // Scenario 2: the merge edge's own wire is emptied by the merge only if it held nothing else.
     const deleteMergeWire = !sameWire && mergeInfo.onWire && mergeInfo.edgeCount == 1;
@@ -341,8 +340,14 @@ export function planMergeTarget(context is Context, seedInfo is map, mergeInfo i
 /**
  * Execute the plan: returns the wire body query that opEditCurve should replace.
  * Runs opExtractWires / opDeleteBodies as needed; call only after the path has been sampled.
+ *
+ * The target is always a wire holding exactly the SEED edge. Extracting seed + merge together
+ * is not an option: opExtractWires chains with the kernel tolerance, which is tighter than
+ * the 1e-5 m constructPath tolerance, so a micron gap between the two edges yields two
+ * wires and opEditCurve fails with TOO_MANY_ENTITIES_SELECTED. The merge edge's geometry is
+ * already in the fitted spline; it is never needed on the target.
  */
-export function prepareTargetWire(context is Context, id is Id, plan is map, edges is Query, debugPrint is boolean) returns Query
+export function prepareTargetWire(context is Context, id is Id, plan is map, seedEdge is Query, edges is Query, debugPrint is boolean) returns Query
 {
     if (plan.mode == "IN_PLACE")
     {
@@ -353,12 +358,15 @@ export function prepareTargetWire(context is Context, id is Id, plan is map, edg
     {
         // Keep the seed wire's other edges alive as their own wire(s), then retire the original.
         const otherEdges = qSubtraction(qOwnedByBody(plan.seedWire, EntityType.EDGE), edges);
-        opExtractWires(context, id + "extractRemainder", { "edges" : otherEdges });
-        opExtractWires(context, id + "extract", { "edges" : edges });
+        if (!isQueryEmpty(context, otherEdges))
+        {
+            opExtractWires(context, id + "extractRemainder", { "edges" : otherEdges });
+        }
+        opExtractWires(context, id + "extract", { "edges" : seedEdge });
         if (debugPrint)
         {
             println("[merge] REBUILD: " ~ size(evaluateQuery(context, otherEdges)) ~ " other edge(s) -> "
-                ~ size(evaluateQuery(context, qCreatedBy(id + "extractRemainder", EntityType.BODY))) ~ " remainder wire(s); seed+merge -> "
+                ~ size(evaluateQuery(context, qCreatedBy(id + "extractRemainder", EntityType.BODY))) ~ " remainder wire(s); seed -> "
                 ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY))) ~ " wire(s)");
         }
         opDeleteBodies(context, id + "deleteSeedWire", { "entities" : plan.seedWire });
@@ -367,11 +375,10 @@ export function prepareTargetWire(context is Context, id is Id, plan is map, edg
     }
 
     // EXTRACT: seed is not on a wire.
-    opExtractWires(context, id + "extract", { "edges" : edges });
+    opExtractWires(context, id + "extract", { "edges" : seedEdge });
     if (debugPrint)
     {
-        println("[merge] EXTRACT: seed+merge -> " ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY)))
-            ~ " wire(s) (2 means the kernel did not chain them: gap above kernel tolerance)");
+        println("[merge] EXTRACT: seed -> " ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY))) ~ " wire(s)");
     }
     return qCreatedBy(id + "extract", EntityType.BODY);
 }

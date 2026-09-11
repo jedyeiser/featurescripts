@@ -56,7 +56,7 @@ export const designMap = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Sources", "Description" : "Earlier features that embed a design map (driven_edge_offset, ...). May be empty." }
         definition.sources is FeatureList;
 
-        annotation { "Name" : "Take every embedded key", "Default" : true, "Description" : "Every key embedded by the sources lands in the map under its own name. Entries below override or rename individual keys." }
+        annotation { "Name" : "Take every key from the sources", "Default" : false, "Description" : "Off: only the entries listed below go into the map. On: every key the source features published lands in the map under its own name; entries below override or rename individual keys." }
         definition.getAllEmbedded is boolean;
 
         annotation { "Name" : "Entries", "Item name" : "entry", "Item label template" : "#e_kind #e_sourceKey #e_key" }
@@ -189,7 +189,7 @@ export const designMap = defineFeature(function(context is Context, id is Id, de
                 if (resolved.value is Query)
                 {
                     const qvDescription = resolved.description == "" ? definition.description : resolved.description;
-                    publishQueryVariable(context, definition.mapName ~ "_" ~ key, qvDescription, resolved.value);
+                    publishQueryVariable(context, definition.mapName ~ "_" ~ key, qvDescription, resolved.value, entry.e_evaluateOnUse == true);
                 }
                 else
                 {
@@ -234,7 +234,7 @@ export const designMap = defineFeature(function(context is Context, id is Id, de
             "mode" : DesignMapMode.CREATE,
             "pathInMap" : "",
             "sources" : featureList({}),
-            "getAllEmbedded" : true,
+            "getAllEmbedded" : false,
             "entries" : [],
             "printKeys" : false,
             "description" : ""
@@ -282,7 +282,8 @@ export function designMapEditLogic(context is Context, id is Id, oldDefinition i
                     "e_sourceKey" : item.key,
                     "e_rename" : false,
                     "e_key" : item.key,
-                    "e_publish" : false
+                    "e_publish" : false,
+                    "e_evaluateOnUse" : false
                 });
         listed[item.key] = true;
     }
