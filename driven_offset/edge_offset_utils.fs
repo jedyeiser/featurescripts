@@ -88,6 +88,23 @@ export const G1_JUNCTION_ANGLE = 1e-2;
  */
 export const CORNER_TRIM_WINDOW = 40;
 
+/**
+ * How far an extension may reach, as a fraction of the run it extends.
+ *
+ * An extension fabricates geometry past where the source data stops, so a long one is
+ * almost always a setup error rather than an intention. Past this the run is left alone
+ * and the reason is printed.
+ */
+export const TERMINAL_MAX_EXTENSION = 0.25;
+
+/**
+ * Newton steps used to walk a straight-line plane crossing onto the osculating arc.
+ *
+ * The seed is already within a fraction of a percent for any extension short enough to be
+ * worth making, and Newton squares the error each step, so this is generous.
+ */
+export const TERMINAL_NEWTON_STEPS = 4;
+
 export const MAX_STATIONS_PER_EDGE = 200;
 export const MIN_STATIONS_PER_EDGE = 5;
 
@@ -2299,6 +2316,181 @@ export function segmentApproach(a0 is Vector, a1 is Vector, b0 is Vector, b1 is 
         "s" : sc,
         "t" : tc
     };
+}
+
+// ============================================================================
+// Terminal planes
+// ============================================================================
+
+/**
+ * The plane behind a face or mate connector selection.
+ *
+ * Both are accepted because the two live cases need different ones: a centreline or a
+ * tooling datum is a face you can pick, but a plane at a computed FCP/ACP station exists
+ * only as a mate connector the upstream feature emitted.
+ *
+ * The picked entity's own origin is used, not the chain endpoint. That is what lets a
+ * plane positioned short of the source terminate everything early; put the plane through
+ * the endpoint and you get the "stop where the source stopped" reading instead.
+ */
+export function planeFromQuery(context is Context, query is Query) returns Plane
+{
+    if (!isQueryEmpty(context, qBodyType(query, BodyType.MATE_CONNECTOR)))
+    {
+        return plane(evMateConnector(context, { "mateConnector" : query }));
+    }
+
+    return evPlane(context, { "face" : query });
+}
+
+/**
+ * How far along `direction` from `origin` the plane lies, or undefined when parallel.
+ *
+ * The sign is the whole answer to what a terminal end needs: positive means the plane is
+ * ahead and the offset stopped short of it, negative means the offset already ran past.
+ */
+export function planeCrossingDistance(origin is Vector, direction is Vector, pl is Plane)
+{
+    const approach = dot(direction, pl.normal);
+
+    if (abs(approach) < ZERO_DIRECTION)
+    {
+        return undefined;
+    }
+
+    return dot(pl.origin - origin, pl.normal) / approach;
+}
+
+/**
+ * A point on the osculating circle, `distance` of arc beyond the origin.
+ *
+ * Straight-line extension is the wrong tool at a rockered tip or any other curved end --
+ * it flies off the arc immediately. This matches position, tangent and curvature at the
+ * join, so a short extension continues the curve the run was already describing.
+ */
+export function osculatingAt(origin is Vector, tangent is Vector, curvature is Vector,
+    distance is ValueWithUnits) returns Vector
+{
+    const kappa = norm(curvature);
+
+    if (kappa * meter < ZERO_DIRECTION)
+    {
+        return origin + distance * tangent;
+    }
+
+    const turn = (kappa * distance) * radian;
+
+    return origin + (sin(turn) / kappa) * tangent + ((1 - cos(turn)) / kappa) * (curvature / kappa);
+}
+
+/**
+ * The tangent of that same circle at that same distance.
+ */
+export function osculatingTangentAt(tangent is Vector, curvature is Vector,
+    distance is ValueWithUnits) returns Vector
+{
+    const kappa = norm(curvature);
+
+    if (kappa * meter < ZERO_DIRECTION)
+    {
+        return tangent;
+    }
+
+    const turn = (kappa * distance) * radian;
+
+    return cos(turn) * tangent + sin(turn) * (curvature / kappa);
+}
+
+/**
+ * Where the osculating extension of a curve end meets a plane.
+ *
+ * The straight-line crossing seeds it and Newton walks that onto the actual arc. The
+ * derivative is the arc's own tangent rather than a difference, so each step is exact and
+ * a handful of them is plenty.
+ *
+ * @returns {map} : { "distance", "point", "tangent" }, or undefined when the end runs
+ *                  parallel to the plane and never reaches it.
+ */
+export function osculatingCrossing(origin is Vector, tangent is Vector, curvature is Vector,
+    pl is Plane)
+{
+    var distance = planeCrossingDistance(origin, tangent, pl);
+
+    if (distance == undefined)
+    {
+        return undefined;
+    }
+
+    for (var i = 0; i < TERMINAL_NEWTON_STEPS; i += 1)
+    {
+        const rate = dot(osculatingTangentAt(tangent, curvature, distance), pl.normal);
+
+        if (abs(rate) < ZERO_DIRECTION)
+        {
+            break;
+        }
+
+        distance -= dot(osculatingAt(origin, tangent, curvature, distance) - pl.origin, pl.normal) / rate;
+    }
+
+    return {
+        "distance" : distance,
+        "point" : osculatingAt(origin, tangent, curvature, distance),
+        "tangent" : osculatingTangentAt(tangent, curvature, distance)
+    };
+}
+
+/**
+ * Curvature vector at `p2`, read from the circle through three consecutive points.
+ *
+ * The stations carry the SOURCE curvature, which is not the offset's: an offset by w has
+ * curvature kappa / (1 - w * kappa). Reading it back off the emitted points sidesteps that
+ * entirely and costs nothing, since the points are already in hand.
+ */
+export function curvatureThrough(p0 is Vector, p1 is Vector, p2 is Vector) returns Vector
+{
+    const circleData = circleThrough(p0, p1, p2);
+
+    if (circleData == undefined)
+    {
+        return vector(0, 0, 0) / meter;
+    }
+
+    const toCenter = circleData.center - p2;
+    const reach = norm(toCenter);
+
+    if (reach < OFFSET_GEOM_TOL || circleData.radius < OFFSET_GEOM_TOL)
+    {
+        return vector(0, 0, 0) / meter;
+    }
+
+    return (toCenter / reach) / circleData.radius;
+}
+
+/**
+ * Where a segment pair straddling a plane crosses it, as a fraction from `a` to `b`.
+ *
+ * Returns undefined when both ends sit on the same side, which is how the caller knows it
+ * has not yet walked far enough back along the run.
+ */
+export function planeStraddle(a is Vector, b is Vector, pl is Plane)
+{
+    const sideA = dot(a - pl.origin, pl.normal);
+    const sideB = dot(b - pl.origin, pl.normal);
+
+    if ((sideA > 0 * meter) == (sideB > 0 * meter))
+    {
+        return undefined;
+    }
+
+    const span = sideA - sideB;
+
+    if (abs(span) < OFFSET_GEOM_TOL)
+    {
+        return a;
+    }
+
+    return a + (sideA / span) * (b - a);
 }
 
 export function emitLineCurve(context is Context, id is Id, start is Vector, end is Vector)
