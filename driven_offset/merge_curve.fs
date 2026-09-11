@@ -234,6 +234,48 @@ function printInputs(context is Context, definition is map, seedInfo is map, mer
     println("[merge] path: " ~ size(path.edges) ~ " edge(s), closed " ~ path.closed ~ ", flipped " ~ path.flipped
         ~ ", length " ~ roundToPrecision(evLength(context, { "entities" : qUnion(path.edges) }) / millimeter, 3) ~ " mm");
     println("[merge] plan: mode " ~ plan.mode ~ ", delete merge wire " ~ plan.deleteMergeWire);
+
+    if (seedInfo.onWire)
+    {
+        printBodyReport(context, "seed wire before", seedInfo.wire, true);
+        println("[merge] edges vertex-adjacent to seed : " ~ size(evaluateQuery(context, qAdjacent(definition.seedEdge, AdjacencyType.VERTEX, EntityType.EDGE))));
+        println("[merge] edges vertex-adjacent to merge: " ~ size(evaluateQuery(context, qAdjacent(definition.mergeEdge, AdjacencyType.VERTEX, EntityType.EDGE))));
+        println("[merge] seed and merge share a vertex: " ~ !isQueryEmpty(context, qIntersection([qAdjacent(definition.seedEdge, AdjacencyType.VERTEX, EntityType.EDGE), definition.mergeEdge])));
+    }
+}
+
+/**
+ * Topology of one wire body: edge and vertex counts (open chains: vertices - edges =
+ * number of components; a closed loop has vertices == edges), bounding-box centre, and
+ * optionally one line per edge.
+ */
+function printBodyReport(context is Context, label is string, body is Query, perEdge is boolean)
+{
+    const edges = evaluateQuery(context, qOwnedByBody(body, EntityType.EDGE));
+    const vertices = evaluateQuery(context, qOwnedByBody(body, EntityType.VERTEX));
+    const bb = evBox3d(context, { "topology" : body });
+    const centre = (bb.minCorner + bb.maxCorner) / 2;
+    println("[merge] " ~ label ~ ": " ~ size(edges) ~ " edge(s), " ~ size(vertices) ~ " vertex(es) -> "
+        ~ (size(vertices) - size(edges)) ~ " open component(s) (0 = one closed loop), length "
+        ~ roundToPrecision(evLength(context, { "entities" : qOwnedByBody(body, EntityType.EDGE) }) / millimeter, 3) ~ " mm, centre "
+        ~ roundToPrecision(centre[0] / millimeter, 1) ~ ", " ~ roundToPrecision(centre[1] / millimeter, 1) ~ ", " ~ roundToPrecision(centre[2] / millimeter, 1) ~ " mm");
+    if (!perEdge)
+    {
+        return;
+    }
+    for (var i = 0; i < size(edges); i += 1)
+    {
+        const ends = evEdgeTangentLines(context, { "edge" : edges[i], "parameters" : [0, 1] });
+        const curveDef = evCurveDefinition(context, { "edge" : edges[i], "simplify" : true });
+        println("[merge]   edge " ~ i ~ ": " ~ curveTypeName(curveDef) ~ ", " ~ roundToPrecision(evLength(context, { "entities" : edges[i] }) / millimeter, 2)
+            ~ " mm, " ~ pointText(ends[0].origin) ~ " -> " ~ pointText(ends[1].origin)
+            ~ ", adjacent edges " ~ size(evaluateQuery(context, qAdjacent(edges[i], AdjacencyType.VERTEX, EntityType.EDGE))));
+    }
+}
+
+function pointText(p is Vector) returns string
+{
+    return "(" ~ roundToPrecision(p[0] / millimeter, 3) ~ ", " ~ roundToPrecision(p[1] / millimeter, 3) ~ ", " ~ roundToPrecision(p[2] / millimeter, 3) ~ ")";
 }
 
 /** One line: curve type, owner body count, wire/sketch membership, edges on the owner. */
@@ -372,9 +414,30 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
             for (var w = 0; w < size(wires); w += 1)
             {
                 const wireEdges = qOwnedByBody(wires[w], EntityType.EDGE);
-                println("[merge]   wire " ~ w ~ ": " ~ size(evaluateQuery(context, wireEdges)) ~ " edge(s), length "
-                    ~ roundToPrecision(evLength(context, { "entities" : wireEdges }) / millimeter, 3) ~ " mm"
-                    ~ (isQueryEmpty(context, qIntersection([wireEdges, newEdge])) ? "" : " (contains the merged curve)"));
+                printBodyReport(context, "output wire " ~ w ~ (isQueryEmpty(context, qIntersection([wireEdges, qOwnedByBody(newBody, EntityType.EDGE)])) ? "" : " (has merged curve)"), wires[w], false);
+            }
+            // The merged curve's ends against every other-edge end: which neighbour is not chaining?
+            const mergedEnds = evEdgeTangentLines(context, { "edge" : qOwnedByBody(newBody, EntityType.EDGE), "parameters" : [0, 1] });
+            const others = evaluateQuery(context, otherEdges);
+            for (var e = 0; e < 2; e += 1)
+            {
+                var best = 1 * meter;
+                var bestIndex = -1;
+                for (var o = 0; o < size(others); o += 1)
+                {
+                    const ends = evEdgeTangentLines(context, { "edge" : others[o], "parameters" : [0, 1] });
+                    for (var k = 0; k < 2; k += 1)
+                    {
+                        const d = norm(ends[k].origin - mergedEnds[e].origin);
+                        if (d < best)
+                        {
+                            best = d;
+                            bestIndex = o;
+                        }
+                    }
+                }
+                println("[merge]   merged curve " ~ (e == 0 ? "start" : "end") ~ ": nearest other-edge end is edge " ~ bestIndex ~ " at "
+                    ~ roundToPrecision(best / millimeter, 6) ~ " mm");
             }
         }
         opDeleteBodies(context, id + "deleteSeedWire", { "entities" : qUnion([plan.seedWire, newBody]) });
