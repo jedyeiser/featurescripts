@@ -28,6 +28,8 @@ class SyncResult:
     message: str
     conflict: bool = False
     skipped: bool = False
+    element_id: str = ""
+    created: bool = False  # push created the element in Onshape
 
 
 class SyncOperations:
@@ -116,6 +118,25 @@ class SyncOperations:
         metadata_path = local_dir / self.METADATA_FILENAME
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata.to_dict(), f, indent=2)
+            f.write("\n")
+
+    def _update_document_metadata(
+        self,
+        local_dir: Path,
+        feature_studios: dict[str, str] | None = None,
+        tab_folders: dict[str, str] | None = None,
+    ) -> None:
+        """Merge into an existing .document.json (no-op if the file is absent)."""
+        meta = self._load_document_metadata(local_dir)
+        if meta is None:
+            return
+        if feature_studios:
+            meta.feature_studios.update(feature_studios)
+        if tab_folders is not None:
+            meta.tab_folders = tab_folders
+        meta.last_sync = datetime.now(timezone.utc).isoformat()
+        with open(local_dir / self.METADATA_FILENAME, "w", encoding="utf-8") as f:
+            json.dump(meta.to_dict(), f, indent=2)
             f.write("\n")
 
     def _load_document_metadata(self, local_dir: Path) -> DocumentMetadata | None:
@@ -705,8 +726,12 @@ class SyncOperations:
         files: list[str] | None = None,
         tab_folder: str | None = None,
         save_json: bool = False,
+        folders: bool = False,
     ) -> list[SyncResult]:
         """Pull all Feature Studios from a document (legacy method).
+
+        With folders=True the Onshape tab folders are read via the browser and a
+        Feature Studio with no local file yet lands in the matching subdirectory.
 
         Args:
             doc_config: Document configuration
@@ -786,6 +811,19 @@ class SyncOperations:
             # Create local directory if it doesn't exist
             local_dir.mkdir(parents=True, exist_ok=True)
 
+            tab_folders: dict[str, str] | None = None
+            if folders:
+                from .tabfolders import read_tab_folders
+                try:
+                    tab_folders = read_tab_folders(
+                        doc_config.document_id, doc_config.workspace_id, fs_elements[0]["id"]
+                    )
+                except Exception as e:
+                    results.append(SyncResult(
+                        success=True, filepath=doc_config.local_path, operation="pull", skipped=True,
+                        message=f"Could not read Onshape tab folders ({e}); new files go to the project root",
+                    ))
+
             feature_studios: dict[str, str] = {}
             for element in fs_elements:
                 element_id = element.get("id", "")
@@ -800,11 +838,18 @@ class SyncOperations:
                     ))
                     continue
 
-                # Respect user's local folder organization: pull to wherever the file already lives
+                # Respect user's local folder organization: pull to wherever the file already
+                # lives; a new file mirrors its Onshape tab folder when we know it.
                 safe_name = sanitize_filename(element_name)
                 filename = safe_name if safe_name.endswith(ext) else f"{safe_name}{ext}"
                 existing = list(local_dir.rglob(filename))
-                element_dir = existing[0].parent if existing else local_dir
+                if existing:
+                    element_dir = existing[0].parent
+                elif tab_folders and tab_folders.get(element_name):
+                    element_dir = local_dir / tab_folders[element_name]
+                    element_dir.mkdir(parents=True, exist_ok=True)
+                else:
+                    element_dir = local_dir
 
                 result = self._pull_feature_studio(
                     document_id=doc_config.document_id,
@@ -828,13 +873,24 @@ class SyncOperations:
                     skipped=True,
                 ))
 
+            if tab_folders is None:
+                previous = self._load_document_metadata(local_dir)
+                tab_folders = previous.tab_folders if previous else {}
+            # The name->id map covers every Feature Studio in the document, not
+            # just the ones pulled this time (a --files pull must not shrink it).
+            all_studios = {
+                e["name"]: e["id"]
+                for e in all_elements
+                if e.get("elementType") == "FEATURESTUDIO" and e.get("name") and e.get("id")
+            }
             self._save_document_metadata(
                 local_dir=local_dir,
                 document_id=doc_config.document_id,
                 workspace_id=doc_config.workspace_id,
                 document_name=doc_config.name,
                 folder_path="",
-                feature_studios=feature_studios,
+                feature_studios=all_studios,
+                tab_folders=tab_folders,
             )
 
         except Exception as e:
@@ -854,6 +910,7 @@ class SyncOperations:
         force: bool = False,
         files: list[str] | None = None,
         tab_folder: str | None = None,
+        create: bool = False,
     ) -> list[SyncResult]:
         """Push all local Feature Studios to a document (legacy method).
 
@@ -863,6 +920,7 @@ class SyncOperations:
             force: Force push even if there are remote changes
             files: Optional list of specific files to push (basenames like "file.fs")
             tab_folder: If set, only push files from this tab folder (by local dir name)
+            create: Create a Feature Studio for any local file with no matching tab
         """
         results: list[SyncResult] = []
         local_dir = self.base_dir / doc_config.local_path
@@ -901,16 +959,56 @@ class SyncOperations:
                 files_basenames = {Path(f).name for f in files_set}
                 local_files = [f for f in local_files if f.name in files_basenames]
 
+            created: dict[str, str] = {}
             for local_file in local_files:
                 element_name = local_file.stem
                 element_id = name_to_id.get(element_name)
+
+                if not element_id and create:
+                    rel_path = str(local_file.relative_to(self.base_dir))
+                    if dry_run:
+                        results.append(SyncResult(
+                            success=True, filepath=rel_path, operation="push",
+                            message=f"[DRY RUN] Would create {element_name} in Onshape", skipped=True,
+                        ))
+                        continue
+                    contents = local_file.read_text(encoding="utf-8")
+                    resp = self.client.create_featurestudio(
+                        document_id=doc_config.document_id,
+                        workspace_id=doc_config.workspace_id,
+                        name=element_name,
+                        contents=contents,
+                    )
+                    element_id = resp.get("id", "")
+                    if not element_id:
+                        results.append(SyncResult(
+                            success=False, filepath=rel_path, operation="push",
+                            message=f"Onshape returned no element id creating {element_name}: {resp}",
+                        ))
+                        continue
+                    name_to_id[element_name] = element_id
+                    created[element_name] = element_id
+                    self.state.update_file_state(
+                        filepath=rel_path,
+                        local_hash=SyncState.compute_hash(contents),
+                        remote_microversion=resp.get("microversion", ""),
+                        element_id=element_id,
+                        document_id=doc_config.document_id,
+                        workspace_id=doc_config.workspace_id,
+                    )
+                    results.append(SyncResult(
+                        success=True, filepath=rel_path, operation="push",
+                        message=f"Created {element_name} in Onshape ({element_id})",
+                        element_id=element_id, created=True,
+                    ))
+                    continue
 
                 if not element_id:
                     results.append(SyncResult(
                         success=False,
                         filepath=str(local_file),
                         operation="push",
-                        message=f"No matching element found for {element_name}",
+                        message=f"No matching element found for {element_name} (new file? push with --create)",
                     ))
                     continue
 
@@ -922,7 +1020,12 @@ class SyncOperations:
                     dry_run=dry_run,
                     force=force,
                 )
+                result.element_id = element_id
                 results.append(result)
+
+            if created:
+                self.state.save()
+                self._update_document_metadata(local_dir, feature_studios=created)
 
         except Exception as e:
             results.append(SyncResult(
@@ -945,6 +1048,7 @@ class SyncOperations:
         files: list[str] | None = None,
         tab_folder: str | None = None,
         save_json: bool = False,
+        folders: bool = False,
     ) -> list[SyncResult]:
         """Pull all configured folders and documents.
 
@@ -964,7 +1068,7 @@ class SyncOperations:
 
         # Pull documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.pull_document(doc_config, dry_run, force, files, tab_folder, save_json)
+            doc_results = self.pull_document(doc_config, dry_run, force, files, tab_folder, save_json, folders)
             results.extend(doc_results)
 
         return results
@@ -975,6 +1079,7 @@ class SyncOperations:
         force: bool = False,
         files: list[str] | None = None,
         tab_folder: str | None = None,
+        create: bool = False,
     ) -> list[SyncResult]:
         """Push all configured folders and documents.
 
@@ -993,7 +1098,7 @@ class SyncOperations:
 
         # Push documents (legacy style)
         for doc_config in self.config.documents:
-            doc_results = self.push_document(doc_config, dry_run, force, files, tab_folder)
+            doc_results = self.push_document(doc_config, dry_run, force, files, tab_folder, create)
             results.extend(doc_results)
 
         return results

@@ -98,7 +98,7 @@ class DocumentMetadata:
     onshape_url: str  # Direct URL to document
     last_sync: str
     feature_studios: dict[str, str] = field(default_factory=dict)  # name -> element_id
-    tab_folders: dict[str, str] = field(default_factory=dict)  # folder_id -> local_folder_name
+    tab_folders: dict[str, str] = field(default_factory=dict)  # element_name -> Onshape tab folder (root omitted)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""

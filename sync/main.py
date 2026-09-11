@@ -541,6 +541,7 @@ def cmd_get(args: argparse.Namespace) -> int:
             auto_push_backup=args.auto_push,
             tab_folder=args.folder if hasattr(args, "folder") else None,
             save_json=getattr(args, "save_json", False),
+            folders=not args.no_folders,
         )
         return 0 if result["success"] else 1
     except Exception as e:
@@ -573,6 +574,8 @@ def cmd_push_new(args: argparse.Namespace) -> int:
             auto_backup=not args.no_backup,
             auto_push_backup=args.auto_push,
             tab_folder=args.folder if hasattr(args, "folder") else None,
+            create=not args.no_create,
+            sync_folders=args.folders,
         )
     except Exception as e:
         console.print(f"[red]Error: {e}")
@@ -888,6 +891,7 @@ def main() -> int:
     get_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     get_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before pull")
     get_parser.add_argument("--auto-push", action="store_true", help="Push backup commit to Git remote")
+    get_parser.add_argument("--no-folders", action="store_true", help="Skip reading Onshape tab folders (browser); new files then land in the project root")
 
     # push command (new style for working projects)
     push_new_parser = subparsers.add_parser("pushproject", help="Push a working project to Onshape")
@@ -898,6 +902,8 @@ def main() -> int:
     push_new_parser.add_argument("--dry-run", action="store_true", help="Show what would happen")
     push_new_parser.add_argument("--no-backup", action="store_true", help="Skip Git backup before push")
     push_new_parser.add_argument("--auto-push", action="store_true", help="Push backup commit to Git remote")
+    push_new_parser.add_argument("--no-create", action="store_true", help="Do not create Onshape tabs for new local files (default: create, placed in the tab folder matching the local subdirectory)")
+    push_new_parser.add_argument("--folders", action="store_true", help="Also move every pushed tab into the tab folder matching its local subdirectory")
     push_new_parser.add_argument("--check", action="store_true", help="After pushing, read Onshape compile notices for the pushed tabs (fails on warnings)")
     _add_check_args(push_new_parser)
 

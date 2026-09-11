@@ -189,7 +189,15 @@ class OnshapeClient:
             f"/api/{self.API_VERSION}/featurestudios/d/{document_id}"
             f"/w/{workspace_id}"
         )
-        return self.post(path, json_data={"contents": contents, "name": name})
+        created = self.post(path, json_data={"contents": contents, "name": name})
+        # Onshape ignores `contents` on create and fills in its default template,
+        # so set the real contents with a follow-up update.
+        if contents and created.get("id"):
+            updated = self.update_featurestudio_contents(
+                document_id, workspace_id, created["id"], contents
+            )
+            created["microversion"] = updated.get("microversion", created.get("microversion", ""))
+        return created
 
     def update_featurestudio_contents(
         self,

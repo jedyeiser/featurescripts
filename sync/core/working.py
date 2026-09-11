@@ -123,6 +123,7 @@ class WorkingDirectoryManager:
         auto_push_backup: bool = False,
         tab_folder: str | None = None,
         save_json: bool = False,
+        folders: bool = True,
     ) -> dict[str, Any]:
         """Pull a working project from Onshape.
 
@@ -238,7 +239,10 @@ class WorkingDirectoryManager:
         # Don't use spinner on Windows to avoid unicode issues
         if not dry_run:
             console.print(f"[blue]Downloading files from {proj.name}...[/blue]")
-        results = ops.pull_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder, save_json=save_json)
+        results = ops.pull_all(
+            dry_run=dry_run, force=force, files=files, tab_folder=tab_folder,
+            save_json=save_json, folders=folders and not dry_run,
+        )
 
         # Process results
         files_updated = sum(1 for r in results if r.success and not r.skipped)
@@ -314,6 +318,8 @@ class WorkingDirectoryManager:
         auto_backup: bool = True,
         auto_push_backup: bool = False,
         tab_folder: str | None = None,
+        create: bool = True,
+        sync_folders: bool = False,
     ) -> dict[str, Any]:
         """Push a working project to Onshape.
 
@@ -322,6 +328,9 @@ class WorkingDirectoryManager:
             files: Optional list of specific files to push (relative to working_directory)
             force: Force push even if there are remote changes
             dry_run: Show what would happen without making changes
+            create: Create Onshape tabs for local files that have none, then put
+                each new tab in the tab folder matching its local subdirectory
+            sync_folders: Also fix tab-folder placement of every pushed file
 
         Returns:
             Status report dictionary with keys:
@@ -427,7 +436,7 @@ class WorkingDirectoryManager:
         # Don't use spinner on Windows to avoid unicode issues
         if not dry_run:
             console.print(f"[blue]Uploading files to {proj.name}...[/blue]")
-        results = ops.push_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder)
+        results = ops.push_all(dry_run=dry_run, force=force, files=files, tab_folder=tab_folder, create=create)
 
         # Process results
         files_pushed = sum(1 for r in results if r.success and not r.skipped)
@@ -447,6 +456,11 @@ class WorkingDirectoryManager:
                     console.print(f"[dim]{result.message}[/dim]")
             else:
                 console.print(f"[green]{result.message}[/green]")
+
+        # Tab-folder placement mirrors local subdirectories (browser-driven; the
+        # API cannot see tab folders). New tabs always; everything pushed with --folders.
+        if not dry_run:
+            self._place_tabs(proj, ops, results, all_pushed=sync_folders)
 
         # Update project metadata if successful
         if not dry_run and files_pushed > 0:
@@ -551,6 +565,40 @@ class WorkingDirectoryManager:
             "in_sync": in_sync,
             "untracked": untracked,
         }
+
+    def _place_tabs(
+        self,
+        proj: ProjectConfig,
+        ops: SyncOperations,
+        results: list[Any],
+        all_pushed: bool,
+    ) -> None:
+        """Move pushed tabs into the tab folder named after their local subdirectory."""
+        from .tabfolders import desired_folder, sync_tab_folders
+
+        local_dir = self.base_dir / proj.working_directory
+        placements: dict[str, str] = {}
+        for r in results:
+            if not (r.success and not r.skipped and r.element_id):
+                continue
+            if r.created or all_pushed:
+                placements[r.element_id] = desired_folder(local_dir, Path(r.filepath))
+        if not placements or not proj.document_id or not proj.workspace_id:
+            return
+
+        console.print("[blue]Syncing Onshape tab folders with local subdirectories...[/blue]")
+        try:
+            actions, tab_folders = sync_tab_folders(
+                proj.document_id, proj.workspace_id, next(iter(placements)), placements
+            )
+        except Exception as e:
+            console.print(f"[yellow]Tab folder sync skipped: {e}[/yellow]")
+            return
+        for a in actions:
+            console.print(f"  {a}")
+        if not actions:
+            console.print("  [dim]tab folders already match[/dim]")
+        ops._update_document_metadata(local_dir, tab_folders=tab_folders)
 
     def list_projects(self) -> list[dict[str, Any]]:
         """List all configured projects.

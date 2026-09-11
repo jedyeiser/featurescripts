@@ -151,7 +151,26 @@ python -m sync.main pushproject <project_name> [OPTIONS]
                            pushed tabs (browser; fails on errors AND warnings)
   --monitor PART_STUDIO    With --check: also regenerate this Part Studio and
                            report runtime notices, println output, feature status
+  --no-create              Do not create Onshape tabs for new local files
+  --folders                Also move every pushed tab into the tab folder that
+                           matches its local subdirectory (default: new tabs only)
 ```
+
+### New files and tab folders
+
+A local `.fs` file with no Onshape tab is **created on push** (API), recorded in
+`.document.json` / `.sync-state.json`, and then placed in the Onshape **tab folder
+named after its local subdirectory** (browser - the API cannot see tab folders):
+
+```
+driven_offset/foo.fs                 -> document root
+driven_offset/featurescripts/bar.fs  -> tab folder "featurescripts" (created if missing)
+```
+
+One level only. `get` reads the tab folders the same way, so a tab you create in
+Onshape lands in the matching local subdirectory on first pull (`--no-folders`
+skips the browser pass); files that already exist locally stay where they are.
+`.document.json` records `tab_folders` as `{tab name: folder}`.
 
 ### Onshape Notices (browser-driven)
 

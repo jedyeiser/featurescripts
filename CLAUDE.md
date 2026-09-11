@@ -44,7 +44,9 @@ var result = getBSplineParamRange(myCurve);
 2. **Run `python fscheck.py <files>` before pushing** - static checks that catch the
    errors that otherwise cost an Onshape round trip (see below)
 3. Push with `python -m sync.main pushproject <project> --files <f.fs> --check` - the
-   `--check` reads Onshape's real compile notices back (see below)
+   `--check` reads Onshape's real compile notices back (see below). A new local `.fs`
+   file is created in Onshape automatically and placed in the tab folder named after its
+   local subdirectory (`proj/sub/x.fs` -> tab folder `sub`; `proj/x.fs` -> root)
 4. `python -m sync.main notices <project> --monitor "<Part Studio>"` to regenerate a
    test Part Studio and read runtime errors (with stack traces), `println` output and
    per-feature status

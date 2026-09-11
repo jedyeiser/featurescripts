@@ -4,13 +4,11 @@
   "document_name": "driven_offset",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/f61d2c000ab2d1240776342e/w/5b11f323ab31b04cba8b36ef",
-  "last_sync": "2026-09-11T06:03:05.431551+00:00",
+  "last_sync": "2026-09-11T22:10:35.572851+00:00",
   "feature_studios": {
+    "driven_offset_surface": "c47cbd0497baf3011c60ecf8",
     "offset_run_treatment": "d009ddf4a8dd9534fc4dc4b5",
     "offset_debug": "6479d7fbd0ec7d11e0ae6c69",
-    "Reese_Test_Feature": "6fbe37e817410d558eb2fc01",
-    "Reese_IMPORT_THIS": "909cf7b14bf562d9c989f0b1",
-    "Reese_Extract_Variables": "1056606f96e6239d54a3b4a2",
     "query_varialble_ref": "1f1af148a880ee92bf8b196e",
     "design_map_query_utils": "2b6b313ac740a0146d5bef7c",
     "merge_curve": "f531550fd26c49415f9c443a",
@@ -22,5 +20,23 @@
     "edge_offset_utils": "a2665e22c07b7a6929ce4e80",
     "unwrap": "a84cdaa8963f2a55db1c016b"
   },
-  "tab_folders": {}
+  "tab_folders": {
+    "Baseline_Variables": "Variable Studios",
+    "RD 20TAC 28 177 Variables": "Variable Studios",
+    "query_varialble_ref": "featurescripts",
+    "design_map_query_utils": "featurescripts",
+    "merge_curve": "featurescripts",
+    "evaluate_profiles": "featurescripts",
+    "map_curve": "featurescripts",
+    "evaluate_offset": "featurescripts",
+    "design_map": "featurescripts",
+    "driven_edge_offset": "featurescripts",
+    "edge_offset_utils": "featurescripts",
+    "unwrap": "featurescripts",
+    "offset_debug": "featurescripts",
+    "offset_run_treatment": "featurescripts",
+    "driven_offset_surface": "featurescripts",
+    "TAC_Stiffness_Profile.csv": "CSV",
+    "RD 20TAC 28 178_PROFILE.csv": "CSV"
+  }
 }

@@ -301,3 +301,116 @@ def monitor_part_studio(browser: OnshapeBrowser, name: str, timeout_s: int = 120
             return st
         time.sleep(1.0)
     return st
+
+
+# ------------------------------------------------------------------- tab bar
+# The public API has no notion of tab folders, so placement is browser-only.
+# Tabs: `.os-tab-bar-tab[data-id]`; folders add `.os-tab-bar-tab-group`. The bar
+# shows one folder at a time; breadcrumbs (first = "All tabs") navigate up.
+
+_TABS_JS = r"""() => [...document.querySelectorAll('.os-tab-bar-tab')].map(t => ({
+    id: t.getAttribute('data-id'),
+    name: ((t.querySelector('.os-tab-name') || {}).innerText || '').trim(),
+    folder: t.classList.contains('os-tab-bar-tab-group'),
+}))"""
+
+_BREADCRUMBS_JS = r"""() => [...document.querySelectorAll('.os-tab-bar-breadcrumbs .os-tab-bar-breadcrumb')]
+    .map(b => (b.innerText || '').trim())"""
+
+
+class TabBar:
+    """Tab-bar operations on an open Onshape document page."""
+
+    TAB = ".os-tab-bar-tab"
+    BREADCRUMB = ".os-tab-bar-breadcrumbs .os-tab-bar-breadcrumb"
+
+    def __init__(self, browser: OnshapeBrowser) -> None:
+        self.page = browser.page
+
+    def wait_ready(self, timeout_ms: int = 60000) -> None:
+        self.page.wait_for_selector(self.TAB, timeout=timeout_ms)
+        self._settle()
+
+    def _settle(self, ms: int = 600) -> None:
+        # The bar re-renders asynchronously after navigation and drops.
+        time.sleep(ms / 1000)
+
+    def _wait_until(self, js: str, arg: Any = None, timeout_ms: int = 15000) -> None:
+        self.page.wait_for_function(js, arg=arg, timeout=timeout_ms)
+        self._settle()
+
+    def tabs(self) -> list[dict[str, Any]]:
+        return self.page.evaluate(_TABS_JS)
+
+    def current_folder(self) -> str:
+        """'' at the root, else the name of the open folder (one level)."""
+        crumbs = self.page.evaluate(_BREADCRUMBS_JS)
+        return crumbs[-1] if len(crumbs) > 1 else ""
+
+    def go_home(self) -> None:
+        if self.current_folder():
+            self.page.locator(self.BREADCRUMB).first.click()
+            self._wait_until("() => document.querySelectorAll('.os-tab-bar-breadcrumbs .os-tab-bar-breadcrumb').length <= 1")
+
+    def open_folder(self, name: str) -> None:
+        self.go_home()
+        self.page.locator(f"{self.TAB}.os-tab-bar-tab-group", has_text=name).first.click()
+        self._wait_until(
+            "(n) => { const c = [...document.querySelectorAll('.os-tab-bar-breadcrumbs .os-tab-bar-breadcrumb')]; return c.length > 1 && c[c.length-1].innerText.trim() === n; }",
+            name,
+        )
+
+    def read_structure(self) -> dict[str, dict[str, str]]:
+        """{folder_name: {element_id: element_name}}; '' is the root (folders excluded)."""
+        self.go_home()
+        root = self.tabs()
+        out: dict[str, dict[str, str]] = {"": {t["id"]: t["name"] for t in root if not t["folder"]}}
+        for f in [t["name"] for t in root if t["folder"]]:
+            self.open_folder(f)
+            out[f] = {t["id"]: t["name"] for t in self.tabs() if not t["folder"]}
+        self.go_home()
+        return out
+
+    def create_folder(self, name: str) -> None:
+        """New folder at the root; Onshape opens an inline rename box on creation."""
+        self.go_home()
+        self.page.click("#add-element-button")
+        self.page.click("#create-group-button")
+        box = self.page.locator("input.rename-tab-input")
+        box.wait_for(timeout=10000)
+        box.fill(name)
+        self.page.keyboard.press("Enter")
+        self._wait_until(
+            "(n) => [...document.querySelectorAll('.os-tab-bar-tab.os-tab-bar-tab-group .os-tab-name')].some(e => e.innerText.trim() === n)",
+            name,
+        )
+
+    def move_to_parent(self, element_id: str) -> None:
+        """Context menu 'Move to parent folder' on a tab in the currently open folder."""
+        self.page.locator(f"{self.TAB}[data-id='{element_id}']").first.click(button="right")
+        self.page.locator(".context-menu-root .context-menu-item", has_text="Move to parent folder").first.click()
+        self._wait_until(
+            "(id) => !document.querySelector(`.os-tab-bar-tab[data-id='${id}']`)", element_id
+        )
+
+    def drag_into_folder(self, element_id: str, folder: str) -> None:
+        """Drag a root-level tab onto a root-level folder tab (no 'move to folder' menu exists)."""
+        self.go_home()
+        src = self.page.locator(f"{self.TAB}[data-id='{element_id}']").first
+        dst = self.page.locator(f"{self.TAB}.os-tab-bar-tab-group", has_text=folder).first
+        sb, db = src.bounding_box(), dst.bounding_box()
+        if not sb or not db:
+            raise RuntimeError(f"Tab {element_id} or folder '{folder}' not visible at root")
+        x0, y0 = sb["x"] + sb["width"] / 2, sb["y"] + sb["height"] / 2
+        x1, y1 = db["x"] + db["width"] / 2, db["y"] + db["height"] / 2
+        self.page.mouse.move(x0, y0)
+        self.page.mouse.down()
+        steps = 20
+        for i in range(1, steps + 1):
+            self.page.mouse.move(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps)
+            time.sleep(0.03)
+        time.sleep(0.3)
+        self.page.mouse.up()
+        self._wait_until(
+            "(id) => !document.querySelector(`.os-tab-bar-tab[data-id='${id}']`)", element_id
+        )
