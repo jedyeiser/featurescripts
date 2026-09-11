@@ -139,6 +139,16 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
             printInputs(context, definition, seedInfo, mergeInfo, plan, path);
         }
 
+        // Degenerate edges sitting between seed and merge (zero-length gap fillers) are
+        // bridged by the merged curve; they go with the replaced edges, not the remainder.
+        const slivers = sliverEdgesBetween(context, plan, definition.seedEdge, definition.mergeEdge);
+        const sliverCount = size(evaluateQuery(context, slivers));
+        if (sliverCount > 0)
+        {
+            reportFeatureWarning(context, id, sliverCount ~ " zero-length edge(s) between the seed and merge edges were absorbed into the merged curve.");
+        }
+        const removed = qUnion([edges, slivers]);
+
         // 4. Arc / ellipse inputs become a spline.
         if (definition.warnOnArcLoss && (isArcLike(context, definition.seedEdge) || isArcLike(context, definition.mergeEdge)))
         {
@@ -164,7 +174,12 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         }
         if (!spline.isPeriodic)
         {
-            spline = snapSplineEnds(spline, target.positions);
+            // Snap to the NEIGHBOUR edges' curve endpoints, not merely to the path ends: on a
+            // wire with tolerant vertices the two differ by a micron, and opExtractWires
+            // chains only on exact coincidence. A free chain end keeps the path end.
+            const pathEnds = [target.positions[0], target.positions[size(target.positions) - 1]];
+            const snapTo = neighbourSnapPoints(context, plan, removed, pathEnds, definition.debugPrint);
+            spline = snapSplineEnds(spline, snapTo);
         }
         opCreateBSplineCurve(context, id + "new", { "bSplineCurve" : spline });
         const newEdge = qCreatedBy(id + "new", EntityType.EDGE);
@@ -184,7 +199,7 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
 
         // 6. Put the merged curve where it belongs. The path has been consumed, so wires may
         //    now be extracted and deleted.
-        const output = placeMergedCurve(context, id, plan, edges, newEdge, newBody, definition.debugPrint);
+        const output = placeMergedCurve(context, id, plan, removed, newEdge, newBody, definition.debugPrint);
 
         if (plan.deleteMergeWire)
         {
@@ -440,7 +455,17 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
                     ~ roundToPrecision(best / millimeter, 6) ~ " mm");
             }
         }
-        opDeleteBodies(context, id + "deleteSeedWire", { "entities" : qUnion([plan.seedWire, newBody]) });
+        // Never delete the output, whatever lineage qCreatedBy attributes to it.
+        const toDelete = qSubtraction(qUnion([plan.seedWire, newBody]), output);
+        if (debugPrint)
+        {
+            println("[merge] deleting " ~ size(evaluateQuery(context, toDelete)) ~ " body(ies): seed wire + temporary spline body");
+        }
+        opDeleteBodies(context, id + "deleteSeedWire", { "entities" : toDelete });
+        if (debugPrint)
+        {
+            printFeatureBodies(context, id);
+        }
         reportFeatureWarning(context, id, "The seed wire had other edges; it was rebuilt as "
             ~ size(evaluateQuery(context, output)) ~ " new wire body(ies). Body identity changed.");
         return output;
@@ -454,6 +479,98 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
 // Small helpers
 // TODO: replace with shared helpers from edge_offset_utils.fs once that tab settles.
 // ============================================================================
+
+/**
+ * Other edges of the seed wire that are shorter than MERGE_CHAIN_TOLERANCE and sit at an
+ * endpoint of the seed or merge edge: zero-length gap fillers the merged curve replaces.
+ * Empty when the seed is not on a wire.
+ */
+function sliverEdgesBetween(context is Context, plan is map, seedEdge is Query, mergeEdge is Query) returns Query
+{
+    if (plan.mode == "EXTRACT")
+    {
+        return qNothing();
+    }
+    var anchorPoints = [];
+    for (var tangentLine in evEdgeTangentLines(context, { "edge" : seedEdge, "parameters" : [0, 1] }))
+    {
+        anchorPoints = append(anchorPoints, tangentLine.origin);
+    }
+    for (var tangentLine in evEdgeTangentLines(context, { "edge" : mergeEdge, "parameters" : [0, 1] }))
+    {
+        anchorPoints = append(anchorPoints, tangentLine.origin);
+    }
+
+    const others = evaluateQuery(context, qSubtraction(qOwnedByBody(plan.seedWire, EntityType.EDGE), qUnion([seedEdge, mergeEdge])));
+    var slivers = [];
+    for (var other in others)
+    {
+        if (evLength(context, { "entities" : other }) >= MERGE_CHAIN_TOLERANCE)
+        {
+            continue;
+        }
+        const midpoint = evEdgeTangentLine(context, { "edge" : other, "parameter" : 0.5 }).origin;
+        for (var anchor in anchorPoints)
+        {
+            if (norm(midpoint - anchor) < MERGE_CHAIN_TOLERANCE)
+            {
+                slivers = append(slivers, other);
+                break;
+            }
+        }
+    }
+    return qUnion(slivers);
+}
+
+/** Every body this feature has created and not deleted, with its edge count (0 = empty body). */
+function printFeatureBodies(context is Context, id is Id)
+{
+    const bodies = evaluateQuery(context, qCreatedBy(id, EntityType.BODY));
+    println("[merge] bodies left by this feature: " ~ size(bodies));
+    for (var b = 0; b < size(bodies); b += 1)
+    {
+        println("[merge]   body " ~ b ~ ": " ~ size(evaluateQuery(context, qOwnedByBody(bodies[b], EntityType.EDGE))) ~ " edge(s), wire "
+            ~ !isQueryEmpty(context, qBodyType(bodies[b], BodyType.WIRE)));
+    }
+}
+
+/**
+ * For each end of the merged curve, the endpoint of the nearest other edge on the seed
+ * wire when it lies within MERGE_CHAIN_TOLERANCE; otherwise the path end itself.
+ */
+function neighbourSnapPoints(context is Context, plan is map, edges is Query, pathEnds is array, debugPrint is boolean) returns array
+{
+    if (plan.mode != "REBUILD")
+    {
+        return pathEnds;
+    }
+    const others = evaluateQuery(context, qSubtraction(qOwnedByBody(plan.seedWire, EntityType.EDGE), edges));
+    var result = pathEnds;
+    for (var e = 0; e < 2; e += 1)
+    {
+        var best = MERGE_CHAIN_TOLERANCE;
+        for (var o = 0; o < size(others); o += 1)
+        {
+            const ends = evEdgeTangentLines(context, { "edge" : others[o], "parameters" : [0, 1] });
+            for (var k = 0; k < 2; k += 1)
+            {
+                const d = norm(ends[k].origin - pathEnds[e]);
+                if (d < best)
+                {
+                    best = d;
+                    result[e] = ends[k].origin;
+                }
+            }
+        }
+        if (debugPrint)
+        {
+            println("[merge] " ~ (e == 0 ? "start" : "end") ~ " snap: " ~ (best < MERGE_CHAIN_TOLERANCE
+                ? "to neighbour endpoint " ~ roundToPrecision(best / millimeter, 6) ~ " mm away"
+                : "no neighbour within tolerance, path end kept"));
+        }
+    }
+    return result;
+}
 
 /** Pin a clamped spline's end control points to the exact target end points. */
 function snapSplineEnds(curve is BSplineCurve, positions is array) returns BSplineCurve
