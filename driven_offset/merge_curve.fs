@@ -10,23 +10,24 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  *
  * This is the standard-library Edit-curve / Composite-curve pipeline, driven so that the
  * caller controls which body survives: constructPath(seed U merge) -> makeApproximationTarget
- * -> approximateSpline -> opCreateBSplineCurve -> opEditCurve(target wire) -> opDeleteBodies.
+ * -> approximateSpline -> opCreateBSplineCurve -> then opEditCurve (in place) or opExtractWires
+ * (rebuild) -> opDeleteBodies.
  * There is no kernel "join two curves" primitive; every native route is fit-then-replace.
  *
  * Wire-membership scenarios (a "wire" here is a non-sketch BodyType.WIRE body):
  *   1. seed on wire W = {seed}, merge not on a wire      -> W edited in place; W keeps id + name
  *   2. seed on wire W = {seed}, merge on separate wire V -> W edited in place; V deleted if
  *                                                           V = {merge}, otherwise left alone
- *   3. seed and merge on the same wire W                 -> W's other edges (if any) are
- *                                                           re-extracted to their own wire(s),
- *                                                           the seed alone is extracted to a
- *                                                           copy, W deleted, the copy edited.
- *                                                           Body identity CHANGES (warned).
- *   4. seed not on a wire (solid / sheet / sketch edge)  -> opExtractWires(seed U merge), that
- *                                                           new wire edited; owners untouched
- * Scenarios 1-2 where W has edges beyond the seed reduce to the second half of scenario 3:
- * opEditCurve replaces the WHOLE wire body's curve, it cannot splice one edge of a multi-edge
- * wire.
+ *   3. seed and merge on the same wire W                 -> W's other edges and the merged
+ *                                                           curve are extracted TOGETHER (so a
+ *                                                           chain the merge bridges comes out
+ *                                                           as one wire); W deleted. Body
+ *                                                           identity CHANGES (warned).
+ *   4. seed not on a wire (solid / sheet / sketch edge)  -> the fitted spline body is the
+ *                                                           output; owners untouched
+ * Scenarios 1-2 where W has edges beyond the seed reduce to scenario 3: opEditCurve replaces
+ * the WHOLE wire body's curve, it cannot splice one edge of a multi-edge wire, so it is used
+ * only when the seed is its wire's sole edge.
  *
  * Arc caveat: the result is always a fitted NURBS. A circular arc (or ellipse) input loses its
  * analytic type -- the radius no longer reads in Onshape. Reported as a warning, not refused.
@@ -155,47 +156,31 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
                     })[0];
         opCreateBSplineCurve(context, id + "new", { "bSplineCurve" : spline });
         const newEdge = qCreatedBy(id + "new", EntityType.EDGE);
+        const newBody = qCreatedBy(id + "new", EntityType.BODY);
 
-        // Now that the path has been consumed it is safe to extract / delete wires.
-        const targetWire = prepareTargetWire(context, id, plan, definition.seedEdge, edges, definition.debugPrint);
-
-        // opEditCurve wants exactly one wire body and exactly one edge. Say which one is
-        // wrong, and by how much, instead of letting it fail with TOO_MANY_ENTITIES_SELECTED.
-        const wireCount = size(evaluateQuery(context, targetWire));
         const newEdgeCount = size(evaluateQuery(context, newEdge));
-        const newBodyCount = size(evaluateQuery(context, qCreatedBy(id + "new", EntityType.BODY)));
         if (definition.debugPrint)
         {
             println("[merge] spline: degree " ~ spline.degree ~ ", " ~ size(spline.controlPoints) ~ " control points, periodic "
                 ~ spline.isPeriodic);
-            println("[merge] new curve: " ~ newBodyCount ~ " body(ies), " ~ newEdgeCount ~ " edge(s)");
-            println("[merge] target wire (" ~ plan.mode ~ "): " ~ wireCount ~ " body(ies), "
-                ~ size(evaluateQuery(context, qOwnedByBody(targetWire, EntityType.EDGE))) ~ " edge(s) on it");
-        }
-        if (wireCount != 1)
-        {
-            throw regenError("Target wire resolved to " ~ wireCount ~ " bodies (mode " ~ plan.mode
-                ~ "); expected 1. Turn on Print diagnostics for details.", ["seedEdge"], targetWire);
+            println("[merge] new curve: " ~ size(evaluateQuery(context, newBody)) ~ " body(ies), " ~ newEdgeCount ~ " edge(s)");
         }
         if (newEdgeCount != 1)
         {
             throw regenError("Fitted curve resolved to " ~ newEdgeCount ~ " edges; expected 1.", newEdge);
         }
 
-        opEditCurve(context, id + "edit", {
-                    "wire" : targetWire,
-                    "edge" : newEdge,
-                    "showCurves" : true
-                });
-        opDeleteBodies(context, id + "cleanup", { "entities" : qCreatedBy(id + "new", EntityType.BODY) });
+        // 6. Put the merged curve where it belongs. The path has been consumed, so wires may
+        //    now be extracted and deleted.
+        const output = placeMergedCurve(context, id, plan, edges, newEdge, newBody, definition.debugPrint);
 
         if (plan.deleteMergeWire)
         {
             opDeleteBodies(context, id + "deleteMergeWire", { "entities" : mergeInfo.wire });
         }
 
-        // 6. Name the surviving wire.
-        nameOutput(context, targetWire, definition.outputName);
+        // 7. Name the surviving wire(s).
+        nameOutput(context, output, definition.outputName);
     }, {
         "keepStartDerivative" : true,
         "keepEndDerivative" : true,
@@ -338,49 +323,49 @@ export function planMergeTarget(context is Context, seedInfo is map, mergeInfo i
 }
 
 /**
- * Execute the plan: returns the wire body query that opEditCurve should replace.
- * Runs opExtractWires / opDeleteBodies as needed; call only after the path has been sampled.
+ * Put the merged curve into the context according to the plan and return the output
+ * wire(s).
  *
- * The target is always a wire holding exactly the SEED edge. Extracting seed + merge together
- * is not an option: opExtractWires chains with the kernel tolerance, which is tighter than
- * the 1e-5 m constructPath tolerance, so a micron gap between the two edges yields two
- * wires and opEditCurve fails with TOO_MANY_ENTITIES_SELECTED. The merge edge's geometry is
- * already in the fitted spline; it is never needed on the target.
+ * IN_PLACE : opEditCurve replaces the seed wire's curve; W keeps its id and name.
+ * EXTRACT  : the fitted spline body IS the output; nothing else is touched.
+ * REBUILD  : the seed wire's other edges and the fitted curve are extracted TOGETHER, so
+ *            chains the merge bridges come out as one wire; W and the spline body are
+ *            deleted. Body identity changes (warned). Extracting seed + merge instead is not
+ *            an option: opExtractWires chains with the kernel tolerance, tighter than the
+ *            1e-5 m constructPath tolerance, and a micron gap yields two wires.
  */
-export function prepareTargetWire(context is Context, id is Id, plan is map, seedEdge is Query, edges is Query, debugPrint is boolean) returns Query
+export function placeMergedCurve(context is Context, id is Id, plan is map, edges is Query, newEdge is Query,
+    newBody is Query, debugPrint is boolean) returns Query
 {
     if (plan.mode == "IN_PLACE")
     {
+        opEditCurve(context, id + "edit", {
+                    "wire" : plan.seedWire,
+                    "edge" : newEdge,
+                    "showCurves" : true
+                });
+        opDeleteBodies(context, id + "cleanup", { "entities" : newBody });
         return plan.seedWire;
     }
 
     if (plan.mode == "REBUILD")
     {
-        // Keep the seed wire's other edges alive as their own wire(s), then retire the original.
         const otherEdges = qSubtraction(qOwnedByBody(plan.seedWire, EntityType.EDGE), edges);
-        if (!isQueryEmpty(context, otherEdges))
-        {
-            opExtractWires(context, id + "extractRemainder", { "edges" : otherEdges });
-        }
-        opExtractWires(context, id + "extract", { "edges" : seedEdge });
+        opExtractWires(context, id + "extract", { "edges" : qUnion([otherEdges, newEdge]) });
+        const output = qCreatedBy(id + "extract", EntityType.BODY);
         if (debugPrint)
         {
-            println("[merge] REBUILD: " ~ size(evaluateQuery(context, otherEdges)) ~ " other edge(s) -> "
-                ~ size(evaluateQuery(context, qCreatedBy(id + "extractRemainder", EntityType.BODY))) ~ " remainder wire(s); seed -> "
-                ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY))) ~ " wire(s)");
+            println("[merge] REBUILD: " ~ size(evaluateQuery(context, otherEdges)) ~ " other edge(s) + merged curve -> "
+                ~ size(evaluateQuery(context, output)) ~ " wire(s)");
         }
-        opDeleteBodies(context, id + "deleteSeedWire", { "entities" : plan.seedWire });
-        reportFeatureWarning(context, id, "The seed wire had other edges; the merged curve is a new wire body and the remaining edges were re-extracted. Body identity changed.");
-        return qCreatedBy(id + "extract", EntityType.BODY);
+        opDeleteBodies(context, id + "deleteSeedWire", { "entities" : qUnion([plan.seedWire, newBody]) });
+        reportFeatureWarning(context, id, "The seed wire had other edges; it was rebuilt as "
+            ~ size(evaluateQuery(context, output)) ~ " new wire body(ies). Body identity changed.");
+        return output;
     }
 
-    // EXTRACT: seed is not on a wire.
-    opExtractWires(context, id + "extract", { "edges" : seedEdge });
-    if (debugPrint)
-    {
-        println("[merge] EXTRACT: seed -> " ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY))) ~ " wire(s)");
-    }
-    return qCreatedBy(id + "extract", EntityType.BODY);
+    // EXTRACT: seed is not on a wire. The fitted spline body is the result.
+    return newBody;
 }
 
 // ============================================================================
