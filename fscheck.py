@@ -80,7 +80,7 @@ def strip_noise(src):
 
 
 DEF_PATTERN = re.compile(
-    r"^(?:export\s+)?function\s+(\w+)\(((?:[^()]|\([^()]*\))*?)\)\s*(?:returns|precondition|\{|\n)",
+    r"^(?:export\s+)?(?:function|predicate)\s+(\w+)\(((?:[^()]|\([^()]*\))*?)\)\s*(?:returns|precondition|\{|\n)",
     re.M | re.S)
 
 
@@ -99,7 +99,7 @@ def duplicate_defs(src):
 def definitions(src):
     out = {}
     pattern = re.compile(
-        r"^(?:export\s+)?function\s+(\w+)\(((?:[^()]|\([^()]*\))*?)\)\s*(?:returns|precondition|\{|\n)",
+        r"^(?:export\s+)?(?:function|predicate)\s+(\w+)\(((?:[^()]|\([^()]*\))*?)\)\s*(?:returns|precondition|\{|\n)",
         re.M | re.S)
     for m in pattern.finditer(src):
         params = [p for p in m.group(2).split(",") if p.strip()]

@@ -85,6 +85,9 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         annotation { "Name" : "Zero point", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
         definition.offsetRefPoint is Query;
 
+        annotation { "Name" : "Name", "Description" : "Name given to the resulting bodies. Clear it to leave them unnamed." }
+        definition.outputName is string;
+
         annotation { "Group Name" : "Spacing & approximation", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Offset spacing", "Description" : "How many points to evaluate along each offset edge", "UIHint" : UIHint.HORIZONTAL_ENUM, "Default" : OffsetPointSpacing.CTRL_POINT }
@@ -106,9 +109,12 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
                 isLength(definition.targetPointSpacing, PointSpacingBounds);
             }
 
+            annotation { "Name" : "Join runs into one wire per link", "Default" : true, "Description" : "Extract the emitted curves into a single wire body per connected chain. Off leaves every run, corner fill and trimmed piece as its own curve body." }
+            definition.joinOutput is boolean;
+
             annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
             {
-                curveApproximationPredicate(definition);
+                offsetApproximationPredicate(definition);
             }
         }
 
@@ -194,6 +200,41 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 // Input settings
 // ============================================================================
 
+/** Control-point budget for a fitted run. The floor of 4 is a cubic's minimum. */
+export const OffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
+
+/**
+ * The approximation controls this feature actually uses.
+ *
+ * Replaces std's curveApproximationPredicate, five of whose eight fields were dead or
+ * actively misleading here:
+ *
+ *   "Keep start derivative" / "Keep end derivative" were never read. We compute the exact
+ *   offset tangent at every run end ourselves and hand it to the solver as a hard
+ *   constraint, so there is nothing for the user to keep or discard.
+ *
+ *   "Maximum deviation" is declared READ_ONLY by that predicate on the understanding that
+ *   the feature writes the measured value back. This one never did, so the field sat
+ *   permanently blank.
+ *
+ *   "Approximate" did not switch approximation on or off. Unchecked, it swapped the
+ *   user's three numbers for hard-coded ones and fitted exactly the same runs.
+ *
+ * Worth knowing while reading these: only freeform runs reach the solver at all. Lines,
+ * arcs and corner fills are exact constructions and ignore every field here.
+ */
+predicate offsetApproximationPredicate(definition is map)
+{
+    annotation { "Name" : "Target degree", "Description" : "Degree the fit aims for on freeform runs" }
+    isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+    annotation { "Name" : "Tolerance", "Description" : "How far a fitted run may sit from the computed offset points" }
+    isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+
+    annotation { "Name" : "Maximum control points", "Description" : "Cap on a fitted run. The fit stops as soon as tolerance is met, so this only binds on a run that cannot reach it." }
+    isInteger(definition.approximationMaxCPs, OffsetMaxCPBounds);
+}
+
 /**
  * Spacing fields, gathered into one map. Only the field matching the chosen mode
  * is read, so the others being undefined is expected.
@@ -211,29 +252,16 @@ function spacingSettings(definition is map) returns map
 /**
  * Fitting settings for freeform output.
  *
- * curveApproximationPredicate only defines its fields when "Approximate" is on,
- * so fall back to the standard library's own defaults when it is off. Output
- * still has to be fitted through the offset points either way.
+ * All three fields are always defined now that offsetApproximationPredicate declares
+ * them unconditionally, so there is nothing left to fall back to. Only freeform runs
+ * consume these -- lines, arcs and corner fills are exact constructions.
  */
 function approximationSettings(definition is map) returns map
 {
-    if (definition.approximate == true)
-    {
-        return {
-            "approximationDegree" : definition.approximationDegree,
-            "approximationTolerance" : definition.approximationTolerance,
-            "approximationMaxCPs" : definition.approximationMaxCPs
-        };
-    }
-
-    // "Approximate" defaults to OFF, so this is the normal path, not a corner case.
-    // The cap stays at MAX_CONTROL_POINTS: these are freeform offset curves and
-    // starving the fit of control points loses shape. approximateSpline stops as
-    // soon as tolerance is met, so the cap only binds on a run that cannot reach it.
     return {
-        "approximationDegree" : 3,
-        "approximationTolerance" : 1e-5 * meter,
-        "approximationMaxCPs" : MAX_CONTROL_POINTS
+        "approximationDegree" : definition.approximationDegree,
+        "approximationTolerance" : definition.approximationTolerance,
+        "approximationMaxCPs" : definition.approximationMaxCPs
     };
 }
 
@@ -967,6 +995,25 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
                 qCreatedBy(fillId, EntityType.EDGE));
         }
 
+        // A run can collapse to a point when a profile break falls exactly on a source
+        // edge boundary: the crossing pair lands immediately before the junction's left
+        // station, so the run between them spans no arc at all. classifyPoints would call
+        // that a "line" with start == end, and a zero-length degree-one curve is not
+        // geometry. The corner fill and the neighbouring runs cover the position, so
+        // dropping it loses nothing.
+        var runSpan = 0 * meter;
+        for (var i = 1; i < size(runPoints); i += 1)
+        {
+            runSpan += norm(runPoints[i] - runPoints[i - 1]);
+        }
+        if (size(runPoints) < 2 || runSpan < OFFSET_GEOM_TOL)
+        {
+            println("NOTE: run " ~ toString(r) ~ " spans "
+                ~ fmtMM(runSpan, 6, 0) ~ " mm and was not emitted; a profile break"
+                ~ " coincides with a source edge boundary there.");
+            continue;
+        }
+
         const shape = classifyPoints(runPoints, approximation.approximationTolerance);
 
         if (shape.kind == "line")
@@ -1000,14 +1047,54 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
     var created = [];
     for (var key in keys(bodiesByLink))
     {
-        opExtractWires(context, id + ("wire" ~ key), { "edges" : qUnion(bodiesByLink[key]) });
         created = concatenateArrays([created, bodiesByLink[key]]);
     }
 
-    // The extracted wires are independent copies, so the curves they came from go.
-    opDeleteBodies(context, id + "cleanup", { "entities" : qOwnerBody(qUnion(created)) });
+    if (size(created) == 0)
+    {
+        return emitted;
+    }
+
+    if (definition.joinOutput)
+    {
+        var wires = [];
+        for (var key in keys(bodiesByLink))
+        {
+            const wireId = id + ("wire" ~ key);
+            opExtractWires(context, wireId, { "edges" : qUnion(bodiesByLink[key]) });
+            wires = append(wires, qCreatedBy(wireId, EntityType.BODY));
+        }
+
+        // The extracted wires are independent copies, so the curves they came from go.
+        opDeleteBodies(context, id + "cleanup", { "entities" : qOwnerBody(qUnion(created)) });
+        nameOutput(context, qUnion(wires), definition.outputName);
+    }
+    else
+    {
+        nameOutput(context, qOwnerBody(qUnion(created)), definition.outputName);
+    }
 
     return emitted;
+}
+
+/**
+ * Name the bodies this feature produced.
+ *
+ * An empty name is a deliberate choice, not a missing value: setProperty would happily
+ * write "" and leave the bodies looking unnamed but shadowed, so skip it instead.
+ */
+function nameOutput(context is Context, bodies is Query, name is string)
+{
+    if (name == "")
+    {
+        return;
+    }
+
+    setProperty(context, {
+                "entities" : bodies,
+                "propertyType" : PropertyType.NAME,
+                "value" : name
+            });
 }
 
 /**
