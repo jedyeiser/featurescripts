@@ -1,7 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-export import(path : "a2665e22c07b7a6929ce4e80", version : "c2271b618a87575d9a9a5e41");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "d87f144b46f7f0bb6b456fc9");
 
 /**
  * Offset a set of edges by an amount driven by a second set of edges.
