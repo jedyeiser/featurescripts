@@ -157,6 +157,9 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
             annotation { "Name" : "Show reference offset", "Default" : false, "Description" : "Draw the curve the coordinate is actually measured along -- the reference wire moved by the offset delta. Invisible otherwise: it is neither the wire you picked nor anything in the output." }
             definition.debugShowReference is boolean;
 
+            annotation { "Name" : "Show chain ends", "Default" : false, "Description" : "Arrow at each end of the chain pointing the way the offset is heading there: green for the start, red for the end. This is the sense the Ends group works in -- an extension travels along the arrow, and a terminal direction is flipped to agree with it." }
+            definition.debugShowChainEnds is boolean;
+
             annotation { "Name" : "Visualize continuity", "Default" : false, "Description" : "Mark where the output is split into separate curves" }
             definition.debugVisualizeContinuity is boolean;
 
@@ -1649,6 +1652,11 @@ function debugOutput(context is Context, id is Id, definition is map, sourceChai
         drawReferenceOffset(context, id + "debugReference", alongRef);
     }
 
+    if (definition.debugShowChainEnds)
+    {
+        drawChainEnds(context, definition, stations, coords, upper, lower, runs, points, alongRef);
+    }
+
     // Markers are batched into one feature per colour by drawDebugSegments now, but
     // a marker at every station is unreadable long before it is slow. Draw a
     // representative subset.
@@ -1764,6 +1772,71 @@ function printCorners(runs is array, stations is array)
         }
 
         println("  corner before station " ~ toString(run.start) ~ ": " ~ what);
+    }
+}
+
+/**
+ * Mark which end of the chain is the start and which is the end.
+ *
+ * Both ends of an offset look alike in the graphics, and every input in the Ends group is
+ * stated relative to one or the other, so guessing wrong costs a regen to find out. The
+ * arrow points OUTWARD -- the direction the offset is heading as it leaves the chain --
+ * which is the sense everything downstream uses: an extension travels along it, and a
+ * supplied terminal direction is flipped to agree with it.
+ *
+ * Drawn from the treated runs, so after a terminal trim the arrow sits on the plane rather
+ * than where the offset originally stopped.
+ */
+function drawChainEnds(context is Context, definition is map, stations is array, coords is map,
+    upper is array, lower is array, runs is array, points is array, alongRef)
+{
+    if (size(runs) == 0)
+    {
+        return;
+    }
+
+    const ends = [
+            { "run" : runs[0], "atStart" : true },
+            { "run" : runs[size(runs) - 1], "atStart" : false }
+        ];
+
+    for (var end in ends)
+    {
+        const run = end.run;
+        const station = end.atStart ? run.start : run.end;
+        const natural = runTangent(stations, coords, end.atStart ? upper : lower, definition,
+                alongRef, run, station);
+
+        if (natural == undefined)
+        {
+            continue;
+        }
+
+        // A trimmed or extended end carries its treated position; otherwise the station is
+        // where the offset actually stops.
+        var at = points[station];
+        if (end.atStart && run.startPoint != undefined)
+        {
+            at = run.startPoint;
+        }
+        if (!end.atStart && run.endPoint != undefined)
+        {
+            at = run.endPoint;
+        }
+
+        if (at == undefined)
+        {
+            continue;
+        }
+
+        const outward = (end.atStart ? -1 : 1) * natural;
+
+        addDebugArrow(context, at, at + DEBUG_END_ARROW * outward, DEBUG_END_ARROW_RADIUS,
+            end.atStart ? DebugColor.GREEN : DebugColor.RED);
+
+        println("chain " ~ (end.atStart ? "START (green)" : "END   (red)  ")
+            ~ " at " ~ fmtMM(at[0], 3, 9) ~ ", " ~ fmtMM(at[1], 3, 9) ~ ", " ~ fmtMM(at[2], 3, 9)
+            ~ " mm   heading out " ~ fmtVec(outward, 4, 9));
     }
 }
 

@@ -187,7 +187,7 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         annotation { "Name" : "Project onto", "Filter" : EntityType.FACE && GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
         definition.projectionFace is Query;
 
-        annotation { "Name" : "Prevailing direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Prevailing direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.prevailingDirection is Query;
 
         annotation { "Name" : "Flip prevailing direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
@@ -330,6 +330,13 @@ export function projectedProfile(context is Context, id is Id, definition is map
  */
 function partProfiles(context is Context, id is Id, definition is map, plane is Plane) returns map
 {
+    // Every step below reports before the next one runs, so when this path dies the last
+    // line printed names the step that died. Without that the only signal is a throw from
+    // inside a std call, which says nothing about how far the outline got.
+    const verbose = definition.debugPrintScan;
+
+    traceStep(verbose, "outlining the part onto the face");
+
     const outlineId = id + "outline";
     opCreateOutline(context, outlineId, {
                 "tools" : definition.profilePart,
@@ -345,17 +352,39 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         throw regenError("The part produced no outline on that face.", definition.profilePart);
     }
 
+    if (verbose)
+    {
+        println("[profiles] outline produced " ~ toString(size(evaluateQuery(context, outlineFaces)))
+            ~ " face(s); extracting their outer loops");
+    }
+
     const scratchId = id + "outlineWires";
     opExtractWires(context, scratchId, { "edges" : qLoopEdges(outlineFaces) });
 
     // A part whose silhouette falls into disjoint pieces outlines as several loops. The
     // profile is the largest of them; the rest are separate silhouettes with their own top
     // and bottom, and averaging across them would be meaningless.
+    if (verbose)
+    {
+        println("[profiles] loops extracted: "
+            ~ toString(size(evaluateQuery(context, qCreatedBy(scratchId, EntityType.BODY))))
+            ~ " wire body(s); picking the longest");
+    }
+
     const loop = longestWire(context, qCreatedBy(scratchId, EntityType.BODY));
     const loopEdges = qOwnedByBody(loop, EntityType.EDGE);
-    const path = constructPath(context, loopEdges);
 
+    if (verbose)
+    {
+        println("[profiles] longest loop has " ~ toString(size(evaluateQuery(context, loopEdges)))
+            ~ " edge(s); ordering them into a path");
+    }
+
+    const path = constructPath(context, loopEdges);
     const peripheryLength = evPathLength(context, path);
+
+    traceStep(verbose, "path built: closed = " ~ toString(path.closed)
+        ~ ", length " ~ toString(peripheryLength));
 
     var curves = [];
     var samples = [];
@@ -369,15 +398,32 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         nameProfile(context, qCreatedBy(id + "periphery", EntityType.BODY),
             suffixedName(definition.outputName, "periphery"));
         profiles["periphery"] = peripheryLength;
+
+        // Periphery is the one mode that cannot fail on the decomposition, which makes it
+        // the right place to REPORT on it. Running the survey here gets the same diagnosis
+        // out of a regen that succeeds, instead of only out of one that throws.
+        if (verbose)
+        {
+            const surveyHeading = resolveHeading(context, definition, plane, loopEdges);
+            printRunSurvey(splitByAlignment(context, path, surveyHeading), surveyHeading);
+        }
     }
     else
     {
         // Only now: classifying throws when the outline will not separate, and asking for
         // the periphery alone should not be able to fail on a decomposition it never wanted.
-        const heading = prevailingDirection(context, definition, plane, longestExtent(context, loopEdges, plane));
+        const heading = resolveHeading(context, definition, plane, loopEdges);
+
+        traceStep(verbose, "heading " ~ headingText(heading) ~ "; scanning the loop for runs");
+
         const across = normalize(cross(plane.normal, heading));
-        const named = classifyRuns(context, path, splitByAlignment(context, path, heading),
-            heading, across, definition.debugPrintScan);
+        const runs = splitByAlignment(context, path, heading);
+
+        traceStep(verbose, "scan found " ~ toString(size(runs)) ~ " run(s); classifying them");
+
+        const named = classifyRuns(runs, heading, across, path, context, verbose);
+
+        traceStep(verbose, "top and bottom identified; sampling and fitting");
 
         const wantsTop = wantedProfile(definition, ProfilePart.TOP);
         const wantsBottom = wantedProfile(definition, ProfilePart.BOTTOM);
@@ -548,8 +594,8 @@ function splitByAlignment(context is Context, path is Path, heading is Vector) r
  * the heading -- their own mean positions separate them, where the outline's centroid would
  * be thrown off by an asymmetric periphery.
  */
-function classifyRuns(context is Context, path is Path, runs is array, heading is Vector,
-    across is Vector, verbose is boolean) returns map
+function classifyRuns(runs is array, heading is Vector, across is Vector, path is Path,
+    context is Context, verbose is boolean) returns map
 {
     var longest = 0;
     for (var run in runs)
@@ -575,14 +621,18 @@ function classifyRuns(context is Context, path is Path, runs is array, heading i
 
     if (verbose || size(measured) < 2)
     {
-        printRunSurvey(runs, heading, longest, size(measured));
+        printRunSurvey(runs, heading);
     }
 
     if (size(measured) < 2)
     {
-        throw regenError("The outline does not separate into a top and a bottom profile: "
-            ~ toString(size(measured)) ~ " of " ~ toString(size(runs))
-            ~ " runs qualified as a profile. The print log lists every run the scan found.");
+        // The numbers go in the message as well as the log. A throw is the one thing
+        // guaranteed to reach the user; print output is not.
+        throw regenError("The outline does not separate into a top and a bottom profile. "
+            ~ "Heading " ~ headingText(heading) ~ "; the scan cut the loop into "
+            ~ toString(size(runs)) ~ " run(s), of which " ~ toString(alongCount(runs))
+            ~ " run along that heading and " ~ toString(size(measured))
+            ~ " were long enough to count as profiles. Two are needed.");
     }
 
     var high = measured[0];
@@ -603,6 +653,83 @@ function classifyRuns(context is Context, path is Path, runs is array, heading i
 }
 
 /**
+ * The prevailing direction, computing the fallback only when nothing was picked.
+ *
+ * Lazily, because the fallback reads a bounding box in the face's frame and that is one of
+ * the more fragile things here. Evaluating it eagerly as a call argument -- which is what
+ * this replaced -- let a bad box break a run that had supplied a perfectly good direction.
+ */
+function resolveHeading(context is Context, definition is map, plane is Plane,
+    loopEdges is Query) returns Vector
+{
+    var fallback = undefined;
+
+    if (isQueryEmpty(context, definition.prevailingDirection))
+    {
+        fallback = longestExtent(context, loopEdges, plane);
+    }
+
+    return prevailingDirection(context, definition, plane, fallback);
+}
+
+/**
+ * How many runs read as running along the heading.
+ */
+function alongCount(runs is array) returns number
+{
+    var total = 0;
+
+    for (var run in runs)
+    {
+        if (run.along)
+        {
+            total += 1;
+        }
+    }
+
+    return total;
+}
+
+/**
+ * The longest along-run's share of the loop, which sets the bar the others must clear.
+ */
+function longestAlongSpan(runs is array) returns number
+{
+    var longest = 0;
+
+    for (var run in runs)
+    {
+        if (run.along && run.end - run.start > longest)
+        {
+            longest = run.end - run.start;
+        }
+    }
+
+    return longest;
+}
+
+/**
+ * A direction, short enough to sit in an error message.
+ */
+function headingText(heading is Vector) returns string
+{
+    return "[" ~ toString(roundToPrecision(heading[0], 4))
+        ~ ", " ~ toString(roundToPrecision(heading[1], 4))
+        ~ ", " ~ toString(roundToPrecision(heading[2], 4)) ~ "]";
+}
+
+/**
+ * One step of the part path, reported before the next one runs.
+ */
+function traceStep(verbose is boolean, message is string)
+{
+    if (verbose)
+    {
+        println("[profiles] " ~ message);
+    }
+}
+
+/**
  * Every run the alignment scan found, and why each did or did not qualify.
  *
  * Printed whenever the split fails, because the throw happens long before the debug output
@@ -611,12 +738,22 @@ function classifyRuns(context is Context, path is Path, runs is array, heading i
  * threshold set badly for this outline (everything reads as one or the other), or a profile
  * arriving in pieces (several short along-runs where one long one was expected).
  */
-function printRunSurvey(runs is array, heading is Vector, longest is number, qualified is number)
+function printRunSurvey(runs is array, heading is Vector)
 {
-    println("profile split: heading " ~ toString(roundToPrecision(heading[0], 4))
-        ~ ", " ~ toString(roundToPrecision(heading[1], 4))
-        ~ ", " ~ toString(roundToPrecision(heading[2], 4))
-        ~ " -- " ~ toString(size(runs)) ~ " runs, " ~ toString(qualified) ~ " qualified as profiles");
+    const longest = longestAlongSpan(runs);
+
+    var qualified = 0;
+    for (var run in runs)
+    {
+        if (run.along && run.end - run.start >= PROFILE_SHORT_RUN_FRACTION * longest)
+        {
+            qualified += 1;
+        }
+    }
+
+    println("[profiles] split survey: heading " ~ headingText(heading)
+        ~ " -- " ~ toString(size(runs)) ~ " runs, " ~ toString(alongCount(runs))
+        ~ " along, " ~ toString(qualified) ~ " qualified as profiles");
     println("  a run is \"along\" when |tangent . heading| >= " ~ toString(PROFILE_ALONG_COS)
         ~ ", and a profile when its span >= " ~ toString(PROFILE_SHORT_RUN_FRACTION)
         ~ " x the longest along-run (" ~ toString(roundToPrecision(longest, 4)) ~ ")");
@@ -868,13 +1005,21 @@ function suffixedName(name is string, label is string) returns string
  * An open chain's own chord is the obvious guess. A closed loop's chord is zero, so it needs
  * its longest in-plane extent instead.
  */
-function prevailingDirection(context is Context, definition is map, plane is Plane, fallback is Vector) returns Vector
+function prevailingDirection(context is Context, definition is map, plane is Plane, fallback) returns Vector
 {
     var heading = fallback;
 
     if (!isQueryEmpty(context, definition.prevailingDirection))
     {
-        heading = evAxis(context, { "axis" : definition.prevailingDirection }).direction;
+        // extractDirection, not evAxis: the filter admits planar faces and mate connectors
+        // as well as axes, and evAxis alone throws on a face.
+        heading = extractDirection(context, definition.prevailingDirection);
+
+        if (heading == undefined)
+        {
+            throw regenError("That selection does not define a direction.",
+                definition.prevailingDirection);
+        }
     }
 
     // Only the in-plane part means anything: a component along the plane normal cannot

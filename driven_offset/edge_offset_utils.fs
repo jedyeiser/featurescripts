@@ -97,6 +97,10 @@ export const CORNER_TRIM_WINDOW = 40;
  */
 export const TERMINAL_MAX_EXTENSION = 0.25;
 
+/** Length and shaft radius of the arrow marking each end of the chain. */
+export const DEBUG_END_ARROW = 25 * millimeter;
+export const DEBUG_END_ARROW_RADIUS = 1.5 * millimeter;
+
 /**
  * Newton steps used to walk a straight-line plane crossing onto the osculating arc.
  *
