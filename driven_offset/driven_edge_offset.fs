@@ -46,6 +46,9 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         annotation { "Name" : "Measure along", "Default" : MeasureAlong.OFFSET_EDGES, "Description" : "What the offset profile's X axis measures: a world X coordinate, distance along the edges being offset, or distance along a separate reference wire. All three are measured from the zero point.", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
         definition.measureAlong is MeasureAlong;
 
+        annotation { "Name" : "Name", "Description" : "Name given to the resulting bodies. Clear it to leave them unnamed." }
+        definition.outputName is string;
+
         if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
         {
             annotation { "Group Name" : "Offset spacing definition", "Collapsed By Default" : false }
@@ -75,18 +78,16 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         annotation { "Group Name" : "Corners", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Where the offset gaps", "Default" : CornerGapMode.ARC, "Description" : "A G0 corner in the offset edges separates the two offsets by 2 * width * sin(angle/2) on the outside of the turn. Rounding uses a true circular arc centred on the corner vertex wherever one exists, and an arc-like cubic where it does not." }
+            annotation { "Name" : "Where the offset gaps", "Default" : CornerGapMode.ARC, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Description" : "A G0 corner in the offset edges separates the two offsets by 2 * width * sin(angle/2) on the outside of the turn. Rounding uses a true circular arc centred on the corner vertex wherever one exists, and an arc-like cubic where it does not." }
             definition.cornerGapMode is CornerGapMode;
 
-            annotation { "Name" : "Where the offset crosses", "Default" : CornerOverlapMode.TRIM, "Description" : "The same corner overlaps on the inside of the turn, by width * tan(angle/2) along each side. Trimming cuts both back to where they actually cross." }
+            annotation { "Name" : "Where the offset crosses", "Default" : CornerOverlapMode.TRIM, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Description" : "The same corner overlaps on the inside of the turn, by width * tan(angle/2) along each side. Trimming cuts both back to where they actually cross." }
             definition.cornerOverlapMode is CornerOverlapMode;
         }
 
         annotation { "Name" : "Zero point", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
         definition.offsetRefPoint is Query;
 
-        annotation { "Name" : "Name", "Description" : "Name given to the resulting bodies. Clear it to leave them unnamed." }
-        definition.outputName is string;
 
         annotation { "Group Name" : "Spacing & approximation", "Collapsed By Default" : true }
         {
