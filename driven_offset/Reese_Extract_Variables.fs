@@ -1,10 +1,12 @@
+// copied from: https://k2-sports.onshape.com/documents/c3fe41e654ffc2f052a38c8f/v/a81f3c4d03a809b4b6bea87e/e/60f131d05f7b221127ae936f
+
 // Updated: 2026-09-06 22:41:52 CT
 FeatureScript 3044;
 
 export import(path : "onshape/std/common.fs", version : "3044.0");
 import(path : "onshape/std/queryVariable.fs", version : "3044.0");
 import(path : "3c37750af0cf716cb0ede1e0", version : "000000000000000000000000");
-icon::import(path : "3cd44bdbc5078f89c2ab999f", version : "000000000000000000000000");
+
 
 /**
  * Reads the extraction map embedded by a selected earlier feature and publishes selected

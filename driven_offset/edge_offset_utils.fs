@@ -2676,3 +2676,143 @@ export function fmtVec(v is Vector, decimals is number, width is number) returns
 {
     return fmtNum(v[0], decimals, width) ~ fmtNum(v[1], decimals, width) ~ fmtNum(v[2], decimals, width);
 }
+
+// ============================================================================
+// Offset tangents, moved here so the feature, treatment and debug tabs can all
+// reach them. Pure computation over stations and coordinates; no context needed
+// beyond what the caller already holds.
+// ============================================================================
+
+/**
+ * Whether length and width are also taken from the reference, rather than only
+ * height. The height axis follows the reference either way.
+ */
+export function isConstrained(definition is map, alongRef) returns boolean
+{
+    return alongRef != undefined && definition.constrainProfile == true;
+}
+
+/**
+ * Whether this station is placed on the reference surface rather than by a straight
+ * step from the source point.
+ *
+ * The one test that picks the map: surfaceOffset/surfaceOffsetTangent when true,
+ * offsetPoints' straight step and offsetTangent when false. The two are tangents to
+ * different maps, so placement and direction must agree on this or the fitted end
+ * tangent describes a curve the points do not lie on.
+ */
+export function usesReferenceFrame(definition is map, alongRef) returns boolean
+{
+    return alongRef != undefined && definition.frameAlignment == OffsetFrameAlignment.ALONG;
+}
+
+/**
+ * Offset position at every station. Stations the profile does not reach get undefined.
+ *
+ * The (1 - w * kappa) factor is checked here: at or below zero the offset has passed
+ * the centre of curvature, and the result would fold back through itself.
+ */
+
+/**
+ * Exact offset tangent at one end of a run, for the fit to interpolate.
+ *
+ * Everything needed is determined at a run end: the source curve has a tangent and
+ * a curvature there, the profile has a value and a slope there, and the frame has a
+ * rate of turn there. Only that turn used to be missing, so reference-driven frames
+ * were handed back undefined rather than a tangent that quietly ignored it, and the
+ * fit was left to guess from the point cloud. frameRates supplies it, so every run
+ * end gets its exact tangent -- which is what holds a junction G1, and what pins the
+ * last curve of a chain onto the mirror plane at the tip.
+ */
+export function runTangent(stations is array, coords is map, offsets is array, definition is map, alongRef,
+    run is map, index is number)
+{
+    if (offsets[index] == undefined)
+    {
+        return undefined;
+    }
+
+    const frame = stations[index];
+    const amounts = { "width" : offsets[index].width, "height" : offsets[index].height };
+    const slopes = {
+            "width" : offsets[index].widthSlope * coords.scales[index],
+            "height" : offsets[index].heightSlope * coords.scales[index]
+        };
+    const rates = frameRates(stations, run, index);
+
+    // The two are tangents to different maps, so which one applies follows exactly
+    // the same test that decides which map placed the points.
+    if (usesReferenceFrame(definition, alongRef))
+    {
+        return surfaceOffsetTangent(alongRef, frame, amounts, slopes, rates).direction;
+    }
+
+    return offsetTangent(frame, amounts, slopes, rates);
+}
+
+/**
+ * How fast the offset frame's axes turn at one station, per unit length.
+ *
+ * Differenced from neighbouring stations rather than derived in closed form. The
+ * frame is a composition of the source curve, a reference lookup and a projection;
+ * differencing it is exact for whatever that composition turns out to be, costs no
+ * kernel calls, assumes nothing about the axes being mutually perpendicular, and
+ * stays correct if any part of the composition changes later.
+ *
+ * Samples are taken inwards from the run end, so they never cross an edge junction
+ * or a profile break into a frame belonging to the other side. Second order where
+ * the run has three stations to work with, first order where it has only two.
+ *
+ * @returns {map} : { "width" : dW/ds, "height" : dH/ds }
+ */
+export function frameRates(stations is array, run is map, index is number) returns map
+{
+    const still = { "width" : vector(0, 0, 0) / meter, "height" : vector(0, 0, 0) / meter };
+    const step = (index == run.end) ? -1 : 1;
+    const one = index + step;
+
+    if (one < run.start || one > run.end)
+    {
+        return still;
+    }
+
+    const here = stations[index];
+    const near = stations[one];
+    const h1 = stations[one].arc - stations[index].arc;
+
+    if (abs(h1) < TOLERANCE.zeroLength * meter)
+    {
+        return still;
+    }
+
+    const secant = {
+            "width" : (near.widthAxis - here.widthAxis) / h1,
+            "height" : (near.heightAxis - here.heightAxis) / h1
+        };
+
+    const two = index + 2 * step;
+    if (two < run.start || two > run.end)
+    {
+        return secant;
+    }
+
+    const far = stations[two];
+    const h2 = stations[two].arc - stations[index].arc;
+
+    if (abs(h2) < TOLERANCE.zeroLength * meter || abs(h2 - h1) < TOLERANCE.zeroLength * meter)
+    {
+        return secant;
+    }
+
+    // Three-point one-sided derivative on uneven spacing, applied to each axis.
+    // Stations inside one edge are evenly spaced in arc length, but an inserted
+    // crossing can break that. Written on differences from this station because the
+    // stencil's own coefficient for it is identically zero.
+    const c1 = h2 / (h1 * (h2 - h1));
+    const c2 = h1 / (h2 * (h2 - h1));
+
+    return {
+        "width" : c1 * (near.widthAxis - here.widthAxis) - c2 * (far.widthAxis - here.widthAxis),
+        "height" : c1 * (near.heightAxis - here.heightAxis) - c2 * (far.heightAxis - here.heightAxis)
+    };
+}
