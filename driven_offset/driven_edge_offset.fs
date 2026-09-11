@@ -73,6 +73,15 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         annotation { "Name" : "Offset alignment", "Default" : OffsetFrameAlignment.ALONG, "Description" : "How the offset frame is oriented at each point along the offset edges" }
         definition.frameAlignment is OffsetFrameAlignment;
 
+        annotation { "Group Name" : "Corners", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Where the offset gaps", "Default" : CornerGapMode.ARC, "Description" : "A G0 corner in the offset edges separates the two offsets by 2 * width * sin(angle/2) on the outside of the turn. Rounding uses a true circular arc centred on the corner vertex wherever one exists, and an arc-like cubic where it does not." }
+            definition.cornerGapMode is CornerGapMode;
+
+            annotation { "Name" : "Where the offset crosses", "Default" : CornerOverlapMode.TRIM, "Description" : "The same corner overlaps on the inside of the turn, by width * tan(angle/2) along each side. Trimming cuts both back to where they actually cross." }
+            definition.cornerOverlapMode is CornerOverlapMode;
+        }
+
         annotation { "Name" : "Zero point", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
         definition.offsetRefPoint is Query;
 
@@ -167,7 +176,8 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
         const points = placed.points;
-        const runs = buildRuns(allStations, upper);
+        const runs = resolveCorners(context, definition, allStations, allCoords, points,
+            upper, lower, buildRuns(allStations, upper), alongRef);
 
         if (size(runs) == 0)
         {
@@ -531,6 +541,190 @@ function buildRuns(stations is array, offsets is array) returns array
 }
 
 /**
+ * Decide what happens at every G0 corner between two runs.
+ *
+ * weldJunctions has already separated the corners from the merely-noisy junctions: a
+ * station carrying junctionBreak with welded == false is a corner the source really has.
+ * Offsetting one by w does two things at once -- it opens a gap of 2*w*sin(theta/2) on the
+ * outside of the turn and drives an overlap of w*tan(theta/2) deep on the inside -- and
+ * which one a given corner shows depends only on which side the offset went.
+ *
+ * The test is whether the next run starts ahead of where the previous one ended, measured
+ * along the direction of travel. Ahead means the ends separated: a gap. Behind means they
+ * ran past each other: an overlap.
+ *
+ * Gaps get a filler curve attached to the following run. Overlaps trim both runs back to
+ * their crossing and give them a shared exact endpoint, so the wire stays single.
+ */
+function resolveCorners(context is Context, definition is map, stations is array, coords is map,
+    points is array, upper is array, lower is array, runs is array, alongRef) returns array
+{
+    // Survey every corner against the UNTOUCHED runs first. Treating them as we go would
+    // not work: a trim moves run indices, so the next iteration's adjacency test and its
+    // station-marker lookup would both be reading indices that have already shifted.
+    var corners = [];
+
+    for (var r = 1; r < size(runs); r += 1)
+    {
+        const prev = runs[r - 1];
+        const next = runs[r];
+
+        // Only between runs that actually abut, and only at a vertex the weld declined.
+        if (next.start != prev.end + 1 || prev.linkIndex != next.linkIndex)
+        {
+            continue;
+        }
+
+        const marker = stations[next.start];
+        if (marker.junctionBreak == undefined || marker.welded == true)
+        {
+            continue;
+        }
+
+        const p1 = points[prev.end];
+        const p2 = points[next.start];
+        if (p1 == undefined || p2 == undefined || norm(p2 - p1) < OFFSET_GEOM_TOL)
+        {
+            continue;
+        }
+
+        // Exact offset tangents where they exist; the chord is a safe stand-in where the
+        // profile does not reach far enough to define one.
+        var t1 = runTangent(stations, coords, lower, definition, alongRef, prev, prev.end);
+        var t2 = runTangent(stations, coords, upper, definition, alongRef, next, next.start);
+        const chordDir = normalize(p2 - p1);
+        if (t1 == undefined) { t1 = chordDir; }
+        if (t2 == undefined) { t2 = chordDir; }
+
+        corners = append(corners, {
+                    "index" : r,
+                    "vertex" : marker.origin,
+                    "p1" : p1,
+                    "t1" : t1,
+                    "p2" : p2,
+                    "t2" : t2,
+                    "isGap" : dot(p2 - p1, t1 + t2) > 0 * meter
+                });
+    }
+
+    var resolved = runs;
+
+    for (var corner in corners)
+    {
+        resolved = corner.isGap
+            ? fillCornerGap(definition, resolved, corner)
+            : trimCornerOverlap(definition, resolved, corner.index, points);
+    }
+
+    return resolved;
+}
+
+/**
+ * Attach a filler to the run that follows an open corner.
+ *
+ * ARC prefers a true circle centred on the source vertex, which is tangent to both runs
+ * by construction, and falls back to an arc-like cubic when the two ends are not
+ * co-radial about the vertex. EXTEND runs both sides out to where their tangents meet.
+ */
+function fillCornerGap(definition is map, runs is array, corner is map) returns array
+{
+    var resolved = runs;
+    const index = corner.index;
+    const p1 = corner.p1;
+    const p2 = corner.p2;
+    const t1 = corner.t1;
+    const t2 = corner.t2;
+
+    if (definition.cornerGapMode == CornerGapMode.OPEN)
+    {
+        return resolved;
+    }
+
+    if (definition.cornerGapMode == CornerGapMode.EXTEND)
+    {
+        // Where the two tangents meet. A chord-length ray reaches the miter for any turn
+        // a corner can sensibly have; beyond that the meet is too far out to want.
+        const reach = norm(p2 - p1);
+        const meet = segmentApproach(p1, p1 + reach * t1, p2, p2 - reach * t2);
+
+        resolved[index - 1] = mergeMaps(resolved[index - 1], { "endPoint" : meet.point });
+        resolved[index] = mergeMaps(resolved[index],
+            { "startPoint" : meet.point, "cornerKind" : "extended" });
+
+        return resolved;
+    }
+
+    const arc = cornerArc(corner.vertex, p1, p2, OFFSET_GEOM_TOL);
+
+    resolved[index] = mergeMaps(resolved[index], {
+                "cornerKind" : "gap",
+                "fill" : (arc != undefined)
+                    ? arc
+                    : { "kind" : "spline", "curve" : arcLikeSpline(p1, t1, p2, t2) }
+            });
+
+    return resolved;
+}
+
+/**
+ * Cut both runs back to where they cross on the inside of a corner.
+ *
+ * Trimming the point lists rather than the emitted geometry keeps everything in the
+ * existing architecture: the fit then produces an already-trimmed curve, and both sides
+ * are handed the same crossing point so they share an endpoint exactly.
+ */
+function trimCornerOverlap(definition is map, runs is array, index is number, points is array) returns array
+{
+    var resolved = runs;
+
+    if (definition.cornerOverlapMode == CornerOverlapMode.KEEP)
+    {
+        return resolved;
+    }
+
+    const prev = resolved[index - 1];
+    const next = resolved[index];
+
+    const backTo = max(prev.start + 1, prev.end - CORNER_TRIM_WINDOW);
+    const forwardTo = min(next.end - 1, next.start + CORNER_TRIM_WINDOW);
+
+    var best = undefined;
+
+    for (var i = prev.end; i > backTo; i -= 1)
+    {
+        for (var j = next.start; j < forwardTo; j += 1)
+        {
+            if (points[i - 1] == undefined || points[i] == undefined
+                || points[j] == undefined || points[j + 1] == undefined)
+            {
+                continue;
+            }
+
+            const approach = segmentApproach(points[i - 1], points[i], points[j], points[j + 1]);
+            if (best == undefined || approach.distance < best.distance)
+            {
+                best = mergeMaps(approach, { "i" : i, "j" : j });
+            }
+        }
+    }
+
+    // Both sides must keep at least one station, or there is nothing left to fit and the
+    // trim would delete more than it repairs.
+    if (best == undefined || best.i - 1 < prev.start || best.j + 1 > next.end)
+    {
+        println("WARNING: corner at station " ~ toString(next.start)
+            ~ " overlaps further than either run is long; left untrimmed.");
+        return resolved;
+    }
+
+    resolved[index - 1] = mergeMaps(prev, { "end" : best.i - 1, "endPoint" : best.point });
+    resolved[index] = mergeMaps(next,
+        { "start" : best.j + 1, "startPoint" : best.point, "cornerKind" : "trimmed" });
+
+    return resolved;
+}
+
+/**
  * Append a run if it holds at least two stations.
  */
 function closeRun(runs is array, stations is array, start, end is number) returns array
@@ -739,10 +933,38 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         const run = runs[r];
         const runId = id + ("run" ~ r);
 
+        // A trimmed run carries the exact crossing point in place of the stations it
+        // gave up, so both sides of a trimmed corner end on the same coordinates.
         var runPoints = [];
+        if (run.startPoint != undefined)
+        {
+            runPoints = append(runPoints, run.startPoint);
+        }
         for (var i = run.start; i <= run.end; i += 1)
         {
             runPoints = append(runPoints, points[i]);
+        }
+        if (run.endPoint != undefined)
+        {
+            runPoints = append(runPoints, run.endPoint);
+        }
+
+        // A corner filler belongs to the run it leads into, and joins the same wire.
+        if (run.fill != undefined)
+        {
+            const fillId = id + ("fill" ~ r);
+            if (run.fill.kind == "arc")
+            {
+                emitArcCurve(context, fillId, run.fill);
+            }
+            else
+            {
+                opCreateBSplineCurve(context, fillId, { "bSplineCurve" : run.fill.curve });
+            }
+
+            const fillKey = "link" ~ run.linkIndex;
+            bodiesByLink[fillKey] = append(bodiesByLink[fillKey] == undefined ? [] : bodiesByLink[fillKey],
+                qCreatedBy(fillId, EntityType.EDGE));
         }
 
         const shape = classifyPoints(runPoints, approximation.approximationTolerance);
@@ -907,6 +1129,7 @@ function debugOutput(context is Context, id is Id, definition is map, sourceChai
             ~ toString(sourceChain.totalLength) ~ ", zero at " ~ toString(sourceChain.zeroArc));
         println("stations: " ~ toString(size(stations)) ~ ", runs: " ~ toString(size(runs)));
         printJunctions(stations);
+        printCorners(runs, stations);
     }
 
     if (definition.debugPrintProfileChain)
@@ -1043,6 +1266,38 @@ function drawReferenceOffset(context is Context, id is Id, alongRef is map)
     segments = append(segments, { "start" : previous, "end" : points[count - 1] });
 
     drawDebugSegments(context, id, segments, DebugColor.MAGENTA);
+}
+
+/**
+ * What each G0 corner turned into.
+ *
+ * A corner shows as a gap or an overlap depending only on which side the offset went, so
+ * one chain routinely produces both. This says which, and what was done about it.
+ */
+function printCorners(runs is array, stations is array)
+{
+    for (var r = 1; r < size(runs); r += 1)
+    {
+        const run = runs[r];
+        if (run.cornerKind == undefined)
+        {
+            continue;
+        }
+
+        var what = "overlap trimmed to the crossing";
+        if (run.cornerKind == "extended")
+        {
+            what = "gap extended to a sharp corner";
+        }
+        else if (run.cornerKind == "gap")
+        {
+            what = (run.fill.kind == "arc")
+                ? ("gap rounded, arc R=" ~ fmtMM(run.fill.radius, 3, 0) ~ " mm")
+                : "gap filled with an arc-like cubic";
+        }
+
+        println("  corner before station " ~ toString(run.start) ~ ": " ~ what);
+    }
 }
 
 /**

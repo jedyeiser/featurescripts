@@ -12,8 +12,13 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b2
 export import(path : "08e8748f2ef24eea16072b75/b51a369d724ce2629fd5ae61/683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
 
 
-//import wrapCurve.fs
-import(path : "0e53e9b1145a1bd7bbfa0193", version : "42a5ccaf79b723bb155f9350");
+// wrapCurve is deliberately NOT imported.
+//
+// Nothing here calls it -- the only references were these comments -- and importing it
+// pulled its export-import chain in with it: a SECOND copy of curveMappingCore, pinned
+// at whatever version that wrapCurve version carried. Since the core moved and this file
+// now imports it directly above, that meant two versions of the same element in one
+// scope. It also re-exported Utils (ad98c7f4), none of whose three symbols are used here.
 
 IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
 

@@ -80,6 +80,14 @@ export const DEBUG_MAX_MARKERS = 60;
  */
 export const G1_JUNCTION_ANGLE = 1e-2;
 
+/**
+ * How far back along each run to hunt for the crossing on the inside of a corner.
+ *
+ * The overlap runs w*tan(theta/2) deep, so the crossing is always close to the corner;
+ * searching the whole run would be quadratic for nothing.
+ */
+export const CORNER_TRIM_WINDOW = 40;
+
 export const MAX_STATIONS_PER_EDGE = 200;
 export const MIN_STATIONS_PER_EDGE = 5;
 
@@ -113,6 +121,39 @@ export enum OffsetFrameAlignment
 }
 
 /** How many points to evaluate along each edge. */
+/**
+ * What to do where a G0 corner in the source opens a gap in the offset.
+ *
+ * Offsetting a corner by w separates the two ends by 2*w*sin(theta/2). Both ends sit
+ * exactly w from the shared vertex, so the natural filler is a circular arc centred on
+ * that vertex -- and because the offset tangent at each end is perpendicular to its own
+ * radius, that arc is tangent to both runs for free, with no fitting.
+ */
+export enum CornerGapMode
+{
+    annotation { "Name" : "Round with an arc" }
+    ARC,
+    annotation { "Name" : "Extend to a sharp corner" }
+    EXTEND,
+    annotation { "Name" : "Leave open" }
+    OPEN
+}
+
+/**
+ * What to do where a G0 corner makes the offset cross itself.
+ *
+ * The same corner that gaps on its outside overlaps on its inside, by w*tan(theta/2)
+ * along each run. Trimming both back to where they actually cross is the only treatment
+ * that leaves a single, non-self-intersecting wire.
+ */
+export enum CornerOverlapMode
+{
+    annotation { "Name" : "Trim to the crossing" }
+    TRIM,
+    annotation { "Name" : "Leave crossing" }
+    KEEP
+}
+
 export enum OffsetPointSpacing
 {
     annotation { "Name" : "Control points" }
@@ -2130,6 +2171,136 @@ export function interpolate(xs is array, ys is array, x)
  * Emit a straight edge as a degree-one B-spline with two control points.
  * Onshape reads this back as a line, so no sketch is needed.
  */
+/**
+ * A circular arc from p1 to p2 centred on the corner vertex, or undefined if no such
+ * circle exists.
+ *
+ * This is the exact filler for an offset corner and needs no fitting: both ends lie at
+ * the offset distance from the vertex, and an offset curve's tangent is perpendicular to
+ * its own offset direction, so a circle centred there meets both runs tangentially by
+ * construction.
+ *
+ * It stops being available when the two ends are NOT co-radial about the vertex -- a
+ * width step exactly at the corner, or a height offset that differs across it. Then the
+ * caller falls back to arcLikeSpline.
+ */
+export function cornerArc(vertex is Vector, p1 is Vector, p2 is Vector, tolerance is ValueWithUnits)
+{
+    const a = p1 - vertex;
+    const b = p2 - vertex;
+    const ra = norm(a);
+    const rb = norm(b);
+
+    if (ra < tolerance || rb < tolerance || abs(ra - rb) > tolerance)
+    {
+        return undefined;
+    }
+
+    const axis = cross(a, b);
+    if (norm(axis) < ZERO_DIRECTION * ra * rb)
+    {
+        // Collinear: either no corner at all, or a full reversal with no unique plane.
+        return undefined;
+    }
+
+    const bisector = normalize(a) + normalize(b);
+    if (norm(bisector) < ZERO_DIRECTION)
+    {
+        return undefined;
+    }
+
+    return {
+        "kind" : "arc",
+        "center" : vertex,
+        "normal" : normalize(axis),
+        "radius" : ra,
+        "start" : p1,
+        "mid" : vertex + ra * normalize(bisector),
+        "end" : p2
+    };
+}
+
+/**
+ * A cubic that is tangent to both ends and as close to a circular arc as a cubic gets.
+ *
+ * Handle length (4/3)*tan(theta/4)*R is the standard best cubic approximation to a
+ * circular arc: it matches position and tangent at both ends and its radial error peaks
+ * at about 0.03% of R for a quarter turn. Curvature is not exactly constant, but it
+ * varies smoothly and stays within a fraction of a percent -- which is what "resembles
+ * an arc" has to mean once the ends are not co-radial and a true arc is unavailable.
+ *
+ * @param t1 {Vector} : unit tangent leaving p1, in the direction of travel.
+ * @param t2 {Vector} : unit tangent arriving at p2, in the direction of travel.
+ */
+export function arcLikeSpline(p1 is Vector, t1 is Vector, p2 is Vector, t2 is Vector) returns BSplineCurve
+{
+    const chord = norm(p2 - p1);
+    const turn = angleBetween(t1, t2);
+
+    // Degenerate turn: a straight cubic is the arc of infinite radius.
+    var handle = chord / 3;
+    if (turn / radian > ZERO_DIRECTION && chord > 0 * meter)
+    {
+        const radius = chord / (2 * sin(turn / 2));
+        handle = (4.0 / 3.0) * tan(turn / 4) * radius;
+    }
+
+    return bSplineCurve({
+                "degree" : 3,
+                "isPeriodic" : false,
+                "controlPoints" : [p1, p1 + handle * t1, p2 - handle * t2, p2]
+            });
+}
+
+/**
+ * Closest approach between two segments, as parameters on each plus the midpoint.
+ *
+ * Used to find where two offset runs cross on the inside of a corner. In 3D they rarely
+ * meet exactly, so the midpoint of the closest approach is the crossing for our purposes;
+ * both runs are trimmed to it, which is what makes them share an endpoint exactly.
+ *
+ * @returns {map} : { "distance", "point", "s", "t" } with s, t in [0, 1].
+ */
+export function segmentApproach(a0 is Vector, a1 is Vector, b0 is Vector, b1 is Vector) returns map
+{
+    const u = a1 - a0;
+    const v = b1 - b0;
+    const w0 = a0 - b0;
+
+    const a = dot(u, u);
+    const b = dot(u, v);
+    const c = dot(v, v);
+    const d = dot(u, w0);
+    const e = dot(v, w0);
+
+    const denominator = a * c - b * b;
+
+    var sc = 0;
+    var tc = 0;
+
+    if (abs(denominator / (meter * meter * meter * meter)) < ZERO_SPAN)
+    {
+        // Parallel: pin one end and solve the other.
+        sc = 0;
+        tc = (c > 0 * meter * meter) ? clamp(e / c, 0, 1) : 0;
+    }
+    else
+    {
+        sc = clamp((b * e - c * d) / denominator, 0, 1);
+        tc = clamp((a * e - b * d) / denominator, 0, 1);
+    }
+
+    const pa = a0 + sc * u;
+    const pb = b0 + tc * v;
+
+    return {
+        "distance" : norm(pa - pb),
+        "point" : 0.5 * (pa + pb),
+        "s" : sc,
+        "t" : tc
+    };
+}
+
 export function emitLineCurve(context is Context, id is Id, start is Vector, end is Vector)
 {
     opCreateBSplineCurve(context, id, {
