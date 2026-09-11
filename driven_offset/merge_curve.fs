@@ -147,13 +147,25 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
 
         // 5. Fit one spline through the chained path.
         const target = makeApproximationTarget(context, path, definition.keepStartDerivative, definition.keepEndDerivative);
-        const spline = approximateSpline(context, {
+        var spline = approximateSpline(context, {
                         "degree" : definition.approximationDegree,
                         "tolerance" : definition.approximationTolerance,
                         "isPeriodic" : path.closed,
                         "targets" : [target],
                         "maxControlPoints" : definition.approximationMaxCPs
                     })[0];
+        // approximateSpline only promises the fit within tolerance; the ends can miss the
+        // chain's vertices by that much and then fail to chain with their neighbours.
+        if (definition.debugPrint)
+        {
+            const last = size(spline.controlPoints) - 1;
+            println("[merge] fit end error before snap: start " ~ roundToPrecision(norm(spline.controlPoints[0] - target.positions[0]) / millimeter, 6)
+                ~ " mm, end " ~ roundToPrecision(norm(spline.controlPoints[last] - target.positions[size(target.positions) - 1]) / millimeter, 6) ~ " mm");
+        }
+        if (!spline.isPeriodic)
+        {
+            spline = snapSplineEnds(spline, target.positions);
+        }
         opCreateBSplineCurve(context, id + "new", { "bSplineCurve" : spline });
         const newEdge = qCreatedBy(id + "new", EntityType.EDGE);
         const newBody = qCreatedBy(id + "new", EntityType.BODY);
@@ -355,8 +367,15 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
         const output = qCreatedBy(id + "extract", EntityType.BODY);
         if (debugPrint)
         {
-            println("[merge] REBUILD: " ~ size(evaluateQuery(context, otherEdges)) ~ " other edge(s) + merged curve -> "
-                ~ size(evaluateQuery(context, output)) ~ " wire(s)");
+            const wires = evaluateQuery(context, output);
+            println("[merge] REBUILD: " ~ size(evaluateQuery(context, otherEdges)) ~ " other edge(s) + merged curve -> " ~ size(wires) ~ " wire(s)");
+            for (var w = 0; w < size(wires); w += 1)
+            {
+                const wireEdges = qOwnedByBody(wires[w], EntityType.EDGE);
+                println("[merge]   wire " ~ w ~ ": " ~ size(evaluateQuery(context, wireEdges)) ~ " edge(s), length "
+                    ~ roundToPrecision(evLength(context, { "entities" : wireEdges }) / millimeter, 3) ~ " mm"
+                    ~ (isQueryEmpty(context, qIntersection([wireEdges, newEdge])) ? "" : " (contains the merged curve)"));
+            }
         }
         opDeleteBodies(context, id + "deleteSeedWire", { "entities" : qUnion([plan.seedWire, newBody]) });
         reportFeatureWarning(context, id, "The seed wire had other edges; it was rebuilt as "
@@ -372,6 +391,15 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
 // Small helpers
 // TODO: replace with shared helpers from edge_offset_utils.fs once that tab settles.
 // ============================================================================
+
+/** Pin a clamped spline's end control points to the exact target end points. */
+function snapSplineEnds(curve is BSplineCurve, positions is array) returns BSplineCurve
+{
+    var controlPoints = curve.controlPoints;
+    controlPoints[0] = positions[0];
+    controlPoints[size(controlPoints) - 1] = positions[size(positions) - 1];
+    return mergeMaps(curve, { "controlPoints" : controlPoints }) as BSplineCurve;
+}
 
 /** True when the edge's simplified curve definition is a circular arc or an ellipse. */
 function isArcLike(context is Context, edge is Query) returns boolean
