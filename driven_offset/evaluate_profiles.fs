@@ -224,6 +224,9 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
             annotation { "Name" : "Print scan", "Default" : false, "Description" : "Report the projected length, where it was trimmed and why" }
             definition.debugPrintScan is boolean;
 
+            annotation { "Name" : "Show profiles", "Default" : false, "Description" : "Colour the result: top green, bottom red, middle blue, and the sections joining them magenta." }
+            definition.debugShowProfiles is boolean;
+
             annotation { "Name" : "Show curvature comb", "Default" : false }
             definition.debugShowComb is boolean;
 
@@ -275,6 +278,16 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
 export function projectedProfile(context is Context, id is Id, definition is map) returns map
 {
     const plane = evPlane(context, { "face" : definition.projectionFace });
+
+    if (definition.debugPrintScan)
+    {
+        println("[profiles] projecting onto plane: origin "
+            ~ toString(roundToPrecision(plane.origin[0] / millimeter, 3)) ~ ", "
+            ~ toString(roundToPrecision(plane.origin[1] / millimeter, 3)) ~ ", "
+            ~ toString(roundToPrecision(plane.origin[2] / millimeter, 3))
+            ~ " mm   normal " ~ headingText(plane.normal)
+            ~ "   in-plane x " ~ headingText(plane.x));
+    }
 
     if (definition.profileSource == ProfileSource.PART)
     {
@@ -430,6 +443,7 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         {
             const surveyHeading = resolveHeading(context, definition, plane, loopEdges);
             printRunSurvey(splitByAlignment(context, path, surveyHeading), surveyHeading);
+            splitAtExtremes(context, path, surveyHeading, upwardAcross(plane, surveyHeading), true);
         }
     }
     else
@@ -441,11 +455,13 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         traceStep(verbose, "heading " ~ headingText(heading) ~ "; scanning the loop for runs");
 
         const across = upwardAcross(plane, heading);
-        const runs = splitByAlignment(context, path, heading);
 
-        traceStep(verbose, "scan found " ~ toString(size(runs)) ~ " run(s); classifying them");
+        if (verbose)
+        {
+            printRunSurvey(splitByAlignment(context, path, heading), heading);
+        }
 
-        const named = classifyRuns(runs, heading, across, path, context, verbose);
+        const named = splitAtExtremes(context, path, heading, across, verbose);
 
         traceStep(verbose, "top and bottom identified; sampling and fitting");
 
@@ -472,6 +488,8 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
             profiles["bottom"] = named.bottom;
         }
 
+        profiles["connectors"] = named.connectors;
+
         if (wantsMiddle)
         {
             const middle = middleProfile(definition, plane, heading, top, bottom);
@@ -482,6 +500,11 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
                 profiles["middle"] = { "stations" : size(middle) };
             }
         }
+    }
+
+    if (definition.debugShowProfiles)
+    {
+        showProfiles(context, id, definition, path, plane, profiles);
     }
 
     // Last, because path and loopEdges both point into the scratch wire.
@@ -607,6 +630,186 @@ function splitByAlignment(context is Context, path is Path, heading is Vector) r
     }
 
     return runs;
+}
+
+/**
+ * Split the closed periphery at its extremes along the heading.
+ *
+ * This replaced a split by tangent alignment, which cannot see the turnaround at an end
+ * that is a corner rather than an arc: the tangent swings through perpendicular between two
+ * samples and never lands in the band, so the whole loop reads as one run. A ski in side
+ * view does exactly that -- measured on a real core, one sample in four hundred registered
+ * as running across, and no sampling density fixes a turn with zero arc length.
+ *
+ * The extremes are always there. The point furthest along the heading and the point
+ * furthest against it are what the header means by a profile's "endpoints near the extents",
+ * and they cut the loop into exactly two chains whatever shape the ends take.
+ *
+ * Alignment still has a job, but a smaller one: carving the joining sections off the ends of
+ * those chains, where such sections exist. Where they do not, the two profiles simply meet.
+ */
+function splitAtExtremes(context is Context, path is Path, heading is Vector, across is Vector,
+    verbose is boolean) returns map
+{
+    const n = PROFILE_SCAN_SAMPLES;
+
+    var parameters = [];
+    for (var i = 0; i < n; i += 1)
+    {
+        parameters = append(parameters, i / (n - 1));
+    }
+
+    const lines = evPathTangentLines(context, path, parameters).tangentLines;
+
+    // The last sample repeats the first on a closed loop, so it is excluded from the search
+    // to keep an extreme from being found twice at the seam.
+    const span = n - 1;
+    var lo = 0;
+    var hi = 0;
+
+    for (var i = 1; i < span; i += 1)
+    {
+        const reach = dot(lines[i].origin, heading);
+        if (reach < dot(lines[lo].origin, heading))
+        {
+            lo = i;
+        }
+        if (reach > dot(lines[hi].origin, heading))
+        {
+            hi = i;
+        }
+    }
+
+    if (lo == hi)
+    {
+        throw regenError("The outline has no extent along the prevailing direction, so it "
+            ~ "cannot be split into a top and a bottom. Heading " ~ headingText(heading) ~ ".");
+    }
+
+    const first = chainBetween(lines, lo, hi, span, heading);
+    const second = chainBetween(lines, hi, lo, span, heading);
+
+    const firstHeight = chainHeight(lines, first, span, across);
+    const secondHeight = chainHeight(lines, second, span, across);
+
+    const top = (firstHeight >= secondHeight) ? first : second;
+    const bottom = (firstHeight >= secondHeight) ? second : first;
+
+    if (verbose)
+    {
+        println("[profiles] extremes at parameters "
+            ~ toString(roundToPrecision(lo / (n - 1), 5)) ~ " and "
+            ~ toString(roundToPrecision(hi / (n - 1), 5)));
+        printChain("top   ", top, n);
+        printChain("bottom", bottom, n);
+    }
+
+    return {
+        "top" : top,
+        "bottom" : bottom,
+        "connectors" : concatenateArrays([top.connectors, bottom.connectors])
+    };
+}
+
+/**
+ * One chain of the periphery, from one extreme forward to the other, with any joining
+ * section at either end carved off.
+ *
+ * Walking in from each end while the tangent still runs across the heading is what
+ * separates a profile from the piece that joins it to its opposite number. On an end that
+ * is a corner nothing is carved and the chain simply reaches the extreme, which is the
+ * right answer for that shape.
+ */
+function chainBetween(lines is array, from is number, to is number, span is number,
+    heading is Vector) returns map
+{
+    var count = to - from;
+    if (count <= 0)
+    {
+        count += span;
+    }
+
+    // In from the start while the tangent is still turning across the heading.
+    var lead = 0;
+    while (lead < count
+        && abs(dot(lines[(from + lead) % span].direction, heading)) < PROFILE_ALONG_COS)
+    {
+        lead += 1;
+    }
+
+    var trail = 0;
+    while (trail < count - lead
+        && abs(dot(lines[(from + count - trail) % span].direction, heading)) < PROFILE_ALONG_COS)
+    {
+        trail += 1;
+    }
+
+    var connectors = [];
+    if (lead > 0)
+    {
+        connectors = append(connectors, paramRange(from, from + lead, span));
+    }
+    if (trail > 0)
+    {
+        connectors = append(connectors, paramRange(from + count - trail, from + count, span));
+    }
+
+    const body = paramRange(from + lead, from + count - trail, span);
+
+    return mergeMaps(body, { "connectors" : connectors });
+}
+
+/**
+ * A sample-index range as a path-parameter range, wrapping past 1 where it crosses the seam.
+ */
+function paramRange(from is number, to is number, span is number) returns map
+{
+    const start = (from % span) / span;
+    var end = (to % span) / span;
+
+    if (end <= start)
+    {
+        end += 1;
+    }
+
+    return { "start" : start, "end" : end };
+}
+
+/**
+ * Mean position of a chain across the heading, which is what tells top from bottom.
+ */
+function chainHeight(lines is array, chain is map, span is number, across is Vector) returns ValueWithUnits
+{
+    var total = 0 * meter;
+    const steps = 8;
+
+    for (var i = 0; i <= steps; i += 1)
+    {
+        const at = chain.start + (chain.end - chain.start) * i / steps;
+        const index = floor(wrapParameter(at) * span) % span;
+        total += dot(lines[index].origin, across);
+    }
+
+    return total / (steps + 1);
+}
+
+/**
+ * One chain, for the log.
+ */
+function printChain(label is string, chain is map, n is number)
+{
+    var line = "[profiles]   " ~ label ~ ": "
+        ~ toString(roundToPrecision(chain.start, 5)) ~ " -> "
+        ~ toString(roundToPrecision(chain.end, 5))
+        ~ "   span " ~ toString(roundToPrecision(chain.end - chain.start, 5));
+
+    for (var connector in chain.connectors)
+    {
+        line = line ~ "   [joiner " ~ toString(roundToPrecision(connector.start, 5))
+            ~ " -> " ~ toString(roundToPrecision(connector.end, 5)) ~ "]";
+    }
+
+    println(line);
 }
 
 /**
@@ -1082,6 +1285,15 @@ function prevailingDirection(context is Context, definition is map, plane is Pla
         }
     }
 
+    if (definition.debugPrintScan)
+    {
+        println("[profiles] prevailing direction " ~ headingText(heading) ~ " ("
+            ~ (isQueryEmpty(context, definition.prevailingDirection)
+                ? "no selection, taken from the outline's longest in-plane extent"
+                : "from the selected entity")
+            ~ (definition.flipPrevailing ? ", flipped)" : ")"));
+    }
+
     // Only the in-plane part means anything: a component along the plane normal cannot
     // distinguish advancing from doubling back, because the projection has removed it.
     heading = heading - dot(heading, plane.normal) * plane.normal;
@@ -1308,6 +1520,82 @@ function nameProfile(context is Context, bodies is Query, name is string)
 // ============================================================================
 // Debug
 // ============================================================================
+
+/**
+ * Colour the result so the decomposition can be read at a glance.
+ *
+ * Top green, bottom red, middle blue, and the sections joining them magenta. The three
+ * profiles are already bodies, so they only need colouring; the joiners are not emitted as
+ * output, so they are drawn here as throwaway polylines and aborted with the rest.
+ *
+ * A joiner that comes back empty is not a fault -- it means that end of the outline turns
+ * through a corner, and the two profiles meet there with nothing in between.
+ */
+function showProfiles(context is Context, id is Id, definition is map, path is Path,
+    plane is Plane, profiles is map)
+{
+    paintProfile(context, id + "top", DebugColor.GREEN);
+    paintProfile(context, id + "bottom", DebugColor.RED);
+    paintProfile(context, id + "middle", DebugColor.BLUE);
+
+    const connectors = profiles["connectors"];
+
+    if (connectors == undefined || size(connectors) == 0)
+    {
+        return;
+    }
+
+    const drawId = id + "joiners";
+    startFeature(context, drawId, {});
+    var drawn = 0;
+
+    for (var c = 0; c < size(connectors); c += 1)
+    {
+        const samples = samplePeriphery(context, path, connectors[c], definition, plane);
+
+        var points = [];
+        for (var sample in samples)
+        {
+            if (size(points) == 0 || norm(sample.point - points[size(points) - 1]) > TOLERANCE.zeroLength * meter)
+            {
+                points = append(points, sample.point);
+            }
+        }
+
+        if (size(points) < 2)
+        {
+            continue;
+        }
+
+        opCreateBSplineCurve(context, drawId + ("joiner" ~ c), {
+                    "bSplineCurve" : bSplineCurve({
+                                "degree" : 1,
+                                "isPeriodic" : false,
+                                "controlPoints" : points
+                            })
+                });
+        drawn += 1;
+    }
+
+    if (drawn > 0)
+    {
+        addDebugEntities(context, qCreatedBy(drawId, EntityType.EDGE), DebugColor.MAGENTA);
+    }
+    abortFeature(context, drawId);
+}
+
+/**
+ * Colour one emitted profile, if it was asked for and therefore exists.
+ */
+function paintProfile(context is Context, id is Id, color is DebugColor)
+{
+    const edges = qCreatedBy(id, EntityType.EDGE);
+
+    if (!isQueryEmpty(context, edges))
+    {
+        addDebugEntities(context, edges, color);
+    }
+}
 
 /**
  * What the scan found, and what it did about it.
