@@ -188,7 +188,8 @@ export function mergeCurves(context is Context, id is Id, edges is Query, option
 // ============================================================================
 
 annotation { "Feature Type Name" : "Merge curve",
-        "Feature Type Description" : "Merge a G0-adjacent edge into a seed edge as one spline curve." }
+        "Feature Type Description" : "Merge a G0-adjacent edge into a seed edge as one spline curve.",
+        "Editing Logic Function" : "mergeCurveEditLogic" }
 export const mergeCurve = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -583,6 +584,8 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
                     ~ roundToPrecision(best / millimeter, 6) ~ " mm");
             }
         }
+        copyAttributes(context, plan.seedWire, output);
+
         // Never delete the output, whatever lineage qCreatedBy attributes to it.
         const toDelete = qSubtraction(qUnion([plan.seedWire, newBody]), output);
         if (debugPrint)
@@ -601,6 +604,47 @@ export function placeMergedCurve(context is Context, id is Id, plan is map, edge
 
     // EXTRACT: seed is not on a wire. The fitted spline body is the result.
     return newBody;
+}
+
+// ============================================================================
+// Carrying data from the replaced body
+// ============================================================================
+
+/**
+ * Copy every attribute of `source` onto `target`. Attributes are the only data on a body
+ * readable during regeneration; properties (name, ...) are not (std/properties.fs:71-76).
+ */
+function copyAttributes(context is Context, source is Query, target is Query)
+{
+    const attributes = getAllAttributes(context, { "entity" : source });
+    for (var entry in attributes)
+    {
+        setAttribute(context, { "entities" : target, "name" : entry.key, "attribute" : entry.value });
+    }
+}
+
+/**
+ * Editing logic: prefill "Output name" with the seed wire's current name when the user has
+ * not typed one. getProperty may be called here, not during regeneration.
+ */
+export function mergeCurveEditLogic(context is Context, id is Id, oldDefinition is map,
+        definition is map, isCreating is boolean, specifiedParameters is map, hiddenQueries is Query) returns map
+{
+    if (definition.outputName != "" || specifiedParameters.outputName == true)
+    {
+        return definition;
+    }
+    const owner = qBodyType(qOwnerBody(definition.seedEdge), BodyType.WIRE);
+    if (isQueryEmpty(context, owner))
+    {
+        return definition;
+    }
+    const name = getProperty(context, { "entity" : owner, "propertyType" : PropertyType.NAME });
+    if (name is string && name != "")
+    {
+        definition.outputName = name;
+    }
+    return definition;
 }
 
 // ============================================================================
