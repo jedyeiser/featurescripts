@@ -78,10 +78,10 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         annotation { "Group Name" : "Corners", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Where the offset gaps", "Default" : CornerGapMode.ARC, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Description" : "A G0 corner in the offset edges separates the two offsets by 2 * width * sin(angle/2) on the outside of the turn. Rounding uses a true circular arc centred on the corner vertex wherever one exists, and an arc-like cubic where it does not." }
+            annotation { "Name" : "Where the offset gaps", "Default" : CornerGapMode.ARC, "UIHint" : UIHint.SHOW_LABEL, "Description" : "A G0 corner in the offset edges separates the two offsets by 2 * width * sin(angle/2) on the outside of the turn. Rounding uses a true circular arc centred on the corner vertex wherever one exists, and an arc-like cubic where it does not." }
             definition.cornerGapMode is CornerGapMode;
 
-            annotation { "Name" : "Where the offset crosses", "Default" : CornerOverlapMode.TRIM, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Description" : "The same corner overlaps on the inside of the turn, by width * tan(angle/2) along each side. Trimming cuts both back to where they actually cross." }
+            annotation { "Name" : "Where the offset crosses", "Default" : CornerOverlapMode.TRIM, "UIHint" : UIHint.SHOW_LABEL, "Description" : "The same corner overlaps on the inside of the turn, by width * tan(angle/2) along each side. Trimming cuts both back to where they actually cross." }
             definition.cornerOverlapMode is CornerOverlapMode;
         }
 
@@ -90,13 +90,13 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
             annotation { "Name" : "Start plane", "Filter" : BodyType.MATE_CONNECTOR || (EntityType.FACE && GeometryType.PLANE), "MaxNumberOfPicks" : 1, "Description" : "Terminate the start of the offset on this plane. Offsetting moves an endpoint off wherever the source ended, by however far the source tangent is from square; this puts it back on a plane you choose. The offset is trimmed if it runs past and extended if it stops short." }
             definition.startPlane is Query;
 
-            annotation { "Name" : "Start direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1, "Description" : "Optional. The slope the offset should have where it meets the start plane, for ends that arrive oblique -- a triangular swallowtail meeting the centreline, say. Left empty, the offset continues along its own curvature. Which way round the selection points does not matter." }
+            annotation { "Name" : "Start direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Optional. The slope the offset should have where it meets the start plane, for ends that arrive oblique -- a triangular swallowtail meeting the centreline, say. Left empty, the offset continues along its own curvature. Which way round the selection points does not matter." }
             definition.startDirection is Query;
 
             annotation { "Name" : "End plane", "Filter" : BodyType.MATE_CONNECTOR || (EntityType.FACE && GeometryType.PLANE), "MaxNumberOfPicks" : 1, "Description" : "Terminate the end of the offset on this plane. Independent of the start plane: a chain from FCP to ACP ends on two planes at different orientations." }
             definition.endPlane is Query;
 
-            annotation { "Name" : "End direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1, "Description" : "Optional. As the start direction, for the other end." }
+            annotation { "Name" : "End direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Optional. As the start direction, for the other end." }
             definition.endDirection is Query;
 
             annotation { "Name" : "Allow extension", "Default" : true, "Description" : "Off, an offset that stops short of its terminal plane is left alone rather than extended. Extension fabricates geometry past where the source data stops, which is not always wanted." }
@@ -1058,7 +1058,15 @@ function terminalDirection(context is Context, definition is map, outward is Vec
         return undefined;
     }
 
-    const picked = evAxis(context, { "axis" : query }).direction;
+    // extractDirection, not evAxis: the filter admits planar faces and mate connectors as
+    // well as axes, and only this one reads all three. evAxis alone throws on a face.
+    const picked = extractDirection(context, query);
+
+    if (picked == undefined)
+    {
+        throw regenError("That selection does not define a direction.", query);
+    }
+
     const signed = (dot(picked, outward) < 0) ? -picked : picked;
 
     if (abs(dot(signed, pl.normal)) < ZERO_DIRECTION)

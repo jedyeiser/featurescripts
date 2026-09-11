@@ -376,7 +376,8 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         // the periphery alone should not be able to fail on a decomposition it never wanted.
         const heading = prevailingDirection(context, definition, plane, longestExtent(context, loopEdges, plane));
         const across = normalize(cross(plane.normal, heading));
-        const named = classifyRuns(context, path, splitByAlignment(context, path, heading), across);
+        const named = classifyRuns(context, path, splitByAlignment(context, path, heading),
+            heading, across, definition.debugPrintScan);
 
         const wantsTop = wantedProfile(definition, ProfilePart.TOP);
         const wantsBottom = wantedProfile(definition, ProfilePart.BOTTOM);
@@ -547,7 +548,8 @@ function splitByAlignment(context is Context, path is Path, heading is Vector) r
  * the heading -- their own mean positions separate them, where the outline's centroid would
  * be thrown off by an asymmetric periphery.
  */
-function classifyRuns(context is Context, path is Path, runs is array, across is Vector) returns map
+function classifyRuns(context is Context, path is Path, runs is array, heading is Vector,
+    across is Vector, verbose is boolean) returns map
 {
     var longest = 0;
     for (var run in runs)
@@ -571,10 +573,16 @@ function classifyRuns(context is Context, path is Path, runs is array, across is
         measured = append(measured, mergeMaps(run, { "height" : dot(mid, across) }));
     }
 
+    if (verbose || size(measured) < 2)
+    {
+        printRunSurvey(runs, heading, longest, size(measured));
+    }
+
     if (size(measured) < 2)
     {
-        throw regenError("The outline does not separate into a top and a bottom profile along "
-            ~ "that direction. Check the prevailing direction.");
+        throw regenError("The outline does not separate into a top and a bottom profile: "
+            ~ toString(size(measured)) ~ " of " ~ toString(size(runs))
+            ~ " runs qualified as a profile. The print log lists every run the scan found.");
     }
 
     var high = measured[0];
@@ -592,6 +600,35 @@ function classifyRuns(context is Context, path is Path, runs is array, across is
     }
 
     return { "top" : high, "bottom" : low, "candidates" : measured };
+}
+
+/**
+ * Every run the alignment scan found, and why each did or did not qualify.
+ *
+ * Printed whenever the split fails, because the throw happens long before the debug output
+ * would otherwise run, and the run table is the only thing that distinguishes the three
+ * ways this goes wrong: a heading pointing the wrong way (nothing reads as "along"), a
+ * threshold set badly for this outline (everything reads as one or the other), or a profile
+ * arriving in pieces (several short along-runs where one long one was expected).
+ */
+function printRunSurvey(runs is array, heading is Vector, longest is number, qualified is number)
+{
+    println("profile split: heading " ~ toString(roundToPrecision(heading[0], 4))
+        ~ ", " ~ toString(roundToPrecision(heading[1], 4))
+        ~ ", " ~ toString(roundToPrecision(heading[2], 4))
+        ~ " -- " ~ toString(size(runs)) ~ " runs, " ~ toString(qualified) ~ " qualified as profiles");
+    println("  a run is \"along\" when |tangent . heading| >= " ~ toString(PROFILE_ALONG_COS)
+        ~ ", and a profile when its span >= " ~ toString(PROFILE_SHORT_RUN_FRACTION)
+        ~ " x the longest along-run (" ~ toString(roundToPrecision(longest, 4)) ~ ")");
+
+    for (var i = 0; i < size(runs); i += 1)
+    {
+        const run = runs[i];
+        println("  run " ~ toString(i) ~ ": " ~ (run.along ? "along " : "across")
+            ~ "  " ~ toString(roundToPrecision(run.start, 4))
+            ~ " -> " ~ toString(roundToPrecision(run.end, 4))
+            ~ "   span " ~ toString(roundToPrecision(run.end - run.start, 4)));
+    }
 }
 
 /**
@@ -846,8 +883,11 @@ function prevailingDirection(context is Context, definition is map, plane is Pla
 
     if (norm(heading) < PROFILE_ZERO_DIRECTION * meter)
     {
-        throw regenError("The prevailing direction lies along the projection direction, "
-            ~ "so it cannot say which way the profile advances.", definition.prevailingDirection);
+        throw regenError("The prevailing direction lies along the projection direction, so it "
+            ~ "cannot say which way the profile advances. Its in-plane part measured "
+            ~ toString(roundToPrecision(norm(heading) / meter, 9))
+            ~ " -- picking the face you are projecting onto does this.",
+            definition.prevailingDirection);
     }
 
     return (definition.flipPrevailing ? -1 : 1) * normalize(heading);
