@@ -6,6 +6,22 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ---
 
+## Precondition Parameter Declared in Two Branches -- "Duplicate feature parameter"
+**Date**: 2026-09-11
+**File**: `driven_offset/design_map_query_utils.fs` -- `designMapEntryPredicate`
+**Issue**: Declaring the same parameter (`entry.e_key is string;`) in two different `if`/`else` branches of a precondition (or array-item predicate) fails at compile time with `Duplicate feature parameter e_key` and `Nonconforming feature function ... precondition failed`. The feature silently disappears from the custom-feature list. `fscheck.py` does not catch this (no type/precondition checking).
+**Fix**: Declare each parameter exactly once, with a combined visibility condition.
+```featurescript
+// WRONG
+if (entry.e_kind == Kind.A) { if (entry.rename) { entry.e_key is string; } }
+else { entry.e_key is string; }
+// CORRECT
+if (entry.e_kind != Kind.A || entry.rename) { entry.e_key is string; }
+```
+**Diagnosis tip**: the Onshape API `featurestudios/.../featurespecs` returns `[]` for a tab whose features fail to compile; the editor's notices pane shows the actual error.
+
+---
+
 ## Boolean Operation Type Enum — Wrong Name
 **Date**: 2026-03-02
 **Issue**: Used `BooleanType.UNION` — this enum does not exist.

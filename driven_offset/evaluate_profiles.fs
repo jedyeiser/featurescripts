@@ -144,8 +144,10 @@ export enum ProfileSource
  * derived rather than found: the average of top and bottom at each station along the
  * direction.
  *
- * ALL means all three profiles. The periphery is the undivided loop and is not a profile of
- * anything, so it stays its own choice.
+ * ALL means the three profiles and nothing else -- the sections joining them are dropped.
+ * FULL keeps everything: the same three, plus each joining section as its own named body, so
+ * the pieces together account for the whole periphery rather than most of it. PERIPHERY is
+ * the undivided loop, which is not a profile of anything and so stays its own choice.
  */
 export enum ProfilePart
 {
@@ -158,7 +160,9 @@ export enum ProfilePart
     annotation { "Name" : "Periphery" }
     PERIPHERY,
     annotation { "Name" : "All profiles" }
-    ALL
+    ALL,
+    annotation { "Name" : "Full" }
+    FULL
 }
 
 // ============================================================================
@@ -491,6 +495,19 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         profiles["connectors"] = named.connectors;
         profiles["edgeData"] = edgeData;
 
+        // Emitted verbatim, like any other periphery edge: a joining section is outline the
+        // kernel already produced, and refitting it would only round its corners off.
+        if (definition.profileParts == ProfilePart.FULL)
+        {
+            for (var c = 0; c < size(named.connectors); c += 1)
+            {
+                const joinerName = "connector " ~ toString(c + 1);
+                gatherIntoWire(context, id + ("connector" ~ c), definition,
+                    liveEdges(edgeData, named.connectors[c]), joinerName);
+                profiles[joinerName] = named.connectors[c].length;
+            }
+        }
+
         if (definition.debugPrintCurves)
         {
             printPeripheryCurves(context, edgeData, named);
@@ -555,7 +572,9 @@ function longestExtent(context is Context, edges is Query, plane is Plane) retur
  */
 function wantedProfile(definition is map, part is ProfilePart) returns boolean
 {
-    return definition.profileParts == part || definition.profileParts == ProfilePart.ALL;
+    return definition.profileParts == part
+        || definition.profileParts == ProfilePart.ALL
+        || definition.profileParts == ProfilePart.FULL;
 }
 
 /**
@@ -1151,24 +1170,83 @@ function emitFromEdges(context is Context, id is Id, definition is map, edgeData
     group is map, samples is array, plane is Plane, label is string) returns array
 {
     var curves = [];
+    var pieces = [];
 
     if (definition.grouping == ProfileGrouping.PER_CURVE)
     {
-        emitEdgesVerbatim(context, id, edgeData, group);
+        pieces = liveEdges(edgeData, group);
     }
     else if (definition.grouping == ProfileGrouping.EFFICIENT)
     {
-        curves = emitMergedEdges(context, id, definition, edgeData, group, plane);
+        const built = buildMergedRuns(context, id, definition, edgeData, group, plane);
+        curves = built.curves;
+        pieces = built.pieces;
     }
     else
     {
         curves = append(curves, fitSamples(context, id + "fit", definition, samples));
+        pieces = [qCreatedBy(id + "fit", EntityType.EDGE)];
     }
 
-    // qCreatedBy reaches into sub-ids, so one call names whatever the mode produced.
-    nameProfile(context, qCreatedBy(id, EntityType.BODY), suffixedName(definition.outputName, label));
+    gatherIntoWire(context, id, definition, pieces, label);
 
     return curves;
+}
+
+/**
+ * Collect whatever a profile was built from into exactly one wire body.
+ *
+ * The grouping decides how many CURVES a profile is made of, never how many bodies it comes
+ * out as: a profile is one thing, and splitting it across bodies makes it harder to select
+ * and harder to use downstream. So every mode ends here, and the pieces that fed the extract
+ * are deleted behind it.
+ */
+function gatherIntoWire(context is Context, id is Id, definition is map, pieces is array,
+    label is string)
+{
+    if (size(pieces) == 0)
+    {
+        return;
+    }
+
+    const wireId = id + "wire";
+    opExtractWires(context, wireId, { "edges" : qUnion(pieces) });
+
+    // Anything built under this profile that is not the wire was scaffolding for it. The
+    // extract took independent copies, so the originals have no further use. Edges read
+    // straight off the outline are not caught here -- they are not created under this id,
+    // and the outline is cleaned up separately.
+    const scaffolding = qSubtraction(qCreatedBy(id, EntityType.BODY),
+            qCreatedBy(wireId, EntityType.BODY));
+
+    if (!isQueryEmpty(context, scaffolding))
+    {
+        opDeleteBodies(context, id + "scaffolding", { "entities" : scaffolding });
+    }
+
+    nameProfile(context, qCreatedBy(wireId, EntityType.BODY),
+        suffixedName(definition.outputName, label));
+}
+
+/**
+ * A profile's edges, minus any that collapsed to a point.
+ *
+ * The header asks for those to be excluded: they carry no shape, and extracting one would
+ * only produce a degenerate edge in the result.
+ */
+function liveEdges(edgeData is array, group is map) returns array
+{
+    var kept = [];
+
+    for (var m in group.members)
+    {
+        if (edgeData[m].length > TOLERANCE.zeroLength * meter)
+        {
+            kept = append(kept, edgeData[m].edge);
+        }
+    }
+
+    return kept;
 }
 
 /**
@@ -1206,11 +1284,12 @@ function emitEdgesVerbatim(context is Context, id is Id, edgeData is array, grou
  * which is the whole reason this mode exists. A G0 corner never merges either: a real corner
  * is information, and rounding it off is a silent lie.
  */
-function emitMergedEdges(context is Context, id is Id, definition is map, edgeData is array,
-    group is map, plane is Plane) returns array
+function buildMergedRuns(context is Context, id is Id, definition is map, edgeData is array,
+    group is map, plane is Plane) returns map
 {
     const runs = mergeRuns(context, edgeData, group);
     var curves = [];
+    var pieces = [];
 
     for (var r = 0; r < size(runs); r += 1)
     {
@@ -1219,24 +1298,26 @@ function emitMergedEdges(context is Context, id is Id, definition is map, edgeDa
 
         if (size(run.members) == 1 || run.kind == "arc")
         {
-            // One edge, or a co-circular pair we would only be rebuilding: copying is exact
-            // and reconstructing is not.
-            emitEdgesVerbatim(context, runId, edgeData, makeGroup(edgeData, run.members));
+            // One edge, or a co-circular pair we would only be rebuilding: passing the
+            // original through is exact, and reconstructing it is not.
+            pieces = concatenateArrays([pieces, liveEdges(edgeData, makeGroup(edgeData, run.members))]);
         }
         else if (run.kind == "line")
         {
             const first = edgeData[run.members[0]];
             const last = edgeData[run.members[size(run.members) - 1]];
-            curves = append(curves, straightCurve(context, runId + "line", first.from, last.to));
+            curves = append(curves, straightCurve(context, runId, first.from, last.to));
+            pieces = append(pieces, qCreatedBy(runId, EntityType.EDGE));
         }
         else
         {
-            curves = append(curves, fitSamples(context, runId + "fit", definition,
+            curves = append(curves, fitSamples(context, runId, definition,
                     sampleGroup(context, edgeData, makeGroup(edgeData, run.members), definition, plane)));
+            pieces = append(pieces, qCreatedBy(runId, EntityType.EDGE));
         }
     }
 
-    return curves;
+    return { "curves" : curves, "pieces" : pieces };
 }
 
 /**
@@ -1353,10 +1434,12 @@ function emitConstructed(context is Context, id is Id, definition is map, sample
     plane is Plane, label is string) returns array
 {
     var curves = [];
+    var pieces = [];
 
     if (definition.grouping == ProfileGrouping.SINGLE)
     {
         curves = append(curves, fitSamples(context, id + "fit", definition, samples));
+        pieces = [qCreatedBy(id + "fit", EntityType.EDGE)];
     }
     else
     {
@@ -1386,10 +1469,12 @@ function emitConstructed(context is Context, id is Id, definition is map, sample
                 curves = append(curves, fitSamples(context, runId, definition,
                         subArray(samples, run.from, run.to + 1)));
             }
+
+            pieces = append(pieces, qCreatedBy(runId, EntityType.EDGE));
         }
     }
 
-    nameProfile(context, qCreatedBy(id, EntityType.BODY), suffixedName(definition.outputName, label));
+    gatherIntoWire(context, id, definition, pieces, label);
 
     return curves;
 }

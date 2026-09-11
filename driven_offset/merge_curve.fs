@@ -91,6 +91,12 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
 
         annotation { "Name" : "Warn on arc loss", "Description" : "Report a warning when an input arc or ellipse becomes a spline." }
         definition.warnOnArcLoss is boolean;
+
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print diagnostics", "Description" : "Print what the feature sees at each step to the FeatureScript notices." }
+            definition.debugPrint is boolean;
+        }
     }
     {
         // 1. Both inputs must be exactly one edge each, and not the same edge.
@@ -128,6 +134,11 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         const mergeInfo = describeWireMembership(context, definition.mergeEdge);
         const plan = planMergeTarget(context, seedInfo, mergeInfo);
 
+        if (definition.debugPrint)
+        {
+            printInputs(context, definition, seedInfo, mergeInfo, plan, path);
+        }
+
         // 4. Arc / ellipse inputs become a spline.
         if (definition.warnOnArcLoss && (isArcLike(context, definition.seedEdge) || isArcLike(context, definition.mergeEdge)))
         {
@@ -144,13 +155,37 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
                         "maxControlPoints" : definition.approximationMaxCPs
                     })[0];
         opCreateBSplineCurve(context, id + "new", { "bSplineCurve" : spline });
+        const newEdge = qCreatedBy(id + "new", EntityType.EDGE);
 
         // Now that the path has been consumed it is safe to extract / delete wires.
-        const targetWire = prepareTargetWire(context, id, plan, edges);
+        const targetWire = prepareTargetWire(context, id, plan, edges, definition.debugPrint);
+
+        // opEditCurve wants exactly one wire body and exactly one edge. Say which one is
+        // wrong, and by how much, instead of letting it fail with TOO_MANY_ENTITIES_SELECTED.
+        const wireCount = size(evaluateQuery(context, targetWire));
+        const newEdgeCount = size(evaluateQuery(context, newEdge));
+        const newBodyCount = size(evaluateQuery(context, qCreatedBy(id + "new", EntityType.BODY)));
+        if (definition.debugPrint)
+        {
+            println("[merge] spline: degree " ~ spline.degree ~ ", " ~ size(spline.controlPoints) ~ " control points, periodic "
+                ~ spline.isPeriodic);
+            println("[merge] new curve: " ~ newBodyCount ~ " body(ies), " ~ newEdgeCount ~ " edge(s)");
+            println("[merge] target wire (" ~ plan.mode ~ "): " ~ wireCount ~ " body(ies), "
+                ~ size(evaluateQuery(context, qOwnedByBody(targetWire, EntityType.EDGE))) ~ " edge(s) on it");
+        }
+        if (wireCount != 1)
+        {
+            throw regenError("Target wire resolved to " ~ wireCount ~ " bodies (mode " ~ plan.mode
+                ~ "); expected 1. Turn on Print diagnostics for details.", ["seedEdge"], targetWire);
+        }
+        if (newEdgeCount != 1)
+        {
+            throw regenError("Fitted curve resolved to " ~ newEdgeCount ~ " edges; expected 1.", newEdge);
+        }
 
         opEditCurve(context, id + "edit", {
                     "wire" : targetWire,
-                    "edge" : qCreatedBy(id + "new", EntityType.EDGE),
+                    "edge" : newEdge,
                     "showCurves" : true
                 });
         opDeleteBodies(context, id + "cleanup", { "entities" : qCreatedBy(id + "new", EntityType.BODY) });
@@ -166,8 +201,74 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
         "keepStartDerivative" : true,
         "keepEndDerivative" : true,
         "outputName" : "",
-        "warnOnArcLoss" : true
+        "warnOnArcLoss" : true,
+        "debugPrint" : false
     });
+
+// ============================================================================
+// Diagnostics
+// ============================================================================
+
+/**
+ * Print everything the feature has decided before it modifies the context, so a failure
+ * can be read back as "which fact was wrong": the inputs, their owners, how the two edges
+ * meet, the path, and the plan.
+ */
+function printInputs(context is Context, definition is map, seedInfo is map, mergeInfo is map, plan is map, path is map)
+{
+    println("[merge] seed : " ~ describeEdge(context, definition.seedEdge, seedInfo));
+    println("[merge] merge: " ~ describeEdge(context, definition.mergeEdge, mergeInfo));
+    println("[merge] same wire: " ~ isSameWire(context, seedInfo, mergeInfo));
+
+    // The four end-to-end pairings. constructPath accepted the closest one within
+    // MERGE_CHAIN_TOLERANCE; opExtractWires uses the kernel's own (tighter) tolerance.
+    const seedEnds = evEdgeTangentLines(context, { "edge" : definition.seedEdge, "parameters" : [0, 1] });
+    const mergeEnds = evEdgeTangentLines(context, { "edge" : definition.mergeEdge, "parameters" : [0, 1] });
+    const labels = ["start", "end"];
+    for (var i = 0; i < 2; i += 1)
+    {
+        for (var j = 0; j < 2; j += 1)
+        {
+            const gap = norm(seedEnds[i].origin - mergeEnds[j].origin);
+            println("[merge] gap seed." ~ labels[i] ~ " -> merge." ~ labels[j] ~ ": " ~ roundToPrecision(gap / millimeter, 6) ~ " mm"
+                ~ ", angle " ~ roundToPrecision(angleBetween(seedEnds[i].direction, mergeEnds[j].direction) / degree, 3) ~ " deg");
+        }
+    }
+
+    println("[merge] path: " ~ size(path.edges) ~ " edge(s), closed " ~ path.closed ~ ", flipped " ~ path.flipped
+        ~ ", length " ~ roundToPrecision(evLength(context, { "entities" : qUnion(path.edges) }) / millimeter, 3) ~ " mm");
+    println("[merge] plan: mode " ~ plan.mode ~ ", delete merge wire " ~ plan.deleteMergeWire);
+}
+
+/** One line: curve type, owner body count, wire/sketch membership, edges on the owner. */
+function describeEdge(context is Context, edge is Query, info is map) returns string
+{
+    const owners = size(evaluateQuery(context, qOwnerBody(edge)));
+    const curveDef = evCurveDefinition(context, { "edge" : edge, "simplify" : true });
+    return curveTypeName(curveDef) ~ ", length " ~ roundToPrecision(evLength(context, { "entities" : edge }) / millimeter, 3) ~ " mm"
+        ~ ", owner bodies " ~ owners ~ ", on wire " ~ info.onWire ~ ", edges on owner " ~ info.edgeCount;
+}
+
+function curveTypeName(curveDef) returns string
+{
+    if (curveDef is Line)
+    {
+        return "Line";
+    }
+    if (curveDef is Circle)
+    {
+        return "Circle r=" ~ roundToPrecision(curveDef.radius / millimeter, 3) ~ " mm";
+    }
+    if (curveDef is Ellipse)
+    {
+        return "Ellipse";
+    }
+    if (curveDef is BSplineCurve)
+    {
+        return "BSpline deg " ~ curveDef.degree ~ ", " ~ size(curveDef.controlPoints) ~ " CPs";
+    }
+    return "other";
+}
 
 // ============================================================================
 // Wire membership
@@ -241,7 +342,7 @@ export function planMergeTarget(context is Context, seedInfo is map, mergeInfo i
  * Execute the plan: returns the wire body query that opEditCurve should replace.
  * Runs opExtractWires / opDeleteBodies as needed; call only after the path has been sampled.
  */
-export function prepareTargetWire(context is Context, id is Id, plan is map, edges is Query) returns Query
+export function prepareTargetWire(context is Context, id is Id, plan is map, edges is Query, debugPrint is boolean) returns Query
 {
     if (plan.mode == "IN_PLACE")
     {
@@ -254,6 +355,12 @@ export function prepareTargetWire(context is Context, id is Id, plan is map, edg
         const otherEdges = qSubtraction(qOwnedByBody(plan.seedWire, EntityType.EDGE), edges);
         opExtractWires(context, id + "extractRemainder", { "edges" : otherEdges });
         opExtractWires(context, id + "extract", { "edges" : edges });
+        if (debugPrint)
+        {
+            println("[merge] REBUILD: " ~ size(evaluateQuery(context, otherEdges)) ~ " other edge(s) -> "
+                ~ size(evaluateQuery(context, qCreatedBy(id + "extractRemainder", EntityType.BODY))) ~ " remainder wire(s); seed+merge -> "
+                ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY))) ~ " wire(s)");
+        }
         opDeleteBodies(context, id + "deleteSeedWire", { "entities" : plan.seedWire });
         reportFeatureWarning(context, id, "The seed wire had other edges; the merged curve is a new wire body and the remaining edges were re-extracted. Body identity changed.");
         return qCreatedBy(id + "extract", EntityType.BODY);
@@ -261,6 +368,11 @@ export function prepareTargetWire(context is Context, id is Id, plan is map, edg
 
     // EXTRACT: seed is not on a wire.
     opExtractWires(context, id + "extract", { "edges" : edges });
+    if (debugPrint)
+    {
+        println("[merge] EXTRACT: seed+merge -> " ~ size(evaluateQuery(context, qCreatedBy(id + "extract", EntityType.BODY)))
+            ~ " wire(s) (2 means the kernel did not chain them: gap above kernel tolerance)");
+    }
     return qCreatedBy(id + "extract", EntityType.BODY);
 }
 

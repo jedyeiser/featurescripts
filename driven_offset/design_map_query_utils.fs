@@ -629,18 +629,17 @@ export predicate designMapEntryPredicate(entry is map)
 
         annotation { "Name" : "Rename", "Default" : false, "Description" : "Store the embedded value under a different key." }
         entry.e_rename is boolean;
-
-        if (entry.e_rename)
-        {
-            annotation { "Name" : "Key", "MaxLength" : 256, "Description" : "Key in the design map. Must be an identifier." }
-            entry.e_key is string;
-        }
     }
-    else
+
+    // Declared exactly once: a parameter may not appear in two branches of a precondition.
+    if (entry.e_kind != DesignMapKind.EMBEDDED || entry.e_rename)
     {
         annotation { "Name" : "Key", "MaxLength" : 256, "Description" : "Key in the design map. Must be an identifier." }
         entry.e_key is string;
+    }
 
+    if (entry.e_kind != DesignMapKind.EMBEDDED)
+    {
         if (entry.e_kind == DesignMapKind.QUERY)
         {
             annotation { "Name" : "Selection", "Filter" : EntityType.EDGE || EntityType.FACE || EntityType.VERTEX || EntityType.BODY }
