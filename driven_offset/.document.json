@@ -4,8 +4,10 @@
   "document_name": "driven_offset",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/f61d2c000ab2d1240776342e/w/5b11f323ab31b04cba8b36ef",
-  "last_sync": "2026-09-11T03:07:43.020115+00:00",
+  "last_sync": "2026-09-11T03:27:40.780717+00:00",
   "feature_studios": {
+    "query_varialble_ref": "1f1af148a880ee92bf8b196e",
+    "design_map_query_utils": "2b6b313ac740a0146d5bef7c",
     "merge_curve": "f531550fd26c49415f9c443a",
     "evaluate_profiles": "f46f28f6a6dc77196f302796",
     "map_curve": "ad56c076d5f612974a64b008",
