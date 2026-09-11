@@ -1,135 +1,163 @@
-# Design map: research and design (2026-09-10)
+# Design map: research and design (rev 2, 2026-09-10)
 
-Sources: raw reports 01/03/05/07 (scratchpad), `driven_offset/query_varialble_ref.fs` (Derek Van Allen,
-"ref" below), std 2878 mirror. Line refs are repo-relative. Sibling doc: `research_driven_edge_offset.md`.
+Sources: raw reports 01/05/07 (scratchpad), `driven_offset/Reese_IMPORT_THIS.fs` (LIB),
+`driven_offset/Reese_Extract_Variables.fs` (EV), `driven_offset/query_varialble_ref.fs` (Derek Van Allen, "ref"),
+std 2878 mirror. Line refs are repo-relative. Sibling doc: `research_driven_edge_offset.md` (producer side).
 
 ## 1. Problem
 
-A ski Part Studio carries ~40 "Query Variable" features. Clutter is twofold: (a) 40 rows in the feature tree;
-(b) 40 names in the variable-selection dropdown and the shared variable namespace. A "design map" must give:
-one map variable per design (`#core`) whose keys autocomplete in expression fields; Query entries usable by
-later custom features; a "hold for export" form that survives derive/split/boolean and is readable by an
-external API tool; and no silent failure when an entry breaks.
+A ski Part Studio carries ~40 "Query Variable" features: 40 tree rows, 40 dropdown names, one flat namespace.
+A "design map" must give one map variable per design (`#core`) whose keys autocomplete in expression fields,
+Query entries usable by later custom features and (a few) native dialogs, and no silent failure.
+Scope: the map only has to work INSIDE the Part Studio that wrote it. Derive survival and cross-studio use
+are out of scope (see "Later" at the end of sec 2).
 
 ## 2. Verified facts the design rests on
 
 | # | Fact | Evidence |
 |---|------|----------|
-| 1 | `setVariable` stores any value (array, map); a map may hold Query and ValueWithUnits | std/context.fs:250-279; Reese_Test_Feature.fs:15-28 (Query round-trips getVariable -> setQueryVariable); std/variable.fs:382-385 |
-| 2 | `getVariable` throws if absent; 3-arg overload returns default | std/context.fs:284-307 |
-| 3 | Ordinary and query variable namespaces are disjoint; each feature rejects the other's names | std/variable.fs:810-823; std/queryVariable.fs:519-532 |
+| 1 | `setVariable` stores any value (array, map); a map may hold Query and ValueWithUnits | std/context.fs:250-279; Reese_Test_Feature.fs:15-28; std/variable.fs:382-385 |
+| 2 | `getVariable` throws if absent; 3-arg overload returns default; `try silent(expr)` yields undefined on throw | std/context.fs:284-307; EV:294 |
+| 3 | Ordinary and query variable namespaces are disjoint; each std feature rejects the other's names | std/variable.fs:810-823; std/queryVariable.fs:519-532 |
 | 4 | `#name` works only in expression-typed params; selection params pick query variables from the "Variable selection" dropdown | std/context.fs:288-289; std/variable.fs:127-131; std/queryVariable.fs:303 |
 | 5 | Variable/QV name regex `[a-zA-Z_][a-zA-Z_0-9]*`, max 10000 chars (so `core.bottom` is not a QV name) | std/variable.fs:798-805 |
 | 6 | Map-variable key autocomplete: `#core.thickness` / `#core["thickness"]` | https://forum.onshape.com/discussion/31466/improvements-to-onshape-august-7-2026 |
 | 7 | Custom features can reference Variable Studios directly | https://forum.onshape.com/discussion/31629/improvements-to-onshape-august-28-2026 |
 | 8 | `getProperty` cannot be called on the current context inside a custom feature (select-by-NAME impossible) | std/properties.fs:7, :71-76 |
-| 9 | Attributes survive split (both pieces), pattern (each copy), boolean merge (both kept; same-name clash -> primary wins) | std/attributes.fs:38-43 |
-| 10 | Derive keeps attributes; only sheet-metal association attrs are stripped | std/derive.fs:138-145 |
-| 11 | Variables do not cross derive (nothing in std/derive.fs copies context variables) | std/derive.fs (absence); raw 01 sec Limitations 6 |
-| 12 | Robust freeze = per-entity `qUnion([transient, startTrackingIdentityFromOp])`; std QV feature uses it when Evaluate-on-use is off | std/feature.fs:643-652; std/queryVariable.fs:402-406 |
-| 13 | `evaluateQuery` returns transient queries valid only until the context changes | std/query.fs:2162-2167 |
-| 14 | Regen is tree-position based: the changed feature and everything after re-runs | https://cad.onshape.com/FsDoc/debugging-in-feature-studios.html |
-| 15 | Array-item inner parameter names must be unique across the whole feature; arrays cannot nest | https://cad.onshape.com/FsDoc/uispec.html; ref:457-465 (`addQ` prefix) |
-| 16 | Type tags are bound to the declaring module in the import graph; `is EmbeddedVariables` across different library elements is unverified | https://cad.onshape.com/FsDoc/relational.html; raw 01 FOLLOW-UP 1 |
-| 17 | `@setVariable` / `@setQueryVariable` accept arbitrary names; only the std features validate | https://forum.onshape.com/discussion/17100/any-reason-we-cant-use-other-punctuation-in-variable-names; std/context.fs:260-263 |
-| 18 | `common.fs` (2878) does NOT re-export `queryVariable.fs`; import it explicitly for `setQueryVariable` | raw 01 FOLLOW-UP 2; ref:30 imports attributes.fs separately too |
+| 9 | Robust freeze = per-entity `qUnion([transient, startTrackingIdentityFromOp])`; std QV feature uses it when Evaluate-on-use is off | std/feature.fs:643-652; std/queryVariable.fs:402-406 |
+| 10 | `evaluateQuery` returns transient queries valid only until the context changes | std/query.fs:2162-2167 |
+| 11 | Regen is tree-position based: the changed feature and everything after re-runs | https://cad.onshape.com/FsDoc/debugging-in-feature-studios.html |
+| 12 | Array-item inner parameter names must be unique across the whole feature; arrays cannot nest | https://cad.onshape.com/FsDoc/uispec.html; ref:457-465 (`addQ` prefix) |
+| 13 | Type tags are bound to the declaring module in the import graph; `is EmbeddedVariables` across different library elements is unverified -> gate on the predicate, never on the tag | https://cad.onshape.com/FsDoc/relational.html; raw 01 FOLLOW-UP 1; EV:295 vs LIB:151 |
+| 14 | `@setVariable` / `@setQueryVariable` accept any name; only the std features validate. A hidden `toString(id)` slot is legal | https://forum.onshape.com/discussion/17100/any-reason-we-cant-use-other-punctuation-in-variable-names; std/context.fs:260-263; LIB:319 |
+| 15 | `toString(Id)` renders `[ F... ]`, which fails the regex in fact 5 -> unreachable from `#`; visibility in the variables table UNVERIFIED | std/string.fs:26-38; std/variable.fs:802 |
+| 16 | `common.fs` (2878) does NOT re-export `queryVariable.fs`; import it explicitly for `setQueryVariable`. It does export feature.fs, featureList.fs, variable.fs | std/common.fs:16,17,63 (no queryVariable line); raw 01 FOLLOW-UP 2 |
+| 17 | A FeatureList is a map Id -> function; only `keys()` is needed to address sources | std/featureList.fs:15-34; EV:292 |
 
-## 3. Query Variable + (Derek Van Allen), in brief
+Later, if needed (NOT built now): derive keeps attributes and strips only sheet-metal ones (std/derive.fs:138-145);
+attributes survive split/pattern/boolean (std/attributes.fs:38-43); variables never cross a derive. The known
+route for derive/API use is one attribute per key (`dm:<map>:<key>`) on the evaluated entities (raw 07 sec 2).
 
-Architecture. One feature = one query variable. `SelectionType` enum (ref:43-95, 25 cases) drives a
-~200-line predicate (ref:246-454); an array of "additional queries" reuses the same predicate with every
-field prefixed `addQ` (ref:457-465) because inner names must be unique (fact 15). Body (ref:800-823):
-`mapSelectionTypeToQuery` (ref:874-906) on the root, then a left fold over the array applying
-`qUnion`/`qSubtraction`/`qIntersection` per item; if not evaluate-on-use, `qUnion(makeRobustQueriesBatched)`;
-`setQueryVariable`. `checkQueryVariableName` (ref:1419-1432) enforces the regex and namespace disjointness.
-Derek's addition (ref:826-862): tag every evaluated entity with attribute `queryVariableName` = array of QV
-names (read-modify-write per entity); `LOAD_FROM_DERIVE` (ref:1444-1527) rebuilds QVs from a derive feature
-by bucketing entities per name and `setQueryVariable(name, qUnion(transients))`.
+## 3. Reese's Extract Variables and Derek's Query Variable +, in brief
 
-Keep: the dispatcher shape (enum -> Query), the boolean fold, the freeze branch, the name check, the
-`addQ` remap (ref:1332-1346), and the attribute-tag idea.
+Reese, producer (LIB). A feature calls `embedVariableMap(context, id, m)` (LIB:313-320): precondition
+`canBeEmbeddedVariables` (LIB:151-185: exactly `{ "variable" : {...}, "query" : {...} }`, nonempty string keys,
+Queries only under `query`), then `setVariable(context, toString(id), m as EmbeddedVariables)` (LIB:319).
+`embedFeatureDefinition` (LIB:338-358) splits a definition map by `is Query`. Descriptors `extractableVariable`
+/ `extractableQuery` (LIB:214-295) carry description and DebugColor; plain values are also legal.
+Reese, consumer (EV). One feature, FeatureList `sourceFeature` (EV:43-44). For each source id:
+`try silent(getVariable(context, toString(featureId)))`, gate `is EmbeddedVariables && canBeEmbeddedVariables`
+(EV:294-296). Merge (EV:283-319): variable keys first-wins with a warning listing duplicates, query keys
+`qUnion`. Keys are chosen by two arrays (`variableKey`, `queryKey`) or "Get all" booleans (EV:56-62,
+:104-116); "Add all" buttons in editing logic REPLACE the arrays with every available key (EV:244-269).
+Publish: variables into one map `setVariable(prepend_mapName, ...)` (EV:179-181) or individually; queries via
+`setQueryVariable(name, desc, qUnion(evaluateQuery(context, q)))` (EV:422-424) -- frozen transients, no
+identity tracking. "Print all" lists `[Variable] key -- desc` (EV:387-402). Missing keys -> one warning
+(EV:207-209).
 
-Drop: evaluating selection types (SIZE_COMPARISON, MATCHING_BODIES, TOLERANT_PARALLEL,
-POSITIONAL_DIRECTIONAL: ev*-based, 100-150 lines each, frozen at build time anyway);
-the single-array `queryVariableName` attribute (same-name attrs collide on boolean merge, fact 9, and
-needs per-entity RMW); LOAD_FROM_DERIVE's frozen-transient QVs (no identity tracking, ref:1516-1517);
-the second predicate copy (the composer lives inside one array, so one prefix suffices).
+Derek, Query Variable + (ref). One feature = one query variable. `SelectionType` enum (ref:43-95) drives a
+~200-line predicate (ref:246-454); "additional queries" reuse it with every field prefixed `addQ`
+(ref:457-465, fact 12). Body (ref:800-823): dispatcher `mapSelectionTypeToQuery` (ref:874-906), left fold of
+`qUnion`/`qSubtraction`/`qIntersection`, then `qUnion(makeRobustQueriesBatched)` unless evaluate-on-use,
+then `setQueryVariable`. `checkQueryVariableName` (ref:1419-1432) copies the private std check.
 
-Lacks for skis: select-by-NAME (impossible, fact 8) -> use attributes set by the producer;
-`qCreatedBy(id + "profile")` sub-ids (evaluate_profiles.fs:344, :435) need a FeatureList pick plus a
-sub-id string; no `qHasAttribute*` selection type at all.
+Keep. From Reese: the producer contract (hidden `toString(id)` variable, `variable`/`query` split, optional
+descriptors, `embedVariableMap` + `embedFeatureDefinition`), the FeatureList read with `try silent`, the
+merge rules and their warnings, "Print all", the "Add all" buttons. From Derek: `checkQueryVariableName`,
+the std freeze branch (fact 9), and -- only if the composer is built (sec 9) -- the dispatcher shape, the
+boolean fold, and the `addQ` remap (ref:1332-1346).
+
+Drop. Typed gate `is EmbeddedVariables` (fact 13; predicate only). Reese's `qUnion(evaluateQuery)` freeze
+(fact 10; use fact 9). Extract Variables as a separate feature (absorbed into Design map). Reese's
+`prepend`/`asMap`/individual-variable modes (one map, always). Derek's ev*-evaluating selection types
+(SIZE_COMPARISON, MATCHING_BODIES, TOLERANT_PARALLEL, POSITIONAL_DIRECTIONAL). `LOAD_FROM_DERIVE` and the
+`queryVariableName` attribute (out of scope). The second `addQ` predicate copy (one array suffices).
 
 ## 4. Options considered
 
-| Option | Shape | Tree | Namespace | Derive-safe | Verdict | Reason |
-|--------|-------|------|-----------|-------------|---------|--------|
-| A | One "Design map" feature per design, array of entries, writes `#core` | 1/map | 1 var + opt. QVs | via per-key attrs | ADOPT | Smallest tree and namespace; one place to rename; regen cost equal to today (fact 14) |
-| B | One "Map entry" feature per entry, read-modify-write `#core` | 1/entry (= today) | 1 var | per entry | REJECT | Same clutter as today; a root writing `{}` wipes earlier entries; order-sensitive |
-| C | Producers embed maps; one "Publish" feature per map | 0 + 1/map | 1 private var/producer | producer attrs | REJECT | Requires touching every producer and a FeatureList-driven publish; discovery breaks on reorder/suppress |
-| Reese | Typed `EmbeddedVariables` in `toString(id)` variables + Extract feature | 0 + 1 | private vars + published | none (variables only) | REJECT | Type-tag risk across elements (fact 16); silent `try` on missing sources; evaluateQuery freeze without tracking; FS 3044 import breakage |
+| Option | Shape | Verdict | Reason |
+|--------|-------|---------|--------|
+| A | One "Design map" feature per design; array of manually selected entries; writes `#core` | FOLD IN | Manual entries are still needed for geometry no producer names; but re-selecting producer outputs by hand is the clutter we are removing |
+| B | One "Map entry" feature per entry, read-modify-write `#core` | REJECT | Same tree count as today; a root writing `{}` wipes earlier entries; order-sensitive |
+| C | Producers embed Reese-style; one Design map feature per design reads them, adds manual entries, writes `#core` | ADOPT | Zero re-selection for producer outputs; one tree row and one variable per design; producers already know their outputs (research_driven_edge_offset.md) |
+| D | Attributes `dm:<map>:<key>` as the primary carrier, `qHasAttribute` consumers (previous decision) | DEFER | Only pays off across derive/API, which is out of scope; costs a kernel tag per key per regen and a second identity system |
 
-Decision (fixed). One custom feature "Design map" per design, placed after the geometry it names.
-Entries are `{key, kind, selection|value, publish}`. Each QUERY entry is robust-frozen, its entities tagged
-with attribute `dm:<map>:<key>`, and optionally published as query variable `<map>_<key>`. The feature writes
-one plain map variable `{"schema": "designMap/1", ...}` -- no type tag, no FeatureList discovery, no publish
-feature, no Reese library. Consumers name the key: `qHasAttribute("dm:core:bottom")` (symbolic, derive-safe,
-API-safe) or `getVariable(context, "core", {})["thickness"]`. Scalars that must cross studios go to a
-Variable Studio (fact 7), not to attribute-hosted anchor bodies.
+Decision (fixed). Option C with A's manual entries folded in. Producers (driven_edge_offset, evaluate_profiles,
+...) call `embedVariableMap` from `design_map_query_utils.fs` with plain values; queries stay symbolic. One
+"Design map" feature per design sits after its producers, reads their hidden maps, merges, adds manual
+entries, writes one plain map variable `{ "schema" : "designMap/1", ... }` (no type tag), and publishes the
+few Query entries the user marks `publish` as query variables `<map>_<key>` with the std robust freeze.
+Consumers read keys by name (sec 6). No attributes, no derive loader, no separate publish feature.
 
-## 5. Design map feature spec
+## 5. Design map feature spec (`design_map.fs`)
+
+Imports: `onshape/std/common.fs`, explicit `onshape/std/queryVariable.fs` (fact 16), `design_map_query_utils.fs`.
 
 ### Parameters
 
 | Param | FS type / annotation | Notes |
 |-------|----------------------|-------|
-| `mapName` | `is string`, Name "Map", MaxLength 256 | must pass `verifyVariableName` (regex + not a QV name), std/variable.fs:808-823 |
-| `description` | `is string`, Default "" | stored on the variable |
-| `entries` | `is array`, Name "Entries", Item name "entry", Item label template `#e_key` | do NOT mark "Driven query" (removes the add button) |
-| `e_key` | `is string` | identifier; unique within the feature; `schema` reserved |
-| `e_kind` | `is DesignMapKind` | `enum DesignMapKind { QUERY, LENGTH, ANGLE, NUMBER, ATTRIBUTE_REF, REFERENCE }` |
-| `e_selection` | `is Query`, shown when kind == QUERY; Filter `AllowMeshGeometry.YES && AllowFlattenedGeometry.YES` | raw selection; composer helpers (sec 7) may replace this with kind-dispatched sub-params |
-| `e_length` / `e_angle` / `e_number` | `isLength(..., LENGTH_BOUNDS)` / `isAngle(..., ANGLE_360_BOUNDS)` / `isReal(..., bounds)` | typed, mirrors std/variable.fs:184-198; avoids the untested free-form `isAnything` in arrays (Risk 1) |
-| `e_ref` | `is string`, shown when kind == REFERENCE | another key of this map, must precede this entry |
-| `e_publish` | `is boolean`, Default false, shown when kind in {QUERY, ATTRIBUTE_REF, REFERENCE-to-query} | creates QV `<map>_<key>` |
-| `printKeys` | `is boolean`, Default false | Reese UX: `println` every key, kind, and entity count |
-| `showSelection` | `is boolean`, Default true | `addDebugEntities` on the union of Query entries |
+| `mapName` | `is string`, Name "Map", MaxLength 256 | `verifyVariableName(context, mapName, "mapName")` (regex + not a QV name), std/variable.fs:808-823 |
+| `description` | `is string`, Default "" | stored on the map variable and on published QVs lacking a descriptor description |
+| `sources` | `is FeatureList`, Name "Sources" | producers; only `keys()` used (fact 17); may be empty |
+| `printKeys` | `is boolean`, Default false, Name "Print keys" | Reese "Print all": `println("[Variable] key -- desc")` / `[Query]` per available key, plus a warning to turn it off (EV:145-146, :387-402) |
+| `getAll` | `is boolean`, Default false, Name "Get all embedded" | every embedded key not claimed by an entry lands in the map under its own name; nothing is published |
+| `entries` | `is array`, Name "Entries", Item name "entry", Item label template `#e_key` | do NOT mark "Driven query" (removes the add button, raw 07 sec 1a) |
+| `e_key` | `is string`, Name "Key" | output key; identifier (fact 5); unique within the feature; `schema` reserved |
+| `e_kind` | `is DesignMapKind`, Default EMBEDDED | `enum DesignMapKind { EMBEDDED, QUERY, LENGTH, ANGLE, NUMBER, REFERENCE }` (utils) |
+| `e_sourceKey` | `is string`, shown when kind == EMBEDDED | embedded key to take; the "Add all" buttons set it equal to `e_key` (rename = edit `e_key`) |
+| `e_selection` | `is Query`, shown when kind == QUERY, Filter `AllowMeshGeometry.YES && AllowFlattenedGeometry.YES` | raw selection; the optional composer (sec 7) may replace it |
+| `e_length` / `e_angle` / `e_number` | `isLength(..., LENGTH_BOUNDS)` / `isAngle(..., ANGLE_360_BOUNDS)` / `isReal(..., bounds)` | typed like std/variable.fs:184-198; free-form `isAnything` inside an array is untested (sec 8 test 1) |
+| `e_ref` | `is string`, shown when kind == REFERENCE | another key of this map, already in `result` (earlier entry or `getAll`) |
+| `e_publish` | `is boolean`, Default false | creates QV `<map>_<key>`; ignored with a warning when the value is not a Query |
+| `addAllVariables` / `addAllQueries` | `isButton(...)`, Name "Add all variables" / "Add all queries" | editing logic (below) |
+
+Editing logic (`designMapEditLogic`, "Editing Logic Function"): acts only on the two buttons (EV:248-249).
+Reads the merged source map from the pre-feature context exactly as the body does, then APPENDS one
+`{ "e_key" : k, "e_kind" : EMBEDDED, "e_sourceKey" : k }` per available key whose `e_sourceKey` is not already
+in `entries`. Appending (not Reese's replace, EV:255-268) keeps manual and renamed entries.
 
 ### Body algorithm
 
-1. `verifyVariableName(context, mapName, "mapName")`; start `result = {"schema": "designMap/1"}`.
-2. For each entry `i`: validate `e_key` (regex via `verifyVariableNameIsValid`, not `schema`, not already in
-   `result`) -- error names `faultyArrayParameterId("entries", i, "e_key")` (std/error.fs:504).
-3. Dispatch on `e_kind` (helper in design_map_query_utils.fs):
-   - QUERY: `sel = e_selection`; empty -> error. `q = qUnion(makeRobustQueriesBatched(context, sel))`.
-     `setAttribute({entities: q, name: "dm:"~map~":"~key, attribute: {map, key, v: 1}})`.
-   - ATTRIBUTE_REF: `q = qHasAttribute("dm:"~map~":"~key)` kept symbolic (the attribute is the identity, set
-     by the producer per `research_driven_edge_offset.md`); empty -> error; no re-tag.
-   - REFERENCE: `result[e_ref]` must exist -> value copied (Query or scalar); else error on `e_ref`.
-   - LENGTH / ANGLE / NUMBER: value with units as typed.
-4. If `e_publish` and the value is a Query: `qvName = map ~ "_" ~ key`; copied `checkQueryVariableName`
-   (ref:1419-1432); `setQueryVariable(context, qvName, description, q)`.
-5. `result[key] = value`.
-6. After the loop: `setVariable(context, mapName, result, description)`; optional `println` of keys;
-   `setHighlightedEntities` / `addDebugEntities` on the union of Query values.
+1. `verifyVariableName`; `available = readSources(context, id, definition.sources)` (utils): per id,
+   `try silent(getVariable(context, toString(featureId)))`; undefined or `!canBeEmbeddedVariables` -> warning
+   naming the source (suppressed, deleted, or not a producer), skip. Normalize descriptors to
+   `{ value, description }` on read (copy of EV:447-464). Merge: variable keys first-wins, duplicates collected;
+   query keys `qUnion` of the symbolic values (EV:283-319).
+2. `printKeys` -> println every available key with description; warning to turn it off.
+3. `result = { "schema" : "designMap/1" }`. Per entry `i`: `verifyVariableNameIsValid(e_key, faultyArrayParameterId("entries", i, "e_key"))`;
+   `schema` or already present -> error.
+4. Kind dispatch (`designMapEntryValue`, utils) -> `{ value, description }` or undefined:
+   EMBEDDED: `available.variable[e_sourceKey]` else `available.query[e_sourceKey]` else undefined (-> missing list).
+   QUERY: `e_selection`. LENGTH/ANGLE/NUMBER: the typed value. REFERENCE: `result[e_ref]` else error on `e_ref`.
+5. Query value that evaluates empty -> error on the entry (`e_selection` or `e_sourceKey`).
+6. `e_publish && value is Query`: `qvName = mapName ~ "_" ~ e_key`; `checkQueryVariableName(context, qvName)`;
+   `setQueryVariable(context, qvName, description, qUnion(makeRobustQueriesBatched(context, value)))` (fact 9).
+7. `result[e_key] = value` -- the Query stays SYMBOLIC in the map; only the QV is frozen.
+8. `getAll`: every available key not yet in `result` and not consumed as an `e_sourceKey` -> `result[key] = value`.
+9. Warnings: missing embedded keys (one message listing them, EV:207-209); duplicate variable keys across
+   sources (first source wins, EV:212-215). Then `setVariable(context, mapName, result, description)`.
 
-### Schemas and naming
+### Schema, naming, merge, errors
 
-- Attribute: name `"dm:<map>:<key>"`, value `{ "map" : "<map>", "key" : "<key>", "v" : 1 }`. One name per key so
-  boolean merges keep all tags (fact 9). Never store a Query in an attribute.
-- Map: `{ "schema" : "designMap/1", "<key>" : Query | ValueWithUnits | number, ... }`. Keys are identifiers so
-  `#core.thickness` autocompletes (fact 6). No `as` type tag.
-- Query variable name: `<map>_<key>`. Distinct string from `<map>`, so fact 3 does not bite.
-
-### Error policy
-
-Loud, no `try`. Errors: invalid map name; invalid/duplicate/reserved key; QUERY or ATTRIBUTE_REF resolving to
-nothing; REFERENCE to an unknown or later key; publish name already an ordinary variable. One bad entry fails
-the whole feature and every `#core.*` reader -- intended (raw 07 sec 1b).
-
-### Per-entry loop
+- Map: `{ "schema" : "designMap/1", "<key>" : Query | ValueWithUnits | number | map, ... }`; keys are identifiers
+  so `#core.thickness` autocompletes (fact 6); no `as` tag.
+- Producer map (LIB:142-177): `{ "variable" : { key : value | descriptor }, "query" : { key : Query | descriptor } }`
+  in variable `toString(id)`; producers may pass plain values (descriptors optional, sec 9 Q4).
+- QV name `<map>_<key>` (fact 5; distinct string from `<map>`, so fact 3 does not bite).
+- Merge: variable first-wins + warning; query `qUnion`; an entry key beats a `getAll` key; entries are ordered
+  so REFERENCE can only look backwards.
+- Errors (feature fails, every `#core.*` reader fails -- intended, raw 07 sec 1b): invalid map name; invalid,
+  duplicate, or reserved key; Query entry selecting nothing; REFERENCE to unknown key; publish name held by an
+  ordinary variable. Warnings only: unreadable source; missing embedded key; duplicate keys across sources;
+  publish on a non-Query. No `try` beyond the one `try silent` read.
 
 ```
+// design_map.fs body excerpt; readSources / designMapEntryValue / checkQueryVariableName from utils
+var available = readSources(context, id, definition.sources);   // warns per unreadable source
 var result = { "schema" : "designMap/1" };
+var missingKeys = [];
+var consumed = [];
 for (var i = 0; i < size(definition.entries); i += 1)
 {
     const e = definition.entries[i];
@@ -139,28 +167,27 @@ for (var i = 0; i < size(definition.entries); i += 1)
     {
         throw regenError("Key '" ~ e.e_key ~ "' is reserved or duplicated.", [keyParam]);
     }
-    const attrName = "dm:" ~ definition.mapName ~ ":" ~ e.e_key;
-    var value = designMapEntryValue(context, definition.mapName, e, result); // utils: kind dispatch
-    if (value is Query)
+    const resolved = designMapEntryValue(context, e, available, result, i);   // { value, description } | undefined
+    if (resolved == undefined)
     {
-        if (isQueryEmpty(context, value))
-        {
-            throw regenError("Entry '" ~ e.e_key ~ "' selects nothing.", [faultyArrayParameterId("entries", i, "e_selection")]);
-        }
-        if (e.e_kind == DesignMapKind.QUERY)
-        {
-            value = qUnion(makeRobustQueriesBatched(context, value));
-            setAttribute(context, { "entities" : value, "name" : attrName, "attribute" : { "map" : definition.mapName, "key" : e.e_key, "v" : 1 } });
-        }
-        if (e.e_publish)
-        {
-            const qvName = definition.mapName ~ "_" ~ e.e_key;
-            checkQueryVariableName(context, qvName);
-            setQueryVariable(context, qvName, definition.description, value);
-        }
+        missingKeys = append(missingKeys, e.e_sourceKey);
+        continue;
     }
-    result[e.e_key] = value;
+    if (resolved.value is Query && isQueryEmpty(context, resolved.value))
+    {
+        throw regenError("Entry '" ~ e.e_key ~ "' selects nothing.", [faultyArrayParameterId("entries", i, "e_selection")]);
+    }
+    if (e.e_publish && resolved.value is Query)
+    {
+        const qvName = definition.mapName ~ "_" ~ e.e_key;
+        checkQueryVariableName(context, qvName);
+        setQueryVariable(context, qvName, resolved.description, qUnion(makeRobustQueriesBatched(context, resolved.value)));
+    }
+    result[e.e_key] = resolved.value;   // symbolic Query or scalar
+    consumed = append(consumed, e.e_sourceKey);
 }
+result = addUnclaimed(result, available, consumed, definition.getAll);   // step 8
+reportMissing(context, id, missingKeys, available.duplicateKeys);        // step 9 warnings
 setVariable(context, definition.mapName, result, definition.description);
 ```
 
@@ -168,70 +195,67 @@ setVariable(context, definition.mapName, result, definition.description);
 
 | Consumer | Pattern | Notes |
 |----------|---------|-------|
-| Custom feature, geometry | `qHasAttribute("dm:core:bottom")` | symbolic; valid in the same studio, after derive, and via API. Preferred. |
-| Custom feature, scalar | `getVariable(context, "core", {})["thickness"]` | default `{}` then check key -> clear error; never `definition.x is Query` for map entries |
-| Custom feature, frozen Query | `getVariable(context, "core")["bottom"]` | robust-frozen at the Design map's tree position; same studio only |
-| Native dialog (Extrude, Fillet) | pick `core_bottom` from the Variable selection dropdown | only entries with `e_publish`; expression fields get `#core.thickness` |
-| Derived studio | `qHasAttribute("dm:core:bottom")` works as-is | optional "Design map loader": per entity created by the derive, `getAllAttributes` (std/attributes.fs:152), bucket `dm:*` names, rebuild `#core` + `core_*` (generalises ref:1444-1527, but with `makeRobustQueriesBatched`) |
-| External API | one `evalFeatureScript` returning `getVariable(context, "core")` for scalars plus, per `dm:*` attribute, `evaluateQuery` transient ids to correlate with body-details / tessellation ids | attribute route is the Onshape-recommended one: https://forum.onshape.com/discussion/6912/how-to-access-data-written-to-parts-with-setattribute |
+| Expression field (Variable, Extrude depth, ...) | `#core.thickness` | scalar keys only; autocompletes (fact 6) |
+| Custom feature, geometry | `getVariable(context, "core").bottom` | symbolic Query, evaluated where used (fact 1); throws if the map is absent -- loud, preferred |
+| Custom feature, tolerant | `getVariable(context, "core", {})["thickness"]` | default `{}`, then check the key and raise a clear error; never `definition.x is Query` for map entries |
+| Native dialog (Fillet, Extrude) | pick `core_bottom` from the Variable selection dropdown | only entries with `e_publish`; robust-frozen at the Design map's tree position |
+| External API tool (same studio) | one `evalFeatureScript` returning `getVariable(context, "core")`; for Query entries, `evaluateQuery` to transient ids in the same script | transient ids correlate with body-details / tessellation ids of that microversion only |
 
-## 7. design_map_query_utils.fs scope
+## 7. `design_map_query_utils.fs` scope
 
-Belongs there (all `export`):
-- `enum DesignMapKind` and the `entries` array predicate (so `design_map.fs` stays a thin feature).
-- `designMapEntryValue(context, mapName, entry, resultSoFar)`: kind dispatch (sec 5 step 3), including
-  REFERENCE-to-other-key lookup and the ATTRIBUTE_REF `qHasAttribute` construction.
-- `designMapAttributeName(mapName, key)` and `tagDesignMapEntities` / `untagDesignMapEntities`
-  (`setAttribute` with `undefined` unsets, std/attributes.fs:60-62).
-- `checkQueryVariableName` copy (ref:1419-1432; std's is private).
-- Composer (only if the user wants it, sec 9 Q3): per-item `booleanOperation is BooleanOperationType`
-  + left fold (ref:802-815 shape), a reduced `SelectionType` {SELECTION, CREATED_BY, OWNED_BY, ATTRIBUTE,
-  REFERENCE, GEOMETRY, EDGE_CONVEXITY} dispatcher, and the `addQ`-style remap (ref:1332-1346) so one
-  predicate serves the operand list. This makes qUnion/qSubtraction/qIntersection "easier" without a
-  second feature: the composer is the `kind = QUERY` entry's selection helper, not a feature of its own.
+Belongs there (all `export`, FS 3070, imports common.fs + queryVariable.fs):
+- Embed library, ported from LIB: `embedVariableMap`, `embedFeatureDefinition`, `extractableVariable`,
+  `extractableQuery`, `canBeEmbeddedVariables`, `canBeExtractableVariable`, `canBeExtractableQuery`,
+  `canBeEmbeddedEntry`; the type declarations may stay for producer-side diagnostics but no consumer path
+  tests a tag.
+- `enum DesignMapKind`, the `entries` array predicate, `readSources`, `normalizeEmbeddedValue` (EV:447-464),
+  `designMapEntryValue` (kind dispatch, sec 5 step 4), `addUnclaimed`, `checkQueryVariableName` (ref:1419-1432).
+- Optional composer (sec 9 Q3): reduced `SelectionType` {SELECTION, CREATED_BY, OWNED_BY, GEOMETRY,
+  EDGE_CONVEXITY}, `mapSelectionTypeToQuery`, per-operand `BooleanOperationType` + left fold (ref:802-815),
+  `addQ` remap (ref:1332-1346) -- as the kind = QUERY selection helper, never a feature of its own.
 
-Not there: any ev*-based selection type; anything that calls `setVariable`/`setQueryVariable` (the feature
-owns side effects); FeatureList discovery; Reese typed maps; a derive loader (separate feature if ever).
+Not there: `setVariable` / `setQueryVariable` / `reportFeatureWarning` calls (the feature owns side
+effects); ev*-based selection types; attribute tagging; a derive loader; anything from `Reese_Test_Feature.fs`.
 
 ## 8. Risks and Onshape tests
 
-1. Typed value fields inside an array item. Setup: minimal feature with `entries[]` holding `isLength` /
-   `isAngle` / `isReal` (and one `isAnything` variant). Observe: type `12 mm`, `#foo`, `{a:1}`; `println`
-   and `setVariable`; read back with `#m.k` in a Variable. Retires: Risk 1 (units round-trip inside array
-   items; whether `isAnything` is usable at all or typed kinds are mandatory).
-2. Attribute survival through ski downstream ops. Setup: tag core faces/edges `dm:core:bottom`; then fillet,
-   boolean-union with sidewall, split, mirror, derive into a fresh studio. Observe:
-   `println(size(evaluateQuery(context, qHasAttribute("dm:core:bottom"))))` after each op. Retires: Risk 2
-   (attribute loss on downstream ops; fact 9/10 vs forum reports of loss).
-3. Regen cost and blast radius. Setup: Design map with 40 entries, two `#a`/`#b` readers, one slow feature
-   after it. Observe: edit one entry; feature-list performance readout shows what re-ran; break one entry
-   and confirm the whole map errors loudly. Retires: Risk 3 (no hidden short-circuit assumed; failure mode
-   is understood).
-4. Dropdown pickability (raw 05 FOLLOW-UP 2). Setup: Variable `core` Any = `{ "t" : 12 mm }`; QV `bottom`;
-   Variable `m` = `{ "q" : #bottom }`; publish `core_bottom`, `core_top`, `sidewall_x`. Observe: open Fillet
-   -> Variable selection dropdown: is `m`/`m.q` listed (expected no); are `core_*` listed and in what order
-   (alphabetical vs tree); does `#bottom` appear in a length-field autocomplete (expected no). Retires:
-   whether map entries can ever be picked natively (expected: only published QVs) and whether 40 published
-   QVs make the dropdown unusable (if so cap publish at ~10).
-5. Namespace collision. Setup: ordinary variable `core_bottom` exists; publish entry `bottom` of map `core`.
-   Observe: copied `checkQueryVariableName` throws `QUERY_VARIABLE_NAME_ALREADY_USED_IN_NON_QUERY_VARIABLE`.
-   Retires: fact 3 enforcement in the custom feature.
+1. Expression field inside an array item (raw 07 risk 1). Setup: throwaway feature, `entries[]` with
+   `isLength` / `isAngle` / `isReal` and one `isAnything`. Observe: type `12 mm`, `#foo`, `{ "a" : 1 }`;
+   `println`, `setVariable`, read `#m.k` in a Variable. Retires: whether typed kinds are mandatory.
+2. Hidden `toString(id)` variable. Setup: producer calls `embedVariableMap`. Observe: variables table /
+   `#` autocomplete in an expression field. Retires: fact 15 (is the slot invisible, as LIB:299-301 intends?).
+3. Predicate-only gate. Setup: producer imports utils from this document; consumer too; embed with and
+   without `as EmbeddedVariables`. Observe: Design map reads both; `printKeys` lists them. Retires: fact 13
+   as a design property (no tag test on the consumer path).
+4. Suppressed / deleted producer in `sources`. Setup: suppress one producer, delete another. Observe: Design
+   map yields a warning naming the source, the rest of the map still writes. Retires: warning-not-error policy.
+5. Dropdown pickability (raw 05 FOLLOW-UP 2, exact test). Setup: Variable `core` Any = `{ "t" : 12 mm }`;
+   QV `bottom`; Variable `m` = `{ "q" : #bottom }` (does the expression accept `#bottom`?). Observe: open
+   Fillet -> Variable selection dropdown: is `m` / `m.q` listed (expected no); can `#m.q` be typed in the
+   selection box; confirm `#bottom` absent from a length-field autocomplete. Retires: map Query entries are
+   never pickable natively -> `e_publish` is the only route.
+6. QV dropdown ordering. Setup: publish `core_bottom`, `core_top`, `sidewall_x`, then 40 names. Observe:
+   order (alphabetical vs tree) and usability. Retires: publish cap (if unusable, cap at ~10).
+7. Regen blast radius (raw 07 risk 3a). Setup: Design map with 40 entries, `#a`/`#b` readers, one slow
+   feature after it. Observe: edit one entry; feature-list performance readout shows what re-ran; break one
+   entry and confirm the whole map errors loudly. Retires: no hidden short-circuit assumed (fact 11).
+8. Freeze survival. Setup: publish `core_bottom` via `makeRobustQueriesBatched`; downstream fillet, split, and
+   move-face on the tagged body. Observe: `core_bottom` in a later Fillet still resolves. Retires: fact 9
+   tracking through identity-preserving edits (vs Reese's EV:423 transient freeze, which is expected to fail).
 
-## 9. Open decisions for the user
+## 9. Open decisions
 
-1. Map granularity: one Design map per design (`core`, `sidewall`, `topsheet`) vs per subsystem.
-   Recommend per design; split only if a map exceeds ~30 entries.
-2. Publish any QVs at all? Recommend default none; publish only entries picked in native dialogs, after test 4.
-3. Build the composer now? Recommend no: ship kind = QUERY with a raw selection first; add the reduced
-   composer in design_map_query_utils.fs only when re-selecting geometry proves painful.
-4. Key naming: recommend lowerCamel identifiers (`bottomFaces`, `coreThickness`), no prefixes (the map is
-   the namespace), and `schema` reserved.
-5. Map naming: recommend the design noun in lowercase (`core`, `sidewall`, `topsheet`, `base`); QVs become
-   `core_bottomFaces`.
-6. Producer tagging (D3): confirm `nameOutput` (driven_edge_offset.fs:919-931) and `nameProfile`
-   (evaluate_profiles.fs:1506-1518; neither sets attributes today) gain a `dm:` attribute and how the map
-   name reaches them (a string param). Recommend yes, string param `designMap` defaulting to "".
-7. Delete `query_varialble_ref.fs` and the three Reese files after copying `checkQueryVariableName`
-   and the fold/remap shapes into design_map_query_utils.fs. Recommend yes.
-8. Derive loader: build the optional loader feature or rely on `qHasAttribute` alone in derived studios.
-   Recommend rely on `qHasAttribute` until a derived studio needs `#core.*` scalars (then Variable Studio).
+1. Map granularity: one Design map per design (`core`, `sidewall`, `topsheet`) vs per subsystem. Recommend
+   per design; split only past ~30 entries.
+2. Publish any QVs at all? Recommend few: only entries picked in native dialogs, after tests 5-6.
+3. Build the composer now? Recommend no: ship kind = QUERY with a raw selection; add the reduced composer only
+   when re-selecting geometry proves painful.
+4. Descriptors vs plain values in producers. Recommend plain values by default, descriptors only on the
+   handful of keys `printKeys` should explain (its per-key text comes from producer descriptors, EV:387-402).
+   Descriptor tags match because producer and consumer both import the same design_map_query_utils tab.
+5. Accept a Variable Studio reference in Design map (fact 7) for cross-studio scalars? Recommend not now;
+   revisit with the "Later" note if a derived studio needs `#core.*`.
+6. Deletion of `Reese_*.fs` (3) and `query_varialble_ref.fs`. Recommend: delete immediately after the port
+   compiles in Onshape and test 3 passes; nothing else imports them.
+7. Key and map naming: recommend lowerCamel keys (`bottomFaces`), lowercase design nouns for maps (`core`),
+   `schema` reserved; QVs become `core_bottomFaces`.

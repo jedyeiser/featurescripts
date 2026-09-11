@@ -67,9 +67,6 @@ export const PROFILE_SCAN_SAMPLES = 400;
 /** Bisection steps used to pin a reversal once a sample pair has bracketed it. */
 export const PROFILE_REFINE_STEPS = 24;
 
-/** Most comb teeth any debug view will draw. */
-export const PROFILE_COMB_TEETH = 120;
-
 /** A direction this short carries no direction. */
 export const PROFILE_ZERO_DIRECTION = 1e-9;
 
@@ -85,6 +82,15 @@ export const PROFILE_ALONG_COS = 0.7071;
 /** An along-run shorter than this fraction of the longest is a joining piece, not a profile. */
 export const PROFILE_SHORT_RUN_FRACTION = 0.25;
 
+/** How close two curves must sit to count as the same line or the same circle. */
+export const PROFILE_MERGE_TOL = 1e-6 * meter;
+
+/** How parallel two directions must be to count as collinear -- about 0.026 degrees. */
+export const PROFILE_MERGE_COS = 0.9999999;
+
+/** Fewest points a detected line or arc must span before it is worth emitting as one. */
+export const PROFILE_MIN_SEGMENT = 3;
+
 export const ProfilePointsBounds = { (unitless) : [8, 60, 400] } as IntegerBoundSpec;
 export const ProfileDegreeBounds = { (unitless) : [2, 3, 7] } as IntegerBoundSpec;
 export const ProfileMaxCPBounds = { (unitless) : [4, 24, 100] } as IntegerBoundSpec;
@@ -94,14 +100,6 @@ export const ProfileToleranceBounds =
     (centimeter) : 1e-3,
     (millimeter) : 1e-2,
     (inch)       : 1e-3
-} as LengthBoundSpec;
-
-export const ProfileCombScaleBounds =
-{
-    (meter)      : [1e-5, 0.02, 10],
-    (centimeter) : 2,
-    (millimeter) : 20,
-    (inch)       : 0.8
 } as LengthBoundSpec;
 
 // ============================================================================
@@ -224,18 +222,15 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
             annotation { "Name" : "Print scan", "Default" : false, "Description" : "Report the projected length, where it was trimmed and why" }
             definition.debugPrintScan is boolean;
 
+            annotation { "Name" : "Print curve detail", "Default" : false, "Description" : "Every periphery edge in a table: which profile it landed in, which way it runs, how long it is, and what it actually is -- line, arc with radius, or bspline with degree and control point count. Costs one kernel call per edge, so it is separate from the scan rather than part of it." }
+            definition.debugPrintCurves is boolean;
+
             annotation { "Name" : "Show profiles", "Default" : false, "Description" : "Colour the result: top green, bottom red, middle blue, and the sections joining them magenta." }
             definition.debugShowProfiles is boolean;
-
-            annotation { "Name" : "Show curvature comb", "Default" : false }
-            definition.debugShowComb is boolean;
-
-            annotation { "Name" : "Comb scale" }
-            isLength(definition.combScale, ProfileCombScaleBounds);
         }
     }
     {
-        if (definition.debugPrintScan)
+        if (definition.debugPrintScan || definition.debugPrintCurves)
         {
             println("");
             println("========== evaluate profiles: start ==========");
@@ -246,12 +241,11 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         if (definition.debugPrintScan)
         {
             printProfileScan(result);
+        }
+        if (definition.debugPrintScan || definition.debugPrintCurves)
+        {
             println("========== evaluate profiles: end ============");
             println("");
-        }
-        if (definition.debugShowComb)
-        {
-            drawCurvatureComb(context, id + "comb", result.samples, definition.combScale);
         }
     });
 
@@ -439,13 +433,17 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         // Periphery is the one mode that cannot fail on the decomposition, which makes it
         // the right place to REPORT on it. Running the survey here gets the same diagnosis
         // out of a regen that succeeds, instead of only out of one that throws.
-        if (verbose)
+        if (verbose || definition.debugPrintCurves)
         {
             const surveyHeading = resolveHeading(context, definition, plane, loopEdges);
             const surveyEdges = peripheryEdges(context, path, surveyHeading);
             const surveyNamed = pickProfiles(groupEdges(surveyEdges, path.closed), surveyEdges,
-                    upwardAcross(plane, surveyHeading), true);
-            printPeripheryCurves(context, surveyEdges, surveyNamed);
+                    upwardAcross(plane, surveyHeading), verbose);
+
+            if (definition.debugPrintCurves)
+            {
+                printPeripheryCurves(context, surveyEdges, surveyNamed);
+            }
         }
     }
     else
@@ -476,14 +474,16 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
 
         if (wantsTop)
         {
-            curves = append(curves, emitProfile(context, id + "top", definition, top, "top"));
+            curves = concatenateArrays([curves, emitFromEdges(context, id + "top", definition,
+                            edgeData, named.top, top, plane, "top")]);
             samples = concatenateArrays([samples, top]);
             profiles["top"] = named.top;
         }
 
         if (wantsBottom)
         {
-            curves = append(curves, emitProfile(context, id + "bottom", definition, bottom, "bottom"));
+            curves = concatenateArrays([curves, emitFromEdges(context, id + "bottom", definition,
+                            edgeData, named.bottom, bottom, plane, "bottom")]);
             samples = concatenateArrays([samples, bottom]);
             profiles["bottom"] = named.bottom;
         }
@@ -491,7 +491,7 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         profiles["connectors"] = named.connectors;
         profiles["edgeData"] = edgeData;
 
-        if (definition.debugPrintScan)
+        if (definition.debugPrintCurves)
         {
             printPeripheryCurves(context, edgeData, named);
         }
@@ -501,7 +501,8 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
             const middle = middleProfile(definition, plane, heading, top, bottom);
             if (size(middle) >= 2)
             {
-                curves = append(curves, emitProfile(context, id + "middle", definition, middle, "middle"));
+                curves = concatenateArrays([curves, emitConstructed(context, id + "middle",
+                                definition, middle, plane, "middle")]);
                 samples = concatenateArrays([samples, middle]);
                 profiles["middle"] = { "stations" : size(middle) };
             }
@@ -1134,11 +1135,480 @@ function samplesFromPoints(points is array, plane is Plane) returns array
     return samples;
 }
 
+// ============================================================================
+// Grouping
+// ============================================================================
+
+/**
+ * Emit a profile that came from real edges, as the chosen grouping asks.
+ *
+ * The three modes trade exactness against tidiness, and the trade is real. A single fit
+ * through a profile that is mostly straight has to oscillate: the straight part carries no
+ * curvature to spend, so the solver distributes its error there. No tolerance or control
+ * point budget fixes that -- a straight run wants to be a line.
+ */
+function emitFromEdges(context is Context, id is Id, definition is map, edgeData is array,
+    group is map, samples is array, plane is Plane, label is string) returns array
+{
+    var curves = [];
+
+    if (definition.grouping == ProfileGrouping.PER_CURVE)
+    {
+        emitEdgesVerbatim(context, id, edgeData, group);
+    }
+    else if (definition.grouping == ProfileGrouping.EFFICIENT)
+    {
+        curves = emitMergedEdges(context, id, definition, edgeData, group, plane);
+    }
+    else
+    {
+        curves = append(curves, fitSamples(context, id + "fit", definition, samples));
+    }
+
+    // qCreatedBy reaches into sub-ids, so one call names whatever the mode produced.
+    nameProfile(context, qCreatedBy(id, EntityType.BODY), suffixedName(definition.outputName, label));
+
+    return curves;
+}
+
+/**
+ * Copy the profile's edges out as they are.
+ *
+ * No fitting anywhere: these edges are the outline the kernel produced, so a line stays a
+ * line and nothing can ring. Edges that collapsed to a point are dropped, as the header
+ * asks -- they carry no shape and would only be degenerate bodies.
+ */
+function emitEdgesVerbatim(context is Context, id is Id, edgeData is array, group is map)
+{
+    var kept = [];
+
+    for (var m in group.members)
+    {
+        if (edgeData[m].length > TOLERANCE.zeroLength * meter)
+        {
+            kept = append(kept, edgeData[m].edge);
+        }
+    }
+
+    if (size(kept) > 0)
+    {
+        opExtractWires(context, id + "verbatim", { "edges" : qUnion(kept) });
+    }
+}
+
+/**
+ * Merge what genuinely belongs together, and emit the rest as it stands.
+ *
+ * The merge rule is deliberately narrow. Lines merge only with collinear lines and arcs only
+ * with co-circular arcs, so both stay exact; everything else merges across tangent-continuous
+ * junctions and is refitted. A line is NOT absorbed into a curved neighbour even when the
+ * junction is smooth -- doing so would throw away the one representation that cannot ring,
+ * which is the whole reason this mode exists. A G0 corner never merges either: a real corner
+ * is information, and rounding it off is a silent lie.
+ */
+function emitMergedEdges(context is Context, id is Id, definition is map, edgeData is array,
+    group is map, plane is Plane) returns array
+{
+    const runs = mergeRuns(context, edgeData, group);
+    var curves = [];
+
+    for (var r = 0; r < size(runs); r += 1)
+    {
+        const run = runs[r];
+        const runId = id + ("run" ~ r);
+
+        if (size(run.members) == 1 || run.kind == "arc")
+        {
+            // One edge, or a co-circular pair we would only be rebuilding: copying is exact
+            // and reconstructing is not.
+            emitEdgesVerbatim(context, runId, edgeData, makeGroup(edgeData, run.members));
+        }
+        else if (run.kind == "line")
+        {
+            const first = edgeData[run.members[0]];
+            const last = edgeData[run.members[size(run.members) - 1]];
+            curves = append(curves, straightCurve(context, runId + "line", first.from, last.to));
+        }
+        else
+        {
+            curves = append(curves, fitSamples(context, runId + "fit", definition,
+                    sampleGroup(context, edgeData, makeGroup(edgeData, run.members), definition, plane)));
+        }
+    }
+
+    return curves;
+}
+
+/**
+ * Group a profile's edges into runs that can each become one curve.
+ */
+function mergeRuns(context is Context, edgeData is array, group is map) returns array
+{
+    var runs = [];
+    var members = [];
+    var kind = "freeform";
+    var anchor = undefined;
+
+    for (var m in group.members)
+    {
+        const shape = evCurveDefinition(context, { "edge" : edgeData[m].edge });
+        const thisKind = (shape is Line) ? "line" : ((shape is Circle) ? "arc" : "freeform");
+
+        var joins = false;
+
+        if (size(members) > 0)
+        {
+            if (kind == "line" && thisKind == "line")
+            {
+                joins = sameLine(anchor, shape);
+            }
+            else if (kind == "arc" && thisKind == "arc")
+            {
+                joins = sameCircle(anchor, shape);
+            }
+            else if (kind == "freeform" && thisKind == "freeform")
+            {
+                joins = smoothAcross(edgeData, members[size(members) - 1], m);
+            }
+        }
+
+        if (size(members) == 0 || joins)
+        {
+            members = append(members, m);
+            if (size(members) == 1)
+            {
+                kind = thisKind;
+                anchor = shape;
+            }
+            continue;
+        }
+
+        runs = append(runs, { "members" : members, "kind" : kind });
+        members = [m];
+        kind = thisKind;
+        anchor = shape;
+    }
+
+    if (size(members) > 0)
+    {
+        runs = append(runs, { "members" : members, "kind" : kind });
+    }
+
+    return runs;
+}
+
+/**
+ * Whether two consecutive edges meet smoothly enough to be one curve.
+ */
+function smoothAcross(edgeData is array, before is number, after is number) returns boolean
+{
+    return dot(edgeData[before].direction, edgeData[after].direction) >= PROFILE_ALONG_COS;
+}
+
+/**
+ * Whether two lines lie on the same infinite line.
+ */
+function sameLine(a, b) returns boolean
+{
+    if (!(a is Line) || !(b is Line))
+    {
+        return false;
+    }
+
+    if (abs(dot(a.direction, b.direction)) < PROFILE_MERGE_COS)
+    {
+        return false;
+    }
+
+    const offset = b.origin - a.origin;
+
+    return norm(offset - dot(offset, a.direction) * a.direction) < PROFILE_MERGE_TOL;
+}
+
+/**
+ * Whether two arcs lie on the same circle.
+ */
+function sameCircle(a, b) returns boolean
+{
+    if (!(a is Circle) || !(b is Circle))
+    {
+        return false;
+    }
+
+    return abs(a.radius - b.radius) < PROFILE_MERGE_TOL
+        && norm(a.coordSystem.origin - b.coordSystem.origin) < PROFILE_MERGE_TOL
+        && abs(dot(a.coordSystem.zAxis, b.coordSystem.zAxis)) >= PROFILE_MERGE_COS;
+}
+
+/**
+ * Emit a profile that has no source edges, as the chosen grouping asks.
+ *
+ * The middle is built rather than read -- it is the average of top and bottom at matching
+ * stations -- so there are no edges to copy or merge. Both non-single modes therefore fall
+ * back on reading the shape out of the points: a straight stretch becomes a line, a circular
+ * one an arc, and the rest is fitted. That matters here for the same reason it matters on the
+ * bottom profile, because the middle of a ski is straight over exactly the same span.
+ */
+function emitConstructed(context is Context, id is Id, definition is map, samples is array,
+    plane is Plane, label is string) returns array
+{
+    var curves = [];
+
+    if (definition.grouping == ProfileGrouping.SINGLE)
+    {
+        curves = append(curves, fitSamples(context, id + "fit", definition, samples));
+    }
+    else
+    {
+        var points = [];
+        for (var sample in samples)
+        {
+            points = append(points, sample.point);
+        }
+
+        const runs = segmentPoints(points, definition.fitTolerance);
+
+        for (var r = 0; r < size(runs); r += 1)
+        {
+            const run = runs[r];
+            const runId = id + ("seg" ~ r);
+
+            if (run.kind == "line")
+            {
+                curves = append(curves, straightCurve(context, runId, points[run.from], points[run.to]));
+            }
+            else if (run.kind == "arc")
+            {
+                arcThroughPoints(context, runId, points, run);
+            }
+            else
+            {
+                curves = append(curves, fitSamples(context, runId, definition,
+                        subArray(samples, run.from, run.to + 1)));
+            }
+        }
+    }
+
+    nameProfile(context, qCreatedBy(id, EntityType.BODY), suffixedName(definition.outputName, label));
+
+    return curves;
+}
+
+/**
+ * Read a point list as a sequence of straight, circular and freeform stretches.
+ *
+ * Greedy and longest-first at each position: a line is tried, then an arc, and whichever
+ * reaches further wins. Points that support neither accumulate into a freeform stretch until
+ * one becomes available again, so a curve that is straight in the middle and shaped at both
+ * ends comes apart exactly where it should.
+ */
+function segmentPoints(points is array, tolerance is ValueWithUnits) returns array
+{
+    const n = size(points);
+    var runs = [];
+    var from = 0;
+    var freeformStart = undefined;
+
+    while (from < n - 1)
+    {
+        const lineEnd = extendLine(points, from, tolerance);
+        const arcEnd = extendArc(points, from, tolerance);
+        const best = max(lineEnd, arcEnd);
+
+        if (best - from >= PROFILE_MIN_SEGMENT)
+        {
+            if (freeformStart != undefined)
+            {
+                runs = append(runs, { "from" : freeformStart, "to" : from, "kind" : "freeform" });
+                freeformStart = undefined;
+            }
+
+            runs = append(runs, {
+                        "from" : from,
+                        "to" : best,
+                        "kind" : (lineEnd >= arcEnd) ? "line" : "arc"
+                    });
+            from = best;
+            continue;
+        }
+
+        if (freeformStart == undefined)
+        {
+            freeformStart = from;
+        }
+        from += 1;
+    }
+
+    if (freeformStart != undefined)
+    {
+        runs = append(runs, { "from" : freeformStart, "to" : n - 1, "kind" : "freeform" });
+    }
+
+    return runs;
+}
+
+/**
+ * Furthest index whose points all still lie on the line from `from`.
+ */
+function extendLine(points is array, from is number, tolerance is ValueWithUnits) returns number
+{
+    var best = from + 1;
+    var to = from + 2;
+
+    while (to < size(points) && onLine(points, from, to, tolerance))
+    {
+        best = to;
+        to += 1;
+    }
+
+    return best;
+}
+
+function onLine(points is array, from is number, to is number, tolerance is ValueWithUnits) returns boolean
+{
+    const axis = points[to] - points[from];
+    const reach = norm(axis);
+
+    if (reach < tolerance)
+    {
+        return false;
+    }
+
+    const direction = axis / reach;
+
+    for (var i = from + 1; i < to; i += 1)
+    {
+        const offset = points[i] - points[from];
+
+        if (norm(offset - dot(offset, direction) * direction) > tolerance)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Furthest index whose points all still lie on the circle through `from`, its midpoint and it.
+ */
+function extendArc(points is array, from is number, tolerance is ValueWithUnits) returns number
+{
+    var best = from + 2;
+    var to = from + 3;
+
+    while (to < size(points) && onArc(points, from, to, tolerance))
+    {
+        best = to;
+        to += 1;
+    }
+
+    return (best > from + 2) ? best : from + 1;
+}
+
+function onArc(points is array, from is number, to is number, tolerance is ValueWithUnits) returns boolean
+{
+    const circleData = circleThroughPoints(points[from], points[floor((from + to) / 2)], points[to]);
+
+    if (circleData == undefined)
+    {
+        return false;
+    }
+
+    for (var i = from + 1; i < to; i += 1)
+    {
+        if (distanceToCircleData(points[i], circleData) > tolerance)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Circle through three points, or undefined when they are collinear.
+ */
+function circleThroughPoints(p0 is Vector, p1 is Vector, p2 is Vector)
+{
+    const a = p1 - p0;
+    const b = p2 - p0;
+    const axb = cross(a, b);
+
+    if (norm(axb) < PROFILE_MERGE_TOL * norm(a))
+    {
+        return undefined;
+    }
+
+    const toCenter = (dot(a, a) * cross(b, axb) + dot(b, b) * cross(axb, a)) / (2 * dot(axb, axb));
+
+    return {
+        "center" : p0 + toCenter,
+        "radius" : norm(toCenter),
+        "normal" : normalize(axb)
+    };
+}
+
+function distanceToCircleData(point is Vector, circleData is map) returns ValueWithUnits
+{
+    const toPoint = point - circleData.center;
+    const outOfPlane = dot(toPoint, circleData.normal);
+    const inPlane = norm(toPoint - outOfPlane * circleData.normal);
+    const radial = (inPlane - circleData.radius) / meter;
+
+    return sqrt(radial * radial + (outOfPlane / meter) ^ 2) * meter;
+}
+
+/**
+ * A true arc through a detected circular stretch, built on a sketch so it is a real arc
+ * rather than a spline that resembles one.
+ */
+function arcThroughPoints(context is Context, id is Id, points is array, run is map)
+{
+    const middle = floor((run.from + run.to) / 2);
+    const circleData = circleThroughPoints(points[run.from], points[middle], points[run.to]);
+
+    if (circleData == undefined)
+    {
+        return;
+    }
+
+    const sketchId = id + "arcSketch";
+    const sketchPl = plane(circleData.center, circleData.normal,
+            normalize(points[run.from] - circleData.center));
+    const sk = newSketchOnPlane(context, sketchId, { "sketchPlane" : sketchPl });
+
+    skArc(sk, "arc", {
+                "start" : worldToPlane(sketchPl, points[run.from]),
+                "mid" : worldToPlane(sketchPl, points[middle]),
+                "end" : worldToPlane(sketchPl, points[run.to])
+            });
+    skSolve(sk);
+
+    opExtractWires(context, id + "wire", { "edges" : qCreatedBy(sketchId, EntityType.EDGE) });
+    opDeleteBodies(context, id + "deleteSketch", { "entities" : qCreatedBy(sketchId, EntityType.BODY) });
+}
+
+/**
+ * An exact straight curve between two points.
+ */
+function straightCurve(context is Context, id is Id, from is Vector, to is Vector) returns BSplineCurve
+{
+    const curve = bSplineCurve({
+                "degree" : 1,
+                "isPeriodic" : false,
+                "controlPoints" : [from, to]
+            });
+
+    opCreateBSplineCurve(context, id, { "bSplineCurve" : curve });
+
+    return curve;
+}
+
 /**
  * Fit and emit one profile.
  */
-function emitProfile(context is Context, id is Id, definition is map, samples is array,
-    label is string) returns BSplineCurve
+function fitSamples(context is Context, id is Id, definition is map, samples is array) returns BSplineCurve
 {
     var points = [];
     var chord = 0 * meter;
@@ -1164,7 +1634,6 @@ function emitProfile(context is Context, id is Id, definition is map, samples is
             })[0];
 
     opCreateBSplineCurve(context, id, { "bSplineCurve" : fitted });
-    nameProfile(context, qCreatedBy(id, EntityType.BODY), suffixedName(definition.outputName, label));
 
     return fitted;
 }
@@ -1538,91 +2007,4 @@ function printProfileScan(result is map)
     {
         println("  " ~ key ~ ": " ~ toString(result.profiles[key]));
     }
-}
-
-/**
- * Curvature comb over the retained span.
- *
- * Teeth point along the in-plane normal and scale with curvature, so a kink reads as a
- * spike and a fair curve reads as a smooth envelope. Batched into one feature: each
- * addDebugLine is otherwise a sketch and a constraint solve of its own.
- *
- * The samples may cover several profiles end to end, so the envelope is broken wherever one
- * profile stops and the next begins.
- */
-function drawCurvatureComb(context is Context, id is Id, samples is array, scale is ValueWithUnits)
-{
-    const count = size(samples);
-    if (count == 0)
-    {
-        return;
-    }
-
-    var peak = 0 / meter;
-    for (var sample in samples)
-    {
-        if (sample.curvature > peak)
-        {
-            peak = sample.curvature;
-        }
-    }
-    if (peak * meter < PROFILE_ZERO_DIRECTION)
-    {
-        return;
-    }
-
-    const stride = max(1, ceil(count / PROFILE_COMB_TEETH));
-
-    startFeature(context, id, {});
-    var previousTip = undefined;
-    var drawn = 0;
-    var lastIndex = -1;
-
-    for (var i = 0; i < count; i += stride)
-    {
-        // Every skipped sample counts, not just the drawn one: a stride that steps over a
-        // profile boundary would otherwise carry the envelope straight across it.
-        for (var j = lastIndex + 1; j <= i; j += 1)
-        {
-            if (samples[j].startsGroup == true)
-            {
-                previousTip = undefined;
-            }
-        }
-        lastIndex = i;
-
-        const tip = samples[i].point + (scale * samples[i].curvature / peak) * samples[i].normal;
-
-        if (norm(tip - samples[i].point) > TOLERANCE.zeroLength * meter)
-        {
-            opCreateBSplineCurve(context, id + ("tooth" ~ i), {
-                        "bSplineCurve" : bSplineCurve({
-                                    "degree" : 1,
-                                    "isPeriodic" : false,
-                                    "controlPoints" : [samples[i].point, tip]
-                                })
-                    });
-            drawn += 1;
-        }
-
-        // The envelope is what makes a comb readable; the teeth alone are just hair.
-        if (previousTip != undefined && norm(tip - previousTip) > TOLERANCE.zeroLength * meter)
-        {
-            opCreateBSplineCurve(context, id + ("env" ~ i), {
-                        "bSplineCurve" : bSplineCurve({
-                                    "degree" : 1,
-                                    "isPeriodic" : false,
-                                    "controlPoints" : [previousTip, tip]
-                                })
-                    });
-            drawn += 1;
-        }
-        previousTip = tip;
-    }
-
-    if (drawn > 0)
-    {
-        addDebugEntities(context, qCreatedBy(id, EntityType.EDGE), DebugColor.MAGENTA);
-    }
-    abortFeature(context, id);
 }

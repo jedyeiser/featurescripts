@@ -1,54 +1,49 @@
-# driven_edge_offset: publishing its outputs (research, 2026-09-10)
+# driven_edge_offset: publishing its outputs (research, 2026-09-10, rev 2)
 
 Refs: DEO = driven_offset/driven_edge_offset.fs, U = driven_offset/edge_offset_utils.fs,
 T = driven_offset/offset_run_treatment.fs, LIB = driven_offset/Reese_IMPORT_THIS.fs,
 EV = driven_offset/Reese_Extract_Variables.fs. Std line numbers are the local 2878 mirror.
+Consumer side is documented in driven_offset/research_design_map.md (not repeated here).
 
 ## 1. Purpose
 
-driven_edge_offset should publish, once per regen, a self-describing record of what it made:
-which bodies/edges are the output (by stable identity), the geometry it decided per run (line /
-arc radius / fitted), and the inputs it was driven by. Consumers: later custom features in the
-same studio, derived studios, an external tool via evalFeatureScript, and a future solid-making
-feature that turns the record into true PMI.
+driven_edge_offset publishes, once per regen, one self-describing map of what it made: the output
+wires and per-run edges by symbolic Query, the geometry decided per run (line / arc radius / fitted),
+and the inputs it was driven by. Scope: consumers in the SAME Part Studio only. Derive survival and
+cross-studio use are out of scope (see "Later, if needed" at the end).
 
-## 2. What Reese's Extract Variables does
+## 2. Reese's pattern, plainly
 
-Contract (producer): one ordinary context variable named `toString(id)` holding
-`{ "variable": {key: value | {value, description}}, "query": {key: Query | {value, description, debugColor}} }`
-cast `as EmbeddedVariables` (LIB:142-177, LIB:313-320). Queries are stored symbolically; nothing
-touches geometry (LIB:135). Consumer (EV): a FeatureList parameter names the sources (EV:43-44);
-for each id it does `getVariable(context, toString(featureId))`, gates on `is EmbeddedVariables`
-(EV:292-296), merges (ordinary keys first-wins with warning, query keys qUnion, EV:283-319), then
-re-publishes: ordinary via setVariable, queries via `setQueryVariable(name, desc,
-qUnion(evaluateQuery(context, q)))` (EV:422-424). "Print available variables" lists
-`[Variable] key -- desc` (EV:387-402). Bulk-add buttons in editing logic fill the key arrays
-(EV:244-269).
+Producer: at the end of its body a feature builds one map `{ "variable" : {...}, "query" : {...} }`
+and calls `embedVariableMap(context, id, m)`, which is one line: `setVariable(context, toString(id),
+m as EmbeddedVariables)` (LIB:319). The variable name is the feature's own id rendered by the array
+overload of toString (std/string.fs:26-38), e.g. `[ FxxxYYY ]`: unique per instance, not an
+identifier, so unreachable from `#` and not a user-facing setup variable. Queries in the map stay
+symbolic; the predicate walks the map without evaluating anything (LIB:135, LIB:151-204). Entry
+values may be plain or wrapped: `extractableVariable(v, desc)` (LIB:214-237), `extractableQuery(q,
+desc, color)` (LIB:246-295); `undefined` entries are rejected (LIB:189), so conditional keys are
+added or omitted, never set to undefined.
 
-Verified std facts (2878 mirror):
-- Type tags are bound to a declaration in a module of the import graph, not to a name
-  (https://cad.onshape.com/FsDoc/relational.html). Producer and consumer importing LIB from
-  different element ids may not share the `EmbeddedVariables` tag -> silent "no compatible
-  feature". EV:8 imports element 3c37750af0cf716cb0ede1e0; the local LIB is 909cf7b14bf562d9c989f0b1.
-- common.fs does not export queryVariable.fs (std/common.fs has no such line; std/geometry.fs:76
-  does). setQueryVariable needs an explicit import (std/queryVariable.fs:554-557).
-- @setVariable accepts any name string; the identifier regex lives only in the Variable feature
-  (std/variable.fs:798-805) and checkQueryVariableName (std/queryVariable.fs:519-532)
-  (https://forum.onshape.com/discussion/17100/...). Non-identifier names are unreachable from `#`.
+Consumer: a FeatureList parameter names the producers; for each id it reads
+`getVariable(context, toString(featureId))` (EV:294), checks the shape, merges (variable keys
+first-wins with a warning, query keys qUnion; EV:283-319) and republishes selected keys.
 
-Not adopted verbatim, because:
-1. Typed map + `is` gate = tag-identity risk across elements/versions (above; raw 01 limitation 2).
-2. FeatureList discovery: EV must follow all sources; suppressed or reordered sources vanish silently
-   into one generic warning (raw 01 limitations 7, 10).
-3. Context-variable carrier: nothing crosses a derive (raw 01 limitation 6); the `[ Fxxx ]` variable
-   is a persisting context variable anyone can read or overwrite (limitation 5).
-4. Consumer evaluates every published query every regen into transient, non-robust queries;
-   evaluate-on-use is hard-wired off (EV:175, EV:202; limitation 8).
-5. No name validation, ordinary/query namespace collisions unchecked, FS 3044 files with a broken
-   import and a missing icon (limitations 1-5).
+Verified std facts: (1) type tags are bound to a declaration in one module of the import graph, so
+`is EmbeddedVariables` across different library elements is unverifiable
+(https://cad.onshape.com/FsDoc/relational.html; raw 01 follow-up 1); (2) common.fs does not export
+queryVariable.fs (std/geometry.fs:76 does), so setQueryVariable needs an explicit import
+(std/queryVariable.fs:554-557); (3) @setVariable accepts any name string; only the Variable feature
+validates (std/variable.fs:798-805; https://forum.onshape.com/discussion/17100/...).
 
-Kept: a producer publishes one plain self-describing map of ordinary values and Queries with
-descriptions; a Query in a map stays symbolic until a consumer freezes it; "print available keys" UX.
+Kept: one map per feature under toString(id); symbolic Queries; descriptors (they feed "print keys").
+Fixed in our port (R3): broken element-id import (EV:8); missing icon import (EV:38); 3044 -> 3070;
+explicit `import(path : "onshape/std/queryVariable.fs", version : "3070.0")` wherever
+setQueryVariable is called. The port lives in driven_offset/design_map_query_utils.fs; Reese_* and
+query_varialble_ref.fs are deleted afterwards.
+Dropped: the typed-map gate (consumer checks `canBeEmbeddedVariables` only; the cast at LIB:319 is
+kept for typecheck diagnostics and never relied on); EV's `qUnion(evaluateQuery(...))` freeze
+(EV:422-423) in favour of `qUnion(makeRobustQueriesBatched(...))` (std/feature.fs:643-651, the std
+Query Variable pattern at std/queryVariable.fs:405); EV as a separate feature (Design map absorbs it).
 
 ## 3. MBD in Onshape
 
@@ -85,155 +80,134 @@ into a solid can call setDimensionedEntities on the resulting faces. DEO itself 
 
 ## 4. Export inventory
 
-Carrier per D2: A = attribute on output entity, M = ordinary map variable, Q = query variable.
+"Map half" = where the item lands in the embedded map: variable half, query half, or not exported.
 
-| # | Item | Type | Where | Carrier | Notes |
+| # | Item | Type | Where | Map half | Notes |
 |---|---|---|---|---|---|
-| 1 | All output bodies | Query | qCreatedBy(id, BODY); wires DEO:896-899, unjoined DEO:907 | A `output` + M `output` + Q (opt) | the identity every consumer starts from |
-| 2 | Wire per G0 path | Query | id + "wire" ~ "link" ~ k, DEO:896 | A `link<k>` + M `link<k>` | join mode only (DEO:891); wires local to emitRuns today |
-| 3 | Per-run curve edge | Query | id + "run" ~ r, DEO:776 | A `run<r>` + M `run<r>` | join mode: qCreatedBy evaluates empty after DEO:897/902; re-base with qClosestTo on wire edges |
-| 4 | Corner fill edge | Query + map | id + "fill" ~ r, DEO:797; fill data T:133-137 | A `fill<r>` | payload {kind arc/spline, radius?} |
-| 5 | Terminal extension edges | Query | id + side ~ r, DEO:822 | A `startExtension<r>` / `endExtension<r>` | fabricated geometry; tag so consumers can exclude it |
-| 6 | Run classification | string line/arc/freeform | emitted[r].kind, DEO:871 | A run payload + M runs[] | |
-| 7 | Arc-run radius | ValueWithUnits | DEO:872 (center/normal dropped) | A run payload + M runs[] | PMI-shaped {nominal, tolerance}; emitRuns must keep center/normal |
-| 8 | Line-run endpoints | Vector x2 | classifyPoints U:380 shape.start/end | A run payload | |
-| 9 | Run arc-length range | ValueWithUnits x2 | stations[run.start/end].arc, signed from zero point (U:1253) | A run payload + M runs[] | export this convention; chain-start arc derivable via zeroArc |
-| 10 | Run exact endpoints | Vector x2 | run.startPoint/endPoint T:125,195 | A run payload | undefined -> points[run.start/end] |
-| 11 | Corner treatment | string gap/extended/trimmed | T:125,133,195 | A run payload | |
-| 12 | Terminal records | map {action, distance, squareness, kink?} | T:510 | A run payload | strings + ValueWithUnits only |
-| 13 | Zero point | Vector | DEO:177, evZeroPoint U:219 | M `zeroPoint` + A body payload | input entity also as M `zeroPointEntity` (symbolic Query) |
-| 14 | Measure-along, frame alignment | enum -> string | DEO:50, DEO:80 | M + A body payload | store toString(enum); FS consumers compare via the enum, not the string |
-| 15 | Chain length, zero arc, link count | ValueWithUnits, ValueWithUnits, number | buildChain U:729-777 | M + A body payload | |
-| 16 | Reference wire + delta | Query, ValueWithUnits | DEO:60, DEO:185; U:1800 | M `referenceWire`, M `offsetDelta` | REFERENCE_WIRE mode only; keys omitted otherwise |
-| 17 | Profile break coordinates | array ValueWithUnits | discontinuityCoords DEO:640 | M `profileBreaks` | already computed for insertCrossings; reuse, do not recompute |
-| 18 | Output name | string | DEO:53 | M `outputName` + A body payload | |
-| 19 | Inputs (offsetEdges, offsetProfile) | Query | DEO:74, DEO:77 | M symbolic | never attribute-tagged: they belong to other features |
+| 1 | All output bodies | Query | qCreatedBy(id, BODY); wires DEO:896-899, unjoined DEO:907 | query `output` | the identity every consumer starts from |
+| 2 | Wire per G0 path | Query | id + "wire" ~ "link" ~ k, DEO:896 | query `link<k>` | join mode only (DEO:891); wires local to emitRuns today |
+| 3 | Per-run curve edge | Query | id + "run" ~ r, DEO:776 | query `run<r>` | join mode: qCreatedBy evaluates empty after DEO:897/902; re-base with qClosestTo on wire edges |
+| 4 | Corner fill edge | Query + map | id + "fill" ~ r, DEO:797; fill data T:133-137 | query `fill<r>`; variable runs[].fill | payload {kind arc/spline, radius?} |
+| 5 | Terminal extension edges | Query | id + side ~ r, DEO:822 | query `startExtension<r>` / `endExtension<r>` | fabricated geometry; keyed so consumers can exclude it |
+| 6 | Run classification | string line/arc/freeform | emitted[r].kind, DEO:871 | variable runs[] | |
+| 7 | Arc-run radius | ValueWithUnits | DEO:872 (center/normal dropped) | variable runs[] | PMI-shaped {nominal, tolerance}; emitRuns must keep center/normal |
+| 8 | Line-run endpoints | Vector x2 | classifyPoints U:380 shape.start/end | variable runs[] | |
+| 9 | Run arc-length range | ValueWithUnits x2 | stations[run.start/end].arc, signed from zero point (U:1253) | variable runs[] | export this convention; chain-start arc derivable via zeroArc |
+| 10 | Run exact endpoints | Vector x2 | run.startPoint/endPoint T:125,195 | variable runs[] | undefined -> points[run.start/end] |
+| 11 | Corner treatment | string gap/extended/trimmed | T:125,133,195 | variable runs[] | |
+| 12 | Terminal records | map {action, distance, squareness, kink?} | T:510 | variable runs[] | strings + ValueWithUnits only |
+| 13 | Zero point | Vector | DEO:177, evZeroPoint U:219 | variable `zeroPoint`; query `zeroPointEntity` | input entity DEO:110, symbolic |
+| 14 | Measure-along, frame alignment | enum -> string | DEO:50, DEO:80 | variable | store toString(enum); FS consumers compare via the enum, not the string |
+| 15 | Chain length, zero arc, link count | ValueWithUnits, ValueWithUnits, number | buildChain U:722-779 | variable | |
+| 16 | Reference wire + delta + plane normal | Query, ValueWithUnits, Vector | DEO:60, DEO:185; U:1700 | query `referenceWire`; variable `offsetDelta`, `referencePlaneNormal` | REFERENCE_WIRE mode only; keys omitted otherwise |
+| 17 | Profile break coordinates, range | array ValueWithUnits; {min, max} | discontinuityCoords DEO:640; profile.minCoord/maxCoord | variable `profileBreaks`, `profileRange` | breaks already computed at DEO:601; reuse, do not recompute |
+| 18 | Output name | string | DEO:53 | variable `outputName` | |
+| 19 | Inputs (offsetEdges, offsetProfile) | Query | DEO:74, DEO:77 | query, symbolic | they belong to other features; never re-based |
 | -- | Stations/frames table | array of maps, up to 200/edge (U:112) | U:985-988 | not exported | bulk; downstream re-evaluates frames from the published wire |
 | -- | Profile samples, placed points, margins | arrays | DEO:205-206, DEO:463-519 | not exported | intermediate; reconstructible from output |
-| -- | alongRef tables (arcs, thetas, xs, points) | arrays | U:1791-1802 | not exported | internal to the s - h*theta mapping; expose only delta and referenceWire |
+| -- | alongRef tables (arcs, thetas, xs, points) | arrays | U:1791-1802 | not exported | internal to the s - h*theta mapping; expose only delta, planeNormal and referenceWire |
 | -- | Run end tangents | Vector | U:2727-2751 | not exported | evCurveTangent on the published edge is the truth |
 
 ## 5. Concrete design
 
-Attribute schema (identity carrier, one attribute per key, name-per-key so boolean merges keep
-all of them, std/attributes.fs:41-43):
-- name: `"dm:" ~ map ~ ":" ~ key`; keys as in the table: `output`, `link<k>`, `run<r>`, `fill<r>`,
-  `startExtension<r>`, `endExtension<r>`.
-- value: `{ "map": map, "key": key, "v": 1, "data": <payload map> }`. No type tag.
-- body payload (`output`, `link<k>`): {outputName, linkIndex, zeroPoint, measureAlong,
-  frameAlignment, chainLength, zeroArc, offsetDelta?, runIndices:[r...]}.
-- run payload (`run<r>`): {kind, radius:{nominal, dimensionType:"RADIUS", tolerance:{toleranceType:"NONE"}}?,
-  center?, normal?, start, end, arcStart, arcEnd, cornerKind, terminalStart?, terminalEnd?}.
-  Values are strings, numbers, ValueWithUnits and Vectors only -- never Queries (meaningless in
-  another context) and never enums (compare-by-reference does not survive JSON).
+Embedded map, stored by `embedVariableMap(context, id, {...})` from design_map_query_utils.fs:
+- variable half: `outputName`, `zeroPoint`, `measureAlong`, `frameAlignment` (toString of the
+  enums), `chainLength`, `zeroArc`, `linkCount`, `profileRange {min, max}`, `profileBreaks`,
+  `runs` (array of run payloads), and when alongRef != undefined `offsetDelta`, `referencePlaneNormal`.
+- run payload (one per emitted run, index = r): `{kind, link, radius:{nominal, dimensionType:"RADIUS",
+  tolerance:{toleranceType:"NONE"}}?, center?, normal?, start, end, arcStart, arcEnd, cornerKind,
+  fill:{kind, radius?}?, terminalStart?, terminalEnd?}`. Strings, numbers, ValueWithUnits, Vectors
+  and nested maps/arrays only; no Queries (the predicate does not inspect nesting, LIB:187-204, so a
+  nested Query would pass and then be useless) and no enums.
+- query half: `output` = qCreatedBy(id, BODY), `link<k>` (join mode), `run<r>`, `fill<r>`?,
+  `startExtension<r>`?, `endExtension<r>`?, `offsetEdges`, `offsetProfile`, `zeroPointEntity`,
+  `referenceWire`?. Per-run keys are flat because the query half cannot hold arrays of Queries
+  (LIB:202). Conditional keys are omitted, never undefined (LIB:189).
+- No attributes, no setQueryVariable, no mapName parameter in DEO. DEO gains one import (the
+  design_map_query_utils tab) and zero kernel calls.
 
-Map variable (in-studio scalars and autocomplete): `setVariable(context, map, m, desc)` with
-`m = { "schema": "deo/1", "outputName", "zeroPoint", "measureAlong", "frameAlignment",
-"chainLength", "zeroArc", "linkCount", "profileBreaks", "runs": [run payloads],
-"output": qCreatedBy(id, BODY), "link<k>": Query, "run<r>": Query, "offsetEdges", "offsetProfile",
-"zeroPointEntity", "referenceWire"?, "offsetDelta"? }`. Queries stay symbolic; a consumer freezes
-them with evaluateQuery or makeRobustQueriesBatched (std/feature.fs:643) when it needs to.
-Conditional keys are omitted, never undefined.
+Where: one call after emitRuns (DEO:220) and before debugOutput (DEO:222). This is after
+opExtractWires (DEO:897) and opDeleteBodies (DEO:902), which matters for the queries: in join mode
+`qCreatedBy(id + ("run" ~ r), EDGE)` evaluates empty after extraction, so each run's edge is
+re-based as `qClosestTo(qCreatedBy(wireId, EntityType.EDGE), midPoint)` with midPoint the run's
+middle sample (wireId = id + ("wire" ~ "link" ~ linkIndex)); runs trimmed to two or three stations
+(T:161-162) still have a distinct middle point. Non-join mode uses qCreatedBy unchanged.
 
-Query variable: only `map ~ "_output"` = qCreatedBy(id, BODY), so a native Sweep/Loft can pick
-the wires from the Variables dropdown. Gated by a boolean parameter, default false. Needs
-`import(path : "onshape/std/queryVariable.fs", version : "3070.0")` in DEO. No per-run QVs.
-
-Map name: a new `definition.mapName is string` parameter, validated with
-verifyVariableNameIsValid (std/variable.fs:798, exported via std/common.fs:63). Empty = publish
-nothing. It is the only key of the attribute names, so it must be an identifier.
-
-Where the calls go: a new `publishOutput(context, id, definition, result, sourceChain, alongRef,
-zeroPoint)` called after emitRuns (DEO:220) and before debugOutput (DEO:222). This is after
-opExtractWires (DEO:897) and opDeleteBodies (DEO:902), which is mandatory: any attribute set on a
-pre-extraction curve body dies with it at DEO:902. In join mode `qCreatedBy(id + ("run" ~ r),
-EDGE)` evaluates empty after extraction, so per-run edges are re-based as
-`qClosestTo(qCreatedBy(wireId, EDGE), midPoint)` with midPoint the run's middle sample. Runs
-collapsed to two or three stations by corner trimming (T:161-162) still have a distinct middle
-point; test 1 checks that opExtractWires preserves the edge split. In non-join mode the
-qCreatedBy(id + ("run" ~ r), EDGE) query is used unchanged.
-
-emitRuns must additionally return (today it returns only `emitted`, DEO:910): `{ "runs": emitted,
-"links": { "link<k>": qCreatedBy(wireId, BODY) } }`, with each emitted run carrying
-`edge` (the re-based Query), `midPoint`, `center`/`normal` for arcs (currently dropped at DEO:870),
-and `shape.start/end` for lines. Nothing else in DEO changes; debugOutput reads `result.runs`.
+emitRuns must return `{ "runs" : emitted, "links" : { "link<k>" : qCreatedBy(wireId, BODY) } }`
+instead of `emitted` alone (DEO:910), each run carrying `edge` (the re-based Query), `midPoint`,
+`center`/`normal` for arcs (dropped today at DEO:870-873), and `shape.start/end` for lines.
+debugOutput reads `result.runs`. Nothing else in DEO changes.
 
 ```
-function publishOutput(context is Context, id is Id, definition is map, result is map,
-    sourceChain is map, alongRef, zeroPoint is Vector)
+// DEO body, after emitRuns and before debugOutput
+function embedOutput(context is Context, id is Id, definition is map, sourceChain is map,
+    alongRef, zeroPoint is Vector, result is map)
 {
-    const map = definition.mapName;
-    if (map == "")
-    {
-        return;
-    }
-    verifyVariableNameIsValid(map, "mapName");
-    var m = { "schema" : "deo/1", "outputName" : definition.outputName,
-        "zeroPoint" : zeroPoint, "chainLength" : sourceChain.totalLength,
-        "output" : qCreatedBy(id, EntityType.BODY), "runs" : [] };
-    tagEntities(context, map, "output", qCreatedBy(id, EntityType.BODY), bodyPayload(definition, sourceChain, alongRef, zeroPoint));
+    var variableHalf = {
+        "outputName" : definition.outputName,
+        "zeroPoint" : extractableVariable(zeroPoint, "Zero point, world coordinates"),
+        "chainLength" : extractableVariable(sourceChain.totalLength, "Summed length of the offset edges"),
+        "zeroArc" : sourceChain.zeroArc, "linkCount" : size(sourceChain.links),
+        "measureAlong" : toString(definition.measureAlong), "runs" : [] };
+    var queryHalf = {
+        "output" : extractableQuery(qCreatedBy(id, EntityType.BODY), "All output wires", DebugColor.BLUE),
+        "offsetEdges" : definition.offsetEdges, "zeroPointEntity" : definition.offsetRefPoint };
     for (var r = 0; r < size(result.runs); r += 1)
     {
-        const payload = runPayload(result.runs[r]);
-        m.runs = append(m.runs, payload);
-        m["run" ~ r] = result.runs[r].edge;
-        tagEntities(context, map, "run" ~ r, result.runs[r].edge, payload);
+        variableHalf.runs = append(variableHalf.runs, runPayload(result.runs[r]));
+        queryHalf["run" ~ r] = result.runs[r].edge;
     }
-    setVariable(context, map, m, "driven_edge_offset output map");
-}
-
-function tagEntities(context is Context, map is string, key is string, entities is Query, data is map)
-{
-    setAttribute(context, { "entities" : entities, "name" : "dm:" ~ map ~ ":" ~ key,
-        "attribute" : { "map" : map, "key" : key, "v" : 1, "data" : data } });
+    if (alongRef != undefined)
+    {
+        variableHalf.offsetDelta = alongRef.delta;
+        queryHalf.referenceWire = definition.referenceWire;
+    }
+    embedVariableMap(context, id, { "variable" : variableHalf, "query" : queryHalf });
 }
 ```
 
-Duplicate map names (two DEO instances, or a Design map feature using the same name): before
-writing, `evaluateQuery(context, qHasAttribute("dm:" ~ map ~ ":output"))` non-empty means another
-feature owns the name; throw regenError. One extra attribute-filter query; loud, not silent.
+## 6. How it is consumed
 
-## 6. External API path
-
-evalFeatureScript (POST /partstudios/d/{did}/{wvm}/{wvmid}/e/{eid}/featurescript) with a script
-that returns `getAttributes(context, {entities: qHasAttribute("dm:core:run0"), name: "dm:core:run0"})`
-for geometry-bound data and `getVariable(context, "core")` for the map; the Onshape-recommended
-route for attributes (https://forum.onshape.com/discussion/6912/...). Correlate entities with
-tessellation/bodydetails ids via evaluateQuery transient ids in the same script. NAME already goes
-through setProperty (DEO:919-931) and is returned by /metadata/d/{did}/{wvm}/{wvmid}/e/{eid}/p; a
-one-line DESCRIPTION summary could join it. UNVERIFIED: wire bodies appear in /metadata and accept
-DESCRIPTION; ValueWithUnits/Vector JSON shape from evalFeatureScript; named attributes on wire
-bodies survive derive (documented for entities generally, std/attributes.fs:38-43; wires untested).
+Design map (research_design_map.md) picks DEO instances through a FeatureList, reads
+`getVariable(context, toString(featureId))`, and republishes chosen keys into one ordinary map
+variable `#<mapName>` plus optional query variables `<mapName>_<key>` frozen with
+`qUnion(makeRobustQueriesBatched(context, q))`. From there:
+- expression fields: `#deo.chainLength`, `#deo.runs[1].radius.nominal`;
+- a custom feature that must stay symbolic: `getVariable(context, "deo").run0` (Query as stored);
+- native Sweep/Loft: query variable `deo_output` from the Variables dropdown;
+- external tool, same studio: evalFeatureScript returning `getVariable(context, "deo")`
+  (UNVERIFIED: JSON shape of ValueWithUnits / Vector in the response).
+Design map must sit after every producer it lists; a suppressed producer is skipped with a warning.
 
 ## 7. Cost
 
-setAttribute and setVariable are context writes, not geometry ops; each setAttribute resolves its
-entity query (an attribute-filter-class resolution, the same cost class std sheet metal pays every
-regen, std/frameAttributes.fs). No explicit evaluateQuery is needed at publish time except the one
-duplicate-name guard. Added per regen: 1 + L + R + F + E attribute writes (links, runs, fills,
-extensions), one setVariable, optionally one setQueryVariable. Against the measured 1.41 s
-(memory: driven-offset.md) this is noise. Consumers re-running on unrelated edits is tree-order
-behaviour that already exists (https://cad.onshape.com/FsDoc/debugging-in-feature-studios.html).
+Producer: no kernel calls; one predicate walk plus one setVariable per regen. Freezing (if any) is
+paid once in Design map, not in DEO. Keep the map to scalars and per-run summaries (tens of KB, not
+the 200-station-per-edge tables): every consumer copies the whole map on read.
 
 ## 8. Tests to run in Onshape
 
-1. Join mode, 3-run chain: publish; later feature prints size(evaluateQuery(qHasAttribute("dm:m:run1"))) -> 1 and it is the middle edge. Retires: qClosestTo re-basing and opExtractWires keeping runs as separate edges.
-2. Same, non-join mode: dm:m:run1 resolves via qCreatedBy(id + "run1", EDGE) -> 1 body. Retires: dual-path query choice.
-3. Derive the output wire into a fresh studio; print the same count -> 1, and getAllAttributes on the derived edge shows the payload. Retires: attribute survival on wires through derive (UNVERIFIED in section 6).
-4. Downstream custom feature: getVariable(context, "m").output resolves the wires; #m.chainLength works in an expression field. Retires: symbolic Query in a plain map, no type tag.
-5. Enable the query-variable toggle; open Sweep, pick m_output from the Variables dropdown -> wire selected. Retires: setQueryVariable import and picker visibility.
-6. evalFeatureScript returning getAttributes + getVariable; inspect JSON for a ValueWithUnits and a Vector. Retires: API serialization shape.
-7. setProperty DESCRIPTION on the wire, then GET /metadata/.../e/{eid}/p. Retires: wire bodies in /metadata.
-8. Two DEO instances with mapName "m": second must regenError with the duplicate-name message. Retires: silent overwrite.
-9. Feature-list performance readout before and after publishing on the 1.41 s test doc. Retires: cost claim in section 7.
-10. Boolean/split a solid swept from the tagged wire; check dm:* attributes on resulting faces/edges. Retires: whether the future solid-making feature can find its radius payload to call setDimensionedEntities.
+1. Publish from one DEO; open the Variables table. Retires: `[ Fxxx ]` is not shown (LIB:299-301 claim).
+2. Consumer (Design map) that checks `canBeEmbeddedVariables` only, no `is` test, accepts the map and lists its keys. Retires: predicate-only gate.
+3. Join mode, 3-run chain: republish `run1`; `size(evaluateQuery(context, #run1))` -> 1 and it is the middle edge. Retires: qClosestTo re-basing and opExtractWires keeping runs as separate edges.
+4. Same, non-join mode: `run1` resolves via qCreatedBy -> 1 edge. Retires: dual-path query choice.
+5. Two DEO instances both picked: query keys union (`output` -> both wire sets), variable keys first-wins with a warning naming the key. Retires: merge semantics.
+6. Suppress one picked producer: Design map regenerates with a clean warning, no error. Retires: suppressed-source handling.
+7. Freeze `deo_output` with makeRobustQueriesBatched, sweep a solid from it, then fillet the solid: the query variable still resolves. Retires: robust freeze vs EV's transient evaluateQuery.
+8. Sweep from `deo_output` picked in the native Sweep dialog. Retires: setQueryVariable import and picker visibility.
+9. Feature-list performance readout before and after embedding on the 1.41 s test doc. Retires: cost claim in section 7.
+10. Optional: setProperty DESCRIPTION on the wire, then GET /metadata/.../e/{eid}/p. Only if the API path is ever wanted.
 
 ## 9. Open decisions
 
-1. Map name source: new `mapName` parameter (recommended; explicit, validated, empty = off) vs deriving from outputName (not an identifier in practice).
-2. Query variable publication: boolean default off, `<map>_output` only (recommended) vs always publish vs per-link QVs.
-3. Payload duplication: run payloads in both edge attributes and the map variable via one builder (recommended; attributes are truth, map is convenience) vs attributes only.
-4. Arc-length convention: signed from zero point, matching profile X (recommended; zeroArc exported so chain-start arc is derivable) vs from chain start.
-5. Duplicate map name: regenError (recommended, loud) vs warning with last-writer-wins.
-6. DESCRIPTION property summary on wires: add if test 7 passes (recommended) vs skip.
-7. Tagging fills and extensions: tag both (recommended; consumers must be able to exclude fabricated geometry) vs runs only.
+1. Descriptors vs plain values: wrap the 5-6 keys a user would read in the printed list (recommended; plain values everywhere else, arrays never wrapped) vs wrap everything.
+2. Export stations at all: no (recommended); frames are re-evaluated from the published wire.
+3. Per-run keys vs runs[] only: both (recommended; `run<r>` queries are the only way to get a per-run Query out, `runs[]` carries the payload) vs runs[] alone.
+4. Also call embedFeatureDefinition for DEO's inputs: no (recommended; a second call replaces the first, LIB:50-52; the inputs that matter are already in the query half).
+5. Delete Reese_* and query_varialble_ref.fs: after test 2 passes with the port (recommended) vs now.
+
+## Later, if needed
+
+Derive survival and cross-studio reads would need attributes on the output entities (std/attributes.fs:38-43,
+std/derive.fs:138-145) and a loader on the far side; the map-of-attributes schema from rev 1 of this
+doc is in git history. Not planned.
