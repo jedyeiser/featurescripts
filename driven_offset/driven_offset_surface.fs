@@ -104,9 +104,10 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Name", "Description" : "Names the surfaces. Each offset's own name, where given, names its wire." }
         definition.outputName is string;
 
+        offsetEdgesPredicate(definition);
+        offsetZeroPredicate(definition);
         offsetMeasurePredicate(definition);
         offsetReferencePredicate(definition);
-        offsetEdgesPredicate(definition);
 
         // One array whatever the mode: the seed edges and the reference are shared, and a
         // profile is the only thing that differs between offsets. Loft-between-profiles
@@ -143,7 +144,6 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         offsetAlignmentPredicate(definition);
         offsetCornersPredicate(definition);
         offsetEndsPredicate(definition);
-        offsetZeroPredicate(definition);
         drivenOffsetSpacingPredicate(definition);
         offsetDebugPredicate(definition);
     }
@@ -255,13 +255,14 @@ function ruleFromOffset(context is Context, id is Id, definition is map, driven 
 {
     const reach = definition.ruledDistance;
     const steps = usesReferenceFrame(definition, driven.alongRef) ? definition.ruledSections : 2;
+    const span = surfaceSpan(context, id, driven);
 
-    var sections = [ruledSection(context, id + "base", definition, driven, 0 * meter)];
+    var sections = [ruledSection(context, id + "base", definition, driven, span, 0 * meter)];
 
     for (var s = 1; s < steps; s += 1)
     {
         sections = append(sections,
-            ruledSection(context, id + ("out" ~ s), definition, driven, reach * s / (steps - 1)));
+            ruledSection(context, id + ("out" ~ s), definition, driven, span, reach * s / (steps - 1)));
     }
 
     if (definition.ruledBothDirections)
@@ -272,7 +273,7 @@ function ruleFromOffset(context is Context, id is Id, definition is map, driven 
         for (var s = steps - 1; s >= 1; s -= 1)
         {
             back = append(back,
-                ruledSection(context, id + ("back" ~ s), definition, driven, -reach * s / (steps - 1)));
+                ruledSection(context, id + ("back" ~ s), definition, driven, span, -reach * s / (steps - 1)));
         }
         sections = concatenateArrays([back, sections]);
     }
@@ -283,16 +284,20 @@ function ruleFromOffset(context is Context, id is Id, definition is map, driven 
 /**
  * One section of a ruled surface: the offset curve stepped sideways by `reach`.
  *
- * A step of zero is the offset itself, rebuilt here rather than reused. Reusing the emitted
- * wire would be cheaper but it is split into runs at every profile break and every corner,
- * and a loft wants one curve per section.
+ * Built over one RUN, not over every station. Walking the raw point list looks equivalent
+ * and is not: at a corner the offset crosses itself before resolveCorners trims it, and
+ * where the profile stops reaching there is a hole. Either one produces a self-intersecting
+ * or discontinuous profile, and a loft refuses both -- which is what LOFT_INVALID was.
+ *
+ * A step of zero is the offset itself, rebuilt here rather than reused, because the emitted
+ * wire is split at every break and corner and a loft section wants a single curve.
  */
 function ruledSection(context is Context, id is Id, definition is map, driven is map,
-    reach is ValueWithUnits) returns Query
+    span is map, reach is ValueWithUnits) returns Query
 {
     var points = [];
 
-    for (var i = 0; i < size(driven.stations); i += 1)
+    for (var i = span.start; i <= span.end; i += 1)
     {
         const at = displacedPoint(definition, driven, i, reach);
 
@@ -304,10 +309,43 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
 
     if (size(points) < 2)
     {
-        throw regenError("The offset does not cover enough of the edges to rule a surface from.");
+        throw regenError("The offset does not cover enough of the edges to build a section from.");
     }
 
     return curveThrough(context, id, definition, points);
+}
+
+/**
+ * The run a surface is built over.
+ *
+ * The longest one, when a profile breaks the offset into several. Lofting each piece
+ * separately would be the more complete answer; taking the longest keeps the result
+ * predictable meanwhile, and says so rather than picking silently.
+ */
+function surfaceSpan(context is Context, id is Id, driven is map) returns map
+{
+    if (size(driven.runs) == 0)
+    {
+        throw regenError("The offset profile does not reach the edges anywhere.");
+    }
+
+    var best = driven.runs[0];
+
+    for (var run in driven.runs)
+    {
+        if (run.end - run.start > best.end - best.start)
+        {
+            best = run;
+        }
+    }
+
+    if (size(driven.runs) > 1)
+    {
+        reportFeatureInfo(context, id, "The offset breaks into " ~ toString(size(driven.runs))
+            ~ " runs; the surface was built over the longest.");
+    }
+
+    return best;
 }
 
 /**
@@ -361,9 +399,11 @@ function displacedPoint(definition is map, driven is map, index is number, reach
  */
 function connectSourceToOffset(context is Context, id is Id, definition is map, driven is map)
 {
+    const span = surfaceSpan(context, id, driven);
+
     var points = [];
 
-    for (var i = 0; i < size(driven.stations); i += 1)
+    for (var i = span.start; i <= span.end; i += 1)
     {
         if (driven.points[i] != undefined)
         {
@@ -376,10 +416,10 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
         throw regenError("The offset does not cover enough of the edges to connect to.");
     }
 
-    // The seed is rebuilt from the stations that actually carry an offset rather than
-    // selected wholesale, which is what keeps an uncovered edge out of the loft.
+    // The seed is rebuilt over the same run the offset side uses rather than selected
+    // wholesale, which is what keeps an uncovered edge out of the loft.
     const seed = curveThrough(context, id + "seed", definition, points);
-    const offsetSide = ruledSection(context, id + "offset", definition, driven, 0 * meter);
+    const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter);
 
     loftSections(context, id + "loft", [seed, offsetSide]);
 }
@@ -400,8 +440,8 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
 
     for (var i = 0; i < size(driven); i += 1)
     {
-        sections = append(sections,
-            ruledSection(context, id + ("section" ~ i), definition, driven[i], 0 * meter));
+        sections = append(sections, ruledSection(context, id + ("section" ~ i), definition,
+                driven[i], surfaceSpan(context, id, driven[i]), 0 * meter));
     }
 
     loftSections(context, id + "loft", sections);
