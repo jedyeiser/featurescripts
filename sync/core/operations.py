@@ -375,6 +375,9 @@ class SyncOperations:
                     element_name=element_name,
                     local_dir=element_dir,
                     force=force,
+                    # The elements listing already told us each tab's microversion, so an
+                    # unchanged tab can be recognised without fetching its contents.
+                    remote_microversion=element.get("microversionId", ""),
                 )
                 results.append(result)
 
@@ -408,6 +411,7 @@ class SyncOperations:
         element_name: str,
         local_dir: Path,
         force: bool = False,
+        remote_microversion: str = "",
     ) -> SyncResult:
         """Pull a single Feature Studio to a local file.
 
@@ -418,6 +422,9 @@ class SyncOperations:
             element_name: Element name (becomes filename)
             local_dir: Directory to save file in
             force: If True, overwrite local changes
+            remote_microversion: The tab's microversionId from the elements listing.
+                When it matches what we recorded last sync and the local file is
+                untouched, the tab is skipped without fetching its contents.
 
         Returns:
             SyncResult
@@ -429,6 +436,26 @@ class SyncOperations:
         filepath = local_dir / filename
         relative_path = str(filepath.relative_to(self.base_dir))
 
+        # Nothing changed on either side: no request, no write, and it is reported as
+        # skipped rather than counted as an update. This is the common case -- most tabs in
+        # a document are untouched by any given edit -- and it is what stops a one-file
+        # change from reading as "14 updated".
+        if not force and remote_microversion:
+            file_state = self.state.get_file_state(relative_path)
+            if (
+                file_state is not None
+                and file_state.remote_microversion == remote_microversion
+                and filepath.exists()
+                and SyncState.hash_file(filepath) == file_state.local_hash
+            ):
+                return SyncResult(
+                    success=True,
+                    filepath=relative_path,
+                    operation="pull",
+                    message=f"Skipped {filename} (unchanged)",
+                    skipped=True,
+                )
+
         try:
             # Get remote content
             response = self.client.get_featurestudio_contents(
@@ -438,7 +465,12 @@ class SyncOperations:
             )
 
             remote_content = response.get("contents", "")
-            remote_microversion = response.get("microversion", "")
+            # The contents endpoint does not return a microversion, so the one from the
+            # elements listing is the only real value; falling back to the response kept the
+            # recorded microversion permanently empty, which silently disabled both the
+            # conflict check and any chance of skipping.
+            if not remote_microversion:
+                remote_microversion = response.get("microversion", "") or ""
 
             # Check for conflicts
             if not force:
@@ -455,6 +487,30 @@ class SyncOperations:
                         conflict=True,
                     )
 
+            # The microversion moved but the text did not -- a save that changed nothing,
+            # or a tab we have never recorded. Record the new microversion so the next sync
+            # can skip it outright, but do not rewrite the file or count it as an update.
+            local_hash = SyncState.compute_hash(remote_content)
+            unchanged = filepath.exists() and SyncState.hash_file(filepath) == local_hash
+
+            if unchanged:
+                self.state.update_file_state(
+                    filepath=relative_path,
+                    local_hash=local_hash,
+                    remote_microversion=remote_microversion,
+                    element_id=element_id,
+                    document_id=document_id,
+                    workspace_id=workspace_id,
+                )
+                self.state.save()
+                return SyncResult(
+                    success=True,
+                    filepath=relative_path,
+                    operation="pull",
+                    message=f"Skipped {filename} (unchanged)",
+                    skipped=True,
+                )
+
             # Backup if needed
             self._backup_file(filepath)
 
@@ -462,7 +518,6 @@ class SyncOperations:
             filepath.write_text(remote_content, encoding="utf-8")
 
             # Update state
-            local_hash = SyncState.compute_hash(remote_content)
             self.state.update_file_state(
                 filepath=relative_path,
                 local_hash=local_hash,
@@ -858,6 +913,9 @@ class SyncOperations:
                     element_name=element_name,
                     local_dir=element_dir,
                     force=force,
+                    # As in _pull_document_to_folder: the listing already carries each tab's
+                    # microversion, so an untouched tab needs no request.
+                    remote_microversion=element.get("microversionId", ""),
                 )
                 results.append(result)
 

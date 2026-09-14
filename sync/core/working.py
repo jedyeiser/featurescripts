@@ -289,8 +289,15 @@ class WorkingDirectoryManager:
                     )
                     if len(failed) > 0:
                         console.print("  Failures are listed above as FAILED. Common causes: file name mismatch, wrong project, or file doesn't exist in Onshape.")
+            elif files_updated == 0 and files_skipped > 0 and len(failed) == 0 and not any(r.conflict for r in results):
+                # The ordinary outcome now that unchanged tabs are skipped: say so plainly
+                # rather than warning about it, which read as a failure.
+                console.print(
+                    f"\n[bold green]Up to date:[/bold green] "
+                    f"{files_skipped} tab(s) unchanged since the last sync; nothing downloaded."
+                )
             elif files_updated == 0 and len(failed) == 0 and not any(r.conflict for r in results):
-                # Nothing was actually downloaded and nothing hard-failed — explain why
+                # Nothing downloaded AND nothing skipped — that really is suspicious
                 console.print(
                     f"\n[bold yellow]Completeness:[/bold yellow] "
                     f"0 files were downloaded. Possible reasons:"
