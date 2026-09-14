@@ -1250,31 +1250,6 @@ function liveEdges(edgeData is array, group is map) returns array
 }
 
 /**
- * Copy the profile's edges out as they are.
- *
- * No fitting anywhere: these edges are the outline the kernel produced, so a line stays a
- * line and nothing can ring. Edges that collapsed to a point are dropped, as the header
- * asks -- they carry no shape and would only be degenerate bodies.
- */
-function emitEdgesVerbatim(context is Context, id is Id, edgeData is array, group is map)
-{
-    var kept = [];
-
-    for (var m in group.members)
-    {
-        if (edgeData[m].length > TOLERANCE.zeroLength * meter)
-        {
-            kept = append(kept, edgeData[m].edge);
-        }
-    }
-
-    if (size(kept) > 0)
-    {
-        opExtractWires(context, id + "verbatim", { "edges" : qUnion(kept) });
-    }
-}
-
-/**
  * Merge what genuinely belongs together, and emit the rest as it stands.
  *
  * The merge rule is deliberately narrow. Lines merge only with collinear lines and arcs only

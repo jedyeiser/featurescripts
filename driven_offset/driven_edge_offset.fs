@@ -68,7 +68,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         offsetZeroPredicate(definition);
 
-        offsetSpacingPredicate(definition);
+        drivenOffsetSpacingPredicate(definition);
 
         offsetDebugPredicate(definition);
     }
@@ -196,7 +196,7 @@ function spacingSettings(definition is map) returns map
 /**
  * Fitting settings for freeform output.
  *
- * All three fields are always defined now that offsetApproximationPredicate declares
+ * All three fields are always defined now that drivenOffsetApproximationPredicate declares
  * them unconditionally, so there is nothing left to fall back to. Only freeform runs
  * consume these -- lines, arcs and corner fills are exact constructions.
  */

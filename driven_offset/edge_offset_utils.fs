@@ -2824,8 +2824,13 @@ export function frameRates(stations is array, run is map, index is number) retur
 // Factored out of driven_edge_offset so driven_offset_surface can present the same
 // controls without a second copy that drifts. Each is the exact block it replaced.
 
+// These three carry a "driven" prefix because map_curve declares its own
+// offsetSpacingPredicate and offsetApproximationPredicate with a different UI -- no
+// group wrapper, no join control -- and export-imports this file. Same name, different
+// parameters, so they are deliberately kept apart rather than merged.
+
 /** Control-point budget for a fitted run. The floor of 4 is a cubic's minimum. */
-export const OffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
+export const DrivenOffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
 
 /**
  * The approximation controls this feature actually uses.
@@ -2847,7 +2852,7 @@ export const OffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as
  * Worth knowing while reading these: only freeform runs reach the solver at all. Lines,
  * arcs and corner fills are exact constructions and ignore every field here.
  */
-export predicate offsetApproximationPredicate(definition is map)
+export predicate drivenOffsetApproximationPredicate(definition is map)
 {
     annotation { "Name" : "Target degree", "Description" : "Degree the fit aims for on freeform runs" }
     isInteger(definition.approximationDegree, DEGREE_BOUND);
@@ -2856,7 +2861,7 @@ export predicate offsetApproximationPredicate(definition is map)
     isLength(definition.approximationTolerance, TOLERANCE_BOUND);
 
     annotation { "Name" : "Maximum control points", "Description" : "Cap on a fitted run. The fit stops as soon as tolerance is met, so this only binds on a run that cannot reach it." }
-    isInteger(definition.approximationMaxCPs, OffsetMaxCPBounds);
+    isInteger(definition.approximationMaxCPs, DrivenOffsetMaxCPBounds);
 }
 
 /**
@@ -2965,7 +2970,7 @@ export predicate offsetZeroPredicate(definition is map)
 /**
  * How densely the offset is evaluated, and how it is fitted.
  */
-export predicate offsetSpacingPredicate(definition is map)
+export predicate drivenOffsetSpacingPredicate(definition is map)
 {
     annotation { "Group Name" : "Spacing & approximation", "Collapsed By Default" : true }
     {
@@ -2993,7 +2998,7 @@ export predicate offsetSpacingPredicate(definition is map)
 
         annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
         {
-            offsetApproximationPredicate(definition);
+            drivenOffsetApproximationPredicate(definition);
         }
     }
 }

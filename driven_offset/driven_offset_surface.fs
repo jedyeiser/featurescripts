@@ -144,7 +144,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         offsetCornersPredicate(definition);
         offsetEndsPredicate(definition);
         offsetZeroPredicate(definition);
-        offsetSpacingPredicate(definition);
+        drivenOffsetSpacingPredicate(definition);
         offsetDebugPredicate(definition);
     }
     {
