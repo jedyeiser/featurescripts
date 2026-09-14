@@ -2816,3 +2816,223 @@ export function frameRates(stations is array, run is map, index is number) retur
         "height" : c1 * (near.heightAxis - here.heightAxis) - c2 * (far.heightAxis - here.heightAxis)
     };
 }
+
+// ==========================================================================
+// Feature UI
+// ==========================================================================
+
+// Factored out of driven_edge_offset so driven_offset_surface can present the same
+// controls without a second copy that drifts. Each is the exact block it replaced.
+
+/** Control-point budget for a fitted run. The floor of 4 is a cubic's minimum. */
+export const OffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
+
+/**
+ * The approximation controls this feature actually uses.
+ *
+ * Replaces std's curveApproximationPredicate, five of whose eight fields were dead or
+ * actively misleading here:
+ *
+ *   "Keep start derivative" / "Keep end derivative" were never read. We compute the exact
+ *   offset tangent at every run end ourselves and hand it to the solver as a hard
+ *   constraint, so there is nothing for the user to keep or discard.
+ *
+ *   "Maximum deviation" is declared READ_ONLY by that predicate on the understanding that
+ *   the feature writes the measured value back. This one never did, so the field sat
+ *   permanently blank.
+ *
+ *   "Approximate" did not switch approximation on or off. Unchecked, it swapped the
+ *   user's three numbers for hard-coded ones and fitted exactly the same runs.
+ *
+ * Worth knowing while reading these: only freeform runs reach the solver at all. Lines,
+ * arcs and corner fills are exact constructions and ignore every field here.
+ */
+export predicate offsetApproximationPredicate(definition is map)
+{
+    annotation { "Name" : "Target degree", "Description" : "Degree the fit aims for on freeform runs" }
+    isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+    annotation { "Name" : "Tolerance", "Description" : "How far a fitted run may sit from the computed offset points" }
+    isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+
+    annotation { "Name" : "Maximum control points", "Description" : "Cap on a fitted run. The fit stops as soon as tolerance is met, so this only binds on a run that cannot reach it." }
+    isInteger(definition.approximationMaxCPs, OffsetMaxCPBounds);
+}
+
+/**
+ * What the offset profile's X axis measures.
+ */
+export predicate offsetMeasurePredicate(definition is map)
+{
+    annotation { "Name" : "Measure along", "Default" : MeasureAlong.OFFSET_EDGES, "Description" : "What the offset profile's X axis measures: a world X coordinate, distance along the edges being offset, or distance along a separate reference wire. All three are measured from the zero point.", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+    definition.measureAlong is MeasureAlong;
+}
+
+/**
+ * The reference wire and how the offset is measured along it.
+ *
+ * Only shown for MeasureAlong.REFERENCE_WIRE, so it is a predicate of its own rather than
+ * part of the measure predicate: a caller offsetting several profiles along one reference
+ * shows this once, not once per profile.
+ */
+export predicate offsetReferencePredicate(definition is map)
+{
+    if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
+    {
+        annotation { "Group Name" : "Offset spacing definition", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "Reference wire", "Filter" : EntityType.BODY && BodyType.WIRE && ConstructionObject.NO, "MaxNumberOfPicks" : 1, "Description" : "The wire that profile X is measured along" }
+            definition.referenceWire is Query;
+
+            annotation { "Name" : "Offset delta", "Description" : "Measure along a curve this far from the selected wire, so an offset stated along the core bottom stays stated along the core bottom" }
+            isLength(definition.alongOffsetDelta, OffsetHeightBounds);
+
+            annotation { "Name" : "Flip offset delta", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            definition.flipAlongOffsetDir is boolean;
+
+            annotation { "Name" : "Hold length in the reference surface", "Default" : false, "Description" : "Project the length direction into the reference surface, so a length offset cannot change a point's height above it. Height is always measured normal to the reference, and width always lies in the surface, with or without this." }
+            definition.constrainProfile is boolean;
+        }
+    }
+}
+
+/**
+ * The edges being offset. Shared by every profile a caller drives.
+ */
+export predicate offsetEdgesPredicate(definition is map)
+{
+    annotation { "Name" : "Offset edges", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO }
+    definition.offsetEdges is Query;
+}
+
+/**
+ * How the offset frame is oriented at each station.
+ */
+export predicate offsetAlignmentPredicate(definition is map)
+{
+    annotation { "Name" : "Offset alignment", "Default" : OffsetFrameAlignment.ALONG, "Description" : "How the offset frame is oriented at each point along the offset edges" }
+    definition.frameAlignment is OffsetFrameAlignment;
+}
+
+/**
+ * What happens where a G0 corner gaps or crosses.
+ */
+export predicate offsetCornersPredicate(definition is map)
+{
+    annotation { "Group Name" : "Corners", "Collapsed By Default" : true }
+    {
+        annotation { "Name" : "Where the offset gaps", "Default" : CornerGapMode.ARC, "UIHint" : UIHint.SHOW_LABEL, "Description" : "A G0 corner in the offset edges separates the two offsets by 2 * width * sin(angle/2) on the outside of the turn. Rounding uses a true circular arc centred on the corner vertex wherever one exists, and an arc-like cubic where it does not." }
+        definition.cornerGapMode is CornerGapMode;
+
+        annotation { "Name" : "Where the offset crosses", "Default" : CornerOverlapMode.TRIM, "UIHint" : UIHint.SHOW_LABEL, "Description" : "The same corner overlaps on the inside of the turn, by width * tan(angle/2) along each side. Trimming cuts both back to where they actually cross." }
+        definition.cornerOverlapMode is CornerOverlapMode;
+    }
+}
+
+/**
+ * Where the offset stops, and at what slope.
+ */
+export predicate offsetEndsPredicate(definition is map)
+{
+    annotation { "Group Name" : "Ends", "Collapsed By Default" : true }
+    {
+        annotation { "Name" : "Start plane", "Filter" : BodyType.MATE_CONNECTOR || (EntityType.FACE && GeometryType.PLANE), "MaxNumberOfPicks" : 1, "Description" : "Terminate the start of the offset on this plane. Offsetting moves an endpoint off wherever the source ended, by however far the source tangent is from square; this puts it back on a plane you choose. The offset is trimmed if it runs past and extended if it stops short." }
+        definition.startPlane is Query;
+
+        annotation { "Name" : "Start direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Optional. The slope the offset should have where it meets the start plane, for ends that arrive oblique -- a triangular swallowtail meeting the centreline, say. Left empty, the offset continues along its own curvature. Which way round the selection points does not matter." }
+        definition.startDirection is Query;
+
+        annotation { "Name" : "End plane", "Filter" : BodyType.MATE_CONNECTOR || (EntityType.FACE && GeometryType.PLANE), "MaxNumberOfPicks" : 1, "Description" : "Terminate the end of the offset on this plane. Independent of the start plane: a chain from FCP to ACP ends on two planes at different orientations." }
+        definition.endPlane is Query;
+
+        annotation { "Name" : "End direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Optional. As the start direction, for the other end." }
+        definition.endDirection is Query;
+
+        annotation { "Name" : "Allow extension", "Default" : true, "Description" : "Off, an offset that stops short of its terminal plane is left alone rather than extended. Extension fabricates geometry past where the source data stops, which is not always wanted." }
+        definition.allowExtension is boolean;
+    }
+}
+
+/**
+ * The point every coordinate is measured from.
+ */
+export predicate offsetZeroPredicate(definition is map)
+{
+    annotation { "Name" : "Zero point", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+    definition.offsetRefPoint is Query;
+}
+
+/**
+ * How densely the offset is evaluated, and how it is fitted.
+ */
+export predicate offsetSpacingPredicate(definition is map)
+{
+    annotation { "Group Name" : "Spacing & approximation", "Collapsed By Default" : true }
+    {
+        annotation { "Name" : "Offset spacing", "Description" : "How many points to evaluate along each offset edge", "UIHint" : UIHint.HORIZONTAL_ENUM, "Default" : OffsetPointSpacing.CTRL_POINT }
+        definition.edgeOffsetSpacingDef is OffsetPointSpacing;
+
+        if (definition.edgeOffsetSpacingDef == OffsetPointSpacing.CTRL_POINT)
+        {
+            annotation { "Name" : "Control point multiplier" }
+            isInteger(definition.ctrlPointMultiplier, CtrlPointMultiplierBounds);
+        }
+        if (definition.edgeOffsetSpacingDef == OffsetPointSpacing.NUM_POINTS)
+        {
+            annotation { "Name" : "Points per edge" }
+            isInteger(definition.pointsPerEdge, PointsPerEdgeBounds);
+        }
+        if (definition.edgeOffsetSpacingDef == OffsetPointSpacing.DISTANCE_ALONG)
+        {
+            annotation { "Name" : "Point spacing" }
+            isLength(definition.targetPointSpacing, PointSpacingBounds);
+        }
+
+        annotation { "Name" : "Join runs into one wire per link", "Default" : true, "Description" : "Extract the emitted curves into a single wire body per connected chain. Off leaves every run, corner fill and trimmed piece as its own curve body." }
+        definition.joinOutput is boolean;
+
+        annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
+        {
+            offsetApproximationPredicate(definition);
+        }
+    }
+}
+
+/**
+ * Reporting. Nothing here changes geometry.
+ */
+export predicate offsetDebugPredicate(definition is map)
+{
+    annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+    {
+        annotation { "Name" : "Print from chain", "Default" : false }
+        definition.debugPrintFromChain is boolean;
+
+        annotation { "Name" : "Print along chain", "Default" : false }
+        definition.debugPrintAlongChain is boolean;
+
+        annotation { "Name" : "Print profile chain", "Default" : false }
+        definition.debugPrintProfileChain is boolean;
+
+        annotation { "Name" : "Show offset frames", "Default" : false, "Description" : "Draw the width and height axes at each station" }
+        definition.debugShowOffsetFrames is boolean;
+
+        annotation { "Name" : "Show offsets", "Default" : false, "Description" : "Draw each source point to its offset point" }
+        definition.debugShowOffsets is boolean;
+
+        annotation { "Name" : "Show reference offset", "Default" : false, "Description" : "Draw the curve the coordinate is actually measured along -- the reference wire moved by the offset delta. Invisible otherwise: it is neither the wire you picked nor anything in the output." }
+        definition.debugShowReference is boolean;
+
+        annotation { "Name" : "Show chain ends", "Default" : false, "Description" : "Arrow at each end of the chain pointing the way the offset is heading there: green for the start, red for the end. This is the sense the Ends group works in -- an extension travels along the arrow, and a terminal direction is flipped to agree with it." }
+        definition.debugShowChainEnds is boolean;
+
+        annotation { "Name" : "Visualize continuity", "Default" : false, "Description" : "Mark where the output is split into separate curves" }
+        definition.debugVisualizeContinuity is boolean;
+
+        annotation { "Name" : "Print offset table", "Default" : false, "Description" : "Every station's coordinate, offset and resulting point, grouped by source edge" }
+        definition.debugPrintOffsetTable is boolean;
+
+        annotation { "Name" : "Print frame table", "Default" : false, "Description" : "Every station's tangent, width axis and height axis, grouped by source edge" }
+        definition.debugPrintFrameTable is boolean;
+    }
+}

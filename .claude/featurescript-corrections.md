@@ -928,10 +928,109 @@ annotation { "Description" : "x = a - b" }
 
 ---
 
+## 16. Feature UI conformance: four rules fscheck cannot see
+
+**Date**: 2026-09-14
+**Category**: FeatureScript Syntax / Feature UI
+
+Four separate regen failures on one new feature, all reported clean by `fscheck.py`,
+because they are Onshape *precondition conformance* rules rather than symbol resolution.
+
+1. **Every `Query` parameter needs a `Filter`** (or `UIHint.ALWAYS_HIDDEN`). Without one:
+   `Nonconforming feature function: precondition analysis failed`. A `"Name"` alone is not
+   enough.
+2. **Parameter names are unique across the WHOLE precondition**, not per array. Two arrays
+   each declaring `entry.variableName` gives `Duplicate feature parameter 'variableName'`.
+3. **An annotation's `"Default"` only serves NEW instances.** A feature instance saved
+   before a parameter existed fails `Precondition failed (definition.x is Query)` on regen.
+   The fix is the defaults map -- `defineFeature`'s second argument -- which supplies values
+   for keys a stored definition lacks.
+4. **Sketch geometry is `EntityType.FACE` / `EntityType.EDGE`, never `EntityType.BODY`.**
+   A filter of `EntityType.BODY && SketchObject.YES` selects nothing. std always writes
+   `(EntityType.FACE || EntityType.EDGE) && SketchObject.YES`.
+
+**Lesson Learned**: fscheck is blind to all four. Grep for them before pushing -- each is a
+one-line check over the precondition block -- or read real notices with
+`python -m sync.main notices <project> --json`.
+
+---
+
+## 17. common.fs does not re-export every std module
+
+**Date**: 2026-09-14
+**Category**: Import Issues
+
+`Variable ProjectionType not found` and `Function getQueryVariable with 2 argument(s) not
+found` both came from importing only `onshape/std/common.fs`. The symbols exist; the
+modules holding them are not re-exported.
+
+```featurescript
+import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");  // ProjectionType
+import(path : "onshape/std/queryVariable.fs", version : "3070.0");       // get/setQueryVariable
+```
+
+`context.fs` IS re-exported (so `getVariable` / `getAllVariables` are available).
+`geomOperations.fs` documents `opDropCurve` in terms of `ProjectionType` without the type
+being in scope, which is what makes this one confusing.
+
+**Lesson Learned**: "documented in a module common re-exports" does not mean "in scope".
+When a std name is not found, check whether its declaring module is in `common.fs` before
+assuming the name is wrong.
+
+---
+
+## 18. Query variables cannot be enumerated from FeatureScript
+
+**Date**: 2026-09-14
+**Category**: Type System / Query Variables
+
+Established by regen, after building an editing-logic discovery pass that found nothing:
+
+- `getAllVariables(context)` (`@internal`) returns ordinary variables only. Query variables
+  are written through a separate builtin (`@setQueryVariable`) and do not appear.
+  `queryVariable.fs` confirms the split: it treats a name `getVariable` can find as proof
+  the name belongs to a NON-query variable.
+- There is no `getAllQueryVariables`.
+- **Selecting a query variable in a `Query` parameter gives you its VALUE, not a reference.**
+  `QueryType` has no `QUERY_VARIABLE` member, so the variable's name is unrecoverable from
+  the selection.
+- `UIHint.QUERY_VARIABLE_NAME` (`@internal`) exists and is used by std's own Query variable
+  feature on a string parameter. Whether it presents a picker was not established.
+- Producer slots from the embed pattern DO appear in `getAllVariables`, under keys shaped
+  like `[ Fxxxx_0 ]`.
+
+**Lesson Learned**: do not design a feature around discovering query variables in context.
+Either take the name as a string, or read embedded producer maps -- which are enumerable,
+named and described -- and accept that this only reaches features you instrumented.
+
+---
+
+## 19. opCreateCompositePart rejects mate connectors
+
+**Date**: 2026-09-14
+**Category**: Geometry Operations
+
+`@opCreateCompositePart: INVALID_INPUT` with no further detail. The cause was passing mate
+connectors in `bodies`. A mate connector is `BodyType.MATE_CONNECTOR` -- a body by type --
+but not a valid composite member.
+
+```featurescript
+const members = qBodyType(candidates, [BodyType.SOLID, BodyType.SHEET]);
+```
+
+Nested composite parts are also suspect; `qFlattenedCompositeParts` avoids the question.
+
+**Lesson Learned**: filter composite members to SOLID and SHEET explicitly. `EntityType.BODY`
+is a wider set than the operation accepts, and the error names neither the offending entity
+nor the reason.
+
+---
+---
+
 ## Statistics
 
-- **Total Corrections**: 15
-- **Last Updated**: 2026-03-01
+- **Total Corrections**: 19
+- **Last Updated**: 2026-09-14
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
 - **Latest Additions**: Function parameters must always have type annotations
