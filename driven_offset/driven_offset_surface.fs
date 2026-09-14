@@ -683,12 +683,6 @@ function surfaceModeName(mode is SurfaceMode) returns string
  */
 function curveThrough(context is Context, id is Id, definition is map, points is array) returns Query
 {
-    var chord = 0 * meter;
-    for (var i = 1; i < size(points); i += 1)
-    {
-        chord += norm(points[i] - points[i - 1]);
-    }
-
     const fitted = approximateSpline(context, {
                 "degree" : definition.approximationDegree,
                 "tolerance" : definition.approximationTolerance,
@@ -712,9 +706,14 @@ function loftSections(context is Context, id is Id, sections is array)
         return;
     }
 
+    // COLUMNS, not the MINIMAL default: minimal merges every matching pair of profile
+    // segments into one face, which throws away exactly the G0 structure the sections were
+    // built to carry. One face per segment pair keeps a source edge boundary visible as a
+    // face boundary.
     opLoft(context, id, {
                 "profileSubqueries" : sections,
-                "bodyType" : ToolBodyType.SURFACE
+                "bodyType" : ToolBodyType.SURFACE,
+                "loftTopology" : LoftTopology.COLUMNS
             });
 }
 
