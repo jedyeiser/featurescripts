@@ -199,6 +199,19 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         }
 
         finishSurface(context, id, definition, driven);
+    }, {
+        // An annotation's "Default" only serves a NEW instance. A feature saved before a
+        // parameter existed needs it here, or its next regen fails the precondition -- which
+        // is how a debug toggle added mid-session silently does nothing.
+        "surfaceMode" : SurfaceMode.RULED_OFFSET_PROFILE,
+        "outputName" : "",
+        "offsets" : [],
+        "ruledDirection" : RuledDirection.WIDTH,
+        "ruledBothDirections" : false,
+        "ruledSections" : 5,
+        "keepWires" : false,
+        "debugPrintSurface" : false,
+        "debugKeepSections" : false
     });
 
 // ============================================================================
