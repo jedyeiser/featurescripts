@@ -105,7 +105,8 @@ export enum PackageEntityType
 // ============================================================================
 
 annotation { "Feature Type Name" : "Create package",
-        "Feature Type Description" : "Gather bodies, sketches, mate connectors and query variables into one composite part that can be derived with its data intact." }
+        "Feature Type Description" : "Gather bodies, sketches, mate connectors and query variables into one composite part that can be derived with its data intact.",
+        "Editing Logic Function" : "packageEditLogic" }
 export const createPackage = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -136,15 +137,19 @@ export const createPackage = defineFeature(function(context is Context, id is Id
             definition.referenceConnector is Query;
         }
 
-        // Two arrays rather than one, because the two cases differ in what the user
-        // supplies. An existing variable is named -- getQueryVariable resolves it, so the
-        // selection is already made. A new one has to be selected here and named.
-        annotation { "Name" : "Reuse query variables", "Item name" : "variable", "Item label template" : "#sourceName" }
-        definition.existingVariables is array;
-        for (var entry in definition.existingVariables)
+        // Filled in by packageEditLogic, not by hand: every query variable the feature can
+        // see in this Part Studio appears here with a tick box. Read-only so the list stays
+        // a report of what exists rather than somewhere to invent a name that does not.
+        annotation { "Name" : "Query variables found here", "Item name" : "variable",
+                    "Item label template" : "#discoveredName", "UIHint" : UIHint.PREVENT_ARRAY_REORDER }
+        definition.discoveredVariables is array;
+        for (var entry in definition.discoveredVariables)
         {
-            annotation { "Name" : "Existing variable name", "MaxLength" : 256, "Description" : "A query variable already in this Part Studio. Turn on Print variables below to see what the feature can find." }
-            entry.sourceName is string;
+            annotation { "Name" : "Variable", "MaxLength" : 256, "UIHint" : [UIHint.READ_ONLY, UIHint.UNCONFIGURABLE] }
+            entry.discoveredName is string;
+
+            annotation { "Name" : "Include", "Default" : true }
+            entry.keep is boolean;
 
             annotation { "Name" : "Rename", "Default" : false }
             entry.rename is boolean;
@@ -245,17 +250,89 @@ export const createPackage = defineFeature(function(context is Context, id is Id
         }
     }, {
         "packageName" : "",
+        "bodies" : qNothing(),
         "compositeParts" : qNothing(),
         "sketches" : qNothing(),
         "mateConnectors" : qNothing(),
         "referenceKind" : PackageReference.ORIGIN,
         "referenceConnector" : qNothing(),
-        "existingVariables" : [],
+        "discoveredVariables" : [],
         "newVariables" : [],
         "notes" : "",
         "debugPrint" : false,
         "debugPrintVariables" : false
     });
+
+/**
+ * Keep the discovered-variable list in step with the Part Studio.
+ *
+ * Runs whenever the dialog opens or a parameter changes. It rebuilds the list from what is
+ * actually in the context and carries the user's choices across by name, so ticking a box
+ * survives a variable being added or removed elsewhere -- which a positional match would
+ * not, since the discovered order is not ours to control.
+ *
+ * A variable that has disappeared drops off the list rather than lingering as a stale entry
+ * the user would have to clear by hand.
+ */
+export function packageEditLogic(context is Context, id is Id, oldDefinition is map,
+    definition is map, isCreating is boolean, specifiedParameters is map) returns map
+{
+    var previous = {};
+
+    for (var entry in definition.discoveredVariables)
+    {
+        previous[entry.discoveredName] = entry;
+    }
+
+    var rebuilt = [];
+
+    for (var name in discoverQueryVariables(context))
+    {
+        const kept = previous[name];
+
+        if (kept != undefined)
+        {
+            rebuilt = append(rebuilt, mergeMaps(kept, { "discoveredName" : name }));
+            continue;
+        }
+
+        rebuilt = append(rebuilt, {
+                    "discoveredName" : name,
+                    "keep" : true,
+                    "rename" : false,
+                    "renamedTo" : ""
+                });
+    }
+
+    return mergeMaps(definition, { "discoveredVariables" : rebuilt });
+}
+
+/**
+ * Every query variable the context will admit to having.
+ *
+ * getAllVariables is the only enumeration std offers, and it is @internal. Whether query
+ * variables appear in it is the open question this whole list depends on: setQueryVariable
+ * writes through a separate builtin, and queryVariable.fs treats a name that getVariable can
+ * find as proof the name belongs to a NON-query variable. So they are probably invisible
+ * here, in which case this returns nothing and the New array below is the way in.
+ *
+ * Filtering on the value being a Query rather than on the name is what makes it correct
+ * either way -- and it also catches an ordinary variable someone has parked a query in.
+ */
+function discoverQueryVariables(context is Context) returns array
+{
+    var found = [];
+
+    for (var entry in getAllVariables(context))
+    {
+        if (entry.value is Query)
+        {
+            found = append(found, entry.key);
+        }
+    }
+
+    return found;
+}
 
 /**
  * The frame every stored point is measured from.
@@ -291,30 +368,30 @@ function buildPackagePayload(context is Context, id is Id, definition is map,
 {
     var variables = [];
 
-    for (var entry in definition.existingVariables)
+    for (var entry in definition.discoveredVariables)
     {
-        if (entry.sourceName == "")
+        if (entry.discoveredName == "" || !entry.keep)
         {
             continue;
         }
 
-        // getQueryVariable answers with qNothing when the name is unknown, so a typo shows
-        // up as an empty variable rather than a hard failure somewhere later.
-        const entities = getQueryVariable(context, entry.sourceName);
+        // Resolved again at regeneration rather than trusted from the edit: the list was
+        // built when the dialog opened, and the studio may have moved on since.
+        const entities = getQueryVariable(context, entry.discoveredName);
 
         if (isQueryEmpty(context, entities))
         {
             reportFeatureInfo(context, id,
-                "Query variable '" ~ entry.sourceName ~ "' resolved to nothing and was not packaged.");
+                "Query variable '" ~ entry.discoveredName ~ "' resolved to nothing and was not packaged.");
             continue;
         }
 
-        const named = (entry.rename && entry.renamedTo != "") ? entry.renamedTo : entry.sourceName;
+        const named = (entry.rename && entry.renamedTo != "") ? entry.renamedTo : entry.discoveredName;
 
         variables = append(variables, recordQueryVariable(context, {
                         "variableName" : named,
                         "entities" : entities,
-                        "description" : "Reused from '" ~ entry.sourceName ~ "'."
+                        "description" : "Reused from '" ~ entry.discoveredName ~ "'."
                     }, reference));
     }
 
@@ -664,15 +741,14 @@ function printAvailableVariables(context is Context, definition is map)
     println("[package] query variables cannot be listed by any std function; each reused");
     println("[package] name below was resolved individually.");
 
-    for (var entry in definition.existingVariables)
-    {
-        if (entry.sourceName == "")
-        {
-            continue;
-        }
+    println("[package] query variables discovered: "
+        ~ toString(size(definition.discoveredVariables)));
 
-        const found = !isQueryEmpty(context, getQueryVariable(context, entry.sourceName));
-        println("[package]   '" ~ entry.sourceName ~ "': " ~ (found ? "resolved" : "NOT FOUND"));
+    for (var entry in definition.discoveredVariables)
+    {
+        const found = !isQueryEmpty(context, getQueryVariable(context, entry.discoveredName));
+        println("[package]   '" ~ entry.discoveredName ~ "': "
+            ~ (found ? "resolved" : "NOT FOUND") ~ (entry.keep ? ", included" : ", skipped"));
     }
 
     println("========== end variables ==========");
