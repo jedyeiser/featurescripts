@@ -146,6 +146,15 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         offsetEndsPredicate(definition);
         drivenOffsetSpacingPredicate(definition);
         offsetDebugPredicate(definition);
+
+        annotation { "Group Name" : "Surface debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print surface", "Default" : false, "Description" : "Report what each offset produced and what was handed to the loft: runs, the span chosen, and the point count of every section." }
+            definition.debugPrintSurface is boolean;
+
+            annotation { "Name" : "Keep section curves", "Default" : false, "Description" : "Leave the section curves in the result instead of deleting them. The fastest way to see whether the loft was given what you expected." }
+            definition.debugKeepSections is boolean;
+        }
     }
     {
         if (size(definition.offsets) == 0)
@@ -159,6 +168,11 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         }
 
         const driven = driveOffsets(context, id, definition);
+
+        if (definition.debugPrintSurface)
+        {
+            printSurfacePlan(context, definition, driven);
+        }
 
         if (definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT)
         {
@@ -177,6 +191,11 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
             {
                 connectSourceToOffset(context, id + ("connected" ~ i), definition, driven[i]);
             }
+        }
+
+        if (definition.debugPrintSurface)
+        {
+            printSurfaceResult(context, id);
         }
 
         finishSurface(context, id, definition, driven);
@@ -219,6 +238,13 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
                 });
 
         const result = drivenOffset(context, offsetId, perOffset);
+
+        // The offset's own reporting lives with the feature, not the core, so driving
+        // drivenOffset directly leaves every toggle in the Debug group wired to nothing
+        // unless it is called here. One debug id per offset, or they would collide.
+        debugOutput(context, offsetId + "debug", perOffset, result.sourceChain, result.profile,
+            result.alongRef, result.stations, result.coords, result.upper, result.lower,
+            result.placed, result.emitted);
 
         driven = append(driven, mergeMaps(result, {
                         "id" : offsetId,
@@ -310,6 +336,12 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
     if (size(points) < 2)
     {
         throw regenError("The offset does not cover enough of the edges to build a section from.");
+    }
+
+    if (definition.debugPrintSurface)
+    {
+        println("[surface]     section " ~ toString(id[size(id) - 1]) ~ ": "
+            ~ toString(size(points)) ~ " points, reach " ~ toString(reach));
     }
 
     return curveThrough(context, id, definition, points);
@@ -448,6 +480,84 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
 }
 
 // ============================================================================
+// Debug
+// ============================================================================
+
+/**
+ * What each offset produced, before anything is lofted.
+ *
+ * The section point count is the number to read: a loft that collapses usually got sections
+ * of unequal length, or one section that doubled back. Both show here before opLoft is
+ * reached, which is earlier than the error does.
+ */
+function printSurfacePlan(context is Context, definition is map, driven is array)
+{
+    println("");
+    println("========== driven offset surface ==========");
+    println("[surface] mode: " ~ surfaceModeName(definition.surfaceMode)
+        ~ ", offsets driven: " ~ toString(size(driven)));
+
+    for (var i = 0; i < size(driven); i += 1)
+    {
+        const offset = driven[i];
+        const span = surfaceSpan(context, offset.id, offset);
+
+        var covered = 0;
+        for (var k = span.start; k <= span.end; k += 1)
+        {
+            if (offset.points[k] != undefined)
+            {
+                covered += 1;
+            }
+        }
+
+        println("[surface]   offset " ~ toString(i) ~ " '" ~ offset.name ~ "': "
+            ~ toString(size(offset.stations)) ~ " stations, "
+            ~ toString(size(offset.runs)) ~ " run(s), "
+            ~ toString(size(offset.emitted)) ~ " emitted");
+        println("[surface]     span " ~ toString(span.start) ~ "-" ~ toString(span.end)
+            ~ " -> " ~ toString(covered) ~ " section points");
+
+        if (covered < span.end - span.start + 1)
+        {
+            println("[surface]     NOTE: " ~ toString(span.end - span.start + 1 - covered)
+                ~ " station(s) inside the span carry no offset; the section skips them.");
+        }
+    }
+}
+
+/**
+ * What actually came out.
+ */
+function printSurfaceResult(context is Context, id is Id)
+{
+    const sheets = evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET));
+    const faces = evaluateQuery(context, qCreatedBy(id, EntityType.FACE));
+
+    println("[surface] result: " ~ toString(size(sheets)) ~ " sheet body(ies), "
+        ~ toString(size(faces)) ~ " face(s)");
+    println("========== end driven offset surface ==========");
+    println("");
+}
+
+/**
+ * The chosen mode, for the log.
+ */
+function surfaceModeName(mode is SurfaceMode) returns string
+{
+    if (mode == SurfaceMode.RULED_OFFSET_PROFILE)
+    {
+        return "ruled from offset";
+    }
+    if (mode == SurfaceMode.CONNECTED_OFFSET)
+    {
+        return "connect source to offset";
+    }
+
+    return "loft between profiles";
+}
+
+// ============================================================================
 // Shared
 // ============================================================================
 
@@ -510,7 +620,7 @@ function finishSurface(context is Context, id is Id, definition is map, driven i
     const scaffolding = qSubtraction(qCreatedBy(id, EntityType.BODY),
             qUnion([surfaces, qUnion(wires)]));
 
-    if (!isQueryEmpty(context, scaffolding))
+    if (!definition.debugKeepSections && !isQueryEmpty(context, scaffolding))
     {
         opDeleteBodies(context, id + "scaffolding", { "entities" : scaffolding });
     }
