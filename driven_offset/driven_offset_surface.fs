@@ -281,8 +281,23 @@ function ruleFromOffset(context is Context, id is Id, definition is map, driven 
 {
     const reach = definition.ruledDistance;
     const steps = usesReferenceFrame(definition, driven.alongRef) ? definition.ruledSections : 2;
-    const span = surfaceSpan(context, id, driven);
 
+    // One surface per stretch. A stepped offset genuinely is several surfaces, and merging
+    // them would either bridge the step or drop everything past it.
+    const spans = surfaceSpans(driven);
+
+    for (var k = 0; k < size(spans); k += 1)
+    {
+        ruleOverSpan(context, id + ("span" ~ k), definition, driven, spans[k], reach, steps);
+    }
+}
+
+/**
+ * The ruled surface over one uninterrupted stretch of the offset.
+ */
+function ruleOverSpan(context is Context, id is Id, definition is map, driven is map,
+    span is map, reach is ValueWithUnits, steps is number)
+{
     var sections = [ruledSection(context, id + "base", definition, driven, span, 0 * meter)];
 
     for (var s = 1; s < steps; s += 1)
@@ -348,33 +363,99 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
 }
 
 /**
- * The run a surface is built over.
+ * The stretches of the offset a surface can be built over.
  *
- * The longest one, when a profile breaks the offset into several. Lofting each piece
- * separately would be the more complete answer; taking the longest keeps the result
- * predictable meanwhile, and says so rather than picking silently.
+ * Emphatically NOT the runs. buildRuns splits at every source edge boundary so that G0 input
+ * stays G0 in the emitted curves -- a chain of six edges gives six runs even when the offset
+ * across them is perfectly continuous. Building over one run covers a sixth of the chain,
+ * which is what made the surface come out short.
+ *
+ * Only two things actually interrupt a surface: a station with no offset at all, and a real
+ * step. A step is where insertCrossings put a pair at a profile discontinuity AND the two
+ * halves landed on different points -- where the offset merely kinks they coincide, and the
+ * surface should run straight through.
  */
-function surfaceSpan(context is Context, id is Id, driven is map) returns map
+function surfaceSpans(driven is map) returns array
 {
-    if (size(driven.runs) == 0)
+    var spans = [];
+    var from = undefined;
+
+    for (var i = 0; i < size(driven.points); i += 1)
+    {
+        if (driven.points[i] == undefined)
+        {
+            spans = closeSpan(spans, from, i - 1);
+            from = undefined;
+            continue;
+        }
+
+        if (from == undefined)
+        {
+            from = i;
+            continue;
+        }
+
+        if (isOffsetStep(driven, i))
+        {
+            spans = closeSpan(spans, from, i - 1);
+            from = i;
+        }
+    }
+
+    return closeSpan(spans, from, size(driven.points) - 1);
+}
+
+/**
+ * Whether the offset jumps between this station and the one before it.
+ */
+function isOffsetStep(driven is map, index is number) returns boolean
+{
+    if (driven.stations[index].crossing != "right")
+    {
+        return false;
+    }
+
+    return norm(driven.points[index] - driven.points[index - 1]) > TOLERANCE.zeroLength * meter;
+}
+
+/**
+ * Keep a span if it holds enough stations to fit a curve through.
+ */
+function closeSpan(spans is array, from, end is number) returns array
+{
+    if (from == undefined || end - from < 1)
+    {
+        return spans;
+    }
+
+    return append(spans, { "start" : from, "end" : end });
+}
+
+/**
+ * The single stretch used where only one makes sense.
+ */
+function longestSpan(context is Context, id is Id, driven is map) returns map
+{
+    const spans = surfaceSpans(driven);
+
+    if (size(spans) == 0)
     {
         throw regenError("The offset profile does not reach the edges anywhere.");
     }
 
-    var best = driven.runs[0];
-
-    for (var run in driven.runs)
+    var best = spans[0];
+    for (var span in spans)
     {
-        if (run.end - run.start > best.end - best.start)
+        if (span.end - span.start > best.end - best.start)
         {
-            best = run;
+            best = span;
         }
     }
 
-    if (size(driven.runs) > 1)
+    if (size(spans) > 1)
     {
-        reportFeatureInfo(context, id, "The offset breaks into " ~ toString(size(driven.runs))
-            ~ " runs; the surface was built over the longest.");
+        reportFeatureInfo(context, id, "The offset steps into " ~ toString(size(spans))
+            ~ " separate stretches; this mode used the longest.");
     }
 
     return best;
@@ -431,7 +512,7 @@ function displacedPoint(definition is map, driven is map, index is number, reach
  */
 function connectSourceToOffset(context is Context, id is Id, definition is map, driven is map)
 {
-    const span = surfaceSpan(context, id, driven);
+    const span = longestSpan(context, id, driven);
 
     var points = [];
 
@@ -473,7 +554,7 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
     for (var i = 0; i < size(driven); i += 1)
     {
         sections = append(sections, ruledSection(context, id + ("section" ~ i), definition,
-                driven[i], surfaceSpan(context, id, driven[i]), 0 * meter));
+                driven[i], longestSpan(context, id, driven[i]), 0 * meter));
     }
 
     loftSections(context, id + "loft", sections);
@@ -500,28 +581,19 @@ function printSurfacePlan(context is Context, definition is map, driven is array
     for (var i = 0; i < size(driven); i += 1)
     {
         const offset = driven[i];
-        const span = surfaceSpan(context, offset.id, offset);
-
-        var covered = 0;
-        for (var k = span.start; k <= span.end; k += 1)
-        {
-            if (offset.points[k] != undefined)
-            {
-                covered += 1;
-            }
-        }
+        const spans = surfaceSpans(offset);
 
         println("[surface]   offset " ~ toString(i) ~ " '" ~ offset.name ~ "': "
             ~ toString(size(offset.stations)) ~ " stations, "
-            ~ toString(size(offset.runs)) ~ " run(s), "
-            ~ toString(size(offset.emitted)) ~ " emitted");
-        println("[surface]     span " ~ toString(span.start) ~ "-" ~ toString(span.end)
-            ~ " -> " ~ toString(covered) ~ " section points");
+            ~ toString(size(offset.runs)) ~ " run(s) -> "
+            ~ toString(size(spans)) ~ " surface stretch(es)");
+        println("[surface]     runs break at source edges too; stretches break only where the"
+            ~ " offset is absent or steps.");
 
-        if (covered < span.end - span.start + 1)
+        for (var span in spans)
         {
-            println("[surface]     NOTE: " ~ toString(span.end - span.start + 1 - covered)
-                ~ " station(s) inside the span carry no offset; the section skips them.");
+            println("[surface]     stretch " ~ toString(span.start) ~ "-" ~ toString(span.end)
+                ~ "  (" ~ toString(span.end - span.start + 1) ~ " stations)");
         }
     }
 }
