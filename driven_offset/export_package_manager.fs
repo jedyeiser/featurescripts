@@ -151,8 +151,10 @@ export const createPackage = defineFeature(function(context is Context, id is Id
 
             if (entry.rename)
             {
+                // Not "variableName": parameter names must be unique across the entire
+                // precondition, and the New array already claims that one.
                 annotation { "Name" : "Name in the derived context", "MaxLength" : 256 }
-                entry.variableName is string;
+                entry.renamedTo is string;
             }
         }
 
@@ -307,7 +309,7 @@ function buildPackagePayload(context is Context, id is Id, definition is map,
             continue;
         }
 
-        const named = (entry.rename && entry.variableName != "") ? entry.variableName : entry.sourceName;
+        const named = (entry.rename && entry.renamedTo != "") ? entry.renamedTo : entry.sourceName;
 
         variables = append(variables, recordQueryVariable(context, {
                         "variableName" : named,
