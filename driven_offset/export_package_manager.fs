@@ -133,7 +133,10 @@ export const createPackage = defineFeature(function(context is Context, id is Id
             annotation { "Name" : "Name", "MaxLength" : 256, "Description" : "The name this becomes in the derived context." }
             entry.variableName is string;
 
-            annotation { "Name" : "Entities" }
+            // Every entity kind is allowed on purpose: a query variable may name a body,
+            // a face, an edge or a vertex, and which one is the user's business. A Query
+            // parameter must still declare a filter or Onshape rejects the precondition.
+            annotation { "Name" : "Entities", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX }
             entry.entities is Query;
 
             annotation { "Name" : "Description", "MaxLength" : 256 }
