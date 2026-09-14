@@ -111,7 +111,13 @@ export const createPackage = defineFeature(function(context is Context, id is Id
         annotation { "Name" : "Bodies", "Filter" : EntityType.BODY && ConstructionObject.NO }
         definition.bodies is Query;
 
-        annotation { "Name" : "Sketches", "Filter" : EntityType.BODY && SketchObject.YES }
+        annotation { "Name" : "Composite parts", "Filter" : EntityType.BODY && BodyType.COMPOSITE }
+        definition.compositeParts is Query;
+
+        // Sketch geometry is faces and edges, never bodies -- EntityType.BODY here is why
+        // nothing was selectable. The owning body is what joins the package; these are
+        // what the user actually points at.
+        annotation { "Name" : "Sketches", "Filter" : (EntityType.FACE || EntityType.EDGE) && SketchObject.YES }
         definition.sketches is Query;
 
         annotation { "Name" : "Mate connectors", "Filter" : BodyType.MATE_CONNECTOR }
@@ -126,16 +132,37 @@ export const createPackage = defineFeature(function(context is Context, id is Id
             definition.referenceConnector is Query;
         }
 
-        annotation { "Name" : "Query variables", "Item name" : "query variable", "Item label template" : "#variableName" }
-        definition.queryVariables is array;
-        for (var entry in definition.queryVariables)
+        // Two arrays rather than one, because the two cases differ in what the user
+        // supplies. An existing variable is named -- getQueryVariable resolves it, so the
+        // selection is already made. A new one has to be selected here and named.
+        annotation { "Name" : "Reuse query variables", "Item name" : "variable", "Item label template" : "#sourceName" }
+        definition.existingVariables is array;
+        for (var entry in definition.existingVariables)
+        {
+            annotation { "Name" : "Existing variable name", "MaxLength" : 256, "Description" : "A query variable already in this Part Studio. Turn on Print variables below to see what the feature can find." }
+            entry.sourceName is string;
+
+            annotation { "Name" : "Rename", "Default" : false }
+            entry.rename is boolean;
+
+            if (entry.rename)
+            {
+                annotation { "Name" : "Name in the derived context", "MaxLength" : 256 }
+                entry.variableName is string;
+            }
+        }
+
+        annotation { "Name" : "New query variables", "Item name" : "query variable", "Item label template" : "#variableName" }
+        definition.newVariables is array;
+        for (var entry in definition.newVariables)
         {
             annotation { "Name" : "Name", "MaxLength" : 256, "Description" : "The name this becomes in the derived context." }
             entry.variableName is string;
 
-            // Every entity kind is allowed on purpose: a query variable may name a body,
-            // a face, an edge or a vertex, and which one is the user's business. A Query
-            // parameter must still declare a filter or Onshape rejects the precondition.
+            // Every entity kind on purpose: a query variable may name a body, a face, an
+            // edge or a vertex. A Query parameter must still declare a filter or Onshape
+            // rejects the precondition. Existing query variables appear in this dropdown
+            // too, which is the other way to reuse one.
             annotation { "Name" : "Entities", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX }
             entry.entities is Query;
 
@@ -150,19 +177,34 @@ export const createPackage = defineFeature(function(context is Context, id is Id
         {
             annotation { "Name" : "Print package", "Default" : false, "Description" : "Report what went into the package and where each witness point landed." }
             definition.debugPrint is boolean;
+
+            annotation { "Name" : "Print variables", "Default" : false, "Description" : "List the variables this feature can see in the Part Studio, and say whether each reused name resolved." }
+            definition.debugPrintVariables is boolean;
         }
     }
     {
-        const members = qUnion([definition.bodies, definition.sketches, definition.mateConnectors]);
+        // opCreateCompositePart takes bodies, and only real ones. A mate connector is a
+        // body by type but not a valid member -- passing one is what made it reject the
+        // input. A sketch region is a face, so its owning body is what joins instead. And
+        // nested composites are flattened: their grouping is recorded in the attribute, so
+        // nothing is lost by handing the kernel their constituent bodies.
+        const carried = qUnion([
+                    definition.bodies,
+                    qFlattenedCompositeParts(definition.compositeParts),
+                    qOwnerBody(definition.sketches)
+                ]);
+        const members = qBodyType(carried, [BodyType.SOLID, BodyType.SHEET]);
 
         if (isQueryEmpty(context, members))
         {
-            throw regenError("A package needs at least one body, sketch or mate connector.",
-                ["bodies", "sketches", "mateConnectors"]);
+            throw regenError("A package needs at least one body, composite part or sketch. "
+                ~ "Mate connectors alone cannot carry a package: the attribute lives on a "
+                ~ "composite part, and a composite part needs at least one body.",
+                ["bodies", "compositeParts", "sketches"]);
         }
 
         const reference = packageReferenceFrame(context, definition);
-        const payload = buildPackagePayload(context, definition, reference);
+        const payload = buildPackagePayload(context, id, definition, reference);
 
         // The composite part is the carrier: one selectable thing that survives Derive and
         // has somewhere to hang an attribute. Left open rather than closed so its members
@@ -184,6 +226,11 @@ export const createPackage = defineFeature(function(context is Context, id is Id
                         "propertyType" : PropertyType.NAME,
                         "value" : definition.packageName
                     });
+        }
+
+        if (definition.debugPrintVariables)
+        {
+            printAvailableVariables(context, definition);
         }
 
         if (definition.debugPrint)
@@ -221,11 +268,39 @@ function packageReferenceFrame(context is Context, definition is map) returns Co
  * tag from this Feature Studio means anything on the other side. Scalars, strings, vectors
  * and nested maps are safe; a tagged value is a bet.
  */
-function buildPackagePayload(context is Context, definition is map, reference is CoordSystem) returns map
+function buildPackagePayload(context is Context, id is Id, definition is map,
+    reference is CoordSystem) returns map
 {
     var variables = [];
 
-    for (var entry in definition.queryVariables)
+    for (var entry in definition.existingVariables)
+    {
+        if (entry.sourceName == "")
+        {
+            continue;
+        }
+
+        // getQueryVariable answers with qNothing when the name is unknown, so a typo shows
+        // up as an empty variable rather than a hard failure somewhere later.
+        const entities = getQueryVariable(context, entry.sourceName);
+
+        if (isQueryEmpty(context, entities))
+        {
+            reportFeatureInfo(context, id,
+                "Query variable '" ~ entry.sourceName ~ "' resolved to nothing and was not packaged.");
+            continue;
+        }
+
+        const named = (entry.rename && entry.variableName != "") ? entry.variableName : entry.sourceName;
+
+        variables = append(variables, recordQueryVariable(context, {
+                        "variableName" : named,
+                        "entities" : entities,
+                        "description" : "Reused from '" ~ entry.sourceName ~ "'."
+                    }, reference));
+    }
+
+    for (var entry in definition.newVariables)
     {
         if (entry.variableName == "" || isQueryEmpty(context, entry.entities))
         {
@@ -241,7 +316,8 @@ function buildPackagePayload(context is Context, definition is map, reference is
         "notes" : definition.notes,
         "referenceKind" : (definition.referenceKind == PackageReference.ORIGIN) ? "origin" : "mateConnector",
         "bodies" : recordBodies(context, definition.bodies, reference),
-        "sketches" : recordBodies(context, definition.sketches, reference),
+        "compositeParts" : recordBodies(context, qFlattenedCompositeParts(definition.compositeParts), reference),
+        "sketches" : recordBodies(context, qOwnerBody(definition.sketches), reference),
         "mateConnectors" : recordConnectors(context, definition.mateConnectors, reference),
         "queryVariables" : variables
     };
@@ -543,6 +619,49 @@ export function resolveWitness(context is Context, candidates is Query, stored i
 // ============================================================================
 
 /**
+ * What this feature can see in the Part Studio, and whether each reused name resolved.
+ *
+ * Onshape has no way to enumerate query variables -- getAllVariables covers ordinary ones
+ * only, and there is no getAllQueryVariables -- so the list below is the ordinary variables
+ * plus a resolved/not-resolved verdict on each name actually asked for. That is the whole
+ * of the available insight, and pretending otherwise would be worse than saying so.
+ *
+ * The other way to find a query variable is to open the Entities dropdown under "New query
+ * variables": Onshape surfaces query variables there natively, alongside geometry.
+ */
+function printAvailableVariables(context is Context, definition is map)
+{
+    println("");
+    println("========== create package: variables ==========");
+
+    const ordinary = getAllVariables(context);
+    const names = keys(ordinary);
+
+    println("[package] ordinary variables in context: " ~ toString(size(names)));
+    for (var name in names)
+    {
+        println("[package]   #" ~ name);
+    }
+
+    println("[package] query variables cannot be listed by any std function; each reused");
+    println("[package] name below was resolved individually.");
+
+    for (var entry in definition.existingVariables)
+    {
+        if (entry.sourceName == "")
+        {
+            continue;
+        }
+
+        const found = !isQueryEmpty(context, getQueryVariable(context, entry.sourceName));
+        println("[package]   '" ~ entry.sourceName ~ "': " ~ (found ? "resolved" : "NOT FOUND"));
+    }
+
+    println("========== end variables ==========");
+    println("");
+}
+
+/**
  * What went into the package.
  */
 function printPackage(payload is map)
@@ -551,7 +670,8 @@ function printPackage(payload is map)
     println("========== create package: " ~ payload.name ~ " ==========");
     println("[package] measured from the " ~ payload.referenceKind);
     println("[package] bodies: " ~ toString(size(payload.bodies))
-        ~ ", sketches: " ~ toString(size(payload.sketches))
+        ~ ", from composites: " ~ toString(size(payload.compositeParts))
+        ~ ", sketch bodies: " ~ toString(size(payload.sketches))
         ~ ", mate connectors: " ~ toString(size(payload.mateConnectors)));
 
     for (var variable in payload.queryVariables)
