@@ -1,6 +1,10 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
+// getQueryVariable / setQueryVariable live in their own module, which common.fs does not
+// re-export -- the same gap as ProjectionType in evaluate_profiles.
+import(path : "onshape/std/queryVariable.fs", version : "3070.0");
+
 /**
  *
  * This contains two functions that create and derive 'packages'. This extends the idea Greg Brown (Onshape VP of Product) laid out with his publish feature: https://k2-sports.onshape.com/documents/40d43cad542dccfa4772d7e1/v/856bd2b631f7e35c4a2b34ad/e/788996d08647863b81b2ff61
@@ -237,6 +241,18 @@ export const createPackage = defineFeature(function(context is Context, id is Id
         {
             printPackage(payload);
         }
+    }, {
+        "packageName" : "",
+        "compositeParts" : qNothing(),
+        "sketches" : qNothing(),
+        "mateConnectors" : qNothing(),
+        "referenceKind" : PackageReference.ORIGIN,
+        "referenceConnector" : qNothing(),
+        "existingVariables" : [],
+        "newVariables" : [],
+        "notes" : "",
+        "debugPrint" : false,
+        "debugPrintVariables" : false
     });
 
 /**
