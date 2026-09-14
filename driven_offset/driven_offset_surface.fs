@@ -323,43 +323,75 @@ function ruleOverSpan(context is Context, id is Id, definition is map, driven is
 }
 
 /**
- * One section of a ruled surface: the offset curve stepped sideways by `reach`.
+ * One section of a ruled surface: the offset stepped sideways by `reach`.
  *
- * Built over one RUN, not over every station. Walking the raw point list looks equivalent
- * and is not: at a corner the offset crosses itself before resolveCorners trims it, and
- * where the profile stops reaching there is a hole. Either one produces a self-intersecting
- * or discontinuous profile, and a loft refuses both -- which is what LOFT_INVALID was.
+ * One curve per RUN, gathered into a single wire -- not one curve over the whole stretch.
+ * Fitting the stretch as a single spline smooths straight through every G0 corner the source
+ * had, and leaves the loft with one edge per side and nothing to pair up. Runs already break
+ * exactly where the source edges do, so fitting them separately keeps those breaks and gives
+ * both sections the same edge count, which is what lets the loft match them face for face.
  *
- * A step of zero is the offset itself, rebuilt here rather than reused, because the emitted
- * wire is split at every break and corner and a loft section wants a single curve.
+ * A step of zero is the offset itself, rebuilt here rather than reused. Reusing the emitted
+ * wire would keep its exact lines and arcs, but the displaced section has to be built this
+ * way regardless, and two sections built differently would not correspond.
  */
 function ruledSection(context is Context, id is Id, definition is map, driven is map,
     span is map, reach is ValueWithUnits) returns Query
 {
-    var points = [];
+    var pieces = [];
+    var kept = 0;
 
-    for (var i = span.start; i <= span.end; i += 1)
+    for (var run in driven.runs)
     {
-        const at = displacedPoint(definition, driven, i, reach);
+        const from = max(run.start, span.start);
+        const to = min(run.end, span.end);
 
-        if (at != undefined)
+        if (to - from < 1)
         {
-            points = append(points, at);
+            continue;
         }
+
+        var points = [];
+        for (var i = from; i <= to; i += 1)
+        {
+            const at = displacedPoint(definition, driven, i, reach);
+
+            if (at != undefined)
+            {
+                points = append(points, at);
+            }
+        }
+
+        if (size(points) < 2)
+        {
+            continue;
+        }
+
+        pieces = append(pieces, curveThrough(context, id + ("piece" ~ kept), definition, points));
+        kept += 1;
     }
 
-    if (size(points) < 2)
+    if (kept == 0)
     {
         throw regenError("The offset does not cover enough of the edges to build a section from.");
     }
 
+    // One wire, many edges. opExtractWires chains the pieces where they meet, which they do
+    // because adjacent runs share a station -- and a trimmed corner shares an exact point.
+    const wireId = id + "wire";
+    opExtractWires(context, wireId, { "edges" : qUnion(pieces) });
+
+    const wires = qCreatedBy(wireId, EntityType.BODY);
+
     if (definition.debugPrintSurface)
     {
-        println("[surface]     section " ~ toString(id[size(id) - 1]) ~ ": "
-            ~ toString(size(points)) ~ " points, reach " ~ toString(reach));
+        println("[surface]     section reach " ~ toString(reach) ~ ": "
+            ~ toString(kept) ~ " run curve(s) -> "
+            ~ toString(size(evaluateQuery(context, wires))) ~ " wire body(ies), "
+            ~ toString(size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)))) ~ " edge(s)");
     }
 
-    return curveThrough(context, id, definition, points);
+    return wires;
 }
 
 /**
