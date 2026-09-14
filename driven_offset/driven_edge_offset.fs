@@ -5,7 +5,7 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da6
 import(path : "d009ddf4a8dd9534fc4dc4b5", version : "e11a408e487b65a9b42efac8");
 import(path : "6479d7fbd0ec7d11e0ae6c69", version : "4f533950f9fcbe2083572c8b");
 // design_map_query_utils: embedVariableMap and the extractable wrappers.
-import(path : "2b6b313ac740a0146d5bef7c", version : "000000000000000000000000");
+import(path : "2b6b313ac740a0146d5bef7c", version : "6e0b68b1f1ffa8bdf4921850");
 
 
 
@@ -177,56 +177,106 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         }
     }
     {
-        const zeroPoint = evZeroPoint(context, definition.offsetRefPoint);
-        const sourceChain = buildChain(context, definition.offsetEdges, zeroPoint);
-        const profile = buildProfile(context, definition.offsetProfile, zeroPoint);
+        const result = drivenOffset(context, id, definition);
 
-        var alongRef = undefined;
-        if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
-        {
-            const delta = definition.flipAlongOffsetDir ? -1 * definition.alongOffsetDelta : definition.alongOffsetDelta;
-            alongRef = buildAlongReference(context, definition.referenceWire, zeroPoint, delta);
-        }
+        debugOutput(context, id + "debug", definition, result.sourceChain, result.profile,
+            result.alongRef, result.stations, result.coords, result.upper, result.lower,
+            result.placed, result.emitted);
 
-        const stations = chainStations(context, sourceChain, spacingSettings(definition));
-        const coords = stationCoordinates(stations, definition, alongRef, zeroPoint);
-
-        // Two lookups: identical positions, but each side of a profile slope break
-        // needs its own slope. Positions are taken from the upper-side pass.
-        // Put an exact station on each offset discontinuity before anything is
-        // evaluated, so the break lands on the profile's own boundary rather than
-        // on whichever sample happened to fall nearest it.
-        const split = insertCrossings(context, sourceChain, stations, coords, profile);
-        const allCoords = split.coords;
-
-        // Resolve the alignment once and stamp it onto the stations. Everything
-        // downstream -- placement, run-end tangents, the frame differences behind
-        // them, and both debug tables -- then reads one settled frame instead of
-        // rebuilding it two or three times per station.
-        const allStations = resolveFrames(split.stations, definition, alongRef);
-
-        const upper = profileAt(profile, allCoords.values, false);
-        const lower = profileAt(profile, allCoords.values, true);
-
-        const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
-        const points = placed.points;
-        const cornered = resolveCorners(context, definition, allStations, allCoords, points,
-            upper, lower, buildRuns(allStations, upper), alongRef);
-        const runs = resolveTerminals(context, definition, allStations, allCoords, points,
-            upper, lower, cornered, alongRef);
-
-        if (size(runs) == 0)
-        {
-            throw regenError("The offset profile does not reach any of the offset edges.", definition.offsetProfile);
-        }
-
-        const emitted = emitRuns(context, id, definition, allStations, allCoords, points, upper, lower, runs, alongRef);
-
-        debugOutput(context, id + "debug", definition, sourceChain, profile, alongRef, allStations, allCoords,
-            upper, lower, placed, emitted);
-
-        publishOutputs(context, id, definition, emitted);
+        publishOutputs(context, id, definition, result.emitted);
     });
+
+// ============================================================================
+// Callable core
+// ============================================================================
+
+/**
+ * The whole offset, as a callable.
+ *
+ * Extracted from the feature body so other features can drive it. driven_offset_surface
+ * needs the same offset the feature produces AND the data behind it -- which station a
+ * point came from, where the profile ran out, what happened at each corner -- none of
+ * which survives a feature invocation.
+ *
+ * Reporting stays with the feature. debugOutput reads the Debug group's booleans and
+ * publishOutputs embeds under the feature's own id; a caller assembling its own geometry
+ * has neither, and should not have to fake them.
+ *
+ * @returns {map} :
+ *   "stations"    {array} - every station: origin, tangent, widthAxis, heightAxis, arc,
+ *                            linkIndex, edgeIndex, and any junction record.
+ *   "coords"      {map}   - profile coordinate and scale per station.
+ *   "points"      {array} - the offset point per station, undefined where the profile
+ *                            does not reach. That gap is which source edges went unused.
+ *   "upper"/"lower" {array} - offset amounts and slopes either side of a profile break.
+ *   "runs"        {array} - runs after corner and terminal treatment.
+ *   "emitted"     {array} - the runs that became geometry, with kind and radius.
+ *   "alongRef"    {map}   - the reference mapping, so a caller can evaluate an offset at
+ *                            an intermediate width rather than only at its endpoints.
+ *   "sourceChain", "profile", "placed" - as built.
+ */
+export function drivenOffset(context is Context, id is Id, definition is map) returns map
+{
+    const zeroPoint = evZeroPoint(context, definition.offsetRefPoint);
+    const sourceChain = buildChain(context, definition.offsetEdges, zeroPoint);
+    const profile = buildProfile(context, definition.offsetProfile, zeroPoint);
+
+    var alongRef = undefined;
+    if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
+    {
+        const delta = definition.flipAlongOffsetDir ? -1 * definition.alongOffsetDelta : definition.alongOffsetDelta;
+        alongRef = buildAlongReference(context, definition.referenceWire, zeroPoint, delta);
+    }
+
+    const stations = chainStations(context, sourceChain, spacingSettings(definition));
+    const coords = stationCoordinates(stations, definition, alongRef, zeroPoint);
+
+    // Two lookups: identical positions, but each side of a profile slope break
+    // needs its own slope. Positions are taken from the upper-side pass.
+    // Put an exact station on each offset discontinuity before anything is
+    // evaluated, so the break lands on the profile's own boundary rather than
+    // on whichever sample happened to fall nearest it.
+    const split = insertCrossings(context, sourceChain, stations, coords, profile);
+    const allCoords = split.coords;
+
+    // Resolve the alignment once and stamp it onto the stations. Everything
+    // downstream -- placement, run-end tangents, the frame differences behind
+    // them, and both debug tables -- then reads one settled frame instead of
+    // rebuilding it two or three times per station.
+    const allStations = resolveFrames(split.stations, definition, alongRef);
+
+    const upper = profileAt(profile, allCoords.values, false);
+    const lower = profileAt(profile, allCoords.values, true);
+
+    const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
+    const points = placed.points;
+    const cornered = resolveCorners(context, definition, allStations, allCoords, points,
+        upper, lower, buildRuns(allStations, upper), alongRef);
+    const runs = resolveTerminals(context, definition, allStations, allCoords, points,
+        upper, lower, cornered, alongRef);
+
+    if (size(runs) == 0)
+    {
+        throw regenError("The offset profile does not reach any of the offset edges.", definition.offsetProfile);
+    }
+
+    const emitted = emitRuns(context, id, definition, allStations, allCoords, points, upper, lower, runs, alongRef);
+
+    return {
+        "sourceChain" : sourceChain,
+        "profile" : profile,
+        "alongRef" : alongRef,
+        "stations" : allStations,
+        "coords" : allCoords,
+        "upper" : upper,
+        "lower" : lower,
+        "placed" : placed,
+        "points" : points,
+        "runs" : runs,
+        "emitted" : emitted
+    };
+}
+
 
 // ============================================================================
 // Input settings
