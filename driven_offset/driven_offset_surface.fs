@@ -144,6 +144,12 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         {
             annotation { "Name" : "Loft each segment separately", "Default" : true, "Description" : "Build one loft per matching pair of segments and join them, so each face carries a surface its own size. One loft over the whole profile gives the same shape, but every face is a window onto one surface spanning the lot, and its u/v data runs far past the face." }
             definition.loftPerSegment is boolean;
+
+            if (definition.loftPerSegment && size(definition.offsets) > 2)
+            {
+                annotation { "Name" : "Blend through profiles", "Default" : false, "Description" : "Fit one smooth surface through all the profiles instead of running straight from each to the next. Off gives a ruled patch per adjacent pair, with a crease at every intermediate profile. A loft of three or more profiles can only be smooth, so this is the difference between N-1 straight surfaces and one curved one." }
+                definition.blendThroughProfiles is boolean;
+            }
         }
 
         annotation { "Name" : "Keep offset wires", "Default" : false, "Description" : "Leave the driven offset curves in the result alongside the surfaces." }
@@ -218,6 +224,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         "ruledBothDirections" : false,
         "ruledSections" : 5,
         "loftPerSegment" : true,
+        "blendThroughProfiles" : false,
         "keepWires" : false,
         "debugPrintSurface" : false,
         "debugKeepSections" : false
@@ -684,22 +691,31 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
 }
 
 /**
- * One loft per matching run, joined.
+ * One loft per patch, joined into a single sheet.
  *
- * LoftTopology.COLUMNS gives the right FACE count, but every one of those faces is a window
- * onto a single underlying surface spanning the whole loft -- which is why the u/v data of a
- * face runs far past the face itself. That is inherent to splitting one surface into columns,
- * and no loft option trims it: trimProfiles and trimGuidesByProfiles only bound a loft by its
- * guides, and there are no guides here.
+ * A patch is one RUN by one pair of adjacent PROFILES, and both halves of that are
+ * deliberate.
  *
- * Lofting each column on its own gives each face a surface of its own size. With the sections
- * paired point for point the geometry is unchanged -- a loft between N sections interpolates
- * the same N points across whether it is run over one segment or twenty-one -- so this is a
- * cleaner parameterization of the same surface, not a different one.
+ * Splitting by run is what gives a face a surface its own size. LoftTopology.COLUMNS gives
+ * the right face COUNT, but every one of those faces is a window onto a single underlying
+ * surface spanning the whole loft -- which is why the u/v data of a face ran far past the
+ * face itself. No loft option trims that: trimProfiles and trimGuidesByProfiles bound a loft
+ * by its GUIDES, and there are none here.
  *
- * The sheets are unioned rather than left loose, and the imprinted edges are kept: the column
- * boundaries are the source edge boundaries, and erasing them would merge the faces back into
- * the one face COLUMNS was chosen to avoid.
+ * Splitting by adjacent pair is what keeps the surface straight from one profile to the next.
+ * opLoft has no linear-interpolation option -- the interpolation degree follows from the
+ * section count, and three or more sections are always fitted with a smooth curve through
+ * them. Two sections are ruled by construction. So N profiles wanted as N-1 straight
+ * stretches genuinely are N-1 surfaces, and asking one loft for them will always round the
+ * corner at every intermediate profile.
+ *
+ * Together they make every patch a two-section, one-column loft: a single ruled face whose
+ * surface covers exactly its own footprint. LoftTopology stops mattering -- there is only
+ * ever one column -- and the profile boundaries become real creases instead of a blend.
+ *
+ * The sheets are unioned rather than left loose, and the imprinted edges are kept: the patch
+ * boundaries are the source edge boundaries and the profiles themselves, and erasing them
+ * would merge the faces back into the one face all of this was chosen to avoid.
  */
 function loftColumns(context is Context, id is Id, definition is map, sections is array)
 {
@@ -708,37 +724,47 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
         return;
     }
 
+    // Blending reads every profile at once, so it cannot be built patch by patch along the
+    // loft direction. It still splits by run, which costs nothing and keeps the face sizes.
+    const lastFrom = definition.blendThroughProfiles ? 0 : size(sections) - 2;
+
     var sheets = [];
     var skipped = 0;
 
     for (var r = 0; r < size(sections[0].pieces); r += 1)
     {
-        var column = [];
-
-        for (var section in sections)
+        for (var from = 0; from <= lastFrom; from += 1)
         {
-            if (section.pieces[r] != undefined)
+            const span = definition.blendThroughProfiles
+                ? sections
+                : [sections[from], sections[from + 1]];
+
+            var patch = [];
+            for (var section in span)
             {
-                column = append(column, section.pieces[r]);
+                if (section.pieces[r] != undefined)
+                {
+                    patch = append(patch, section.pieces[r]);
+                }
             }
+
+            // A run one section covers and another does not cannot be lofted across: there
+            // is no facing curve. The neighbouring patches still build, so the surface comes
+            // out with a hole rather than not at all, and the count is reported.
+            if (size(patch) < size(span))
+            {
+                skipped += 1;
+                continue;
+            }
+
+            const patchId = id + ("patch" ~ r ~ "_" ~ from);
+            opLoft(context, patchId, {
+                        "profileSubqueries" : patch,
+                        "bodyType" : ToolBodyType.SURFACE
+                    });
+
+            sheets = append(sheets, qCreatedBy(patchId, EntityType.BODY));
         }
-
-        // A run one section covers and another does not cannot be lofted across: there is
-        // no facing curve. The neighbouring columns still build, so the surface comes out
-        // with a hole rather than not at all, and the count is reported.
-        if (size(column) < size(sections))
-        {
-            skipped += 1;
-            continue;
-        }
-
-        const columnId = id + ("column" ~ r);
-        opLoft(context, columnId, {
-                    "profileSubqueries" : column,
-                    "bodyType" : ToolBodyType.SURFACE
-                });
-
-        sheets = append(sheets, qCreatedBy(columnId, EntityType.BODY));
     }
 
     if (size(sheets) == 0)
@@ -748,8 +774,10 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
     if (definition.debugPrintSurface)
     {
-        println("[surface]     " ~ toString(size(sheets)) ~ " column loft(s)"
-            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " run(s) not covered by every offset" : ""));
+        println("[surface]     " ~ toString(size(sheets)) ~ " patch loft(s) ("
+            ~ toString(size(sections[0].pieces)) ~ " run(s) x "
+            ~ toString(lastFrom + 1) ~ " profile span(s))"
+            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " skipped for missing coverage" : ""));
     }
 
     if (size(sheets) > 1)
