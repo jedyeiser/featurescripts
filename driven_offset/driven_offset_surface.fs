@@ -450,15 +450,28 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
             // nothing when a profile break lands on a source edge boundary, and a curve
             // through a sub-micron span is not geometry. Dropping it here keeps it out of
             // the loft; the neighbouring columns cover the position.
-            var span = 0 * meter;
+            // Named runSpan, not span: the argument of that name is the stretch this section
+            // is clipped to, and this is a length.
+            var runSpan = 0 * meter;
             for (var k = 1; k < size(distinct); k += 1)
             {
-                span += norm(distinct[k] - distinct[k - 1]);
+                runSpan += norm(distinct[k] - distinct[k - 1]);
             }
 
-            if (size(distinct) >= 2 && span >= OFFSET_GEOM_TOL)
+            if (size(distinct) >= 2 && runSpan >= OFFSET_GEOM_TOL)
             {
-                curve = curveThrough(context, id + ("piece" ~ r), definition, distinct);
+                // At zero reach the section IS the offset, so the slopes emitRuns constrains
+                // its fit with apply here unchanged, and a freeform section comes out as the
+                // same curve as the emitted wire instead of an independent guess at it. Away
+                // from zero the section is displaced along the frame's width axis and those
+                // slopes no longer describe it, so the fit is left unconstrained there.
+                const atOffset = abs(reach) < TOLERANCE.zeroLength * meter;
+
+                curve = curveThrough(context, id + ("piece" ~ r), definition, distinct,
+                    atOffset ? runTangent(driven.stations, driven.coords, driven.upper,
+                            definition, driven.alongRef, run, from) : undefined,
+                    atOffset ? runTangent(driven.stations, driven.coords, driven.lower,
+                            definition, driven.alongRef, run, to) : undefined);
                 kept += 1;
             }
         }
@@ -676,7 +689,9 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
 
     // The seed is rebuilt over the same run the offset side uses rather than selected
     // wholesale, which is what keeps an uncovered edge out of the loft.
-    const seed = curveThrough(context, id + "seed", definition, points);
+    // The seed runs along the source edges, not the offset, so the offset's end slopes do
+    // not describe it. Unconstrained, as it was.
+    const seed = curveThrough(context, id + "seed", definition, points, undefined, undefined);
     const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter).wire;
 
     loftSections(context, id + "loft", [seed, offsetSide]);
@@ -898,7 +913,8 @@ function surfaceModeName(mode is SurfaceMode) returns string
 /**
  * One curve through a point list, as a body a loft can take.
  */
-function curveThrough(context is Context, id is Id, definition is map, points is array) returns Query
+function curveThrough(context is Context, id is Id, definition is map, points is array,
+    startDerivative, endDerivative) returns Query
 {
     // Classified, not fitted -- the same decision emitRuns makes about the very same points.
     //
@@ -924,10 +940,10 @@ function curveThrough(context is Context, id is Id, definition is map, points is
     }
     else
     {
-        // No end derivatives: a section is rebuilt from stations rather than carried over
-        // from the emitted run, so the slopes emitRuns uses are not in hand here. The fit is
-        // unconstrained at the ends, which is what it already was.
-        emitSplineCurve(context, id, points, undefined, undefined, {
+        // The end slopes, where the caller has them. A freeform offset is exactly the case
+        // this matters for: the fit is what determines the shape, and an unconstrained fit
+        // leaves the ends free to bulge away from the run it is supposed to continue.
+        emitSplineCurve(context, id, points, startDerivative, endDerivative, {
                     "approximationDegree" : definition.approximationDegree,
                     "approximationTolerance" : definition.approximationTolerance,
                     "approximationMaxCPs" : definition.approximationMaxCPs
