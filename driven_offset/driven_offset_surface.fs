@@ -293,6 +293,14 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
         const perOffset = mergeMaps(definition, {
                     "offsetProfile" : entries[i].offsetProfile,
                     "outputName" : entries[i].offsetName,
+
+                    // Forced, not inherited. joinOutput reaches this feature through
+                    // drivenOffsetSpacingPredicate, where it sits in a collapsed group and
+                    // reads as a sampling option -- nothing about it says it decides whether
+                    // an offset comes out as one wire or as one body per run, fill and
+                    // extension. An offset here is a named thing the user asked for, so it
+                    // is one wire, and the toggle does not get a vote.
+                    "joinOutput" : true,
                     "debugPrintAlongChain" : definition.debugPrintAlongChain && first,
                     "debugShowReference" : definition.debugShowReference && first,
                     "debugShowOffsetFrames" : definition.debugShowOffsetFrames && first,
@@ -924,17 +932,37 @@ function finishSurface(context is Context, id is Id, definition is map, driven i
     }
 
     const surfaces = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
-    const scaffolding = qSubtraction(qCreatedBy(id, EntityType.BODY),
-            qUnion([surfaces, qUnion(wires)]));
 
-    if (!definition.debugKeepSections && !isQueryEmpty(context, scaffolding))
+    // One rule, stated once: the surfaces always stay, the offset wires stay only if asked
+    // for, and everything else this feature made is scaffolding and goes. Said the other way
+    // round -- delete the sections, then separately delete the wires -- it is two conditions
+    // that have to between them account for every body, and a body neither of them names
+    // survives silently.
+    var keep = [surfaces];
+
+    if (definition.keepWires)
     {
-        opDeleteBodies(context, id + "scaffolding", { "entities" : scaffolding });
+        keep = append(keep, qUnion(wires));
+    }
+    if (definition.debugKeepSections)
+    {
+        keep = append(keep, qSubtraction(qCreatedBy(id, EntityType.BODY), qUnion(wires)));
     }
 
-    if (!definition.keepWires && !isQueryEmpty(context, qUnion(wires)))
+    const remove = qSubtraction(qCreatedBy(id, EntityType.BODY), qUnion(keep));
+
+    if (definition.debugPrintSurface)
     {
-        opDeleteBodies(context, id + "wires", { "entities" : qUnion(wires) });
+        println("[surface] cleanup: " ~ toString(size(evaluateQuery(context, qUnion(wires))))
+            ~ " offset wire body(ies) ("
+            ~ (definition.keepWires ? "kept" : "deleted") ~ "), "
+            ~ toString(size(evaluateQuery(context, remove))) ~ " body(ies) removed, "
+            ~ toString(size(evaluateQuery(context, surfaces))) ~ " surface(s) kept");
+    }
+
+    if (!isQueryEmpty(context, remove))
+    {
+        opDeleteBodies(context, id + "cleanup", { "entities" : remove });
     }
 
     if (definition.outputName != "" && !isQueryEmpty(context, surfaces))
