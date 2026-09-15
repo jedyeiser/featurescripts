@@ -142,19 +142,13 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
 
         if (definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT)
         {
-            annotation { "Name" : "Loft each segment separately", "Default" : true, "Description" : "Build one loft per matching pair of segments and join them, so each face carries a surface its own size. One loft over the whole profile gives the same shape, but every face is a window onto one surface spanning the lot, and its u/v data runs far past the face." }
-            definition.loftPerSegment is boolean;
-
-            // Gated on the boolean alone. Precondition visibility is analysed statically and
-            // its grammar has no ordering comparison, so "size(definition.offsets) > 2" --
-            // which is where this belongs, since the choice only bites with a middle profile
-            // to blend through -- fails the analysis outright with "Unexpected operator:
-            // GREATER". With two offsets there is one span and the toggle changes nothing.
-            if (definition.loftPerSegment)
-            {
-                annotation { "Name" : "Blend through profiles", "Default" : false, "Description" : "Fit one smooth surface through all the profiles instead of running straight from each to the next. Off gives a ruled patch per adjacent pair, with a crease at every intermediate profile. A loft of three or more profiles can only be smooth, so this is the difference between N-1 straight surfaces and one curved one. No effect with only two offsets." }
-                definition.blendThroughProfiles is boolean;
-            }
+            // There is no "loft the whole wire at once" option any more. Splitting by run
+            // is never the wrong thing -- it is what gives each face a surface its own size
+            // instead of a window onto one spanning the whole loft -- so it is not a choice,
+            // it is just what the feature does. What IS a choice is whether the loft runs
+            // straight from profile to profile or curves through them, and that is this.
+            annotation { "Name" : "Blend through profiles", "Default" : false, "Description" : "Fit one smooth surface through all the profiles instead of running straight from each to the next. Off gives a ruled patch per adjacent pair, with a crease at every intermediate profile. A loft of three or more profiles can only be smooth, so this is the difference between N-1 straight surfaces and one curved one. No effect with only two offsets." }
+            definition.blendThroughProfiles is boolean;
         }
 
         annotation { "Name" : "Keep offset wires", "Default" : false, "Description" : "Leave the driven offset curves in the result alongside the surfaces." }
@@ -235,8 +229,8 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         "ruledDirection" : RuledDirection.WIDTH,
         "ruledBothDirections" : false,
         "ruledSections" : 5,
-        "loftPerSegment" : true,
         "blendThroughProfiles" : false,
+        "joinTangentRuns" : false,
         "keepWires" : false,
         "debugPrintSurface" : false,
         "debugKeepSections" : false
@@ -286,6 +280,48 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
     const shared = sharedOffsetContext(context, definition, queries,
         definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT);
 
+    // Plan every profile before committing any of it. Joining tangent runs changes the run
+    // structure, and a loft pairs section against section by run index -- so the decision has
+    // to be taken once, over all the profiles, and applied to all of them. Deciding per
+    // profile would desynchronise them exactly the way differing profile breaks did.
+    var plans = [];
+    for (var i = 0; i < size(entries); i += 1)
+    {
+        plans = append(plans, planOffset(context, mergeMaps(definition, {
+                            "offsetProfile" : entries[i].offsetProfile
+                        }), shared, i));
+    }
+
+    if (definition.joinTangentRuns)
+    {
+        var perProfile = [];
+        for (var plan in plans)
+        {
+            perProfile = append(perProfile,
+                tangentRunMerges(plan.points, plan.runs, definition.approximationTolerance));
+        }
+
+        const common = commonRunMerges(perProfile);
+
+        var merged = [];
+        for (var plan in plans)
+        {
+            merged = append(merged, withMergedRuns(plan, common));
+        }
+        plans = merged;
+
+        if (definition.debugPrintSurface)
+        {
+            var dissolved = 0;
+            for (var m in common)
+            {
+                if (m) { dissolved += 1; }
+            }
+            println("[surface] tangent joins: " ~ toString(dissolved) ~ " of "
+                ~ toString(size(common)) ~ " run boundary(ies) dissolved in every profile");
+        }
+    }
+
     var driven = [];
 
     for (var i = 0; i < size(entries); i += 1)
@@ -314,7 +350,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
                     "debugPrintFrameTable" : definition.debugPrintFrameTable && first
                 });
 
-        const result = offsetFromShared(context, offsetId, perOffset, shared, i);
+        const result = emitOffset(context, offsetId, perOffset, shared, plans[i]);
 
         // The offset's own reporting lives with the feature, not the core, so driving the
         // core directly leaves every toggle in the Debug group wired to nothing unless it
@@ -725,13 +761,7 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
         wires = append(wires, section.wire);
     }
 
-    if (definition.loftPerSegment)
-    {
-        loftColumns(context, id, definition, sections);
-        return wires;
-    }
-
-    loftSections(context, id + "loft", wires);
+    loftColumns(context, id, definition, sections);
 
     return wires;
 }

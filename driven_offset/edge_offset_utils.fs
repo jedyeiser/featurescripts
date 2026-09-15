@@ -2839,6 +2839,131 @@ export function frameRates(stations is array, run is map, index is number) retur
  * Nothing downstream wants it: an arc through three points with two of them equal has no
  * circumcentre, and a spline fitted across a zero-length span is degenerate.
  */
+export function tangentRunMerges(points is array, runs is array, tolerance is ValueWithUnits) returns array
+{
+    var merges = [];
+
+    for (var r = 0; r + 1 < size(runs); r += 1)
+    {
+        merges = append(merges, runsCombine(points, runs[r], runs[r + 1], tolerance));
+    }
+
+    return merges;
+}
+
+/**
+ * Whether two adjacent runs can become one edge without changing the geometry.
+ *
+ * The test is deliberately not "are the tangents equal". Two arcs of different radii meet
+ * tangentially and are still two arcs; fusing them into one spline is exactly the trade that
+ * put a 142% curvature swing into the loft sections. So the question asked here is the
+ * stronger one -- do the two runs TOGETHER still describe a single line or a single arc --
+ * which classifyPoints already answers, to the same tolerance the emitter uses.
+ *
+ * Everything that made the boundary meaningful vetoes the merge: a trimmed corner carries an
+ * exact crossing point, a terminal carries a plane it was cut to, and a corner fill is a
+ * separate piece of geometry that belongs between them.
+ */
+function runsCombine(points is array, a is map, b is map, tolerance is ValueWithUnits) returns boolean
+{
+    if (b.start != a.end + 1)
+    {
+        return false;
+    }
+
+    if (a.endPoint != undefined || b.startPoint != undefined
+        || a.terminalEnd != undefined || b.terminalStart != undefined
+        || b.fill != undefined || b.cornerKind != undefined)
+    {
+        return false;
+    }
+
+    var joined = [];
+    for (var i = a.start; i <= b.end; i += 1)
+    {
+        if (points[i] == undefined)
+        {
+            return false;
+        }
+        joined = append(joined, points[i]);
+    }
+
+    const shape = classifyPoints(withoutRepeats(joined), tolerance);
+
+    return shape.kind == "line" || shape.kind == "arc";
+}
+
+/**
+ * Dissolve the boundaries `merges` marks, keeping each surviving run's outer records.
+ */
+export function applyRunMerges(runs is array, merges is array) returns array
+{
+    if (size(runs) < 2)
+    {
+        return runs;
+    }
+
+    var out = [];
+    var current = runs[0];
+
+    for (var r = 0; r + 1 < size(runs); r += 1)
+    {
+        if (merges[r])
+        {
+            const next = runs[r + 1];
+
+            // The merged run starts where the first did and ends where the second did, so it
+            // inherits the first run's start records and the second's end records.
+            current = mergeMaps(current, {
+                        "end" : next.end,
+                        "endPoint" : next.endPoint,
+                        "terminalEnd" : next.terminalEnd
+                    });
+        }
+        else
+        {
+            out = append(out, current);
+            current = runs[r + 1];
+        }
+    }
+
+    return append(out, current);
+}
+
+/**
+ * The boundaries every profile agrees can be dissolved.
+ *
+ * A loft pairs section against section by run index, so merging runs in one profile and not
+ * another desynchronises them -- the same failure as profiles with different breaks. Runs are
+ * therefore merged only where ALL of them can.
+ */
+export function commonRunMerges(perProfile is array) returns array
+{
+    if (size(perProfile) == 0)
+    {
+        return [];
+    }
+
+    var common = perProfile[0];
+
+    for (var merges in perProfile)
+    {
+        // Different lengths mean the run structures already disagree; merging on top of that
+        // would only compound it.
+        if (size(merges) != size(common))
+        {
+            return makeArray(size(common), false);
+        }
+
+        for (var r = 0; r < size(common); r += 1)
+        {
+            common[r] = common[r] && merges[r];
+        }
+    }
+
+    return common;
+}
+
 export function withoutRepeats(points is array) returns array
 {
     var kept = [];
@@ -3021,6 +3146,9 @@ export predicate drivenOffsetSpacingPredicate(definition is map)
 
         annotation { "Name" : "Join runs into one wire per link", "Default" : true, "Description" : "Extract the emitted curves into a single wire body per connected chain. Off leaves every run, corner fill and trimmed piece as its own curve body." }
         definition.joinOutput is boolean;
+
+        annotation { "Name" : "Join tangent segments into one edge", "Default" : false, "Description" : "Where two adjacent runs together still describe a single line or a single arc, emit them as one edge instead of two. Runs split at every source edge boundary whether or not the offset actually breaks there, so this removes joints that are an artefact of the input rather than of the geometry. A pair that would only fit as a spline is left split, because fusing two tangent arcs of different radii into one spline loses the exact curvature both of them had." }
+        definition.joinTangentRuns is boolean;
 
         annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
         {

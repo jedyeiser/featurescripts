@@ -80,6 +80,10 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
             result.placed, result.emitted);
 
         publishOutputs(context, id, definition, result.emitted);
+    }, {
+        // An annotation's "Default" only serves a NEW instance; a feature saved before this
+        // parameter existed fails its precondition on the next regen without this.
+        "joinTangentRuns" : false
     });
 
 // ============================================================================
@@ -208,6 +212,27 @@ export function sharedOffsetContext(context is Context, definition is map,
 export function offsetFromShared(context is Context, id is Id, definition is map,
     shared is map, which is number) returns map
 {
+    var plan = planOffset(context, definition, shared, which);
+
+    if (definition.joinTangentRuns)
+    {
+        plan = withMergedRuns(plan,
+            tangentRunMerges(plan.points, plan.runs, definition.approximationTolerance));
+    }
+
+    return emitOffset(context, id, definition, shared, plan);
+}
+
+/**
+ * Everything one profile determines, up to but not including the geometry.
+ *
+ * Split out from the emit so that a caller driving several profiles can look at all their
+ * runs before any of them is committed -- which is what joining tangent runs across a
+ * multiprofile loft needs, since that decision has to be the same for all of them.
+ */
+export function planOffset(context is Context, definition is map, shared is map,
+    which is number) returns map
+{
     const entry = shared.profiles[which];
     const profile = entry.profile;
     const allStations = shared.stations;
@@ -232,21 +257,40 @@ export function offsetFromShared(context is Context, id is Id, definition is map
         throw regenError("The offset profile does not reach any of the offset edges.", definition.offsetProfile);
     }
 
-    const emitted = emitRuns(context, id, definition, allStations, allCoords, points, upper, lower, runs, alongRef);
-
     return {
-        "sourceChain" : shared.sourceChain,
         "profile" : profile,
-        "alongRef" : alongRef,
-        "stations" : allStations,
-        "coords" : allCoords,
         "upper" : upper,
         "lower" : lower,
         "placed" : placed,
         "points" : points,
-        "runs" : runs,
-        "emitted" : emitted
+        "runs" : runs
     };
+}
+
+/**
+ * A plan with its run boundaries dissolved where `merges` says they can be.
+ */
+export function withMergedRuns(plan is map, merges is array) returns map
+{
+    return mergeMaps(plan, { "runs" : applyRunMerges(plan.runs, merges) });
+}
+
+/**
+ * Turn one profile's plan into geometry.
+ */
+export function emitOffset(context is Context, id is Id, definition is map, shared is map,
+    plan is map) returns map
+{
+    const emitted = emitRuns(context, id, definition, shared.stations, shared.coords,
+        plan.points, plan.upper, plan.lower, plan.runs, shared.alongRef);
+
+    return mergeMaps(plan, {
+                "sourceChain" : shared.sourceChain,
+                "alongRef" : shared.alongRef,
+                "stations" : shared.stations,
+                "coords" : shared.coords,
+                "emitted" : emitted
+            });
 }
 
 /**
