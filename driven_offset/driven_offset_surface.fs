@@ -145,9 +145,14 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
             annotation { "Name" : "Loft each segment separately", "Default" : true, "Description" : "Build one loft per matching pair of segments and join them, so each face carries a surface its own size. One loft over the whole profile gives the same shape, but every face is a window onto one surface spanning the lot, and its u/v data runs far past the face." }
             definition.loftPerSegment is boolean;
 
-            if (definition.loftPerSegment && size(definition.offsets) > 2)
+            // Gated on the boolean alone. Precondition visibility is analysed statically and
+            // its grammar has no ordering comparison, so "size(definition.offsets) > 2" --
+            // which is where this belongs, since the choice only bites with a middle profile
+            // to blend through -- fails the analysis outright with "Unexpected operator:
+            // GREATER". With two offsets there is one span and the toggle changes nothing.
+            if (definition.loftPerSegment)
             {
-                annotation { "Name" : "Blend through profiles", "Default" : false, "Description" : "Fit one smooth surface through all the profiles instead of running straight from each to the next. Off gives a ruled patch per adjacent pair, with a crease at every intermediate profile. A loft of three or more profiles can only be smooth, so this is the difference between N-1 straight surfaces and one curved one." }
+                annotation { "Name" : "Blend through profiles", "Default" : false, "Description" : "Fit one smooth surface through all the profiles instead of running straight from each to the next. Off gives a ruled patch per adjacent pair, with a crease at every intermediate profile. A loft of three or more profiles can only be smooth, so this is the difference between N-1 straight surfaces and one curved one. No effect with only two offsets." }
                 definition.blendThroughProfiles is boolean;
             }
         }

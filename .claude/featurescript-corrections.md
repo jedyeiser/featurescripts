@@ -1024,16 +1024,56 @@ Nested composite parts are also suspect; `qFlattenedCompositeParts` avoids the q
 is a wider set than the operation accepts, and the error names neither the offending entity
 nor the reason.
 
+## 20. Precondition visibility conditions admit no ordering comparison
+
+**Error**: `Nonconforming feature function 'drivenOffsetSurface': precondition analysis failed`
+followed by `Unexpected operator: GREATER` pointing at the `if` line.
+
+**Wrong** -- inside a `precondition { ... }`:
+
+```
+if (definition.loftPerSegment && size(definition.offsets) > 2)
+{
+    annotation { "Name" : "Blend through profiles", "Default" : false }
+    definition.blendThroughProfiles is boolean;
+}
+```
+
+**Right**:
+
+```
+if (definition.loftPerSegment)
+{
+    annotation { "Name" : "Blend through profiles", "Default" : false }
+    definition.blendThroughProfiles is boolean;
+}
+```
+
+**Why**: a precondition is analysed statically to work out which parameters a given
+configuration can show, so the conditions are not evaluated -- they are parsed against a
+restricted grammar. Equality against an enum or a constant, boolean fields, `!`, `&&` and
+`||` are in it. `>`, `<`, `>=` and `<=` are not, and the analysis rejects the whole feature
+rather than the one line. Every ordering comparison in std's own files is in a feature body
+or a helper, never in a precondition's visibility `if`.
+
+**Note**: the body below the precondition is ordinary runtime code, so
+`if (size(definition.offsets) < 2) { throw regenError(...); }` there is fine. This is purely
+about the visibility conditions inside the precondition block.
+
+**Lesson Learned**: gate parameter visibility on enums and booleans only. When the natural
+condition is "more than N of something", either drop it and make the parameter inert in the
+cases it does not apply to, or validate in the body with a regenError.
+
 ---
 ---
 
 ## Statistics
 
-- **Total Corrections**: 19
-- **Last Updated**: 2026-09-14
+- **Total Corrections**: 20
+- **Last Updated**: 2026-09-15
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: Function parameters must always have type annotations
+- **Latest Additions**: Precondition visibility conditions admit no ordering comparison
 
 ---
 
