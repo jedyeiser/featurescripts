@@ -193,22 +193,29 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
             printSurfacePlan(context, definition, driven);
         }
 
+        // Each mode hands back the section wires it lofted from. They are the only
+        // scaffolding worth ever looking at, and naming them here is what lets the cleanup
+        // keep them without also keeping the loose curves they were assembled from.
+        var sections = [];
+
         if (definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT)
         {
-            loftAcrossOffsets(context, id, definition, driven);
+            sections = loftAcrossOffsets(context, id, definition, driven);
         }
         else if (definition.surfaceMode == SurfaceMode.RULED_OFFSET_PROFILE)
         {
             for (var i = 0; i < size(driven); i += 1)
             {
-                ruleFromOffset(context, id + ("ruled" ~ i), definition, driven[i]);
+                sections = concatenateArrays([sections,
+                            ruleFromOffset(context, id + ("ruled" ~ i), definition, driven[i])]);
             }
         }
         else
         {
             for (var i = 0; i < size(driven); i += 1)
             {
-                connectSourceToOffset(context, id + ("connected" ~ i), definition, driven[i]);
+                sections = concatenateArrays([sections,
+                            connectSourceToOffset(context, id + ("connected" ~ i), definition, driven[i])]);
             }
         }
 
@@ -217,7 +224,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
             printSurfaceResult(context, id);
         }
 
-        finishSurface(context, id, definition, driven);
+        finishSurface(context, id, definition, driven, sections);
     }, {
         // An annotation's "Default" only serves a NEW instance. A feature saved before a
         // parameter existed needs it here, or its next regen fails the precondition -- which
@@ -342,7 +349,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
  * bow. Intermediate sections are what stop the loft chording across that bow; without a
  * reference they would be collinear and are skipped.
  */
-function ruleFromOffset(context is Context, id is Id, definition is map, driven is map)
+function ruleFromOffset(context is Context, id is Id, definition is map, driven is map) returns array
 {
     const reach = definition.ruledDistance;
     const steps = usesReferenceFrame(definition, driven.alongRef) ? definition.ruledSections : 2;
@@ -351,17 +358,22 @@ function ruleFromOffset(context is Context, id is Id, definition is map, driven 
     // them would either bridge the step or drop everything past it.
     const spans = surfaceSpans(driven);
 
+    var wires = [];
+
     for (var k = 0; k < size(spans); k += 1)
     {
-        ruleOverSpan(context, id + ("span" ~ k), definition, driven, spans[k], reach, steps);
+        wires = concatenateArrays([wires,
+                    ruleOverSpan(context, id + ("span" ~ k), definition, driven, spans[k], reach, steps)]);
     }
+
+    return wires;
 }
 
 /**
  * The ruled surface over one uninterrupted stretch of the offset.
  */
 function ruleOverSpan(context is Context, id is Id, definition is map, driven is map,
-    span is map, reach is ValueWithUnits, steps is number)
+    span is map, reach is ValueWithUnits, steps is number) returns array
 {
     var sections = [ruledSection(context, id + "base", definition, driven, span, 0 * meter).wire];
 
@@ -385,6 +397,8 @@ function ruleOverSpan(context is Context, id is Id, definition is map, driven is
     }
 
     loftSections(context, id + "loft", sections);
+
+    return sections;
 }
 
 /**
@@ -641,7 +655,7 @@ function displacedPoint(definition is map, driven is map, index is number, reach
  * from the offset, while this lands on the seed exactly. They agree only when the offset
  * width is constant and the ruled distance matches it.
  */
-function connectSourceToOffset(context is Context, id is Id, definition is map, driven is map)
+function connectSourceToOffset(context is Context, id is Id, definition is map, driven is map) returns array
 {
     const span = longestSpan(context, id, driven);
 
@@ -666,6 +680,8 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter).wire;
 
     loftSections(context, id + "loft", [seed, offsetSide]);
+
+    return [seed, offsetSide];
 }
 
 // ============================================================================
@@ -678,7 +694,7 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
  * Array order, not sorted by size: a deliberately non-monotonic sequence of profiles is a
  * legitimate thing to want, and sorting would quietly rewrite it.
  */
-function loftAcrossOffsets(context is Context, id is Id, definition is map, driven is array)
+function loftAcrossOffsets(context is Context, id is Id, definition is map, driven is array) returns array
 {
     var sections = [];
 
@@ -688,19 +704,21 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
                 driven[i], longestSpan(context, id, driven[i]), 0 * meter));
     }
 
-    if (definition.loftPerSegment)
-    {
-        loftColumns(context, id, definition, sections);
-        return;
-    }
-
     var wires = [];
     for (var section in sections)
     {
         wires = append(wires, section.wire);
     }
 
+    if (definition.loftPerSegment)
+    {
+        loftColumns(context, id, definition, sections);
+        return wires;
+    }
+
     loftSections(context, id + "loft", wires);
+
+    return wires;
 }
 
 /**
@@ -923,7 +941,8 @@ function loftSections(context is Context, id is Id, sections is array)
  * emitted offset, so keeping them would leave a second copy of every curve beside the wires
  * the offsets already produced.
  */
-function finishSurface(context is Context, id is Id, definition is map, driven is array)
+function finishSurface(context is Context, id is Id, definition is map, driven is array,
+    sections is array)
 {
     var wires = [];
     for (var offset in driven)
@@ -933,11 +952,15 @@ function finishSurface(context is Context, id is Id, definition is map, driven i
 
     const surfaces = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
 
-    // One rule, stated once: the surfaces always stay, the offset wires stay only if asked
-    // for, and everything else this feature made is scaffolding and goes. Said the other way
-    // round -- delete the sections, then separately delete the wires -- it is two conditions
-    // that have to between them account for every body, and a body neither of them names
-    // survives silently.
+    // One rule, stated once: the surfaces always stay, the offset wires stay if asked for,
+    // the section wires stay if asked for, and everything else this feature made goes.
+    //
+    // "Everything else" is doing real work. A section is assembled from one loose curve per
+    // run and then extracted into a wire, and the loose curves have to outlive the extraction
+    // because the per-column lofts are built from them individually. So they are still lying
+    // around at this point, and a rule phrased as "keep the sections" written as anything
+    // broader than the wires themselves keeps all of them too -- which is a body per profile
+    // edge sitting beside the assembled wire, twice over.
     var keep = [surfaces];
 
     if (definition.keepWires)
@@ -946,16 +969,18 @@ function finishSurface(context is Context, id is Id, definition is map, driven i
     }
     if (definition.debugKeepSections)
     {
-        keep = append(keep, qSubtraction(qCreatedBy(id, EntityType.BODY), qUnion(wires)));
+        keep = append(keep, qOwnerBody(qUnion(sections)));
     }
 
     const remove = qSubtraction(qCreatedBy(id, EntityType.BODY), qUnion(keep));
 
     if (definition.debugPrintSurface)
     {
-        println("[surface] cleanup: " ~ toString(size(evaluateQuery(context, qUnion(wires))))
-            ~ " offset wire body(ies) ("
-            ~ (definition.keepWires ? "kept" : "deleted") ~ "), "
+        println("[surface] cleanup: "
+            ~ toString(size(evaluateQuery(context, qUnion(wires)))) ~ " offset wire(s) "
+            ~ (definition.keepWires ? "kept" : "deleted") ~ ", "
+            ~ toString(size(evaluateQuery(context, qOwnerBody(qUnion(sections))))) ~ " section wire(s) "
+            ~ (definition.debugKeepSections ? "kept" : "deleted") ~ ", "
             ~ toString(size(evaluateQuery(context, remove))) ~ " body(ies) removed, "
             ~ toString(size(evaluateQuery(context, surfaces))) ~ " surface(s) kept");
     }
