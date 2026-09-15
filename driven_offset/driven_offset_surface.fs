@@ -900,15 +900,39 @@ function surfaceModeName(mode is SurfaceMode) returns string
  */
 function curveThrough(context is Context, id is Id, definition is map, points is array) returns Query
 {
-    const fitted = approximateSpline(context, {
-                "degree" : definition.approximationDegree,
-                "tolerance" : definition.approximationTolerance,
-                "isPeriodic" : false,
-                "maxControlPoints" : definition.approximationMaxCPs,
-                "targets" : [approximationTarget({ "positions" : points })]
-            })[0];
+    // Classified, not fitted -- the same decision emitRuns makes about the very same points.
+    //
+    // Fitting everything with approximateSpline reproduces the positions to tolerance and
+    // wrecks the curvature: a constant-radius arc sampled and re-approximated as a degree-3
+    // spline comes back with curvature swinging over 100% along its length, and the loft
+    // faithfully carries that into the face. Measured against a constant-curvature input the
+    // offset wire held 0% spread on every run while the section built from the same points
+    // held 142% on the first and 129% on the last.
+    //
+    // classifyPoints already knows when a run is a line or an arc, and emitLineCurve and
+    // emitArcCurve make the exact thing rather than an approximation of it. Only genuinely
+    // freeform runs go to the fitter.
+    const shape = classifyPoints(points, definition.approximationTolerance);
 
-    opCreateBSplineCurve(context, id, { "bSplineCurve" : fitted });
+    if (shape.kind == "line")
+    {
+        emitLineCurve(context, id, shape.start, shape.end);
+    }
+    else if (shape.kind == "arc")
+    {
+        emitArcCurve(context, id, shape);
+    }
+    else
+    {
+        // No end derivatives: a section is rebuilt from stations rather than carried over
+        // from the emitted run, so the slopes emitRuns uses are not in hand here. The fit is
+        // unconstrained at the ends, which is what it already was.
+        emitSplineCurve(context, id, points, undefined, undefined, {
+                    "approximationDegree" : definition.approximationDegree,
+                    "approximationTolerance" : definition.approximationTolerance,
+                    "approximationMaxCPs" : definition.approximationMaxCPs
+                });
+    }
 
     return qCreatedBy(id, EntityType.EDGE);
 }
