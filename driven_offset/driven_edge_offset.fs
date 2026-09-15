@@ -164,7 +164,16 @@ export function sharedOffsetContext(context is Context, definition is map,
     for (var query in profileQueries)
     {
         const profile = buildProfile(context, query, zeroPoint);
-        const own = discontinuityCoords(profile);
+
+        // The two ends of the profile are breaks as much as any interior discontinuity:
+        // they are where the offset starts and stops existing. Without a station on them
+        // the run begins at the first SAMPLE that happens to fall inside the profile, which
+        // is up to one spacing short of the profile's own end -- and on a profile that ramps
+        // to zero there, the offset finishes at whatever width that sample had instead of at
+        // zero. Measured against a wrapped periphery that is a visible 87 to 480 um of the
+        // offset hanging off the surface it was supposed to land on.
+        const own = concatenateArrays([discontinuityCoords(profile),
+                    [profile.minCoord, profile.maxCoord]]);
 
         profiles = append(profiles, { "profile" : profile, "breaks" : own });
         breaks = mergeBreaks(breaks, own);
