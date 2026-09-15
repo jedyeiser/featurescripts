@@ -294,14 +294,17 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
 
     if (definition.joinTangentRuns)
     {
-        var perProfile = [];
+        // One walk over the shared run structure, testing every profile's points at each
+        // step, so the merges come out identical for all of them by construction rather than
+        // by intersecting decisions taken separately.
+        var pointsPerProfile = [];
         for (var plan in plans)
         {
-            perProfile = append(perProfile,
-                tangentRunMerges(plan.points, plan.runs, definition.approximationTolerance));
+            pointsPerProfile = append(pointsPerProfile, plan.points);
         }
 
-        const common = commonRunMerges(perProfile);
+        const common = tangentRunMerges(pointsPerProfile, plans[0].runs,
+            definition.approximationTolerance);
 
         var merged = [];
         for (var plan in plans)

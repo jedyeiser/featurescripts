@@ -217,7 +217,7 @@ export function offsetFromShared(context is Context, id is Id, definition is map
     if (definition.joinTangentRuns)
     {
         plan = withMergedRuns(plan,
-            tangentRunMerges(plan.points, plan.runs, definition.approximationTolerance));
+            tangentRunMerges([plan.points], plan.runs, definition.approximationTolerance));
     }
 
     return emitOffset(context, id, definition, shared, plan);

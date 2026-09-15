@@ -2839,20 +2839,47 @@ export function frameRates(stations is array, run is map, index is number) retur
  * Nothing downstream wants it: an arc through three points with two of them equal has no
  * circumcentre, and a spline fitted across a zero-length span is degenerate.
  */
-export function tangentRunMerges(points is array, runs is array, tolerance is ValueWithUnits) returns array
+export function tangentRunMerges(pointsPerProfile is array, runs is array,
+    tolerance is ValueWithUnits) returns array
 {
     var merges = [];
+    var anchor = 0;
 
     for (var r = 0; r + 1 < size(runs); r += 1)
     {
-        merges = append(merges, runsCombine(points, runs[r], runs[r + 1], tolerance));
+        // Against the ACCUMULATED span, not against runs[r]. Testing pairs and then applying
+        // the results transitively is wrong and not subtly so: runs 0+1 can fit one arc, and
+        // 1+2, and 2+3, so every boundary passes and all of them collapse into a single run
+        // that fits nothing. Measured on a 17 mm chain that produced one 1020 mm "arc" that
+        // the emitter then re-classified as freeform and fitted as a spline -- the exact
+        // trade this test exists to prevent.
+        var all = true;
+
+        for (var points in pointsPerProfile)
+        {
+            if (!runsCombine(points, runs[anchor], runs[r + 1], tolerance))
+            {
+                all = false;
+                break;
+            }
+        }
+
+        merges = append(merges, all);
+
+        if (!all)
+        {
+            anchor = r + 1;
+        }
     }
 
     return merges;
 }
 
 /**
- * Whether two adjacent runs can become one edge without changing the geometry.
+ * Whether two runs can become one edge without changing the geometry.
+ *
+ * `a` is the run the group started at and `b` the one being absorbed, so the span tested
+ * covers everything accumulated so far -- see tangentRunMerges.
  *
  * The test is deliberately not "are the tangents equal". Two arcs of different radii meet
  * tangentially and are still two arcs; fusing them into one spline is exactly the trade that
@@ -2866,7 +2893,9 @@ export function tangentRunMerges(points is array, runs is array, tolerance is Va
  */
 function runsCombine(points is array, a is map, b is map, tolerance is ValueWithUnits) returns boolean
 {
-    if (b.start != a.end + 1)
+    // a.end + 1 == b.start holds only for immediate neighbours; once a group has grown,
+    // b is further along, so contiguity is checked by span rather than by index.
+    if (b.start <= a.end || b.end < b.start)
     {
         return false;
     }
@@ -2928,40 +2957,6 @@ export function applyRunMerges(runs is array, merges is array) returns array
     }
 
     return append(out, current);
-}
-
-/**
- * The boundaries every profile agrees can be dissolved.
- *
- * A loft pairs section against section by run index, so merging runs in one profile and not
- * another desynchronises them -- the same failure as profiles with different breaks. Runs are
- * therefore merged only where ALL of them can.
- */
-export function commonRunMerges(perProfile is array) returns array
-{
-    if (size(perProfile) == 0)
-    {
-        return [];
-    }
-
-    var common = perProfile[0];
-
-    for (var merges in perProfile)
-    {
-        // Different lengths mean the run structures already disagree; merging on top of that
-        // would only compound it.
-        if (size(merges) != size(common))
-        {
-            return makeArray(size(common), false);
-        }
-
-        for (var r = 0; r < size(common); r += 1)
-        {
-            common[r] = common[r] && merges[r];
-        }
-    }
-
-    return common;
 }
 
 export function withoutRepeats(points is array) returns array
