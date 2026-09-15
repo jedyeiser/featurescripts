@@ -31,10 +31,9 @@ import(path : "786f62f4d67ed8d9c7d56d16", version : "");
 // Status
 // ============================================================================
 //
-// Every mode drives drivenOffset once per profile and lofts the results. The seed chain,
-// the reference and the frames are still recomputed per profile: sharing them is the next
-// piece of work, and it is an optimisation rather than a correctness matter, because the
-// station lists only diverge where a profile's own breaks fall.
+// The seed chain, the reference, the stations and their frames are built once for every
+// offset in the array (sharedOffsetContext), with crossings inserted for the union of all
+// the profiles' breaks so that station i means the same arc length in all of them.
 //
 // CONNECTED_OFFSET lofts the whole seed chain to the offset. Trimming the seed to the
 // covered span -- and fanning a G0 vertex to the arc that replaced it -- needs the corner
@@ -141,6 +140,12 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
             isInteger(definition.ruledSections, RuledSectionBounds);
         }
 
+        if (definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT)
+        {
+            annotation { "Name" : "Loft each segment separately", "Default" : true, "Description" : "Build one loft per matching pair of segments and join them, so each face carries a surface its own size. One loft over the whole profile gives the same shape, but every face is a window onto one surface spanning the lot, and its u/v data runs far past the face." }
+            definition.loftPerSegment is boolean;
+        }
+
         annotation { "Name" : "Keep offset wires", "Default" : false, "Description" : "Leave the driven offset curves in the result alongside the surfaces." }
         definition.keepWires is boolean;
 
@@ -212,6 +217,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         "ruledDirection" : RuledDirection.WIDTH,
         "ruledBothDirections" : false,
         "ruledSections" : 5,
+        "loftPerSegment" : true,
         "keepWires" : false,
         "debugPrintSurface" : false,
         "debugKeepSections" : false
@@ -222,57 +228,80 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
 // ============================================================================
 
 /**
- * Run one driven offset per profile and keep what each produced.
+ * Run one driven offset per profile over one shared context, and keep what each produced.
  *
  * Every offset is handed the feature's own definition with only the profile and the name
  * swapped in, so the seed edges, the reference, the frame alignment, the corner and terminal
  * treatment and the spacing are shared by construction rather than by convention. That is
  * the point of the array: a profile is the only thing that differs.
- *
- * The chain, the stations and the frames are still rebuilt per profile. Hoisting them is
- * worth doing and is not a correctness matter -- what it buys, beyond the kernel calls, is
- * that station indices would then line up across offsets, which is what a loft between them
- * ultimately wants.
  */
 function driveOffsets(context is Context, id is Id, definition is map) returns array
 {
-    var driven = [];
+    var queries = [];
+    var entries = [];
 
-    for (var i = 0; i < size(definition.offsets); i += 1)
+    for (var entry in definition.offsets)
     {
-        const entry = definition.offsets[i];
-
         if (isQueryEmpty(context, entry.offsetProfile))
         {
             continue;
         }
 
+        queries = append(queries, entry.offsetProfile);
+        entries = append(entries, entry);
+    }
+
+    if (size(queries) == 0)
+    {
+        throw regenError("None of the offset profiles produced a curve.", ["offsets"]);
+    }
+
+    // The edges, the reference and every frame are the same for all of them, so they are
+    // built once here rather than once per profile. What this buys beyond the kernel calls
+    // is that station i is the same arc length in every offset -- which is what a loft
+    // between two of them needs before it can pair anything up.
+    //
+    // Only a loft between profiles asks for matching run structure. The other two modes
+    // rule from a single offset, and forcing a split there would put an edge in the result
+    // where the offset is smooth for no gain.
+    const shared = sharedOffsetContext(context, definition, queries,
+        definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT);
+
+    var driven = [];
+
+    for (var i = 0; i < size(entries); i += 1)
+    {
         const offsetId = id + ("offset" ~ i);
+
+        // Four of the Debug toggles report things that are now genuinely shared -- the
+        // reference, the frames, the frame table. Leaving them on for every offset printed
+        // the same two hundred frames once per profile, which is what made the duplication
+        // visible in the first place. Report them for the first offset only.
+        const first = (i == 0);
         const perOffset = mergeMaps(definition, {
-                    "offsetProfile" : entry.offsetProfile,
-                    "outputName" : entry.offsetName
+                    "offsetProfile" : entries[i].offsetProfile,
+                    "outputName" : entries[i].offsetName,
+                    "debugPrintAlongChain" : definition.debugPrintAlongChain && first,
+                    "debugShowReference" : definition.debugShowReference && first,
+                    "debugShowOffsetFrames" : definition.debugShowOffsetFrames && first,
+                    "debugPrintFrameTable" : definition.debugPrintFrameTable && first
                 });
 
-        const result = drivenOffset(context, offsetId, perOffset);
+        const result = offsetFromShared(context, offsetId, perOffset, shared, i);
 
-        // The offset's own reporting lives with the feature, not the core, so driving
-        // drivenOffset directly leaves every toggle in the Debug group wired to nothing
-        // unless it is called here. One debug id per offset, or they would collide.
+        // The offset's own reporting lives with the feature, not the core, so driving the
+        // core directly leaves every toggle in the Debug group wired to nothing unless it
+        // is called here. One debug id per offset, or they would collide.
         debugOutput(context, offsetId + "debug", perOffset, result.sourceChain, result.profile,
             result.alongRef, result.stations, result.coords, result.upper, result.lower,
             result.placed, result.emitted);
 
         driven = append(driven, mergeMaps(result, {
                         "id" : offsetId,
-                        "name" : entry.offsetName,
+                        "name" : entries[i].offsetName,
                         "wires" : qCreatedBy(offsetId, EntityType.BODY),
                         "edges" : qCreatedBy(offsetId, EntityType.EDGE)
                     }));
-    }
-
-    if (size(driven) == 0)
-    {
-        throw regenError("None of the offset profiles produced a curve.", ["offsets"]);
     }
 
     return driven;
@@ -314,12 +343,12 @@ function ruleFromOffset(context is Context, id is Id, definition is map, driven 
 function ruleOverSpan(context is Context, id is Id, definition is map, driven is map,
     span is map, reach is ValueWithUnits, steps is number)
 {
-    var sections = [ruledSection(context, id + "base", definition, driven, span, 0 * meter)];
+    var sections = [ruledSection(context, id + "base", definition, driven, span, 0 * meter).wire];
 
     for (var s = 1; s < steps; s += 1)
     {
         sections = append(sections,
-            ruledSection(context, id + ("out" ~ s), definition, driven, span, reach * s / (steps - 1)));
+            ruledSection(context, id + ("out" ~ s), definition, driven, span, reach * s / (steps - 1)).wire);
     }
 
     if (definition.ruledBothDirections)
@@ -330,7 +359,7 @@ function ruleOverSpan(context is Context, id is Id, definition is map, driven is
         for (var s = steps - 1; s >= 1; s -= 1)
         {
             back = append(back,
-                ruledSection(context, id + ("back" ~ s), definition, driven, span, -reach * s / (steps - 1)));
+                ruledSection(context, id + ("back" ~ s), definition, driven, span, -reach * s / (steps - 1)).wire);
         }
         sections = concatenateArrays([back, sections]);
     }
@@ -352,39 +381,55 @@ function ruleOverSpan(context is Context, id is Id, definition is map, driven is
  * way regardless, and two sections built differently would not correspond.
  */
 function ruledSection(context is Context, id is Id, definition is map, driven is map,
-    span is map, reach is ValueWithUnits) returns Query
+    span is map, reach is ValueWithUnits) returns map
 {
+    // Indexed by RUN, with a hole where a run fell outside the span or carried no offset,
+    // so that two sections built over the same runs can be paired run for run. Packing them
+    // down would misalign the moment one section skips a run the other keeps.
     var pieces = [];
     var kept = 0;
 
-    for (var run in driven.runs)
+    for (var r = 0; r < size(driven.runs); r += 1)
     {
+        const run = driven.runs[r];
         const from = max(run.start, span.start);
         const to = min(run.end, span.end);
 
-        if (to - from < 1)
-        {
-            continue;
-        }
+        var curve = undefined;
 
-        var points = [];
-        for (var i = from; i <= to; i += 1)
+        if (to - from >= 1)
         {
-            const at = displacedPoint(definition, driven, i, reach);
-
-            if (at != undefined)
+            var points = [];
+            for (var i = from; i <= to; i += 1)
             {
-                points = append(points, at);
+                const at = displacedPoint(definition, driven, i, reach);
+
+                if (at != undefined)
+                {
+                    points = append(points, at);
+                }
+            }
+
+            const distinct = withoutRepeats(points);
+
+            // The same guard emitRuns applies, for the same reason: a run collapses to
+            // nothing when a profile break lands on a source edge boundary, and a curve
+            // through a sub-micron span is not geometry. Dropping it here keeps it out of
+            // the loft; the neighbouring columns cover the position.
+            var span = 0 * meter;
+            for (var k = 1; k < size(distinct); k += 1)
+            {
+                span += norm(distinct[k] - distinct[k - 1]);
+            }
+
+            if (size(distinct) >= 2 && span >= OFFSET_GEOM_TOL)
+            {
+                curve = curveThrough(context, id + ("piece" ~ r), definition, distinct);
+                kept += 1;
             }
         }
 
-        if (size(points) < 2)
-        {
-            continue;
-        }
-
-        pieces = append(pieces, curveThrough(context, id + ("piece" ~ kept), definition, points));
-        kept += 1;
+        pieces = append(pieces, curve);
     }
 
     if (kept == 0)
@@ -395,7 +440,7 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
     // One wire, many edges. opExtractWires chains the pieces where they meet, which they do
     // because adjacent runs share a station -- and a trimmed corner shares an exact point.
     const wireId = id + "wire";
-    opExtractWires(context, wireId, { "edges" : qUnion(pieces) });
+    opExtractWires(context, wireId, { "edges" : qUnion(nonEmpty(pieces)) });
 
     const wires = qCreatedBy(wireId, EntityType.BODY);
 
@@ -407,7 +452,25 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
             ~ toString(size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)))) ~ " edge(s)");
     }
 
-    return wires;
+    return { "wire" : wires, "pieces" : pieces };
+}
+
+/**
+ * The entries of a run-indexed array that are actually there.
+ */
+function nonEmpty(entries is array) returns array
+{
+    var present = [];
+
+    for (var entry in entries)
+    {
+        if (entry != undefined)
+        {
+            present = append(present, entry);
+        }
+    }
+
+    return present;
 }
 
 /**
@@ -580,7 +643,7 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     // The seed is rebuilt over the same run the offset side uses rather than selected
     // wholesale, which is what keeps an uncovered edge out of the loft.
     const seed = curveThrough(context, id + "seed", definition, points);
-    const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter);
+    const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter).wire;
 
     loftSections(context, id + "loft", [seed, offsetSide]);
 }
@@ -605,7 +668,98 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
                 driven[i], longestSpan(context, id, driven[i]), 0 * meter));
     }
 
-    loftSections(context, id + "loft", sections);
+    if (definition.loftPerSegment)
+    {
+        loftColumns(context, id, definition, sections);
+        return;
+    }
+
+    var wires = [];
+    for (var section in sections)
+    {
+        wires = append(wires, section.wire);
+    }
+
+    loftSections(context, id + "loft", wires);
+}
+
+/**
+ * One loft per matching run, joined.
+ *
+ * LoftTopology.COLUMNS gives the right FACE count, but every one of those faces is a window
+ * onto a single underlying surface spanning the whole loft -- which is why the u/v data of a
+ * face runs far past the face itself. That is inherent to splitting one surface into columns,
+ * and no loft option trims it: trimProfiles and trimGuidesByProfiles only bound a loft by its
+ * guides, and there are no guides here.
+ *
+ * Lofting each column on its own gives each face a surface of its own size. With the sections
+ * paired point for point the geometry is unchanged -- a loft between N sections interpolates
+ * the same N points across whether it is run over one segment or twenty-one -- so this is a
+ * cleaner parameterization of the same surface, not a different one.
+ *
+ * The sheets are unioned rather than left loose, and the imprinted edges are kept: the column
+ * boundaries are the source edge boundaries, and erasing them would merge the faces back into
+ * the one face COLUMNS was chosen to avoid.
+ */
+function loftColumns(context is Context, id is Id, definition is map, sections is array)
+{
+    if (size(sections) < 2)
+    {
+        return;
+    }
+
+    var sheets = [];
+    var skipped = 0;
+
+    for (var r = 0; r < size(sections[0].pieces); r += 1)
+    {
+        var column = [];
+
+        for (var section in sections)
+        {
+            if (section.pieces[r] != undefined)
+            {
+                column = append(column, section.pieces[r]);
+            }
+        }
+
+        // A run one section covers and another does not cannot be lofted across: there is
+        // no facing curve. The neighbouring columns still build, so the surface comes out
+        // with a hole rather than not at all, and the count is reported.
+        if (size(column) < size(sections))
+        {
+            skipped += 1;
+            continue;
+        }
+
+        const columnId = id + ("column" ~ r);
+        opLoft(context, columnId, {
+                    "profileSubqueries" : column,
+                    "bodyType" : ToolBodyType.SURFACE
+                });
+
+        sheets = append(sheets, qCreatedBy(columnId, EntityType.BODY));
+    }
+
+    if (size(sheets) == 0)
+    {
+        throw regenError("No run is covered by every offset, so there is nothing to loft between.");
+    }
+
+    if (definition.debugPrintSurface)
+    {
+        println("[surface]     " ~ toString(size(sheets)) ~ " column loft(s)"
+            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " run(s) not covered by every offset" : ""));
+    }
+
+    if (size(sheets) > 1)
+    {
+        opBoolean(context, id + "join", {
+                    "tools" : qUnion(sheets),
+                    "operationType" : BooleanOperationType.UNION,
+                    "eraseImprintedEdges" : false
+                });
+    }
 }
 
 // ============================================================================
@@ -625,6 +779,10 @@ function printSurfacePlan(context is Context, definition is map, driven is array
     println("========== driven offset surface ==========");
     println("[surface] mode: " ~ surfaceModeName(definition.surfaceMode)
         ~ ", offsets driven: " ~ toString(size(driven)));
+    println("[surface] shared chain/reference/frames: " ~ toString(size(driven[0].stations))
+        ~ " stations built once for all " ~ toString(size(driven)) ~ " offset(s)"
+        ~ (definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT
+                ? ", run structure matched across them" : ""));
 
     for (var i = 0; i < size(driven); i += 1)
     {
@@ -632,11 +790,8 @@ function printSurfacePlan(context is Context, definition is map, driven is array
         const spans = surfaceSpans(offset);
 
         println("[surface]   offset " ~ toString(i) ~ " '" ~ offset.name ~ "': "
-            ~ toString(size(offset.stations)) ~ " stations, "
             ~ toString(size(offset.runs)) ~ " run(s) -> "
             ~ toString(size(spans)) ~ " surface stretch(es)");
-        println("[surface]     runs break at source edges too; stretches break only where the"
-            ~ " offset is absent or steps.");
 
         for (var span in spans)
         {

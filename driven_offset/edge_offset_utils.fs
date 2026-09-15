@@ -2830,6 +2830,32 @@ export function frameRates(stations is array, run is map, index is number) retur
 // parameters, so they are deliberately kept apart rather than merged.
 
 /** Control-point budget for a fitted run. The floor of 4 is a cubic's minimum. */
+/**
+ * Consecutive duplicates removed.
+ *
+ * Stations shared between several profiles carry a crossing pair at EVERY profile's breaks,
+ * not just this one's. Where a break is not this profile's the two halves land on the same
+ * point, and a run that reads straight through such a crossing holds that point twice.
+ * Nothing downstream wants it: an arc through three points with two of them equal has no
+ * circumcentre, and a spline fitted across a zero-length span is degenerate.
+ */
+export function withoutRepeats(points is array) returns array
+{
+    var kept = [];
+
+    for (var point in points)
+    {
+        if (size(kept) > 0 && norm(point - kept[size(kept) - 1]) < TOLERANCE.zeroLength * meter)
+        {
+            continue;
+        }
+
+        kept = append(kept, point);
+    }
+
+    return kept;
+}
+
 export const DrivenOffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
 
 /**

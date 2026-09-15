@@ -113,9 +113,40 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
  */
 export function drivenOffset(context is Context, id is Id, definition is map) returns map
 {
+    const shared = sharedOffsetContext(context, definition, [definition.offsetProfile], false);
+
+    return offsetFromShared(context, id, definition, shared, 0);
+}
+
+/**
+ * Everything about an offset that the profile has no say in, computed once.
+ *
+ * The zero point, the chain, the reference mapping, the stations and their frames depend on
+ * the source edges and the reference wire alone. Driving several profiles off the same edges
+ * -- which is the whole point of the surface feature -- was rebuilding all of it per profile:
+ * the same kernel calls, the same numbers, the same two hundred frames printed twice.
+ *
+ * Crossings are the one shared thing that is NOT profile-independent, because each profile
+ * breaks at its own boundaries. They are inserted here for the UNION of every profile's
+ * breaks, so that station i means the same arc length in every profile's tables. What a
+ * profile then does with a crossing that is not its own is `matchRuns`:
+ *
+ *   false - the station is there, the profile reads straight through it, and the runs come
+ *           out exactly as they would have with that profile alone. This is what the plain
+ *           offset feature wants: no edge split where the offset is smooth.
+ *   true  - every profile splits at every crossing, so all of them emit the same run
+ *           structure. A loft pairing section against section needs that; without it two
+ *           profiles with different breaks give sections with different edge counts and
+ *           COLUMNS has nothing to match.
+ *
+ * @param profileQueries {array} : the profile of each offset, in output order.
+ * @param matchRuns {boolean} : whether every profile splits at every profile's breaks.
+ */
+export function sharedOffsetContext(context is Context, definition is map,
+    profileQueries is array, matchRuns is boolean) returns map
+{
     const zeroPoint = evZeroPoint(context, definition.offsetRefPoint);
     const sourceChain = buildChain(context, definition.offsetEdges, zeroPoint);
-    const profile = buildProfile(context, definition.offsetProfile, zeroPoint);
 
     var alongRef = undefined;
     if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
@@ -127,27 +158,63 @@ export function drivenOffset(context is Context, id is Id, definition is map) re
     const stations = chainStations(context, sourceChain, spacingSettings(definition));
     const coords = stationCoordinates(stations, definition, alongRef, zeroPoint);
 
+    var profiles = [];
+    var breaks = [];
+
+    for (var query in profileQueries)
+    {
+        const profile = buildProfile(context, query, zeroPoint);
+        const own = discontinuityCoords(profile);
+
+        profiles = append(profiles, { "profile" : profile, "breaks" : own });
+        breaks = mergeBreaks(breaks, own);
+    }
+
+    // Put an exact station on each offset discontinuity before anything is evaluated, so
+    // the break lands on the profile's own boundary rather than on whichever sample
+    // happened to fall nearest it.
+    const split = insertCrossings(context, sourceChain, stations, coords, breaks);
+
+    // Resolve the alignment once and stamp it onto the stations. Everything downstream --
+    // placement, run-end tangents, the frame differences behind them, and both debug tables
+    // -- then reads one settled frame instead of rebuilding it two or three times per
+    // station, and now once rather than once per profile.
+    return {
+        "zeroPoint" : zeroPoint,
+        "sourceChain" : sourceChain,
+        "alongRef" : alongRef,
+        "stations" : resolveFrames(split.stations, definition, alongRef),
+        "coords" : split.coords,
+        "profiles" : profiles,
+        "matchRuns" : matchRuns
+    };
+}
+
+/**
+ * One profile's offset, over a shared context.
+ *
+ * @param which {number} : index into `shared.profiles`, matching the order the queries were
+ *      handed to sharedOffsetContext.
+ */
+export function offsetFromShared(context is Context, id is Id, definition is map,
+    shared is map, which is number) returns map
+{
+    const entry = shared.profiles[which];
+    const profile = entry.profile;
+    const allStations = shared.stations;
+    const allCoords = shared.coords;
+    const alongRef = shared.alongRef;
+
     // Two lookups: identical positions, but each side of a profile slope break
     // needs its own slope. Positions are taken from the upper-side pass.
-    // Put an exact station on each offset discontinuity before anything is
-    // evaluated, so the break lands on the profile's own boundary rather than
-    // on whichever sample happened to fall nearest it.
-    const split = insertCrossings(context, sourceChain, stations, coords, profile);
-    const allCoords = split.coords;
-
-    // Resolve the alignment once and stamp it onto the stations. Everything
-    // downstream -- placement, run-end tangents, the frame differences behind
-    // them, and both debug tables -- then reads one settled frame instead of
-    // rebuilding it two or three times per station.
-    const allStations = resolveFrames(split.stations, definition, alongRef);
-
     const upper = profileAt(profile, allCoords.values, false);
     const lower = profileAt(profile, allCoords.values, true);
 
     const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
     const points = placed.points;
+    const splits = runSplits(allStations, entry.breaks, shared.matchRuns);
     const cornered = resolveCorners(context, definition, allStations, allCoords, points,
-        upper, lower, buildRuns(allStations, upper), alongRef);
+        upper, lower, buildRuns(allStations, upper, splits), alongRef);
     const runs = resolveTerminals(context, definition, allStations, allCoords, points,
         upper, lower, cornered, alongRef);
 
@@ -159,7 +226,7 @@ export function drivenOffset(context is Context, id is Id, definition is map) re
     const emitted = emitRuns(context, id, definition, allStations, allCoords, points, upper, lower, runs, alongRef);
 
     return {
-        "sourceChain" : sourceChain,
+        "sourceChain" : shared.sourceChain,
         "profile" : profile,
         "alongRef" : alongRef,
         "stations" : allStations,
@@ -171,6 +238,102 @@ export function drivenOffset(context is Context, id is Id, definition is map) re
         "runs" : runs,
         "emitted" : emitted
     };
+}
+
+/**
+ * Break coordinates merged into an ascending list, without duplicating a boundary that two
+ * profiles share. insertCrossings walks its list in order against ascending station
+ * coordinates, so the order here is not cosmetic.
+ */
+function mergeBreaks(into is array, adding is array) returns array
+{
+    var merged = into;
+
+    for (var coord in adding)
+    {
+        var seen = false;
+        for (var already in merged)
+        {
+            if (abs(already - coord) < OFFSET_GEOM_TOL)
+            {
+                seen = true;
+                break;
+            }
+        }
+
+        if (!seen)
+        {
+            merged = append(merged, coord);
+        }
+    }
+
+    return sortMeasures(merged);
+}
+
+/**
+ * Ascending, by insertion. The lists are a handful of boundaries long.
+ */
+function sortMeasures(values is array) returns array
+{
+    var sorted = [];
+
+    for (var value in values)
+    {
+        var at = size(sorted);
+        for (var i = 0; i < size(sorted); i += 1)
+        {
+            if (value < sorted[i])
+            {
+                at = i;
+                break;
+            }
+        }
+
+        sorted = concatenateArrays([subArray(sorted, 0, at), [value], subArray(sorted, at, size(sorted))]);
+    }
+
+    return sorted;
+}
+
+/**
+ * Which stations this profile treats as a run boundary.
+ *
+ * Every inserted crossing carries the coordinate it was inserted for. A profile splits at
+ * its own breaks always, and at another profile's breaks only when the caller asked for
+ * matching run structure across profiles.
+ */
+function runSplits(stations is array, breaks is array, matchRuns is boolean) returns array
+{
+    var flags = [];
+
+    for (var station in stations)
+    {
+        if (station.crossing != "right")
+        {
+            flags = append(flags, false);
+            continue;
+        }
+
+        if (matchRuns || station.crossingAt == undefined)
+        {
+            flags = append(flags, true);
+            continue;
+        }
+
+        var mine = false;
+        for (var coord in breaks)
+        {
+            if (abs(coord - station.crossingAt) < OFFSET_GEOM_TOL)
+            {
+                mine = true;
+                break;
+            }
+        }
+
+        flags = append(flags, mine);
+    }
+
+    return flags;
 }
 
 
@@ -450,7 +613,7 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
  *
  * @returns {array} : each { "start", "end", "linkIndex" }, inclusive indices.
  */
-function buildRuns(stations is array, offsets is array) returns array
+function buildRuns(stations is array, offsets is array, splits is array) returns array
 {
     var runs = [];
     var start = undefined;
@@ -473,7 +636,7 @@ function buildRuns(stations is array, offsets is array) returns array
         const newEdge = (stations[i].linkIndex != stations[start].linkIndex
                 || stations[i].edgeIndex != stations[start].edgeIndex);
 
-        if (newEdge || stations[i].crossing == "right")
+        if (newEdge || splits[i])
         {
             runs = closeRun(runs, stations, start, i - 1);
             start = i;
@@ -513,9 +676,8 @@ function closeRun(runs is array, stations is array, start, end is number) return
  * they land on the same point and the output stays connected; where it steps they
  * separate by exactly the step.
  */
-function insertCrossings(context is Context, chain is map, stations is array, coords is map, profile is map) returns map
+function insertCrossings(context is Context, chain is map, stations is array, coords is map, breaks is array) returns map
 {
-    const breaks = discontinuityCoords(profile);
     if (size(breaks) == 0 || size(stations) < 2)
     {
         return { "stations" : stations, "coords" : coords };
@@ -534,8 +696,10 @@ function insertCrossings(context is Context, chain is map, stations is array, co
             const arc = arcAtCoord(stations, coords, i, breaks[next]);
             const crossing = crossingStation(context, chain, stations, i, arc);
 
-            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "left" }));
-            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "right" }));
+            // The coordinate travels with the station so that a profile can later tell its
+            // own break from one inserted for a different profile.
+            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "left", "crossingAt" : breaks[next] }));
+            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "right", "crossingAt" : breaks[next] }));
             values = append(values, breaks[next]);
             values = append(values, breaks[next]);
             scales = append(scales, coords.scales[i]);
@@ -707,6 +871,7 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         {
             runPoints = append(runPoints, run.endPoint);
         }
+        runPoints = withoutRepeats(runPoints);
 
         // A corner filler belongs to the run it leads into, and joins the same wire.
         if (run.fill != undefined)
