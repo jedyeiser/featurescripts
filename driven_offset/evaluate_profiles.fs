@@ -79,6 +79,15 @@ export const PROFILE_ZERO_DIRECTION = 1e-9;
  */
 export const PROFILE_ALONG_COS = 0.7071;
 
+/**
+ * How far out of its own plane a run may sit and still count as an arc.
+ *
+ * Deliberately far tighter than the fit tolerance: radial error is fit scatter, out-of-plane
+ * deviation is not. Mirrors ARC_PLANARITY_TOL in edge_offset_utils.fs; this tab imports only
+ * std, so it carries its own.
+ */
+export const ARC_PLANARITY_TOL = 1e-7 * meter;
+
 /** How close two curves must sit to count as the same line or the same circle. */
 export const PROFILE_MERGE_TOL = 1e-6 * meter;
 
@@ -1563,26 +1572,6 @@ function extendArc(points is array, from is number, tolerance is ValueWithUnits)
     return (best > from + 2) ? best : from + 1;
 }
 
-function onArc(points is array, from is number, to is number, tolerance is ValueWithUnits) returns boolean
-{
-    const circleData = circleThroughPoints(points[from], points[floor((from + to) / 2)], points[to]);
-
-    if (circleData == undefined)
-    {
-        return false;
-    }
-
-    for (var i = from + 1; i < to; i += 1)
-    {
-        if (distanceToCircleData(points[i], circleData) > tolerance)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /**
  * Circle through three points, or undefined when they are collinear.
  */
@@ -1606,15 +1595,36 @@ function circleThroughPoints(p0 is Vector, p1 is Vector, p2 is Vector)
     };
 }
 
-function distanceToCircleData(point is Vector, circleData is map) returns ValueWithUnits
+function onArc(points is array, from is number, to is number, tolerance is ValueWithUnits) returns boolean
 {
-    const toPoint = point - circleData.center;
-    const outOfPlane = dot(toPoint, circleData.normal);
-    const inPlane = norm(toPoint - outOfPlane * circleData.normal);
-    const radial = (inPlane - circleData.radius) / meter;
+    const circleData = circleThroughPoints(points[from], points[floor((from + to) / 2)], points[to]);
 
-    return sqrt(radial * radial + (outOfPlane / meter) ^ 2) * meter;
+    if (circleData == undefined)
+    {
+        return false;
+    }
+
+    // Planarity and radial fit are asked separately, on separate budgets. A circle is planar
+    // by definition, so a real arc's points are planar to numerical noise; a systematic bow
+    // means the run is not an arc however small the bow is. Measured as one combined distance
+    // -- which is what this did -- a curve wrapped onto a gently curved surface reads as
+    // circular, because the bow hides inside the radial allowance.
+    for (var i = from + 1; i < to; i += 1)
+    {
+        const toPoint = points[i] - circleData.center;
+        const outOfPlane = abs(dot(toPoint, circleData.normal));
+        const radial = abs(norm(toPoint - dot(toPoint, circleData.normal) * circleData.normal)
+                - circleData.radius);
+
+        if (radial > tolerance || outOfPlane > ARC_PLANARITY_TOL)
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
+
 
 /**
  * A true arc through a detected circular stretch, built on a sketch so it is a real arc

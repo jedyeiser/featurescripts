@@ -43,6 +43,22 @@ export const ZERO_SPAN = 1e-15;
 /** Position tolerance for geometric classification (line / arc detection). */
 export const OFFSET_GEOM_TOL = 1e-6 * meter;
 
+/**
+ * How far out of its own plane a run may sit and still be called an arc.
+ *
+ * Separate from, and far tighter than, the fitting tolerance -- because it answers a
+ * different question. Radial error is a fit residual: sampled points scatter either side of
+ * the true radius and a micron of it is meaningless. Out-of-plane deviation is not scatter.
+ * A circle is planar by definition, so a genuine arc's points are planar to numerical noise,
+ * and a systematic bow means the curve is not an arc no matter how small the bow is.
+ *
+ * The case this exists for: source edges that are splines produced by wrapping arcs onto a
+ * gently curved surface. They are within a hundredth of a millimetre of circular and were
+ * being emitted as true arcs, which discards the wrap. Measured against one combined
+ * distance budget the bow hid inside the radial allowance; measured separately it does not.
+ */
+export const ARC_PLANARITY_TOL = 1e-7 * meter;
+
 /** Newton iterations for inverting x(u) on a profile edge. Three already reach 1e-12 m. */
 export const NEWTON_ITERATIONS = 4;
 
@@ -350,18 +366,6 @@ export function circleThrough(p0 is Vector, p1 is Vector, p2 is Vector)
     };
 }
 
-/**
- * Distance from a point to a circle in 3D.
- */
-function distanceToCircle(point is Vector, circleData is map) returns ValueWithUnits
-{
-    const toPoint = point - circleData.center;
-    const outOfPlane = dot(toPoint, circleData.normal);
-    const inPlane = norm(toPoint - outOfPlane * circleData.normal);
-    const radial = (inPlane - circleData.radius) / meter;
-
-    return sqrt(radial * radial + (outOfPlane / meter) ^ 2) * meter;
-}
 
 /**
  * Classify an ordered point set as a whole line, a whole circular arc, or neither.
@@ -417,19 +421,38 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
         return { "kind" : "freeform" };
     }
 
-    var maxArcError = 0 * meter;
+    // Two questions, two budgets. distanceToCircle used to return sqrt(radial^2 +
+    // outOfPlane^2), so a run could be called an arc on the strength of a radial fit while
+    // carrying a systematic bow out of the plane -- which is exactly what a spline wrapped
+    // onto a curved surface does. Folding them together let the bow hide inside the radial
+    // allowance. Planarity is checked on its own, much tighter, threshold.
+    var maxRadial = 0 * meter;
+    var maxOutOfPlane = 0 * meter;
+
     for (var point in points)
     {
-        const error = distanceToCircle(point, fit);
-        if (error > maxArcError)
+        const toPoint = point - fit.center;
+        const outOfPlane = abs(dot(toPoint, fit.normal));
+        const radial = abs(norm(toPoint - dot(toPoint, fit.normal) * fit.normal) - fit.radius);
+
+        if (radial > maxRadial)
         {
-            maxArcError = error;
+            maxRadial = radial;
+        }
+        if (outOfPlane > maxOutOfPlane)
+        {
+            maxOutOfPlane = outOfPlane;
         }
     }
 
-    if (maxArcError > tolerance)
+    if (maxRadial > tolerance || maxOutOfPlane > ARC_PLANARITY_TOL)
     {
-        return { "kind" : "freeform" };
+        // Carried so a caller can say WHY a run that looks circular was not emitted as one.
+        return {
+            "kind" : "freeform",
+            "radialError" : maxRadial,
+            "outOfPlane" : maxOutOfPlane
+        };
     }
 
     return {
@@ -439,7 +462,9 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
         "end" : last,
         "center" : fit.center,
         "radius" : fit.radius,
-        "normal" : fit.normal
+        "normal" : fit.normal,
+        "radialError" : maxRadial,
+        "outOfPlane" : maxOutOfPlane
     };
 }
 
