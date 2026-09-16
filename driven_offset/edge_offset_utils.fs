@@ -2704,6 +2704,24 @@ export function emitSplineCurve(context is Context, id is Id, points is array, s
                 "maxControlPoints" : approximation.approximationMaxCPs
             });
 
+    // TEMPORARY DIAGNOSTIC (ruled-section BAD_GEOMETRY, 2026-09-16). Only the surface
+    // feature sets debugFit, so the plain offset's own fits are unaffected.
+    if (approximation.debugFit == true)
+    {
+        const fitted = curves[0];
+        const lastCP = size(fitted.controlPoints) - 1;
+
+        println("[fit]       in " ~ toString(size(points)) ~ " pt"
+                ~ "  degree " ~ toString(fitted.degree)
+                ~ "  CPs " ~ toString(size(fitted.controlPoints))
+                ~ "  knots " ~ toString(size(fitted.knots))
+                ~ "  weights " ~ toString(fitted.weights == undefined ? 0 : size(fitted.weights))
+                ~ "  maxCPs " ~ toString(approximation.approximationMaxCPs)
+                ~ "  snap start " ~ toString(roundToPrecision(norm(fitted.controlPoints[0] - points[0]) / millimeter, 6))
+                ~ " mm  snap end " ~ toString(roundToPrecision(norm(fitted.controlPoints[lastCP] - points[size(points) - 1]) / millimeter, 6))
+                ~ " mm");
+    }
+
     opCreateBSplineCurve(context, id, { "bSplineCurve" : snapEnds(curves[0], points) });
 }
 

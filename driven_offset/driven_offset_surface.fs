@@ -526,6 +526,23 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
                 // slopes no longer describe it, so the fit is left unconstrained there.
                 const atOffset = abs(reach) < TOLERANCE.zeroLength * meter;
 
+                // TEMPORARY DIAGNOSTIC (ruled-section BAD_GEOMETRY, 2026-09-16). Printed
+                // BEFORE the emit, so the last line standing names the run that threw.
+                if (definition.debugPrintSurface)
+                {
+                    const allowArc = sourceAllowsArc(driven.stations, from, to);
+                    const shape = classifyPoints(distinct, definition.approximationTolerance, allowArc);
+
+                    println("[section]   reach " ~ toString(roundToPrecision(reach / millimeter, 4))
+                        ~ " mm  run " ~ toString(r)
+                        ~ " [" ~ toString(from) ~ ".." ~ toString(to) ~ "]"
+                        ~ "  pts " ~ toString(size(points)) ~ " distinct " ~ toString(size(distinct))
+                        ~ "  span " ~ toString(roundToPrecision(runSpan / millimeter, 4)) ~ " mm"
+                        ~ "  allowArc " ~ toString(allowArc)
+                        ~ "  -> " ~ shape.kind
+                        ~ "  tangents " ~ toString(atOffset));
+                }
+
                 curve = curveThrough(context, id + ("piece" ~ r), definition, distinct,
                     sourceAllowsArc(driven.stations, from, to),
                     atOffset ? runTangent(driven.stations, driven.coords, driven.upper,
@@ -1001,7 +1018,9 @@ function curveThrough(context is Context, id is Id, definition is map, points is
         emitSplineCurve(context, id, points, startDerivative, endDerivative, {
                     "approximationDegree" : definition.approximationDegree,
                     "approximationTolerance" : definition.approximationTolerance,
-                    "approximationMaxCPs" : definition.approximationMaxCPs
+                    "approximationMaxCPs" : definition.approximationMaxCPs,
+                    // TEMPORARY DIAGNOSTIC (2026-09-16), see emitSplineCurve.
+                    "debugFit" : definition.debugPrintSurface
                 });
     }
 
