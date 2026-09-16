@@ -623,7 +623,14 @@ export function offsetTangent(frame is map, offsets is map, slopes is map, rates
  */
 export function surfaceOffset(alongRef is map, frame is map, offsets is map) returns map
 {
-    const surf = referenceSurfaceCoords(alongRef, frame.origin);
+    // referenceSurfaceCoords is a two-step Newton foot-point solve over the reference
+    // tables, and it depends on alongRef and frame.origin ONLY -- nothing about the offsets.
+    // It was being redone for every station of every profile, again at every run end through
+    // surfaceOffsetTangent, and again per station in ruled mode. resolveFrames now solves it
+    // once per station and leaves it here; the fallback keeps every other caller working.
+    const surf = (frame.surfCoords != undefined)
+        ? frame.surfCoords
+        : referenceSurfaceCoords(alongRef, frame.origin);
     const alpha = dot(frame.widthAxis, surf.tangent);
     const beta = dot(frame.widthAxis, alongRef.planeNormal);
 
@@ -2189,10 +2196,6 @@ export function interpolate(xs is array, ys is array, x)
 // ============================================================================
 
 /**
- * Emit a straight edge as a degree-one B-spline with two control points.
- * Onshape reads this back as a line, so no sketch is needed.
- */
-/**
  * A circular arc from p1 to p2 centred on the corner vertex, or undefined if no such
  * circle exists.
  *
@@ -2497,6 +2500,10 @@ export function planeStraddle(a is Vector, b is Vector, pl is Plane)
     return a + (sideA / span) * (b - a);
 }
 
+/**
+ * Emit a straight edge as a degree-one B-spline with two control points.
+ * Onshape reads this back as a line, so no sketch is needed.
+ */
 export function emitLineCurve(context is Context, id is Id, start is Vector, end is Vector)
 {
     opCreateBSplineCurve(context, id, {
@@ -2607,9 +2614,6 @@ export function padLeft(text is string, width is number) returns string
     return (deficit > 0) ? repeatString(" ", deficit) ~ text : text;
 }
 
-/**
- * Left-align text in a fixed-width column.
- */
 /**
  * A length in millimetres, fixed decimals, right-aligned. Undefined prints as "--".
  */
@@ -2842,33 +2846,88 @@ export function frameRates(stations is array, run is map, index is number) retur
 export function tangentRunMerges(pointsPerProfile is array, runs is array,
     tolerance is ValueWithUnits) returns array
 {
+    if (size(runs) < 2 || size(pointsPerProfile) == 0)
+    {
+        return makeArray(max(size(runs) - 1, 0), false);
+    }
+
     var merges = [];
-    var anchor = 0;
+
+    // One deduped span per profile, EXTENDED as the group grows rather than rebuilt from the
+    // anchor on every candidate. Rebuilding made this quadratic -- a group that swallows the
+    // chain cost sum-of-spans appends plus the same again to dedup, ~92k element operations
+    // per profile at 430 stations. Consecutive-duplicate removal is a streaming operation
+    // (withoutRepeats(A ~ B) is withoutRepeats(A) extended by B filtered against the last
+    // point kept), so accumulating is exact. classifyPoints still runs over the whole span
+    // each time and has to: its chord and midpoint both move as the span grows, so there is
+    // no incremental form of it.
+    var spans = [];
+    for (var points in pointsPerProfile)
+    {
+        spans = append(spans, extendSpan([], points, runs[0].start, runs[0].end));
+    }
 
     for (var r = 0; r + 1 < size(runs); r += 1)
     {
-        // Against the ACCUMULATED span, not against runs[r]. Testing pairs and then applying
-        // the results transitively is wrong and not subtly so: runs 0+1 can fit one arc, and
-        // 1+2, and 2+3, so every boundary passes and all of them collapse into a single run
-        // that fits nothing. Measured on a 17 mm chain that produced one 1020 mm "arc" that
-        // the emitter then re-classified as freeform and fitted as a spline -- the exact
-        // trade this test exists to prevent.
-        var all = true;
+        const here = runs[r];
+        const next = runs[r + 1];
 
-        for (var points in pointsPerProfile)
+        // The end-side records come from runs[r], NOT from the run the group started at.
+        // Reading them off the anchor missed a trimmed end or a terminal on any run absorbed
+        // after the first, because the anchor's own records had already been checked and
+        // found clear. Everything that made a boundary meaningful has to survive it: a
+        // trimmed corner carries an exact crossing point, a terminal carries a plane it was
+        // cut to, and a corner fill is a separate piece of geometry that belongs between.
+        var ok = (next.start == here.end + 1)
+            && here.endPoint == undefined && next.startPoint == undefined
+            && here.terminalEnd == undefined && next.terminalStart == undefined
+            && next.fill == undefined && next.cornerKind == undefined;
+
+        var grown = [];
+
+        if (ok)
         {
-            if (!runsCombine(points, runs[anchor], runs[r + 1], tolerance))
+            for (var k = 0; k < size(pointsPerProfile); k += 1)
             {
-                all = false;
-                break;
+                const span = (spans[k] == undefined)
+                    ? undefined
+                    : extendSpan(spans[k], pointsPerProfile[k], next.start, next.end);
+
+                if (span == undefined)
+                {
+                    ok = false;
+                    break;
+                }
+
+                // The question is not "are the tangents equal" -- two arcs of different radii
+                // meet tangentially and are still two arcs, and fusing them into one spline is
+                // the trade that puts a curvature swing into the result. It is the stronger
+                // one: does the whole accumulated span still describe ONE line or ONE arc.
+                const shape = classifyPoints(span, tolerance);
+
+                if (shape.kind != "line" && shape.kind != "arc")
+                {
+                    ok = false;
+                    break;
+                }
+
+                grown = append(grown, span);
             }
         }
 
-        merges = append(merges, all);
+        merges = append(merges, ok);
 
-        if (!all)
+        if (ok)
         {
-            anchor = r + 1;
+            spans = grown;
+        }
+        else
+        {
+            spans = [];
+            for (var points in pointsPerProfile)
+            {
+                spans = append(spans, extendSpan([], points, next.start, next.end));
+            }
         }
     }
 
@@ -2876,50 +2935,31 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
 }
 
 /**
- * Whether two runs can become one edge without changing the geometry.
+ * Append points[from..to] to an already-deduped array, dropping consecutive duplicates.
  *
- * `a` is the run the group started at and `b` the one being absorbed, so the span tested
- * covers everything accumulated so far -- see tangentRunMerges.
- *
- * The test is deliberately not "are the tangents equal". Two arcs of different radii meet
- * tangentially and are still two arcs; fusing them into one spline is exactly the trade that
- * put a 142% curvature swing into the loft sections. So the question asked here is the
- * stronger one -- do the two runs TOGETHER still describe a single line or a single arc --
- * which classifyPoints already answers, to the same tolerance the emitter uses.
- *
- * Everything that made the boundary meaningful vetoes the merge: a trimmed corner carries an
- * exact crossing point, a terminal carries a plane it was cut to, and a corner fill is a
- * separate piece of geometry that belongs between them.
+ * Returns undefined if any point in the range is missing, which is how a coverage gap vetoes
+ * a merge -- there is no single curve across a hole.
  */
-function runsCombine(points is array, a is map, b is map, tolerance is ValueWithUnits) returns boolean
+function extendSpan(kept is array, points is array, from is number, to is number)
 {
-    // a.end + 1 == b.start holds only for immediate neighbours; once a group has grown,
-    // b is further along, so contiguity is checked by span rather than by index.
-    if (b.start <= a.end || b.end < b.start)
-    {
-        return false;
-    }
+    var out = kept;
 
-    if (a.endPoint != undefined || b.startPoint != undefined
-        || a.terminalEnd != undefined || b.terminalStart != undefined
-        || b.fill != undefined || b.cornerKind != undefined)
-    {
-        return false;
-    }
-
-    var joined = [];
-    for (var i = a.start; i <= b.end; i += 1)
+    for (var i = from; i <= to; i += 1)
     {
         if (points[i] == undefined)
         {
-            return false;
+            return undefined;
         }
-        joined = append(joined, points[i]);
+
+        if (size(out) > 0 && norm(points[i] - out[size(out) - 1]) < TOLERANCE.zeroLength * meter)
+        {
+            continue;
+        }
+
+        out = append(out, points[i]);
     }
 
-    const shape = classifyPoints(withoutRepeats(joined), tolerance);
-
-    return shape.kind == "line" || shape.kind == "arc";
+    return out;
 }
 
 /**

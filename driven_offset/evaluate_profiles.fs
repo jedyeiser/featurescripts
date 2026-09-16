@@ -79,9 +79,6 @@ export const PROFILE_ZERO_DIRECTION = 1e-9;
  */
 export const PROFILE_ALONG_COS = 0.7071;
 
-/** An along-run shorter than this fraction of the longest is a joining piece, not a profile. */
-export const PROFILE_SHORT_RUN_FRACTION = 0.25;
-
 /** How close two curves must sit to count as the same line or the same circle. */
 export const PROFILE_MERGE_TOL = 1e-6 * meter;
 
@@ -1818,12 +1815,16 @@ function scanForReversals(context is Context, path is Path, heading is Vector) r
         }
     }
 
-    const start = trimmedStart
-        ? refineReversal(context, path, heading, forward, parameters[startIndex], parameters[startIndex + 1])
-        : 0;
-    const end = trimmedEnd
-        ? refineReversal(context, path, heading, forward, parameters[endIndex - 1], parameters[endIndex])
-        : 1;
+    // Both ends refined in one interleaved walk. The bisections are sequential and cannot be
+    // collapsed, but they are independent of each other and share path, heading and forward,
+    // so the two midpoints can go to the kernel together -- 48 single-parameter calls become
+    // 24 two-parameter ones whenever both ends are trimmed, which is the usual case.
+    const refined = refineReversals(context, path, heading, forward,
+        trimmedStart ? [parameters[startIndex], parameters[startIndex + 1]] : undefined,
+        trimmedEnd ? [parameters[endIndex - 1], parameters[endIndex]] : undefined);
+
+    const start = trimmedStart ? refined[0] : 0;
+    const end = trimmedEnd ? refined[1] : 1;
 
     return {
         "start" : start,
@@ -1842,29 +1843,52 @@ function scanForReversals(context is Context, path is Path, heading is Vector) r
  * the other, so plain bisection converges without needing a derivative -- and a
  * derivative is the one thing not to ask for here, since it is going through zero.
  */
-function refineReversal(context is Context, path is Path, heading is Vector, forward is number,
-    lo is number, hi is number) returns number
+function refineReversals(context is Context, path is Path, heading is Vector, forward is number,
+    startBracket, endBracket) returns array
 {
-    var a = lo;
-    var b = hi;
+    var a = [startBracket == undefined ? 0 : startBracket[0], endBracket == undefined ? 0 : endBracket[0]];
+    var b = [startBracket == undefined ? 0 : startBracket[1], endBracket == undefined ? 0 : endBracket[1]];
+
+    var live = [];
+    if (startBracket != undefined) { live = append(live, 0); }
+    if (endBracket != undefined) { live = append(live, 1); }
 
     for (var i = 0; i < PROFILE_REFINE_STEPS; i += 1)
     {
-        const mid = 0.5 * (a + b);
-        const rate = forward * dot(evPathTangentLines(context, path, [mid]).tangentLines[0].direction, heading);
-
-        if (rate > 0)
+        var mids = [];
+        for (var e in live)
         {
-            a = mid;
+            mids = append(mids, 0.5 * (a[e] + b[e]));
         }
-        else
+
+        if (size(mids) == 0)
         {
-            b = mid;
+            break;
+        }
+
+        const lines = evPathTangentLines(context, path, mids).tangentLines;
+
+        for (var k = 0; k < size(live); k += 1)
+        {
+            const e = live[k];
+            const rate = forward * dot(lines[k].direction, heading);
+
+            if (rate > 0)
+            {
+                a[e] = mids[k];
+            }
+            else
+            {
+                b[e] = mids[k];
+            }
         }
     }
 
     // Return the side that still advances, so the retained span never includes the cusp.
-    return (lo < hi) ? a : b;
+    return [
+            (startBracket == undefined || startBracket[0] < startBracket[1]) ? a[0] : b[0],
+            (endBracket == undefined || endBracket[0] < endBracket[1]) ? a[1] : b[1]
+        ];
 }
 
 /**

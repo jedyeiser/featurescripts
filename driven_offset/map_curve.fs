@@ -371,13 +371,21 @@ function resolveChain(context is Context, selection is Query, zeroPoint is Vecto
         throw regenError("No edges found in the selection.", selection);
     }
 
+    // spanned feeds useX and fallback, and both are already gated on WORLD_X -- so in
+    // CLOSEST_POINT this box, and the adjacency query behind it, were evaluated and then
+    // discarded. The !useX branch below evaluates its own box anyway, so that mode was
+    // paying for two where it needs one.
     // UNVERIFIED in Onshape: evBox3d over a vertex-only query.
-    const vertexBox = evBox3d(context, {
-                "topology" : qAdjacent(edges, AdjacencyType.VERTEX, EntityType.VERTEX),
-                "tight" : true
-            });
-    const spanned = zeroPoint[0] > vertexBox.minCorner[0] + SPAN_X_MARGIN
-        && zeroPoint[0] < vertexBox.maxCorner[0] - SPAN_X_MARGIN;
+    var spanned = false;
+    if (mode == ProjectionMode.WORLD_X)
+    {
+        const vertexBox = evBox3d(context, {
+                    "topology" : qAdjacent(edges, AdjacencyType.VERTEX, EntityType.VERTEX),
+                    "tight" : true
+                });
+        spanned = zeroPoint[0] > vertexBox.minCorner[0] + SPAN_X_MARGIN
+            && zeroPoint[0] < vertexBox.maxCorner[0] - SPAN_X_MARGIN;
+    }
     const useX = (mode == ProjectionMode.WORLD_X) && spanned;
 
     var anchor = zeroPoint;

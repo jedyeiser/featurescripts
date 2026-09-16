@@ -487,7 +487,16 @@ function resolveFrames(stations is array, definition is map, alongRef) returns a
 
     for (var station in stations)
     {
-        resolved = append(resolved, stationFrame(station, definition, alongRef));
+        const frame = stationFrame(station, definition, alongRef);
+
+        // Solve the reference foot point once, here, and carry it. Everything downstream that
+        // places a point in the reference surface needs it and none of them vary it: it is a
+        // function of the station origin and the reference alone. This runs after
+        // insertCrossings, so inserted crossings get one too, and no origin is touched after
+        // this point.
+        resolved = append(resolved, (alongRef == undefined)
+                ? frame
+                : mergeMaps(frame, { "surfCoords" : referenceSurfaceCoords(alongRef, frame.origin) }));
     }
 
     return resolved;

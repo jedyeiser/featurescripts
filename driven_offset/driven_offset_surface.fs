@@ -353,7 +353,28 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
                     "debugPrintFrameTable" : definition.debugPrintFrameTable && first
                 });
 
-        const result = emitOffset(context, offsetId, perOffset, shared, plans[i]);
+        // Emitting the offset wire is the most expensive thing this feature does that is not
+        // a loft: per run a curve, and for every arc run a whole sketch -- newSketchOnPlane,
+        // skArc, skSolve, opExtractWires, opDeleteBodies, five kernel ops including a
+        // constraint solve. And no loft consumes it. loftColumns builds from sections[i].pieces
+        // and the other two modes from ruledSection's wire; all three rebuild their curves
+        // from the stations. So unless the wire is being kept, or a debug toggle reads the
+        // emitted runs, the whole thing is built and then deleted again by finishSurface.
+        const needsEmit = definition.keepWires
+            || definition.debugPrintFromChain
+            || definition.debugPrintOffsetTable
+            || definition.debugVisualizeContinuity
+            || definition.debugShowChainEnds;
+
+        const result = needsEmit
+            ? emitOffset(context, offsetId, perOffset, shared, plans[i])
+            : mergeMaps(plans[i], {
+                        "sourceChain" : shared.sourceChain,
+                        "alongRef" : shared.alongRef,
+                        "stations" : shared.stations,
+                        "coords" : shared.coords,
+                        "emitted" : []
+                    });
 
         // The offset's own reporting lives with the feature, not the core, so driving the
         // core directly leaves every toggle in the Debug group wired to nothing unless it
@@ -365,8 +386,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
         driven = append(driven, mergeMaps(result, {
                         "id" : offsetId,
                         "name" : entries[i].offsetName,
-                        "wires" : qCreatedBy(offsetId, EntityType.BODY),
-                        "edges" : qCreatedBy(offsetId, EntityType.EDGE)
+                        "wires" : qCreatedBy(offsetId, EntityType.BODY)
                     }));
     }
 

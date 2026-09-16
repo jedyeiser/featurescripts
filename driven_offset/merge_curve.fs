@@ -717,13 +717,24 @@ function neighbourSnapPoints(context is Context, plan is map, edges is Query, pa
         return pathEnds;
     }
     const others = evaluateQuery(context, qSubtraction(qOwnedByBody(plan.seedWire, EntityType.EDGE), edges));
+
+    // Once per neighbour, not once per neighbour per end. The e loop runs twice and asked the
+    // kernel for the identical endpoints both times -- 120 calls on a 60-edge seed wire where
+    // 60 do. Iteration order is unchanged, so the strictly-less test below still keeps the
+    // first of any tie.
+    var endsOf = [];
+    for (var o = 0; o < size(others); o += 1)
+    {
+        endsOf = append(endsOf, evEdgeTangentLines(context, { "edge" : others[o], "parameters" : [0, 1] }));
+    }
+
     var result = pathEnds;
     for (var e = 0; e < 2; e += 1)
     {
         var best = MERGE_CHAIN_TOLERANCE;
         for (var o = 0; o < size(others); o += 1)
         {
-            const ends = evEdgeTangentLines(context, { "edge" : others[o], "parameters" : [0, 1] });
+            const ends = endsOf[o];
             for (var k = 0; k < 2; k += 1)
             {
                 const d = norm(ends[k].origin - pathEnds[e]);
