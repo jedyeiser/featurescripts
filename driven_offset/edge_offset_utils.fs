@@ -59,6 +59,21 @@ export const OFFSET_GEOM_TOL = 1e-6 * meter;
  */
 export const ARC_PLANARITY_TOL = 1e-7 * meter;
 
+/**
+ * How far a merged arc's radius may differ, relatively, from the radius of the run the merge
+ * started at.
+ *
+ * Fitting tolerance cannot police this. At a 15 metre radius two arcs whose radii differ by
+ * 0.03% are positionally indistinguishable over most of a metre, so "do these points all lie
+ * within 0.01 mm of one circle" says yes and the merge replaces both radii with a third that
+ * was never in the input. On a ski that third radius is not a rounding artefact, it is a
+ * sidecut that nobody designed.
+ *
+ * Compared always against the ANCHOR run's own radius rather than the previous step's, so a
+ * long chain of individually-tolerable steps cannot drift the radius away a little at a time.
+ */
+export const ARC_MERGE_RADIUS_REL = 1e-4;
+
 /** Newton iterations for inverting x(u) on a profile edge. Three already reach 1e-12 m. */
 export const NEWTON_ITERATIONS = 4;
 
@@ -2887,9 +2902,12 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
     // each time and has to: its chord and midpoint both move as the span grows, so there is
     // no incremental form of it.
     var spans = [];
+    var bases = [];
     for (var points in pointsPerProfile)
     {
-        spans = append(spans, extendSpan([], points, runs[0].start, runs[0].end));
+        const span = extendSpan([], points, runs[0].start, runs[0].end);
+        spans = append(spans, span);
+        bases = append(bases, span == undefined ? undefined : classifyPoints(span, tolerance));
     }
 
     for (var r = 0; r + 1 < size(runs); r += 1)
@@ -2936,6 +2954,24 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
                     break;
                 }
 
+                // Same KIND of thing, and for an arc the same circle -- not merely a circle
+                // that the points happen to sit on. Absorbing a neighbour must not change the
+                // radius, or the merge is inventing geometry rather than recognising it.
+                const base = bases[k];
+
+                if (base == undefined || base.kind != shape.kind)
+                {
+                    ok = false;
+                    break;
+                }
+
+                if (shape.kind == "arc"
+                    && abs(shape.radius - base.radius) > ARC_MERGE_RADIUS_REL * base.radius)
+                {
+                    ok = false;
+                    break;
+                }
+
                 grown = append(grown, span);
             }
         }
@@ -2949,9 +2985,12 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
         else
         {
             spans = [];
+            bases = [];
             for (var points in pointsPerProfile)
             {
-                spans = append(spans, extendSpan([], points, next.start, next.end));
+                const span = extendSpan([], points, next.start, next.end);
+                spans = append(spans, span);
+                bases = append(bases, span == undefined ? undefined : classifyPoints(span, tolerance));
             }
         }
     }
