@@ -909,15 +909,29 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // exactly the pair of curves worth naming.
             if (definition.debugPrintSurface)
             {
-                var edges = [];
-                for (var section in span)
+                var report = "[patch]     run " ~ toString(r) ~ "  from profile " ~ toString(from)
+                    ~ "  sections " ~ toString(size(patch));
+
+                // The pair as opLoft sees it. Printed for the patches that succeed as well
+                // as the one that throws, because the useful reading is the comparison: a
+                // failing patch beside its near-identical neighbour that built.
+                if (size(patch) == 2)
                 {
-                    edges = append(edges, size(evaluateQuery(context, section.pieces[r])));
+                    const a0 = evEdgeTangentLine(context, { "edge" : patch[0], "parameter" : 0 });
+                    const a1 = evEdgeTangentLine(context, { "edge" : patch[0], "parameter" : 1 });
+                    const b0 = evEdgeTangentLine(context, { "edge" : patch[1], "parameter" : 0 });
+                    const b1 = evEdgeTangentLine(context, { "edge" : patch[1], "parameter" : 1 });
+
+                    report = report
+                        ~ "  dirDot " ~ toString(roundToPrecision(dot(a0.direction, b0.direction), 5))
+                        ~ "  startGap " ~ toString(roundToPrecision(norm(a0.origin - b0.origin) / millimeter, 4))
+                        ~ "  endGap " ~ toString(roundToPrecision(norm(a1.origin - b1.origin) / millimeter, 4))
+                        ~ "  crossGap " ~ toString(roundToPrecision(norm(a0.origin - b1.origin) / millimeter, 4))
+                        ~ "  chordA " ~ toString(roundToPrecision(norm(a1.origin - a0.origin) / millimeter, 4))
+                        ~ "  chordB " ~ toString(roundToPrecision(norm(b1.origin - b0.origin) / millimeter, 4));
                 }
 
-                println("[patch]     run " ~ toString(r) ~ "  from profile " ~ toString(from)
-                    ~ "  sections " ~ toString(size(patch))
-                    ~ "  edges per section " ~ toString(edges));
+                println(report);
             }
 
             const patchId = id + ("patch" ~ r ~ "_" ~ from);
