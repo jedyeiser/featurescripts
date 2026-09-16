@@ -2670,6 +2670,26 @@ export function emitArcCurve(context is Context, id is Id, arcData is map)
 }
 
 /**
+ * A knot vector as text, for comparing one fit against another.
+ *
+ * Two curves of the same degree with the same number of control points can still carry
+ * completely different knots, and approximateSpline documents that lofting between curves
+ * wants them consistently parameterized. Same count is not the same vector, so the values
+ * are what has to be read.
+ */
+function knotText(knots is array) returns string
+{
+    var text = "[";
+
+    for (var k = 0; k < size(knots); k += 1)
+    {
+        text = text ~ (k == 0 ? "" : " ") ~ toString(roundToPrecision(knots[k], 5));
+    }
+
+    return text ~ "]";
+}
+
+/**
  * Emit a freeform curve through the offset points.
  *
  * End derivatives come from the exact offset tangent rather than from the fitted
@@ -2720,6 +2740,7 @@ export function emitSplineCurve(context is Context, id is Id, points is array, s
                 ~ "  degree " ~ toString(fitted.degree)
                 ~ "  CPs " ~ toString(size(fitted.controlPoints))
                 ~ "  knots " ~ toString(size(fitted.knots))
+                ~ " " ~ knotText(fitted.knots)
                 ~ "  weights " ~ toString(fitted.weights == undefined ? 0 : size(fitted.weights))
                 ~ "  maxCPs " ~ toString(approximation.approximationMaxCPs)
                 ~ "  snap start " ~ toString(roundToPrecision(norm(fitted.controlPoints[0] - points[0]) / millimeter, 6))
