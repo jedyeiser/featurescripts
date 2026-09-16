@@ -217,7 +217,8 @@ export function offsetFromShared(context is Context, id is Id, definition is map
     if (definition.joinTangentRuns)
     {
         plan = withMergedRuns(plan,
-            tangentRunMerges([plan.points], plan.runs, definition.approximationTolerance));
+            tangentRunMerges([plan.points], plan.runs, shared.stations,
+                definition.approximationTolerance));
     }
 
     return emitOffset(context, id, definition, shared, plan);
@@ -991,7 +992,9 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
             continue;
         }
 
-        const shape = classifyPoints(runPoints, approximation.approximationTolerance);
+        // An arc is only on the table where the source under this run is a line or a circle.
+        const shape = classifyPoints(runPoints, approximation.approximationTolerance,
+            sourceAllowsArc(stations, run.start, run.end));
 
         if (shape.kind == "line")
         {

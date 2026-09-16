@@ -303,7 +303,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
             pointsPerProfile = append(pointsPerProfile, plan.points);
         }
 
-        const common = tangentRunMerges(pointsPerProfile, plans[0].runs,
+        const common = tangentRunMerges(pointsPerProfile, plans[0].runs, shared.stations,
             definition.approximationTolerance);
 
         var merged = [];
@@ -527,6 +527,7 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
                 const atOffset = abs(reach) < TOLERANCE.zeroLength * meter;
 
                 curve = curveThrough(context, id + ("piece" ~ r), definition, distinct,
+                    sourceAllowsArc(driven.stations, from, to),
                     atOffset ? runTangent(driven.stations, driven.coords, driven.upper,
                             definition, driven.alongRef, run, from) : undefined,
                     atOffset ? runTangent(driven.stations, driven.coords, driven.lower,
@@ -750,7 +751,8 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     // wholesale, which is what keeps an uncovered edge out of the loft.
     // The seed runs along the source edges, not the offset, so the offset's end slopes do
     // not describe it. Unconstrained, as it was.
-    const seed = curveThrough(context, id + "seed", definition, points, undefined, undefined);
+    const seed = curveThrough(context, id + "seed", definition, points,
+        sourceAllowsArc(driven.stations, span.start, span.end), undefined, undefined);
     const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter).wire;
 
     loftSections(context, id + "loft", [seed, offsetSide]);
@@ -967,7 +969,7 @@ function surfaceModeName(mode is SurfaceMode) returns string
  * One curve through a point list, as a body a loft can take.
  */
 function curveThrough(context is Context, id is Id, definition is map, points is array,
-    startDerivative, endDerivative) returns Query
+    allowArc is boolean, startDerivative, endDerivative) returns Query
 {
     // Classified, not fitted -- the same decision emitRuns makes about the very same points.
     //
@@ -981,7 +983,7 @@ function curveThrough(context is Context, id is Id, definition is map, points is
     // classifyPoints already knows when a run is a line or an arc, and emitLineCurve and
     // emitArcCurve make the exact thing rather than an approximation of it. Only genuinely
     // freeform runs go to the fitter.
-    const shape = classifyPoints(points, definition.approximationTolerance);
+    const shape = classifyPoints(points, definition.approximationTolerance, allowArc);
 
     if (shape.kind == "line")
     {

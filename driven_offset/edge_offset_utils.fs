@@ -92,6 +92,33 @@ export const ARC_MERGE_RADIUS_REL = 1e-4;
  */
 export const ARC_FIT_SAGITTA_FRAC = 0.1;
 
+/**
+ * Whether the source geometry under a span of stations can legitimately produce an arc.
+ *
+ * True only where every station came off a LINE or a CIRCLE. The offset of a circle by a
+ * constant amount in its plane is exactly a circle, so an arc there is the right answer; the
+ * offset of a spline is not a circle however closely it fits one over a short span.
+ */
+export function sourceAllowsArc(stations is array, from is number, to is number) returns boolean
+{
+    for (var i = from; i <= to; i += 1)
+    {
+        if (i < 0 || i >= size(stations))
+        {
+            continue;
+        }
+
+        const t = stations[i].curveType;
+
+        if (t != undefined && t != CurveType.LINE && t != CurveType.CIRCLE)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /** Newton iterations for inverting x(u) on a profile edge. Three already reach 1e-12 m. */
 export const NEWTON_ITERATIONS = 4;
 
@@ -416,6 +443,22 @@ export function circleThrough(p0 is Vector, p1 is Vector, p2 is Vector)
  */
 export function classifyPoints(points is array, tolerance is ValueWithUnits) returns map
 {
+    return classifyPoints(points, tolerance, true);
+}
+
+/**
+ * As above, but `allowArc` false forbids the arc answer outright.
+ *
+ * For callers that know the run came off something which is not a circle. Measured on a 42 mm
+ * run of a wrapped spline: it sits within 13 NANOMETRES of a circle and 33 nanometres of a
+ * plane, so every tolerance in this file passes it honestly and the emitted radius is whatever
+ * the fit happened to land on -- three runs of the same shape gave 17485.26, 17480.90 and
+ * 17496.21 mm. No threshold separates that from a real arc without also rejecting real arcs.
+ * Knowing the source was a spline does.
+ */
+export function classifyPoints(points is array, tolerance is ValueWithUnits,
+    allowArc is boolean) returns map
+{
     const count = size(points);
     const first = points[0];
     const last = points[count - 1];
@@ -450,6 +493,11 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
         {
             return { "kind" : "line", "start" : first, "end" : last };
         }
+    }
+
+    if (!allowArc)
+    {
+        return { "kind" : "freeform", "sagitta" : sagitta };
     }
 
     const midIndex = floor(count / 2);
@@ -1105,7 +1153,12 @@ export function chainStations(context is Context, chain is map, spacing is map) 
                             "rawNormal" : frame.xAxis,
                             "curvature" : results[i].curvature,
                             "linkIndex" : linkIndex,
-                            "edgeIndex" : edgeIndex
+                            "edgeIndex" : edgeIndex,
+                            // What the source edge here actually IS. A tolerance cannot
+                            // recover this: over a short span the offset of a spline is
+                            // circular to nanometres, so the only way to know a circle is
+                            // not the right answer is that the input was never a circle.
+                            "curveType" : edgeData.curveType
                         });
             }
 
@@ -2917,7 +2970,7 @@ export function frameRates(stations is array, run is map, index is number) retur
  * Nothing downstream wants it: an arc through three points with two of them equal has no
  * circumcentre, and a spline fitted across a zero-length span is degenerate.
  */
-export function tangentRunMerges(pointsPerProfile is array, runs is array,
+export function tangentRunMerges(pointsPerProfile is array, runs is array, stations is array,
     tolerance is ValueWithUnits) returns array
 {
     if (size(runs) < 2 || size(pointsPerProfile) == 0)
@@ -2937,11 +2990,14 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
     // no incremental form of it.
     var spans = [];
     var bases = [];
+    var anchorStart = runs[0].start;
+
     for (var points in pointsPerProfile)
     {
         const span = extendSpan([], points, runs[0].start, runs[0].end);
         spans = append(spans, span);
-        bases = append(bases, span == undefined ? undefined : classifyPoints(span, tolerance));
+        bases = append(bases, span == undefined ? undefined
+                : classifyPoints(span, tolerance, sourceAllowsArc(stations, runs[0].start, runs[0].end)));
     }
 
     for (var r = 0; r + 1 < size(runs); r += 1)
@@ -2980,7 +3036,8 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
                 // meet tangentially and are still two arcs, and fusing them into one spline is
                 // the trade that puts a curvature swing into the result. It is the stronger
                 // one: does the whole accumulated span still describe ONE line or ONE arc.
-                const shape = classifyPoints(span, tolerance);
+                const shape = classifyPoints(span, tolerance,
+                    sourceAllowsArc(stations, anchorStart, next.end));
 
                 if (shape.kind != "line" && shape.kind != "arc")
                 {
@@ -3020,11 +3077,14 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array,
         {
             spans = [];
             bases = [];
+            anchorStart = next.start;
+
             for (var points in pointsPerProfile)
             {
                 const span = extendSpan([], points, next.start, next.end);
                 spans = append(spans, span);
-                bases = append(bases, span == undefined ? undefined : classifyPoints(span, tolerance));
+                bases = append(bases, span == undefined ? undefined
+                        : classifyPoints(span, tolerance, sourceAllowsArc(stations, next.start, next.end)));
             }
         }
     }
