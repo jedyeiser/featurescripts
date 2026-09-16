@@ -917,18 +917,21 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                 // failing patch beside its near-identical neighbour that built.
                 if (size(patch) == 2)
                 {
-                    const a0 = evEdgeTangentLine(context, { "edge" : patch[0], "parameter" : 0 });
-                    const a1 = evEdgeTangentLine(context, { "edge" : patch[0], "parameter" : 1 });
-                    const b0 = evEdgeTangentLine(context, { "edge" : patch[1], "parameter" : 0 });
-                    const b1 = evEdgeTangentLine(context, { "edge" : patch[1], "parameter" : 1 });
+                    const walkA = curveWalk(context, patch[0], PATCH_WALK_SAMPLES);
+                    const walkB = curveWalk(context, patch[1], PATCH_WALK_SAMPLES);
+
+                    var minSeparation = norm(walkA.points[0] - walkB.points[0]);
+                    for (var k = 1; k < PATCH_WALK_SAMPLES; k += 1)
+                    {
+                        minSeparation = min(minSeparation, norm(walkA.points[k] - walkB.points[k]));
+                    }
 
                     report = report
-                        ~ "  dirDot " ~ toString(roundToPrecision(dot(a0.direction, b0.direction), 5))
-                        ~ "  startGap " ~ toString(roundToPrecision(norm(a0.origin - b0.origin) / millimeter, 4))
-                        ~ "  endGap " ~ toString(roundToPrecision(norm(a1.origin - b1.origin) / millimeter, 4))
-                        ~ "  crossGap " ~ toString(roundToPrecision(norm(a0.origin - b1.origin) / millimeter, 4))
-                        ~ "  chordA " ~ toString(roundToPrecision(norm(a1.origin - a0.origin) / millimeter, 4))
-                        ~ "  chordB " ~ toString(roundToPrecision(norm(b1.origin - b0.origin) / millimeter, 4));
+                        ~ "  minSep " ~ toString(roundToPrecision(minSeparation / millimeter, 4))
+                        ~ "  turnA " ~ toString(roundToPrecision(walkA.minTurn, 5))
+                        ~ "  turnB " ~ toString(roundToPrecision(walkB.minTurn, 5))
+                        ~ "  stepA " ~ toString(roundToPrecision(walkA.minAdvance / millimeter, 5))
+                        ~ "  stepB " ~ toString(roundToPrecision(walkB.minAdvance / millimeter, 5));
                 }
 
                 println(report);
@@ -1040,6 +1043,47 @@ function surfaceModeName(mode is SurfaceMode) returns string
 // ============================================================================
 // Shared
 // ============================================================================
+
+/** How many places along a section curve the patch diagnostic looks at. */
+const PATCH_WALK_SAMPLES = 9;
+
+/**
+ * How a section curve behaves between its ends.
+ *
+ * The endpoint measures cannot see a fit that loops or cusps in its interior, and that is
+ * the one shape that fails a loft while every endpoint number still reads healthy. Two
+ * things give it away: `minTurn`, the smallest dot product between consecutive sample
+ * tangents, which drops toward or below zero where the curve turns back on itself; and
+ * `minAdvance`, the smallest step along the curve's own chord, which goes negative where
+ * it actually reverses.
+ */
+function curveWalk(context is Context, edge is Query, samples is number) returns map
+{
+    var points = [];
+    var directions = [];
+
+    for (var k = 0; k < samples; k += 1)
+    {
+        const at = evEdgeTangentLine(context, { "edge" : edge, "parameter" : k / (samples - 1) });
+
+        points = append(points, at.origin);
+        directions = append(directions, at.direction);
+    }
+
+    const chord = points[samples - 1] - points[0];
+    const along = (norm(chord) < TOLERANCE.zeroLength * meter) ? vector(1, 0, 0) : normalize(chord);
+
+    var minTurn = 1;
+    var minAdvance = norm(chord);
+
+    for (var k = 1; k < samples; k += 1)
+    {
+        minTurn = min(minTurn, dot(directions[k], directions[k - 1]));
+        minAdvance = min(minAdvance, dot(points[k] - points[k - 1], along));
+    }
+
+    return { "points" : points, "minTurn" : minTurn, "minAdvance" : minAdvance };
+}
 
 /**
  * One curve through a point list, as a body a loft can take.
