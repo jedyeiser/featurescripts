@@ -476,11 +476,25 @@ function ruleOverSpan(context is Context, id is Id, definition is map, driven is
 function ruledSection(context is Context, id is Id, definition is map, driven is map,
     span is map, reach is ValueWithUnits) returns map
 {
-    // Indexed by RUN, with a hole where a run fell outside the span or carried no offset,
-    // so that two sections built over the same runs can be paired run for run. Packing them
-    // down would misalign the moment one section skips a run the other keeps.
-    var pieces = [];
-    var kept = 0;
+    return emitSection(context, id, definition, sectionPlan(definition, driven, span, reach),
+        reach, undefined);
+}
+
+/**
+ * Everything a section settles before any geometry exists.
+ *
+ * Split out from the emit for the same reason planOffset was split out of emitOffset: a
+ * caller driving several profiles has to be able to look at all of their runs before any of
+ * them is committed. Fitting a run needs the point lists of EVERY profile at that run, so
+ * the decision cannot be made one section at a time -- see coupledFits.
+ *
+ * @returns {array} : run-indexed, with a hole where a run fell outside the span, carried no
+ *      offset, or collapsed to nothing. The holes are kept so two sections built over the
+ *      same runs still pair run for run.
+ */
+function sectionPlan(definition is map, driven is map, span is map, reach is ValueWithUnits) returns array
+{
+    var plans = [];
 
     for (var r = 0; r < size(driven.runs); r += 1)
     {
@@ -488,7 +502,7 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
         const from = max(run.start, span.start);
         const to = min(run.end, span.end);
 
-        var curve = undefined;
+        var plan = undefined;
 
         if (to - from >= 1)
         {
@@ -519,48 +533,175 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
 
             if (size(distinct) >= 2 && runSpan >= OFFSET_GEOM_TOL)
             {
-                // The section's own end tangents, displaced by the same reach that placed
-                // its points, so every section is fitted under the same constraints the
-                // offset itself was. This used to be applied only at zero reach, on the
-                // reasoning that the offset's slopes no longer describe a displaced
-                // section -- true of the slopes, but the tangent is not the slope: a
-                // constant reach has zero derivative, so the displaced tangent is the
-                // offset's own tangent re-evaluated at the larger amount, and runTangent
-                // takes it from whichever map placed the points. Leaving the displaced
-                // fits unconstrained cost two things. Corresponding curves came back with
-                // different control-point counts -- measured at 12 against 7 on one
-                // 28-point run -- so opLoft was pairing sections carrying different
-                // parameterizations. And an unconstrained fit is free to drop control
-                // points, which on a short nearly-straight run takes the count below
-                // degree + 1 and produces a B-spline opCreateBSplineCurve rejects.
+                // The end tangents, displaced by the same reach that placed the points, so
+                // every section is fitted under the same constraints the offset itself was.
+                // The tangent is not the slope: a constant reach has zero derivative, so the
+                // displaced tangent is the offset tangent re-evaluated at the larger amount,
+                // and runTangent takes it from whichever map placed the points.
                 const displacement = sectionDisplacement(definition, reach);
-                const startTangent = runTangent(driven.stations, driven.coords, driven.upper,
-                    definition, driven.alongRef, run, from, displacement);
-                const endTangent = runTangent(driven.stations, driven.coords, driven.lower,
-                    definition, driven.alongRef, run, to, displacement);
+                const allowArc = sourceAllowsArc(driven.stations, from, to);
 
-                // Printed BEFORE the emit, so if a fit is ever rejected again the last
-                // line standing names the run it came from.
-                if (definition.debugPrintSurface)
-                {
-                    const allowArc = sourceAllowsArc(driven.stations, from, to);
-                    const shape = classifyPoints(distinct, definition.approximationTolerance, allowArc);
-
-                    println("[section]   reach " ~ toString(roundToPrecision(reach / millimeter, 4))
-                        ~ " mm  run " ~ toString(r)
-                        ~ " [" ~ toString(from) ~ ".." ~ toString(to) ~ "]"
-                        ~ "  pts " ~ toString(size(points)) ~ " distinct " ~ toString(size(distinct))
-                        ~ "  span " ~ toString(roundToPrecision(runSpan / millimeter, 4)) ~ " mm"
-                        ~ "  allowArc " ~ toString(allowArc)
-                        ~ "  -> " ~ shape.kind
-                        ~ "  tangents " ~ toString(startTangent != undefined)
-                        ~ "/" ~ toString(endTangent != undefined));
-                }
-
-                curve = curveThrough(context, id + ("piece" ~ r), definition, distinct,
-                    sourceAllowsArc(driven.stations, from, to), startTangent, endTangent);
-                kept += 1;
+                plan = {
+                        "from" : from,
+                        "to" : to,
+                        "sampled" : size(points),
+                        "points" : distinct,
+                        "runSpan" : runSpan,
+                        "allowArc" : allowArc,
+                        "shape" : classifyPoints(distinct, definition.approximationTolerance, allowArc),
+                        "startDerivative" : runTangent(driven.stations, driven.coords, driven.upper,
+                                definition, driven.alongRef, run, from, displacement),
+                        "endDerivative" : runTangent(driven.stations, driven.coords, driven.lower,
+                                definition, driven.alongRef, run, to, displacement)
+                    };
             }
+        }
+
+        plans = append(plans, plan);
+    }
+
+    return plans;
+}
+
+/**
+ * One fit per profile for every run that can take one, computed a run at a time.
+ *
+ * This is the point of the plan/emit split. Fitting each section on its own lets
+ * approximateSpline choose each curve knots independently, and opLoft refuses some pairs of
+ * independently-parameterized curves while accepting others that measure identically --
+ * same separation the whole way, tangents in agreement, no cusp or reversal in either, same
+ * degree, same control-point count. Confirmed against the kernel: a loft built by hand
+ * between two such curves fails the same way, and the same feature builds cleanly when the
+ * source classifies as lines and arcs so no fitting happens at all. Handing a run to the
+ * fitter once, with every profile as a target, makes the family share a parameterization by
+ * construction instead of hoping the fitter lands on compatible knots twice.
+ *
+ * @param plans {array} : one sectionPlan per profile, all over the same runs.
+ * @returns {array} : fits[profile][run], undefined where the run is not coupled and the
+ *      section emits it on its own.
+ */
+function coupledFits(context is Context, definition is map, plans is array) returns array
+{
+    const runs = size(plans[0]);
+
+    var fits = [];
+    for (var i = 0; i < size(plans); i += 1)
+    {
+        var empty = [];
+        for (var r = 0; r < runs; r += 1)
+        {
+            empty = append(empty, undefined);
+        }
+
+        fits = append(fits, empty);
+    }
+
+    for (var r = 0; r < runs; r += 1)
+    {
+        if (!coupleable(plans, r))
+        {
+            continue;
+        }
+
+        var members = [];
+        for (var i = 0; i < size(plans); i += 1)
+        {
+            members = append(members, {
+                        "points" : plans[i][r].points,
+                        "startDerivative" : plans[i][r].startDerivative,
+                        "endDerivative" : plans[i][r].endDerivative
+                    });
+        }
+
+        const curves = approximateFamily(context, members, fitSettings(definition));
+
+        for (var i = 0; i < size(plans); i += 1)
+        {
+            var row = fits[i];
+            row[r] = curves[i];
+            fits[i] = row;
+        }
+    }
+
+    return fits;
+}
+
+/**
+ * Whether one run can be fitted as a single family across every profile.
+ *
+ * Three things have to hold and none can be assumed. std requires every target to carry the
+ * same number of positions and corresponding derivative information. withoutRepeats can drop
+ * a different number of points from different profiles, because the profiles place their
+ * points differently. And a run that classifies as a line or an arc keeps its analytic
+ * emitter -- those are exact, so they have no parameterization to disagree about, and
+ * routing them through the fitter is the thing the classification exists to avoid.
+ */
+function coupleable(plans is array, r is number) returns boolean
+{
+    const first = plans[0][r];
+
+    if (first == undefined || first.shape.kind != "freeform")
+    {
+        return false;
+    }
+
+    for (var i = 1; i < size(plans); i += 1)
+    {
+        const plan = plans[i][r];
+
+        if (plan == undefined
+            || plan.shape.kind != "freeform"
+            || size(plan.points) != size(first.points)
+            || (plan.startDerivative == undefined) != (first.startDerivative == undefined)
+            || (plan.endDerivative == undefined) != (first.endDerivative == undefined))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Turn one section plan into geometry.
+ *
+ * @param fits {array} : run-indexed curves already fitted as a family, or undefined to let
+ *      each run fit on its own.
+ */
+function emitSection(context is Context, id is Id, definition is map, plans is array,
+    reach is ValueWithUnits, fits) returns map
+{
+    var pieces = [];
+    var kept = 0;
+
+    for (var r = 0; r < size(plans); r += 1)
+    {
+        const plan = plans[r];
+        var curve = undefined;
+
+        if (plan != undefined)
+        {
+            const fitted = (fits == undefined) ? undefined : fits[r];
+
+            // Printed BEFORE the emit, so if a fit is ever rejected again the last line
+            // standing names the run it came from.
+            if (definition.debugPrintSurface)
+            {
+                println("[section]   reach " ~ toString(roundToPrecision(reach / millimeter, 4))
+                    ~ " mm  run " ~ toString(r)
+                    ~ " [" ~ toString(plan.from) ~ ".." ~ toString(plan.to) ~ "]"
+                    ~ "  pts " ~ toString(plan.sampled) ~ " distinct " ~ toString(size(plan.points))
+                    ~ "  span " ~ toString(roundToPrecision(plan.runSpan / millimeter, 4)) ~ " mm"
+                    ~ "  allowArc " ~ toString(plan.allowArc)
+                    ~ "  -> " ~ plan.shape.kind
+                    ~ "  tangents " ~ toString(plan.startDerivative != undefined)
+                    ~ "/" ~ toString(plan.endDerivative != undefined)
+                    ~ "  coupled " ~ toString(fitted != undefined));
+            }
+
+            curve = emitShape(context, id + ("piece" ~ r), definition, plan.shape, plan.points,
+                plan.startDerivative, plan.endDerivative, fitted);
+            kept += 1;
         }
 
         pieces = append(pieces, curve);
@@ -817,12 +958,26 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
  */
 function loftAcrossOffsets(context is Context, id is Id, definition is map, driven is array) returns array
 {
-    var sections = [];
+    // Every profile is planned before any of them is emitted, so that a run can be fitted
+    // across all of them at once. Fitting each section on its own is what left corresponding
+    // curves with independently chosen knot vectors, which opLoft rejects for some pairs and
+    // accepts for others that measure identically. See coupledFits.
+    var plans = [];
 
     for (var i = 0; i < size(driven); i += 1)
     {
-        sections = append(sections, ruledSection(context, id + ("section" ~ i), definition,
-                driven[i], longestSpan(context, id, driven[i]), 0 * meter));
+        plans = append(plans, sectionPlan(definition, driven[i],
+                longestSpan(context, id, driven[i]), 0 * meter));
+    }
+
+    const fits = coupledFits(context, definition, plans);
+
+    var sections = [];
+
+    for (var i = 0; i < size(plans); i += 1)
+    {
+        sections = append(sections, emitSection(context, id + ("section" ~ i), definition,
+                plans[i], 0 * meter, fits[i]));
     }
 
     var wires = [];
@@ -1133,20 +1288,53 @@ function curveWalk(context is Context, edge is Query, samples is number) returns
 function curveThrough(context is Context, id is Id, definition is map, points is array,
     allowArc is boolean, startDerivative, endDerivative) returns Query
 {
-    // Classified, not fitted -- the same decision emitRuns makes about the very same points.
-    //
-    // Fitting everything with approximateSpline reproduces the positions to tolerance and
-    // wrecks the curvature: a constant-radius arc sampled and re-approximated as a degree-3
-    // spline comes back with curvature swinging over 100% along its length, and the loft
-    // faithfully carries that into the face. Measured against a constant-curvature input the
-    // offset wire held 0% spread on every run while the section built from the same points
-    // held 142% on the first and 129% on the last.
-    //
-    // classifyPoints already knows when a run is a line or an arc, and emitLineCurve and
-    // emitArcCurve make the exact thing rather than an approximation of it. Only genuinely
-    // freeform runs go to the fitter.
-    const shape = classifyPoints(points, definition.approximationTolerance, allowArc);
+    return emitShape(context, id, definition,
+        classifyPoints(points, definition.approximationTolerance, allowArc),
+        points, startDerivative, endDerivative, undefined);
+}
 
+/**
+ * The approximation controls, as emitSplineCurve and approximateFamily want them.
+ *
+ * Named for the fit rather than the feature because driven_edge_offset already has an
+ * approximationSettings of its own, and two functions of the same name and arity visible at
+ * once is an identical-signature clash.
+ */
+function fitSettings(definition is map) returns map
+{
+    return {
+            "approximationDegree" : definition.approximationDegree,
+            "approximationTolerance" : definition.approximationTolerance,
+            "approximationMaxCPs" : definition.approximationMaxCPs,
+            // Report the fitted curve under this feature's own debug flag; see
+            // emitFittedCurve.
+            "debugFit" : definition.debugPrintSurface
+        };
+}
+
+/**
+ * Emit a run as the thing it was classified to be.
+ *
+ * Classified, not fitted -- the same decision emitRuns makes about the very same points.
+ *
+ * Fitting everything with approximateSpline reproduces the positions to tolerance and wrecks
+ * the curvature: a constant-radius arc sampled and re-approximated as a degree-3 spline comes
+ * back with curvature swinging over 100% along its length, and the loft faithfully carries
+ * that into the face. Measured against a constant-curvature input the offset wire held 0%
+ * spread on every run while the section built from the same points held 142% on the first and
+ * 129% on the last.
+ *
+ * classifyPoints already knows when a run is a line or an arc, and emitLineCurve and
+ * emitArcCurve make the exact thing rather than an approximation of it. Only genuinely
+ * freeform runs reach the fitter.
+ *
+ * @param fitted : a curve already fitted as part of a family, or undefined to fit here. It
+ *      is only ever supplied for a freeform run -- a line and an arc are exact, so there is
+ *      nothing for a family fit to make consistent.
+ */
+function emitShape(context is Context, id is Id, definition is map, shape is map, points is array,
+    startDerivative, endDerivative, fitted) returns Query
+{
     if (shape.kind == "line")
     {
         emitLineCurve(context, id, shape.start, shape.end);
@@ -1155,19 +1343,16 @@ function curveThrough(context is Context, id is Id, definition is map, points is
     {
         emitArcCurve(context, id, shape);
     }
+    else if (fitted != undefined)
+    {
+        emitFittedCurve(context, id, fitted, points, fitSettings(definition));
+    }
     else
     {
         // The end slopes, where the caller has them. A freeform offset is exactly the case
         // this matters for: the fit is what determines the shape, and an unconstrained fit
         // leaves the ends free to bulge away from the run it is supposed to continue.
-        emitSplineCurve(context, id, points, startDerivative, endDerivative, {
-                    "approximationDegree" : definition.approximationDegree,
-                    "approximationTolerance" : definition.approximationTolerance,
-                    "approximationMaxCPs" : definition.approximationMaxCPs,
-                    // Report the fitted curve under this feature's own debug flag; see
-                    // emitSplineCurve.
-                    "debugFit" : definition.debugPrintSurface
-                });
+        emitSplineCurve(context, id, points, startDerivative, endDerivative, fitSettings(definition));
     }
 
     return qCreatedBy(id, EntityType.EDGE);

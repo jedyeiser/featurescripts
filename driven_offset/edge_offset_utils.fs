@@ -2699,56 +2699,108 @@ function knotText(knots is array) returns string
  */
 export function emitSplineCurve(context is Context, id is Id, points is array, startDerivative, endDerivative, approximation is map)
 {
-    // approximateSpline parameterizes the fit over [0, 1], so the natural derivative
-    // magnitude at an endpoint is the run's total chord, not 1. Handing it a unit
-    // vector asks for near-zero velocity there, which bulges the curve near the
-    // junction -- measured at ~0.45 mm in curveMapping/wrapCurve.fs:568.
-    var chord = 0 * meter;
-    for (var i = 0; i < size(points) - 1; i += 1)
+    const curves = approximateFamily(context, [{
+                        "points" : points,
+                        "startDerivative" : startDerivative,
+                        "endDerivative" : endDerivative
+                    }], approximation);
+
+    emitFittedCurve(context, id, curves[0], points, approximation);
+}
+
+/**
+ * Fit one curve per point list, all in a single call, so the family shares a parameterization.
+ *
+ * approximateSpline documents multi-target output as "consistently parameterized, so that,
+ * for example, lofting between them will match corresponding target positions". That is not
+ * a nicety where the curves are going into a loft. Two curves fitted in SEPARATE calls can
+ * come back with the same degree, the same control-point count and DIFFERENT knot vectors,
+ * and opLoft rejects some of those pairs as LOFT_FAILED while accepting others that measure
+ * identically -- same separation the whole way, tangents in agreement, no cusp or reversal
+ * in either. Verified against the kernel: a loft built by hand between two such curves fails
+ * the same way, so it is not a matter of how the operation is called. Fitting the family in
+ * one call removes the difference by construction rather than hoping the fitter lands on
+ * compatible knots twice.
+ *
+ * Every member must carry the same number of positions and corresponding derivative
+ * information; std requires it, and the caller is expected to have checked.
+ *
+ * @param members {array} : maps of { "points" : array, "startDerivative", "endDerivative" },
+ *      the derivatives optional but present or absent together across the family.
+ * @param approximation {map} : the feature's curveApproximationPredicate fields.
+ * @returns {array} : one BSplineCurve per member, in the order given.
+ */
+export function approximateFamily(context is Context, members is array, approximation is map) returns array
+{
+    var targets = [];
+
+    for (var member in members)
     {
-        chord += norm(points[i + 1] - points[i]);
+        // approximateSpline parameterizes the fit over [0, 1], so the natural derivative
+        // magnitude at an endpoint is the run's total chord, not 1. Handing it a unit
+        // vector asks for near-zero velocity there, which bulges the curve near the
+        // junction -- measured at ~0.45 mm in curveMapping/wrapCurve.fs:568.
+        var chord = 0 * meter;
+        for (var i = 0; i < size(member.points) - 1; i += 1)
+        {
+            chord += norm(member.points[i + 1] - member.points[i]);
+        }
+
+        var target = { "positions" : member.points };
+        if (member.startDerivative != undefined)
+        {
+            target.startDerivative = member.startDerivative * chord;
+        }
+        if (member.endDerivative != undefined)
+        {
+            target.endDerivative = member.endDerivative * chord;
+        }
+
+        targets = append(targets, approximationTarget(target));
     }
 
-    var target = { "positions" : points };
-    if (startDerivative != undefined)
-    {
-        target.startDerivative = startDerivative * chord;
-    }
-    if (endDerivative != undefined)
-    {
-        target.endDerivative = endDerivative * chord;
-    }
-
-    const curves = approximateSpline(context, {
+    return approximateSpline(context, {
                 "degree" : approximation.approximationDegree,
                 "tolerance" : approximation.approximationTolerance,
                 "isPeriodic" : false,
-                "targets" : [approximationTarget(target)],
+                "targets" : targets,
                 "maxControlPoints" : approximation.approximationMaxCPs
             });
+}
 
+/**
+ * Turn a curve the fitter already produced into geometry.
+ *
+ * Separate from the fitting so that a family fitted together can still be emitted one
+ * member at a time, under its own id.
+ */
+export function emitFittedCurve(context is Context, id is Id, curve is BSplineCurve, points is array,
+    approximation is map)
+{
     // What the fitter actually returned. Worth keeping: a BSplineCurve is malformed when
     // it has fewer than degree + 1 control points, and opCreateBSplineCurve reports that
-    // only as BAD_GEOMETRY, naming neither the curve nor the reason. Only the surface
-    // feature sets debugFit, so the plain offset's own fits are unaffected.
+    // only as BAD_GEOMETRY, naming neither the curve nor the reason. The knot VALUES are
+    // printed too, not just the count -- two curves of the same degree with the same
+    // control-point count can carry different knots, and that difference is invisible in
+    // every other measure. Only the surface feature sets debugFit, so the plain offset's
+    // own fits are unaffected.
     if (approximation.debugFit == true)
     {
-        const fitted = curves[0];
-        const lastCP = size(fitted.controlPoints) - 1;
+        const lastCP = size(curve.controlPoints) - 1;
 
         println("[fit]       in " ~ toString(size(points)) ~ " pt"
-                ~ "  degree " ~ toString(fitted.degree)
-                ~ "  CPs " ~ toString(size(fitted.controlPoints))
-                ~ "  knots " ~ toString(size(fitted.knots))
-                ~ " " ~ knotText(fitted.knots)
-                ~ "  weights " ~ toString(fitted.weights == undefined ? 0 : size(fitted.weights))
+                ~ "  degree " ~ toString(curve.degree)
+                ~ "  CPs " ~ toString(size(curve.controlPoints))
+                ~ "  knots " ~ toString(size(curve.knots))
+                ~ " " ~ knotText(curve.knots)
+                ~ "  weights " ~ toString(curve.weights == undefined ? 0 : size(curve.weights))
                 ~ "  maxCPs " ~ toString(approximation.approximationMaxCPs)
-                ~ "  snap start " ~ toString(roundToPrecision(norm(fitted.controlPoints[0] - points[0]) / millimeter, 6))
-                ~ " mm  snap end " ~ toString(roundToPrecision(norm(fitted.controlPoints[lastCP] - points[size(points) - 1]) / millimeter, 6))
+                ~ "  snap start " ~ toString(roundToPrecision(norm(curve.controlPoints[0] - points[0]) / millimeter, 6))
+                ~ " mm  snap end " ~ toString(roundToPrecision(norm(curve.controlPoints[lastCP] - points[size(points) - 1]) / millimeter, 6))
                 ~ " mm");
     }
 
-    opCreateBSplineCurve(context, id, { "bSplineCurve" : snapEnds(curves[0], points) });
+    opCreateBSplineCurve(context, id, { "bSplineCurve" : snapEnds(curve, points) });
 }
 
 /**
