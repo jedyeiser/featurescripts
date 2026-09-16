@@ -876,6 +876,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
     var sheets = [];
     var skipped = 0;
+    var refused = [];
 
     for (var r = 0; r < size(sections[0].pieces); r += 1)
     {
@@ -938,10 +939,34 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             }
 
             const patchId = id + ("patch" ~ r ~ "_" ~ from);
-            opLoft(context, patchId, {
-                        "profileSubqueries" : patch,
-                        "bodyType" : ToolBodyType.SURFACE
-                    });
+
+            // One refusal costs one face, not the surface.
+            //
+            // opLoft rejects some patches whose curves measure identical to a neighbouring
+            // patch it accepts: same 5.8 mm separation the whole way, tangent directions in
+            // agreement, no reversal or cusp in either curve, one edge each, fits of the
+            // same degree, control-point count and knot vector. Nothing available here
+            // distinguishes them, and LOFT_FAILED names neither the profile nor the reason.
+            //
+            // Letting that kill the feature loses thirteen good faces to one the kernel
+            // will not build. The hole marks exactly where it objected, which is worth more
+            // than a dead feature, and the refusal is reported rather than swallowed --
+            // this is a way to keep working on it, not a fix.
+            try silent
+            {
+                opLoft(context, patchId, {
+                            "profileSubqueries" : patch,
+                            "bodyType" : ToolBodyType.SURFACE
+                        });
+            }
+
+            // opLoft returns nothing, so the body it should have made is the only honest
+            // test of whether it ran.
+            if (size(evaluateQuery(context, qCreatedBy(patchId, EntityType.BODY))) == 0)
+            {
+                refused = append(refused, toString(r) ~ ":" ~ toString(from));
+                continue;
+            }
 
             sheets = append(sheets, qCreatedBy(patchId, EntityType.BODY));
         }
@@ -949,7 +974,22 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
     if (size(sheets) == 0)
     {
+        if (size(refused) > 0)
+        {
+            throw regenError("Every patch was refused by the loft, so no surface was built.");
+        }
+
         throw regenError("No run is covered by every offset, so there is nothing to loft between.");
+    }
+
+    // A hole in the surface is missing output, so it is a warning and not an info: the
+    // result is not what was asked for, and it is not safe to leave that to the console.
+    if (size(refused) > 0)
+    {
+        reportFeatureWarning(context, id, "The loft refused " ~ toString(size(refused))
+            ~ " of " ~ toString(size(refused) + size(sheets))
+            ~ " patches, so the surface has a hole at run:profile " ~ join(refused, ", ")
+            ~ ". Every other patch built.");
     }
 
     if (definition.debugPrintSurface)
@@ -957,7 +997,9 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
         println("[surface]     " ~ toString(size(sheets)) ~ " patch loft(s) ("
             ~ toString(size(sections[0].pieces)) ~ " run(s) x "
             ~ toString(lastFrom + 1) ~ " profile span(s))"
-            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " skipped for missing coverage" : ""));
+            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " skipped for missing coverage" : "")
+            ~ (size(refused) > 0 ? ", " ~ toString(size(refused)) ~ " refused by the loft: "
+                    ~ join(refused, ", ") : ""));
     }
 
     if (size(sheets) > 1)
