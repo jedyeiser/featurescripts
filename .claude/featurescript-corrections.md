@@ -1065,15 +1065,52 @@ condition is "more than N of something", either drop it and make the parameter i
 cases it does not apply to, or validate in the body with a regenError.
 
 ---
+
+## 21. Fit corresponding curves under the same constraints, or the fitter drops control points
+
+**Error**: `@opCreateBSplineCurve: BAD_GEOMETRY`, thrown from `emitSplineCurve` via
+`curveThrough` <- `ruledSection`. The base section of the same ruled surface built fine;
+only the displaced sections failed.
+
+**Cause**: `ruledSection` passed exact end tangents to `approximateSpline` only at zero
+reach, gated on `atOffset`, on the reasoning that the offset's slopes no longer describe a
+displaced section. True of the slopes, false of the tangent -- a constant reach has zero
+derivative, so the displaced tangent is the offset's own tangent re-evaluated at the larger
+amount.
+
+An unconstrained fit is free to use fewer control points than a constrained one. Measured on
+one 28-point run: `CPs 12 / knots 16` with end tangents, `CPs 7 / knots 11` without. On a
+short, nearly-straight run that reduction takes the count below `degree + 1`, and a
+`BSplineCurve` with fewer than `degree + 1` control points is malformed. The kernel reports
+that only as `BAD_GEOMETRY` -- it names neither the curve nor the reason.
+
+**Fix**: give every section the tangent belonging to its own displacement. `runTangent`
+gained a form taking a constant `displacement` added to the amounts; it is exact in both
+maps, because `d/ds surfaceOffset(w + reach, h)` is `surfaceOffsetTangent(w + reach, h)`, and
+`d/ds (P + reach*W)` is `P' + reach*W'`, which is what `offsetTangent` returns once reach is
+folded into the width amount (W enters multiplied by the amount). At reach 0 the displacement
+is zero and the result is bit-identical to before.
+
+**Second symptom, same cause**: base and displaced sections were going into `opLoft` with
+different control-point counts, so `LoftTopology.COLUMNS` was pairing sections carrying
+different parameterizations. The fix closes that too.
+
+**Lesson Learned**: when two curves have to correspond -- loft sections, paired profiles --
+fit them under the SAME constraints. A difference in constraints is a difference in
+parameterization even when the points are identical, and an unconstrained fit can degenerate
+below the degree it declares. If `opCreateBSplineCurve` says `BAD_GEOMETRY`, print the
+fitted `degree`, control-point count and knot count before handing it over; a valid clamped
+B-spline needs `knots == CPs + degree + 1` and `CPs >= degree + 1`.
+
 ---
 
 ## Statistics
 
-- **Total Corrections**: 20
-- **Last Updated**: 2026-09-15
+- **Total Corrections**: 21
+- **Last Updated**: 2026-09-16
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: Precondition visibility conditions admit no ordering comparison
+- **Latest Additions**: Fit corresponding curves under the same constraints (BAD_GEOMETRY from a degenerate unconstrained fit)
 
 ---
 

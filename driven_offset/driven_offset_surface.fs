@@ -903,6 +903,23 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                 continue;
             }
 
+            // Printed BEFORE the loft, so the last line standing names the patch that
+            // failed. opLoft reports LOFT_FAILED without saying which of its profiles it
+            // could not use, and a patch is one run by one profile pair, so that is
+            // exactly the pair of curves worth naming.
+            if (definition.debugPrintSurface)
+            {
+                var edges = [];
+                for (var section in span)
+                {
+                    edges = append(edges, size(evaluateQuery(context, section.pieces[r])));
+                }
+
+                println("[patch]     run " ~ toString(r) ~ "  from profile " ~ toString(from)
+                    ~ "  sections " ~ toString(size(patch))
+                    ~ "  edges per section " ~ toString(edges));
+            }
+
             const patchId = id + ("patch" ~ r ~ "_" ~ from);
             opLoft(context, patchId, {
                         "profileSubqueries" : patch,
