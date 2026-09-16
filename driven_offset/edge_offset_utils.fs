@@ -74,6 +74,24 @@ export const ARC_PLANARITY_TOL = 1e-7 * meter;
  */
 export const ARC_MERGE_RADIUS_REL = 1e-4;
 
+/**
+ * How well a circle must fit, as a fraction of the run's own sagitta, to be called an arc.
+ *
+ * An absolute tolerance cannot answer this. Every smooth curve is locally circular, so over a
+ * short enough span ANY curve fits a circle to within any tolerance you like -- and the
+ * shallower the span, the more meaningless the radius that comes out. Measured on a 42 mm run
+ * of a wrapped spline: sagitta 12.7 um against a 10 um fitting tolerance, so it missed being a
+ * line by 2.7 um and then passed the arc test trivially. Three runs of the same shape came out
+ * at R = 17485.26, 17480.90 and 17496.21 mm -- a 15 mm spread, which is the radius being noise
+ * rather than geometry.
+ *
+ * A genuine arc fits its circle essentially exactly however gentle it is, so its residual is a
+ * vanishing fraction of its sagitta. A short sample of something else fits only to within a
+ * residual comparable to the sagitta itself. That ratio separates them; the absolute tolerance
+ * cannot, because both sit under it.
+ */
+export const ARC_FIT_SAGITTA_FRAC = 0.1;
+
 /** Newton iterations for inverting x(u) on a profile edge. Three already reach 1e-12 m. */
 export const NEWTON_ITERATIONS = 4;
 
@@ -407,23 +425,28 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
         return { "kind" : "line", "start" : first, "end" : last };
     }
 
+    // Deviation from the chord, which for an arc IS its sagitta. Computed once: the line test
+    // asks whether it is small enough to ignore, and the arc test below asks whether the
+    // circle fits far better than it -- see ARC_FIT_SAGITTA_FRAC.
     const chord = last - first;
-    if (norm(chord) > OFFSET_GEOM_TOL)
+    const chordIsReal = norm(chord) > OFFSET_GEOM_TOL;
+    var sagitta = 0 * meter;
+
+    if (chordIsReal)
     {
         const chordDir = normalize(chord);
-        var maxLineError = 0 * meter;
 
         for (var i = 1; i < count - 1; i += 1)
         {
             const toPoint = points[i] - first;
             const lateral = norm(toPoint - dot(toPoint, chordDir) * chordDir);
-            if (lateral > maxLineError)
+            if (lateral > sagitta)
             {
-                maxLineError = lateral;
+                sagitta = lateral;
             }
         }
 
-        if (maxLineError <= tolerance)
+        if (sagitta <= tolerance)
         {
             return { "kind" : "line", "start" : first, "end" : last };
         }
@@ -460,13 +483,23 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
         }
     }
 
-    if (maxRadial > tolerance || maxOutOfPlane > ARC_PLANARITY_TOL)
+    // Three gates, three different questions. Absolute radial fit: are the points on a circle.
+    // Planarity: is it the same circle in the same plane. Relative fit: is the circle
+    // MEANINGFUL, or is the run so shallow that the residual is as big as the curvature it
+    // claims to have.
+    // The relative test needs a chord to measure the sagitta against. A run whose ends meet --
+    // a closed loop -- has none, and its curvature is not in doubt anyway, so it is exempt
+    // rather than rejected for having a sagitta of zero.
+    if (maxRadial > tolerance
+        || maxOutOfPlane > ARC_PLANARITY_TOL
+        || (chordIsReal && maxRadial > ARC_FIT_SAGITTA_FRAC * sagitta))
     {
         // Carried so a caller can say WHY a run that looks circular was not emitted as one.
         return {
             "kind" : "freeform",
             "radialError" : maxRadial,
-            "outOfPlane" : maxOutOfPlane
+            "outOfPlane" : maxOutOfPlane,
+            "sagitta" : sagitta
         };
     }
 
@@ -479,7 +512,8 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
         "radius" : fit.radius,
         "normal" : fit.normal,
         "radialError" : maxRadial,
-        "outOfPlane" : maxOutOfPlane
+        "outOfPlane" : maxOutOfPlane,
+        "sagitta" : sagitta
     };
 }
 
