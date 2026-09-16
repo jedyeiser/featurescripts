@@ -519,15 +519,28 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
 
             if (size(distinct) >= 2 && runSpan >= OFFSET_GEOM_TOL)
             {
-                // At zero reach the section IS the offset, so the slopes emitRuns constrains
-                // its fit with apply here unchanged, and a freeform section comes out as the
-                // same curve as the emitted wire instead of an independent guess at it. Away
-                // from zero the section is displaced along the frame's width axis and those
-                // slopes no longer describe it, so the fit is left unconstrained there.
-                const atOffset = abs(reach) < TOLERANCE.zeroLength * meter;
+                // The section's own end tangents, displaced by the same reach that placed
+                // its points, so every section is fitted under the same constraints the
+                // offset itself was. This used to be applied only at zero reach, on the
+                // reasoning that the offset's slopes no longer describe a displaced
+                // section -- true of the slopes, but the tangent is not the slope: a
+                // constant reach has zero derivative, so the displaced tangent is the
+                // offset's own tangent re-evaluated at the larger amount, and runTangent
+                // takes it from whichever map placed the points. Leaving the displaced
+                // fits unconstrained cost two things. Corresponding curves came back with
+                // different control-point counts -- measured at 12 against 7 on one
+                // 28-point run -- so opLoft was pairing sections carrying different
+                // parameterizations. And an unconstrained fit is free to drop control
+                // points, which on a short nearly-straight run takes the count below
+                // degree + 1 and produces a B-spline opCreateBSplineCurve rejects.
+                const displacement = sectionDisplacement(definition, reach);
+                const startTangent = runTangent(driven.stations, driven.coords, driven.upper,
+                    definition, driven.alongRef, run, from, displacement);
+                const endTangent = runTangent(driven.stations, driven.coords, driven.lower,
+                    definition, driven.alongRef, run, to, displacement);
 
-                // TEMPORARY DIAGNOSTIC (ruled-section BAD_GEOMETRY, 2026-09-16). Printed
-                // BEFORE the emit, so the last line standing names the run that threw.
+                // Printed BEFORE the emit, so if a fit is ever rejected again the last
+                // line standing names the run it came from.
                 if (definition.debugPrintSurface)
                 {
                     const allowArc = sourceAllowsArc(driven.stations, from, to);
@@ -540,15 +553,12 @@ function ruledSection(context is Context, id is Id, definition is map, driven is
                         ~ "  span " ~ toString(roundToPrecision(runSpan / millimeter, 4)) ~ " mm"
                         ~ "  allowArc " ~ toString(allowArc)
                         ~ "  -> " ~ shape.kind
-                        ~ "  tangents " ~ toString(atOffset));
+                        ~ "  tangents " ~ toString(startTangent != undefined)
+                        ~ "/" ~ toString(endTangent != undefined));
                 }
 
                 curve = curveThrough(context, id + ("piece" ~ r), definition, distinct,
-                    sourceAllowsArc(driven.stations, from, to),
-                    atOffset ? runTangent(driven.stations, driven.coords, driven.upper,
-                            definition, driven.alongRef, run, from) : undefined,
-                    atOffset ? runTangent(driven.stations, driven.coords, driven.lower,
-                            definition, driven.alongRef, run, to) : undefined);
+                    sourceAllowsArc(driven.stations, from, to), startTangent, endTangent);
                 kept += 1;
             }
         }
@@ -718,7 +728,7 @@ function displacedPoint(definition is map, driven is map, index is number, reach
     }
 
     const frame = driven.stations[index];
-    const alongWidth = definition.ruledDirection == RuledDirection.WIDTH;
+    const displacement = sectionDisplacement(definition, reach);
 
     // In the reference surface the step is a geodesic, not a straight line, so it has to go
     // through the same placement the offset itself used rather than being added to the
@@ -726,12 +736,30 @@ function displacedPoint(definition is map, driven is map, index is number, reach
     if (usesReferenceFrame(definition, driven.alongRef))
     {
         return surfaceOffset(driven.alongRef, frame, {
-                        "width" : amounts.width + (alongWidth ? reach : 0 * meter),
-                        "height" : amounts.height + (alongWidth ? 0 * meter : reach)
+                        "width" : amounts.width + displacement.width,
+                        "height" : amounts.height + displacement.height
                     }).point;
     }
 
-    return at + reach * (alongWidth ? frame.widthAxis : frame.heightAxis);
+    return at + displacement.width * frame.widthAxis + displacement.height * frame.heightAxis;
+}
+
+/**
+ * The constant added to a station's offset amounts to place a ruled section.
+ *
+ * One description of where a section is, shared by the point and by the tangent. They are
+ * tangents to the same map only if they are displaced the same way, and a section fitted
+ * with an end tangent belonging to a different displacement describes a curve its own
+ * points do not lie on.
+ */
+function sectionDisplacement(definition is map, reach is ValueWithUnits) returns map
+{
+    if (definition.ruledDirection == RuledDirection.WIDTH)
+    {
+        return { "width" : reach, "height" : 0 * meter };
+    }
+
+    return { "width" : 0 * meter, "height" : reach };
 }
 
 // ============================================================================
@@ -1019,7 +1047,8 @@ function curveThrough(context is Context, id is Id, definition is map, points is
                     "approximationDegree" : definition.approximationDegree,
                     "approximationTolerance" : definition.approximationTolerance,
                     "approximationMaxCPs" : definition.approximationMaxCPs,
-                    // TEMPORARY DIAGNOSTIC (2026-09-16), see emitSplineCurve.
+                    // Report the fitted curve under this feature's own debug flag; see
+                    // emitSplineCurve.
                     "debugFit" : definition.debugPrintSurface
                 });
     }

@@ -43,6 +43,9 @@ export const ZERO_SPAN = 1e-15;
 /** Position tolerance for geometric classification (line / arc detection). */
 export const OFFSET_GEOM_TOL = 1e-6 * meter;
 
+/** No sideways step: the offset itself, in the displacement form of runTangent. */
+export const ZERO_DISPLACEMENT = { "width" : 0 * meter, "height" : 0 * meter };
+
 /**
  * How far out of its own plane a run may sit and still be called an arc.
  *
@@ -2704,7 +2707,9 @@ export function emitSplineCurve(context is Context, id is Id, points is array, s
                 "maxControlPoints" : approximation.approximationMaxCPs
             });
 
-    // TEMPORARY DIAGNOSTIC (ruled-section BAD_GEOMETRY, 2026-09-16). Only the surface
+    // What the fitter actually returned. Worth keeping: a BSplineCurve is malformed when
+    // it has fewer than degree + 1 control points, and opCreateBSplineCurve reports that
+    // only as BAD_GEOMETRY, naming neither the curve nor the reason. Only the surface
     // feature sets debugFit, so the plain offset's own fits are unaffected.
     if (approximation.debugFit == true)
     {
@@ -2876,13 +2881,48 @@ export function usesReferenceFrame(definition is map, alongRef) returns boolean
 export function runTangent(stations is array, coords is map, offsets is array, definition is map, alongRef,
     run is map, index is number)
 {
+    return runTangent(stations, coords, offsets, definition, alongRef, run, index, ZERO_DISPLACEMENT);
+}
+
+/**
+ * The same tangent, for an offset displaced by a constant amount.
+ *
+ * A ruled section is the offset stepped sideways by a fixed reach, which is the same
+ * offset with a constant added to one of its amounts. The profile's slopes are
+ * untouched by that -- the derivative of a constant is zero -- so the displaced
+ * tangent is the undisplaced one evaluated at the larger amount, and it comes out of
+ * whichever map placed the points:
+ *
+ *   reference   d/ds surfaceOffset(w + reach, h)  = surfaceOffsetTangent(w + reach, h)
+ *   straight    d/ds (P + reach W)                = P' + reach W'
+ *
+ * and the second is exactly what offsetTangent returns once reach is folded into the
+ * width amount, since W enters it multiplied by the amount. So both are exact, not
+ * approximations of the displaced curve.
+ *
+ * Without this a displaced section had to be fitted with no end constraints at all
+ * while the section at zero reach got exact ones. That is wrong twice over: the two
+ * are then different curves through corresponding points, so opLoft pairs sections
+ * carrying different parameterizations; and an unconstrained fit is free to drop
+ * control points, which on a short nearly-straight run takes the count below
+ * degree + 1 and yields a B-spline the kernel rejects as BAD_GEOMETRY.
+ *
+ * @param displacement {map} : { "width" : ValueWithUnits, "height" : ValueWithUnits }
+ *      added to the amounts before the tangent is taken.
+ */
+export function runTangent(stations is array, coords is map, offsets is array, definition is map, alongRef,
+    run is map, index is number, displacement is map)
+{
     if (offsets[index] == undefined)
     {
         return undefined;
     }
 
     const frame = stations[index];
-    const amounts = { "width" : offsets[index].width, "height" : offsets[index].height };
+    const amounts = {
+            "width" : offsets[index].width + displacement.width,
+            "height" : offsets[index].height + displacement.height
+        };
     const slopes = {
             "width" : offsets[index].widthSlope * coords.scales[index],
             "height" : offsets[index].heightSlope * coords.scales[index]
