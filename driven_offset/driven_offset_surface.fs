@@ -1154,6 +1154,14 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                     {
                         printCurveDump(context, "  profile " ~ toString(from + k), patch[k]);
                     }
+
+                    // The same pair, rebuilt from its own printed definition, lofts when
+                    // built alone in a fresh context. So the objection is not to the
+                    // geometry but to the state of these two edges, and only a retry in
+                    // THIS context can say which. Each retry is deleted on the spot so it
+                    // never reaches the output.
+                    println("  retry rebuilt-from-definition: " ~ loftRetry(context, patchId + "rebuilt", patch, true));
+                    println("  retry swapped order:           " ~ loftRetry(context, patchId + "swapped", reverse(patch), false));
                 }
 
                 continue;
@@ -1366,6 +1374,68 @@ function printCurveDump(context is Context, label is string, edge is Query)
     {
         println("    " ~ toString(curve));
     }
+}
+
+/**
+ * Loft a pair once more under a scratch id, say whether the kernel took it, and delete
+ * whatever was made. Diagnostic only; nothing survives the call.
+ *
+ * @param rebuild {boolean} : loft fresh curves made from each edge's own evCurveDefinition
+ *      instead of the edges themselves. Separates "this geometry" from "these edges".
+ */
+function loftRetry(context is Context, id is Id, profiles is array, rebuild is boolean) returns string
+{
+    var subqueries = profiles;
+    var status = "";
+
+    if (rebuild)
+    {
+        subqueries = [];
+        for (var k = 0; k < size(profiles); k += 1)
+        {
+            const curve = evCurveDefinition(context, { "edge" : profiles[k] });
+            const curveId = id + ("curve" ~ k);
+
+            if (curve is BSplineCurve)
+            {
+                opCreateBSplineCurve(context, curveId, { "bSplineCurve" : curve });
+            }
+            else
+            {
+                status = "not retried, profile " ~ toString(k) ~ " is not a B-spline";
+            }
+
+            subqueries = append(subqueries, qCreatedBy(curveId, EntityType.EDGE));
+        }
+    }
+
+    if (status == "")
+    {
+        try silent
+        {
+            opLoft(context, id + "loft", {
+                        "profileSubqueries" : subqueries,
+                        "bodyType" : ToolBodyType.SURFACE
+                    });
+        }
+        catch (error)
+        {
+            status = "FAILED " ~ toString(error);
+        }
+
+        if (status == "")
+        {
+            status = (size(evaluateQuery(context, qCreatedBy(id + "loft", EntityType.BODY))) > 0)
+                ? "OK" : "no body";
+        }
+    }
+
+    if (size(evaluateQuery(context, qCreatedBy(id, EntityType.BODY))) > 0)
+    {
+        opDeleteBodies(context, id + "delete", { "entities" : qCreatedBy(id, EntityType.BODY) });
+    }
+
+    return status;
 }
 
 function pointText(point is Vector) returns string
