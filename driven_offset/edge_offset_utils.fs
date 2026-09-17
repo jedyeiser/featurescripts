@@ -2677,7 +2677,7 @@ export function emitArcCurve(context is Context, id is Id, arcData is map)
  * wants them consistently parameterized. Same count is not the same vector, so the values
  * are what has to be read.
  */
-function knotText(knots is array) returns string
+export function knotText(knots is array) returns string
 {
     var text = "[";
 

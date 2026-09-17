@@ -60,6 +60,9 @@ export const RuledDistanceBounds =
 /** Sections used across a ruling that has to follow a reference surface. */
 export const RuledSectionBounds = { (unitless) : [2, 5, 25] } as IntegerBoundSpec;
 
+/** Run filter for the surface debug prints; -1 is every run. */
+export const DebugRunBounds = { (unitless) : [-1, -1, 200] } as IntegerBoundSpec;
+
 // ============================================================================
 // Enums
 // ============================================================================
@@ -162,8 +165,14 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
 
         annotation { "Group Name" : "Surface debug", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Print surface", "Default" : false, "Description" : "Report what each offset produced and what was handed to the loft: runs, the span chosen, and the point count of every section." }
+            annotation { "Name" : "Print surface", "Default" : false, "Description" : "Report what each offset produced and what was handed to the loft: runs, the span chosen, and the point count of every section. A patch the loft refuses is dumped in full: both curves, control point by control point." }
             definition.debugPrintSurface is boolean;
+
+            if (definition.debugPrintSurface)
+            {
+                annotation { "Name" : "Only run", "Description" : "Limit the section, fit and patch lines to this run. -1 prints every run." }
+                isInteger(definition.debugRun, DebugRunBounds);
+            }
 
             annotation { "Name" : "Keep section curves", "Default" : false, "Description" : "Leave the section curves in the result instead of deleting them. The fastest way to see whether the loft was given what you expected." }
             definition.debugKeepSections is boolean;
@@ -233,6 +242,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         "joinTangentRuns" : false,
         "keepWires" : false,
         "debugPrintSurface" : false,
+        "debugRun" : -1,
         "debugKeepSections" : false
     });
 
@@ -685,7 +695,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
 
             // Printed BEFORE the emit, so if a fit is ever rejected again the last line
             // standing names the run it came from.
-            if (definition.debugPrintSurface)
+            if (reportsRun(definition, r))
             {
                 println("[section]   reach " ~ toString(roundToPrecision(reach / millimeter, 4))
                     ~ " mm  run " ~ toString(r)
@@ -700,7 +710,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             }
 
             curve = emitShape(context, id + ("piece" ~ r), definition, plan.shape, plan.points,
-                plan.startDerivative, plan.endDerivative, fitted);
+                plan.startDerivative, plan.endDerivative, fitted, reportsRun(definition, r));
             kept += 1;
         }
 
@@ -1063,7 +1073,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // failed. opLoft reports LOFT_FAILED without saying which of its profiles it
             // could not use, and a patch is one run by one profile pair, so that is
             // exactly the pair of curves worth naming.
-            if (definition.debugPrintSurface)
+            if (reportsRun(definition, r))
             {
                 var report = "[patch]     run " ~ toString(r) ~ "  from profile " ~ toString(from)
                     ~ "  sections " ~ toString(size(patch));
@@ -1082,7 +1092,14 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                         minSeparation = min(minSeparation, norm(walkA.points[k] - walkB.points[k]));
                     }
 
+                    // dir is the dot of the two chord directions: +1 is the pair running the
+                    // same way, -1 is a reversed pair, which a loft will not take and which
+                    // every other number here is blind to. ends is the endpoint gap the loft
+                    // sees, start to start and end to end.
                     report = report
+                        ~ "  dir " ~ toString(roundToPrecision(dot(walkA.along, walkB.along), 5))
+                        ~ "  ends " ~ toString(roundToPrecision(norm(walkA.points[0] - walkB.points[0]) / millimeter, 4))
+                        ~ "/" ~ toString(roundToPrecision(norm(walkA.points[PATCH_WALK_SAMPLES - 1] - walkB.points[PATCH_WALK_SAMPLES - 1]) / millimeter, 4))
                         ~ "  minSep " ~ toString(roundToPrecision(minSeparation / millimeter, 4))
                         ~ "  turnA " ~ toString(roundToPrecision(walkA.minTurn, 5))
                         ~ "  turnB " ~ toString(roundToPrecision(walkB.minTurn, 5))
@@ -1107,6 +1124,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // will not build. The hole marks exactly where it objected, which is worth more
             // than a dead feature, and the refusal is reported rather than swallowed --
             // this is a way to keep working on it, not a fix.
+            var loftError = undefined;
             try silent
             {
                 opLoft(context, patchId, {
@@ -1114,12 +1132,30 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                             "bodyType" : ToolBodyType.SURFACE
                         });
             }
+            catch (error)
+            {
+                loftError = error;
+            }
 
             // opLoft returns nothing, so the body it should have made is the only honest
             // test of whether it ran.
             if (size(evaluateQuery(context, qCreatedBy(patchId, EntityType.BODY))) == 0)
             {
                 refused = append(refused, toString(r) ~ ":" ~ toString(from));
+
+                // The refusal is the trigger, not a toggle: this is the one patch worth
+                // seeing in full, and it is only ever a handful of curves.
+                if (reportsRun(definition, r))
+                {
+                    println("[refused]   run " ~ toString(r) ~ "  from profile " ~ toString(from)
+                        ~ "  error " ~ toString(loftError));
+
+                    for (var k = 0; k < size(patch); k += 1)
+                    {
+                        printCurveDump(context, "  profile " ~ toString(from + k), patch[k]);
+                    }
+                }
+
                 continue;
             }
 
@@ -1279,7 +1315,71 @@ function curveWalk(context is Context, edge is Query, samples is number) returns
         minAdvance = min(minAdvance, dot(points[k] - points[k - 1], along));
     }
 
-    return { "points" : points, "minTurn" : minTurn, "minAdvance" : minAdvance };
+    return { "points" : points, "along" : along, "minTurn" : minTurn, "minAdvance" : minAdvance };
+}
+
+/**
+ * Print one edge the way the kernel holds it: the curve definition, control point by control
+ * point, so the pair a loft refused can be rebuilt and bisected outside the feature.
+ */
+function printCurveDump(context is Context, label is string, edge is Query)
+{
+    const edges = evaluateQuery(context, edge);
+    if (size(edges) != 1)
+    {
+        println(label ~ ": " ~ toString(size(edges)) ~ " edge(s), expected 1");
+        return;
+    }
+
+    const curve = evCurveDefinition(context, { "edge" : edges[0] });
+    const length = evLength(context, { "entities" : edges[0] });
+    const ends = evEdgeTangentLines(context, { "edge" : edges[0], "parameters" : [0, 1] });
+
+    println(label ~ ": length " ~ toString(roundToPrecision(length / millimeter, 4)) ~ " mm"
+        ~ "  start " ~ pointText(ends[0].origin) ~ " dir " ~ dirText(ends[0].direction)
+        ~ "  end " ~ pointText(ends[1].origin) ~ " dir " ~ dirText(ends[1].direction));
+
+    if (curve is BSplineCurve)
+    {
+        println("    bspline degree " ~ toString(curve.degree)
+            ~ "  periodic " ~ toString(curve.isPeriodic)
+            ~ "  CPs " ~ toString(size(curve.controlPoints))
+            ~ "  knots " ~ toString(size(curve.knots)) ~ " " ~ knotText(curve.knots)
+            ~ "  weights " ~ (curve.weights == undefined ? "none" : toString(curve.weights)));
+
+        for (var k = 0; k < size(curve.controlPoints); k += 1)
+        {
+            println("    cp " ~ toString(k) ~ "  " ~ pointText(curve.controlPoints[k]));
+        }
+    }
+    else if (curve is Line)
+    {
+        println("    line origin " ~ pointText(curve.origin) ~ " dir " ~ dirText(curve.direction));
+    }
+    else if (curve is Circle)
+    {
+        println("    circle radius " ~ toString(roundToPrecision(curve.radius / millimeter, 4))
+            ~ " mm  center " ~ pointText(curve.coordSystem.origin)
+            ~ " normal " ~ dirText(curve.coordSystem.zAxis));
+    }
+    else
+    {
+        println("    " ~ toString(curve));
+    }
+}
+
+function pointText(point is Vector) returns string
+{
+    return "(" ~ toString(roundToPrecision(point[0] / millimeter, 5))
+        ~ ", " ~ toString(roundToPrecision(point[1] / millimeter, 5))
+        ~ ", " ~ toString(roundToPrecision(point[2] / millimeter, 5)) ~ ")";
+}
+
+function dirText(direction is Vector) returns string
+{
+    return "(" ~ toString(roundToPrecision(direction[0], 5))
+        ~ ", " ~ toString(roundToPrecision(direction[1], 5))
+        ~ ", " ~ toString(roundToPrecision(direction[2], 5)) ~ ")";
 }
 
 /**
@@ -1290,7 +1390,7 @@ function curveThrough(context is Context, id is Id, definition is map, points is
 {
     return emitShape(context, id, definition,
         classifyPoints(points, definition.approximationTolerance, allowArc),
-        points, startDerivative, endDerivative, undefined);
+        points, startDerivative, endDerivative, undefined, definition.debugPrintSurface);
 }
 
 /**
@@ -1302,14 +1402,29 @@ function curveThrough(context is Context, id is Id, definition is map, points is
  */
 function fitSettings(definition is map) returns map
 {
+    return fitSettings(definition, definition.debugPrintSurface);
+}
+
+/**
+ * @param report {boolean} : whether emitFittedCurve prints the fit. The run filter decides
+ *      this per run; the plain flag is for callers with no run in hand.
+ */
+function fitSettings(definition is map, report is boolean) returns map
+{
     return {
             "approximationDegree" : definition.approximationDegree,
             "approximationTolerance" : definition.approximationTolerance,
             "approximationMaxCPs" : definition.approximationMaxCPs,
-            // Report the fitted curve under this feature's own debug flag; see
-            // emitFittedCurve.
-            "debugFit" : definition.debugPrintSurface
+            "debugFit" : report
         };
+}
+
+/**
+ * Whether the surface debug prints cover run r: the print flag, narrowed by "Only run".
+ */
+function reportsRun(definition is map, r is number) returns boolean
+{
+    return definition.debugPrintSurface && (definition.debugRun < 0 || definition.debugRun == r);
 }
 
 /**
@@ -1331,9 +1446,10 @@ function fitSettings(definition is map) returns map
  * @param fitted : a curve already fitted as part of a family, or undefined to fit here. It
  *      is only ever supplied for a freeform run -- a line and an arc are exact, so there is
  *      nothing for a family fit to make consistent.
+ * @param report {boolean} : print the fit, where there is one.
  */
 function emitShape(context is Context, id is Id, definition is map, shape is map, points is array,
-    startDerivative, endDerivative, fitted) returns Query
+    startDerivative, endDerivative, fitted, report is boolean) returns Query
 {
     if (shape.kind == "line")
     {
@@ -1345,14 +1461,14 @@ function emitShape(context is Context, id is Id, definition is map, shape is map
     }
     else if (fitted != undefined)
     {
-        emitFittedCurve(context, id, fitted, points, fitSettings(definition));
+        emitFittedCurve(context, id, fitted, points, fitSettings(definition, report));
     }
     else
     {
         // The end slopes, where the caller has them. A freeform offset is exactly the case
         // this matters for: the fit is what determines the shape, and an unconstrained fit
         // leaves the ends free to bulge away from the run it is supposed to continue.
-        emitSplineCurve(context, id, points, startDerivative, endDerivative, fitSettings(definition));
+        emitSplineCurve(context, id, points, startDerivative, endDerivative, fitSettings(definition, report));
     }
 
     return qCreatedBy(id, EntityType.EDGE);
