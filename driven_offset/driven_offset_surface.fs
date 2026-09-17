@@ -849,7 +849,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             kept += 1;
 
             // With one run singled out, show the curve as emitted: what the loft is given.
-            if (definition.debugPrintSurface && definition.debugRun == r)
+            if (reportsRun(definition, r) && (definition.debugRun == r || plan.shape.kind == "freeform"))
             {
                 printCurveDump(context, "  emitted run " ~ toString(r), curve);
             }
