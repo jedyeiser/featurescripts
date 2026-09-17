@@ -683,7 +683,7 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                 // displaced tangent is the offset tangent re-evaluated at the larger amount,
                 // and runTangent takes it from whichever map placed the points.
                 const displacement = sectionDisplacement(definition, reach);
-                const allowArc = sourceAllowsArc(driven.stations, from, to);
+                const gates = sourceShapeGates(driven.stations, from, to);
 
                 plan = {
                         "from" : from,
@@ -691,8 +691,8 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                         "sampled" : size(points),
                         "points" : distinct,
                         "runSpan" : runSpan,
-                        "allowArc" : allowArc,
-                        "shape" : classifyPoints(distinct, definition.approximationTolerance, allowArc),
+                        "gates" : gates,
+                        "shape" : classifyPoints(distinct, definition.approximationTolerance, gates.allowArc, gates.allowLine),
                         "startDerivative" : runTangent(driven.stations, driven.coords, driven.upper,
                                 definition, driven.alongRef, run, from, displacement),
                         "endDerivative" : runTangent(driven.stations, driven.coords, driven.lower,
@@ -836,7 +836,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
                     ~ " [" ~ toString(plan.from) ~ ".." ~ toString(plan.to) ~ "]"
                     ~ "  pts " ~ toString(plan.sampled) ~ " distinct " ~ toString(size(plan.points))
                     ~ "  span " ~ toString(roundToPrecision(plan.runSpan / millimeter, 4)) ~ " mm"
-                    ~ "  allowArc " ~ toString(plan.allowArc)
+                    ~ "  arc/line " ~ toString(plan.gates.allowArc) ~ "/" ~ toString(plan.gates.allowLine)
                     ~ "  -> " ~ plan.shape.kind
                     ~ "  tangents " ~ toString(plan.startDerivative != undefined)
                     ~ "/" ~ toString(plan.endDerivative != undefined)
@@ -1089,7 +1089,7 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     // The seed runs along the source edges, not the offset, so the offset's end slopes do
     // not describe it. Unconstrained, as it was.
     const seed = curveThrough(context, id + "seed", definition, points,
-        sourceAllowsArc(driven.stations, span.start, span.end), undefined, undefined);
+        sourceShapeGates(driven.stations, span.start, span.end), undefined, undefined);
     const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter).wire;
 
     loftSections(context, id + "loft", [seed, offsetSide]);
@@ -1804,10 +1804,10 @@ function dirText(direction is Vector) returns string
  * One curve through a point list, as a body a loft can take.
  */
 function curveThrough(context is Context, id is Id, definition is map, points is array,
-    allowArc is boolean, startDerivative, endDerivative) returns Query
+    gates is map, startDerivative, endDerivative) returns Query
 {
     return emitShape(context, id, definition,
-        classifyPoints(points, definition.approximationTolerance, allowArc),
+        classifyPoints(points, definition.approximationTolerance, gates.allowArc, gates.allowLine),
         points, startDerivative, endDerivative, undefined, definition.debugPrintSurface);
 }
 

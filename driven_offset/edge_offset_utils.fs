@@ -104,6 +104,28 @@ export const ARC_FIT_SAGITTA_FRAC = 0.1;
  */
 export function sourceAllowsArc(stations is array, from is number, to is number) returns boolean
 {
+    return sourceShapeGates(stations, from, to).allowArc;
+}
+
+/**
+ * What the source under a run permits the run to be classified as.
+ *
+ * The point cloud alone cannot decide: 42 mm of a wrapped spline sits 13 nm from a circle,
+ * and 25 mm of a 15 m arc sits 5 um from its chord -- inside any tolerance that still admits
+ * real arcs and lines. So the shape follows the source's own type. An arc is on the table only
+ * where every station came off a LINE or a CIRCLE; a line only where every station came off
+ * a LINE. A spline source is fitted, however short the run, and carries its curvature across
+ * every run joint instead of dropping to zero for a run that happened to be short.
+ *
+ * Stations without a recorded type -- crossings, chain ends -- do not vote.
+ *
+ * @returns {map} : { "allowArc", "allowLine" }
+ */
+export function sourceShapeGates(stations is array, from is number, to is number) returns map
+{
+    var allowArc = true;
+    var allowLine = true;
+
     for (var i = from; i <= to; i += 1)
     {
         if (i < 0 || i >= size(stations))
@@ -113,13 +135,23 @@ export function sourceAllowsArc(stations is array, from is number, to is number)
 
         const t = stations[i].curveType;
 
-        if (t != undefined && t != CurveType.LINE && t != CurveType.CIRCLE)
+        if (t == undefined)
         {
-            return false;
+            continue;
+        }
+
+        if (t != CurveType.LINE)
+        {
+            allowLine = false;
+        }
+
+        if (t != CurveType.LINE && t != CurveType.CIRCLE)
+        {
+            allowArc = false;
         }
     }
 
-    return true;
+    return { "allowArc" : allowArc, "allowLine" : allowLine };
 }
 
 /** Newton iterations for inverting x(u) on a profile edge. Three already reach 1e-12 m. */
@@ -462,6 +494,16 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits) ret
 export function classifyPoints(points is array, tolerance is ValueWithUnits,
     allowArc is boolean) returns map
 {
+    return classifyPoints(points, tolerance, allowArc, true);
+}
+
+/**
+ * @param allowArc, allowLine {boolean} : the sourceShapeGates. Two points are a line whatever
+ *      the gates say: there is nothing else they can be.
+ */
+export function classifyPoints(points is array, tolerance is ValueWithUnits,
+    allowArc is boolean, allowLine is boolean) returns map
+{
     const count = size(points);
     const first = points[0];
     const last = points[count - 1];
@@ -492,7 +534,7 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits,
             }
         }
 
-        if (sagitta <= tolerance)
+        if (sagitta <= tolerance && allowLine)
         {
             return { "kind" : "line", "start" : first, "end" : last };
         }
@@ -3217,8 +3259,8 @@ export function alignedRunMerges(pointsPerProfile is array, runsPerProfile is ar
             // meet tangentially and are still two arcs, and fusing them into one spline is
             // the trade that puts a curvature swing into the result. It is the stronger
             // one: does the whole accumulated span still describe ONE line or ONE arc.
-            const shape = classifyPoints(span, tolerance,
-                sourceAllowsArc(stations, anchorStart[k], next.end));
+            const gates = sourceShapeGates(stations, anchorStart[k], next.end);
+            const shape = classifyPoints(span, tolerance, gates.allowArc, gates.allowLine);
 
             if (shape.kind != "line" && shape.kind != "arc")
             {
@@ -3284,11 +3326,12 @@ function startGroup(points is array, run, stations is array, tolerance is ValueW
     }
 
     const span = extendSpan([], points, run.start, run.end);
+    const gates = sourceShapeGates(stations, run.start, run.end);
 
     return {
             "span" : span,
             "base" : span == undefined ? undefined
-                : classifyPoints(span, tolerance, sourceAllowsArc(stations, run.start, run.end)),
+                : classifyPoints(span, tolerance, gates.allowArc, gates.allowLine),
             "anchorStart" : run.start
         };
 }

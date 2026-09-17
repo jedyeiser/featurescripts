@@ -1024,9 +1024,11 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
             continue;
         }
 
-        // An arc is only on the table where the source under this run is a line or a circle.
+        // An arc is only on the table where the source under this run is a line or a circle,
+        // a line only where it is a line.
+        const gates = sourceShapeGates(stations, run.start, run.end);
         const shape = classifyPoints(runPoints, approximation.approximationTolerance,
-            sourceAllowsArc(stations, run.start, run.end));
+            gates.allowArc, gates.allowLine);
 
         if (shape.kind == "line")
         {
