@@ -727,6 +727,13 @@ function closeRun(runs is array, stations is array, start, end is number) return
 // ============================================================================
 
 /**
+ * How close, as a fraction of the local spacing, a regular station may sit to an inserted
+ * crossing before it is dropped. Half keeps every gap between half and one and a half
+ * spacings.
+ */
+const CROSSING_CLEARANCE = 0.5;
+
+/**
  * Insert a pair of stations at every coordinate where the offset actually breaks.
  *
  * Crossing into a new profile edge is not by itself a discontinuity -- profile
@@ -753,11 +760,30 @@ function insertCrossings(context is Context, chain is map, stations is array, co
 
     for (var i = 0; i < size(stations); i += 1)
     {
+        // A regular sample that lands within a fraction of the spacing of an inserted
+        // crossing is dropped. Left in, it hands the fitter a first (or last) segment a
+        // few hundred microns long next to nine-millimetre ones, and approximateSpline
+        // sizes its end derivative from that segment whatever magnitude it was asked for:
+        // measured, a 0.158 mm gap gave a 4.5 mm derivative on a 149 mm run, and the curve
+        // honoured the tangent for half a millimetre then hooked at 60 /m to reach the
+        // points -- on a 15 m radius. The chain's own end stations always stay.
+        const spacing = (i == 0) ? 0 * meter : coords.values[i] - coords.values[i - 1];
+        var keepThis = true;
+
         while (i > 0 && next < size(breaks)
             && breaks[next] > coords.values[i - 1] && breaks[next] <= coords.values[i])
         {
             const arc = arcAtCoord(stations, coords, i, breaks[next]);
             const crossing = crossingStation(context, chain, stations, i, arc);
+
+            const last = size(outStations) - 1;
+            if (last > 0 && outStations[last].crossing == undefined
+                && breaks[next] - values[last] < CROSSING_CLEARANCE * spacing)
+            {
+                outStations = resize(outStations, last);
+                values = resize(values, last);
+                scales = resize(scales, last);
+            }
 
             // The coordinate travels with the station so that a profile can later tell its
             // own break from one inserted for a different profile.
@@ -767,12 +793,18 @@ function insertCrossings(context is Context, chain is map, stations is array, co
             values = append(values, breaks[next]);
             scales = append(scales, coords.scales[i]);
             scales = append(scales, coords.scales[i]);
+
+            keepThis = (i == size(stations) - 1)
+                || coords.values[i] - breaks[next] >= CROSSING_CLEARANCE * spacing;
             next += 1;
         }
 
-        outStations = append(outStations, stations[i]);
-        values = append(values, coords.values[i]);
-        scales = append(scales, coords.scales[i]);
+        if (keepThis)
+        {
+            outStations = append(outStations, stations[i]);
+            values = append(values, coords.values[i]);
+            scales = append(scales, coords.scales[i]);
+        }
     }
 
     return { "stations" : outStations, "coords" : { "values" : values, "scales" : scales } };
