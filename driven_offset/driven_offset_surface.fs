@@ -849,7 +849,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             kept += 1;
 
             // With one run singled out, show the curve as emitted: what the loft is given.
-            if (reportsRun(definition, r) && (definition.debugRun == r || plan.shape.kind == "freeform"))
+            if (definition.debugPrintSurface && definition.debugRun == r)
             {
                 printCurveDump(context, "  emitted run " ~ toString(r), curve);
             }
@@ -1767,7 +1767,9 @@ function tangentAgreement(plan is map) returns string
         return "";
     }
 
-    var text = "";
+    // The first and last sample gaps, since the fitter sizes its end derivatives from them.
+    var text = "  gaps " ~ toString(roundToPrecision(norm(plan.points[1] - plan.points[0]) / millimeter, 3))
+        ~ "/" ~ toString(roundToPrecision(norm(plan.points[n - 1] - plan.points[n - 2]) / millimeter, 3)) ~ " mm";
     if (plan.startDerivative != undefined)
     {
         const chord = normalize(plan.points[1] - plan.points[0]);
