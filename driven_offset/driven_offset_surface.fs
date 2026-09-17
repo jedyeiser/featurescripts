@@ -1318,27 +1318,32 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // there is confined to this one patch, and every interior patch keeps the exact
             // station-for-station pairing.
             var patch = [];
+            var chains = [];
             for (var i in members)
             {
-                var pieces = [sections[i].pieces[r]];
-
+                var before = [];
                 if (r == stretch.first)
                 {
                     for (var c = r - 1; c >= 0 && sections[i].pieces[c] != undefined; c -= 1)
                     {
-                        pieces = append(pieces, sections[i].pieces[c]);
+                        before = append(before, sections[i].pieces[c]);
                     }
                 }
 
+                var after = [];
                 if (r == stretch.last)
                 {
                     for (var c = r + 1; c < cellCount && sections[i].pieces[c] != undefined; c += 1)
                     {
-                        pieces = append(pieces, sections[i].pieces[c]);
+                        after = append(after, sections[i].pieces[c]);
                     }
                 }
 
-                patch = append(patch, size(pieces) == 1 ? pieces[0] : qUnion(pieces));
+                // In order along the edges, for the exact construction; as one query, for
+                // the loft and the reports.
+                const chain = concatenateArrays([reverse(before), [sections[i].pieces[r]], after]);
+                chains = append(chains, chain);
+                patch = append(patch, size(chain) == 1 ? chain[0] : qUnion(chain));
             }
 
             // Printed BEFORE the loft, so the last line standing names the patch that
@@ -1360,7 +1365,8 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             {
                 var report = "[patch]     run " ~ toString(r) ~ "  profiles " ~ toString(members)
                     ~ "  sections " ~ toString(size(patch))
-                    ~ "  " ~ (sharedParameterization(curves) ? "ruled" : "loft");
+                    ~ "  " ~ (sharedParameterization(curves) ? "ruled"
+                        : (compatibleChains(context, chains) ? "unified" : "loft"));
 
                 // The pair as opLoft sees it. Printed for the patches that succeed as well
                 // as the one that throws, because the useful reading is the comparison: a
@@ -1410,7 +1416,8 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // lofts; shifting the knots by 1e-9 and it still fails. A kernel path with no
             // outside characterisation, and no reason to go near it when the surface can be
             // written down. See correction 22.
-            var built = ruledPatch(context, patchId, curves);
+            var built = ruledPatch(context, patchId, curves)
+                || unifiedPatch(context, patchId, chains);
             var loftError = undefined;
 
             if (!built)
@@ -1580,6 +1587,188 @@ function surfaceModeName(mode is SurfaceMode) returns string
 // ============================================================================
 
 /** How many places along a section curve the patch diagnostic looks at. */
+/**
+ * Whether every piece of every chain is a curve the exact construction can take: a line, or
+ * a non-rational, non-periodic B-spline. Arcs are rational and go to the loft.
+ */
+function compatibleChains(context is Context, chains is array) returns boolean
+{
+    if (size(chains) != 2)
+    {
+        return false;
+    }
+
+    for (var chain in chains)
+    {
+        for (var piece in chain)
+        {
+            const edges = evaluateQuery(context, piece);
+            if (size(edges) != 1)
+            {
+                return false;
+            }
+
+            const curve = evCurveDefinition(context, { "edge" : edges[0] });
+            if (!(curve is Line) && !(curve is BSplineCurve && curve.weights == undefined && !curve.isPeriodic))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * The ruled patch between two members whose pieces do NOT share a parameterization -- a
+ * terminal piece with its overhang chained on, a line against a fit, two fits with their own
+ * knots -- built exactly, by changing representation and never geometry:
+ *
+ *   1. every piece as a B-spline (a line is a degree-1 one), oriented to run along the
+ *      edges, the two members running the same way;
+ *   2. every piece raised to the highest degree present;
+ *   3. each member's pieces joined into one curve over [0, 1], each piece owning its share
+ *      of the range by arc length -- the one CHOICE in the construction, and the same one a
+ *      loft makes: matching fractions of length face each other across the patch;
+ *   4. each curve's knots inserted into the other, so both share one knot vector;
+ *   5. the surface whose control net is the two control polygons.
+ *
+ * opLoft was doing this by fitting: 38 to 80 control points across a 48 mm patch, and the
+ * kink where the overhang joins smeared into a curvature ripple. Here the joint stays what it
+ * is, a crease, and the net is ten or so points.
+ *
+ * @returns {boolean} : false when a piece cannot be taken, and nothing was built.
+ */
+function unifiedPatch(context is Context, id is Id, chains is array) returns boolean
+{
+    if (!compatibleChains(context, chains))
+    {
+        return false;
+    }
+
+    var members = [];
+    var degree = 1;
+
+    for (var chain in chains)
+    {
+        var pieces = [];
+        var lengths = [];
+
+        for (var piece in chain)
+        {
+            const edge = evaluateQuery(context, piece)[0];
+            const curve = evCurveDefinition(context, { "edge" : edge });
+
+            if (curve is Line)
+            {
+                const ends = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
+                pieces = append(pieces, lineAsBSpline(ends[0].origin, ends[1].origin));
+            }
+            else
+            {
+                pieces = append(pieces, curve);
+                degree = max(degree, curve.degree);
+            }
+
+            lengths = append(lengths, evLength(context, { "entities" : edge }));
+        }
+
+        members = append(members, { "pieces" : orientChain(pieces), "lengths" : lengths });
+    }
+
+    // Both members running the same way, or the rulings cross.
+    if (dot(chainChord(members[0].pieces), chainChord(members[1].pieces)) < 0)
+    {
+        var flipped = [];
+        for (var k = size(members[1].pieces) - 1; k >= 0; k -= 1)
+        {
+            flipped = append(flipped, reverseBSpline(members[1].pieces[k]));
+        }
+        members[1] = { "pieces" : flipped, "lengths" : reverse(members[1].lengths) };
+    }
+
+    var curves = [];
+    for (var member in members)
+    {
+        var raised = [];
+        for (var piece in member.pieces)
+        {
+            raised = append(raised, elevateToDegree(piece, degree));
+        }
+        curves = append(curves, joinChain(raised, member.lengths));
+    }
+
+    curves = unifyKnots(curves);
+
+    var grid = [];
+    for (var i = 0; i < size(curves[0].controlPoints); i += 1)
+    {
+        grid = append(grid, [curves[0].controlPoints[i], curves[1].controlPoints[i]]);
+    }
+
+    opCreateBSplineSurface(context, id, {
+                "bSplineSurface" : bSplineSurface({
+                        "uDegree" : degree,
+                        "vDegree" : 1,
+                        "isUPeriodic" : false,
+                        "isVPeriodic" : false,
+                        "controlPoints" : controlPointMatrix(grid),
+                        "uKnots" : curves[0].knots,
+                        "vKnots" : knotArray([0, 0, 1, 1])
+                    })
+            });
+
+    return true;
+}
+
+/**
+ * The pieces of a chain each turned to follow the one before. The kernel hands back an
+ * edge's curve in whichever direction it holds it, so every piece is checked against its
+ * neighbour by endpoint distance and reversed where it runs the wrong way.
+ */
+function orientChain(pieces is array) returns array
+{
+    if (size(pieces) < 2)
+    {
+        return pieces;
+    }
+
+    var out = [];
+    for (var k = 0; k < size(pieces); k += 1)
+    {
+        const piece = pieces[k];
+        const start = piece.controlPoints[0];
+        const end = piece.controlPoints[size(piece.controlPoints) - 1];
+
+        var forward = true;
+        if (k == 0)
+        {
+            const next = pieces[1];
+            const nextStart = next.controlPoints[0];
+            const nextEnd = next.controlPoints[size(next.controlPoints) - 1];
+            const fromEnd = min(norm(end - nextStart), norm(end - nextEnd));
+            const fromStart = min(norm(start - nextStart), norm(start - nextEnd));
+            forward = fromEnd <= fromStart;
+        }
+        else
+        {
+            const previous = out[k - 1];
+            const previousEnd = previous.controlPoints[size(previous.controlPoints) - 1];
+            forward = norm(start - previousEnd) <= norm(end - previousEnd);
+        }
+
+        out = append(out, forward ? piece : reverseBSpline(piece));
+    }
+
+    return out;
+}
+
+function chainChord(pieces is array) returns Vector
+{
+    const last = pieces[size(pieces) - 1];
+    return last.controlPoints[size(last.controlPoints) - 1] - pieces[0].controlPoints[0];
+}
+
 const PATCH_WALK_SAMPLES = 9;
 
 /**
