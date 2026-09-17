@@ -1160,8 +1160,11 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                     // geometry but to the state of these two edges, and only a retry in
                     // THIS context can say which. Each retry is deleted on the spot so it
                     // never reaches the output.
-                    println("  retry rebuilt-from-definition: " ~ loftRetry(context, patchId + "rebuilt", patch, true));
-                    println("  retry swapped order:           " ~ loftRetry(context, patchId + "swapped", reverse(patch), false));
+                    println("  retry rebuilt-from-definition: " ~ loftRetry(context, patchId + "rebuilt", patch, true, -1, ZERO_SHIFT));
+                    println("  retry swapped order:           " ~ loftRetry(context, patchId + "swapped", reverse(patch), false, -1, ZERO_SHIFT));
+                    println("  retry rounded to 10 nm:        " ~ loftRetry(context, patchId + "rounded", patch, true, 5, ZERO_SHIFT));
+                    println("  retry rounded to 1 um:         " ~ loftRetry(context, patchId + "coarse", patch, true, 3, ZERO_SHIFT));
+                    println("  retry shifted +1 m in X:       " ~ loftRetry(context, patchId + "shifted", patch, true, -1, vector(1, 0, 0) * meter));
                 }
 
                 continue;
@@ -1382,8 +1385,13 @@ function printCurveDump(context is Context, label is string, edge is Query)
  *
  * @param rebuild {boolean} : loft fresh curves made from each edge's own evCurveDefinition
  *      instead of the edges themselves. Separates "this geometry" from "these edges".
+ * @param decimals {number} : with rebuild, round every control point to this many decimal
+ *      places in millimetres; -1 leaves them exact. Separates the geometry from its noise.
+ * @param shift {Vector} : with rebuild, translate every control point. Separates the
+ *      geometry from where it sits.
  */
-function loftRetry(context is Context, id is Id, profiles is array, rebuild is boolean) returns string
+function loftRetry(context is Context, id is Id, profiles is array, rebuild is boolean,
+    decimals is number, shift is Vector) returns string
 {
     var subqueries = profiles;
     var status = "";
@@ -1398,7 +1406,22 @@ function loftRetry(context is Context, id is Id, profiles is array, rebuild is b
 
             if (curve is BSplineCurve)
             {
-                opCreateBSplineCurve(context, curveId, { "bSplineCurve" : curve });
+                var controlPoints = [];
+                for (var point in curve.controlPoints)
+                {
+                    var moved = point + shift;
+                    if (decimals >= 0)
+                    {
+                        moved = vector(roundToPrecision(moved[0] / millimeter, decimals),
+                                roundToPrecision(moved[1] / millimeter, decimals),
+                                roundToPrecision(moved[2] / millimeter, decimals)) * millimeter;
+                    }
+                    controlPoints = append(controlPoints, moved);
+                }
+
+                opCreateBSplineCurve(context, curveId, {
+                            "bSplineCurve" : mergeMaps(curve, { "controlPoints" : controlPoints }) as BSplineCurve
+                        });
             }
             else
             {
@@ -1438,11 +1461,14 @@ function loftRetry(context is Context, id is Id, profiles is array, rebuild is b
     return status;
 }
 
+const ZERO_SHIFT = vector(0, 0, 0) * meter;
+
 function pointText(point is Vector) returns string
 {
-    return "(" ~ toString(roundToPrecision(point[0] / millimeter, 5))
-        ~ ", " ~ toString(roundToPrecision(point[1] / millimeter, 5))
-        ~ ", " ~ toString(roundToPrecision(point[2] / millimeter, 5)) ~ ")";
+    // Ten places in millimetres: enough to rebuild the curve bit for bit outside the feature.
+    return "(" ~ toString(roundToPrecision(point[0] / millimeter, 10))
+        ~ ", " ~ toString(roundToPrecision(point[1] / millimeter, 10))
+        ~ ", " ~ toString(roundToPrecision(point[2] / millimeter, 10)) ~ ")";
 }
 
 function dirText(direction is Vector) returns string
