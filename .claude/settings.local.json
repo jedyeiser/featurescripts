@@ -36,5 +36,9 @@
       "Bash(git mv *)",
       "Bash(mv projects/betterMeasure betterMeasure)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright"
+  ],
+  "enableAllProjectMcpServers": true
 }
