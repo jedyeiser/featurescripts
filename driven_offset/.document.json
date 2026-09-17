@@ -4,7 +4,7 @@
   "document_name": "driven_offset",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/f61d2c000ab2d1240776342e/w/5b11f323ab31b04cba8b36ef",
-  "last_sync": "2026-09-14T21:07:44.819480+00:00",
+  "last_sync": "2026-09-17T22:18:32.207747+00:00",
   "feature_studios": {
     "export_package_manager": "ac9929a05b8b35d425e65bb8",
     "driven_offset_surface": "c47cbd0497baf3011c60ecf8",
@@ -19,11 +19,14 @@
     "design_map": "79c0183fac7e000152f3c1a4",
     "driven_edge_offset": "786f62f4d67ed8d9c7d56d16",
     "edge_offset_utils": "a2665e22c07b7a6929ce4e80",
-    "unwrap": "a84cdaa8963f2a55db1c016b"
+    "unwrap": "a84cdaa8963f2a55db1c016b",
+    "bspline_compat": "6b635e74c92bd23387e850c1"
   },
   "tab_folders": {
-    "Baseline_Variables": "Variable Studios",
-    "RD 20TAC 28 177 Variables": "Variable Studios",
+    "General": "Variable Studios",
+    "Tooling": "Variable Studios",
+    "Layup": "Variable Studios",
+    "Baseline": "Variable Studios",
     "query_varialble_ref": "featurescripts",
     "design_map_query_utils": "featurescripts",
     "merge_curve": "featurescripts",
