@@ -1073,10 +1073,19 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // failed. opLoft reports LOFT_FAILED without saying which of its profiles it
             // could not use, and a patch is one run by one profile pair, so that is
             // exactly the pair of curves worth naming.
+            // What the kernel holds for each section, read once: the construction is chosen
+            // on it and the report names the choice.
+            var curves = [];
+            for (var section in patch)
+            {
+                curves = append(curves, evCurveDefinition(context, { "edge" : section }));
+            }
+
             if (reportsRun(definition, r))
             {
                 var report = "[patch]     run " ~ toString(r) ~ "  from profile " ~ toString(from)
-                    ~ "  sections " ~ toString(size(patch));
+                    ~ "  sections " ~ toString(size(patch))
+                    ~ "  " ~ (sharedParameterization(curves) ? "ruled" : "loft");
 
                 // The pair as opLoft sees it. Printed for the patches that succeed as well
                 // as the one that throws, because the useful reading is the comparison: a
@@ -1112,33 +1121,42 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
             const patchId = id + ("patch" ~ r ~ "_" ~ from);
 
-            // One refusal costs one face, not the surface.
+            // A pair of B-spline sections sharing degree and knots -- which is what the
+            // coupled fit produces -- is built directly as the B-spline surface whose
+            // control net is their two control polygons. That surface IS the ruled patch
+            // between them; there is nothing for a loft to work out. Every other pair
+            // (lines, arcs, sections fitted separately) goes to opLoft, which builds them
+            // without trouble.
             //
-            // opLoft rejects some patches whose curves measure identical to a neighbouring
-            // patch it accepts: same 5.8 mm separation the whole way, tangent directions in
-            // agreement, no reversal or cusp in either curve, one edge each, fits of the
-            // same degree, control-point count and knot vector. Nothing available here
-            // distinguishes them, and LOFT_FAILED names neither the profile nor the reason.
-            //
-            // Letting that kill the feature loses thirteen good faces to one the kernel
-            // will not build. The hole marks exactly where it objected, which is worth more
-            // than a dead feature, and the refusal is reported rather than swallowed --
-            // this is a way to keep working on it, not a fix.
+            // opLoft is not used for the coupled pairs because it refuses some of them.
+            // Reproduced outside the feature on one pair: two 6-CP cubics, same knots, 5.8
+            // mm apart, tangents agreeing, no cusp or reversal -- LOFT_FAILED. Rounding the
+            // knots to 1e-5, or either curve's control points to 1 um, and the same pair
+            // lofts; shifting the knots by 1e-9 and it still fails. A kernel path with no
+            // outside characterisation, and no reason to go near it when the surface can be
+            // written down. See correction 22.
+            var built = ruledPatch(context, patchId, curves);
             var loftError = undefined;
-            try silent
+
+            if (!built)
             {
-                opLoft(context, patchId, {
-                            "profileSubqueries" : patch,
-                            "bodyType" : ToolBodyType.SURFACE
-                        });
-            }
-            catch (error)
-            {
-                loftError = error;
+                // One refusal costs one face, not the surface. The hole marks exactly
+                // where the kernel objected, and the refusal is reported, not swallowed.
+                try silent
+                {
+                    opLoft(context, patchId, {
+                                "profileSubqueries" : patch,
+                                "bodyType" : ToolBodyType.SURFACE
+                            });
+                }
+                catch (error)
+                {
+                    loftError = error;
+                }
             }
 
-            // opLoft returns nothing, so the body it should have made is the only honest
-            // test of whether it ran.
+            // Neither op returns anything, so the body it should have made is the only
+            // honest test of whether it ran.
             if (size(evaluateQuery(context, qCreatedBy(patchId, EntityType.BODY))) == 0)
             {
                 refused = append(refused, toString(r) ~ ":" ~ toString(from));
@@ -1148,38 +1166,12 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                 if (reportsRun(definition, r))
                 {
                     println("[refused]   run " ~ toString(r) ~ "  from profile " ~ toString(from)
+                        ~ "  by " ~ (built ? "opCreateBSplineSurface" : "opLoft")
                         ~ "  error " ~ toString(loftError));
 
                     for (var k = 0; k < size(patch); k += 1)
                     {
                         printCurveDump(context, "  profile " ~ toString(from + k), patch[k]);
-                    }
-
-                    // The same pair, rebuilt from its own printed definition, lofts when
-                    // built alone in a fresh context. So the objection is not to the
-                    // geometry but to the state of these two edges, and only a retry in
-                    // THIS context can say which. Each retry is deleted on the spot so it
-                    // never reaches the output.
-                    // Established so far on this pair: rebuilt exact FAILS, swapped FAILS,
-                    // shifted 1 m FAILS, CPs rounded to 10 nm FAILS, CPs rounded to 1 um
-                    // lofts. The same CPs rounded to 10 nm loft outside the feature, where
-                    // the KNOTS were rounded too. These narrow down which quantity it is.
-                    const retries = [
-                            { "name" : "knots rounded 1e-5        ", "decimals" : -1, "knotDecimals" : 5, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "all" },
-                            { "name" : "CPs 100 nm                ", "decimals" : 4, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "all" },
-                            { "name" : "CPs 1 um, profile 0 only  ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0], "axes" : [true, true, true], "which" : "all" },
-                            { "name" : "CPs 1 um, profile 1 only  ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [1], "axes" : [true, true, true], "which" : "all" },
-                            { "name" : "CPs 1 um, X only          ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, false, false], "which" : "all" },
-                            { "name" : "CPs 1 um, Y only          ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [false, true, false], "which" : "all" },
-                            { "name" : "CPs 1 um, Z only          ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [false, false, true], "which" : "all" },
-                            { "name" : "CPs 1 um, ends only       ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "ends" },
-                            { "name" : "CPs 1 um, interior only   ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "interior" }
-                        ];
-
-                    for (var t = 0; t < size(retries); t += 1)
-                    {
-                        println("  retry " ~ retries[t].name ~ ": "
-                            ~ loftRetry(context, patchId + ("retry" ~ t), patch, retries[t]));
                     }
                 }
 
@@ -1396,107 +1388,86 @@ function printCurveDump(context is Context, label is string, edge is Query)
 }
 
 /**
- * Loft a pair once more under a scratch id, say whether the kernel took it, and delete
- * whatever was made. Diagnostic only; nothing survives the call.
+ * Whether a patch's sections are B-splines of one degree over one knot vector, so that
+ * the surface between them can be written down rather than lofted.
  *
- * Every retry rebuilds fresh curves from each edge's own evCurveDefinition, perturbed as the
- * options say, so that what the kernel objects to can be narrowed down one quantity at a time.
- *
- * @param options {map} :
- *      decimals {number} : round control points to this many decimal places in mm; -1 exact.
- *      knotDecimals {number} : round the knots to this many decimal places; -1 exact.
- *      profiles {array} : indices of the profiles whose control points are rounded.
- *      axes {array} : [x, y, z] booleans, which coordinates are rounded.
- *      which {string} : "all", "ends" or "interior" control points.
+ * Exact equality on the knots, not tolerant: the coupled fit hands every section the same
+ * vector bit for bit, and two vectors that merely resemble each other describe two
+ * parameterizations, between which a loft is the right tool after all.
  */
-function loftRetry(context is Context, id is Id, profiles is array, options is map) returns string
+function sharedParameterization(curves is array) returns boolean
 {
-    var subqueries = [];
-    var status = "";
-
-    for (var k = 0; k < size(profiles); k += 1)
+    if (size(curves) != 2)
     {
-        const curve = evCurveDefinition(context, { "edge" : profiles[k] });
-        const curveId = id + ("curve" ~ k);
-
-        if (curve is BSplineCurve)
-        {
-            const roundThis = isIn(k, options.profiles) && options.decimals >= 0;
-            const last = size(curve.controlPoints) - 1;
-
-            var controlPoints = [];
-            for (var c = 0; c <= last; c += 1)
-            {
-                var point = curve.controlPoints[c];
-                const isEnd = (c == 0 || c == last);
-                const inScope = options.which == "all"
-                    || (options.which == "ends" && isEnd)
-                    || (options.which == "interior" && !isEnd);
-
-                if (roundThis && inScope)
-                {
-                    var rounded = [];
-                    for (var a = 0; a < 3; a += 1)
-                    {
-                        rounded = append(rounded, options.axes[a]
-                                ? roundToPrecision(point[a] / millimeter, options.decimals)
-                                : point[a] / millimeter);
-                    }
-                    point = vector(rounded) * millimeter;
-                }
-                controlPoints = append(controlPoints, point);
-            }
-
-            var knots = curve.knots;
-            if (options.knotDecimals >= 0)
-            {
-                var roundedKnots = [];
-                for (var knot in curve.knots)
-                {
-                    roundedKnots = append(roundedKnots, roundToPrecision(knot, options.knotDecimals));
-                }
-                knots = knotArray(roundedKnots);
-            }
-
-            opCreateBSplineCurve(context, curveId, {
-                        "bSplineCurve" : mergeMaps(curve, { "controlPoints" : controlPoints, "knots" : knots }) as BSplineCurve
-                    });
-        }
-        else
-        {
-            status = "not retried, profile " ~ toString(k) ~ " is not a B-spline";
-        }
-
-        subqueries = append(subqueries, qCreatedBy(curveId, EntityType.EDGE));
+        return false;
     }
 
-    if (status == "")
-    {
-        try silent
-        {
-            opLoft(context, id + "loft", {
-                        "profileSubqueries" : subqueries,
-                        "bodyType" : ToolBodyType.SURFACE
-                    });
-        }
-        catch (error)
-        {
-            status = "FAILED " ~ toString(error);
-        }
+    const a = curves[0];
+    const b = curves[1];
 
-        if (status == "")
-        {
-            status = (size(evaluateQuery(context, qCreatedBy(id + "loft", EntityType.BODY))) > 0)
-                ? "OK" : "no body";
-        }
+    return a is BSplineCurve && b is BSplineCurve
+        && a.degree == b.degree
+        && !a.isPeriodic && !b.isPeriodic
+        && a.weights == undefined && b.weights == undefined
+        && size(a.controlPoints) == size(b.controlPoints)
+        && a.knots == b.knots;
+}
+
+/**
+ * Build the ruled patch between two sections that share a parameterization as the
+ * B-spline surface they define: u runs along the sections with their degree and knots,
+ * v runs straight across at degree 1, and the control net is the two control polygons
+ * side by side. The sections are the surface's v = 0 and v = 1 boundaries exactly.
+ *
+ * @param curves {array} : the sections' evCurveDefinition results.
+ * @returns {boolean} : false when the pair does not qualify, and nothing was built.
+ */
+function ruledPatch(context is Context, id is Id, curves is array) returns boolean
+{
+    if (!sharedParameterization(curves))
+    {
+        return false;
     }
 
-    if (size(evaluateQuery(context, qCreatedBy(id, EntityType.BODY))) > 0)
+    const a = curves[0];
+    var b = curves[1];
+
+    // The two polygons must run the same way, or the rulings cross. Reversing a B-spline
+    // is the control points backwards and the knots mirrored about the parameter range.
+    const last = size(a.controlPoints) - 1;
+    const chordA = a.controlPoints[last] - a.controlPoints[0];
+    const chordB = b.controlPoints[last] - b.controlPoints[0];
+    if (dot(chordA, chordB) < 0)
     {
-        opDeleteBodies(context, id + "delete", { "entities" : qCreatedBy(id, EntityType.BODY) });
+        const first = b.knots[0];
+        const final = b.knots[size(b.knots) - 1];
+        var knots = [];
+        for (var k = size(b.knots) - 1; k >= 0; k -= 1)
+        {
+            knots = append(knots, first + final - b.knots[k]);
+        }
+        b = mergeMaps(b, { "controlPoints" : reverse(b.controlPoints), "knots" : knotArray(knots) }) as BSplineCurve;
     }
 
-    return status;
+    var grid = [];
+    for (var i = 0; i <= last; i += 1)
+    {
+        grid = append(grid, [a.controlPoints[i], b.controlPoints[i]]);
+    }
+
+    opCreateBSplineSurface(context, id, {
+                "bSplineSurface" : bSplineSurface({
+                        "uDegree" : a.degree,
+                        "vDegree" : 1,
+                        "isUPeriodic" : false,
+                        "isVPeriodic" : false,
+                        "controlPoints" : controlPointMatrix(grid),
+                        "uKnots" : a.knots,
+                        "vKnots" : knotArray([0, 0, 1, 1])
+                    })
+            });
+
+    return true;
 }
 
 function pointText(point is Vector) returns string
