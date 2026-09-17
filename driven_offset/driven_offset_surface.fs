@@ -840,7 +840,8 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
                     ~ "  -> " ~ plan.shape.kind
                     ~ "  tangents " ~ toString(plan.startDerivative != undefined)
                     ~ "/" ~ toString(plan.endDerivative != undefined)
-                    ~ "  coupled " ~ toString(fitted != undefined));
+                    ~ "  coupled " ~ toString(fitted != undefined)
+                    ~ tangentAgreement(plan));
             }
 
             curve = emitShape(context, id + ("piece" ~ r), definition, plan.shape, plan.points,
@@ -1745,6 +1746,35 @@ function ruledPatch(context is Context, id is Id, curves is array) returns boole
             });
 
     return true;
+}
+
+/**
+ * How far the end tangents handed to the fit are from the direction of the points they are
+ * meant to match, in degrees: the first two and last two distinct points. A fit given a
+ * tangent that disagrees with its own points hooks to satisfy both.
+ */
+function tangentAgreement(plan is map) returns string
+{
+    const n = size(plan.points);
+    if (n < 2)
+    {
+        return "";
+    }
+
+    var text = "";
+    if (plan.startDerivative != undefined)
+    {
+        const chord = normalize(plan.points[1] - plan.points[0]);
+        text = text ~ "  startDev " ~ toString(roundToPrecision(
+                acos(clamp(dot(normalize(plan.startDerivative), chord), -1, 1)) / degree, 3)) ~ " deg";
+    }
+    if (plan.endDerivative != undefined)
+    {
+        const chord = normalize(plan.points[n - 1] - plan.points[n - 2]);
+        text = text ~ "  endDev " ~ toString(roundToPrecision(
+                acos(clamp(dot(normalize(plan.endDerivative), chord), -1, 1)) / degree, 3)) ~ " deg";
+    }
+    return text;
 }
 
 function pointText(point is Vector) returns string
