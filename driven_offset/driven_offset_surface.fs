@@ -1169,38 +1169,56 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
         return;
     }
 
-    // Blending reads every profile at once, so it cannot be built patch by patch along the
-    // loft direction. It still splits by run, which costs nothing and keeps the face sizes.
-    const lastFrom = definition.blendThroughProfiles ? 0 : size(sections) - 2;
-
     var sheets = [];
     var skipped = 0;
     var refused = [];
 
     for (var r = 0; r < size(sections[0].pieces); r += 1)
     {
-        for (var from = 0; from <= lastFrom; from += 1)
+        // The profiles that reach this cell, in profile order. Profiles are allowed to
+        // differ in extent, so a cell may have any subset of them: the patches are built
+        // between the ones that are THERE, bridging across any that are not. Where the
+        // middle profile stops short the outer two are lofted to each other; where only one
+        // profile reaches there is nothing to loft it to, and the cell is reported skipped.
+        var present = [];
+        for (var i = 0; i < size(sections); i += 1)
         {
-            const span = definition.blendThroughProfiles
-                ? sections
-                : [sections[from], sections[from + 1]];
+            if (sections[i].pieces[r] != undefined)
+            {
+                present = append(present, i);
+            }
+        }
+
+        if (size(present) < 2)
+        {
+            skipped += 1;
+            continue;
+        }
+
+        // Blending reads every present profile at once, so it cannot be built patch by
+        // patch along the loft direction. It still splits by run, which costs nothing and
+        // keeps the face sizes.
+        var pairs = [];
+        if (definition.blendThroughProfiles)
+        {
+            pairs = [present];
+        }
+        else
+        {
+            for (var k = 0; k + 1 < size(present); k += 1)
+            {
+                pairs = append(pairs, [present[k], present[k + 1]]);
+            }
+        }
+
+        for (var members in pairs)
+        {
+            const from = members[0];
 
             var patch = [];
-            for (var section in span)
+            for (var i in members)
             {
-                if (section.pieces[r] != undefined)
-                {
-                    patch = append(patch, section.pieces[r]);
-                }
-            }
-
-            // A run one section covers and another does not cannot be lofted across: there
-            // is no facing curve. The neighbouring patches still build, so the surface comes
-            // out with a hole rather than not at all, and the count is reported.
-            if (size(patch) < size(span))
-            {
-                skipped += 1;
-                continue;
+                patch = append(patch, sections[i].pieces[r]);
             }
 
             // Printed BEFORE the loft, so the last line standing names the patch that
@@ -1217,7 +1235,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
             if (reportsRun(definition, r))
             {
-                var report = "[patch]     run " ~ toString(r) ~ "  from profile " ~ toString(from)
+                var report = "[patch]     run " ~ toString(r) ~ "  profiles " ~ toString(members)
                     ~ "  sections " ~ toString(size(patch))
                     ~ "  " ~ (sharedParameterization(curves) ? "ruled" : "loft");
 
@@ -1293,19 +1311,19 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // honest test of whether it ran.
             if (size(evaluateQuery(context, qCreatedBy(patchId, EntityType.BODY))) == 0)
             {
-                refused = append(refused, toString(r) ~ ":" ~ toString(from));
+                refused = append(refused, toString(r) ~ ":" ~ toString(members));
 
                 // The refusal is the trigger, not a toggle: this is the one patch worth
                 // seeing in full, and it is only ever a handful of curves.
                 if (reportsRun(definition, r))
                 {
-                    println("[refused]   run " ~ toString(r) ~ "  from profile " ~ toString(from)
+                    println("[refused]   run " ~ toString(r) ~ "  profiles " ~ toString(members)
                         ~ "  by " ~ (built ? "opCreateBSplineSurface" : "opLoft")
                         ~ "  error " ~ toString(loftError));
 
                     for (var k = 0; k < size(patch); k += 1)
                     {
-                        printCurveDump(context, "  profile " ~ toString(from + k), patch[k]);
+                        printCurveDump(context, "  profile " ~ toString(members[k]), patch[k]);
                     }
                 }
 
@@ -1332,16 +1350,15 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
     {
         reportFeatureWarning(context, id, "The loft refused " ~ toString(size(refused))
             ~ " of " ~ toString(size(refused) + size(sheets))
-            ~ " patches, so the surface has a hole at run:profile " ~ join(refused, ", ")
+            ~ " patches, so the surface has a hole at run:profiles " ~ join(refused, ", ")
             ~ ". Every other patch built.");
     }
 
     if (definition.debugPrintSurface)
     {
-        println("[surface]     " ~ toString(size(sheets)) ~ " patch loft(s) ("
-            ~ toString(size(sections[0].pieces)) ~ " run(s) x "
-            ~ toString(lastFrom + 1) ~ " profile span(s))"
-            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " skipped for missing coverage" : "")
+        println("[surface]     " ~ toString(size(sheets)) ~ " patch loft(s) over "
+            ~ toString(size(sections[0].pieces)) ~ " run(s), " ~ toString(size(sections)) ~ " profile(s)"
+            ~ (skipped > 0 ? ", " ~ toString(skipped) ~ " run(s) reached by fewer than two profiles" : "")
             ~ (size(refused) > 0 ? ", " ~ toString(size(refused)) ~ " refused by the loft: "
                     ~ join(refused, ", ") : ""));
     }
