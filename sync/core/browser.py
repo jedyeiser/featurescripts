@@ -8,6 +8,7 @@ hand (`sync.main login`); the session is saved and restored across runs.
 from __future__ import annotations
 
 import os
+from urllib.parse import quote
 import time
 from pathlib import Path
 from typing import Any
@@ -118,7 +119,15 @@ class OnshapeBrowser:
     # ------------------------------------------------------------- navigation
 
     def element_url(self, document_id: str, workspace_id: str, element_id: str) -> str:
-        return f"{base_url()}/documents/{document_id}/w/{workspace_id}/e/{element_id}"
+        url = f"{base_url()}/documents/{document_id}/w/{workspace_id}/e/{element_id}"
+        # A Part Studio opens in its default configuration unless the URL says otherwise.
+        # FS_SYNC_CONFIGURATION takes the same "List_xxx=Value;List_yyy=Value" string the
+        # REST API does, so a monitored regen can be run on the configuration the user is
+        # actually looking at.
+        configuration = os.environ.get("FS_SYNC_CONFIGURATION")
+        if configuration:
+            url += "?configuration=" + quote(configuration, safe="")
+        return url
 
     def open_element(self, document_id: str, workspace_id: str, element_id: str) -> None:
         self.page.goto(

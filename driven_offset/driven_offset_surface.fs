@@ -1160,11 +1160,27 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                     // geometry but to the state of these two edges, and only a retry in
                     // THIS context can say which. Each retry is deleted on the spot so it
                     // never reaches the output.
-                    println("  retry rebuilt-from-definition: " ~ loftRetry(context, patchId + "rebuilt", patch, true, -1, ZERO_SHIFT));
-                    println("  retry swapped order:           " ~ loftRetry(context, patchId + "swapped", reverse(patch), false, -1, ZERO_SHIFT));
-                    println("  retry rounded to 10 nm:        " ~ loftRetry(context, patchId + "rounded", patch, true, 5, ZERO_SHIFT));
-                    println("  retry rounded to 1 um:         " ~ loftRetry(context, patchId + "coarse", patch, true, 3, ZERO_SHIFT));
-                    println("  retry shifted +1 m in X:       " ~ loftRetry(context, patchId + "shifted", patch, true, -1, vector(1, 0, 0) * meter));
+                    // Established so far on this pair: rebuilt exact FAILS, swapped FAILS,
+                    // shifted 1 m FAILS, CPs rounded to 10 nm FAILS, CPs rounded to 1 um
+                    // lofts. The same CPs rounded to 10 nm loft outside the feature, where
+                    // the KNOTS were rounded too. These narrow down which quantity it is.
+                    const retries = [
+                            { "name" : "knots rounded 1e-5        ", "decimals" : -1, "knotDecimals" : 5, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "all" },
+                            { "name" : "CPs 100 nm                ", "decimals" : 4, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "all" },
+                            { "name" : "CPs 1 um, profile 0 only  ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0], "axes" : [true, true, true], "which" : "all" },
+                            { "name" : "CPs 1 um, profile 1 only  ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [1], "axes" : [true, true, true], "which" : "all" },
+                            { "name" : "CPs 1 um, X only          ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, false, false], "which" : "all" },
+                            { "name" : "CPs 1 um, Y only          ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [false, true, false], "which" : "all" },
+                            { "name" : "CPs 1 um, Z only          ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [false, false, true], "which" : "all" },
+                            { "name" : "CPs 1 um, ends only       ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "ends" },
+                            { "name" : "CPs 1 um, interior only   ", "decimals" : 3, "knotDecimals" : -1, "profiles" : [0, 1], "axes" : [true, true, true], "which" : "interior" }
+                        ];
+
+                    for (var t = 0; t < size(retries); t += 1)
+                    {
+                        println("  retry " ~ retries[t].name ~ ": "
+                            ~ loftRetry(context, patchId + ("retry" ~ t), patch, retries[t]));
+                    }
                 }
 
                 continue;
@@ -1355,7 +1371,7 @@ function printCurveDump(context is Context, label is string, edge is Query)
         println("    bspline degree " ~ toString(curve.degree)
             ~ "  periodic " ~ toString(curve.isPeriodic)
             ~ "  CPs " ~ toString(size(curve.controlPoints))
-            ~ "  knots " ~ toString(size(curve.knots)) ~ " " ~ knotText(curve.knots)
+            ~ "  knots " ~ toString(size(curve.knots)) ~ " " ~ toString(curve.knots)
             ~ "  weights " ~ (curve.weights == undefined ? "none" : toString(curve.weights)));
 
         for (var k = 0; k < size(curve.controlPoints); k += 1)
@@ -1383,53 +1399,75 @@ function printCurveDump(context is Context, label is string, edge is Query)
  * Loft a pair once more under a scratch id, say whether the kernel took it, and delete
  * whatever was made. Diagnostic only; nothing survives the call.
  *
- * @param rebuild {boolean} : loft fresh curves made from each edge's own evCurveDefinition
- *      instead of the edges themselves. Separates "this geometry" from "these edges".
- * @param decimals {number} : with rebuild, round every control point to this many decimal
- *      places in millimetres; -1 leaves them exact. Separates the geometry from its noise.
- * @param shift {Vector} : with rebuild, translate every control point. Separates the
- *      geometry from where it sits.
+ * Every retry rebuilds fresh curves from each edge's own evCurveDefinition, perturbed as the
+ * options say, so that what the kernel objects to can be narrowed down one quantity at a time.
+ *
+ * @param options {map} :
+ *      decimals {number} : round control points to this many decimal places in mm; -1 exact.
+ *      knotDecimals {number} : round the knots to this many decimal places; -1 exact.
+ *      profiles {array} : indices of the profiles whose control points are rounded.
+ *      axes {array} : [x, y, z] booleans, which coordinates are rounded.
+ *      which {string} : "all", "ends" or "interior" control points.
  */
-function loftRetry(context is Context, id is Id, profiles is array, rebuild is boolean,
-    decimals is number, shift is Vector) returns string
+function loftRetry(context is Context, id is Id, profiles is array, options is map) returns string
 {
-    var subqueries = profiles;
+    var subqueries = [];
     var status = "";
 
-    if (rebuild)
+    for (var k = 0; k < size(profiles); k += 1)
     {
-        subqueries = [];
-        for (var k = 0; k < size(profiles); k += 1)
+        const curve = evCurveDefinition(context, { "edge" : profiles[k] });
+        const curveId = id + ("curve" ~ k);
+
+        if (curve is BSplineCurve)
         {
-            const curve = evCurveDefinition(context, { "edge" : profiles[k] });
-            const curveId = id + ("curve" ~ k);
+            const roundThis = isIn(k, options.profiles) && options.decimals >= 0;
+            const last = size(curve.controlPoints) - 1;
 
-            if (curve is BSplineCurve)
+            var controlPoints = [];
+            for (var c = 0; c <= last; c += 1)
             {
-                var controlPoints = [];
-                for (var point in curve.controlPoints)
+                var point = curve.controlPoints[c];
+                const isEnd = (c == 0 || c == last);
+                const inScope = options.which == "all"
+                    || (options.which == "ends" && isEnd)
+                    || (options.which == "interior" && !isEnd);
+
+                if (roundThis && inScope)
                 {
-                    var moved = point + shift;
-                    if (decimals >= 0)
+                    var rounded = [];
+                    for (var a = 0; a < 3; a += 1)
                     {
-                        moved = vector(roundToPrecision(moved[0] / millimeter, decimals),
-                                roundToPrecision(moved[1] / millimeter, decimals),
-                                roundToPrecision(moved[2] / millimeter, decimals)) * millimeter;
+                        rounded = append(rounded, options.axes[a]
+                                ? roundToPrecision(point[a] / millimeter, options.decimals)
+                                : point[a] / millimeter);
                     }
-                    controlPoints = append(controlPoints, moved);
+                    point = vector(rounded) * millimeter;
                 }
-
-                opCreateBSplineCurve(context, curveId, {
-                            "bSplineCurve" : mergeMaps(curve, { "controlPoints" : controlPoints }) as BSplineCurve
-                        });
+                controlPoints = append(controlPoints, point);
             }
-            else
+
+            var knots = curve.knots;
+            if (options.knotDecimals >= 0)
             {
-                status = "not retried, profile " ~ toString(k) ~ " is not a B-spline";
+                var roundedKnots = [];
+                for (var knot in curve.knots)
+                {
+                    roundedKnots = append(roundedKnots, roundToPrecision(knot, options.knotDecimals));
+                }
+                knots = knotArray(roundedKnots);
             }
 
-            subqueries = append(subqueries, qCreatedBy(curveId, EntityType.EDGE));
+            opCreateBSplineCurve(context, curveId, {
+                        "bSplineCurve" : mergeMaps(curve, { "controlPoints" : controlPoints, "knots" : knots }) as BSplineCurve
+                    });
         }
+        else
+        {
+            status = "not retried, profile " ~ toString(k) ~ " is not a B-spline";
+        }
+
+        subqueries = append(subqueries, qCreatedBy(curveId, EntityType.EDGE));
     }
 
     if (status == "")
@@ -1460,8 +1498,6 @@ function loftRetry(context is Context, id is Id, profiles is array, rebuild is b
 
     return status;
 }
-
-const ZERO_SHIFT = vector(0, 0, 0) * meter;
 
 function pointText(point is Vector) returns string
 {
