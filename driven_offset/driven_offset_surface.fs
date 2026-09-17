@@ -1702,23 +1702,32 @@ function unifiedPatch(context is Context, id is Id, chains is array) returns boo
 
     curves = unifyKnots(curves);
 
-    var grid = [];
-    for (var i = 0; i < size(curves[0].controlPoints); i += 1)
-    {
-        grid = append(grid, [curves[0].controlPoints[i], curves[1].controlPoints[i]]);
-    }
+    // A joint in either chain is a crease, and the surface may not carry one: one surface
+    // per stretch between creases, meeting as faces. Both curves share the knot vector, so
+    // they split at the same places into the same number of pieces.
+    const piecesA = splitAtCreases(curves[0]);
+    const piecesB = splitAtCreases(curves[1]);
 
-    opCreateBSplineSurface(context, id, {
-                "bSplineSurface" : bSplineSurface({
-                        "uDegree" : degree,
-                        "vDegree" : 1,
-                        "isUPeriodic" : false,
-                        "isVPeriodic" : false,
-                        "controlPoints" : controlPointMatrix(grid),
-                        "uKnots" : curves[0].knots,
-                        "vKnots" : knotArray([0, 0, 1, 1])
-                    })
-            });
+    for (var k = 0; k < size(piecesA); k += 1)
+    {
+        var grid = [];
+        for (var i = 0; i < size(piecesA[k].controlPoints); i += 1)
+        {
+            grid = append(grid, [piecesA[k].controlPoints[i], piecesB[k].controlPoints[i]]);
+        }
+
+        opCreateBSplineSurface(context, id + ("seg" ~ k), {
+                    "bSplineSurface" : bSplineSurface({
+                            "uDegree" : degree,
+                            "vDegree" : 1,
+                            "isUPeriodic" : false,
+                            "isVPeriodic" : false,
+                            "controlPoints" : controlPointMatrix(grid),
+                            "uKnots" : piecesA[k].knots,
+                            "vKnots" : knotArray([0, 0, 1, 1])
+                        })
+                });
+    }
 
     return true;
 }

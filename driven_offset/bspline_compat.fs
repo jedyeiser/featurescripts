@@ -411,3 +411,99 @@ export function joinChain(pieces is array, lengths is array) returns BSplineCurv
 
     return result;
 }
+
+// ============================================================================
+// Splitting
+// ============================================================================
+
+/**
+ * The curve cut into pieces at every interior knot of multiplicity `degree` or more -- the
+ * places where it is only C0, such as a joinC0 seam. A B-spline surface may not carry such
+ * a crease (opCreateBSplineSurface refuses it as BSPLINESURFACE_NOT_G1), so a ruled patch
+ * over a creased curve is one surface per piece, meeting along the crease as faces.
+ *
+ * @returns {array} : BSplineCurves in parameter order, each over its own sub-range.
+ */
+export function splitAtCreases(curve is BSplineCurve) returns array
+{
+    var pieces = [];
+    var rest = curve;
+
+    while (true)
+    {
+        const p = rest.degree;
+        const knots = rest.knots;
+        const first = knots[0];
+        const last = knots[size(knots) - 1];
+
+        // The first interior crease, as the index of its first knot.
+        var at = -1;
+        var value = 0;
+        var run = 0;
+        for (var i = 0; i < size(knots); i += 1)
+        {
+            if (knots[i] <= first + KNOT_TOL || knots[i] >= last - KNOT_TOL)
+            {
+                continue;
+            }
+            if (i > 0 && abs(knots[i] - knots[i - 1]) <= KNOT_TOL)
+            {
+                run += 1;
+            }
+            else
+            {
+                run = 1;
+            }
+            if (run >= p)
+            {
+                at = i - p + 1;
+                value = knots[at];
+                break;
+            }
+        }
+
+        if (at < 0)
+        {
+            return append(pieces, rest);
+        }
+
+        // Left of the crease: control points up to the one at the seam, knots up to the
+        // crease's copies plus one more to clamp. Right: from the seam point on, with the
+        // crease clamped at its start.
+        var leftPoints = [];
+        for (var i = 0; i < at; i += 1)
+        {
+            leftPoints = append(leftPoints, rest.controlPoints[i]);
+        }
+        var leftKnots = [];
+        for (var i = 0; i < at + p; i += 1)
+        {
+            leftKnots = append(leftKnots, knots[i]);
+        }
+        leftKnots = append(leftKnots, value);
+
+        var rightPoints = [];
+        for (var i = at - 1; i < size(rest.controlPoints); i += 1)
+        {
+            rightPoints = append(rightPoints, rest.controlPoints[i]);
+        }
+        var rightKnots = [value];
+        for (var i = at; i < size(knots); i += 1)
+        {
+            rightKnots = append(rightKnots, knots[i]);
+        }
+
+        pieces = append(pieces, bSplineCurve({
+                    "degree" : p,
+                    "isPeriodic" : false,
+                    "controlPoints" : leftPoints,
+                    "knots" : knotArray(leftKnots)
+                }));
+        rest = bSplineCurve({
+                "degree" : p,
+                "isPeriodic" : false,
+                "controlPoints" : rightPoints,
+                "knots" : knotArray(rightKnots)
+            });
+    }
+}
