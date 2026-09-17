@@ -1136,6 +1136,118 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
 }
 
 /**
+ * Which profiles are lofted to which, cell by cell, and over which cells each such pairing
+ * runs.
+ *
+ * Profiles are allowed to differ in extent, so a cell may hold any subset of them. The
+ * patches are built between the profiles that are THERE: adjacent present profiles pair
+ * up, bridging across any that stop short, so a short middle profile hands the outer two
+ * to each other. Blending takes every present profile in the cell at once. A cell only one
+ * profile reaches has nothing to loft to, and is left to the caller to count.
+ *
+ * @returns {map} :
+ *      cells {array} : per cell, the member tuples lofted there (arrays of profile indices).
+ *      stretches {map} : keyed by `toString(members)`, then by cell: `{ first, last }`, the
+ *          contiguous range of cells that pairing covers around that cell. A pairing's
+ *          terminal patches are where a member's overhang gets absorbed.
+ */
+function patchPairings(definition is map, sections is array) returns map
+{
+    var cells = [];
+
+    for (var r = 0; r < size(sections[0].pieces); r += 1)
+    {
+        var present = [];
+        for (var i = 0; i < size(sections); i += 1)
+        {
+            if (sections[i].pieces[r] != undefined)
+            {
+                present = append(present, i);
+            }
+        }
+
+        var tuples = [];
+        if (size(present) >= 2)
+        {
+            if (definition.blendThroughProfiles)
+            {
+                tuples = [present];
+            }
+            else
+            {
+                for (var k = 0; k + 1 < size(present); k += 1)
+                {
+                    tuples = append(tuples, [present[k], present[k + 1]]);
+                }
+            }
+        }
+
+        cells = append(cells, tuples);
+    }
+
+    // Contiguous runs of cells per tuple. A tuple absent from a cell and back again later
+    // starts a new stretch; the gap between is a hole, not an overhang.
+    var stretches = {};
+    var open = {};
+
+    for (var r = 0; r < size(cells); r += 1)
+    {
+        var seen = {};
+        for (var members in cells[r])
+        {
+            const key = toString(members);
+            seen[key] = true;
+
+            if (open[key] == undefined)
+            {
+                open[key] = { "first" : r, "last" : r };
+            }
+            else
+            {
+                open[key].last = r;
+            }
+        }
+
+        for (var key, range in open)
+        {
+            if (seen[key] != true)
+            {
+                stretches = recordStretch(stretches, key, range);
+                open[key] = undefined;
+            }
+        }
+
+        var still = {};
+        for (var key, range in open)
+        {
+            if (range != undefined)
+            {
+                still[key] = range;
+            }
+        }
+        open = still;
+    }
+
+    for (var key, range in open)
+    {
+        stretches = recordStretch(stretches, key, range);
+    }
+
+    return { "cells" : cells, "stretches" : stretches };
+}
+
+function recordStretch(stretches is map, key is string, range is map) returns map
+{
+    var byCell = (stretches[key] == undefined) ? {} : stretches[key];
+    for (var r = range.first; r <= range.last; r += 1)
+    {
+        byCell[r] = range;
+    }
+    stretches[key] = byCell;
+    return stretches;
+}
+
+/**
  * One loft per patch, joined into a single sheet.
  *
  * A patch is one RUN by one pair of adjacent PROFILES, and both halves of that are
@@ -1173,52 +1285,53 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
     var skipped = 0;
     var refused = [];
 
-    for (var r = 0; r < size(sections[0].pieces); r += 1)
-    {
-        // The profiles that reach this cell, in profile order. Profiles are allowed to
-        // differ in extent, so a cell may have any subset of them: the patches are built
-        // between the ones that are THERE, bridging across any that are not. Where the
-        // middle profile stops short the outer two are lofted to each other; where only one
-        // profile reaches there is nothing to loft it to, and the cell is reported skipped.
-        var present = [];
-        for (var i = 0; i < size(sections); i += 1)
-        {
-            if (sections[i].pieces[r] != undefined)
-            {
-                present = append(present, i);
-            }
-        }
+    // Which profiles pair up in each cell, then the cells each pairing covers, so that a
+    // pairing's terminal patches know where its coverage ends.
+    const cellCount = size(sections[0].pieces);
+    const pairings = patchPairings(definition, sections);
 
-        if (size(present) < 2)
+    for (var r = 0; r < cellCount; r += 1)
+    {
+        if (size(pairings.cells[r]) == 0)
         {
             skipped += 1;
-            continue;
         }
 
-        // Blending reads every present profile at once, so it cannot be built patch by
-        // patch along the loft direction. It still splits by run, which costs nothing and
-        // keeps the face sizes.
-        var pairs = [];
-        if (definition.blendThroughProfiles)
-        {
-            pairs = [present];
-        }
-        else
-        {
-            for (var k = 0; k + 1 < size(present); k += 1)
-            {
-                pairs = append(pairs, [present[k], present[k + 1]]);
-            }
-        }
-
-        for (var members in pairs)
+        for (var members in pairings.cells[r])
         {
             const from = members[0];
+            const stretch = pairings.stretches[toString(members)][r];
 
+            // One query per member. In the interior of a pairing's coverage that is the
+            // member's piece for this cell. At either end of the coverage a member that
+            // reaches further than its partners carries its overhang along: every piece
+            // of its own beyond the last shared cell, contiguously, joined to the terminal
+            // piece. The loft then runs from the shared cell out to the member's real end,
+            // the way a loft of the whole wires would -- but the stretch it takes to get
+            // there is confined to this one patch, and every interior patch keeps the exact
+            // station-for-station pairing.
             var patch = [];
             for (var i in members)
             {
-                patch = append(patch, sections[i].pieces[r]);
+                var pieces = [sections[i].pieces[r]];
+
+                if (r == stretch.first)
+                {
+                    for (var c = r - 1; c >= 0 && sections[i].pieces[c] != undefined; c -= 1)
+                    {
+                        pieces = append(pieces, sections[i].pieces[c]);
+                    }
+                }
+
+                if (r == stretch.last)
+                {
+                    for (var c = r + 1; c < cellCount && sections[i].pieces[c] != undefined; c += 1)
+                    {
+                        pieces = append(pieces, sections[i].pieces[c]);
+                    }
+                }
+
+                patch = append(patch, size(pieces) == 1 ? pieces[0] : qUnion(pieces));
             }
 
             // Printed BEFORE the loft, so the last line standing names the patch that
@@ -1230,7 +1343,10 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             var curves = [];
             for (var section in patch)
             {
-                curves = append(curves, evCurveDefinition(context, { "edge" : section }));
+                const edges = evaluateQuery(context, section);
+                curves = append(curves, size(edges) == 1
+                        ? evCurveDefinition(context, { "edge" : edges[0] })
+                        : undefined);
             }
 
             if (reportsRun(definition, r))
@@ -1242,7 +1358,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                 // The pair as opLoft sees it. Printed for the patches that succeed as well
                 // as the one that throws, because the useful reading is the comparison: a
                 // failing patch beside its near-identical neighbour that built.
-                if (size(patch) == 2)
+                if (size(patch) == 2 && curves[0] != undefined && curves[1] != undefined)
                 {
                     const walkA = curveWalk(context, patch[0], PATCH_WALK_SAMPLES);
                     const walkB = curveWalk(context, patch[1], PATCH_WALK_SAMPLES);
@@ -1565,7 +1681,8 @@ function sharedParameterization(curves is array) returns boolean
     const a = curves[0];
     const b = curves[1];
 
-    return a is BSplineCurve && b is BSplineCurve
+    return a != undefined && b != undefined
+        && a is BSplineCurve && b is BSplineCurve
         && a.degree == b.degree
         && !a.isPeriodic && !b.isPeriodic
         && a.weights == undefined && b.weights == undefined
