@@ -1383,8 +1383,17 @@ function printSurfacePlan(context is Context, definition is map, driven is array
         const offset = driven[i];
         const spans = surfaceSpans(offset);
 
+        // Which of the shared cells this offset reaches, so a hole in the loft can be read
+        // straight off the plan: "-" is a cell another offset covers and this one does not.
+        var covered = "";
+        for (var cell in offset.cells)
+        {
+            covered = covered ~ (cell == undefined ? "-" : "#");
+        }
+
         println("[surface]   offset " ~ toString(i) ~ " '" ~ offset.name ~ "': "
-            ~ toString(size(offset.runs)) ~ " run(s) -> "
+            ~ toString(size(offset.runs)) ~ " run(s) over " ~ toString(size(offset.cells))
+            ~ " cell(s) [" ~ covered ~ "] -> "
             ~ toString(size(spans)) ~ " surface stretch(es)");
 
         for (var span in spans)
