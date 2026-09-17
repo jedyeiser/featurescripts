@@ -847,6 +847,12 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             curve = emitShape(context, id + ("piece" ~ r), definition, plan.shape, plan.points,
                 plan.startDerivative, plan.endDerivative, fitted, reportsRun(definition, r));
             kept += 1;
+
+            // With one run singled out, show the curve as emitted: what the loft is given.
+            if (definition.debugPrintSurface && definition.debugRun == r)
+            {
+                printCurveDump(context, "  emitted run " ~ toString(r), curve);
+            }
         }
 
         pieces = append(pieces, curve);
