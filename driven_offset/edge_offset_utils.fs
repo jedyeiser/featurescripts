@@ -3093,20 +3093,48 @@ export function frameRates(stations is array, run is map, index is number) retur
 
 /** Control-point budget for a fitted run. The floor of 4 is a cubic's minimum. */
 /**
- * Consecutive duplicates removed.
+ * Which run boundaries can be dissolved because the runs either side, taken together, still
+ * describe one line or one arc -- in every profile at once.
  *
- * Stations shared between several profiles carry a crossing pair at EVERY profile's breaks,
- * not just this one's. Where a break is not this profile's the two halves land on the same
- * point, and a run that reads straight through such a crossing holds that point twice.
- * Nothing downstream wants it: an arc through three points with two of them equal has no
- * circumcentre, and a spline fitted across a zero-length span is degenerate.
+ * The one-run-list form: every profile is read over the same `runs`. For profiles whose
+ * runs differ in extent, see alignedRunMerges.
+ *
+ * @returns {array} : one boolean per boundary, `size(runs) - 1` of them.
  */
 export function tangentRunMerges(pointsPerProfile is array, runs is array, stations is array,
     tolerance is ValueWithUnits) returns array
 {
-    if (size(runs) < 2 || size(pointsPerProfile) == 0)
+    var runsPerProfile = [];
+    for (var k = 0; k < size(pointsPerProfile); k += 1)
     {
-        return makeArray(max(size(runs) - 1, 0), false);
+        runsPerProfile = append(runsPerProfile, runs);
+    }
+
+    return alignedRunMerges(pointsPerProfile, runsPerProfile, stations, tolerance);
+}
+
+/**
+ * tangentRunMerges over runs that have been aligned across profiles.
+ *
+ * `runsPerProfile[k]` is profile k's runs laid out over the shared cells, with `undefined`
+ * in every cell the profile does not reach. A boundary dissolves only where each profile
+ * either has a run on both sides that pass the test, or has no run on either side. A profile
+ * with a run on one side only is a coverage edge, and a boundary that is a coverage edge in
+ * one profile stays a boundary in all of them -- otherwise the merged cell would be covered
+ * by part of a run in that profile, and the alignment would be lost.
+ *
+ * @param runsPerProfile {array} : per profile, an array over the shared cells of run or
+ *      undefined; all the same length.
+ * @returns {array} : one boolean per cell boundary.
+ */
+export function alignedRunMerges(pointsPerProfile is array, runsPerProfile is array,
+    stations is array, tolerance is ValueWithUnits) returns array
+{
+    const cells = (size(runsPerProfile) == 0) ? 0 : size(runsPerProfile[0]);
+
+    if (cells < 2 || size(pointsPerProfile) == 0)
+    {
+        return makeArray(max(cells - 1, 0), false);
     }
 
     var merges = [];
@@ -3119,83 +3147,104 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array, stati
     // point kept), so accumulating is exact. classifyPoints still runs over the whole span
     // each time and has to: its chord and midpoint both move as the span grows, so there is
     // no incremental form of it.
+    //
+    // The group is kept per profile -- span, the shape it started as, the station it started
+    // at -- because each profile's runs are its own: a run trimmed at a corner in one profile
+    // spans fewer stations than the same cell in another.
     var spans = [];
     var bases = [];
-    var anchorStart = runs[0].start;
+    var anchorStart = [];
 
-    for (var points in pointsPerProfile)
+    for (var k = 0; k < size(pointsPerProfile); k += 1)
     {
-        const span = extendSpan([], points, runs[0].start, runs[0].end);
-        spans = append(spans, span);
-        bases = append(bases, span == undefined ? undefined
-                : classifyPoints(span, tolerance, sourceAllowsArc(stations, runs[0].start, runs[0].end)));
+        const group = startGroup(pointsPerProfile[k], runsPerProfile[k][0], stations, tolerance);
+        spans = append(spans, group.span);
+        bases = append(bases, group.base);
+        anchorStart = append(anchorStart, group.anchorStart);
     }
 
-    for (var r = 0; r + 1 < size(runs); r += 1)
+    for (var r = 0; r + 1 < cells; r += 1)
     {
-        const here = runs[r];
-        const next = runs[r + 1];
-
-        // The end-side records come from runs[r], NOT from the run the group started at.
-        // Reading them off the anchor missed a trimmed end or a terminal on any run absorbed
-        // after the first, because the anchor's own records had already been checked and
-        // found clear. Everything that made a boundary meaningful has to survive it: a
-        // trimmed corner carries an exact crossing point, a terminal carries a plane it was
-        // cut to, and a corner fill is a separate piece of geometry that belongs between.
-        var ok = (next.start == here.end + 1)
-            && here.endPoint == undefined && next.startPoint == undefined
-            && here.terminalEnd == undefined && next.terminalStart == undefined
-            && next.fill == undefined && next.cornerKind == undefined;
-
+        var ok = true;
         var grown = [];
 
-        if (ok)
+        for (var k = 0; k < size(pointsPerProfile); k += 1)
         {
-            for (var k = 0; k < size(pointsPerProfile); k += 1)
+            const here = runsPerProfile[k][r];
+            const next = runsPerProfile[k][r + 1];
+
+            // Absent on both sides: this profile has no say at this boundary.
+            if (here == undefined && next == undefined)
             {
-                const span = (spans[k] == undefined)
-                    ? undefined
-                    : extendSpan(spans[k], pointsPerProfile[k], next.start, next.end);
-
-                if (span == undefined)
-                {
-                    ok = false;
-                    break;
-                }
-
-                // The question is not "are the tangents equal" -- two arcs of different radii
-                // meet tangentially and are still two arcs, and fusing them into one spline is
-                // the trade that puts a curvature swing into the result. It is the stronger
-                // one: does the whole accumulated span still describe ONE line or ONE arc.
-                const shape = classifyPoints(span, tolerance,
-                    sourceAllowsArc(stations, anchorStart, next.end));
-
-                if (shape.kind != "line" && shape.kind != "arc")
-                {
-                    ok = false;
-                    break;
-                }
-
-                // Same KIND of thing, and for an arc the same circle -- not merely a circle
-                // that the points happen to sit on. Absorbing a neighbour must not change the
-                // radius, or the merge is inventing geometry rather than recognising it.
-                const base = bases[k];
-
-                if (base == undefined || base.kind != shape.kind)
-                {
-                    ok = false;
-                    break;
-                }
-
-                if (shape.kind == "arc"
-                    && abs(shape.radius - base.radius) > ARC_MERGE_RADIUS_REL * base.radius)
-                {
-                    ok = false;
-                    break;
-                }
-
-                grown = append(grown, span);
+                grown = append(grown, undefined);
+                continue;
             }
+
+            // Present on one side only: a coverage edge, which no profile may merge across.
+            if (here == undefined || next == undefined)
+            {
+                ok = false;
+                break;
+            }
+
+            // The end-side records come from the run before the boundary, NOT from the run
+            // the group started at. Reading them off the anchor missed a trimmed end or a
+            // terminal on any run absorbed after the first, because the anchor's own records
+            // had already been checked and found clear. Everything that made a boundary
+            // meaningful has to survive it: a trimmed corner carries an exact crossing point,
+            // a terminal carries a plane it was cut to, and a corner fill is a separate piece
+            // of geometry that belongs between.
+            if (!(next.start == here.end + 1
+                    && here.endPoint == undefined && next.startPoint == undefined
+                    && here.terminalEnd == undefined && next.terminalStart == undefined
+                    && next.fill == undefined && next.cornerKind == undefined))
+            {
+                ok = false;
+                break;
+            }
+
+            const span = (spans[k] == undefined)
+                ? undefined
+                : extendSpan(spans[k], pointsPerProfile[k], next.start, next.end);
+
+            if (span == undefined)
+            {
+                ok = false;
+                break;
+            }
+
+            // The question is not "are the tangents equal" -- two arcs of different radii
+            // meet tangentially and are still two arcs, and fusing them into one spline is
+            // the trade that puts a curvature swing into the result. It is the stronger
+            // one: does the whole accumulated span still describe ONE line or ONE arc.
+            const shape = classifyPoints(span, tolerance,
+                sourceAllowsArc(stations, anchorStart[k], next.end));
+
+            if (shape.kind != "line" && shape.kind != "arc")
+            {
+                ok = false;
+                break;
+            }
+
+            // Same KIND of thing, and for an arc the same circle -- not merely a circle
+            // that the points happen to sit on. Absorbing a neighbour must not change the
+            // radius, or the merge is inventing geometry rather than recognising it.
+            const base = bases[k];
+
+            if (base == undefined || base.kind != shape.kind)
+            {
+                ok = false;
+                break;
+            }
+
+            if (shape.kind == "arc"
+                && abs(shape.radius - base.radius) > ARC_MERGE_RADIUS_REL * base.radius)
+            {
+                ok = false;
+                break;
+            }
+
+            grown = append(grown, span);
         }
 
         merges = append(merges, ok);
@@ -3208,19 +3257,40 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array, stati
         {
             spans = [];
             bases = [];
-            anchorStart = next.start;
+            anchorStart = [];
 
-            for (var points in pointsPerProfile)
+            for (var k = 0; k < size(pointsPerProfile); k += 1)
             {
-                const span = extendSpan([], points, next.start, next.end);
-                spans = append(spans, span);
-                bases = append(bases, span == undefined ? undefined
-                        : classifyPoints(span, tolerance, sourceAllowsArc(stations, next.start, next.end)));
+                const group = startGroup(pointsPerProfile[k], runsPerProfile[k][r + 1], stations, tolerance);
+                spans = append(spans, group.span);
+                bases = append(bases, group.base);
+                anchorStart = append(anchorStart, group.anchorStart);
             }
         }
     }
 
     return merges;
+}
+
+/**
+ * A merge group opened on one run of one profile, or on nothing where the profile has no
+ * run in that cell.
+ */
+function startGroup(points is array, run, stations is array, tolerance is ValueWithUnits) returns map
+{
+    if (run == undefined)
+    {
+        return { "span" : undefined, "base" : undefined, "anchorStart" : undefined };
+    }
+
+    const span = extendSpan([], points, run.start, run.end);
+
+    return {
+            "span" : span,
+            "base" : span == undefined ? undefined
+                : classifyPoints(span, tolerance, sourceAllowsArc(stations, run.start, run.end)),
+            "anchorStart" : run.start
+        };
 }
 
 /**
@@ -3253,6 +3323,10 @@ function extendSpan(kept is array, points is array, from is number, to is number
 
 /**
  * Dissolve the boundaries `merges` marks, keeping each surviving run's outer records.
+ *
+ * Works on an aligned layout as well as a plain run list: a cell the profile does not reach
+ * is `undefined`, and alignedRunMerges never marks a boundary between a run and a hole, so
+ * a merge only ever joins two runs or two holes.
  */
 export function applyRunMerges(runs is array, merges is array) returns array
 {
@@ -3272,11 +3346,14 @@ export function applyRunMerges(runs is array, merges is array) returns array
 
             // The merged run starts where the first did and ends where the second did, so it
             // inherits the first run's start records and the second's end records.
-            current = mergeMaps(current, {
-                        "end" : next.end,
-                        "endPoint" : next.endPoint,
-                        "terminalEnd" : next.terminalEnd
-                    });
+            if (current != undefined && next != undefined)
+            {
+                current = mergeMaps(current, {
+                            "end" : next.end,
+                            "endPoint" : next.endPoint,
+                            "terminalEnd" : next.terminalEnd
+                        });
+            }
         }
         else
         {

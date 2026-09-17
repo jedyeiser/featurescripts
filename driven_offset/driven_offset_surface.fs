@@ -251,6 +251,94 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
 // ============================================================================
 
 /**
+ * Lay every profile's runs over one shared set of cells.
+ *
+ * Runs are grouped across profiles by overlap: two runs that share any station are the same
+ * cell. That is what pairs them for a loft when the profiles do not all reach the same
+ * stretch of the edges -- a profile that stops short has no run in the cells beyond, and
+ * pairing by list position would have shifted every later run by one, or run off the end
+ * of the shorter list. Overlap rather than exact equality because a corner trim shortens a
+ * run in one profile and not another.
+ *
+ * Every profile splits at every profile's breaks (matchRuns), so a run of one profile that
+ * overlaps TWO runs of another is a break the shared context did not see -- a gap or a
+ * vertex in a selection that is not one clean wire. That is reported, naming both offsets
+ * and the coordinate, rather than left to surface as an index out of bounds downstream.
+ *
+ * @param names {array} : one display name per plan, for the report.
+ * @returns {array} : per plan, an array over the cells of that plan's run or undefined.
+ */
+function alignRuns(plans is array, names is array, coords is map) returns array
+{
+    var items = [];
+    for (var k = 0; k < size(plans); k += 1)
+    {
+        for (var run in plans[k].runs)
+        {
+            items = append(items, { "profile" : k, "run" : run });
+        }
+    }
+
+    items = sort(items, function(a, b) { return a.run.start - b.run.start; });
+
+    // Each cell: the stations it covers across every member, and one run per profile.
+    var cellSpans = [];
+    var members = [];
+
+    for (var item in items)
+    {
+        const last = size(cellSpans) - 1;
+
+        if (last >= 0 && item.run.start <= cellSpans[last].end)
+        {
+            if (members[last][item.profile] != undefined)
+            {
+                const other = members[last][item.profile];
+                var against = "another offset";
+                for (var j = 0; j < size(plans); j += 1)
+                {
+                    if (j != item.profile && members[last][j] != undefined)
+                    {
+                        against = "'" ~ names[j] ~ "'";
+                        break;
+                    }
+                }
+
+                throw regenError("'" ~ names[item.profile] ~ "' breaks at "
+                    ~ toString(roundToPrecision(coords.values[item.run.start] / millimeter, 3))
+                    ~ " mm along the edges, inside a run of " ~ against ~ " (stations "
+                    ~ toString(other.start) ~ " to " ~ toString(item.run.end) ~ "). Every offset has to break where the others do; "
+                    ~ "check that '" ~ names[item.profile] ~ "' is one clean wire with no vertex or gap there.",
+                    ["offsets"]);
+            }
+
+            cellSpans[last].end = max(cellSpans[last].end, item.run.end);
+            members[last][item.profile] = item.run;
+        }
+        else
+        {
+            cellSpans = append(cellSpans, { "start" : item.run.start, "end" : item.run.end });
+            var slots = makeArray(size(plans), undefined);
+            slots[item.profile] = item.run;
+            members = append(members, slots);
+        }
+    }
+
+    var cells = [];
+    for (var k = 0; k < size(plans); k += 1)
+    {
+        var row = [];
+        for (var c = 0; c < size(members); c += 1)
+        {
+            row = append(row, members[c][k]);
+        }
+        cells = append(cells, row);
+    }
+
+    return cells;
+}
+
+/**
  * Run one driven offset per profile over one shared context, and keep what each produced.
  *
  * Every offset is handed the feature's own definition with only the profile and the name
@@ -302,26 +390,61 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
                         }), shared, i));
     }
 
-    if (definition.joinTangentRuns)
+    // Lay every profile's runs over one set of cells, so that cell r is the same stretch of
+    // the edges in all of them and a profile that stops short simply has no run there.
+    var names = [];
+    for (var i = 0; i < size(entries); i += 1)
     {
-        // One walk over the shared run structure, testing every profile's points at each
-        // step, so the merges come out identical for all of them by construction rather than
-        // by intersecting decisions taken separately.
+        names = append(names, entries[i].offsetName == "" ? "offset " ~ toString(i + 1) : entries[i].offsetName);
+    }
+
+    // Only the loft between profiles pairs sections, so only it needs the alignment; the
+    // other two modes rule from each offset alone, and their profiles are free to break
+    // where they like.
+    const paired = definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT;
+
+    var cells = [];
+    if (paired)
+    {
+        cells = alignRuns(plans, names, shared.coords);
+    }
+    else
+    {
+        for (var plan in plans)
+        {
+            cells = append(cells, plan.runs);
+        }
+    }
+
+    if (definition.joinTangentRuns && !paired)
+    {
+        for (var k = 0; k < size(cells); k += 1)
+        {
+            cells[k] = applyRunMerges(cells[k], tangentRunMerges([plans[k].points], cells[k],
+                    shared.stations, definition.approximationTolerance));
+        }
+    }
+
+    if (definition.joinTangentRuns && paired)
+    {
+        // One walk over the shared cells, testing every profile's points at each step, so
+        // the merges come out identical for all of them by construction rather than by
+        // intersecting decisions taken separately.
         var pointsPerProfile = [];
         for (var plan in plans)
         {
             pointsPerProfile = append(pointsPerProfile, plan.points);
         }
 
-        const common = tangentRunMerges(pointsPerProfile, plans[0].runs, shared.stations,
+        const common = alignedRunMerges(pointsPerProfile, cells, shared.stations,
             definition.approximationTolerance);
 
-        var merged = [];
-        for (var plan in plans)
+        var mergedCells = [];
+        for (var k = 0; k < size(cells); k += 1)
         {
-            merged = append(merged, withMergedRuns(plan, common));
+            mergedCells = append(mergedCells, applyRunMerges(cells[k], common));
         }
-        plans = merged;
+        cells = mergedCells;
 
         if (definition.debugPrintSurface)
         {
@@ -334,6 +457,15 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
                 ~ toString(size(common)) ~ " run boundary(ies) dissolved in every profile");
         }
     }
+
+    // Each profile's own runs are the cells it reaches; the aligned layout rides along for
+    // the loft to pair sections over.
+    var laid = [];
+    for (var k = 0; k < size(plans); k += 1)
+    {
+        laid = append(laid, mergeMaps(plans[k], { "runs" : nonEmpty(cells[k]), "cells" : cells[k] }));
+    }
+    plans = laid;
 
     var driven = [];
 
@@ -506,15 +638,17 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
 {
     var plans = [];
 
-    for (var r = 0; r < size(driven.runs); r += 1)
+    // Over the aligned cells, not this profile's own run list, so index r is the same
+    // stretch of the edges in every section. A cell this profile does not reach is a hole.
+    for (var r = 0; r < size(driven.cells); r += 1)
     {
-        const run = driven.runs[r];
-        const from = max(run.start, span.start);
-        const to = min(run.end, span.end);
-
+        const run = driven.cells[r];
         var plan = undefined;
 
-        if (to - from >= 1)
+        const from = (run == undefined) ? 0 : max(run.start, span.start);
+        const to = (run == undefined) ? -1 : min(run.end, span.end);
+
+        if (run != undefined && to - from >= 1)
         {
             var points = [];
             for (var i = from; i <= to; i += 1)

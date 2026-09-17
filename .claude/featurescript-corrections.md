@@ -1104,13 +1104,53 @@ B-spline needs `knots == CPs + degree + 1` and `CPs >= degree + 1`.
 
 ---
 
+## 22. opLoft refuses some pairs of compatible B-splines; write the ruled surface down instead
+
+**Error**: `@opLoft: LOFT_FAILED` on one patch of a multi-profile loft while the neighbouring
+patches, measuring identically, built. Manual loft of the same two edges in the Part Studio
+failed the same way.
+
+**What it was not**: the curves. The pair was two 6-CP degree-3 B-splines from one coupled
+`approximateSpline` fit -- same knots bit for bit, 5.8 mm apart the whole way, tangents in
+agreement, no cusp, no reversal, chords co-directed, endpoints paired. Rebuilt from their own
+`evCurveDefinition` and lofted again in the same context: refused. Reproduced outside the
+feature from the printed definition (10 decimal places): refused. So not context, not the
+edges' state, not the geometry in any sense we can measure.
+
+**What it was**: the exact knot values. Same pair with knots rounded to 1e-5: lofts. Knots at
+exact thirds: lofts. Knots shifted by 1e-9: still refused. Either curve's control points
+rounded to 1 um: lofts (in one configuration also at 100 nm; in another 10 nm was not
+enough). A kernel-internal path with no characterisation available from outside.
+
+**Fix**: do not loft what can be written down. Two B-spline sections sharing degree and knots
+define the ruled surface between them exactly -- `opCreateBSplineSurface` with `uDegree` and
+`uKnots` from the curves, `vDegree` 1, `vKnots` `[0, 0, 1, 1]`, and the control net the two
+control polygons side by side. Verified: 1 face, the source curve lies on it to 0 mm, area
+equals length x separation, and `opBoolean` UNION joins it with the lofted line/arc patches
+into one sheet body. `ruledPatch` / `sharedParameterization` in `driven_offset_surface.fs`;
+`opLoft` remains for every pair that does not qualify (lines, arcs, separately fitted
+sections), where it has never refused anything.
+
+**How it was found**, since the route matters more than the answer: print the refused pair in
+full (`[refused]` dump, gated on the refusal itself, not on a toggle); rebuild it outside the
+feature via the FeatureScript eval API and confirm the refusal reproduces; then perturb ONE
+quantity at a time -- knots, one profile, one axis, end vs interior CPs -- until the pass/fail
+boundary is found. Rounding to the printed precision silently perturbs the knots too, which
+is why the first out-of-context rebuild passed and misled for a while.
+
+**Lesson Learned**: when an op refuses geometry that measures correct, stop measuring and
+bisect. And when the surface is determined by its boundary curves' control nets, build it
+from them -- a loft is a fit, and a fit can refuse.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 21
-- **Last Updated**: 2026-09-16
+- **Total Corrections**: 22
+- **Last Updated**: 2026-09-17
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: Fit corresponding curves under the same constraints (BAD_GEOMETRY from a degenerate unconstrained fit)
+- **Latest Additions**: opLoft refuses some compatible B-spline pairs on exact knot values; ruled patches built with opCreateBSplineSurface
 
 ---
 

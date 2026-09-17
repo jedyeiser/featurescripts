@@ -8,8 +8,6 @@ notices (println, stack traces) and per-feature status.
 
 from __future__ import annotations
 
-import os
-
 import json
 from pathlib import Path
 from typing import Any
@@ -89,14 +87,6 @@ def check_project(
 
     report = _empty_report()
     with OnshapeBrowser(headless=headless) as b:
-        if ps is not None and os.environ.get("FS_SYNC_CONFIGURATION"):
-            # The Monitor regenerates the Part Studio in whatever configuration the
-            # session last had it in, so visit it first with the requested one.
-            b.open_element(proj.document_id, ws_id, ps["id"])
-            # A Part Studio has no code editor to wait on; the tab bar means the
-            # document is up, and the pause lets the configuration regen settle.
-            b.page.wait_for_selector(".os-tab-bar-tab", timeout=60000)
-            b.page.wait_for_timeout(10000)
         b.open_element(proj.document_id, ws_id, open_target["id"])
         b.wait_for_editor()
         report["notices"] = b.read_notices(elements=wanted, settle_ms=settle_ms)
