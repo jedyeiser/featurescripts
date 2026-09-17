@@ -498,8 +498,10 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits,
 }
 
 /**
- * @param allowArc, allowLine {boolean} : the sourceShapeGates. Two points are a line whatever
- *      the gates say: there is nothing else they can be.
+ * @param allowArc, allowLine {boolean} : the sourceShapeGates. Where a line is allowed two
+ *      points are one; where it is not, two points and their end tangents are still enough
+ *      for the fitter to put a cubic through, and on a curved source that cubic carries the
+ *      curvature a straight segment would drop.
  */
 export function classifyPoints(points is array, tolerance is ValueWithUnits,
     allowArc is boolean, allowLine is boolean) returns map
@@ -508,7 +510,7 @@ export function classifyPoints(points is array, tolerance is ValueWithUnits,
     const first = points[0];
     const last = points[count - 1];
 
-    if (count < 3)
+    if (count < 3 && (allowLine || count < 2))
     {
         return { "kind" : "line", "start" : first, "end" : last };
     }
