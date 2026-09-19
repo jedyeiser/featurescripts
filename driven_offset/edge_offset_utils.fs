@@ -2978,19 +2978,43 @@ export function approximateFamily(context is Context, members is array, approxim
                 "maxControlPoints" : approximation.approximationMaxCPs
             });
 
-    // The fitter reports running out of control points as an INFO and hands back an
-    // interpolating spline through every point. That is a curve of the wrong shape with a
-    // clean bill of health; say where.
+    // Two ways the fitter can hand back a curve that is not what was asked for, neither of
+    // them an error from its side. Out of control points it reports an INFO and returns an
+    // interpolating spline through every point; AT the cap it returns its best curve of
+    // that size and says nothing, "tolerance will not be satisfied" being in the doc only.
+    // The parameters pin every point to a parameter, so the second is measurable exactly:
+    // the curve at each parameter against the point it was meant to pass.
     for (var k = 0; k < size(curves); k += 1)
     {
-        if (size(curves[k].controlPoints) > approximation.approximationMaxCPs)
+        const first = members[k].points[0];
+        const count = size(curves[k].controlPoints);
+
+        if (count > approximation.approximationMaxCPs)
         {
-            const first = members[k].points[0];
             println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
                 ~ fmtVec(first, 2, 0) ~ " mm could not be fitted to "
                 ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm within "
                 ~ toString(approximation.approximationMaxCPs) ~ " control points; an interpolating spline of "
-                ~ toString(size(curves[k].controlPoints)) ~ " was used instead.");
+                ~ toString(count) ~ " was used instead.");
+            continue;
+        }
+
+        if (count >= approximation.approximationMaxCPs)
+        {
+            const evaluated = evaluateSpline({ "spline" : curves[k], "parameters" : parameters, "nDerivatives" : 0 })[0];
+            var worst = 0 * meter;
+            for (var i = 0; i < size(evaluated); i += 1)
+            {
+                worst = max(worst, norm(evaluated[i] - members[k].points[i]));
+            }
+
+            if (worst > approximation.approximationTolerance)
+            {
+                println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
+                    ~ fmtVec(first, 2, 0) ~ " mm reached the cap of " ~ toString(approximation.approximationMaxCPs)
+                    ~ " control points " ~ fmtMM(worst, 4, 0) ~ " mm from its points, against a tolerance of "
+                    ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm. Raise the maximum control points.");
+            }
         }
     }
 
