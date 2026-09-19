@@ -119,12 +119,14 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         // Directly under the measure and reference controls, as in the plain offset.
         offsetAlignmentPredicate(definition);
 
-        // Declared here rather than through offsetBreakPredicate for the sake of the
-        // default. The plain offset mirrors its input edge for edge; a surface built that
-        // way carries a face per source piece, thirty of them off an intersection curve,
-        // creased along joints where nothing turns. Here a face boundary should mean a
-        // corner or a change in the offset, so that is the default.
-        annotation { "Name" : "Break output at", "Default" : RunBreakMode.DISCONTINUITIES, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the offsets, the sections and therefore the faces are split. Every source edge: one face per source edge, joint for joint. Corners and offset breaks: only where the source turns through a real corner or a profile steps or kinks; tangent-continuous source edges run together into one face." }
+        // Declared here rather than through offsetBreakPredicate so the description can
+        // talk about faces. The default stays "every source edge" on purpose, even though
+        // a surface usually wants the other: when a feature type gains a parameter,
+        // Onshape writes the ANNOTATION default into every saved feature -- the defineFeature
+        // defaults map does not shield them -- and the first push with the other default
+        // here silently re-ran SW_Rout_Surface with 3 runs instead of 7, which broke the
+        // intersection curve selected off its faces. Choose it per feature.
+        annotation { "Name" : "Break output at", "Default" : RunBreakMode.SOURCE_EDGES, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the offsets, the sections and therefore the faces are split. Every source edge: one face per source edge, joint for joint. Corners and offset breaks: only where the source turns through a real corner or a profile steps or kinks; tangent-continuous source edges run together into one face. A loft between profiles usually wants the latter." }
         definition.runBreakMode is RunBreakMode;
 
         // One array whatever the mode: the seed edges and the reference are shared, and a
