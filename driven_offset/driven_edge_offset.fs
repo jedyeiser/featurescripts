@@ -777,13 +777,6 @@ function closeRun(runs is array, stations is array, start, end is number) return
 // ============================================================================
 
 /**
- * How close, as a fraction of the local spacing, a regular station may sit to an inserted
- * crossing before it is dropped. Half keeps every gap between half and one and a half
- * spacings.
- */
-const CROSSING_CLEARANCE = 0.5;
-
-/**
  * How close a profile break may lie to a source vertex before it is taken to BE that
  * vertex.
  *

@@ -692,7 +692,7 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
             // the wire itself reaches -- so the patches either side of every corner missed
             // each other and the union left them as separate bodies.
             const points = sectionPoints(definition, driven, run, from, to, reach);
-            const distinct = withoutRepeats(points);
+            const distinct = withoutRepeats(points, fitRepeatTolerance(points));
 
             // The same guard emitRuns applies, for the same reason: a run collapses to
             // nothing when a profile break lands on a source edge boundary, and a curve
@@ -1093,26 +1093,40 @@ function displacedPoint(definition is map, driven is map, index is number, reach
 function sectionPoints(definition is map, driven is map, run is map, from is number, to is number,
     reach is ValueWithUnits) returns array
 {
+    const entries = runPointEntries(driven.points, run, from, to);
     var points = [];
 
-    if (from == run.start && run.startPoint != undefined)
+    for (var k = 0; k < size(entries); k += 1)
     {
-        points = append(points, run.startPoint + sectionStep(definition, driven, from, reach));
-    }
+        const entry = entries[k];
 
-    for (var i = from; i <= to; i += 1)
-    {
-        const at = displacedPoint(definition, driven, i, reach);
-
-        if (at != undefined)
+        if (entry.index != undefined)
         {
-            points = append(points, at);
+            points = append(points, displacedPoint(definition, driven, entry.index, reach));
+            continue;
         }
-    }
 
-    if (to == run.end && run.endPoint != undefined)
-    {
-        points = append(points, run.endPoint + sectionStep(definition, driven, to, reach));
+        // An exact end takes the step of the nearest station entry inward.
+        var neighbour = undefined;
+        for (var j = 1; j < size(entries); j += 1)
+        {
+            const before = k - j;
+            const after = k + j;
+            if (after < size(entries) && entries[after].index != undefined)
+            {
+                neighbour = entries[after].index;
+                break;
+            }
+            if (before >= 0 && entries[before].index != undefined)
+            {
+                neighbour = entries[before].index;
+                break;
+            }
+        }
+
+        points = append(points, (neighbour == undefined)
+                ? entry.point
+                : entry.point + sectionStep(definition, driven, neighbour, reach));
     }
 
     return points;
@@ -1521,9 +1535,11 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             {
                 // One refusal costs one face, not the surface. The hole marks exactly
                 // where the kernel objected, and the refusal is reported, not swallowed.
+                // Its own sub-id: the exact constructions may already have used sub-ids of
+                // the patch id, and qCreatedBy(patchId) below reaches this one too.
                 try silent
                 {
-                    opLoft(context, patchId, {
+                    opLoft(context, patchId + "loft", {
                                 "profileSubqueries" : patch,
                                 "bodyType" : ToolBodyType.SURFACE
                             });
@@ -1811,17 +1827,27 @@ function unifiedPatch(context is Context, id is Id, chains is array) returns boo
             grid = append(grid, [piecesA[k].controlPoints[i], piecesB[k].controlPoints[i]]);
         }
 
-        opCreateBSplineSurface(context, id + ("seg" ~ k), {
-                    "bSplineSurface" : bSplineSurface({
-                            "uDegree" : degree,
-                            "vDegree" : 1,
-                            "isUPeriodic" : false,
-                            "isVPeriodic" : false,
-                            "controlPoints" : controlPointMatrix(grid),
-                            "uKnots" : piecesA[k].knots,
-                            "vKnots" : knotArray([0, 0, 1, 1])
-                        })
+        const built = createdSurface(context, id + ("seg" ~ k), {
+                    "uDegree" : degree,
+                    "vDegree" : 1,
+                    "isUPeriodic" : false,
+                    "isVPeriodic" : false,
+                    "controlPoints" : controlPointMatrix(grid),
+                    "uKnots" : piecesA[k].knots,
+                    "vKnots" : knotArray([0, 0, 1, 1])
                 });
+
+        if (!built)
+        {
+            // The segments already made under this id would sit beside the loft that
+            // replaces them; the patch is all or nothing.
+            const partial = qCreatedBy(id, EntityType.BODY);
+            if (!isQueryEmpty(context, partial))
+            {
+                opDeleteBodies(context, id + "partial", { "entities" : partial });
+            }
+            return false;
+        }
     }
 
     return true;
@@ -2034,19 +2060,47 @@ function ruledPatch(context is Context, id is Id, curves is array) returns boole
         grid = append(grid, [a.controlPoints[i], b.controlPoints[i]]);
     }
 
-    opCreateBSplineSurface(context, id, {
-                "bSplineSurface" : bSplineSurface({
-                        "uDegree" : a.degree,
-                        "vDegree" : 1,
-                        "isUPeriodic" : false,
-                        "isVPeriodic" : false,
-                        "controlPoints" : controlPointMatrix(grid),
-                        "uKnots" : a.knots,
-                        "vKnots" : knotArray([0, 0, 1, 1])
-                    })
+    return createdSurface(context, id + "ruled", {
+                "uDegree" : a.degree,
+                "vDegree" : 1,
+                "isUPeriodic" : false,
+                "isVPeriodic" : false,
+                "controlPoints" : controlPointMatrix(grid),
+                "uKnots" : a.knots,
+                "vKnots" : knotArray([0, 0, 1, 1])
             });
+}
 
-    return true;
+/**
+ * opCreateBSplineSurface, as a construction that can decline.
+ *
+ * The kernel refuses a net it cannot make (CANNOT_MAKE_BSPLINESURFACE) by throwing, and an
+ * exact construction that throws takes the whole feature down where the loft it replaced
+ * would have left a hole and a warning. So the refusal is caught here and reported as a
+ * false, and the caller falls through to opLoft on the same sections. Whatever part of a
+ * multi-segment patch had already been built under this id is removed first, so a partial
+ * patch never survives alongside the loft's.
+ */
+function createdSurface(context is Context, id is Id, surface is map) returns boolean
+{
+    var built = false;
+
+    try silent
+    {
+        opCreateBSplineSurface(context, id, { "bSplineSurface" : bSplineSurface(surface) });
+        built = true;
+    }
+    catch (error)
+    {
+        built = false;
+    }
+
+    if (!built)
+    {
+        println("NOTE: the kernel refused an exact patch; falling back to a loft for it.");
+    }
+
+    return built;
 }
 
 /**

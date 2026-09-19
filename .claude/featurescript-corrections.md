@@ -1191,13 +1191,38 @@ fit with the crease smeared into a ripple.
 
 ---
 
+## 25. A new parameter's annotation "Default" is written into every SAVED feature
+
+**Symptom**: pushing a Feature Studio that added `runBreakMode` with `"Default" :
+RunBreakMode.DISCONTINUITIES` in the surface feature silently re-ran the saved
+`SW_Rout_Surface` with the new behaviour (3 runs instead of 7, 8 faces instead of 16), and
+the `intersectionCurve` selected off its faces failed with `CANNOT_RESOLVE_ENTITIES`, which
+took the feature seeded on that wire down with it. The `defineFeature` defaults map said
+`SOURCE_EDGES`.
+
+**Cause**: when a feature type gains a parameter, Onshape adds it to every existing feature
+instance with the ANNOTATION default; the defaults map is only consulted while the parameter
+is absent from the definition, which after that migration it never is. Verified by reading
+the features back through the REST API: every saved instance carried
+`runBreakMode: DISCONTINUITIES` explicitly.
+
+**Fix**: a new parameter's annotation default must be the value that reproduces the OLD
+behaviour, whatever a new instance would ideally want. Repaired the two features through
+`POST .../features/featureid/{id}` with the value set back.
+
+**Lesson Learned**: "the defaults map protects saved features" is only half true -- it keeps
+the precondition from failing, it does not decide the value. Treat the annotation default as
+a migration for every feature already in every document.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 24
-- **Last Updated**: 2026-09-17
+- **Total Corrections**: 25
+- **Last Updated**: 2026-09-19
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: approximateSpline ignores end-derivative magnitude (crossing clearance); opCreateBSplineSurface refuses creases (split at full-multiplicity knots)
+- **Latest Additions**: annotation Default migrates into saved features (defaults map does not decide the value)
 
 ---
 

@@ -180,6 +180,29 @@ export const DEBUG_AXIS_LENGTH = 5 * millimeter;
 export const DEBUG_MAX_MARKERS = 60;
 
 /**
+ * How close, as a fraction of the local spacing, a regular station may sit to an inserted
+ * crossing or to a run's exact end point before it is dropped. Half keeps every gap between
+ * half and one and a half spacings.
+ *
+ * The fitter is why. approximateSpline sizes its end derivative from the end segment of the
+ * point list unless told otherwise, and even with chord-length parameters a segment a few
+ * microns long carries a direction that is pure noise: the wall's trimmed corners put the
+ * exact crossing 6 to 20 um from the station beside it, and the fit's end tangent disagreed
+ * with that chord by 45 to 135 degrees, hooked at 10^5 /m to reconcile the two, and ran out
+ * of control points doing it.
+ */
+export const CROSSING_CLEARANCE = 0.5;
+
+/**
+ * Smallest gap between consecutive fit parameters, as a fraction of the run's chord.
+ *
+ * approximateSpline refuses parameters closer than 1e-6; two points 0.1 um apart on a
+ * 900 mm run are 1e-7 of it. Repeats are culled at twice the limit so the fit never sees
+ * a step it will reject.
+ */
+export const PARAMETER_SEPARATION = 2e-6;
+
+/**
  * Largest tangent break, in radians, that still counts as a tangent-continuous
  * junction between two source edges. Below it the two edges are welded: both sides
  * of the shared vertex take one averaged tangent, so the offset lands on one point
@@ -2799,17 +2822,20 @@ export function emitSplineCurve(context is Context, id is Id, points is array, s
 export function approximateFamily(context is Context, members is array, approximation is map) returns array
 {
     var targets = [];
+    var parameters = [];
 
     for (var member in members)
     {
-        // approximateSpline parameterizes the fit over [0, 1], so the natural derivative
-        // magnitude at an endpoint is the run's total chord, not 1. Handing it a unit
-        // vector asks for near-zero velocity there, which bulges the curve near the
+        // The fit is parameterized over [0, 1] by chord length -- see below -- so the
+        // derivative magnitude at an endpoint is the run's total chord, not 1. Handing it a
+        // unit vector asks for near-zero velocity there, which bulges the curve near the
         // junction -- measured at ~0.45 mm in curveMapping/wrapCurve.fs:568.
+        var chords = [0 * meter];
         var chord = 0 * meter;
         for (var i = 0; i < size(member.points) - 1; i += 1)
         {
             chord += norm(member.points[i + 1] - member.points[i]);
+            chords = append(chords, chord);
         }
 
         var target = { "positions" : member.points };
@@ -2823,15 +2849,59 @@ export function approximateFamily(context is Context, members is array, approxim
         }
 
         targets = append(targets, approximationTarget(target));
+
+        // One parameter list serves the whole family (std: all targets share it), so it is
+        // the members' chord fractions averaged. Members of one family are the same
+        // stations on profiles a few millimetres apart; their fractions differ in the
+        // third decimal.
+        for (var i = 0; i < size(chords); i += 1)
+        {
+            const fraction = (chord > 0 * meter) ? chords[i] / chord : i / max(1, size(chords) - 1);
+            if (size(parameters) <= i)
+            {
+                parameters = append(parameters, fraction / size(members));
+            }
+            else
+            {
+                parameters[i] += fraction / size(members);
+            }
+        }
     }
 
-    return approximateSpline(context, {
+    // Chord-length parameters, always. Without them approximateSpline discards the
+    // magnitude of the end derivatives and sizes them from the first and last segments of
+    // the point list (std doc; correction 23), so any short end segment -- a crossing near a
+    // station, a dense edge merged into a sparse run, an exact corner point beside its
+    // station -- hooks the curve and eats the control-point budget. Measured on 40 points of
+    // a 200 mm arc with a dense start: 15 CPs (the cap) and 0.6 /m at the end without, 8 CPs
+    // and 4.94 /m (true 5) with. The parameters have to be strictly increasing by 1e-6,
+    // which is what PARAMETER_SEPARATION guarantees upstream.
+    const curves = approximateSpline(context, {
                 "degree" : approximation.approximationDegree,
                 "tolerance" : approximation.approximationTolerance,
                 "isPeriodic" : false,
                 "targets" : targets,
+                "parameters" : parameters,
                 "maxControlPoints" : approximation.approximationMaxCPs
             });
+
+    // The fitter reports running out of control points as an INFO and hands back an
+    // interpolating spline through every point. That is a curve of the wrong shape with a
+    // clean bill of health; say where.
+    for (var k = 0; k < size(curves); k += 1)
+    {
+        if (size(curves[k].controlPoints) > approximation.approximationMaxCPs)
+        {
+            const first = members[k].points[0];
+            println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
+                ~ fmtVec(first, 2, 0) ~ " mm could not be fitted to "
+                ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm within "
+                ~ toString(approximation.approximationMaxCPs) ~ " control points; an interpolating spline of "
+                ~ toString(size(curves[k].controlPoints)) ~ " was used instead.");
+        }
+    }
+
+    return curves;
 }
 
 /**
@@ -3433,47 +3503,134 @@ export function applyRunMerges(runs is array, merges is array) returns array
 }
 
 /**
- * The points a run is emitted through: its stations from `from` to `to`, with the exact
- * startPoint / endPoint that a corner trim, a miter or a terminal plane put on the run,
- * wherever the range reaches the run's own end. That exact point is what makes both sides
- * of a trimmed corner share an endpoint, so anything that rebuilds a run from its stations
- * -- a section for a loft as much as the offset wire itself -- has to include it, or the
- * two rebuilds stop short of each other by up to one station spacing.
+ * The points a run is emitted through, each with the station it came from.
  *
- * Repeats are removed: a welded junction inside the run contributes its shared vertex once.
+ * The stations from `from` to `to`, with the exact startPoint / endPoint that a corner trim,
+ * a miter or a terminal plane put on the run wherever the range reaches the run's own end.
+ * That exact point is what makes both sides of a trimmed corner share an endpoint, so
+ * anything that rebuilds a run from its stations -- a section for a loft as much as the
+ * offset wire itself -- has to include it, or the two rebuilds stop short of each other by
+ * up to one station spacing.
+ *
+ * Stations within CROSSING_CLEARANCE of the local spacing of an exact end are dropped, the
+ * same rule insertCrossings applies beside a crossing and for the same reason: a trim lands
+ * its crossing wherever two segments happen to pass, which can be microns from the next
+ * station, and the fitter reads that micron chord as the direction the curve leaves in.
+ * Repeats closer than PARAMETER_SEPARATION of the chord go too, so a welded junction inside
+ * the run contributes its vertex once and the fit's parameters stay strictly increasing.
+ *
+ * @returns {array} : `{ "point", "index" }` per entry, `index` undefined for an exact end.
  */
-export function runPointList(points is array, run is map, from is number, to is number) returns array
+export function runPointEntries(points is array, run is map, from is number, to is number) returns array
 {
-    var list = [];
-
-    if (from == run.start && run.startPoint != undefined)
-    {
-        list = append(list, run.startPoint);
-    }
-
+    var stations = [];
     for (var i = from; i <= to; i += 1)
     {
         if (points[i] != undefined)
         {
-            list = append(list, points[i]);
+            stations = append(stations, { "point" : points[i], "index" : i });
         }
     }
 
-    if (to == run.end && run.endPoint != undefined)
+    const leads = (from == run.start && run.startPoint != undefined);
+    const trails = (to == run.end && run.endPoint != undefined);
+
+    if (leads)
     {
-        list = append(list, run.endPoint);
+        stations = clearedOfExact(stations, run.startPoint, true);
+        stations = concatenateArrays([[{ "point" : run.startPoint, "index" : undefined }], stations]);
     }
 
-    return withoutRepeats(list);
+    if (trails)
+    {
+        stations = clearedOfExact(stations, run.endPoint, false);
+        stations = append(stations, { "point" : run.endPoint, "index" : undefined });
+    }
+
+    // Repeats, relative to the run's own length.
+    var chord = 0 * meter;
+    for (var k = 1; k < size(stations); k += 1)
+    {
+        chord += norm(stations[k].point - stations[k - 1].point);
+    }
+    const tolerance = max(TOLERANCE.zeroLength * meter, PARAMETER_SEPARATION * chord);
+
+    var kept = [];
+    for (var entry in stations)
+    {
+        if (size(kept) > 0 && norm(entry.point - kept[size(kept) - 1].point) < tolerance)
+        {
+            // Of two coincident entries the exact end is the one to keep: it is the point
+            // the neighbouring run also ends on.
+            if (entry.index == undefined)
+            {
+                kept[size(kept) - 1] = entry;
+            }
+            continue;
+        }
+
+        kept = append(kept, entry);
+    }
+
+    return kept;
+}
+
+/**
+ * The station entries with those crowding an exact end removed.
+ *
+ * The local spacing is read off the next pair of stations inward, so a dense stretch keeps
+ * its stations and a sparse one keeps its clearance. At least two stations always remain.
+ */
+function clearedOfExact(stations is array, exact is Vector, atStart is boolean) returns array
+{
+    var list = stations;
+
+    while (size(list) > 2)
+    {
+        const last = size(list) - 1;
+        const nearest = atStart ? list[0].point : list[last].point;
+        const next = atStart ? list[1].point : list[last - 1].point;
+        const spacing = norm(next - nearest);
+
+        if (norm(nearest - exact) >= CROSSING_CLEARANCE * spacing)
+        {
+            break;
+        }
+
+        list = atStart ? subArray(list, 1, size(list)) : subArray(list, 0, last);
+    }
+
+    return list;
+}
+
+/**
+ * The points alone. See runPointEntries.
+ */
+export function runPointList(points is array, run is map, from is number, to is number) returns array
+{
+    var list = [];
+    for (var entry in runPointEntries(points, run, from, to))
+    {
+        list = append(list, entry.point);
+    }
+    return list;
 }
 
 export function withoutRepeats(points is array) returns array
+{
+    return withoutRepeats(points, TOLERANCE.zeroLength * meter);
+}
+
+/**
+ * Consecutive points closer than `tolerance` collapsed to the first of them.
+ */
+export function withoutRepeats(points is array, tolerance is ValueWithUnits) returns array
 {
     var kept = [];
 
     for (var point in points)
     {
-        if (size(kept) > 0 && norm(point - kept[size(kept) - 1]) < TOLERANCE.zeroLength * meter)
+        if (size(kept) > 0 && norm(point - kept[size(kept) - 1]) < tolerance)
         {
             continue;
         }
@@ -3482,6 +3639,20 @@ export function withoutRepeats(points is array) returns array
     }
 
     return kept;
+}
+
+/**
+ * The repeat tolerance a point list needs before it is handed to the fitter: the larger of
+ * the kernel's zero length and PARAMETER_SEPARATION of the list's own chord.
+ */
+export function fitRepeatTolerance(points is array) returns ValueWithUnits
+{
+    var chord = 0 * meter;
+    for (var k = 1; k < size(points); k += 1)
+    {
+        chord += norm(points[k] - points[k - 1]);
+    }
+    return max(TOLERANCE.zeroLength * meter, PARAMETER_SEPARATION * chord);
 }
 
 export const DrivenOffsetMaxCPBounds = { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
