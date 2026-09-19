@@ -1375,6 +1375,11 @@ function weldJunctions(raw is array) returns array
                     "welded" : weld
                 });
 
+        // The left half is marked too, so that a station can be recognised as one half
+        // of a source vertex from either side: neither half may be dropped for a crossing
+        // inserted beside it, or the vertex loses the record the corner treatment reads.
+        welded[i] = mergeMaps(left, { "junctionEnd" : true });
+
         if (weld)
         {
             const shared = normalize(sum);
@@ -1391,7 +1396,7 @@ function weldJunctions(raw is array) returns array
             // the one that throws.
             const sharedCurvature = 0.5 * (curvatureVector(left) + curvatureVector(right));
 
-            welded[i] = withCurvatureVector(mergeMaps(left, { "tangent" : shared }), sharedCurvature);
+            welded[i] = withCurvatureVector(mergeMaps(welded[i], { "tangent" : shared }), sharedCurvature);
             welded[i + 1] = withCurvatureVector(
                     mergeMaps(welded[i + 1], { "tangent" : shared, "origin" : left.origin }),
                     sharedCurvature);

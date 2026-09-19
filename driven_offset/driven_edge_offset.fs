@@ -784,6 +784,38 @@ function closeRun(runs is array, stations is array, start, end is number) return
 const CROSSING_CLEARANCE = 0.5;
 
 /**
+ * How close a profile break may lie to a source vertex before it is taken to BE that
+ * vertex.
+ *
+ * A break is stated as a coordinate along the reference and a source vertex sits wherever
+ * an upstream feature put it; when the two were meant as the same station they still land
+ * a fraction of a millimetre apart -- 332.5 mm on the profile against a vertex at 332.4,
+ * arc length against world X. Kept separate, the fraction becomes an edge of its own: a
+ * 0.1 mm run between the vertex and the crossing, then a 0.1 mm face, then a 0.1 mm edge
+ * on the wire the next feature intersects out of that face. Within this distance the break
+ * is moved onto the vertex instead: the vertex's two stations become the crossing pair and
+ * read the profile at the break's own coordinate. Absolute rather than a fraction of the
+ * spacing, because a real short edge a few millimetres long is a real edge.
+ */
+const CROSSING_SNAP = 0.5 * millimeter;
+
+/**
+ * Whether a station is either half of a source vertex.
+ */
+function isJunctionHalf(station is map) returns boolean
+{
+    return station.junctionBreak != undefined || station.junctionEnd == true;
+}
+
+/**
+ * The crossing labels for one half of a vertex the break has been snapped onto.
+ */
+function snappedLabels(coord is ValueWithUnits, side is string, head is boolean) returns map
+{
+    return { "crossing" : side, "crossingAt" : coord, "crossingHead" : head, "snapped" : true };
+}
+
+/**
  * Insert a pair of stations at every coordinate where the offset actually breaks.
  *
  * Crossing into a new profile edge is not by itself a discontinuity -- profile
@@ -807,9 +839,14 @@ function insertCrossings(context is Context, chain is map, stations is array, co
     var values = [];
     var scales = [];
 
+    // A break snapped onto the vertex ahead: applied to station i as it is appended, and
+    // to station i + 1 on the next pass. { "coord", "sides" }.
+    var snapAhead = undefined;
+
     for (var i = 0; i < size(stations); i += 1)
     {
         var keepThis = true;
+        var labels = {};
 
         if (i > 0)
         {
@@ -844,6 +881,50 @@ function insertCrossings(context is Context, chain is map, stations is array, co
 
             for (var coord in crossed)
             {
+                // The pair in the order the chain meets it: first the side it comes from,
+                // then the side it goes to, which is where the next run starts. "left" is
+                // always the profile edge below the coordinate; the coordinate travels with
+                // the station so a profile can later tell its own break from one inserted
+                // for another profile.
+                const sides = ascending ? ["left", "right"] : ["right", "left"];
+                const last = size(outStations) - 1;
+
+                // A break within CROSSING_SNAP of a source vertex is that vertex. The
+                // vertex behind this interval is already appended as its two halves; the
+                // one ahead is stations i and i + 1. Either way the two halves take the
+                // crossing's labels and coordinate, and no station is inserted.
+                if (last > 0 && outStations[last].junctionBreak != undefined
+                    && outStations[last].crossing == undefined
+                    && abs(coord - before) < CROSSING_SNAP)
+                {
+                    outStations[last - 1] = mergeMaps(outStations[last - 1], snappedLabels(coord, sides[0], false));
+                    outStations[last] = mergeMaps(outStations[last], snappedLabels(coord, sides[1], true));
+                    values[last - 1] = coord;
+                    values[last] = coord;
+                    println("NOTE: profile break at " ~ fmtMM(coord, 3, 0) ~ " mm taken as the source vertex "
+                        ~ fmtMM(abs(coord - before), 3, 0) ~ " mm away.");
+                    continue;
+                }
+
+                if (i + 1 < size(stations) && stations[i + 1].junctionBreak != undefined
+                    && abs(coord - after) < CROSSING_SNAP)
+                {
+                    snapAhead = { "coord" : coord, "sides" : sides };
+                    println("NOTE: profile break at " ~ fmtMM(coord, 3, 0) ~ " mm taken as the source vertex "
+                        ~ fmtMM(abs(coord - after), 3, 0) ~ " mm away.");
+                    continue;
+                }
+
+                // Within the same distance of the chain's own end there is no run to split
+                // off: the end station already reads the profile a hair inside the break.
+                if ((i == 1 && abs(coord - before) < CROSSING_SNAP)
+                    || (i == size(stations) - 1 && abs(coord - after) < CROSSING_SNAP))
+                {
+                    println("NOTE: profile break at " ~ fmtMM(coord, 3, 0) ~ " mm lies within "
+                        ~ fmtMM(CROSSING_SNAP, 1, 0) ~ " mm of the end of the edges; no split made.");
+                    continue;
+                }
+
                 const arc = arcAtCoord(stations, coords, i, coord);
                 const crossing = crossingStation(context, chain, stations, i, arc);
 
@@ -854,9 +935,11 @@ function insertCrossings(context is Context, chain is map, stations is array, co
                 // whatever magnitude it was asked for: measured, a 0.158 mm gap gave a
                 // 4.5 mm derivative on a 149 mm run, and the curve honoured the tangent
                 // for half a millimetre then hooked at 60 /m to reach the points -- on a
-                // 15 m radius. The chain's own end stations always stay.
-                const last = size(outStations) - 1;
+                // 15 m radius. The chain's own end stations always stay, and so do both
+                // halves of a source vertex: dropping one of those loses the vertex record
+                // the corner treatment reads, and the corner comes out untreated.
                 if (last > 0 && outStations[last].crossing == undefined
+                    && !isJunctionHalf(outStations[last])
                     && abs(coord - values[last]) < CROSSING_CLEARANCE * spacing)
                 {
                     outStations = resize(outStations, last);
@@ -864,12 +947,6 @@ function insertCrossings(context is Context, chain is map, stations is array, co
                     scales = resize(scales, last);
                 }
 
-                // The pair in the order the chain meets it: first the side it comes from,
-                // then the side it goes to, which is where the next run starts. "left" is
-                // always the profile edge below the coordinate; the coordinate travels with
-                // the station so a profile can later tell its own break from one inserted
-                // for another profile.
-                const sides = ascending ? ["left", "right"] : ["right", "left"];
                 outStations = append(outStations, mergeMaps(crossing,
                         { "crossing" : sides[0], "crossingAt" : coord, "crossingHead" : false }));
                 outStations = append(outStations, mergeMaps(crossing,
@@ -880,14 +957,33 @@ function insertCrossings(context is Context, chain is map, stations is array, co
                 scales = append(scales, coords.scales[i]);
 
                 keepThis = keepThis && ((i == size(stations) - 1)
+                        || isJunctionHalf(stations[i])
                         || abs(after - coord) >= CROSSING_CLEARANCE * spacing);
             }
         }
 
+        // The two halves of a vertex a break was snapped onto: station i is the half the
+        // chain reaches first, station i + 1 the half it leaves by.
+        var value = coords.values[i];
+        if (snapAhead != undefined)
+        {
+            if (stations[i].junctionBreak == undefined)
+            {
+                labels = snappedLabels(snapAhead.coord, snapAhead.sides[0], false);
+            }
+            else
+            {
+                labels = snappedLabels(snapAhead.coord, snapAhead.sides[1], true);
+                snapAhead = undefined;
+            }
+            value = labels.crossingAt;
+            keepThis = true;
+        }
+
         if (keepThis)
         {
-            outStations = append(outStations, stations[i]);
-            values = append(values, coords.values[i]);
+            outStations = append(outStations, mergeMaps(stations[i], labels));
+            values = append(values, value);
             scales = append(scales, coords.scales[i]);
         }
     }
@@ -989,6 +1085,7 @@ function crossingStation(context is Context, chain is map, stations is array, in
                 // it must not inherit the neighbour's junction record -- that was
                 // reporting one welded junction three times.
                 "junctionBreak" : undefined,
+                "junctionEnd" : undefined,
                 "welded" : undefined,
                 "origin" : tangentLine.origin,
                 "tangent" : tangent,

@@ -975,6 +975,11 @@ function surfaceSpans(driven is map) returns array
 
 /**
  * Whether the offset jumps between this station and the one before it.
+ *
+ * Judged on the offset AMOUNTS, not the points. A crossing snapped onto a G0 source vertex
+ * has its two halves on different points -- the corner gap or overlap the corner treatment
+ * closes -- while the offset itself reads the same value either side of the break, and a
+ * surface runs straight through a treated corner.
  */
 function isOffsetStep(driven is map, index is number) returns boolean
 {
@@ -983,7 +988,16 @@ function isOffsetStep(driven is map, index is number) returns boolean
         return false;
     }
 
-    return norm(driven.points[index] - driven.points[index - 1]) > TOLERANCE.zeroLength * meter;
+    const here = driven.sided[index];
+    const there = driven.sided[index - 1];
+
+    if (here == undefined || there == undefined)
+    {
+        return here != there;
+    }
+
+    return abs(here.width - there.width) > TOLERANCE.zeroLength * meter
+        || abs(here.height - there.height) > TOLERANCE.zeroLength * meter;
 }
 
 /**
