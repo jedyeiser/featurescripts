@@ -252,7 +252,24 @@ export enum OffsetFrameAlignment
     ALONG
 }
 
-/** How many points to evaluate along each edge. */
+/**
+ * Where the output is split into separate edges.
+ *
+ * SOURCE_EDGES mirrors the input: one output edge per source edge, joint for joint, whether
+ * or not the offset actually breaks there. DISCONTINUITIES splits only where the output is
+ * genuinely not smooth -- a corner the weld declined (a real G0 vertex in the source) or a
+ * step or kink in the offset profile -- and runs straight through a tangent-continuous
+ * junction, so a seed that arrived as thirty tangent pieces comes out as the handful of
+ * edges its corners and profile breaks actually define.
+ */
+export enum RunBreakMode
+{
+    annotation { "Name" : "Every source edge" }
+    SOURCE_EDGES,
+    annotation { "Name" : "Corners and offset breaks" }
+    DISCONTINUITIES
+}
+
 /**
  * What to do where a G0 corner in the source opens a gap in the offset.
  *
@@ -3410,6 +3427,41 @@ export function applyRunMerges(runs is array, merges is array) returns array
     return append(out, current);
 }
 
+/**
+ * The points a run is emitted through: its stations from `from` to `to`, with the exact
+ * startPoint / endPoint that a corner trim, a miter or a terminal plane put on the run,
+ * wherever the range reaches the run's own end. That exact point is what makes both sides
+ * of a trimmed corner share an endpoint, so anything that rebuilds a run from its stations
+ * -- a section for a loft as much as the offset wire itself -- has to include it, or the
+ * two rebuilds stop short of each other by up to one station spacing.
+ *
+ * Repeats are removed: a welded junction inside the run contributes its shared vertex once.
+ */
+export function runPointList(points is array, run is map, from is number, to is number) returns array
+{
+    var list = [];
+
+    if (from == run.start && run.startPoint != undefined)
+    {
+        list = append(list, run.startPoint);
+    }
+
+    for (var i = from; i <= to; i += 1)
+    {
+        if (points[i] != undefined)
+        {
+            list = append(list, points[i]);
+        }
+    }
+
+    if (to == run.end && run.endPoint != undefined)
+    {
+        list = append(list, run.endPoint);
+    }
+
+    return withoutRepeats(list);
+}
+
 export function withoutRepeats(points is array) returns array
 {
     var kept = [];
@@ -3509,11 +3561,28 @@ export predicate offsetEdgesPredicate(definition is map)
 
 /**
  * How the offset frame is oriented at each station.
+ *
+ * Shown with its label, directly under the measure and reference controls in both features:
+ * it decides what "width" and "height" mean, which is the next thing to settle after what
+ * the profile's X measures, and an unlabelled enum further down the dialog was being missed.
  */
 export predicate offsetAlignmentPredicate(definition is map)
 {
-    annotation { "Name" : "Offset alignment", "Default" : OffsetFrameAlignment.ALONG, "Description" : "How the offset frame is oriented at each point along the offset edges" }
+    annotation { "Name" : "Offset alignment", "Default" : OffsetFrameAlignment.ALONG, "UIHint" : UIHint.SHOW_LABEL, "Description" : "How the offset frame is oriented at each point along the offset edges. Along: the chain's own transported frame, width across it and height normal to it, taken from the reference wire where one is given. World: world X, Y, Z." }
     definition.frameAlignment is OffsetFrameAlignment;
+}
+
+/**
+ * Where the output is split into edges. See RunBreakMode.
+ *
+ * The plain offset defaults to one edge per source edge, which is what it has always done;
+ * the surface feature declares the same parameter itself with the other default, because a
+ * face per tangent-continuous source piece is exactly what it does not want.
+ */
+export predicate offsetBreakPredicate(definition is map)
+{
+    annotation { "Name" : "Break output at", "Default" : RunBreakMode.SOURCE_EDGES, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the output is split into separate edges. Every source edge: one output edge per source edge, joint for joint. Corners and offset breaks: only where the source turns through a real corner or the offset profile steps or kinks; tangent-continuous source edges run together into one output edge." }
+    definition.runBreakMode is RunBreakMode;
 }
 
 /**

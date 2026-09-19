@@ -32,11 +32,13 @@ import(path : "2b6b313ac740a0146d5bef7c", version : "6e0b68b1f1ffa8bdf4921850");
  *   WORLD   world X, Y, Z.
  *
  * Continuity
- *   G0 input stays G0: each source edge produces its own output curve. Where the
- *   profile has a slope break, the output is split there and each side takes its own
- *   side's slope, because a discontinuous offset implies a discontinuous result.
+ *   G0 input stays G0: a source corner the weld declined always splits the output.
+ *   Where the profile has a slope break, the output is split there and each side takes
+ *   its own side's slope, because a discontinuous offset implies a discontinuous result.
  *   Elsewhere end tangents are set from the exact offset tangent rather than from
- *   the fitted points, so a G1 junction stays G1.
+ *   the fitted points, so a G1 junction stays G1. Whether a tangent-continuous source
+ *   junction ALSO splits the output is "Break output at": every source edge (one curve
+ *   per source edge) or only corners and offset breaks (one curve per smooth stretch).
  *
  * Output
  *   Offset points are classified geometrically. A run that is straight within
@@ -55,12 +57,16 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         offsetReferencePredicate(definition);
 
+        // Directly under the measure and reference controls: together they say what the
+        // profile's three axes mean, and where the output is allowed to break.
+        offsetAlignmentPredicate(definition);
+
+        offsetBreakPredicate(definition);
+
         offsetEdgesPredicate(definition);
 
         annotation { "Name" : "Offset profile", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO, "Description" : "The edges defining the offset. X maps to position along the offset edges, Y to width offset, Z to height offset" }
         definition.offsetProfile is Query;
-
-        offsetAlignmentPredicate(definition);
 
         offsetCornersPredicate(definition);
 
@@ -83,7 +89,8 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
     }, {
         // An annotation's "Default" only serves a NEW instance; a feature saved before this
         // parameter existed fails its precondition on the next regen without this.
-        "joinTangentRuns" : false
+        "joinTangentRuns" : false,
+        "runBreakMode" : RunBreakMode.SOURCE_EDGES
     });
 
 // ============================================================================
@@ -248,8 +255,10 @@ export function planOffset(context is Context, definition is map, shared is map,
     const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
     const points = placed.points;
     const splits = runSplits(allStations, entry.breaks, shared.matchRuns);
+    const runs0 = buildRuns(allStations, upper, splits,
+        definition.runBreakMode == RunBreakMode.SOURCE_EDGES);
     const cornered = resolveCorners(context, definition, allStations, allCoords, points,
-        upper, lower, buildRuns(allStations, upper, splits), alongRef);
+        upper, lower, runs0, alongRef);
     const runs = resolveTerminals(context, definition, allStations, allCoords, points,
         upper, lower, cornered, alongRef);
 
@@ -668,15 +677,25 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
 /**
  * Group stations into runs, each of which becomes one output curve.
  *
- * A run breaks at a source edge boundary, so G0 input stays G0; where the profile
- * stops providing data; and at an offset discontinuity, which arrives as a pair of
- * stations sharing one coordinate. The pair's left half ends a run and its right
- * half starts the next, so a step in the offset produces a step in the output and
- * a kink produces a kink -- rather than one curve smoothed through the break.
+ * A run always ends where the profile stops providing data; at an offset discontinuity,
+ * which arrives as a pair of stations sharing one coordinate -- the pair's left half ends
+ * a run and its right half starts the next, so a step in the offset produces a step in the
+ * output and a kink produces a kink, rather than one curve smoothed through the break; and
+ * at a source corner the weld declined, so G0 input stays G0. With `breakAtEdges` it also ends at
+ * every other source edge boundary, so the output mirrors the input edge for edge; without,
+ * a welded junction -- both halves of the vertex carrying one tangent and one origin -- is
+ * read straight through, and the run spans as many tangent-continuous source edges as lie
+ * between two real breaks. The welded pair then sits inside the run as two stations at one
+ * arc; everything that consumes a run's points strips that repeat, and frameRates only ever
+ * differences inward from a run END, which a welded junction no longer is.
+ *
+ * A station at an edge boundary that carries no junction record at all -- the junction
+ * station was dropped for a crossing beside it, or the boundary is between links -- is
+ * treated as a break: nothing says it is smooth.
  *
  * @returns {array} : each { "start", "end", "linkIndex" }, inclusive indices.
  */
-function buildRuns(stations is array, offsets is array, splits is array) returns array
+function buildRuns(stations is array, offsets is array, splits is array, breakAtEdges is boolean) returns array
 {
     var runs = [];
     var start = undefined;
@@ -696,10 +715,11 @@ function buildRuns(stations is array, offsets is array, splits is array) returns
             continue;
         }
 
-        const newEdge = (stations[i].linkIndex != stations[start].linkIndex
-                || stations[i].edgeIndex != stations[start].edgeIndex);
+        const newEdge = (stations[i].linkIndex != stations[i - 1].linkIndex
+                || stations[i].edgeIndex != stations[i - 1].edgeIndex);
+        const smoothJoint = !breakAtEdges && stations[i].welded == true;
 
-        if (newEdge || splits[i])
+        if ((newEdge && !smoothJoint) || splits[i])
         {
             runs = closeRun(runs, stations, start, i - 1);
             start = i;
@@ -953,20 +973,7 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 
         // A trimmed run carries the exact crossing point in place of the stations it
         // gave up, so both sides of a trimmed corner end on the same coordinates.
-        var runPoints = [];
-        if (run.startPoint != undefined)
-        {
-            runPoints = append(runPoints, run.startPoint);
-        }
-        for (var i = run.start; i <= run.end; i += 1)
-        {
-            runPoints = append(runPoints, points[i]);
-        }
-        if (run.endPoint != undefined)
-        {
-            runPoints = append(runPoints, run.endPoint);
-        }
-        runPoints = withoutRepeats(runPoints);
+        const runPoints = runPointList(points, run, run.start, run.end);
 
         // A corner filler belongs to the run it leads into, and joins the same wire.
         if (run.fill != undefined)

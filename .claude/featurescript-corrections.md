@@ -1144,13 +1144,60 @@ from them -- a loft is a fit, and a fit can refuse.
 
 ---
 
+## 23. approximateSpline ignores the magnitude of the end derivatives you pass
+
+**Symptom**: a fitted section curve with curvature 60 /m (R = 16 mm) in its last 2 mm, on a
+15 m radius source, and a +-60% curvature swing along the rest of the run. Tangent DIRECTION
+handed to the fit agreed with the points to 0.001 degrees.
+
+**Cause**: std doc for `approximateSpline`: "If `parameters` are not specified, the magnitude of
+start and end derivatives in targets is ignored." The fitter sizes them itself from the end
+segments of the point list. `insertCrossings` had put an exact station on a profile break
+0.158 mm before a regular 9.3 mm sample, so the first segment was 60x shorter than the rest and
+the start derivative came out at 4.5 mm on a 149 mm run (`|cp1 - cp0|` 0.445 mm against 17.7 mm
+at the other end). The curve honoured the tangent for half a millimetre, then hooked.
+
+**Fix**: `CROSSING_CLEARANCE` in `insertCrossings` -- a regular station within half the local
+spacing of an inserted crossing is dropped (chain ends always kept). Every gap is then between
+0.5 and 1.5 spacings. After: 0.058-0.061 /m flat along the run.
+
+**Lesson Learned**: scaling a derivative by the chord before `approximateSpline` does nothing
+unless `parameters` is also given. Keep sample spacing even near inserted stations, or the
+fitter's own derivative sizing is garbage. Print `|cp1 - cp0|` next to `|cp_last - cp_prev|`
+when a fit hooks: a 30x asymmetry is this.
+
+Related resolution fact: a fit at tolerance `tol` can only resolve curvature to about
+`8 * tol / L^2` over a run of length L. At std's 10 um default a 53 mm run is +-0.03 /m,
+which is +-45% of a ski sidecut's 0.066 /m. Use 1 um for ski radii.
+
+---
+
+## 24. opCreateBSplineSurface refuses a creased surface (BSPLINESURFACE_NOT_G1)
+
+**Error**: `@opCreateBSplineSurface: BSPLINESURFACE_NOT_G1` building a ruled B-surface whose
+u-curves were two pieces joined C0 (knot of multiplicity `degree` at the seam).
+
+**Cause**: the kernel will not hold a G1 discontinuity inside one surface; a crease has to be
+a boundary between faces.
+
+**Fix**: `splitAtCreases` in `bspline_compat.fs` -- cut both u-curves at every interior knot of
+multiplicity >= degree (they share a knot vector after `unifyKnots`, so they split at the same
+places) and build one surface per stretch. The union joins them along the crease as faces.
+
+**Lesson Learned**: when making two curves compatible for a ruled surface (elevate, join,
+unify knots -- all exact), treat every full-multiplicity interior knot as a face boundary,
+not a knot. The result is a patch of two or three 6x2 nets where `opLoft` produced one 80x2
+fit with the crease smeared into a ripple.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 22
+- **Total Corrections**: 24
 - **Last Updated**: 2026-09-17
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: opLoft refuses some compatible B-spline pairs on exact knot values; ruled patches built with opCreateBSplineSurface
+- **Latest Additions**: approximateSpline ignores end-derivative magnitude (crossing clearance); opCreateBSplineSurface refuses creases (split at full-multiplicity knots)
 
 ---
 

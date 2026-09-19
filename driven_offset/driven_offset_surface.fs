@@ -116,6 +116,17 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         offsetMeasurePredicate(definition);
         offsetReferencePredicate(definition);
 
+        // Directly under the measure and reference controls, as in the plain offset.
+        offsetAlignmentPredicate(definition);
+
+        // Declared here rather than through offsetBreakPredicate for the sake of the
+        // default. The plain offset mirrors its input edge for edge; a surface built that
+        // way carries a face per source piece, thirty of them off an intersection curve,
+        // creased along joints where nothing turns. Here a face boundary should mean a
+        // corner or a change in the offset, so that is the default.
+        annotation { "Name" : "Break output at", "Default" : RunBreakMode.DISCONTINUITIES, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the offsets, the sections and therefore the faces are split. Every source edge: one face per source edge, joint for joint. Corners and offset breaks: only where the source turns through a real corner or a profile steps or kinks; tangent-continuous source edges run together into one face." }
+        definition.runBreakMode is RunBreakMode;
+
         // One array whatever the mode: the seed edges and the reference are shared, and a
         // profile is the only thing that differs between offsets. Loft-between-profiles
         // reads the whole array as one surface; the other two build one surface each.
@@ -159,8 +170,13 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Keep offset wires", "Default" : false, "Description" : "Leave the driven offset curves in the result alongside the surfaces." }
         definition.keepWires is boolean;
 
-        offsetAlignmentPredicate(definition);
-        offsetCornersPredicate(definition);
+        // A loft between profiles decides its own corner treatment (see driveOffsets), so
+        // the group is not offered there; the other two modes rule from one offset and can
+        // round or leave a corner as the plain offset does.
+        if (definition.surfaceMode != SurfaceMode.MULTIPROFILE_LOFT)
+        {
+            offsetCornersPredicate(definition);
+        }
         offsetEndsPredicate(definition);
         drivenOffsetSpacingPredicate(definition);
         offsetDebugPredicate(definition);
@@ -242,6 +258,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         "ruledSections" : 5,
         "blendThroughProfiles" : false,
         "joinTangentRuns" : false,
+        "runBreakMode" : RunBreakMode.SOURCE_EDGES,
         "keepWires" : false,
         "debugPrintSurface" : false,
         "debugRun" : -1,
@@ -384,12 +401,29 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
     // structure, and a loft pairs section against section by run index -- so the decision has
     // to be taken once, over all the profiles, and applied to all of them. Deciding per
     // profile would desynchronise them exactly the way differing profile breaks did.
+    // A loft between profiles pairs edge i of one offset with edge i of the next, so every
+    // offset has to come out with the same edges: the shared crossings and the shared
+    // junction flags already give them identical runs, and the corner treatment must not
+    // add or remove any. Of the corner modes only two keep the count -- extending a gap to
+    // the miter and trimming an overlap to the crossing, each of which leaves one exact
+    // corner point on both adjoining runs. An arc filler is an extra edge on the side that
+    // gaps with no counterpart on the side that overlaps (the same corner does one or the
+    // other depending on which side of the source the profile is), and an open corner or a
+    // kept crossing has no shared point for the patches to meet on. So a paired loft uses
+    // the miter and the trim whatever the dialog holds, and the Corners group is not shown
+    // for it. The patch boundary at a corner is then the ruling between the two offsets'
+    // corner points, and the union closes across it.
+    const paired = definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT;
+    const cornerTreatment = paired
+        ? { "cornerGapMode" : CornerGapMode.EXTEND, "cornerOverlapMode" : CornerOverlapMode.TRIM }
+        : {};
+
     var plans = [];
     for (var i = 0; i < size(entries); i += 1)
     {
-        plans = append(plans, planOffset(context, mergeMaps(definition, {
+        plans = append(plans, planOffset(context, mergeMaps(definition, mergeMaps(cornerTreatment, {
                             "offsetProfile" : entries[i].offsetProfile
-                        }), shared, i));
+                        })), shared, i));
     }
 
     // Lay every profile's runs over one set of cells, so that cell r is the same stretch of
@@ -403,8 +437,6 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
     // Only the loft between profiles pairs sections, so only it needs the alignment; the
     // other two modes rule from each offset alone, and their profiles are free to break
     // where they like.
-    const paired = definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT;
-
     var cells = [];
     if (paired)
     {
@@ -480,7 +512,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
         // the same two hundred frames once per profile, which is what made the duplication
         // visible in the first place. Report them for the first offset only.
         const first = (i == 0);
-        const perOffset = mergeMaps(definition, {
+        const perOffset = mergeMaps(definition, mergeMaps(cornerTreatment, {
                     "offsetProfile" : entries[i].offsetProfile,
                     "outputName" : entries[i].offsetName,
 
@@ -495,7 +527,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
                     "debugShowReference" : definition.debugShowReference && first,
                     "debugShowOffsetFrames" : definition.debugShowOffsetFrames && first,
                     "debugPrintFrameTable" : definition.debugPrintFrameTable && first
-                });
+                }));
 
         // Emitting the offset wire is the most expensive thing this feature does that is not
         // a loft: per run a curve, and for every arc run a whole sketch -- newSketchOnPlane,
@@ -652,17 +684,12 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
 
         if (run != undefined && to - from >= 1)
         {
-            var points = [];
-            for (var i = from; i <= to; i += 1)
-            {
-                const at = displacedPoint(definition, driven, i, reach);
-
-                if (at != undefined)
-                {
-                    points = append(points, at);
-                }
-            }
-
+            // Through the same points the offset wire is emitted through, exact corner and
+            // terminal points included. Built from the stations alone, a section stopped at
+            // the last station a trimmed run kept -- up to one spacing short of the crossing
+            // the wire itself reaches -- so the patches either side of every corner missed
+            // each other and the union left them as separate bodies.
+            const points = sectionPoints(definition, driven, run, from, to, reach);
             const distinct = withoutRepeats(points);
 
             // The same guard emitRuns applies, for the same reason: a run collapses to
@@ -690,7 +717,7 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                 plan = {
                         "from" : from,
                         "to" : to,
-                        "sampled" : size(points),
+                        "sampled" : to - from + 1,
                         "points" : distinct,
                         "runSpan" : runSpan,
                         "gates" : gates,
@@ -1036,6 +1063,58 @@ function displacedPoint(definition is map, driven is map, index is number, reach
     }
 
     return at + displacement.width * frame.widthAxis + displacement.height * frame.heightAxis;
+}
+
+/**
+ * A run's point list stepped sideways by the section's reach.
+ *
+ * The stations from `from` to `to` are displaced through displacedPoint as before. An exact
+ * start or end point -- a corner or terminal point runPointList puts on the list where the
+ * range reaches the run's own end -- has no station of its own, so it takes the step of the
+ * station beside it, carried over as a translation. At zero reach, which is every loft
+ * between profiles, nothing moves and the exact point is exact.
+ */
+function sectionPoints(definition is map, driven is map, run is map, from is number, to is number,
+    reach is ValueWithUnits) returns array
+{
+    var points = [];
+
+    if (from == run.start && run.startPoint != undefined)
+    {
+        points = append(points, run.startPoint + sectionStep(definition, driven, from, reach));
+    }
+
+    for (var i = from; i <= to; i += 1)
+    {
+        const at = displacedPoint(definition, driven, i, reach);
+
+        if (at != undefined)
+        {
+            points = append(points, at);
+        }
+    }
+
+    if (to == run.end && run.endPoint != undefined)
+    {
+        points = append(points, run.endPoint + sectionStep(definition, driven, to, reach));
+    }
+
+    return points;
+}
+
+/**
+ * How far and which way one station's point moves under a section's reach.
+ */
+function sectionStep(definition is map, driven is map, index is number, reach is ValueWithUnits) returns Vector
+{
+    const stepped = displacedPoint(definition, driven, index, reach);
+
+    if (stepped == undefined || driven.points[index] == undefined)
+    {
+        return vector(0, 0, 0) * meter;
+    }
+
+    return stepped - driven.points[index];
 }
 
 /**
