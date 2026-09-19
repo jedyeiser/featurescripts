@@ -116,6 +116,8 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
  *   "points"      {array} - the offset point per station, undefined where the profile
  *                            does not reach. That gap is which source edges went unused.
  *   "upper"/"lower" {array} - offset amounts and slopes either side of a profile break.
+   "sided"       {array} - the one of the two each station belongs to; what the points,
+                            tangents and sections are built from.
  *   "runs"        {array} - runs after corner and terminal treatment.
  *   "emitted"     {array} - the runs that became geometry, with kind and radius.
  *   "alongRef"    {map}   - the reference mapping, so a caller can evaluate an offset at
@@ -251,16 +253,17 @@ export function planOffset(context is Context, definition is map, shared is map,
     // needs its own slope. Positions are taken from the upper-side pass.
     const upper = profileAt(profile, allCoords.values, false);
     const lower = profileAt(profile, allCoords.values, true);
+    const sided = sidedOffsets(allStations, upper, lower);
 
-    const placed = offsetPoints(allStations, upper, lower, definition, alongRef);
+    const placed = offsetPoints(allStations, sided, definition, alongRef);
     const points = placed.points;
     const splits = runSplits(allStations, entry.breaks, shared.matchRuns);
-    const runs0 = buildRuns(allStations, upper, splits,
+    const runs0 = buildRuns(allStations, sided, splits,
         definition.runBreakMode == RunBreakMode.SOURCE_EDGES);
     const cornered = resolveCorners(context, definition, allStations, allCoords, points,
-        upper, lower, runs0, alongRef);
+        sided, runs0, alongRef);
     const runs = resolveTerminals(context, definition, allStations, allCoords, points,
-        upper, lower, cornered, alongRef);
+        sided, cornered, alongRef);
 
     if (size(runs) == 0)
     {
@@ -271,6 +274,7 @@ export function planOffset(context is Context, definition is map, shared is map,
         "profile" : profile,
         "upper" : upper,
         "lower" : lower,
+        "sided" : sided,
         "placed" : placed,
         "points" : points,
         "runs" : runs
@@ -292,7 +296,7 @@ export function emitOffset(context is Context, id is Id, definition is map, shar
     plan is map) returns map
 {
     const emitted = emitRuns(context, id, definition, shared.stations, shared.coords,
-        plan.points, plan.upper, plan.lower, plan.runs, shared.alongRef);
+        plan.points, plan.sided, plan.runs, shared.alongRef);
 
     return mergeMaps(plan, {
                 "sourceChain" : shared.sourceChain,
@@ -371,7 +375,11 @@ function runSplits(stations is array, breaks is array, matchRuns is boolean) ret
 
     for (var station in stations)
     {
-        if (station.crossing != "right")
+        // The second half of a crossing pair in the order the chain meets them, which
+        // is where a run starts. Not "right": that names the side of the break the half
+        // belongs to, and a chain running backwards along the reference meets the upper
+        // side first.
+        if (station.crossingHead != true)
         {
             flags = append(flags, false);
             continue;
@@ -612,16 +620,13 @@ function worldFrame(station is map) returns map
  *
  * @returns {map} : { "points" : array, "margins" : array }
  */
-function offsetPoints(stations is array, upper is array, lower is array, definition is map, alongRef) returns map
+function offsetPoints(stations is array, offsets is array, definition is map, alongRef) returns map
 {
     var points = [];
     var margins = [];
 
     for (var i = 0; i < size(stations); i += 1)
     {
-        // The left half of a crossing belongs to the profile edge below it.
-        const offsets = (stations[i].crossing == "left") ? lower : upper;
-
         if (offsets[i] == undefined)
         {
             points = append(points, undefined);
@@ -668,6 +673,31 @@ function offsetPoints(stations is array, upper is array, lower is array, definit
     }
 
     return { "points" : points, "margins" : margins };
+}
+
+/**
+ * The profile values each station actually belongs to.
+ *
+ * `upper` and `lower` are the profile read at every station's coordinate from either side
+ * of a break; away from a break they agree. At a break the two halves of the crossing pair
+ * sit on one coordinate but on two profile edges, and which edge each half belongs to is a
+ * matter of SIDE -- "left" is the edge below the coordinate -- not of the order the chain
+ * meets them in, because a chain that runs backwards along the reference, as the edges of
+ * a notch or a slot do, meets the upper edge first. Resolving the side once here gives every
+ * consumer one array that is right in either direction: the points, the run-end tangents,
+ * the corner and terminal treatment and the loft sections all used to pick "upper at a run
+ * start, lower at a run end", which is only the right pair for a chain that ascends.
+ */
+function sidedOffsets(stations is array, upper is array, lower is array) returns array
+{
+    var sided = [];
+
+    for (var i = 0; i < size(stations); i += 1)
+    {
+        sided = append(sided, (stations[i].crossing == "left") ? lower[i] : upper[i]);
+    }
+
+    return sided;
 }
 
 // ============================================================================
@@ -776,47 +806,82 @@ function insertCrossings(context is Context, chain is map, stations is array, co
     var outStations = [];
     var values = [];
     var scales = [];
-    var next = 0;
 
     for (var i = 0; i < size(stations); i += 1)
     {
-        // A regular sample that lands within a fraction of the spacing of an inserted
-        // crossing is dropped. Left in, it hands the fitter a first (or last) segment a
-        // few hundred microns long next to nine-millimetre ones, and approximateSpline
-        // sizes its end derivative from that segment whatever magnitude it was asked for:
-        // measured, a 0.158 mm gap gave a 4.5 mm derivative on a 149 mm run, and the curve
-        // honoured the tangent for half a millimetre then hooked at 60 /m to reach the
-        // points -- on a 15 m radius. The chain's own end stations always stay.
-        const spacing = (i == 0) ? 0 * meter : coords.values[i] - coords.values[i - 1];
         var keepThis = true;
 
-        while (i > 0 && next < size(breaks)
-            && breaks[next] > coords.values[i - 1] && breaks[next] <= coords.values[i])
+        if (i > 0)
         {
-            const arc = arcAtCoord(stations, coords, i, breaks[next]);
-            const crossing = crossingStation(context, chain, stations, i, arc);
+            const before = coords.values[i - 1];
+            const after = coords.values[i];
+            const spacing = abs(after - before);
+            const ascending = after > before;
 
-            const last = size(outStations) - 1;
-            if (last > 0 && outStations[last].crossing == undefined
-                && breaks[next] - values[last] < CROSSING_CLEARANCE * spacing)
+            // Every break inside this interval, in the order the chain meets them. Each
+            // interval is tested against the whole list, in either direction: the walk
+            // this replaced kept one cursor that only ever advanced through an ascending
+            // interval, so a break below the chain's first coordinate -- a profile drawn
+            // from -20 mm over a chain that starts at +3 -- parked the cursor for good and
+            // no crossing was ever inserted, and the edges of a notch or a slot, which run
+            // backwards along the reference, could not be crossed at all. The end the chain
+            // leaves is open and the end it arrives at closed, so a break sitting exactly
+            // on a station is crossed once, by the interval arriving at it.
+            var crossed = [];
+            for (var coord in breaks)
             {
-                outStations = resize(outStations, last);
-                values = resize(values, last);
-                scales = resize(scales, last);
+                if ((ascending && coord > before && coord <= after)
+                    || (!ascending && coord < before && coord >= after))
+                {
+                    crossed = append(crossed, coord);
+                }
+            }
+            crossed = sortMeasures(crossed);
+            if (!ascending)
+            {
+                crossed = reverse(crossed);
             }
 
-            // The coordinate travels with the station so that a profile can later tell its
-            // own break from one inserted for a different profile.
-            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "left", "crossingAt" : breaks[next] }));
-            outStations = append(outStations, mergeMaps(crossing, { "crossing" : "right", "crossingAt" : breaks[next] }));
-            values = append(values, breaks[next]);
-            values = append(values, breaks[next]);
-            scales = append(scales, coords.scales[i]);
-            scales = append(scales, coords.scales[i]);
+            for (var coord in crossed)
+            {
+                const arc = arcAtCoord(stations, coords, i, coord);
+                const crossing = crossingStation(context, chain, stations, i, arc);
 
-            keepThis = (i == size(stations) - 1)
-                || coords.values[i] - breaks[next] >= CROSSING_CLEARANCE * spacing;
-            next += 1;
+                // A regular sample that lands within a fraction of the spacing of an
+                // inserted crossing is dropped. Left in, it hands the fitter a first (or
+                // last) segment a few hundred microns long next to nine-millimetre ones,
+                // and approximateSpline sizes its end derivative from that segment
+                // whatever magnitude it was asked for: measured, a 0.158 mm gap gave a
+                // 4.5 mm derivative on a 149 mm run, and the curve honoured the tangent
+                // for half a millimetre then hooked at 60 /m to reach the points -- on a
+                // 15 m radius. The chain's own end stations always stay.
+                const last = size(outStations) - 1;
+                if (last > 0 && outStations[last].crossing == undefined
+                    && abs(coord - values[last]) < CROSSING_CLEARANCE * spacing)
+                {
+                    outStations = resize(outStations, last);
+                    values = resize(values, last);
+                    scales = resize(scales, last);
+                }
+
+                // The pair in the order the chain meets it: first the side it comes from,
+                // then the side it goes to, which is where the next run starts. "left" is
+                // always the profile edge below the coordinate; the coordinate travels with
+                // the station so a profile can later tell its own break from one inserted
+                // for another profile.
+                const sides = ascending ? ["left", "right"] : ["right", "left"];
+                outStations = append(outStations, mergeMaps(crossing,
+                        { "crossing" : sides[0], "crossingAt" : coord, "crossingHead" : false }));
+                outStations = append(outStations, mergeMaps(crossing,
+                        { "crossing" : sides[1], "crossingAt" : coord, "crossingHead" : true }));
+                values = append(values, coord);
+                values = append(values, coord);
+                scales = append(scales, coords.scales[i]);
+                scales = append(scales, coords.scales[i]);
+
+                keepThis = keepThis && ((i == size(stations) - 1)
+                        || abs(after - coord) >= CROSSING_CLEARANCE * spacing);
+            }
         }
 
         if (keepThis)
@@ -877,6 +942,16 @@ function arcAtCoord(stations is array, coords is map, index is number, coord is 
         const fraction = (abs(span / meter) < 1e-12) ? 0 : (coord - coords.values[index - 1]) / span;
 
         return stations[index - 1].arc + fraction * (stations[index].arc - stations[index - 1].arc);
+    }
+
+    // hermiteAt wants its table ascending. Where the chain runs backwards along the
+    // reference the bracket is handed over the other way round; the slopes are already
+    // negative there, so nothing else changes.
+    if (coords.values[index] < coords.values[index - 1])
+    {
+        return hermiteAt([coords.values[index], coords.values[index - 1]],
+            [stations[index].arc, stations[index - 1].arc],
+            [1 / scaleAfter, 1 / scaleBefore], coord);
     }
 
     return hermiteAt([coords.values[index - 1], coords.values[index]],
@@ -960,7 +1035,7 @@ function edgeAtArc(chain is map, arc is ValueWithUnits) returns map
  * Emit one curve per run, then extract one wire per G0 path.
  */
 function emitRuns(context is Context, id is Id, definition is map, stations is array,
-    coords is map, points is array, upper is array, lower is array, runs is array, alongRef) returns array
+    coords is map, points is array, offsets is array, runs is array, alongRef) returns array
 {
     const approximation = approximationSettings(definition);
     var bodiesByLink = {};
@@ -1047,11 +1122,11 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         }
         else
         {
-            // A run starts on the upper side of any slope break and ends on the lower
-            // side of the next one, so each end takes the slope that actually applies.
+            // Each end takes the slope of the profile edge its station belongs to, which
+            // at a slope break is the side of the break the run is on.
             emitSplineCurve(context, runId, runPoints,
-                runTangent(stations, coords, upper, definition, alongRef, run, run.start),
-                runTangent(stations, coords, lower, definition, alongRef, run, run.end),
+                runTangent(stations, coords, offsets, definition, alongRef, run, run.start),
+                runTangent(stations, coords, offsets, definition, alongRef, run, run.end),
                 approximation);
         }
 

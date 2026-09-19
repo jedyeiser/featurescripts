@@ -724,9 +724,9 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                         "runSpan" : runSpan,
                         "gates" : gates,
                         "shape" : classifyPoints(distinct, definition.approximationTolerance, gates.allowArc, gates.allowLine),
-                        "startDerivative" : runTangent(driven.stations, driven.coords, driven.upper,
+                        "startDerivative" : runTangent(driven.stations, driven.coords, driven.sided,
                                 definition, driven.alongRef, run, from, displacement),
-                        "endDerivative" : runTangent(driven.stations, driven.coords, driven.lower,
+                        "endDerivative" : runTangent(driven.stations, driven.coords, driven.sided,
                                 definition, driven.alongRef, run, to, displacement)
                     };
             }
@@ -978,7 +978,7 @@ function surfaceSpans(driven is map) returns array
  */
 function isOffsetStep(driven is map, index is number) returns boolean
 {
-    if (driven.stations[index].crossing != "right")
+    if (driven.stations[index].crossingHead != true)
     {
         return false;
     }
@@ -1038,7 +1038,7 @@ function longestSpan(context is Context, id is Id, driven is map) returns map
 function displacedPoint(definition is map, driven is map, index is number, reach is ValueWithUnits)
 {
     const at = driven.points[index];
-    const amounts = driven.upper[index];
+    const amounts = driven.sided[index];
 
     if (at == undefined || amounts == undefined)
     {

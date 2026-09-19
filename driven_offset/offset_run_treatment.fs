@@ -30,7 +30,7 @@ import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da639ec");
  * their crossing and give them a shared exact endpoint, so the wire stays single.
  */
 export function resolveCorners(context is Context, definition is map, stations is array, coords is map,
-    points is array, upper is array, lower is array, runs is array, alongRef) returns array
+    points is array, offsets is array, runs is array, alongRef) returns array
 {
     // Survey every corner against the UNTOUCHED runs first. Treating them as we go would
     // not work: a trim moves run indices, so the next iteration's adjacency test and its
@@ -63,8 +63,8 @@ export function resolveCorners(context is Context, definition is map, stations i
 
         // Exact offset tangents where they exist; the chord is a safe stand-in where the
         // profile does not reach far enough to define one.
-        var t1 = runTangent(stations, coords, lower, definition, alongRef, prev, prev.end);
-        var t2 = runTangent(stations, coords, upper, definition, alongRef, next, next.start);
+        var t1 = runTangent(stations, coords, offsets, definition, alongRef, prev, prev.end);
+        var t2 = runTangent(stations, coords, offsets, definition, alongRef, next, next.start);
         const chordDir = normalize(p2 - p1);
         if (t1 == undefined) { t1 = chordDir; }
         if (t2 == undefined) { t2 = chordDir; }
@@ -215,7 +215,7 @@ function trimCornerOverlap(definition is map, runs is array, index is number, po
  * extremities, so corner trimming can never move the station a terminal is measured from.
  */
 export function resolveTerminals(context is Context, definition is map, stations is array, coords is map,
-    points is array, upper is array, lower is array, runs is array, alongRef) returns array
+    points is array, offsets is array, runs is array, alongRef) returns array
 {
     var resolved = runs;
 
@@ -226,13 +226,13 @@ export function resolveTerminals(context is Context, definition is map, stations
 
     if (!isQueryEmpty(context, definition.startPlane))
     {
-        resolved = terminateEnd(context, definition, stations, coords, points, upper, lower,
+        resolved = terminateEnd(context, definition, stations, coords, points, offsets,
             resolved, alongRef, true);
     }
 
     if (!isQueryEmpty(context, definition.endPlane))
     {
-        resolved = terminateEnd(context, definition, stations, coords, points, upper, lower,
+        resolved = terminateEnd(context, definition, stations, coords, points, offsets,
             resolved, alongRef, false);
     }
 
@@ -247,7 +247,7 @@ export function resolveTerminals(context is Context, definition is map, stations
  * highest, whatever breaks the profile put in between.
  */
 function terminateEnd(context is Context, definition is map, stations is array, coords is map,
-    points is array, upper is array, lower is array, runs is array, alongRef,
+    points is array, offsets is array, runs is array, alongRef,
     atStart is boolean) returns array
 {
     var resolved = runs;
@@ -266,8 +266,7 @@ function terminateEnd(context is Context, definition is map, stations is array, 
     const pl = planeFromQuery(context, atStart ? definition.startPlane : definition.endPlane);
     const terminal = points[station];
 
-    const natural = runTangent(stations, coords, atStart ? upper : lower, definition, alongRef,
-            run, station);
+    const natural = runTangent(stations, coords, offsets, definition, alongRef, run, station);
 
     if (natural == undefined)
     {
