@@ -203,6 +203,21 @@ export const CROSSING_CLEARANCE = 0.5;
 export const PARAMETER_SEPARATION = 2e-6;
 
 /**
+ * How far, as a multiple of the local spacing, an exact end point (corner crossing, miter,
+ * terminal) clears the stations beside it. A full spacing: the exact point stands in for
+ * the station it displaces, so the chord from it to the next station is a normal one and
+ * carries a real direction. Half a spacing left 0.11 mm chords to corner points on a
+ * 0.195 mm grid, and those still read 5 degrees off the tangent.
+ */
+export const END_CLEARANCE = 1.0;
+
+/**
+ * Turn below which a corner is treated as straight: the two ends are joined at their
+ * midpoint instead of at a miter that lies gap / (2 sin(turn/2)) away.
+ */
+export const MITER_MIN_TURN = 1e-3;
+
+/**
  * Largest tangent break, in radians, that still counts as a tangent-continuous
  * junction between two source edges. Below it the two edges are welded: both sides
  * of the shared vertex take one averaged tangent, so the offset lands on one point
@@ -797,13 +812,14 @@ export function offsetShrink(frame is map, offsets is map) returns number
  */
 export function offsetTangent(frame is map, offsets is map, slopes is map, rates is map) returns Vector
 {
-    const direction = frame.tangent
+    const velocity = frameVelocity(frame);
+    const direction = velocity
         + slopes.width * frame.widthAxis
         + slopes.height * frame.heightAxis
         + offsets.width * rates.width
         + offsets.height * rates.height;
 
-    return (norm(direction) < ZERO_DIRECTION) ? frame.tangent : normalize(direction);
+    return (norm(direction) < ZERO_DIRECTION) ? velocity : normalize(direction);
 }
 
 /**
@@ -899,24 +915,25 @@ export function surfaceOffsetTangent(alongRef is map, frame is map, offsets is m
     const surf = placed.surf;
     const target = referenceBasisAtArc(alongRef, placed.arc);
 
+    const velocity = frameVelocity(frame);
     const denominator = surf.scale - surf.curvature * surf.height;
-    const sourceRate = (abs(denominator) < 1e-9) ? 0 : dot(frame.tangent, surf.tangent) / denominator;
+    const sourceRate = (abs(denominator) < 1e-9) ? 0 : dot(velocity, surf.tangent) / denominator;
 
     // d(scale)/du is dropped. It is -delta * d(kappa)/du: second order in delta, and
     // identically zero whenever the reference is not being measured at an offset.
     const arcRate = sourceRate
         + (slopes.width * placed.alpha + offsets.width * dot(rates.width, surf.tangent)) / surf.scale;
-    const vRate = dot(frame.tangent, alongRef.planeNormal)
+    const vRate = dot(velocity, alongRef.planeNormal)
         + slopes.width * placed.beta
         + offsets.width * dot(rates.width, alongRef.planeNormal);
-    const heightRate = dot(frame.tangent, surf.normal) + placed.heightSign * slopes.height;
+    const heightRate = dot(velocity, surf.normal) + placed.heightSign * slopes.height;
 
     const direction = arcRate * (target.scale - target.curvature * placed.height) * target.tangent
         + vRate * alongRef.planeNormal
         + heightRate * target.normal;
 
     return {
-        "direction" : (norm(direction) < 1e-9) ? frame.tangent : normalize(direction),
+        "direction" : (norm(direction) < 1e-9) ? velocity : normalize(direction),
         "point" : placed.point,
         "surfaceShrink" : target.scale - target.curvature * placed.height
     };
@@ -2496,6 +2513,53 @@ export function arcLikeSpline(p1 is Vector, t1 is Vector, p2 is Vector, t2 is Ve
 }
 
 /**
+ * How the base point moves along the source, per unit arc length.
+ *
+ * The frame's `tangent` is its LENGTH AXIS -- the direction width and height are measured
+ * against -- and two alignments deliberately turn it away from the source: the constrained
+ * reference frame projects it into the reference surface, the world frame sets it to
+ * world X. The point still travels along the source. The derivative of the offset starts
+ * from the source tangent whatever the axes do; taking the length axis instead dropped the
+ * component of travel normal to the reference, which on a seed climbing a ramp at 5 degrees
+ * was a 4.8 degree error in every run-end tangent there -- both profiles alike, so it could
+ * not have been a width term. Frames built before the alignment is stamped carry no
+ * velocity and move along their tangent, which for them is the source tangent.
+ */
+export function frameVelocity(frame is map) returns Vector
+{
+    return (frame.velocity == undefined) ? frame.tangent : frame.velocity;
+}
+
+/**
+ * Closest approach between two LINES, unclamped: the point on `a0 + s * u` nearest to
+ * `b0 + t * v`, their parameters and the midpoint. Parallel lines return the midpoint of
+ * the two origins. This is the miter construction; segmentApproach's clamp is right for
+ * finding where two runs cross and wrong for extending two rays to where they would meet.
+ */
+export function lineApproach(a0 is Vector, u is Vector, b0 is Vector, v is Vector) returns map
+{
+    const w0 = a0 - b0;
+    const a = dot(u, u);
+    const b = dot(u, v);
+    const c = dot(v, v);
+    const d = dot(u, w0);
+    const e = dot(v, w0);
+    const denominator = a * c - b * b;
+
+    if (abs(denominator) < ZERO_SPAN)
+    {
+        return { "distance" : norm(w0), "point" : 0.5 * (a0 + b0), "s" : 0, "t" : 0 };
+    }
+
+    const s = (b * e - c * d) / denominator;
+    const t = (a * e - b * d) / denominator;
+    const pa = a0 + s * u;
+    const pb = b0 + t * v;
+
+    return { "distance" : norm(pa - pb), "point" : 0.5 * (pa + pb), "s" : s, "t" : t };
+}
+
+/**
  * Closest approach between two segments, as parameters on each plus the midpoint.
  *
  * Used to find where two offset runs cross on the inside of a corner. In 3D they rarely
@@ -3592,7 +3656,7 @@ function clearedOfExact(stations is array, exact is Vector, atStart is boolean) 
         const next = atStart ? list[1].point : list[last - 1].point;
         const spacing = norm(next - nearest);
 
-        if (norm(nearest - exact) >= CROSSING_CLEARANCE * spacing)
+        if (norm(nearest - exact) >= END_CLEARANCE * spacing)
         {
             break;
         }

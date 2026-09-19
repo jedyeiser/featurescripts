@@ -115,14 +115,25 @@ function fillCornerGap(definition is map, runs is array, corner is map) returns 
 
     if (definition.cornerGapMode == CornerGapMode.EXTEND)
     {
-        // Where the two tangents meet. A chord-length ray reaches the miter for any turn
-        // a corner can sensibly have; beyond that the meet is too far out to want.
-        const reach = norm(p2 - p1);
-        const meet = segmentApproach(p1, p1 + reach * t1, p2, p2 - reach * t2);
+        // Where the two tangent lines meet. Unclamped: the miter of a corner turning
+        // through theta lies gap / (2 sin(theta / 2)) from each end, which for a shallow
+        // corner is many gaps out -- twelve at 4.8 degrees -- and a ray clamped to one
+        // gap stopped short, leaving a point off both curves that read as a 4.7 degree
+        // tangent error at both ends of the run. Below MITER_MIN_TURN the lines are as
+        // good as parallel and the midpoint is the corner.
+        var meet = 0.5 * (p1 + p2);
+        if (angleBetween(t1, t2) / radian > MITER_MIN_TURN)
+        {
+            const approach = lineApproach(p1, t1, p2, t2);
+            if (approach.s > 0 && approach.t < 0)
+            {
+                meet = approach.point;
+            }
+        }
 
-        resolved[index - 1] = mergeMaps(resolved[index - 1], { "endPoint" : meet.point });
+        resolved[index - 1] = mergeMaps(resolved[index - 1], { "endPoint" : meet });
         resolved[index] = mergeMaps(resolved[index],
-            { "startPoint" : meet.point, "cornerKind" : "extended" });
+            { "startPoint" : meet, "cornerKind" : "extended" });
 
         return resolved;
     }

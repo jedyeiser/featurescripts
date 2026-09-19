@@ -581,8 +581,12 @@ function stationFrame(station is map, definition is map, alongRef) returns map
 
     const resolved = curvatureOn(station, widthAxis, heightAxis);
 
+    // The source tangent survives the projection as the velocity. The projected
+    // direction is the frame's length AXIS; the point still moves along the source,
+    // and every run-end tangent starts from that motion (frameVelocity).
     return mergeMaps(station, {
                 "tangent" : tangent,
+                "velocity" : station.tangent,
                 "widthAxis" : widthAxis,
                 "heightAxis" : heightAxis,
                 "curvatureWidth" : resolved.curvatureWidth,
@@ -601,6 +605,7 @@ function worldFrame(station is map) returns map
 
     return mergeMaps(station, {
                 "tangent" : vector(1, 0, 0),
+                "velocity" : station.tangent,
                 "widthAxis" : widthAxis,
                 "heightAxis" : heightAxis,
                 "curvatureWidth" : resolved.curvatureWidth,
