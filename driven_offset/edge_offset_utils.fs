@@ -2992,7 +2992,7 @@ export function approximateFamily(context is Context, members is array, approxim
         if (count > approximation.approximationMaxCPs)
         {
             println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
-                ~ fmtVec(first, 2, 0) ~ " mm could not be fitted to "
+                ~ fmtVec(first / millimeter, 2, 0) ~ " mm could not be fitted to "
                 ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm within "
                 ~ toString(approximation.approximationMaxCPs) ~ " control points; an interpolating spline of "
                 ~ toString(count) ~ " was used instead.");
@@ -3011,7 +3011,7 @@ export function approximateFamily(context is Context, members is array, approxim
             if (worst > approximation.approximationTolerance)
             {
                 println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
-                    ~ fmtVec(first, 2, 0) ~ " mm reached the cap of " ~ toString(approximation.approximationMaxCPs)
+                    ~ fmtVec(first / millimeter, 2, 0) ~ " mm reached the cap of " ~ toString(approximation.approximationMaxCPs)
                     ~ " control points " ~ fmtMM(worst, 4, 0) ~ " mm from its points, against a tolerance of "
                     ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm. Raise the maximum control points.");
             }

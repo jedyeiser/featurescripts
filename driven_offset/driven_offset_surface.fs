@@ -2083,24 +2083,24 @@ function ruledPatch(context is Context, id is Id, curves is array) returns boole
  */
 function createdSurface(context is Context, id is Id, surface is map) returns boolean
 {
-    var built = false;
+    var refusal = undefined;
 
     try silent
     {
         opCreateBSplineSurface(context, id, { "bSplineSurface" : bSplineSurface(surface) });
-        built = true;
     }
     catch (error)
     {
-        built = false;
+        refusal = error;
     }
 
-    if (!built)
+    if (refusal != undefined)
     {
-        println("NOTE: the kernel refused an exact patch; falling back to a loft for it.");
+        println("NOTE: the kernel refused an exact patch (" ~ toString(refusal) ~ "); falling back to a loft for it.");
+        return false;
     }
 
-    return built;
+    return true;
 }
 
 /**
