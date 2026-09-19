@@ -1220,8 +1220,8 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
             // Each end takes the slope of the profile edge its station belongs to, which
             // at a slope break is the side of the break the run is on.
             emitSplineCurve(context, runId, runPoints,
-                runTangent(stations, coords, offsets, definition, alongRef, run, run.start),
-                runTangent(stations, coords, offsets, definition, alongRef, run, run.end),
+                runEndTangent(stations, coords, offsets, definition, alongRef, run, run.start, ZERO_DISPLACEMENT, true),
+                runEndTangent(stations, coords, offsets, definition, alongRef, run, run.end, ZERO_DISPLACEMENT, false),
                 approximation);
         }
 

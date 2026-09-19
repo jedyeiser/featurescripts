@@ -194,7 +194,8 @@ function printCorners(runs is array, stations is array)
                 : "gap filled with an arc-like cubic";
         }
 
-        println("  corner before station " ~ toString(run.start) ~ ": " ~ what);
+        const miss = (run.startMiss == undefined) ? "" : ("  miss " ~ fmtMM(run.startMiss, 4, 0) ~ " mm");
+        println("  corner before station " ~ toString(run.start) ~ ": " ~ what ~ miss);
     }
 }
 

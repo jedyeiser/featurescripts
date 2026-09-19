@@ -2513,6 +2513,35 @@ export function arcLikeSpline(p1 is Vector, t1 is Vector, p2 is Vector, t2 is Ve
 }
 
 /**
+ * The exact tangent for a run end, or nothing where prescribing one would do harm.
+ *
+ * A corner treatment gives the run an exact end point where the two offset runs cross or
+ * where their tangent lines meet. Two curves in space do not generally do either: where one
+ * source edge climbs out of the reference surface and its neighbour does not, their offsets
+ * miss each other by the climb -- 0.6 mm at a notch corner on a 7.7 mm offset -- and the
+ * shared corner point lies off both curves by half of that. Prescribing the analytic
+ * tangent at a point the curve does not pass through forces the fit to bend through the
+ * last chord to reconcile the two: 5.8 degrees over 0.135 mm, 771 /m. The point is a G0
+ * corner; nothing joins it tangentially. So where the recorded miss exceeds the fit
+ * tolerance the end is left free, and the fit runs smoothly into the shared point.
+ */
+export function runEndTangent(stations is array, coords is map, offsets is array, definition is map, alongRef,
+    run is map, index is number, displacement is map, atStart is boolean)
+{
+    // Only the run's own end carries a miss; a range clipped short of it has none.
+    const miss = atStart
+        ? ((index == run.start) ? run.startMiss : undefined)
+        : ((index == run.end) ? run.endMiss : undefined);
+
+    if (miss != undefined && miss > definition.approximationTolerance)
+    {
+        return undefined;
+    }
+
+    return runTangent(stations, coords, offsets, definition, alongRef, run, index, displacement);
+}
+
+/**
  * How the base point moves along the source, per unit arc length.
  *
  * The frame's `tangent` is its LENGTH AXIS -- the direction width and height are measured

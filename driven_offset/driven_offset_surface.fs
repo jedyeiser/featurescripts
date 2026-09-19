@@ -724,10 +724,10 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                         "runSpan" : runSpan,
                         "gates" : gates,
                         "shape" : classifyPoints(distinct, definition.approximationTolerance, gates.allowArc, gates.allowLine),
-                        "startDerivative" : runTangent(driven.stations, driven.coords, driven.sided,
-                                definition, driven.alongRef, run, from, displacement),
-                        "endDerivative" : runTangent(driven.stations, driven.coords, driven.sided,
-                                definition, driven.alongRef, run, to, displacement)
+                        "startDerivative" : runEndTangent(driven.stations, driven.coords, driven.sided,
+                                definition, driven.alongRef, run, from, displacement, true),
+                        "endDerivative" : runEndTangent(driven.stations, driven.coords, driven.sided,
+                                definition, driven.alongRef, run, to, displacement, false)
                     };
             }
         }

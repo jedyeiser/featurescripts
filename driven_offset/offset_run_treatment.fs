@@ -122,18 +122,22 @@ function fillCornerGap(definition is map, runs is array, corner is map) returns 
         // tangent error at both ends of the run. Below MITER_MIN_TURN the lines are as
         // good as parallel and the midpoint is the corner.
         var meet = 0.5 * (p1 + p2);
+        var miss = norm(p2 - p1);
         if (angleBetween(t1, t2) / radian > MITER_MIN_TURN)
         {
             const approach = lineApproach(p1, t1, p2, t2);
             if (approach.s > 0 && approach.t < 0)
             {
                 meet = approach.point;
+                miss = approach.distance;
             }
         }
 
-        resolved[index - 1] = mergeMaps(resolved[index - 1], { "endPoint" : meet });
+        // The miss travels with both runs: how far the shared point lies from where each
+        // curve actually goes, which decides whether an end tangent can be prescribed there.
+        resolved[index - 1] = mergeMaps(resolved[index - 1], { "endPoint" : meet, "endMiss" : miss });
         resolved[index] = mergeMaps(resolved[index],
-            { "startPoint" : meet, "cornerKind" : "extended" });
+            { "startPoint" : meet, "startMiss" : miss, "cornerKind" : "extended" });
 
         return resolved;
     }
@@ -201,9 +205,9 @@ function trimCornerOverlap(definition is map, runs is array, index is number, po
         return resolved;
     }
 
-    resolved[index - 1] = mergeMaps(prev, { "end" : best.i - 1, "endPoint" : best.point });
+    resolved[index - 1] = mergeMaps(prev, { "end" : best.i - 1, "endPoint" : best.point, "endMiss" : best.distance });
     resolved[index] = mergeMaps(next,
-        { "start" : best.j + 1, "startPoint" : best.point, "cornerKind" : "trimmed" });
+        { "start" : best.j + 1, "startPoint" : best.point, "startMiss" : best.distance, "cornerKind" : "trimmed" });
 
     return resolved;
 }
