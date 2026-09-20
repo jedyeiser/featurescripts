@@ -195,7 +195,7 @@ Validates syntax AND checks for query variable name conflicts. Throws `regenErro
 
 ## Editing Logic Signature
 
-Max 7 parameters. `clickedButton` does NOT exist:
+Up to 8 parameters. The optional 8th, `clickedButton is string`, DOES exist (std routingCurve.fs, corrections log #27): it carries the key of the `isButton` parameter pressed, or "". The 7-argument form below is still valid:
 
 ```featurescript
 export function myEditingLogic(context is Context, id is Id,

@@ -149,6 +149,11 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         // "Break at" (which is why that field now sits below the groups as well).
         if (definition.mode == CleanWireMode.MANUAL)
         {
+        // Replaces the groups with one per fitted run the classifier would form, each
+        // budgeted at what it needs at the tolerance -- the manual recipe, pre-filled.
+        annotation { "Name" : "Auto-populate groups", "Description" : "Clear the groups and create one per stretch the classifier would fit, with Max control points set to what each needs at the tolerance. Edit them afterwards as you like." }
+        isButton(definition.populateGroups);
+
         annotation { "Name" : "Groups", "Item name" : "group", "Item label template" : "#cw_name", "UIHint" : [UIHint.FOCUS_INNER_QUERY, UIHint.COLLAPSE_ARRAY_ITEMS], "Description" : "A stretch of contiguous edges fitted as one curve under its own approximation. The ends of a group are always kept as vertices." }
         definition.groups is array;
         for (var entry in definition.groups)
@@ -416,6 +421,11 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 export function cleanWireEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
 {
+    if (clickedButton == "populateGroups")
+    {
+        return withPopulatedGroups(context, definition);
+    }
+
     if (definition.mode != CleanWireMode.AUTO)
     {
         return definition;
@@ -520,6 +530,74 @@ function withFittedControlPoints(context is Context, definition is map) returns 
     }
 
     definition.approximationMaxCPs = clamp(needed, 4, MAX_CONTROL_POINTS);
+    return definition;
+}
+
+/**
+ * The groups replaced by one per fitted run, each budgeted at what it needs.
+ *
+ * The runs come from the same classifier Auto uses, so Manual starts where Auto would
+ * have ended and the user edits from there. Exact runs (lines, arcs, sliver pieces) get
+ * no group: Manual copies ungrouped edges as they are. The edges are stored as robust
+ * queries -- the chain's own are transient and would not survive the dialog.
+ */
+function withPopulatedGroups(context is Context, definition is map) returns map
+{
+    var groups = [];
+
+    try silent
+    {
+        const edges = expandEdgeQuery(definition.sourceEdges);
+        if (!isQueryEmpty(context, edges))
+        {
+            const chain = describeChain(context, edges);
+            const joints = classifyJoints(context, definition, chain);
+            const runs = buildRuns(definition, chain, joints, makeArray(size(chain.edges), undefined));
+            const settings = mergeMaps(approximationSettings(definition), {
+                        "approximationMaxCPs" : MAX_CONTROL_POINTS,
+                        "debugFit" : false
+                    });
+
+            for (var k = 0; k < size(runs); k += 1)
+            {
+                const run = runs[k];
+                if (runIsExact(chain, run) || (run.length != undefined && run.length < definition.sliverLength))
+                {
+                    continue;
+                }
+
+                var members = [];
+                for (var i = run.first; i <= run.last; i += 1)
+                {
+                    members = append(members, chain.edges[i].query);
+                }
+
+                const sampled = runSamples(context, chain, run, settings.approximationTolerance);
+                const points = withoutRepeats(sampled.points, fitRepeatTolerance(sampled.points));
+                const curves = approximateFamily(context, [{
+                                    "points" : points,
+                                    "startDerivative" : chain.edges[run.first].startTangent,
+                                    "endDerivative" : chain.edges[run.last].endTangent
+                                }], settings);
+
+                const start = chain.edges[run.first].startPoint / millimeter;
+                groups = append(groups, {
+                            "cw_edges" : qUnion(makeRobustQueriesBatched(context, qUnion(members))),
+                            "cw_name" : "Run " ~ toString(k) ~ " @ " ~ toString(roundToPrecision(start[0], 1))
+                                ~ ", " ~ toString(roundToPrecision(start[1], 1)),
+                            "cw_mode" : CleanApproximation.MAX_CP,
+                            "cw_maxCPs" : clamp(size(curves[0].controlPoints), 4, MAX_CONTROL_POINTS),
+                            "cw_tolerance" : settings.approximationTolerance
+                        });
+            }
+        }
+    }
+    catch
+    {
+        return definition;
+    }
+
+    definition.groups = groups;
     return definition;
 }
 

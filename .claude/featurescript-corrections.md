@@ -1246,13 +1246,37 @@ a migration for every feature already in every document.
 
 ---
 
+## 27. Dialog buttons: `isButton` + the 8th editing-logic argument `clickedButton`
+
+**Symptom**: a "run this once" action declared as a boolean renders as a checkbox and
+needs edge detection plus a self-clear in editing logic.
+
+**Fix**: std has a real button. Declare `annotation { "Name" : "Fit control points to
+tolerance" } isButton(definition.fitControlPoints);` -- no Default, no bounds, and the
+key must NOT be in the defineFeature defaults map (`isButton` is `value is undefined`).
+Editing logic takes an 8th argument, `clickedButton is string`, equal to the parameter
+KEY for the invocation in which it was pressed and "" otherwise:
+`if (clickedButton == "fitControlPoints") { return withFittedControlPoints(context, definition); }`.
+Nothing to reset; the click is never stored and never re-fires on regen. Onshape migrates
+a saved boolean of that name to `BTMParameterButton` on the next push without complaint.
+`UIHint.DISPLAY_SHORT` puts two buttons on one row. Only std user: routingCurve.fs
+(`resetTriad`, `processInputs`, `orthoPrevious/Next`); repo users: footprint/analyzeFootprint.fs,
+xSection/features/*.fs. The note in example_1/betterMeasure/CLAUDE.md that "clickedButton
+does NOT exist" was wrong.
+
+**Lesson Learned**: editing logic runs only while the dialog is open, and any context
+changes it makes are rolled back -- express the result purely as definition edits. It can
+call ev* functions and approximateSpline (evaluations), which is enough to size a fit.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 26
+- **Total Corrections**: 27
 - **Last Updated**: 2026-09-19
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (correction 23); frame length axis is not the velocity (26)
+- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27)
 
 ---
 
