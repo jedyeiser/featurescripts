@@ -389,6 +389,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             {
                 reportFeatureInfo(context, id, "The input was selected as edges, not a wire body, so nothing was deleted.");
             }
+        }
 
         reportOutcome(context, id, definition, chain, grouped.joints, runs, reports, measured.deviation);
 
