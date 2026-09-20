@@ -874,8 +874,12 @@ function projectChain(context is Context, id is Id, chain is map, pl is Plane) r
     {
         if (i > 0)
         {
-            const turn = angleBetween(pieces[i - 1].endTangent, pieces[i].startTangent) / radian;
-            if (turn > PI / 2)
+            // From projected CHORDS, not projected tangents: an edge leaving along the
+            // plane normal projects its tangent to noise, which at the tip of a slot read
+            // as "same direction" while the positions plainly turned back.
+            const leaving = chordDirection(pieces[i - 1].stations, false);
+            const arriving = chordDirection(pieces[i].stations, true);
+            if (leaving != undefined && arriving != undefined && dot(leaving, arriving) < 0)
             {
                 stretches = append(stretches, current);
                 current = [];
@@ -959,6 +963,7 @@ function planPiece(edge is map, sourceIndex is number, points is array, from is 
 
     return mergeMaps(edge, {
                 "sourceIndex" : sourceIndex,
+                "stations" : stations,
                 "spanFrom" : from / (CURVATURE_STATIONS - 1),
                 "spanTo" : to / (CURVATURE_STATIONS - 1),
                 "length" : length,
@@ -970,6 +975,24 @@ function planPiece(edge is map, sourceIndex is number, points is array, from is 
                 "endTangent" : endTangent,
                 "curvatures" : curvatures
             });
+}
+
+/**
+ * The direction of the first (or last) chord of a station list that is long enough to
+ * have one; undefined when the whole list is within tolerance of a point.
+ */
+function chordDirection(stations is array, atStart is boolean)
+{
+    const n = size(stations);
+    for (var k = 1; k < n; k += 1)
+    {
+        const chord = atStart ? stations[k] - stations[0] : stations[n - 1] - stations[n - 1 - k];
+        if (norm(chord) > OFFSET_GEOM_TOL)
+        {
+            return normalize(chord);
+        }
+    }
+    return undefined;
 }
 
 function projectOnto(point is Vector, pl is Plane) returns Vector
