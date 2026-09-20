@@ -115,7 +115,10 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Name", "Description" : "Names the output wire. Clear it to leave it unnamed." }
         definition.outputName is string;
 
-        annotation { "Name" : "Groups", "Item name" : "group", "Item label template" : "#cw_name", "Description" : "A stretch of contiguous edges fitted as one curve under its own approximation. The ends of a group are always kept as vertices." }
+        // FOCUS_INNER_QUERY: a new group's own Edges field takes the selection. Without it
+        // the first empty query in the dialog does, and picks meant for the group went to
+        // "Break at" (which is why that field now sits below the groups as well).
+        annotation { "Name" : "Groups", "Item name" : "group", "Item label template" : "#cw_name", "UIHint" : UIHint.FOCUS_INNER_QUERY, "Description" : "A stretch of contiguous edges fitted as one curve under its own approximation. The ends of a group are always kept as vertices." }
         definition.groups is array;
         for (var entry in definition.groups)
         {
