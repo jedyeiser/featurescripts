@@ -172,13 +172,10 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Keep offset wires", "Default" : false, "Description" : "Leave the driven offset curves in the result alongside the surfaces." }
         definition.keepWires is boolean;
 
-        // A loft between profiles decides its own corner treatment (see driveOffsets), so
-        // the group is not offered there; the other two modes rule from one offset and can
+        // A loft between profiles takes the gap mode from here and always trims an
+        // overlap (see driveOffsets); the other two modes rule from one offset and can
         // round or leave a corner as the plain offset does.
-        if (definition.surfaceMode != SurfaceMode.MULTIPROFILE_LOFT)
-        {
-            offsetCornersPredicate(definition);
-        }
+        offsetCornersPredicate(definition);
         offsetEndsPredicate(definition);
         drivenOffsetSpacingPredicate(definition);
         offsetDebugPredicate(definition);
@@ -403,22 +400,29 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
     // structure, and a loft pairs section against section by run index -- so the decision has
     // to be taken once, over all the profiles, and applied to all of them. Deciding per
     // profile would desynchronise them exactly the way differing profile breaks did.
-    // A loft between profiles pairs edge i of one offset with edge i of the next, so every
-    // offset has to come out with the same edges: the shared crossings and the shared
-    // junction flags already give them identical runs, and the corner treatment must not
-    // add or remove any. Of the corner modes only two keep the count -- extending a gap to
-    // the miter and trimming an overlap to the crossing, each of which leaves one exact
-    // corner point on both adjoining runs. An arc filler is an extra edge on the side that
-    // gaps with no counterpart on the side that overlaps (the same corner does one or the
-    // other depending on which side of the source the profile is), and an open corner or a
-    // kept crossing has no shared point for the patches to meet on. So a paired loft uses
-    // the miter and the trim whatever the dialog holds, and the Corners group is not shown
-    // for it. The patch boundary at a corner is then the ruling between the two offsets'
-    // corner points, and the union closes across it.
+    // A loft between profiles pairs edge i of one offset with edge i of the next. The shared
+    // crossings and junction flags give every offset identical runs; a corner is where the
+    // offsets may legitimately differ, and the loft takes that in its stride. Offsetting a
+    // convex corner by w rounds it with an arc of radius w centred on the vertex, and by 0
+    // leaves the vertex itself, so the family of offsets sweeps a sector from the vertex
+    // out to the arc: the patch between an arc-treated profile and a vertex-treated one IS
+    // that sector, and two arcs give the sector between them. So a corner is a cell of its
+    // own (loftColumns), holding an arc or a point per profile, and the gap mode is the
+    // user's. What the loft cannot take is a corner with nothing at it: an open gap has no
+    // piece for the patches to meet on, and a kept crossing has no shared point, so those
+    // two are refused and forced respectively.
     const paired = definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT;
-    const cornerTreatment = paired
-        ? { "cornerGapMode" : CornerGapMode.EXTEND, "cornerOverlapMode" : CornerOverlapMode.TRIM }
-        : {};
+    if (paired && definition.cornerGapMode == CornerGapMode.OPEN)
+    {
+        throw regenError("A loft between profiles cannot leave a corner open: the faces either side "
+            ~ "would have nothing to meet on. Round the corner or extend it.", ["cornerGapMode"]);
+    }
+    if (paired && definition.cornerOverlapMode == CornerOverlapMode.KEEP)
+    {
+        println("NOTE: a loft between profiles always trims an offset where it crosses itself; "
+            ~ "'Leave crossing' does not apply.");
+    }
+    const cornerTreatment = paired ? { "cornerOverlapMode" : CornerOverlapMode.TRIM } : {};
 
     var plans = [];
     for (var i = 0; i < size(entries); i += 1)
@@ -729,6 +733,23 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                         "endDerivative" : runEndTangent(driven.stations, driven.coords, driven.sided,
                                 definition, driven.alongRef, run, to, displacement, false)
                     };
+
+                // The corner before this run, for the loft between profiles: the fill it was
+                // given, or the exact point the trim or the miter left. Only the paired loft
+                // reads it -- a ruled section is displaced sideways and its fill would have
+                // to be rebuilt at the new reach, which nothing asks for yet.
+                if (definition.surfaceMode == SurfaceMode.MULTIPROFILE_LOFT
+                    && from == run.start && run.cornerKind != undefined)
+                {
+                    if (run.fill != undefined)
+                    {
+                        plan.corner = { "kind" : "fill", "fill" : run.fill };
+                    }
+                    else if (run.startPoint != undefined)
+                    {
+                        plan.corner = { "kind" : "point", "point" : run.startPoint };
+                    }
+                }
             }
         }
 
@@ -847,12 +868,15 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
     reach is ValueWithUnits, fits) returns map
 {
     var pieces = [];
+    var corners = [];
     var kept = 0;
+    var cornerCurves = 0;
 
     for (var r = 0; r < size(plans); r += 1)
     {
         const plan = plans[r];
         var curve = undefined;
+        var corner = undefined;
 
         if (plan != undefined)
         {
@@ -884,9 +908,35 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             {
                 printCurveDump(context, "  emitted run " ~ toString(r), curve);
             }
+
+            // The corner before this run: a fill as the curve it is, or the vertex the
+            // run starts on, for the loft to pair against another profile's fill.
+            if (plan.corner != undefined && plan.corner.kind == "fill")
+            {
+                const cornerId = id + ("corner" ~ r);
+                if (plan.corner.fill.kind == "arc")
+                {
+                    emitArcCurve(context, cornerId, plan.corner.fill);
+                }
+                else
+                {
+                    opCreateBSplineCurve(context, cornerId, { "bSplineCurve" : plan.corner.fill.curve });
+                }
+                corner = { "kind" : "curve", "query" : qCreatedBy(cornerId, EntityType.EDGE), "fill" : plan.corner.fill };
+                cornerCurves += 1;
+            }
+            else if (plan.corner != undefined)
+            {
+                corner = {
+                        "kind" : "point",
+                        "point" : plan.corner.point,
+                        "vertex" : qClosestTo(qAdjacent(curve, AdjacencyType.EDGE, EntityType.VERTEX), plan.corner.point)
+                    };
+            }
         }
 
         pieces = append(pieces, curve);
+        corners = append(corners, corner);
     }
 
     if (kept == 0)
@@ -896,20 +946,30 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
 
     // One wire, many edges. opExtractWires chains the pieces where they meet, which they do
     // because adjacent runs share a station -- and a trimmed corner shares an exact point.
+    var edges = nonEmpty(pieces);
+    for (var corner in corners)
+    {
+        if (corner != undefined && corner.kind == "curve")
+        {
+            edges = append(edges, corner.query);
+        }
+    }
+
     const wireId = id + "wire";
-    opExtractWires(context, wireId, { "edges" : qUnion(nonEmpty(pieces)) });
+    opExtractWires(context, wireId, { "edges" : qUnion(edges) });
 
     const wires = qCreatedBy(wireId, EntityType.BODY);
 
     if (definition.debugPrintSurface)
     {
         println("[surface]     section reach " ~ toString(reach) ~ ": "
-            ~ toString(kept) ~ " run curve(s) -> "
+            ~ toString(kept) ~ " run curve(s)"
+            ~ (cornerCurves > 0 ? " + " ~ toString(cornerCurves) ~ " corner fill(s)" : "") ~ " -> "
             ~ toString(size(evaluateQuery(context, wires))) ~ " wire body(ies), "
             ~ toString(size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)))) ~ " edge(s)");
     }
 
-    return { "wire" : wires, "pieces" : pieces };
+    return { "wire" : wires, "pieces" : pieces, "corners" : corners };
 }
 
 /**
@@ -1269,16 +1329,16 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
  *          contiguous range of cells that pairing covers around that cell. A pairing's
  *          terminal patches are where a member's overhang gets absorbed.
  */
-function patchPairings(definition is map, sections is array) returns map
+function patchPairings(definition is map, slots is array) returns map
 {
     var cells = [];
 
-    for (var r = 0; r < size(sections[0].pieces); r += 1)
+    for (var r = 0; r < size(slots[0]); r += 1)
     {
         var present = [];
-        for (var i = 0; i < size(sections); i += 1)
+        for (var i = 0; i < size(slots); i += 1)
         {
-            if (sections[i].pieces[r] != undefined)
+            if (slots[i][r] != undefined)
             {
                 present = append(present, i);
             }
@@ -1354,6 +1414,206 @@ function patchPairings(definition is map, sections is array) returns map
     return { "cells" : cells, "stretches" : stretches };
 }
 
+/**
+ * The slots a loft between profiles walks, in order along the edges: every cell, and a
+ * corner slot before each cell at which any section carries a corner piece.
+ *
+ * @returns {array} : `{ "kind" : "cell" | "corner", "cell" : c }` per slot.
+ */
+function slotSequence(sections is array) returns array
+{
+    var sequence = [];
+
+    for (var c = 0; c < size(sections[0].pieces); c += 1)
+    {
+        var cornered = false;
+        for (var section in sections)
+        {
+            if (c > 0 && section.corners[c] != undefined)
+            {
+                cornered = true;
+            }
+        }
+
+        if (cornered)
+        {
+            sequence = append(sequence, { "kind" : "corner", "cell" : c });
+        }
+        sequence = append(sequence, { "kind" : "cell", "cell" : c });
+    }
+
+    return sequence;
+}
+
+/**
+ * Every section's piece at every slot: `{ "kind" : "curve", "query" }` for a run curve or a
+ * fill, `{ "kind" : "point", "point", "vertex" }` for a corner the section sits on, and
+ * undefined where the section has nothing there.
+ */
+function slotPieces(sections is array, sequence is array) returns array
+{
+    var slots = [];
+
+    for (var section in sections)
+    {
+        var row = [];
+        for (var slot in sequence)
+        {
+            if (slot.kind == "cell")
+            {
+                row = append(row, (section.pieces[slot.cell] == undefined) ? undefined
+                        : { "kind" : "curve", "query" : section.pieces[slot.cell] });
+            }
+            else
+            {
+                row = append(row, section.corners[slot.cell]);
+            }
+        }
+        slots = append(slots, row);
+    }
+
+    return slots;
+}
+
+/**
+ * The patch at a corner between two profiles: the sector from one profile's arc to the
+ * other's arc or vertex.
+ *
+ * Exact where both pieces are true arcs (or one is and the other is its vertex): each arc
+ * is one rational quadratic span, both with the same knots, so the surface whose control
+ * net is the two rows is the sector between them, and a vertex is a row of three copies
+ * of the point. A spline fill, or more than two members, goes to opLoft, which lofts to a
+ * vertex natively.
+ *
+ * @param corners {array} : the members' corner pieces, in member order.
+ * @returns {boolean} : whether a body was built.
+ */
+function cornerPatch(context is Context, id is Id, corners is array) returns boolean
+{
+    const rows = cornerRows(corners);
+
+    if (rows != undefined)
+    {
+        var grid = [];
+        var weights = [];
+        for (var i = 0; i < 3; i += 1)
+        {
+            grid = append(grid, [rows[0].controlPoints[i], rows[1].controlPoints[i]]);
+            weights = append(weights, [rows[0].weights[i], rows[1].weights[i]]);
+        }
+
+        if (createdSurface(context, id + "sector", {
+                    "uDegree" : 2,
+                    "vDegree" : 1,
+                    "isUPeriodic" : false,
+                    "isVPeriodic" : false,
+                    "controlPoints" : controlPointMatrix(grid),
+                    "weights" : weights,
+                    "uKnots" : knotArray([0, 0, 0, 1, 1, 1]),
+                    "vKnots" : knotArray([0, 0, 1, 1])
+                }))
+        {
+            return true;
+        }
+    }
+
+    var profiles = [];
+    for (var corner in corners)
+    {
+        profiles = append(profiles, (corner.kind == "point") ? corner.vertex : corner.query);
+    }
+
+    try silent
+    {
+        opLoft(context, id + "loft", {
+                    "profileSubqueries" : profiles,
+                    "bodyType" : ToolBodyType.SURFACE
+                });
+    }
+
+    return size(evaluateQuery(context, qCreatedBy(id, EntityType.BODY))) > 0;
+}
+
+/**
+ * The two control rows of an exact corner sector, or undefined where the pair does not
+ * qualify: exactly two members, every curve among them a true arc, at least one curve.
+ */
+function cornerRows(corners is array)
+{
+    if (size(corners) != 2)
+    {
+        return undefined;
+    }
+
+    var rows = [];
+    var arcRow = undefined;
+    for (var corner in corners)
+    {
+        if (corner.kind == "curve")
+        {
+            if (corner.fill == undefined || corner.fill.kind != "arc")
+            {
+                return undefined;
+            }
+            const row = arcQuadratic(corner.fill);
+            if (row == undefined)
+            {
+                return undefined;
+            }
+            rows = append(rows, row);
+            arcRow = row;
+        }
+        else
+        {
+            rows = append(rows, undefined);
+        }
+    }
+
+    if (arcRow == undefined)
+    {
+        return undefined;
+    }
+
+    // A vertex is the collapsed row, carrying the arc's weights so the two rows share a
+    // parameterization and the rulings run straight from the arc to the point.
+    for (var k = 0; k < 2; k += 1)
+    {
+        if (rows[k] == undefined)
+        {
+            const v = corners[k].point;
+            rows[k] = { "controlPoints" : [v, v, v], "weights" : arcRow.weights };
+        }
+    }
+
+    return rows;
+}
+
+/**
+ * A circular arc of less than a half turn as the one rational quadratic span it is:
+ * the ends, the meeting point of the end tangents, and weights 1, cos(theta/2), 1.
+ */
+function arcQuadratic(arc is map)
+{
+    const a = arc.start - arc.center;
+    const b = arc.end - arc.center;
+    const turn = angleBetween(a, b);
+
+    // Beyond a half turn the middle weight goes to zero and past it; a corner never turns
+    // that far, and the loft takes it if one ever does.
+    if (turn / radian > PI * 0.95 || turn / radian < ZERO_DIRECTION)
+    {
+        return undefined;
+    }
+
+    const bisector = normalize(normalize(a) + normalize(b));
+    const apex = arc.center + (arc.radius / cos(turn / 2)) * bisector;
+
+    return {
+            "controlPoints" : [arc.start, apex, arc.end],
+            "weights" : [1, cos(turn / 2), 1]
+        };
+}
+
 function recordStretch(stretches is map, key is string, range is map) returns map
 {
     var byCell = (stretches[key] == undefined) ? {} : stretches[key];
@@ -1403,14 +1663,23 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
     var skipped = 0;
     var refused = [];
 
-    // Which profiles pair up in each cell, then the cells each pairing covers, so that a
-    // pairing's terminal patches know where its coverage ends.
-    const cellCount = size(sections[0].pieces);
-    const pairings = patchPairings(definition, sections);
+    // The slots the loft walks: every cell, and before every cell at which some profile
+    // has a corner piece, a corner slot. A profile's piece at a cell slot is its run
+    // curve; at a corner slot it is its fill curve or its corner point, whichever the
+    // corner treatment left it. Which profiles pair up in each slot, then the slots each
+    // pairing covers, so that a pairing's terminal patches know where its coverage ends.
+    const sequence = slotSequence(sections);
+    const slots = slotPieces(sections, sequence);
+    const slotCount = size(sequence);
+    const pairings = patchPairings(definition, slots);
 
-    for (var r = 0; r < cellCount; r += 1)
+    for (var r = 0; r < slotCount; r += 1)
     {
-        if (size(pairings.cells[r]) == 0)
+        const slot = sequence[r];
+        const label = (slot.kind == "cell" ? "run " : "corner before run ") ~ toString(slot.cell);
+
+        // A corner reached by one profile only is that profile's overhang, not a hole.
+        if (size(pairings.cells[r]) == 0 && slot.kind == "cell")
         {
             skipped += 1;
         }
@@ -1420,6 +1689,21 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             const from = members[0];
             const stretch = pairings.stretches[toString(members)][r];
 
+            // A corner where every member sits on its vertex has nothing to build: the
+            // faces either side already meet there.
+            var pointsOnly = true;
+            for (var i in members)
+            {
+                if (slots[i][r].kind != "point")
+                {
+                    pointsOnly = false;
+                }
+            }
+            if (pointsOnly)
+            {
+                continue;
+            }
+
             // One query per member. In the interior of a pairing's coverage that is the
             // member's piece for this cell. At either end of the coverage a member that
             // reaches further than its partners carries its overhang along: every piece
@@ -1428,33 +1712,48 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // the way a loft of the whole wires would -- but the stretch it takes to get
             // there is confined to this one patch, and every interior patch keeps the exact
             // station-for-station pairing.
+            // A point piece is a member sitting on its vertex: no curve of its own, and the
+            // patch is the sector from the other member's fill to that vertex. Point pieces
+            // inside an overhang are simply passed over -- the pieces either side already
+            // share that vertex.
             var patch = [];
             var chains = [];
+            var corners = [];
             for (var i in members)
             {
                 var before = [];
                 if (r == stretch.first)
                 {
-                    for (var c = r - 1; c >= 0 && sections[i].pieces[c] != undefined; c -= 1)
+                    for (var c = r - 1; c >= 0 && slots[i][c] != undefined; c -= 1)
                     {
-                        before = append(before, sections[i].pieces[c]);
+                        if (slots[i][c].kind == "curve")
+                        {
+                            before = append(before, slots[i][c].query);
+                        }
                     }
                 }
 
                 var after = [];
                 if (r == stretch.last)
                 {
-                    for (var c = r + 1; c < cellCount && sections[i].pieces[c] != undefined; c += 1)
+                    for (var c = r + 1; c < slotCount && slots[i][c] != undefined; c += 1)
                     {
-                        after = append(after, sections[i].pieces[c]);
+                        if (slots[i][c].kind == "curve")
+                        {
+                            after = append(after, slots[i][c].query);
+                        }
                     }
                 }
 
+                const own = (slots[i][r].kind == "curve") ? [slots[i][r].query] : [];
+
                 // In order along the edges, for the exact construction; as one query, for
                 // the loft and the reports.
-                const chain = concatenateArrays([reverse(before), [sections[i].pieces[r]], after]);
+                const chain = concatenateArrays([reverse(before), own, after]);
                 chains = append(chains, chain);
-                patch = append(patch, size(chain) == 1 ? chain[0] : qUnion(chain));
+                corners = append(corners, slots[i][r]);
+                patch = append(patch, size(chain) == 0 ? slots[i][r].vertex
+                        : (size(chain) == 1 ? chain[0] : qUnion(chain)));
             }
 
             // Printed BEFORE the loft, so the last line standing names the patch that
@@ -1466,18 +1765,21 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             var curves = [];
             for (var section in patch)
             {
-                const edges = evaluateQuery(context, section);
+                const edges = evaluateQuery(context, qEntityFilter(section, EntityType.EDGE));
                 curves = append(curves, size(edges) == 1
                         ? evCurveDefinition(context, { "edge" : edges[0] })
                         : undefined);
             }
 
-            if (reportsRun(definition, r))
+            const atCorner = (slot.kind == "corner");
+
+            if (reportsRun(definition, slot.cell))
             {
-                var report = "[patch]     run " ~ toString(r) ~ "  profiles " ~ toString(members)
+                var report = "[patch]     " ~ label ~ "  profiles " ~ toString(members)
                     ~ "  sections " ~ toString(size(patch))
-                    ~ "  " ~ (sharedParameterization(curves) ? "ruled"
-                        : (compatibleChains(context, chains) ? "unified" : "loft"));
+                    ~ "  " ~ (atCorner ? (cornerRows(corners) != undefined ? "sector" : "corner loft")
+                        : (sharedParameterization(curves) ? "ruled"
+                        : (compatibleChains(context, chains) ? "unified" : "loft")));
 
                 // The pair as opLoft sees it. Printed for the patches that succeed as well
                 // as the one that throws, because the useful reading is the comparison: a
@@ -1511,7 +1813,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                 println(report);
             }
 
-            const patchId = id + ("patch" ~ r ~ "_" ~ from);
+            const patchId = id + ((atCorner ? "corner" : "patch") ~ slot.cell ~ "_" ~ from);
 
             // A pair of B-spline sections sharing degree and knots -- which is what the
             // coupled fit produces -- is built directly as the B-spline surface whose
@@ -1527,8 +1829,9 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // lofts; shifting the knots by 1e-9 and it still fails. A kernel path with no
             // outside characterisation, and no reason to go near it when the surface can be
             // written down. See correction 22.
-            var built = ruledPatch(context, patchId, curves)
-                || unifiedPatch(context, patchId, chains);
+            var built = atCorner
+                ? cornerPatch(context, patchId, corners)
+                : (ruledPatch(context, patchId, curves) || unifiedPatch(context, patchId, chains));
             var loftError = undefined;
 
             if (!built)
@@ -1554,19 +1857,27 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // honest test of whether it ran.
             if (size(evaluateQuery(context, qCreatedBy(patchId, EntityType.BODY))) == 0)
             {
-                refused = append(refused, toString(r) ~ ":" ~ toString(members));
+                refused = append(refused, (atCorner ? "corner " : "") ~ toString(slot.cell) ~ ":" ~ toString(members));
 
                 // The refusal is the trigger, not a toggle: this is the one patch worth
                 // seeing in full, and it is only ever a handful of curves.
-                if (reportsRun(definition, r))
+                if (reportsRun(definition, slot.cell))
                 {
-                    println("[refused]   run " ~ toString(r) ~ "  profiles " ~ toString(members)
+                    println("[refused]   " ~ label ~ "  profiles " ~ toString(members)
                         ~ "  by " ~ (built ? "opCreateBSplineSurface" : "opLoft")
                         ~ "  error " ~ toString(loftError));
 
                     for (var k = 0; k < size(patch); k += 1)
                     {
-                        printCurveDump(context, "  profile " ~ toString(members[k]), patch[k]);
+                        if (corners[k].kind == "point")
+                        {
+                            println("  profile " ~ toString(members[k]) ~ " at its vertex "
+                                ~ toString(corners[k].point / millimeter) ~ " mm");
+                        }
+                        else
+                        {
+                            printCurveDump(context, "  profile " ~ toString(members[k]), patch[k]);
+                        }
                     }
                 }
 
