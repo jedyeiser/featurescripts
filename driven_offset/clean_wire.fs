@@ -969,18 +969,19 @@ function reportReduction(context is Context, id is Id, chain is map, joints is a
     }
 
     const edgesBefore = size(chain.edges);
-    const percent = function(before, after)
-        {
-            return (before == 0) ? 0 : roundToPrecision(100 * (before - after) / before, 1);
-        };
 
     setFeatureComputedParameter(context, id, { "name" : "cpBefore", "value" : cpBefore });
     setFeatureComputedParameter(context, id, { "name" : "cpAfter", "value" : cpAfter });
-    setFeatureComputedParameter(context, id, { "name" : "cpReduction", "value" : percent(cpBefore, cpAfter) });
+    setFeatureComputedParameter(context, id, { "name" : "cpReduction", "value" : reductionPercent(cpBefore, cpAfter) });
     setFeatureComputedParameter(context, id, { "name" : "edgesBefore", "value" : edgesBefore });
     setFeatureComputedParameter(context, id, { "name" : "edgesAfter", "value" : edgesAfter });
-    setFeatureComputedParameter(context, id, { "name" : "edgeReduction", "value" : percent(edgesBefore, edgesAfter) });
+    setFeatureComputedParameter(context, id, { "name" : "edgeReduction", "value" : reductionPercent(edgesBefore, edgesAfter) });
     setFeatureComputedParameter(context, id, { "name" : "tangencyFixes", "value" : fixes });
+}
+
+function reductionPercent(before is number, after is number) returns number
+{
+    return (before == 0) ? 0 : roundToPrecision(100 * (before - after) / before, 1);
 }
 
 /**
