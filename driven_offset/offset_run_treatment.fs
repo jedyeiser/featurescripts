@@ -36,6 +36,7 @@ export function resolveCorners(context is Context, definition is map, stations i
     // not work: a trim moves run indices, so the next iteration's adjacency test and its
     // station-marker lookup would both be reading indices that have already shifted.
     var corners = [];
+    var resolved = runs;
 
     for (var r = 1; r < size(runs); r += 1)
     {
@@ -56,8 +57,17 @@ export function resolveCorners(context is Context, definition is map, stations i
 
         const p1 = points[prev.end];
         const p2 = points[next.start];
-        if (p1 == undefined || p2 == undefined || norm(p2 - p1) < OFFSET_GEOM_TOL)
+        if (p1 == undefined || p2 == undefined)
         {
+            continue;
+        }
+
+        // A corner the offset neither opens nor crosses -- the offset is in the corner's
+        // own plane, or zero -- is still a corner: the runs meet at a vertex, and a loft
+        // pairing this profile against one whose offset did open it needs to know where.
+        if (norm(p2 - p1) < OFFSET_GEOM_TOL)
+        {
+            resolved[r] = mergeMaps(resolved[r], { "cornerKind" : "closed" });
             continue;
         }
 
@@ -79,8 +89,6 @@ export function resolveCorners(context is Context, definition is map, stations i
                     "isGap" : dot(p2 - p1, t1 + t2) > 0 * meter
                 });
     }
-
-    var resolved = runs;
 
     for (var corner in corners)
     {

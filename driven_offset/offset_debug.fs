@@ -183,7 +183,11 @@ function printCorners(runs is array, stations is array)
         }
 
         var what = "overlap trimmed to the crossing";
-        if (run.cornerKind == "extended")
+        if (run.cornerKind == "closed")
+        {
+            what = "closed, the offsets meet at the vertex";
+        }
+        else if (run.cornerKind == "extended")
         {
             what = "gap extended to a sharp corner";
         }

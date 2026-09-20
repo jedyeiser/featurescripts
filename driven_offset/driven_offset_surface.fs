@@ -745,9 +745,12 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                     {
                         plan.corner = { "kind" : "fill", "fill" : run.fill };
                     }
-                    else if (run.startPoint != undefined)
+                    else
                     {
-                        plan.corner = { "kind" : "point", "point" : run.startPoint };
+                        // The trim's crossing or the miter's meeting point, or for a closed
+                        // corner the station the runs meet at.
+                        plan.corner = { "kind" : "point",
+                                "point" : (run.startPoint != undefined) ? run.startPoint : driven.points[run.start] };
                     }
                 }
             }
