@@ -368,6 +368,13 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             showRuns(context, wire, chain, runs);
         }
 
+        }
+
+        if (definition.debugShowGroups)
+        {
+            showGroups(context, definition, wire, chain, runs);
+        }
+
         // Last, after the deviation was measured against it and the debug colouring of
         // the groups' source edges is done. Only whole bodies go: a selection of edges
         // from a larger body is left alone.
@@ -382,12 +389,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             {
                 reportFeatureInfo(context, id, "The input was selected as edges, not a wire body, so nothing was deleted.");
             }
-        }
-
-        if (definition.debugShowGroups)
-        {
-            showGroups(context, definition, wire, chain, runs);
-        }
 
         reportOutcome(context, id, definition, chain, grouped.joints, runs, reports, measured.deviation);
 
