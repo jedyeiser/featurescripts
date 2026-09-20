@@ -190,8 +190,10 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Sliver length", "Description" : "Edges shorter than this are fragments: absorbed into the run when the edges either side of them line up, kept as their own piece when they sit at a corner." }
             isLength(definition.sliverLength, CleanWireSliverBounds);
 
-            annotation { "Name" : "Fit control points to tolerance", "Default" : false, "Description" : "Fit every run at the tolerance without a cap, and set Maximum control points to what the largest run needed. Clears itself." }
-            definition.fitControlPoints is boolean;
+            // A real button (std isButton): no value, no default; the press arrives in the
+            // editing logic as clickedButton == "fitControlPoints".
+            annotation { "Name" : "Fit control points to tolerance", "Description" : "Fit every run at the tolerance without a cap, and set Maximum control points to what the largest run needed." }
+            isButton(definition.fitControlPoints);
         }
 
         annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
@@ -385,7 +387,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "cornerAngle" : 3 * degree,
         "forceTangency" : true,
         "sliverLength" : 0.5 * millimeter,
-        "fitControlPoints" : false,
         "maxDeviation" : 0 * meter,
         "cpBefore" : 0, "cpAfter" : 0, "cpReduction" : 0,
         "edgesBefore" : 0, "edgesAfter" : 0, "edgeReduction" : 0,
@@ -413,17 +414,16 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
  * corner angle, the tangency choice or the tolerance (which sets the sliver length).
  */
 export function cleanWireEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
-    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
 {
     if (definition.mode != CleanWireMode.AUTO)
     {
         return definition;
     }
 
-    if (definition.fitControlPoints == true)
+    if (clickedButton == "fitControlPoints")
     {
-        definition.fitControlPoints = false;
-        definition = withFittedControlPoints(context, definition);
+        return withFittedControlPoints(context, definition);
     }
 
     const relevant = ["sourceEdges", "mode", "cornerAngle", "forceTangency", "approximationTolerance", "sliverLength"];
