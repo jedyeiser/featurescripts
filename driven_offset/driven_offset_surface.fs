@@ -1520,10 +1520,29 @@ function cornerPatch(context is Context, id is Id, corners is array) returns boo
         }
     }
 
+    // Two spline fills -- arc-like cubics where the ends were not co-radial -- share the
+    // one knot vector every such cubic has, so the ordinary exact constructions take them.
+    var allCurves = true;
+    var curves = [];
+    var chains = [];
     var profiles = [];
     for (var corner in corners)
     {
-        profiles = append(profiles, (corner.kind == "point") ? corner.vertex : corner.query);
+        if (corner.kind == "point")
+        {
+            allCurves = false;
+            profiles = append(profiles, corner.vertex);
+            continue;
+        }
+        const edges = evaluateQuery(context, corner.query);
+        curves = append(curves, size(edges) == 1 ? evCurveDefinition(context, { "edge" : edges[0] }) : undefined);
+        chains = append(chains, [corner.query]);
+        profiles = append(profiles, corner.query);
+    }
+
+    if (allCurves && (ruledPatch(context, id, curves) || unifiedPatch(context, id, chains)))
+    {
+        return true;
     }
 
     try silent
@@ -1780,7 +1799,8 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             {
                 var report = "[patch]     " ~ label ~ "  profiles " ~ toString(members)
                     ~ "  sections " ~ toString(size(patch))
-                    ~ "  " ~ (atCorner ? (cornerRows(corners) != undefined ? "sector" : "corner loft")
+                    ~ "  " ~ (atCorner ? (cornerRows(corners) != undefined ? "sector"
+                        : (sharedParameterization(curves) ? "corner ruled" : "corner loft"))
                         : (sharedParameterization(curves) ? "ruled"
                         : (compatibleChains(context, chains) ? "unified" : "loft")));
 
