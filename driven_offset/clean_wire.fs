@@ -215,6 +215,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Show runs", "Default" : false, "Description" : "Colour every edge of the cleaned wire by the run it came from, so the stretches the feature formed are visible." }
         definition.showRuns is boolean;
 
+        annotation { "Name" : "Delete input wire", "Default" : false, "Description" : "Remove the source wire body once the cleaned wire exists. The deviation is measured first. Off, the source stays for comparison and for other features." }
+        definition.deleteInput is boolean;
+
         annotation { "Group Name" : "Reduction", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Control points before", "UIHint" : UIHint.READ_ONLY }
@@ -365,6 +368,22 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             showRuns(context, wire, chain, runs);
         }
 
+        // Last, after the deviation was measured against it and the debug colouring of
+        // the groups' source edges is done. Only whole bodies go: a selection of edges
+        // from a larger body is left alone.
+        if (definition.deleteInput)
+        {
+            const inputBodies = qBodyType(qEntityFilter(definition.sourceEdges, EntityType.BODY), BodyType.WIRE);
+            if (!isQueryEmpty(context, inputBodies))
+            {
+                opDeleteBodies(context, id + "deleteInput", { "entities" : inputBodies });
+            }
+            else
+            {
+                reportFeatureInfo(context, id, "The input was selected as edges, not a wire body, so nothing was deleted.");
+            }
+        }
+
         if (definition.debugShowGroups)
         {
             showGroups(context, definition, wire, chain, runs);
@@ -398,6 +417,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "tangencyFixes" : 0,
         "showDeviation" : false,
         "showRuns" : false,
+        "deleteInput" : false,
         "debugShowPolygons" : false,
         "debugShowGroups" : false,
         "approximationDegree" : 3,
