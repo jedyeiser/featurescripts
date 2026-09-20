@@ -1511,7 +1511,7 @@ function cornerPatch(context is Context, id is Id, corners is array) returns boo
                     "isUPeriodic" : false,
                     "isVPeriodic" : false,
                     "controlPoints" : controlPointMatrix(grid),
-                    "weights" : weights,
+                    "weights" : matrix(weights),
                     "uKnots" : knotArray([0, 0, 0, 1, 1, 1]),
                     "vKnots" : knotArray([0, 0, 1, 1])
                 }))
