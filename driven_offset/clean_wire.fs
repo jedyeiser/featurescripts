@@ -1,7 +1,10 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
-// ProjectionType is not reached by common.fs (corrections log 17).
+// ProjectionType and the curve-extension enums are not reached by common.fs (corrections log 17).
 import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
+import(path : "onshape/std/movecurveboundarytype.gen.fs", version : "3070.0");
+import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3070.0");
+import(path : "onshape/std/curveextensionshape.gen.fs", version : "3070.0");
 
 // edge_offset_utils: the fitter (approximateFamily), emitters, classifiers, the
 // approximation predicate and bounds, formatting helpers. export import so the enums
@@ -356,11 +359,16 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             }
 
             // A wall of no depth of its own: it reaches as far along the normal as the wire
-            // does, either side, plus a margin, so the drop always lands on it.
+            // does, either side, plus a margin, so the drop always lands on it. Along the
+            // plan it overshoots both ends of the plan wire for the same reason: the 3D
+            // wire's end can sit exactly over the plan wire's end and a drop onto the wall's
+            // own boundary is ambiguous. The overshoot is on a throwaway copy; the plan
+            // wire itself stays the true extent.
             const margin = max(WALL_MARGIN_MIN, WALL_MARGIN_FRACTION * (planar.normalExtent.max - planar.normalExtent.min));
+            const wallSource = overshotPlan(context, id + "wallSource", plan.wire, planar);
             const wallId = id + "wall";
             opExtrude(context, wallId, {
-                        "entities" : qOwnedByBody(plan.wire, EntityType.EDGE),
+                        "entities" : qOwnedByBody(wallSource, EntityType.EDGE),
                         "direction" : pl.normal,
                         "endBound" : BoundingType.BLIND,
                         "endDepth" : max(planar.normalExtent.max, 0 * meter) + margin,
@@ -368,6 +376,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                         "startDepth" : max(-planar.normalExtent.min, 0 * meter) + margin
                     });
             const wall = qCreatedBy(wallId, EntityType.BODY);
+            opDeleteBodies(context, id + "wallSourceCleanup", { "entities" : wallSource });
             if (definition.outputName != "")
             {
                 setProperty(context, { "entities" : wall, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " wall" });
@@ -861,7 +870,16 @@ function projectChain(context is Context, id is Id, chain is map, pl is Plane) r
             {
                 continue;
             }
-            pieces = append(pieces, planPiece(edge, k, points, from, to));
+            const piece = planPiece(edge, k, points, from, to);
+
+            // An edge along the plane normal projects to a point. It has no plan view of
+            // its own, and left in the list it would hide a fold between its neighbours
+            // from the joint test.
+            if (piece.length < OFFSET_GEOM_TOL)
+            {
+                continue;
+            }
+            pieces = append(pieces, piece);
         }
     }
 
@@ -993,6 +1011,51 @@ function chordDirection(stations is array, atStart is boolean)
         }
     }
     return undefined;
+}
+
+/** Overshoot of the wall past each end of the plan wire, as a fraction of the plan length. */
+export const WALL_OVERSHOOT_FRACTION = 0.02;
+export const WALL_OVERSHOOT_MIN = 2 * millimeter;
+export const WALL_OVERSHOOT_MAX = 50 * millimeter;
+
+/**
+ * A copy of the plan wire extended tangentially past both ends, for the wall to be built
+ * from. Either extension that the kernel refuses is skipped: the wall is then only as
+ * long as the plan there, which is what it was before.
+ */
+function overshotPlan(context is Context, copyId is Id, planWire is Query, planar is map) returns Query
+{
+    opExtractWires(context, copyId, { "edges" : qOwnedByBody(planWire, EntityType.EDGE) });
+    const copy = qCreatedBy(copyId, EntityType.BODY);
+
+    var planLength = 0 * meter;
+    for (var piece in planar.edges)
+    {
+        planLength += piece.length;
+    }
+    const overshoot = clamp(WALL_OVERSHOOT_FRACTION * planLength, WALL_OVERSHOOT_MIN, WALL_OVERSHOOT_MAX);
+
+    const ends = [planar.edges[0].startPoint, planar.edges[size(planar.edges) - 1].endPoint];
+    for (var k = 0; k < 2; k += 1)
+    {
+        try silent
+        {
+            opMoveCurveBoundary(context, copyId + ("extend" ~ k), {
+                        "wires" : copy,
+                        "moveBoundaryType" : MoveCurveBoundaryType.EXTEND,
+                        "endCondition" : CurveExtensionEndCondition.BLIND,
+                        "extensionDistance" : overshoot,
+                        "extensionShape" : CurveExtensionShape.TANGENT,
+                        "helpPoint" : qClosestTo(qOwnedByBody(copy, EntityType.VERTEX), ends[k])
+                    });
+        }
+        catch
+        {
+            println("NOTE: the wall could not be extended past the plan wire's " ~ (k == 0 ? "start" : "end") ~ ".");
+        }
+    }
+
+    return copy;
 }
 
 function projectOnto(point is Vector, pl is Plane) returns Vector
