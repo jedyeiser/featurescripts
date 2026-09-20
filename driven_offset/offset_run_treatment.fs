@@ -213,6 +213,70 @@ function trimCornerOverlap(definition is map, runs is array, index is number, po
 }
 
 /**
+ * Cut the loop out of an offset that folded back on itself.
+ *
+ * offsetPoints leaves a station without a point where the offset exceeds the radius of
+ * curvature, so the run breaks on either side of the fold. The two runs either side
+ * overlap -- that is what a fold is -- and are trimmed back to where they cross, exactly
+ * as an inside corner is; the folded stations between them are gone. A fold at the
+ * chain's end has one run only and simply ends the offset early. Every fold is reported
+ * as information: the result is the correct offset, and the user may still want to know
+ * where their profile was tighter than the geometry.
+ */
+export function resolveFolds(context is Context, definition is map, stations is array, points is array,
+    folded is array, runs is array) returns array
+{
+    var resolved = runs;
+    var notes = [];
+
+    for (var r = size(resolved) - 1; r >= 1; r -= 1)
+    {
+        const prev = resolved[r - 1];
+        const next = resolved[r];
+
+        // A gap between the runs made of folded stations only.
+        if (next.start <= prev.end + 1 || prev.linkIndex != next.linkIndex)
+        {
+            continue;
+        }
+        var allFolded = true;
+        for (var i = prev.end + 1; i < next.start; i += 1)
+        {
+            if (folded[i] != true)
+            {
+                allFolded = false;
+                break;
+            }
+        }
+        if (!allFolded)
+        {
+            continue;
+        }
+
+        notes = append(notes, fmtMM(stations[prev.end + 1].arc, 1, 0));
+        resolved = trimCornerOverlap(mergeMaps(definition, { "cornerOverlapMode" : CornerOverlapMode.TRIM }),
+            resolved, r, points);
+    }
+
+    // Folds at the chain's ends leave no pair to trim; still worth a word.
+    for (var i = 0; i < size(folded); i += 1)
+    {
+        if (folded[i] == true && (i == 0 || i == size(folded) - 1))
+        {
+            notes = append(notes, fmtMM(stations[i].arc, 1, 0) ~ " (chain end)");
+        }
+    }
+
+    if (size(notes) > 0)
+    {
+        println("NOTE: the offset exceeds the radius of curvature at " ~ join(notes, ", ")
+            ~ " mm from the zero point; the folded loop was trimmed there.");
+    }
+
+    return resolved;
+}
+
+/**
  * Bring the two ends of the chain onto their terminal planes.
  *
  * Offsetting moves an endpoint off wherever the source ended. At a source end with tangent

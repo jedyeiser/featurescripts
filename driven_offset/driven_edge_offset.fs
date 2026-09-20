@@ -262,8 +262,9 @@ export function planOffset(context is Context, definition is map, shared is map,
         definition.runBreakMode == RunBreakMode.SOURCE_EDGES);
     const cornered = resolveCorners(context, definition, allStations, allCoords, points,
         sided, runs0, alongRef);
+    const unfolded = resolveFolds(context, definition, allStations, points, placed.folded, cornered);
     const runs = resolveTerminals(context, definition, allStations, allCoords, points,
-        sided, cornered, alongRef);
+        sided, unfolded, alongRef);
 
     if (size(runs) == 0)
     {
@@ -629,6 +630,7 @@ function offsetPoints(stations is array, offsets is array, definition is map, al
 {
     var points = [];
     var margins = [];
+    var folded = [];
 
     for (var i = 0; i < size(stations); i += 1)
     {
@@ -636,19 +638,25 @@ function offsetPoints(stations is array, offsets is array, definition is map, al
         {
             points = append(points, undefined);
             margins = append(margins, undefined);
+            folded = append(folded, false);
             continue;
         }
 
         const frame = stations[i];
 
-        // Only the fold-back test is wanted here. The direction is a run-end
-        // question, asked separately where the frame's turn rates are available.
+        // The fold-back test. Where the offset exceeds the radius of curvature the
+        // offset curve turns back on itself, and the correct offset there is the one
+        // with that loop cut out -- what every 2D offset does. So a folded station
+        // gets no point, the run breaks either side of it, and resolveFolds trims the
+        // two runs back to where they cross. The direction is a run-end question,
+        // asked separately where the frame's turn rates are available.
         const sourceMargin = offsetShrink(frame, offsets[i]);
         if (sourceMargin <= 0)
         {
-            throw regenError("The offset is larger than the radius of curvature at "
-                ~ toString(roundToPrecision(stations[i].arc / millimeter, 1))
-                ~ " mm from the zero point, so the result would fold back on itself. Reduce the offset there.");
+            points = append(points, undefined);
+            margins = append(margins, sourceMargin);
+            folded = append(folded, true);
+            continue;
         }
 
         if (usesReferenceFrame(definition, alongRef))
@@ -663,21 +671,24 @@ function offsetPoints(stations is array, offsets is array, definition is map, al
             const surfaceMargin = placed.surf.scale - placed.surf.curvature * placed.height;
             if (surfaceMargin <= 0)
             {
-                throw regenError("The height offset reaches the centre of curvature of the reference at "
-                    ~ toString(roundToPrecision(stations[i].arc / millimeter, 1))
-                    ~ " mm from the zero point, so the result would fold back on itself. Reduce the height offset there.");
+                points = append(points, undefined);
+                margins = append(margins, surfaceMargin);
+                folded = append(folded, true);
+                continue;
             }
 
             points = append(points, placed.point);
             margins = append(margins, surfaceMargin);
+            folded = append(folded, false);
             continue;
         }
 
         points = append(points, frame.origin + offsets[i].width * frame.widthAxis + offsets[i].height * frame.heightAxis);
         margins = append(margins, sourceMargin);
+        folded = append(folded, false);
     }
 
-    return { "points" : points, "margins" : margins };
+    return { "points" : points, "margins" : margins, "folded" : folded };
 }
 
 /**
