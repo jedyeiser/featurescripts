@@ -333,7 +333,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             }
 
             const pl = planeFromQuery(context, definition.projectionPlane);
-            const planar = projectChain(context, chain, pl);
+            const planar = projectChain(context, id, chain, pl);
             const plan = cleanChain(context, id, id + "plan", definition, planar, {
                         "approximationDegree" : definition.planDegree,
                         "approximationTolerance" : definition.planTolerance,
@@ -796,7 +796,7 @@ function cleanChain(context is Context, id is Id, base is Id, definition is map,
  * which is why it is measured from projected stations rather than scaled from 3D. The
  * chain carries `plane`, and runSamples / emitRun read it.
  */
-function projectChain(context is Context, chain is map, pl is Plane) returns map
+function projectChain(context is Context, id is Id, chain is map, pl is Plane) returns map
 {
     var stationParams = [];
     for (var s = 0; s < CURVATURE_STATIONS; s += 1)
@@ -804,10 +804,13 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
         stationParams = append(stationParams, s / (CURVATURE_STATIONS - 1));
     }
 
-    var projected = [];
+    // Every edge into monotone pieces of the projection. A piece carries the fraction of
+    // the source edge it covers (spanFrom / spanTo, along the chain), its projected
+    // stations, and everything the pipeline reads off an edge.
+    var pieces = [];
     var lowest = undefined;
     var highest = undefined;
-    var folded = [];
+
     for (var k = 0; k < size(chain.edges); k += 1)
     {
         const edge = chain.edges[k];
@@ -823,54 +826,136 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
             points = append(points, projectOnto(lines[at].origin, pl));
         }
 
-        var length = 0 * meter;
-        for (var s = 1; s < CURVATURE_STATIONS; s += 1)
-        {
-            length += norm(points[s] - points[s - 1]);
-        }
-
-        // A fold: the projected curve reverses along itself, which happens wherever the
-        // wire runs back against the plane normal (a slot seen from the side). No curve
-        // fits that; the edges are collected and reported together.
+        // Cusps: a station where the projected chord reverses against the one before.
+        var cuts = [0];
         for (var s = 2; s < CURVATURE_STATIONS; s += 1)
         {
             const before = points[s - 1] - points[s - 2];
             const after = points[s] - points[s - 1];
             if (norm(before) > OFFSET_GEOM_TOL && norm(after) > OFFSET_GEOM_TOL && dot(before, after) < 0 * meter * meter)
             {
-                folded = append(folded, toString(k));
-                break;
+                cuts = append(cuts, s - 1);
             }
         }
+        cuts = append(cuts, CURVATURE_STATIONS - 1);
 
-        // Curvature from consecutive projected stations; the ends take their neighbour.
-        var curvatures = [];
-        for (var s = 0; s < CURVATURE_STATIONS; s += 1)
+        for (var c = 0; c + 1 < size(cuts); c += 1)
         {
-            const m = clamp(s, 1, CURVATURE_STATIONS - 2);
-            curvatures = append(curvatures, norm(curvatureThrough(points[m - 1], points[m], points[m + 1])));
+            const from = cuts[c];
+            const to = cuts[c + 1];
+            if (to - from < 2)
+            {
+                continue;
+            }
+            pieces = append(pieces, planPiece(edge, k, points, from, to));
         }
-
-        projected = append(projected, mergeMaps(edge, {
-                    "length" : length,
-                    "curveType" : edge.curveType == CurveType.LINE ? CurveType.LINE : CurveType.OTHER,
-                    "startPoint" : points[0],
-                    "endPoint" : points[CURVATURE_STATIONS - 1],
-                    "startTangent" : projectedDirection(edge.startTangent, pl, points[1] - points[0]),
-                    "endTangent" : projectedDirection(edge.endTangent, pl, points[CURVATURE_STATIONS - 1] - points[CURVATURE_STATIONS - 2]),
-                    "curvatures" : curvatures
-                }));
     }
 
-    if (size(folded) > 0)
+    // Monotone stretches: cut where consecutive pieces meet at more than a right angle in
+    // plan (a fold at a joint or at a cusp). The longest stretch by projected length is
+    // the extent; the rest retraces it and is dropped.
+    var stretches = [];
+    var current = [];
+    for (var i = 0; i < size(pieces); i += 1)
     {
-        throw regenError("Edge(s) " ~ join(folded, ", ") ~ " of the wire double back on themselves when projected onto "
-            ~ "this plane, so the plan view is not a curve there. Pick a plane the wire does not fold against (for a ski "
-            ~ "outline, the top plane).", ["projectionPlane"]);
+        if (i > 0)
+        {
+            const turn = angleBetween(pieces[i - 1].endTangent, pieces[i].startTangent) / radian;
+            if (turn > PI / 2)
+            {
+                stretches = append(stretches, current);
+                current = [];
+            }
+        }
+        current = append(current, pieces[i]);
+    }
+    stretches = append(stretches, current);
+
+    var best = 0;
+    var bestLength = -1 * meter;
+    for (var i = 0; i < size(stretches); i += 1)
+    {
+        var length = 0 * meter;
+        for (var piece in stretches[i])
+        {
+            length += piece.length;
+        }
+        if (length > bestLength)
+        {
+            bestLength = length;
+            best = i;
+        }
     }
 
-    return { "edges" : projected, "closed" : chain.closed, "plane" : pl,
+    if (size(stretches) > 1)
+    {
+        var dropped = [];
+        for (var i = 0; i < size(stretches); i += 1)
+        {
+            if (i == best)
+            {
+                continue;
+            }
+            for (var piece in stretches[i])
+            {
+                dropped = append(dropped, toString(piece.sourceIndex));
+            }
+        }
+        reportFeatureInfo(context, id, "Plan view trimmed to the extent of the projection: the wire folds back on itself "
+            ~ "on this plane, and edge(s) " ~ join(dropped, ", ") ~ " retrace it, so they were left out of the plan view.");
+    }
+
+    return { "edges" : stretches[best], "closed" : false, "plane" : pl,
             "normalExtent" : { "min" : lowest, "max" : highest } };
+}
+
+/**
+ * One monotone piece of a projected edge, between stations `from` and `to`, described
+ * the way the pipeline reads an edge. Length and curvature come from the projected
+ * stations; the end tangents are the projected source tangents where the piece reaches
+ * the source's ends, and the chord at a cusp otherwise.
+ */
+function planPiece(edge is map, sourceIndex is number, points is array, from is number, to is number) returns map
+{
+    var stations = [];
+    var length = 0 * meter;
+    for (var s = from; s <= to; s += 1)
+    {
+        stations = append(stations, points[s]);
+        if (s > from)
+        {
+            length += norm(points[s] - points[s - 1]);
+        }
+    }
+
+    const n = size(stations);
+    var curvatures = [];
+    for (var s = 0; s < n; s += 1)
+    {
+        const m = clamp(s, 1, n - 2);
+        curvatures = append(curvatures, norm(curvatureThrough(stations[m - 1], stations[m], stations[m + 1])));
+    }
+
+    const startTangent = (from == 0)
+        ? projectedDirection(edge.startTangent, undefined, stations[1] - stations[0])
+        : normalize(stations[1] - stations[0]);
+    const endTangent = (to == CURVATURE_STATIONS - 1)
+        ? projectedDirection(edge.endTangent, undefined, stations[n - 1] - stations[n - 2])
+        : normalize(stations[n - 1] - stations[n - 2]);
+
+    return mergeMaps(edge, {
+                "sourceIndex" : sourceIndex,
+                "spanFrom" : from / (CURVATURE_STATIONS - 1),
+                "spanTo" : to / (CURVATURE_STATIONS - 1),
+                "length" : length,
+                "curveType" : (edge.curveType == CurveType.LINE && from == 0 && to == CURVATURE_STATIONS - 1)
+                    ? CurveType.LINE : CurveType.OTHER,
+                "startPoint" : stations[0],
+                "endPoint" : stations[n - 1],
+                "startTangent" : startTangent,
+                "endTangent" : endTangent,
+                "curvatures" : curvatures
+            });
 }
 
 function projectOnto(point is Vector, pl is Plane) returns Vector
@@ -882,8 +967,14 @@ function projectOnto(point is Vector, pl is Plane) returns Vector
  * A direction projected into the plane; where it was normal to the plane the projected
  * chord stands in for it.
  */
-function projectedDirection(direction is Vector, pl is Plane, chord is Vector) returns Vector
+function projectedDirection(direction is Vector, pl, chord is Vector) returns Vector
 {
+    // The plan pieces are built from already-projected stations, so the chord is in the
+    // plane; the source tangent is only consulted for its direction along that chord.
+    if (pl == undefined)
+    {
+        return (norm(chord) > 0 * meter) ? normalize(chord) : direction;
+    }
     const inPlane = direction - dot(direction, pl.normal) * pl.normal;
     if (norm(inPlane) > 1e-6)
     {
@@ -1133,9 +1224,11 @@ function applyBreaks(context is Context, definition is map, chain is map, joints
 
     for (var pick in evaluateQuery(context, definition.breakAt))
     {
-        const point = isQueryEmpty(context, qBodyType(pick, BodyType.MATE_CONNECTOR))
+        const picked = isQueryEmpty(context, qBodyType(pick, BodyType.MATE_CONNECTOR))
             ? evVertexPoint(context, { "vertex" : pick })
             : evMateConnector(context, { "mateConnector" : pick }).origin;
+        // On the plan chain the vertices are projected, so the pick is too.
+        const point = (chain.plane == undefined) ? picked : projectOnto(picked, chain.plane);
 
         var found = false;
         for (var j = 0; j + 1 < size(edges); j += 1)
@@ -1369,18 +1462,19 @@ function runSamples(context is Context, chain is map, run is map, tolerance is V
     for (var i = run.first; i <= run.last; i += 1)
     {
         const edge = chain.edges[i];
-        const step = edge.length / (CURVATURE_STATIONS - 1);
+        const stationCount = size(edge.curvatures);
+        const step = edge.length / (stationCount - 1);
 
         // Cumulative density over the stations, along the chain.
         var cumulative = [0];
-        for (var s = 1; s < CURVATURE_STATIONS; s += 1)
+        for (var s = 1; s < stationCount; s += 1)
         {
             const density = 0.5 * (1 / spacingFor(edge.curvatures[s - 1], tolerance, edge.length)
                     + 1 / spacingFor(edge.curvatures[s], tolerance, edge.length));
             cumulative = append(cumulative, cumulative[s - 1] + density * step);
         }
 
-        const total = cumulative[CURVATURE_STATIONS - 1];
+        const total = cumulative[stationCount - 1];
         const count = clamp(ceil(total), SAMPLE_MIN_PER_EDGE, SAMPLE_MAX_PER_EDGE);
 
         // Along-chain fractions at equal density increments, inverted piecewise-linearly.
@@ -1389,20 +1483,24 @@ function runSamples(context is Context, chain is map, run is map, tolerance is V
         for (var k = 0; k < count; k += 1)
         {
             const target = total * k / (count - 1);
-            while (station < CURVATURE_STATIONS - 1 && cumulative[station] < target)
+            while (station < stationCount - 1 && cumulative[station] < target)
             {
                 station += 1;
             }
             const span = cumulative[station] - cumulative[station - 1];
             const within = (span <= 0) ? 0 : clamp((target - cumulative[station - 1]) / span, 0, 1);
-            fractions = append(fractions, (station - 1 + within) / (CURVATURE_STATIONS - 1));
+            fractions = append(fractions, (station - 1 + within) / (stationCount - 1));
         }
 
-        // Kernel parameters: an edge traversed backwards reads its fractions from the far end.
+        // Kernel parameters: a plan piece covers only part of its source edge, and an edge
+        // traversed backwards reads its fractions from the far end.
+        const spanFrom = (edge.spanFrom == undefined) ? 0 : edge.spanFrom;
+        const spanTo = (edge.spanTo == undefined) ? 1 : edge.spanTo;
         var parameters = [];
         for (var fraction in fractions)
         {
-            parameters = append(parameters, edge.flipped ? 1 - fraction : fraction);
+            const along = spanFrom + fraction * (spanTo - spanFrom);
+            parameters = append(parameters, edge.flipped ? 1 - along : along);
         }
 
         const lines = evEdgeTangentLines(context, { "edge" : edge.query, "parameters" : parameters });
