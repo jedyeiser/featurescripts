@@ -12,9 +12,10 @@ import(path : "a2665e22c07b7a6929ce4e80", version : "");
  * the split its "keep opposite side" box says -- a choice that flips whenever a surface's
  * orientation changes upstream, which lofts and offsets do freely. Here a REFERENCE (a
  * body, face, edge, vertex or mate connector that lies on the keep side of both surfaces)
- * decides: on each surface the side nearer to the reference is kept. The two boxes remain
- * as overrides -- ticked, the far side is kept instead -- and with no reference the
- * feature is the built-in.
+ * decides: on each surface the side nearer to the reference is kept ("Keep side nearest
+ * reference", on by default), or the farther one with the box off. "Keep the inside" and
+ * "keep the outside" are then statements about geometry, stable under any change to the
+ * inputs. With no reference the feature is the built-in.
  *
  * Mechanism, unchanged from std/mutualTrim.fs: opSplitFace with mutual imprint splits both
  * sheets along their extended intersection; qSplitBy labels the two sides; a flood fill
@@ -38,16 +39,16 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
                     "MaxNumberOfPicks" : 1 }
         definition.body1 is Query;
 
-        annotation { "Name" : "Keep opposite side", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Description" : "With a reference: keep the side of the first surface FARTHER from it. Without: the built-in's flip." }
-        definition.keepOtherSide1 is boolean;
+        annotation { "Name" : "Keep side nearest reference", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION, "Description" : "On: keep the side of the first surface nearer to the reference (the inside). Off: keep the farther side (the outside). Either way the choice survives changes to the inputs. Without a reference: the split's own front side on, back side off." }
+        definition.keepNear1 is boolean;
 
         annotation { "Name" : "Second surface",
                     "Filter" : EntityType.BODY && BodyType.SHEET && ModifiableEntityOnly.YES && SketchObject.NO && ConstructionObject.NO,
                     "MaxNumberOfPicks" : 1 }
         definition.body2 is Query;
 
-        annotation { "Name" : "Keep opposite side", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Description" : "With a reference: keep the side of the second surface FARTHER from it. Without: the built-in's flip." }
-        definition.keepOtherSide2 is boolean;
+        annotation { "Name" : "Keep side nearest reference", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION, "Description" : "On: keep the side of the second surface nearer to the reference. Off: keep the farther side." }
+        definition.keepNear2 is boolean;
 
         annotation { "Name" : "Keep side reference",
                     "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
@@ -102,6 +103,8 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
         }
     }, {
         "merge" : true,
+        "keepNear1" : true,
+        "keepNear2" : true,
         "keepReference" : qNothing(),
         "debugPrintSides" : false
     });
@@ -136,9 +139,9 @@ function findFacesToDelete(context is Context, id is Id, definition is map, spli
     const reference = keepReferenceSide(context, definition);
 
     const delete1 = sideToDelete(context, definition, "first", qOwnedByBody(definition.body1, EntityType.FACE),
-        imprint1, definition.keepOtherSide1, splitId, reference);
+        imprint1, definition.keepNear1, splitId, reference);
     const delete2 = sideToDelete(context, definition, "second", qOwnedByBody(definition.body2, EntityType.FACE),
-        imprint2, definition.keepOtherSide2, splitId, reference);
+        imprint2, definition.keepNear2, splitId, reference);
 
     return qUnion([delete1, delete2]);
 }
@@ -165,19 +168,20 @@ function keepReferenceSide(context is Context, definition is map)
 /**
  * One body's faces to delete.
  *
- * Without a reference this is the built-in: the split's back side, or its front side
- * when flipped. With one, the side nearer to the reference is kept -- or the farther
- * side when flipped -- and a reference that cannot tell the two apart is an error, not
- * a guess.
+ * With a reference, `keepNear` on keeps the side nearer to it and off the farther side:
+ * "keep the inside" / "keep the outside", stated in geometry, so the choice holds when
+ * the inputs change. A reference that cannot tell the two sides apart is an error, not a
+ * guess. Without a reference this is the built-in: on keeps the split's front side, off
+ * its back side.
  */
 function sideToDelete(context is Context, definition is map, label is string, faces is Query, imprint is Query,
-    flip is boolean, splitId is Id, reference) returns Query
+    keepNear is boolean, splitId is Id, reference) returns Query
 {
     const sides = classifySides(context, faces, imprint, splitId);
 
     if (reference == undefined)
     {
-        return flip ? sides.front : sides.back;
+        return keepNear ? sides.back : sides.front;
     }
 
     const toFront = evDistance(context, { "side0" : reference, "side1" : sides.front }).distance;
@@ -186,7 +190,7 @@ function sideToDelete(context is Context, definition is map, label is string, fa
     if (definition.debugPrintSides)
     {
         println("[trim] " ~ label ~ " surface: reference is " ~ fmtMM(toFront, 4, 0) ~ " mm from one side and "
-            ~ fmtMM(toBack, 4, 0) ~ " mm from the other; keeping the " ~ (flip ? "farther" : "nearer") ~ " side.");
+            ~ fmtMM(toBack, 4, 0) ~ " mm from the other; keeping the " ~ (keepNear ? "nearer" : "farther") ~ " side.");
     }
 
     if (abs(toFront - toBack) < KEEP_SIDE_MARGIN)
@@ -198,7 +202,7 @@ function sideToDelete(context is Context, definition is map, label is string, fa
 
     const nearer = (toFront < toBack) ? sides.front : sides.back;
     const farther = (toFront < toBack) ? sides.back : sides.front;
-    return flip ? nearer : farther;
+    return keepNear ? farther : nearer;
 }
 
 /**
