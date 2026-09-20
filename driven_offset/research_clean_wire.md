@@ -235,6 +235,24 @@ with `annotation { "Editing Logic Function" : "cleanWireEditLogic" }`; it return
 modified definition. Setting an array parameter from editing logic and clearing the
 trigger boolean is the mechanism to verify first in a throwaway feature.
 
+## 5b. Built so far (2026-09-19, clean_wire.fs pushed, document root tab)
+
+Mode (Manual / Auto), Wire, Name, Groups (edges / name / GLOBAL|MAX_CP|TOLERANCE override,
+FOCUS_INNER_QUERY), Break at (EntityType.VERTEX || BodyType.MATE_CONNECTOR), corner angle
++ force tangency (Auto only), Approximation parameters group, Maximum deviation (read-only,
+evMaxPathDeviation against the source), Show deviation (std comb), Show runs (colour per
+run); Debug: Show groups (colour per group, source + result), Print joints, Print runs
+(with start point), Show corners, Show control polygons, Keep pieces. Conflicts: a break
+inside a group is a regenError; corners inside a group are fitted through and counted.
+First run on Pinch_intersection_Curve (Auto, 15 CPs): 32 edges -> 8 runs, six within
+tolerance, the tail bend and tip runs at the cap (0.106 / 0.215 mm) -- the two stretches
+the user split by hand; a group with ~25 CPs each is the manual equivalent.
+
+Lessons: `break` is a reserved word as a map key (fscheck now lists break/continue/throw/
+try/catch/in); a sliver shorter than twice the minimum sample spacing crossed clamp's
+bounds; "can't select edges" turned out to be the INPUT BODY HIDDEN in the viewport, not
+filters or focus -- check visibility before anything else.
+
 ## 6. Output identity
 
 - Deterministic chain start: the end with the lexicographically smaller (x, y, z) at

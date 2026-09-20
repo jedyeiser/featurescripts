@@ -118,7 +118,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         // FOCUS_INNER_QUERY: a new group's own Edges field takes the selection. Without it
         // the first empty query in the dialog does, and picks meant for the group went to
         // "Break at" (which is why that field now sits below the groups as well).
-        annotation { "Name" : "Groups", "Item name" : "group", "Item label template" : "#cw_name", "UIHint" : UIHint.FOCUS_INNER_QUERY, "Description" : "A stretch of contiguous edges fitted as one curve under its own approximation. The ends of a group are always kept as vertices." }
+        annotation { "Name" : "Groups", "Item name" : "group", "Item label template" : "#cw_name", "UIHint" : [UIHint.FOCUS_INNER_QUERY, UIHint.COLLAPSE_ARRAY_ITEMS], "Description" : "A stretch of contiguous edges fitted as one curve under its own approximation. The ends of a group are always kept as vertices." }
         definition.groups is array;
         for (var entry in definition.groups)
         {
@@ -226,7 +226,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         if (definition.debugPrintRuns)
         {
-            printRuns(reports);
+            printRuns(definition, reports);
         }
 
         const wireId = id + "wire";
@@ -290,7 +290,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             showGroups(context, definition, wire, chain, runs);
         }
 
-        reportOutcome(context, id, chain, grouped.joints, runs, reports, measured.deviation);
+        reportOutcome(context, id, definition, chain, grouped.joints, runs, reports, measured.deviation);
 
         embedVariableMap(context, id, {
                     "variable" : {
@@ -878,11 +878,26 @@ function fitDeviation(curve is BSplineCurve, points is array) returns ValueWithU
 // ============================================================================
 
 /**
+ * A run named the way the user thinks of it: by its group where it has one, otherwise by
+ * its edges and where it starts.
+ */
+function runLabel(definition is map, report is map, k is number) returns string
+{
+    if (report.group != undefined)
+    {
+        const name = definition.groups[report.group].cw_name;
+        return "'" ~ (name == "" ? "group " ~ toString(report.group + 1) : name) ~ "'";
+    }
+    return "run " ~ toString(k) ~ " (edges " ~ toString(report.first) ~ ".." ~ toString(report.last)
+        ~ ", from " ~ fmtVec(report.start / millimeter, 1, 0) ~ " mm)";
+}
+
+/**
  * The feature's own notices: what was decided for the user, and anything short of the
  * tolerance -- that is missing shape, so a warning.
  */
-function reportOutcome(context is Context, id is Id, chain is map, joints is array, runs is array, reports is array,
-    measured is ValueWithUnits)
+function reportOutcome(context is Context, id is Id, definition is map, chain is map, joints is array, runs is array,
+    reports is array, measured is ValueWithUnits)
 {
     var short = [];
     for (var k = 0; k < size(reports); k += 1)
@@ -890,7 +905,8 @@ function reportOutcome(context is Context, id is Id, chain is map, joints is arr
         const report = reports[k];
         if (report.kind == "fit" && report.deviation > 1.0001 * report.tolerance)
         {
-            short = append(short, toString(k));
+            short = append(short, runLabel(definition, report, k) ~ " by " ~ fmtMM(report.deviation, 4, 0) ~ " mm at "
+                ~ toString(report.controlPoints) ~ " CPs");
         }
     }
 
@@ -905,8 +921,8 @@ function reportOutcome(context is Context, id is Id, chain is map, joints is arr
 
     if (size(short) > 0)
     {
-        reportFeatureWarning(context, id, "Run(s) " ~ join(short, ", ") ~ " could not be fitted within tolerance ("
-            ~ fmtMM(measured, 4, 0) ~ " mm from the source); see the console.");
+        reportFeatureWarning(context, id, "Short of tolerance: " ~ join(short, "; ")
+            ~ ". Raise the control points there or split the stretch. Max deviation from the source " ~ fmtMM(measured, 4, 0) ~ " mm.");
         return;
     }
 
@@ -947,18 +963,19 @@ function printChain(chain is map, joints is array, groupOfEdge is array)
 /**
  * Print every run as emitted.
  */
-function printRuns(reports is array)
+function printRuns(definition is map, reports is array)
 {
     println("");
     println("========== clean wire: runs ==========");
-    println("    run  edges      kind   samples  CPs   deviation (mm)  group   starts at (mm)");
+    println("    run  edges      kind   samples  CPs   deviation (mm)   starts at (mm)               group");
     for (var k = 0; k < size(reports); k += 1)
     {
         const r = reports[k];
+        const name = (r.group == undefined) ? "" : definition.groups[r.group].cw_name;
         println(padLeft(toString(k), 7) ~ padLeft(toString(r.first) ~ ".." ~ toString(r.last), 7) ~ "  " ~ padLeft(r.kind, 8)
             ~ padLeft(toString(r.samples), 9) ~ padLeft(toString(r.controlPoints), 5)
-            ~ fmtMM(r.deviation, 4, 16) ~ padLeft(r.group == undefined ? "-" : toString(r.group), 7)
-            ~ "   " ~ fmtVec(r.start / millimeter, 1, 9));
+            ~ fmtMM(r.deviation, 4, 16) ~ "   " ~ fmtVec(r.start / millimeter, 1, 9)
+            ~ (r.group == undefined ? "" : "   " ~ toString(r.group) ~ (name == "" ? "" : " " ~ name)));
     }
     println("========== end runs ==========");
 }
