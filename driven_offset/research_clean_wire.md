@@ -334,9 +334,8 @@ import(path : "2b6b313ac740a0146d5bef7c", version : "6e0b68b1f1ffa8bdf4921850");
    conflict and is reported as an error naming the break position and the group; a
    break at a group end or between groups is redundant and fine. Automatic grouping via
    an editing-logic "Suggest" trigger remains the plan.
-2. **Corner angle default.** The ramp creases at 332.4 / 392.4 mm are 4.8 deg joints. If
-   they are design intent the default must be below that (3 deg) so they stay corners;
-   if they are noise, 5 deg merges them. Awaiting the user's answer.
+2. DECIDED by shipping: corner angle default 3 deg (the 4.8 deg ramp creases stay corners,
+   as the manual splits did); it is a parameter.
 3. **Closed loops in v1?** Periodic fit is a small extension of approximateFamily; the
    corner-cut rule is easy. Include, or reject closed input with a clear error?
 4. **Exact-merge fallback in v1?** Skip. Report the shortfall and let the user raise the
@@ -358,6 +357,18 @@ import(path : "2b6b313ac740a0146d5bef7c", version : "6e0b68b1f1ffa8bdf4921850");
    an INFO when the corner count changes.
 5. Interpreted runtime on long wires at 0.001 mm -- kernel-batched sampling, refit as the
    only v1 path, a hard sample budget (~5000) with a notice.
+
+## 9b. Where testing stopped (2026-09-19, end of day)
+
+Verified only on Pinch_intersection_Curve (tail_notch / Slotted / Baseline). Next, on the
+user's side: re-seed Cap_Wall on the cleaned wire and compare its face table with the
+2026-09-19 numbers (the acceptance test); try Wrapped_FPT and a sketch-derived wire to
+exercise the joint thresholds and sliver rules; Top plane with "Keep projected surface"
+off. Known soft spots: Manual groups reference source edges by identity (stale after an
+upstream renumbering; Auto-populate recovers in one click; a by-position override would
+make Manual immune); closed loops refused; arc recognition inside splines not built.
+`Print surface` was still ON in Driven offset surface 1; the clean_wire tab is at the
+document root until moved.
 
 ## 10. Build plan
 

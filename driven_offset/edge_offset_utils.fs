@@ -2354,9 +2354,22 @@ function referencePlaneNormal(samples is array) returns Vector
         }
     }
 
+    // A straight reference bends in no plane, so the plane is chosen the way the curved
+    // case is signed anyway: height as close to world +Z as the line allows. planeNormal
+    // = tangent x Z makes the height axis (planeNormal x tangent) the part of Z normal
+    // to the line, and width the horizontal perpendicular -- a planar offset. A vertical
+    // line has no such plane and takes Y for its normal instead.
     if (bestCurvature < ZERO_CURVATURE)
     {
-        throw regenError("The reference wire is straight everywhere, so it has no offset plane. Use a different offset definition.");
+        const tangent = samples[0].tangent;
+        var planeNormal = cross(tangent, vector(0, 0, 1));
+        if (norm(planeNormal) < 1e-6)
+        {
+            planeNormal = cross(tangent, vector(0, 1, 0));
+        }
+        println("NOTE: the reference wire is straight; its offset plane is taken with height along world Z"
+            ~ " (plane normal " ~ fmtVec(normalize(planeNormal), 3, 7) ~ ").");
+        return normalize(planeNormal);
     }
 
     var planeNormal = normalize(cross(best.tangent, best.towardCentre));
