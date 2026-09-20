@@ -388,6 +388,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 }
                 else
                 {
+                    const droppedCount = size(evaluateQuery(context, dropped));
                     const constrainedId = id + "constrained";
                     opExtractWires(context, constrainedId, { "edges" : dropped });
                     opDeleteBodies(context, id + "dropCleanup", { "entities" : qUnion([qOwnerBody(dropped), wire]) });
@@ -401,9 +402,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                     if (size(pieces) != 1)
                     {
                         reportFeatureWarning(context, id, "The constrained wire came out as " ~ toString(size(pieces))
-                            ~ " bodies: the projection onto the wall did not join at " ~ toString(size(pieces) - 1)
-                            ~ " place(s). See the console for the dropped edge count.");
-                        println("[constrain] " ~ toString(size(evaluateQuery(context, dropped))) ~ " edge(s) dropped onto the wall from "
+                            ~ " bodies: " ~ toString(droppedCount) ~ " of " ~ toString(size(runs)) ~ " edges projected onto the wall. "
+                            ~ "An edge running along the plane normal has no projection; pick a plane the wire lies across.");
+                        println("[constrain] " ~ toString(droppedCount) ~ " edge(s) dropped onto the wall from "
                             ~ toString(size(runs)) ~ " run(s); " ~ toString(size(pieces)) ~ " wire body(ies) after extraction.");
                     }
                 }
