@@ -249,10 +249,10 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 annotation { "Name" : "Plan maximum control points" }
                 isInteger(definition.planMaxCPs, DrivenOffsetMaxCPBounds);
 
-                annotation { "Name" : "Keep wall", "Default" : true, "Description" : "Leave the wall surface in the result." }
+                annotation { "Name" : "Keep projected surface", "Default" : true, "Description" : "Leave the projected surface, which the cleaned wire is constrained to, in the result." }
                 definition.keepWall is boolean;
 
-                annotation { "Name" : "Keep plan wire", "Default" : true, "Description" : "Leave the cleaned plan-view wire in the result." }
+                annotation { "Name" : "Keep projected wire", "Default" : true, "Description" : "Leave the cleaned projected wire in the result." }
                 definition.keepPlanWire is boolean;
             }
         }
@@ -358,7 +358,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                     }, "plan");
             if (definition.outputName != "")
             {
-                setProperty(context, { "entities" : plan.wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " plan" });
+                setProperty(context, { "entities" : plan.wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " projected" });
             }
 
             // A wall of no depth of its own: it reaches as far along the normal as the wire
@@ -382,7 +382,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             opDeleteBodies(context, id + "wallSourceCleanup", { "entities" : wallSource });
             if (definition.outputName != "")
             {
-                setProperty(context, { "entities" : wall, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " wall" });
+                setProperty(context, { "entities" : wall, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " projected surface" });
             }
 
             {
