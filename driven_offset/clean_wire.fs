@@ -1,5 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
+// ProjectionType is not reached by common.fs (corrections log 17).
+import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
 
 // edge_offset_utils: the fitter (approximateFamily), emitters, classifiers, the
 // approximation predicate and bounds, formatting helpers. export import so the enums
@@ -97,6 +99,9 @@ export const SAMPLE_MAX_PER_EDGE = 200;
 
 /** The chain is ordered by endpoint coincidence at this tolerance (merge_curve's value). */
 export const CLEAN_CHAIN_TOLERANCE = 1e-5 * meter;
+
+/** How far the plan-view wall extends either side of the projection plane. */
+export const CleanWireWallBounds = { (millimeter) : [1, 30, 1000] } as LengthBoundSpec;
 
 /** Read-only counts and percentages in the Reduction group. */
 export const CleanWireCountBounds = { (unitless) : [0, 0, 1e9] } as IntegerBoundSpec;
@@ -218,6 +223,33 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Delete input wire", "Default" : false, "Description" : "Remove the source wire body once the cleaned wire exists. The deviation is measured first. Off, the source stays for comparison and for other features." }
         definition.deleteInput is boolean;
 
+        annotation { "Group Name" : "Projection", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Project onto plane", "Default" : false, "Description" : "Also project the wire onto a plane, clean the plan view with its own approximation, extrude it normal to the plane into a wall, and constrain the cleaned wire onto that wall." }
+            definition.projectOnPlane is boolean;
+
+            if (definition.projectOnPlane)
+            {
+                annotation { "Name" : "Plane", "Filter" : BodyType.MATE_CONNECTOR || (EntityType.FACE && GeometryType.PLANE), "MaxNumberOfPicks" : 1, "Description" : "The plane the wire is projected onto; the wall is extruded along its normal." }
+                definition.projectionPlane is Query;
+
+                annotation { "Name" : "Plan degree" }
+                isInteger(definition.planDegree, DEGREE_BOUND);
+
+                annotation { "Name" : "Plan tolerance", "Description" : "For the plan-view fit; a projection has its own noise." }
+                isLength(definition.planTolerance, TOLERANCE_BOUND);
+
+                annotation { "Name" : "Plan maximum control points" }
+                isInteger(definition.planMaxCPs, DrivenOffsetMaxCPBounds);
+
+                annotation { "Name" : "Wall depth", "Description" : "The wall extends this far either side of the plane." }
+                isLength(definition.wallDepth, CleanWireWallBounds);
+
+                annotation { "Name" : "Constrain wire to wall", "Default" : true, "Description" : "Project the cleaned wire onto the wall along the wall's normal, so it lies exactly on the plan view. Off, the wall is built and the wire is left free." }
+                definition.constrainToWall is boolean;
+            }
+        }
+
         annotation { "Group Name" : "Reduction", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Control points before", "UIHint" : UIHint.READ_ONLY }
@@ -276,67 +308,82 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             throw regenError("Closed loops are not supported yet; split the wire once first.", ["sourceEdges"]);
         }
 
-        const approximation = approximationSettings(definition);
-        // Auto is the classifier and the global settings alone; groups and breaks are the
-        // Manual definition and are not read here, so what the dialog shows is what drives.
         const auto = definition.mode == CleanWireMode.AUTO;
-        const classified = classifyJoints(context, definition, chain);
-        const joints = auto ? classified : applyBreaks(context, definition, chain, classified);
-        const grouped = auto
-            ? { "joints" : joints, "groupOfEdge" : makeArray(size(chain.edges), undefined) }
-            : applyGroups(context, definition, chain, joints);
-        const runs = buildRuns(definition, chain, grouped.joints, grouped.groupOfEdge);
+        const main = cleanChain(context, id, id, definition, chain, approximationSettings(definition), "");
+        const grouped = main.grouped;
+        const runs = main.runs;
+        const reports = main.reports;
+        var wire = main.wire;
 
-        if (definition.debugPrintJoints)
-        {
-            printChain(chain, grouped.joints, grouped.groupOfEdge);
-        }
-
-        var created = [];
-        var reports = [];
-        for (var k = 0; k < size(runs); k += 1)
-        {
-            const runId = id + ("run" ~ k);
-            const report = emitRun(context, runId, definition, chain, runs[k], approximation);
-            created = append(created, qCreatedBy(runId, EntityType.EDGE));
-            reports = append(reports, report);
-        }
-
-        if (definition.debugPrintRuns)
-        {
-            printRuns(definition, reports);
-        }
-
-        const wireId = id + "wire";
-        opExtractWires(context, wireId, { "edges" : qUnion(created) });
-
-        // One chain in, one wire out. More than one means two runs failed to meet at a
-        // vertex, and the gap is worth naming: it is a snapping defect, not a user error.
-        const wireCount = size(evaluateQuery(context, qCreatedBy(wireId, EntityType.BODY)));
-        if (wireCount != 1)
-        {
-            var gaps = [];
-            for (var k = 1; k < size(reports); k += 1)
-            {
-                const gap = runGap(context, id + ("run" ~ (k - 1)), id + ("run" ~ k));
-                if (gap > OFFSET_GEOM_TOL)
-                {
-                    gaps = append(gaps, "runs " ~ toString(k - 1) ~ "|" ~ toString(k) ~ ": " ~ fmtMM(gap, 4, 0) ~ " mm");
-                }
-            }
-            reportFeatureWarning(context, id, "The cleaned wire came out as " ~ toString(wireCount)
-                ~ " bodies instead of one. Gaps between runs: " ~ (size(gaps) == 0 ? "none found" : join(gaps, ", ")) ~ ".");
-        }
-
-        if (!definition.debugKeepPieces)
-        {
-            opDeleteBodies(context, id + "cleanup", { "entities" : qOwnerBody(qUnion(created)) });
-        }
-
-        const wire = qCreatedBy(wireId, EntityType.BODY);
         if (definition.outputName != "")
         {
             setProperty(context, { "entities" : wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
+        }
+
+        // Plan view: the same pipeline over the chain projected onto the plane, with its
+        // own approximation; the result extruded along the normal into a wall; the 3D
+        // wire projected onto that wall along the wall's normal so it lies exactly on the
+        // plan view while keeping its heights.
+        if (definition.projectOnPlane)
+        {
+            if (isQueryEmpty(context, definition.projectionPlane))
+            {
+                throw regenError("Pick a plane to project onto.", ["projectionPlane"]);
+            }
+
+            const pl = planeFromQuery(context, definition.projectionPlane);
+            const planar = projectChain(context, chain, pl);
+            const plan = cleanChain(context, id, id + "plan", definition, planar, {
+                        "approximationDegree" : definition.planDegree,
+                        "approximationTolerance" : definition.planTolerance,
+                        "approximationMaxCPs" : definition.planMaxCPs,
+                        "debugFit" : definition.debugPrintRuns
+                    }, "plan");
+            if (definition.outputName != "")
+            {
+                setProperty(context, { "entities" : plan.wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " plan" });
+            }
+
+            const wallId = id + "wall";
+            opExtrude(context, wallId, {
+                        "entities" : qOwnedByBody(plan.wire, EntityType.EDGE),
+                        "direction" : pl.normal,
+                        "endBound" : BoundingType.BLIND,
+                        "endDepth" : definition.wallDepth,
+                        "startBound" : BoundingType.BLIND,
+                        "startDepth" : definition.wallDepth
+                    });
+            const wall = qCreatedBy(wallId, EntityType.BODY);
+            if (definition.outputName != "")
+            {
+                setProperty(context, { "entities" : wall, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " wall" });
+            }
+
+            if (definition.constrainToWall)
+            {
+                const dropId = id + "onWall";
+                opDropCurve(context, dropId, {
+                            "tools" : qOwnedByBody(wire, EntityType.EDGE),
+                            "targets" : qOwnedByBody(wall, EntityType.FACE),
+                            "projectionType" : ProjectionType.NORMAL_TO_TARGET
+                        });
+                const dropped = qCreatedBy(dropId, EntityType.EDGE);
+                if (isQueryEmpty(context, dropped))
+                {
+                    reportFeatureWarning(context, id, "The cleaned wire could not be projected onto the wall; it was left free.");
+                }
+                else
+                {
+                    const constrainedId = id + "constrained";
+                    opExtractWires(context, constrainedId, { "edges" : dropped });
+                    opDeleteBodies(context, id + "dropCleanup", { "entities" : qUnion([qOwnerBody(dropped), wire]) });
+                    wire = qCreatedBy(constrainedId, EntityType.BODY);
+                    if (definition.outputName != "")
+                    {
+                        setProperty(context, { "entities" : wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
+                    }
+                }
+            }
         }
 
         // Against the SOURCE, not the fit's own samples: the number the dialog shows is
@@ -418,6 +465,13 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "showDeviation" : false,
         "showRuns" : false,
         "deleteInput" : false,
+        "projectOnPlane" : false,
+        "projectionPlane" : qNothing(),
+        "planDegree" : 3,
+        "planTolerance" : 1e-5 * meter,
+        "planMaxCPs" : 30,
+        "wallDepth" : 30 * millimeter,
+        "constrainToWall" : true,
         "debugShowPolygons" : false,
         "debugShowGroups" : false,
         "approximationDegree" : 3,
@@ -647,6 +701,163 @@ function reportAutoRuns(context is Context, id is Id, definition is map, reports
         setFeatureComputedParameter(context, id, { "name" : "autoRuns[" ~ toString(k) ~ "].ar_kind",
                 "value" : reports[k].kind == "exact" ? "exact copy" : "fit" });
     }
+}
+
+/**
+ * One chain into one wire: classify, group, run, emit, extract, and check that it came
+ * out as one body. Shared by the 3D pass and the plan-view pass, which differ only in
+ * the chain handed in (see projectChain) and the fitter settings.
+ *
+ * @param base {Id} : run ids are `base + ("run" ~ k)`, the wire `base + "wire"`.
+ * @param label {string} : "" for the 3D pass, "plan" for the projected one (prints).
+ * @returns {map} : { "wire" : Query, "runs", "reports", "grouped" : { joints, groupOfEdge } }
+ */
+function cleanChain(context is Context, id is Id, base is Id, definition is map, chain is map, approximation is map,
+    label is string) returns map
+{
+    // Auto is the classifier and the global settings alone; groups and breaks are the
+    // Manual definition and are not read there, so what the dialog shows is what drives.
+    const auto = definition.mode == CleanWireMode.AUTO;
+    const classified = classifyJoints(context, definition, chain);
+    const joints = auto ? classified : applyBreaks(context, definition, chain, classified);
+    const grouped = auto
+        ? { "joints" : joints, "groupOfEdge" : makeArray(size(chain.edges), undefined) }
+        : applyGroups(context, definition, chain, joints);
+    const runs = buildRuns(definition, chain, grouped.joints, grouped.groupOfEdge);
+
+    if (definition.debugPrintJoints)
+    {
+        if (label != "")
+        {
+            println("[" ~ label ~ "]");
+        }
+        printChain(chain, grouped.joints, grouped.groupOfEdge);
+    }
+
+    var created = [];
+    var reports = [];
+    for (var k = 0; k < size(runs); k += 1)
+    {
+        const runId = base + ("run" ~ k);
+        const report = emitRun(context, runId, definition, chain, runs[k], approximation);
+        created = append(created, qCreatedBy(runId, EntityType.EDGE));
+        reports = append(reports, report);
+    }
+
+    if (definition.debugPrintRuns)
+    {
+        if (label != "")
+        {
+            println("[" ~ label ~ "]");
+        }
+        printRuns(definition, reports);
+    }
+
+    const wireId = base + "wire";
+    opExtractWires(context, wireId, { "edges" : qUnion(created) });
+
+    // One chain in, one wire out. More than one means two runs failed to meet at a
+    // vertex, and the gap is worth naming: it is a snapping defect, not a user error.
+    const wireCount = size(evaluateQuery(context, qCreatedBy(wireId, EntityType.BODY)));
+    if (wireCount != 1)
+    {
+        var gaps = [];
+        for (var k = 1; k < size(reports); k += 1)
+        {
+            const gap = runGap(context, base + ("run" ~ (k - 1)), base + ("run" ~ k));
+            if (gap > OFFSET_GEOM_TOL)
+            {
+                gaps = append(gaps, "runs " ~ toString(k - 1) ~ "|" ~ toString(k) ~ ": " ~ fmtMM(gap, 4, 0) ~ " mm");
+            }
+        }
+        reportFeatureWarning(context, id, "The " ~ (label == "" ? "cleaned" : label) ~ " wire came out as " ~ toString(wireCount)
+            ~ " bodies instead of one. Gaps between runs: " ~ (size(gaps) == 0 ? "none found" : join(gaps, ", ")) ~ ".");
+    }
+
+    if (!definition.debugKeepPieces)
+    {
+        opDeleteBodies(context, base + "cleanup", { "entities" : qOwnerBody(qUnion(created)) });
+    }
+
+    return { "wire" : qCreatedBy(wireId, EntityType.BODY), "runs" : runs, "reports" : reports, "grouped" : grouped };
+}
+
+/**
+ * The chain as it looks projected onto a plane: every point and tangent projected, every
+ * length and curvature re-measured in the plane from projected stations.
+ *
+ * Projection is not a change of representation, it is a change of geometry: a pitch
+ * kink vanishes (the ramp creases of the rout wire are corners in 3D and tangent in plan),
+ * an edge climbing steeply shortens or becomes a sliver, a tilted circle becomes an
+ * ellipse (so only LINE stays exact in plan), and curvature can go up as well as down,
+ * which is why it is measured from projected stations rather than scaled from 3D. The
+ * chain carries `plane`, and runSamples / emitRun read it.
+ */
+function projectChain(context is Context, chain is map, pl is Plane) returns map
+{
+    var stationParams = [];
+    for (var s = 0; s < CURVATURE_STATIONS; s += 1)
+    {
+        stationParams = append(stationParams, s / (CURVATURE_STATIONS - 1));
+    }
+
+    var projected = [];
+    for (var edge in chain.edges)
+    {
+        const lines = evEdgeTangentLines(context, { "edge" : edge.query, "parameters" : stationParams });
+
+        var points = [];
+        for (var s = 0; s < CURVATURE_STATIONS; s += 1)
+        {
+            const at = edge.flipped ? CURVATURE_STATIONS - 1 - s : s;
+            points = append(points, projectOnto(lines[at].origin, pl));
+        }
+
+        var length = 0 * meter;
+        for (var s = 1; s < CURVATURE_STATIONS; s += 1)
+        {
+            length += norm(points[s] - points[s - 1]);
+        }
+
+        // Curvature from consecutive projected stations; the ends take their neighbour.
+        var curvatures = [];
+        for (var s = 0; s < CURVATURE_STATIONS; s += 1)
+        {
+            const m = clamp(s, 1, CURVATURE_STATIONS - 2);
+            curvatures = append(curvatures, norm(curvatureThrough(points[m - 1], points[m], points[m + 1])));
+        }
+
+        projected = append(projected, mergeMaps(edge, {
+                    "length" : length,
+                    "curveType" : edge.curveType == CurveType.LINE ? CurveType.LINE : CurveType.OTHER,
+                    "startPoint" : points[0],
+                    "endPoint" : points[CURVATURE_STATIONS - 1],
+                    "startTangent" : projectedDirection(edge.startTangent, pl, points[1] - points[0]),
+                    "endTangent" : projectedDirection(edge.endTangent, pl, points[CURVATURE_STATIONS - 1] - points[CURVATURE_STATIONS - 2]),
+                    "curvatures" : curvatures
+                }));
+    }
+
+    return { "edges" : projected, "closed" : chain.closed, "plane" : pl };
+}
+
+function projectOnto(point is Vector, pl is Plane) returns Vector
+{
+    return point - dot(point - pl.origin, pl.normal) * pl.normal;
+}
+
+/**
+ * A direction projected into the plane; where it was normal to the plane the projected
+ * chord stands in for it.
+ */
+function projectedDirection(direction is Vector, pl is Plane, chord is Vector) returns Vector
+{
+    const inPlane = direction - dot(direction, pl.normal) * pl.normal;
+    if (norm(inPlane) > 1e-6)
+    {
+        return normalize(inPlane);
+    }
+    return (norm(chord) > 0 * meter) ? normalize(chord) : direction;
 }
 
 /**
@@ -1165,7 +1376,7 @@ function runSamples(context is Context, chain is map, run is map, tolerance is V
         const lines = evEdgeTangentLines(context, { "edge" : edge.query, "parameters" : parameters });
         for (var tangentLine in lines)
         {
-            points = append(points, tangentLine.origin);
+            points = append(points, chain.plane == undefined ? tangentLine.origin : projectOnto(tangentLine.origin, chain.plane));
         }
         perEdge = append(perEdge, count);
     }
@@ -1215,6 +1426,30 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
         || (definition.mode == CleanWireMode.MANUAL && run.group == undefined)
         || (run.length != undefined && run.length < sliverMax))
     {
+        if (chain.plane != undefined)
+        {
+            // Nothing in plan view can be copied from the source; a line is a line
+            // between its projected ends, and anything else exact-in-3D but not a line
+            // here is fitted instead.
+            if (!runIsExact(chain, run) && !(run.length != undefined && run.length < sliverMax))
+            {
+                return emitFittedRun(context, runId, definition, chain, run, approximation);
+            }
+            var copied = 0;
+            for (var i = run.first; i <= run.last; i += 1)
+            {
+                const edge = chain.edges[i];
+                if (norm(edge.endPoint - edge.startPoint) > OFFSET_GEOM_TOL)
+                {
+                    emitLineCurve(context, runId + ("line" ~ i), edge.startPoint, edge.endPoint);
+                    copied += 2;
+                }
+            }
+            return { "kind" : "exact", "edges" : edgeCount, "first" : run.first, "last" : run.last,
+                    "samples" : 0, "controlPoints" : copied, "deviation" : 0 * meter, "tolerance" : undefined,
+                    "group" : run.group, "start" : first.startPoint };
+        }
+
         var members = [];
         for (var i = run.first; i <= run.last; i += 1)
         {
@@ -1233,6 +1468,18 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
                 "group" : run.group, "start" : first.startPoint };
     }
 
+    return emitFittedRun(context, runId, definition, chain, run, approximation);
+}
+
+/**
+ * One run fitted through its samples with the chain's end tangents.
+ */
+function emitFittedRun(context is Context, runId is Id, definition is map, chain is map, run is map,
+    approximation is map) returns map
+{
+    const first = chain.edges[run.first];
+    const last = chain.edges[run.last];
+    const edgeCount = run.last - run.first + 1;
     const settings = runApproximation(definition, run, approximation);
     const sampled = runSamples(context, chain, run, settings.approximationTolerance);
     const points = withoutRepeats(sampled.points, fitRepeatTolerance(sampled.points));
