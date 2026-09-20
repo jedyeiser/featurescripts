@@ -2975,7 +2975,11 @@ export function approximateFamily(context is Context, members is array, approxim
                 "isPeriodic" : false,
                 "targets" : targets,
                 "parameters" : parameters,
-                "maxControlPoints" : approximation.approximationMaxCPs
+                "maxControlPoints" : approximation.approximationMaxCPs,
+                // A run of three points with two end tangents is interpolated by
+                // construction; the std INFO for that is noise here, the error is measured
+                // below either way.
+                "suppressInterpolationNotice" : true
             });
 
     // Two ways the fitter can hand back a curve that is not what was asked for, neither of
