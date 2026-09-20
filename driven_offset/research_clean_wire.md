@@ -194,6 +194,11 @@ Groups   array, "Item name" : "group", label "#cw_name"
    cw_mode    enum CleanApproximation { NONE ("Global"), MAX_CP, TOL }   HORIZONTAL_ENUM
    cw_maxCPs  integer (DrivenOffsetMaxCPBounds)   if MAX_CP
    cw_tolerance length (TOLERANCE_BOUND)          if TOL
+Break at             Query  BodyType.MATE_CONNECTOR || EntityType.VERTEX, many picks:
+                     vertices kept whatever the joint angle (auto mode will fill this)
+Maximum deviation    read-only computed: evMaxPathDeviation(source, output)
+Show deviation       boolean: the std deviation comb (magenta) with the maximum marked
+Debug: Show control polygons (batched addDebugEntities, colour per run)
 Suggest groups       boolean "button": editing logic reads it, walks the wire, classifies
                      joints, trial-fits each tangent stretch at the global tolerance, fills
                      the Groups array (edges + suggested MAX_CP), resets the boolean.
@@ -275,8 +280,12 @@ import(path : "2b6b313ac740a0146d5bef7c", version : "6e0b68b1f1ffa8bdf4921850");
 
 ## 8. Open decisions (for discussion)
 
-1. DECIDED: groups are the input; no break picks. Automatic grouping via an
-   editing-logic "Suggest groups" trigger (section 5).
+1. DECIDED (revised 2026-09-19): BOTH groups and breaks are inputs. Breaks ("Break at",
+   vertex / mate connector picks) are the natural currency of the coming AUTO mode (a
+   computed corner set); groups carry per-region budgets. A break inside a group is a
+   conflict and is reported as an error naming the break position and the group; a
+   break at a group end or between groups is redundant and fine. Automatic grouping via
+   an editing-logic "Suggest" trigger remains the plan.
 2. **Corner angle default.** The ramp creases at 332.4 / 392.4 mm are 4.8 deg joints. If
    they are design intent the default must be below that (3 deg) so they stay corners;
    if they are noise, 5 deg merges them. Awaiting the user's answer.

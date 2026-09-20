@@ -53,6 +53,19 @@ import(path : "2b6b313ac740a0146d5bef7c", version : "");
  */
 export const CleanWireCornerBounds = { (degree) : [0.1, 3, 90], (radian) : 0.05 } as AngleBoundSpec;
 
+/**
+ * Manual: only the groups are fitted, every other edge is copied as it is, and the
+ * classifier's opinion of the joints is printed but not acted on. Auto: the classifier
+ * forms the runs from the joint angles, and breaks and groups override it.
+ */
+export enum CleanWireMode
+{
+    annotation { "Name" : "Manual" }
+    MANUAL,
+    annotation { "Name" : "Auto" }
+    AUTO
+}
+
 /** Per-group approximation override. */
 export enum CleanApproximation
 {
@@ -93,6 +106,9 @@ annotation { "Feature Type Name" : "Clean wire",
 export const cleanWire = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
+        annotation { "Name" : "Mode", "Default" : CleanWireMode.MANUAL, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Description" : "Manual: only the groups are fitted, everything else is copied as it is. Auto: tangent stretches are found and fitted; breaks and groups override." }
+        definition.mode is CleanWireMode;
+
         annotation { "Name" : "Wire", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO, "Description" : "The wire body, or edges forming one chain, to clean." }
         definition.sourceEdges is Query;
 
@@ -125,14 +141,17 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             }
         }
 
-        annotation { "Name" : "Break at", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "Description" : "Vertices of the wire to keep whatever the joint angle there. A break inside a group is a conflict and is reported." }
+        annotation { "Name" : "Break at", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "Description" : "Vertices of the wire to keep whatever the joint angle there. A break inside a group is a conflict and is reported." }
         definition.breakAt is Query;
 
-        annotation { "Name" : "Corner angle", "Description" : "Joints where the edges meet at more than this angle are corners and keep their vertex. Below it a joint is nearly tangent." }
-        isAngle(definition.cornerAngle, CleanWireCornerBounds);
+        if (definition.mode == CleanWireMode.AUTO)
+        {
+            annotation { "Name" : "Corner angle", "Description" : "Joints where the edges meet at more than this angle are corners and keep their vertex. Below it a joint is nearly tangent." }
+            isAngle(definition.cornerAngle, CleanWireCornerBounds);
 
-        annotation { "Name" : "Make nearly tangent joints tangent", "Default" : true, "Description" : "A joint between the tangent threshold (0.57 degrees) and the corner angle is fitted through, which makes it exactly tangent within the tolerance. Off, such joints are corners." }
-        definition.forceTangency is boolean;
+            annotation { "Name" : "Make nearly tangent joints tangent", "Default" : true, "Description" : "A joint between the tangent threshold (0.57 degrees) and the corner angle is fitted through, which makes it exactly tangent within the tolerance. Off, such joints are corners." }
+            definition.forceTangency is boolean;
+        }
 
         annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
         {
@@ -144,6 +163,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Show deviation", "Default" : false, "Description" : "Draw the deviation comb between the cleaned wire and the source, with the maximum marked." }
         definition.showDeviation is boolean;
+
+        annotation { "Name" : "Show runs", "Default" : false, "Description" : "Colour every edge of the cleaned wire by the run it came from, so the stretches the feature formed are visible." }
+        definition.showRuns is boolean;
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
@@ -204,6 +226,24 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         const wireId = id + "wire";
         opExtractWires(context, wireId, { "edges" : qUnion(created) });
 
+        // One chain in, one wire out. More than one means two runs failed to meet at a
+        // vertex, and the gap is worth naming: it is a snapping defect, not a user error.
+        const wireCount = size(evaluateQuery(context, qCreatedBy(wireId, EntityType.BODY)));
+        if (wireCount != 1)
+        {
+            var gaps = [];
+            for (var k = 1; k < size(reports); k += 1)
+            {
+                const gap = runGap(context, id + ("run" ~ (k - 1)), id + ("run" ~ k));
+                if (gap > OFFSET_GEOM_TOL)
+                {
+                    gaps = append(gaps, "runs " ~ toString(k - 1) ~ "|" ~ toString(k) ~ ": " ~ fmtMM(gap, 4, 0) ~ " mm");
+                }
+            }
+            reportFeatureWarning(context, id, "The cleaned wire came out as " ~ toString(wireCount)
+                ~ " bodies instead of one. Gaps between runs: " ~ (size(gaps) == 0 ? "none found" : join(gaps, ", ")) ~ ".");
+        }
+
         if (!definition.debugKeepPieces)
         {
             opDeleteBodies(context, id + "cleanup", { "entities" : qOwnerBody(qUnion(created)) });
@@ -234,6 +274,11 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             showPolygons(context, id + "polygons", reports);
         }
 
+        if (definition.showRuns)
+        {
+            showRuns(context, wire, chain, runs);
+        }
+
         reportOutcome(context, id, chain, grouped.joints, runs, reports, measured.deviation);
 
         embedVariableMap(context, id, {
@@ -250,11 +295,13 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
     }, {
         "outputName" : "",
         "groups" : [],
+        "mode" : CleanWireMode.MANUAL,
         "breakAt" : qNothing(),
         "cornerAngle" : 3 * degree,
         "forceTangency" : true,
         "maxDeviation" : 0 * meter,
         "showDeviation" : false,
+        "showRuns" : false,
         "debugShowPolygons" : false,
         "approximationDegree" : 3,
         "approximationTolerance" : 1e-5 * meter,
@@ -365,6 +412,17 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
     for (var j = 1; j < size(edges); j += 1)
     {
         joints = append(joints, jointRecord(definition, edges[j - 1].endTangent, edges[j].startTangent, false, ""));
+    }
+
+    // Manual: the classification is printed for information, but every joint is kept
+    // unless a group runs through it.
+    if (definition.mode == CleanWireMode.MANUAL)
+    {
+        for (var j = 0; j < size(joints); j += 1)
+        {
+            joints[j] = mergeMaps(joints[j], { "isBreak" : true, "why" : "manual" });
+        }
+        return joints;
     }
 
     // Slivers: the joints either side of one are re-decided from the neighbours across it.
@@ -730,7 +788,8 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
     const last = chain.edges[run.last];
     const edgeCount = run.last - run.first + 1;
 
-    if (runIsExact(chain, run))
+    // Manual mode copies everything outside a group as it is, whatever its type.
+    if (runIsExact(chain, run) || (definition.mode == CleanWireMode.MANUAL && run.group == undefined))
     {
         var members = [];
         for (var i = run.first; i <= run.last; i += 1)
@@ -741,7 +800,7 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
 
         return { "kind" : "exact", "edges" : edgeCount, "first" : run.first, "last" : run.last,
                 "samples" : 0, "controlPoints" : 0, "deviation" : 0 * meter, "tolerance" : undefined,
-                "group" : run.group };
+                "group" : run.group, "start" : first.startPoint };
     }
 
     const settings = runApproximation(definition, run, approximation);
@@ -765,7 +824,7 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
     return { "kind" : "fit", "edges" : edgeCount, "first" : run.first, "last" : run.last,
             "samples" : size(points), "controlPoints" : size(curve.controlPoints),
             "deviation" : fitDeviation(curve, points), "tolerance" : settings.approximationTolerance,
-            "group" : run.group, "curve" : curve };
+            "group" : run.group, "curve" : curve, "start" : first.startPoint };
 }
 
 /**
@@ -880,13 +939,14 @@ function printRuns(reports is array)
 {
     println("");
     println("========== clean wire: runs ==========");
-    println("    run  edges      kind   samples  CPs   deviation (mm)  group");
+    println("    run  edges      kind   samples  CPs   deviation (mm)  group   starts at (mm)");
     for (var k = 0; k < size(reports); k += 1)
     {
         const r = reports[k];
         println(padLeft(toString(k), 7) ~ padLeft(toString(r.first) ~ ".." ~ toString(r.last), 7) ~ "  " ~ padLeft(r.kind, 8)
             ~ padLeft(toString(r.samples), 9) ~ padLeft(toString(r.controlPoints), 5)
-            ~ fmtMM(r.deviation, 4, 16) ~ (r.group == undefined ? "" : padLeft(toString(r.group), 7)));
+            ~ fmtMM(r.deviation, 4, 16) ~ padLeft(r.group == undefined ? "-" : toString(r.group), 7)
+            ~ "   " ~ fmtVec(r.start / millimeter, 1, 9));
     }
     println("========== end runs ==========");
 }
@@ -897,6 +957,28 @@ function curveTypeName(curveType) returns string
     if (curveType == CurveType.CIRCLE) { return "circle"; }
     if (curveType == CurveType.ELLIPSE) { return "ellipse"; }
     return "other";
+}
+
+/**
+ * The smallest distance between the end vertices of two consecutive run bodies.
+ */
+function runGap(context is Context, previousId is Id, nextId is Id) returns ValueWithUnits
+{
+    const before = evaluateQuery(context, qCreatedBy(previousId, EntityType.VERTEX));
+    const after = evaluateQuery(context, qCreatedBy(nextId, EntityType.VERTEX));
+    var best = undefined;
+    for (var a in before)
+    {
+        for (var b in after)
+        {
+            const d = norm(evVertexPoint(context, { "vertex" : a }) - evVertexPoint(context, { "vertex" : b }));
+            if (best == undefined || d < best)
+            {
+                best = d;
+            }
+        }
+    }
+    return best == undefined ? 0 * meter : best;
 }
 
 /**
@@ -934,6 +1016,24 @@ function showPolygons(context is Context, id is Id, reports is array)
             addDebugEntities(context, qCreatedBy(featureId, EntityType.EDGE), colours[c]);
         }
         abortFeature(context, featureId);
+    }
+}
+
+/**
+ * Colour every edge of the finished wire by its run. The wire's edges are copies, so
+ * each run's edge is found as the one nearest the run's own midpoint sample.
+ */
+function showRuns(context is Context, wire is Query, chain is map, runs is array)
+{
+    const colours = [DebugColor.RED, DebugColor.BLUE, DebugColor.GREEN, DebugColor.MAGENTA, DebugColor.CYAN, DebugColor.YELLOW];
+    const edges = qOwnedByBody(wire, EntityType.EDGE);
+
+    for (var k = 0; k < size(runs); k += 1)
+    {
+        const run = runs[k];
+        const middle = chain.edges[floor((run.first + run.last) / 2)];
+        const probe = evEdgeTangentLines(context, { "edge" : middle.query, "parameters" : [0.5] })[0].origin;
+        addDebugEntities(context, qClosestTo(edges, probe), colours[k % size(colours)]);
     }
 }
 
