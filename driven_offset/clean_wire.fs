@@ -100,8 +100,12 @@ export const SAMPLE_MAX_PER_EDGE = 200;
 /** The chain is ordered by endpoint coincidence at this tolerance (merge_curve's value). */
 export const CLEAN_CHAIN_TOLERANCE = 1e-5 * meter;
 
-/** How far the plan-view wall extends either side of the projection plane. */
-export const CleanWireWallBounds = { (millimeter) : [1, 30, 1000] } as LengthBoundSpec;
+/**
+ * The wall is extruded past the wire's own extent along the plane normal by this fraction
+ * of that extent plus a millimetre, so the projection onto it cannot fall off an edge.
+ */
+export const WALL_MARGIN_FRACTION = 0.1;
+export const WALL_MARGIN_MIN = 1 * millimeter;
 
 /** Read-only counts and percentages in the Reduction group. */
 export const CleanWireCountBounds = { (unitless) : [0, 0, 1e9] } as IntegerBoundSpec;
@@ -242,9 +246,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 annotation { "Name" : "Plan maximum control points" }
                 isInteger(definition.planMaxCPs, DrivenOffsetMaxCPBounds);
 
-                annotation { "Name" : "Wall depth", "Description" : "The wall extends this far either side of the plane." }
-                isLength(definition.wallDepth, CleanWireWallBounds);
-
                 annotation { "Name" : "Constrain wire to wall", "Default" : true, "Description" : "Project the cleaned wire onto the wall along the wall's normal, so it lies exactly on the plan view. Off, the wall is built and the wire is left free." }
                 definition.constrainToWall is boolean;
             }
@@ -344,14 +345,17 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 setProperty(context, { "entities" : plan.wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " plan" });
             }
 
+            // A wall of no depth of its own: it reaches as far along the normal as the wire
+            // does, either side, plus a margin, so the drop always lands on it.
+            const margin = max(WALL_MARGIN_MIN, WALL_MARGIN_FRACTION * (planar.normalExtent.max - planar.normalExtent.min));
             const wallId = id + "wall";
             opExtrude(context, wallId, {
                         "entities" : qOwnedByBody(plan.wire, EntityType.EDGE),
                         "direction" : pl.normal,
                         "endBound" : BoundingType.BLIND,
-                        "endDepth" : definition.wallDepth,
+                        "endDepth" : max(planar.normalExtent.max, 0 * meter) + margin,
                         "startBound" : BoundingType.BLIND,
-                        "startDepth" : definition.wallDepth
+                        "startDepth" : max(-planar.normalExtent.min, 0 * meter) + margin
                     });
             const wall = qCreatedBy(wallId, EntityType.BODY);
             if (definition.outputName != "")
@@ -470,7 +474,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "planDegree" : 3,
         "planTolerance" : 1e-5 * meter,
         "planMaxCPs" : 30,
-        "wallDepth" : 30 * millimeter,
         "constrainToWall" : true,
         "debugShowPolygons" : false,
         "debugShowGroups" : false,
@@ -802,6 +805,8 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
     }
 
     var projected = [];
+    var lowest = undefined;
+    var highest = undefined;
     for (var edge in chain.edges)
     {
         const lines = evEdgeTangentLines(context, { "edge" : edge.query, "parameters" : stationParams });
@@ -810,6 +815,9 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
         for (var s = 0; s < CURVATURE_STATIONS; s += 1)
         {
             const at = edge.flipped ? CURVATURE_STATIONS - 1 - s : s;
+            const height = dot(lines[at].origin - pl.origin, pl.normal);
+            lowest = (lowest == undefined) ? height : min(lowest, height);
+            highest = (highest == undefined) ? height : max(highest, height);
             points = append(points, projectOnto(lines[at].origin, pl));
         }
 
@@ -838,7 +846,8 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
                 }));
     }
 
-    return { "edges" : projected, "closed" : chain.closed, "plane" : pl };
+    return { "edges" : projected, "closed" : chain.closed, "plane" : pl,
+            "normalExtent" : { "min" : lowest, "max" : highest } };
 }
 
 function projectOnto(point is Vector, pl is Plane) returns Vector
