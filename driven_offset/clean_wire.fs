@@ -615,7 +615,10 @@ function spacingFor(curvature, tolerance is ValueWithUnits, edgeLength is ValueW
     {
         spacing = sqrt(4 * tolerance / kappa);
     }
-    return clamp(spacing, SAMPLE_MIN_SPACING, min(SAMPLE_MAX_SPACING, edgeLength / 2));
+    // A sliver shorter than twice the minimum spacing gets the minimum: the bounds must
+    // not cross, and its sample count is floored to SAMPLE_MIN_PER_EDGE anyway.
+    const upper = max(SAMPLE_MIN_SPACING, min(SAMPLE_MAX_SPACING, edgeLength / 2));
+    return clamp(spacing, SAMPLE_MIN_SPACING, upper);
 }
 
 // ============================================================================
