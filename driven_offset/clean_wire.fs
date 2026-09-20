@@ -106,7 +106,8 @@ export const CleanWirePercentBounds = { (unitless) : [-1e9, 0, 1e9] } as RealBou
 // ============================================================================
 
 annotation { "Feature Type Name" : "Clean wire",
-        "Feature Type Description" : "Rebuild a wire with fewer edges and control points: tangent stretches become one spline each, corners are kept, exact lines and arcs pass through." }
+        "Feature Type Description" : "Rebuild a wire with fewer edges and control points: tangent stretches become one spline each, corners are kept, exact lines and arcs pass through.",
+        "Editing Logic Function" : "cleanWireEditLogic" }
 export const cleanWire = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -119,9 +120,34 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Name", "Description" : "Names the output wire. Clear it to leave it unnamed." }
         definition.outputName is string;
 
+        if (definition.mode == CleanWireMode.AUTO)
+        {
+            // What the classifier found, one item per run, filled in by the editing logic
+            // (edges and position) and by the regen (control points and deviation). Read
+            // only: it is a report, and in Auto it is the only thing driving.
+            annotation { "Name" : "Runs", "Item name" : "run", "Item label template" : "#ar_label", "UIHint" : [UIHint.READ_ONLY, UIHint.COLLAPSE_ARRAY_ITEMS, UIHint.PREVENT_ARRAY_REORDER] }
+            definition.autoRuns is array;
+            for (var run in definition.autoRuns)
+            {
+                annotation { "Name" : "Edges", "UIHint" : UIHint.READ_ONLY }
+                run.ar_label is string;
+
+                annotation { "Name" : "Kind", "UIHint" : UIHint.READ_ONLY }
+                run.ar_kind is string;
+
+                annotation { "Name" : "Control points", "UIHint" : UIHint.READ_ONLY }
+                isInteger(run.ar_cps, CleanWireCountBounds);
+
+                annotation { "Name" : "Deviation", "UIHint" : UIHint.READ_ONLY }
+                isLength(run.ar_deviation, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+            }
+        }
+
         // FOCUS_INNER_QUERY: a new group's own Edges field takes the selection. Without it
         // the first empty query in the dialog does, and picks meant for the group went to
         // "Break at" (which is why that field now sits below the groups as well).
+        if (definition.mode == CleanWireMode.MANUAL)
+        {
         annotation { "Name" : "Groups", "Item name" : "group", "Item label template" : "#cw_name", "UIHint" : [UIHint.FOCUS_INNER_QUERY, UIHint.COLLAPSE_ARRAY_ITEMS], "Description" : "A stretch of contiguous edges fitted as one curve under its own approximation. The ends of a group are always kept as vertices." }
         definition.groups is array;
         for (var entry in definition.groups)
@@ -150,6 +176,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Break at", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "Description" : "Vertices of the wire to keep whatever the joint angle there. A break inside a group is a conflict and is reported." }
         definition.breakAt is Query;
+        }
 
         if (definition.mode == CleanWireMode.AUTO)
         {
@@ -233,8 +260,14 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         }
 
         const approximation = approximationSettings(definition);
-        const joints = applyBreaks(context, definition, chain, classifyJoints(context, definition, chain));
-        const grouped = applyGroups(context, definition, chain, joints);
+        // Auto is the classifier and the global settings alone; groups and breaks are the
+        // Manual definition and are not read here, so what the dialog shows is what drives.
+        const auto = definition.mode == CleanWireMode.AUTO;
+        const classified = classifyJoints(context, definition, chain);
+        const joints = auto ? classified : applyBreaks(context, definition, chain, classified);
+        const grouped = auto
+            ? { "joints" : joints, "groupOfEdge" : makeArray(size(chain.edges), undefined) }
+            : applyGroups(context, definition, chain, joints);
         const runs = buildRuns(definition, chain, grouped.joints, grouped.groupOfEdge);
 
         if (definition.debugPrintJoints)
@@ -298,6 +331,10 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 });
         setFeatureComputedParameter(context, id, { "name" : "maxDeviation", "value" : measured.deviation });
         reportReduction(context, id, chain, grouped.joints, reports);
+        if (auto)
+        {
+            reportAutoRuns(context, id, definition, reports);
+        }
 
         if (definition.debugShowCorners)
         {
@@ -336,6 +373,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "outputName" : "",
         "groups" : [],
         "mode" : CleanWireMode.MANUAL,
+        "autoRuns" : [],
         "breakAt" : qNothing(),
         "cornerAngle" : 3 * degree,
         "forceTangency" : true,
@@ -355,6 +393,97 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "debugShowCorners" : false,
         "debugKeepPieces" : false
     });
+
+/**
+ * Editing logic: keep the read-only Runs array in step with what the classifier would do,
+ * so the dialog in Auto shows the runs before the regen has fitted anything. Only the
+ * chain and the joints are computed here (kernel evaluations, no fits, no ops); the
+ * control points and deviations arrive from the regen as computed parameters.
+ *
+ * Runs only when something that changes the runs changed: the wire, the mode, the
+ * corner angle, the tangency choice or the tolerance (which sets the sliver length).
+ */
+export function cleanWireEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
+{
+    if (definition.mode != CleanWireMode.AUTO)
+    {
+        return definition;
+    }
+
+    const relevant = ["sourceEdges", "mode", "cornerAngle", "forceTangency", "approximationTolerance"];
+    var changed = isCreating || size(definition.autoRuns) == 0;
+    for (var key in relevant)
+    {
+        if (oldDefinition[key] != definition[key])
+        {
+            changed = true;
+        }
+    }
+    if (!changed)
+    {
+        return definition;
+    }
+
+    var items = [];
+    try silent
+    {
+        const edges = expandEdgeQuery(definition.sourceEdges);
+        if (!isQueryEmpty(context, edges))
+        {
+            const chain = describeChain(context, edges);
+            const joints = classifyJoints(context, definition, chain);
+            const runs = buildRuns(definition, chain, joints, makeArray(size(chain.edges), undefined));
+            for (var run in runs)
+            {
+                items = append(items, {
+                            "ar_label" : autoRunLabel(chain, run),
+                            "ar_kind" : (runIsExact(chain, run) || (run.length != undefined
+                                    && run.length < max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance)))
+                                ? "exact copy" : "fit",
+                            "ar_cps" : 0,
+                            "ar_deviation" : 0 * meter
+                        });
+            }
+        }
+    }
+    catch
+    {
+        // A wire that does not chain yet (mid-selection) shows no runs rather than an error.
+        items = [];
+    }
+
+    definition.autoRuns = items;
+    return definition;
+}
+
+/**
+ * The label of one detected run: its edges and where it starts.
+ */
+function autoRunLabel(chain is map, run is map) returns string
+{
+    const start = chain.edges[run.first].startPoint / millimeter;
+    return "edges " ~ toString(run.first) ~ ".." ~ toString(run.last) ~ " from "
+        ~ toString(roundToPrecision(start[0], 1)) ~ ", " ~ toString(roundToPrecision(start[1], 1))
+        ~ ", " ~ toString(roundToPrecision(start[2], 1)) ~ " mm";
+}
+
+/**
+ * Fill the Runs items the editing logic created with what the regen measured. An item
+ * that the editing logic has not created yet (the array is shorter than the run list)
+ * cannot be written; the next dialog change re-creates them.
+ */
+function reportAutoRuns(context is Context, id is Id, definition is map, reports is array)
+{
+    const count = min(size(definition.autoRuns), size(reports));
+    for (var k = 0; k < count; k += 1)
+    {
+        setFeatureComputedParameter(context, id, { "name" : "autoRuns[" ~ toString(k) ~ "].ar_cps", "value" : reports[k].controlPoints });
+        setFeatureComputedParameter(context, id, { "name" : "autoRuns[" ~ toString(k) ~ "].ar_deviation", "value" : reports[k].deviation });
+        setFeatureComputedParameter(context, id, { "name" : "autoRuns[" ~ toString(k) ~ "].ar_kind",
+                "value" : reports[k].kind == "exact" ? "exact copy" : "fit" });
+    }
+}
 
 /**
  * The three fitter settings, as the utils fitter reads them.
