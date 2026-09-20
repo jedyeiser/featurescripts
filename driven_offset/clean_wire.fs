@@ -78,12 +78,13 @@ export enum CleanApproximation
 }
 
 /**
- * Edges shorter than this are slivers: fragments whose own end tangents mean nothing.
- * Judged by the neighbours across them. A multiple of the tolerance with a floor: at
- * 0.01 mm the floor rules, at coarser tolerances the multiple does.
+ * Edges shorter than the sliver length are fragments whose own end tangents mean nothing;
+ * they are judged by the neighbours across them. A length of its own, NOT a multiple of
+ * the tolerance: tied to the tolerance it grew to 25 mm at 0.5 mm, swallowed the 5.6 mm
+ * notch jog between two parallel lines, and drove one spline through both 45 degree
+ * corners.
  */
-export const SLIVER_TOLERANCE_MULTIPLE = 50;
-export const SLIVER_MIN_LENGTH = 0.5 * millimeter;
+export const CleanWireSliverBounds = { (millimeter) : [0.01, 0.5, 20] } as LengthBoundSpec;
 
 /** Curvature stations per edge for the sampling density. */
 export const CURVATURE_STATIONS = 32;
@@ -185,6 +186,12 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
             annotation { "Name" : "Make nearly tangent joints tangent", "Default" : true, "Description" : "A joint between the tangent threshold (0.57 degrees) and the corner angle is fitted through, which makes it exactly tangent within the tolerance. Off, such joints are corners." }
             definition.forceTangency is boolean;
+
+            annotation { "Name" : "Sliver length", "Description" : "Edges shorter than this are fragments: absorbed into the run when the edges either side of them line up, kept as their own piece when they sit at a corner." }
+            isLength(definition.sliverLength, CleanWireSliverBounds);
+
+            annotation { "Name" : "Fit control points to tolerance", "Default" : false, "Description" : "Fit every run at the tolerance without a cap, and set Maximum control points to what the largest run needed. Clears itself." }
+            definition.fitControlPoints is boolean;
         }
 
         annotation { "Group Name" : "Approximation parameters", "Collapsed By Default" : true }
@@ -377,6 +384,8 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "breakAt" : qNothing(),
         "cornerAngle" : 3 * degree,
         "forceTangency" : true,
+        "sliverLength" : 0.5 * millimeter,
+        "fitControlPoints" : false,
         "maxDeviation" : 0 * meter,
         "cpBefore" : 0, "cpAfter" : 0, "cpReduction" : 0,
         "edgesBefore" : 0, "edgesAfter" : 0, "edgeReduction" : 0,
@@ -411,7 +420,13 @@ export function cleanWireEditLogic(context is Context, id is Id, oldDefinition i
         return definition;
     }
 
-    const relevant = ["sourceEdges", "mode", "cornerAngle", "forceTangency", "approximationTolerance"];
+    if (definition.fitControlPoints == true)
+    {
+        definition.fitControlPoints = false;
+        definition = withFittedControlPoints(context, definition);
+    }
+
+    const relevant = ["sourceEdges", "mode", "cornerAngle", "forceTangency", "approximationTolerance", "sliverLength"];
     var changed = isCreating || size(definition.autoRuns) == 0;
     for (var key in relevant)
     {
@@ -439,7 +454,7 @@ export function cleanWireEditLogic(context is Context, id is Id, oldDefinition i
                 items = append(items, {
                             "ar_label" : autoRunLabel(chain, run),
                             "ar_kind" : (runIsExact(chain, run) || (run.length != undefined
-                                    && run.length < max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance)))
+                                    && run.length < definition.sliverLength))
                                 ? "exact copy" : "fit",
                             "ar_cps" : 0,
                             "ar_deviation" : 0 * meter
@@ -454,6 +469,57 @@ export function cleanWireEditLogic(context is Context, id is Id, oldDefinition i
     }
 
     definition.autoRuns = items;
+    return definition;
+}
+
+/**
+ * Maximum control points set to what the largest run needs at the tolerance.
+ *
+ * Every fitted run is sampled and fitted exactly as the regen would, with the cap at the
+ * library maximum, and the largest count wins. A run that needs more than the library
+ * allows leaves the cap at the maximum and is reported by the regen's warning.
+ */
+function withFittedControlPoints(context is Context, definition is map) returns map
+{
+    var needed = 4;
+
+    try silent
+    {
+        const edges = expandEdgeQuery(definition.sourceEdges);
+        if (!isQueryEmpty(context, edges))
+        {
+            const chain = describeChain(context, edges);
+            const joints = classifyJoints(context, definition, chain);
+            const runs = buildRuns(definition, chain, joints, makeArray(size(chain.edges), undefined));
+            const settings = mergeMaps(approximationSettings(definition), {
+                        "approximationMaxCPs" : MAX_CONTROL_POINTS,
+                        "debugFit" : false
+                    });
+
+            for (var run in runs)
+            {
+                if (runIsExact(chain, run) || (run.length != undefined && run.length < definition.sliverLength))
+                {
+                    continue;
+                }
+
+                const sampled = runSamples(context, chain, run, settings.approximationTolerance);
+                const points = withoutRepeats(sampled.points, fitRepeatTolerance(sampled.points));
+                const curves = approximateFamily(context, [{
+                                    "points" : points,
+                                    "startDerivative" : chain.edges[run.first].startTangent,
+                                    "endDerivative" : chain.edges[run.last].endTangent
+                                }], settings);
+                needed = max(needed, size(curves[0].controlPoints));
+            }
+        }
+    }
+    catch
+    {
+        return definition;
+    }
+
+    definition.approximationMaxCPs = clamp(needed, 4, MAX_CONTROL_POINTS);
     return definition;
 }
 
@@ -604,12 +670,24 @@ function sourceControlPoints(context is Context, edge is Query, curveType) retur
 function classifyJoints(context is Context, definition is map, chain is map) returns array
 {
     const edges = chain.edges;
-    const sliverMax = max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance);
+    const sliverMax = definition.sliverLength;
 
     var joints = [];
     for (var j = 1; j < size(edges); j += 1)
     {
         joints = append(joints, jointRecord(definition, edges[j - 1].endTangent, edges[j].startTangent, false, ""));
+    }
+
+    // An exact source edge -- a line or an arc -- is a run of its own whatever its joints:
+    // copied as it is, with its neighbours fitted up to it. Fitting a straight stretch
+    // into a cubic with the bend beside it rings; keeping the line exact and handing the
+    // spline its direction at the joint does not.
+    for (var j = 0; j < size(joints); j += 1)
+    {
+        if (isExactEdge(edges[j]) || isExactEdge(edges[j + 1]))
+        {
+            joints[j] = mergeMaps(joints[j], { "isBreak" : true, "why" : "exact edge kept" });
+        }
     }
 
     // Manual: the classification is printed for information, but every joint is kept
@@ -631,7 +709,21 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
             continue;
         }
 
-        const across = jointRecord(definition, edges[i - 1].endTangent, edges[i + 1].startTangent, true, "");
+        var across = jointRecord(definition, edges[i - 1].endTangent, edges[i + 1].startTangent, true, "");
+
+        // Tangent neighbours whose lines do not meet are a jog, not a fragment: the
+        // sliver is the step between them and stays a piece of its own with corners.
+        if (!across.isBreak)
+        {
+            const gapVector = edges[i + 1].startPoint - edges[i - 1].endPoint;
+            const along = normalize(edges[i - 1].endTangent + edges[i + 1].startTangent);
+            const lateral = norm(gapVector - dot(gapVector, along) * along);
+            if (lateral > definition.approximationTolerance)
+            {
+                across = mergeMaps(across, { "kind" : "corner", "isBreak" : true });
+            }
+        }
+
         if (across.isBreak)
         {
             // A chamfer or a fillet at a corner: kept as its own piece, both joints corners.
@@ -646,6 +738,14 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
     }
 
     return joints;
+}
+
+/**
+ * A source edge the kernel holds exactly.
+ */
+function isExactEdge(edge is map) returns boolean
+{
+    return edge.curveType == CurveType.LINE || edge.curveType == CurveType.CIRCLE;
 }
 
 /**
@@ -826,7 +926,7 @@ function applyGroups(context is Context, definition is map, chain is map, joints
  */
 function buildRuns(definition is map, chain is map, joints is array, groupOfEdge is array) returns array
 {
-    const sliverMax = max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance);
+    const sliverMax = definition.sliverLength;
     var runs = [];
     var first = 0;
 
@@ -1012,7 +1112,7 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
     // Manual mode copies everything outside a group as it is, whatever its type; so is a
     // run that is nothing but slivers (a chamfer or fillet fragment at a corner), whose
     // three samples would fit to noise.
-    const sliverMax = max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance);
+    const sliverMax = definition.sliverLength;
     if (runIsExact(chain, run)
         || (definition.mode == CleanWireMode.MANUAL && run.group == undefined)
         || (run.length != undefined && run.length < sliverMax))
