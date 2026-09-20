@@ -1270,13 +1270,34 @@ call ev* functions and approximateSpline (evaluations), which is enough to size 
 
 ---
 
+## 28. "Which side to keep" by distance to the pieces picks wrong; decide against the splitter
+
+**Symptom**: Mutual Trim+ kept the wrong half of a leaning cap wall although the reference
+point (MRS) was plainly below the cut: the wall's UPPER half reached closer to the point
+than the lower half did, and "keep the piece nearest the reference" measured reach, not
+side.
+
+**Fix**: the side of a piece of surface A is decided against the surface that split it,
+B, extended: signed distance to B at the closest point (`evDistance` -> face index +
+(u, v) -> `evFaceTangentPlane(...).normal`) for the reference and for each piece's
+`evApproximateCentroid`; the piece whose sign matches the reference is the near one.
+Distance to the pieces is only the fallback when the two pieces do not straddle B.
+
+**Lesson Learned**: minimum distance to a face SET answers "how far does it reach", never
+"which side is it on". Any side question near a split has a natural splitter; ask it there.
+Same family as driven_edge_offset's straight-reference plane (correction 26's neighbour):
+state orientation in geometry (reference entity, world Z) rather than as a flip, and the
+result holds when the inputs change.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 27
+- **Total Corrections**: 28
 - **Last Updated**: 2026-09-19
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27)
+- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27); side-of-splitter for trims (28)
 
 ---
 
