@@ -321,6 +321,16 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             setProperty(context, { "entities" : wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
         }
 
+        // Against the SOURCE, not the fit's own samples: the number the dialog shows is
+        // how far the cleaned wire is from the wire it replaces, anywhere along it. Taken
+        // on the free wire, which is one path by construction; a constrained wire can be
+        // several pieces where the source folds against the plane.
+        const measured = evMaxPathDeviation(context, {
+                    "side1" : definition.sourceEdges,
+                    "side2" : wire,
+                    "showDeviation" : definition.showDeviation
+                });
+
         // Plan view: the same pipeline over the chain projected onto the plane, with its
         // own approximation; the result extruded along the normal into a wall; the 3D
         // wire projected onto that wall along the wall's normal so it lies exactly on the
@@ -386,17 +396,20 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                     {
                         setProperty(context, { "entities" : wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
                     }
+
+                    const pieces = evaluateQuery(context, wire);
+                    if (size(pieces) != 1)
+                    {
+                        reportFeatureWarning(context, id, "The constrained wire came out as " ~ toString(size(pieces))
+                            ~ " bodies: the projection onto the wall did not join at " ~ toString(size(pieces) - 1)
+                            ~ " place(s). See the console for the dropped edge count.");
+                        println("[constrain] " ~ toString(size(evaluateQuery(context, dropped))) ~ " edge(s) dropped onto the wall from "
+                            ~ toString(size(runs)) ~ " run(s); " ~ toString(size(pieces)) ~ " wire body(ies) after extraction.");
+                    }
                 }
             }
         }
 
-        // Against the SOURCE, not the fit's own samples: the number the dialog shows is
-        // how far the cleaned wire is from the wire it replaces, anywhere along it.
-        const measured = evMaxPathDeviation(context, {
-                    "side1" : definition.sourceEdges,
-                    "side2" : wire,
-                    "showDeviation" : definition.showDeviation
-                });
         setFeatureComputedParameter(context, id, { "name" : "maxDeviation", "value" : measured.deviation });
         reportReduction(context, id, chain, grouped.joints, reports);
         if (auto)
