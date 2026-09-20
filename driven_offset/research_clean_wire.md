@@ -253,6 +253,36 @@ try/catch/in); a sliver shorter than twice the minimum sample spacing crossed cl
 bounds; "can't select edges" turned out to be the INPUT BODY HIDDEN in the viewport, not
 filters or focus -- check visibility before anything else.
 
+## 5c. Built later on 2026-09-19: buttons, auto runs, projection
+
+- `isButton` + `clickedButton` (correction 27): "Fit control points to tolerance" (Auto:
+  writes the global cap from uncapped fits) and "Auto-populate groups" (Manual: clears
+  groups, one MAX_CP group per fitted run with robust edge queries, named "Run k @ x, y").
+- Auto shows a read-only **Runs** array (editing logic creates items on wire / mode /
+  corner angle / tangency / tolerance / sliver changes; the regen fills CPs and deviation
+  via `setFeatureComputedParameter("autoRuns[k].ar_cps")`); Groups / Break at are Manual
+  only. Reduction group: CP and edge counts before/after, % reductions, tangency fixes.
+- Auto rules added from testing: exact source edges (LINE / CIRCLE) are always their own
+  run (a line fitted into a cubic with the bend beside it rings); sliver length is a
+  parameter (0.5 mm), NOT tied to tolerance (at 0.5 mm tolerance it had reached 25 mm and
+  swallowed the notch); a sliver between tangent-but-offset neighbours is a jog and keeps
+  its corners; a run of only slivers is absorbed into the run before it unless that break
+  was a corner or the user's.
+- Delete input wire (whole bodies only).
+- **Projection** (collapsed group): plane pick, plan degree / tolerance / max CPs, constrain
+  toggle. `projectChain` projects stations mathematically, re-measures length and
+  curvature in plan, splits edges at cusps (chord reversal), drops point-pieces, cuts
+  stretches where consecutive CHORDS reverse (projected tangents of an edge along the
+  normal are noise), keeps the longest stretch as the plan view (INFO names the dropped
+  edges). Wall = opExtrude of an overshot copy (opMoveCurveBoundary EXTEND, TANGENT, 2 %
+  of plan length, 2-50 mm) along the normal by the wire's own extent either side + 10 %.
+  Constrain = opDropCurve NORMAL_TO_TARGET of the free 3D wire onto the wall (keeps the
+  coordinate along the plane normal, so Y-lines survive on a Front-plane wall), extracted
+  to one wire; deviation is measured on the FREE wire (a constrained wire may be pieces).
+  Verified on the Front plane (the folding case): plan 5 edges = extent, wall 5 faces,
+  constrained wire 1 body / 9 edges, status INFO.
+- circleThrough guards coincident points (NaN from a point-edge in plan).
+
 ## 6. Output identity
 
 - Deterministic chain start: the end with the lexicographically smaller (x, y, z) at

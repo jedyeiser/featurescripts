@@ -249,8 +249,11 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 annotation { "Name" : "Plan maximum control points" }
                 isInteger(definition.planMaxCPs, DrivenOffsetMaxCPBounds);
 
-                annotation { "Name" : "Constrain wire to wall", "Default" : true, "Description" : "Project the cleaned wire onto the wall along the wall's normal, so it lies exactly on the plan view. Off, the wall is built and the wire is left free." }
-                definition.constrainToWall is boolean;
+                annotation { "Name" : "Keep wall", "Default" : true, "Description" : "Leave the wall surface in the result." }
+                definition.keepWall is boolean;
+
+                annotation { "Name" : "Keep plan wire", "Default" : true, "Description" : "Leave the cleaned plan-view wire in the result." }
+                definition.keepPlanWire is boolean;
             }
         }
 
@@ -382,7 +385,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                 setProperty(context, { "entities" : wall, "propertyType" : PropertyType.NAME, "value" : definition.outputName ~ " wall" });
             }
 
-            if (definition.constrainToWall)
             {
                 const dropId = id + "onWall";
                 opDropCurve(context, dropId, {
@@ -417,6 +419,15 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                             ~ toString(size(runs)) ~ " run(s); " ~ toString(size(pieces)) ~ " wire body(ies) after extraction.");
                     }
                 }
+            }
+
+            if (!definition.keepWall)
+            {
+                opDeleteBodies(context, id + "wallCleanup", { "entities" : wall });
+            }
+            if (!definition.keepPlanWire)
+            {
+                opDeleteBodies(context, id + "planCleanup", { "entities" : plan.wire });
             }
         }
 
@@ -497,7 +508,8 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "planDegree" : 3,
         "planTolerance" : 1e-5 * meter,
         "planMaxCPs" : 30,
-        "constrainToWall" : true,
+        "keepWall" : true,
+        "keepPlanWire" : true,
         "debugShowPolygons" : false,
         "debugShowGroups" : false,
         "approximationDegree" : 3,
@@ -923,24 +935,8 @@ function projectChain(context is Context, id is Id, chain is map, pl is Plane) r
         }
     }
 
-    if (size(stretches) > 1)
-    {
-        var dropped = [];
-        for (var i = 0; i < size(stretches); i += 1)
-        {
-            if (i == best)
-            {
-                continue;
-            }
-            for (var piece in stretches[i])
-            {
-                dropped = append(dropped, toString(piece.sourceIndex));
-            }
-        }
-        reportFeatureInfo(context, id, "Plan view trimmed to the extent of the projection: the wire folds back on itself "
-            ~ "on this plane, and edge(s) " ~ join(dropped, ", ") ~ " retrace it, so they were left out of the plan view.");
-    }
-
+    // Pieces outside the longest stretch retrace it and are simply not part of the plan
+    // view; nothing to tell the user, a fold against the plane is an ordinary shape.
     return { "edges" : stretches[best], "closed" : false, "plane" : pl,
             "normalExtent" : { "min" : lowest, "max" : highest } };
 }
