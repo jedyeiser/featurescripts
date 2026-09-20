@@ -807,8 +807,10 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
     var projected = [];
     var lowest = undefined;
     var highest = undefined;
-    for (var edge in chain.edges)
+    var folded = [];
+    for (var k = 0; k < size(chain.edges); k += 1)
     {
+        const edge = chain.edges[k];
         const lines = evEdgeTangentLines(context, { "edge" : edge.query, "parameters" : stationParams });
 
         var points = [];
@@ -825,6 +827,20 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
         for (var s = 1; s < CURVATURE_STATIONS; s += 1)
         {
             length += norm(points[s] - points[s - 1]);
+        }
+
+        // A fold: the projected curve reverses along itself, which happens wherever the
+        // wire runs back against the plane normal (a slot seen from the side). No curve
+        // fits that; the edges are collected and reported together.
+        for (var s = 2; s < CURVATURE_STATIONS; s += 1)
+        {
+            const before = points[s - 1] - points[s - 2];
+            const after = points[s] - points[s - 1];
+            if (norm(before) > OFFSET_GEOM_TOL && norm(after) > OFFSET_GEOM_TOL && dot(before, after) < 0 * meter * meter)
+            {
+                folded = append(folded, toString(k));
+                break;
+            }
         }
 
         // Curvature from consecutive projected stations; the ends take their neighbour.
@@ -844,6 +860,13 @@ function projectChain(context is Context, chain is map, pl is Plane) returns map
                     "endTangent" : projectedDirection(edge.endTangent, pl, points[CURVATURE_STATIONS - 1] - points[CURVATURE_STATIONS - 2]),
                     "curvatures" : curvatures
                 }));
+    }
+
+    if (size(folded) > 0)
+    {
+        throw regenError("Edge(s) " ~ join(folded, ", ") ~ " of the wire double back on themselves when projected onto "
+            ~ "this plane, so the plan view is not a curve there. Pick a plane the wire does not fold against (for a ski "
+            ~ "outline, the top plane).", ["projectionPlane"]);
     }
 
     return { "edges" : projected, "closed" : chain.closed, "plane" : pl,
