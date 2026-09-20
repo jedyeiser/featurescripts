@@ -235,7 +235,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         const approximation = approximationSettings(definition);
         const joints = applyBreaks(context, definition, chain, classifyJoints(context, definition, chain));
         const grouped = applyGroups(context, definition, chain, joints);
-        const runs = buildRuns(chain, grouped.joints, grouped.groupOfEdge);
+        const runs = buildRuns(definition, chain, grouped.joints, grouped.groupOfEdge);
 
         if (definition.debugPrintJoints)
         {
@@ -695,19 +695,42 @@ function applyGroups(context is Context, definition is map, chain is map, joints
  *
  * @returns {array} : { "first", "last" : edge indices inclusive, "group" : index or undefined }
  */
-function buildRuns(chain is map, joints is array, groupOfEdge is array) returns array
+function buildRuns(definition is map, chain is map, joints is array, groupOfEdge is array) returns array
 {
+    const sliverMax = max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance);
     var runs = [];
     var first = 0;
 
     for (var i = 0; i < size(chain.edges); i += 1)
     {
         const lastOfRun = (i == size(chain.edges) - 1) || joints[i].isBreak;
-        if (lastOfRun)
+        if (!lastOfRun)
         {
-            runs = append(runs, { "first" : first, "last" : i, "group" : groupOfEdge[first] });
-            first = i + 1;
+            continue;
         }
+
+        var length = 0 * meter;
+        for (var k = first; k <= i; k += 1)
+        {
+            length += chain.edges[k].length;
+        }
+
+        // A run of nothing but slivers is not a run. Where the break in front of it came
+        // from a group end or the classifier -- not from a corner or the user -- it joins
+        // the run before it: two groups that end and start either side of a 0.09 mm
+        // fragment did not mean to leave it on its own.
+        const before = (first == 0) ? undefined : joints[first - 1];
+        if (length < sliverMax && size(runs) > 0 && before != undefined
+            && before.kind != "corner" && before.userBreak != true)
+        {
+            const previous = runs[size(runs) - 1];
+            runs[size(runs) - 1] = mergeMaps(previous, { "last" : i });
+        }
+        else
+        {
+            runs = append(runs, { "first" : first, "last" : i, "group" : groupOfEdge[first], "length" : length });
+        }
+        first = i + 1;
     }
 
     return runs;
@@ -857,8 +880,13 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
     const last = chain.edges[run.last];
     const edgeCount = run.last - run.first + 1;
 
-    // Manual mode copies everything outside a group as it is, whatever its type.
-    if (runIsExact(chain, run) || (definition.mode == CleanWireMode.MANUAL && run.group == undefined))
+    // Manual mode copies everything outside a group as it is, whatever its type; so is a
+    // run that is nothing but slivers (a chamfer or fillet fragment at a corner), whose
+    // three samples would fit to noise.
+    const sliverMax = max(SLIVER_MIN_LENGTH, SLIVER_TOLERANCE_MULTIPLE * definition.approximationTolerance);
+    if (runIsExact(chain, run)
+        || (definition.mode == CleanWireMode.MANUAL && run.group == undefined)
+        || (run.length != undefined && run.length < sliverMax))
     {
         var members = [];
         for (var i = run.first; i <= run.last; i += 1)
