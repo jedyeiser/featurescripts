@@ -172,6 +172,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
+            annotation { "Name" : "Show groups", "Default" : false, "Description" : "Highlight every group's source edges and its fitted result in the group's own colour: red, green, blue, cyan, magenta, yellow, black, orange, repeating." }
+            definition.debugShowGroups is boolean;
+
             annotation { "Name" : "Print joints", "Default" : false, "Description" : "Every edge of the chain with its length and type, and every joint with its angle and what was decided about it." }
             definition.debugPrintJoints is boolean;
 
@@ -282,6 +285,11 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             showRuns(context, wire, chain, runs);
         }
 
+        if (definition.debugShowGroups)
+        {
+            showGroups(context, definition, wire, chain, runs);
+        }
+
         reportOutcome(context, id, chain, grouped.joints, runs, reports, measured.deviation);
 
         embedVariableMap(context, id, {
@@ -306,6 +314,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "showDeviation" : false,
         "showRuns" : false,
         "debugShowPolygons" : false,
+        "debugShowGroups" : false,
         "approximationDegree" : 3,
         "approximationTolerance" : 1e-5 * meter,
         "approximationMaxCPs" : 30,
@@ -1037,6 +1046,39 @@ function showRuns(context is Context, wire is Query, chain is map, runs is array
         const middle = chain.edges[floor((run.first + run.last) / 2)];
         const probe = evEdgeTangentLines(context, { "edge" : middle.query, "parameters" : [0.5] })[0].origin;
         addDebugEntities(context, qClosestTo(edges, probe), colours[k % size(colours)]);
+    }
+}
+
+/**
+ * Every group in its own colour: its source edges, and the output edge its run became.
+ * The colour is the group's index in the array, so it matches the group's position in
+ * the dialog and does not change when a run elsewhere is added or removed.
+ */
+function showGroups(context is Context, definition is map, wire is Query, chain is map, runs is array)
+{
+    const colours = [DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, DebugColor.CYAN,
+            DebugColor.MAGENTA, DebugColor.YELLOW, DebugColor.BLACK, DebugColor.ORANGE];
+    const outputEdges = qOwnedByBody(wire, EntityType.EDGE);
+
+    for (var g = 0; g < size(definition.groups); g += 1)
+    {
+        const colour = colours[g % size(colours)];
+        const entry = definition.groups[g];
+        if (!isQueryEmpty(context, entry.cw_edges))
+        {
+            addDebugEntities(context, entry.cw_edges, colour);
+        }
+
+        for (var run in runs)
+        {
+            if (run.group != g)
+            {
+                continue;
+            }
+            const middle = chain.edges[floor((run.first + run.last) / 2)];
+            const probe = evEdgeTangentLines(context, { "edge" : middle.query, "parameters" : [0.5] })[0].origin;
+            addDebugEntities(context, qClosestTo(outputEdges, probe), colour);
+        }
     }
 }
 
