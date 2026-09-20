@@ -930,7 +930,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
                 corner = {
                         "kind" : "point",
                         "point" : plan.corner.point,
-                        "vertex" : qClosestTo(qAdjacent(curve, AdjacencyType.EDGE, EntityType.VERTEX), plan.corner.point)
+                        "vertex" : qClosestTo(qAdjacent(curve, AdjacencyType.VERTEX, EntityType.VERTEX), plan.corner.point)
                     };
             }
         }
