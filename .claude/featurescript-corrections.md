@@ -1170,6 +1170,36 @@ Related resolution fact: a fit at tolerance `tol` can only resolve curvature to 
 `8 * tol / L^2` over a run of length L. At std's 10 um default a 53 mm run is +-0.03 /m,
 which is +-45% of a ski sidecut's 0.066 /m. Use 1 um for ski radii.
 
+**Structural fix (2026-09-19)**: pass chord-length `parameters` (cumulative chord / total,
+in [0, 1]). Then the derivatives are NOT rescaled, the fit is still an approximation (not
+forced interpolation), and it is far cheaper: 40 uneven points on a 200 mm arc fitted with
+8 CPs at 10 um and end curvature 4.94 /m (true 5) against 15 CPs (the cap) and 0.6 /m
+without. Constraints: parameters must increase by >= 1e-6 (cull repeats relative to the
+run's chord first), and one array serves every target of a family. Bonus: with the points
+pinned to parameters, `evaluateSpline` at those parameters measures the fit's real error --
+`approximateSpline` says nothing when it stops AT `maxControlPoints` short of tolerance
+(ten runs in one document were 16-70 um off at a 10 um tolerance, silently).
+
+---
+
+## 26. The frame's length axis is not the point's velocity
+
+**Symptom**: every run-end tangent on a source edge climbing a ramp was 4.7-4.8 degrees off
+the run's own chord, on both profiles alike (so not a width term), while the source edge's
+tangent agreed with its own chord to 0.01 degrees.
+
+**Cause**: `stationFrame` projects the length axis into the reference surface when "Hold
+length in the reference surface" is on (and `worldFrame` sets it to world X), and both
+`offsetTangent` and `surfaceOffsetTangent` used that axis as the base point's velocity:
+`heightRate = dot(frame.tangent, surf.normal)` was identically zero, so the source's climb
+out of the surface vanished from the derivative.
+
+**Fix**: the frame carries `velocity` (the true source tangent) beside `tangent` (the axis);
+`frameVelocity(frame)` feeds the derivative. Run 5 of the wall: 4.76 -> 0.07 degrees.
+
+**Lesson Learned**: an axis you define for MEASURING offsets and the direction the base point
+actually MOVES are different vectors the moment the axes are constrained. Keep both.
+
 ---
 
 ## 24. opCreateBSplineSurface refuses a creased surface (BSPLINESURFACE_NOT_G1)
@@ -1218,11 +1248,11 @@ a migration for every feature already in every document.
 
 ## Statistics
 
-- **Total Corrections**: 25
+- **Total Corrections**: 26
 - **Last Updated**: 2026-09-19
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: annotation Default migrates into saved features (defaults map does not decide the value)
+- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (correction 23); frame length axis is not the velocity (26)
 
 ---
 
