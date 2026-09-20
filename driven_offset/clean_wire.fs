@@ -125,6 +125,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             }
         }
 
+        annotation { "Name" : "Break at", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "Description" : "Vertices of the wire to keep whatever the joint angle there. A break inside a group is a conflict and is reported." }
+        definition.breakAt is Query;
+
         annotation { "Name" : "Corner angle", "Description" : "Joints where the edges meet at more than this angle are corners and keep their vertex. Below it a joint is nearly tangent." }
         isAngle(definition.cornerAngle, CleanWireCornerBounds);
 
@@ -136,6 +139,12 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             drivenOffsetApproximationPredicate(definition);
         }
 
+        annotation { "Name" : "Maximum deviation", "UIHint" : UIHint.READ_ONLY, "Description" : "Measured between the cleaned wire and the source wire." }
+        isLength(definition.maxDeviation, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+
+        annotation { "Name" : "Show deviation", "Default" : false, "Description" : "Draw the deviation comb between the cleaned wire and the source, with the maximum marked." }
+        definition.showDeviation is boolean;
+
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Print joints", "Default" : false, "Description" : "Every edge of the chain with its length and type, and every joint with its angle and what was decided about it." }
@@ -146,6 +155,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
             annotation { "Name" : "Show corners", "Default" : false, "Description" : "Mark every kept vertex." }
             definition.debugShowCorners is boolean;
+
+            annotation { "Name" : "Show control polygons", "Default" : false, "Description" : "Draw the control polygon of every fitted run, colour cycling per run." }
+            definition.debugShowPolygons is boolean;
 
             annotation { "Name" : "Keep pieces", "Default" : false, "Description" : "Leave the per-run curves in the result beside the wire." }
             definition.debugKeepPieces is boolean;
@@ -165,7 +177,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         }
 
         const approximation = approximationSettings(definition);
-        const joints = classifyJoints(context, definition, chain);
+        const joints = applyBreaks(context, definition, chain, classifyJoints(context, definition, chain));
         const grouped = applyGroups(context, definition, chain, joints);
         const runs = buildRuns(chain, grouped.joints, grouped.groupOfEdge);
 
@@ -203,12 +215,26 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             setProperty(context, { "entities" : wire, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
         }
 
+        // Against the SOURCE, not the fit's own samples: the number the dialog shows is
+        // how far the cleaned wire is from the wire it replaces, anywhere along it.
+        const measured = evMaxPathDeviation(context, {
+                    "side1" : definition.sourceEdges,
+                    "side2" : wire,
+                    "showDeviation" : definition.showDeviation
+                });
+        setFeatureComputedParameter(context, id, { "name" : "maxDeviation", "value" : measured.deviation });
+
         if (definition.debugShowCorners)
         {
             showCorners(context, chain, grouped.joints);
         }
 
-        reportOutcome(context, id, chain, grouped.joints, runs, reports);
+        if (definition.debugShowPolygons)
+        {
+            showPolygons(context, id + "polygons", reports);
+        }
+
+        reportOutcome(context, id, chain, grouped.joints, runs, reports, measured.deviation);
 
         embedVariableMap(context, id, {
                     "variable" : {
@@ -224,8 +250,12 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
     }, {
         "outputName" : "",
         "groups" : [],
+        "breakAt" : qNothing(),
         "cornerAngle" : 3 * degree,
         "forceTangency" : true,
+        "maxDeviation" : 0 * meter,
+        "showDeviation" : false,
+        "debugShowPolygons" : false,
         "approximationDegree" : 3,
         "approximationTolerance" : 1e-5 * meter,
         "approximationMaxCPs" : 30,
@@ -386,6 +416,52 @@ function jointRecord(definition is map, before is Vector, after is Vector, slive
 }
 
 // ============================================================================
+// Breaks
+// ============================================================================
+
+/**
+ * The user's break picks laid onto the chain: each one must coincide with a vertex of
+ * the chain, and marks the joint there as kept. A pick on the chain's own end is
+ * nothing to do. In auto mode this is where computed breaks will arrive.
+ */
+function applyBreaks(context is Context, definition is map, chain is map, joints is array) returns array
+{
+    if (isQueryEmpty(context, definition.breakAt))
+    {
+        return joints;
+    }
+
+    var decided = joints;
+    const edges = chain.edges;
+
+    for (var pick in evaluateQuery(context, definition.breakAt))
+    {
+        const point = isQueryEmpty(context, qBodyType(pick, BodyType.MATE_CONNECTOR))
+            ? evVertexPoint(context, { "vertex" : pick })
+            : evMateConnector(context, { "mateConnector" : pick }).origin;
+
+        var found = false;
+        for (var j = 0; j + 1 < size(edges); j += 1)
+        {
+            if (norm(edges[j].endPoint - point) < 10 * OFFSET_GEOM_TOL)
+            {
+                decided[j] = mergeMaps(decided[j], { "isBreak" : true, "userBreak" : true, "why" : "break" });
+                found = true;
+                break;
+            }
+        }
+
+        if (!found && norm(edges[0].startPoint - point) >= 10 * OFFSET_GEOM_TOL
+            && norm(edges[size(edges) - 1].endPoint - point) >= 10 * OFFSET_GEOM_TOL)
+        {
+            throw regenError("A break is not on a vertex of the wire.", pick);
+        }
+    }
+
+    return decided;
+}
+
+// ============================================================================
 // Groups
 // ============================================================================
 
@@ -400,6 +476,7 @@ function applyGroups(context is Context, definition is map, chain is map, joints
     const edges = chain.edges;
     var groupOfEdge = makeArray(size(edges), undefined);
     var decided = joints;
+    var conflicts = [];
 
     for (var g = 0; g < size(definition.groups); g += 1)
     {
@@ -457,11 +534,26 @@ function applyGroups(context is Context, definition is map, chain is map, joints
         for (var j = first; j < last; j += 1)
         {
             const inside = decided[j];
+
+            // A break the user placed inside a group is a contradiction: one says
+            // "keep this vertex", the other "fit through it". Reported, not resolved.
+            if (inside.userBreak == true)
+            {
+                conflicts = append(conflicts, "the break at " ~ fmtVec(edges[j].endPoint / millimeter, 1, 0)
+                    ~ " mm lies inside " ~ label);
+            }
+
             decided[j] = mergeMaps(inside, {
                         "isBreak" : false,
                         "why" : inside.kind == "corner" ? "corner fitted through in " ~ label : "inside " ~ label
                     });
         }
+    }
+
+    if (size(conflicts) > 0)
+    {
+        throw regenError("Break and group conflict: " ~ join(conflicts, "; ") ~ ". Remove the break or shorten the group.",
+            ["breakAt"]);
     }
 
     return { "joints" : decided, "groupOfEdge" : groupOfEdge };
@@ -673,7 +765,7 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
     return { "kind" : "fit", "edges" : edgeCount, "first" : run.first, "last" : run.last,
             "samples" : size(points), "controlPoints" : size(curve.controlPoints),
             "deviation" : fitDeviation(curve, points), "tolerance" : settings.approximationTolerance,
-            "group" : run.group };
+            "group" : run.group, "curve" : curve };
 }
 
 /**
@@ -718,7 +810,8 @@ function fitDeviation(curve is BSplineCurve, points is array) returns ValueWithU
  * The feature's own notices: what was decided for the user, and anything short of the
  * tolerance -- that is missing shape, so a warning.
  */
-function reportOutcome(context is Context, id is Id, chain is map, joints is array, runs is array, reports is array)
+function reportOutcome(context is Context, id is Id, chain is map, joints is array, runs is array, reports is array,
+    measured is ValueWithUnits)
 {
     var short = [];
     for (var k = 0; k < size(reports); k += 1)
@@ -741,7 +834,8 @@ function reportOutcome(context is Context, id is Id, chain is map, joints is arr
 
     if (size(short) > 0)
     {
-        reportFeatureWarning(context, id, "Run(s) " ~ join(short, ", ") ~ " could not be fitted within tolerance; see the console.");
+        reportFeatureWarning(context, id, "Run(s) " ~ join(short, ", ") ~ " could not be fitted within tolerance ("
+            ~ fmtMM(measured, 4, 0) ~ " mm from the source); see the console.");
         return;
     }
 
@@ -803,6 +897,44 @@ function curveTypeName(curveType) returns string
     if (curveType == CurveType.CIRCLE) { return "circle"; }
     if (curveType == CurveType.ELLIPSE) { return "ellipse"; }
     return "other";
+}
+
+/**
+ * The control polygon of every fitted run, one batched debug feature per colour so a
+ * hundred polygon legs cost four calls and no sketch solves.
+ */
+function showPolygons(context is Context, id is Id, reports is array)
+{
+    const colours = [DebugColor.RED, DebugColor.BLUE, DebugColor.GREEN, DebugColor.MAGENTA];
+
+    for (var c = 0; c < size(colours); c += 1)
+    {
+        const featureId = id + ("colour" ~ c);
+        var drawn = 0;
+
+        startFeature(context, featureId, {});
+        for (var k = c; k < size(reports); k += size(colours))
+        {
+            const curve = reports[k].curve;
+            if (curve == undefined)
+            {
+                continue;
+            }
+            for (var i = 1; i < size(curve.controlPoints); i += 1)
+            {
+                if (norm(curve.controlPoints[i] - curve.controlPoints[i - 1]) > OFFSET_GEOM_TOL)
+                {
+                    emitLineCurve(context, featureId + ("run" ~ k ~ "leg" ~ i), curve.controlPoints[i - 1], curve.controlPoints[i]);
+                    drawn += 1;
+                }
+            }
+        }
+        if (drawn > 0)
+        {
+            addDebugEntities(context, qCreatedBy(featureId, EntityType.EDGE), colours[c]);
+        }
+        abortFeature(context, featureId);
+    }
 }
 
 /**
