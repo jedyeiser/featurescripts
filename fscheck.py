@@ -52,7 +52,7 @@ KEYWORDS = {
 RESERVED_DOT = {
     "type", "function", "const", "var", "is", "as", "if", "else", "for", "while",
     "return", "map", "array", "string", "number", "boolean", "import", "export",
-    "enum",
+    "enum", "break", "continue", "throw", "try", "catch", "in", "precondition",
 }
 
 

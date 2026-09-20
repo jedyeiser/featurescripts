@@ -324,7 +324,7 @@ function describeChain(context is Context, edges is Query) returns map
  * it are decided together from the edges beyond it.
  *
  * @returns {array} : size(edges) - 1 records { "angle" (radians), "kind" ("tangent" /
- *      "near" / "corner"), "break" : boolean, "sliver" : boolean, "why" : string }
+ *      "near" / "corner"), "isBreak" : boolean, "sliver" : boolean, "why" : string }
  */
 function classifyJoints(context is Context, definition is map, chain is map) returns array
 {
@@ -346,7 +346,7 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
         }
 
         const across = jointRecord(definition, edges[i - 1].endTangent, edges[i + 1].startTangent, true, "");
-        if (across.break)
+        if (across.isBreak)
         {
             // A chamfer or a fillet at a corner: kept as its own piece, both joints corners.
             joints[i - 1] = mergeMaps(across, { "why" : "sliver at a corner, kept" });
@@ -382,7 +382,7 @@ function jointRecord(definition is map, before is Vector, after is Vector, slive
         isBreak = !definition.forceTangency;
     }
 
-    return { "angle" : angle, "kind" : kind, "break" : isBreak, "sliver" : sliver, "why" : why };
+    return { "angle" : angle, "kind" : kind, "isBreak" : isBreak, "sliver" : sliver, "why" : why };
 }
 
 // ============================================================================
@@ -448,17 +448,17 @@ function applyGroups(context is Context, definition is map, chain is map, joints
         // said so, and it is reported.
         if (first > 0)
         {
-            decided[first - 1] = mergeMaps(decided[first - 1], { "break" : true, "why" : "group start" });
+            decided[first - 1] = mergeMaps(decided[first - 1], { "isBreak" : true, "why" : "group start" });
         }
         if (last + 1 < size(edges))
         {
-            decided[last] = mergeMaps(decided[last], { "break" : true, "why" : "group end" });
+            decided[last] = mergeMaps(decided[last], { "isBreak" : true, "why" : "group end" });
         }
         for (var j = first; j < last; j += 1)
         {
             const inside = decided[j];
             decided[j] = mergeMaps(inside, {
-                        "break" : false,
+                        "isBreak" : false,
                         "why" : inside.kind == "corner" ? "corner fitted through in " ~ label : "inside " ~ label
                     });
         }
@@ -483,7 +483,7 @@ function buildRuns(chain is map, joints is array, groupOfEdge is array) returns 
 
     for (var i = 0; i < size(chain.edges); i += 1)
     {
-        const lastOfRun = (i == size(chain.edges) - 1) || joints[i].break;
+        const lastOfRun = (i == size(chain.edges) - 1) || joints[i].isBreak;
         if (lastOfRun)
         {
             runs = append(runs, { "first" : first, "last" : i, "group" : groupOfEdge[first] });
@@ -730,7 +730,7 @@ function reportOutcome(context is Context, id is Id, chain is map, joints is arr
     var cornersFitted = 0;
     for (var joint in joints)
     {
-        if (joint.kind == "corner" && !joint.break)
+        if (joint.kind == "corner" && !joint.isBreak)
         {
             cornersFitted += 1;
         }
@@ -770,7 +770,7 @@ function printChain(chain is map, joints is array, groupOfEdge is array)
     {
         const joint = joints[j];
         println(padLeft(toString(j) ~ "|" ~ toString(j + 1), 8) ~ fmtNum(joint.angle * 180 / PI, 3, 12)
-            ~ "  " ~ padLeft(joint.kind, 8) ~ "  " ~ padLeft(joint.break ? "yes" : "no", 5)
+            ~ "  " ~ padLeft(joint.kind, 8) ~ "  " ~ padLeft(joint.isBreak ? "yes" : "no", 5)
             ~ "  " ~ joint.why);
     }
     println("========== end chain ==========");
@@ -809,7 +809,7 @@ function showCorners(context is Context, chain is map, joints is array)
 {
     for (var j = 0; j < size(joints); j += 1)
     {
-        if (joints[j].break)
+        if (joints[j].isBreak)
         {
             addDebugPoint(context, chain.edges[j].endPoint, DebugColor.RED);
         }
