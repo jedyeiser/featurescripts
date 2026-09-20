@@ -498,6 +498,14 @@ export function circleThrough(p0 is Vector, p1 is Vector, p2 is Vector)
     const b = p2 - p0;
     const axb = cross(a, b);
 
+    // Coincident points first: with |a| = 0 the collinearity test below reads 0 < 0 and
+    // passes, and the division by |a x b|^2 makes NaN (met when a chain is projected onto
+    // a plane and an edge normal to it collapses to a point).
+    if (norm(a) < OFFSET_GEOM_TOL || norm(b) < OFFSET_GEOM_TOL || norm(p2 - p1) < OFFSET_GEOM_TOL)
+    {
+        return undefined;
+    }
+
     if (norm(axb) < OFFSET_GEOM_TOL * norm(a))
     {
         return undefined;
