@@ -368,8 +368,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             showRuns(context, wire, chain, runs);
         }
 
-        }
-
         if (definition.debugShowGroups)
         {
             showGroups(context, definition, wire, chain, runs);
