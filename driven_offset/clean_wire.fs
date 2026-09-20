@@ -97,6 +97,10 @@ export const SAMPLE_MAX_PER_EDGE = 200;
 /** The chain is ordered by endpoint coincidence at this tolerance (merge_curve's value). */
 export const CLEAN_CHAIN_TOLERANCE = 1e-5 * meter;
 
+/** Read-only counts and percentages in the Reduction group. */
+export const CleanWireCountBounds = { (unitless) : [0, 0, 1e9] } as IntegerBoundSpec;
+export const CleanWirePercentBounds = { (unitless) : [-1e9, 0, 1e9] } as RealBoundSpec;
+
 // ============================================================================
 // Feature
 // ============================================================================
@@ -169,6 +173,30 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Show runs", "Default" : false, "Description" : "Colour every edge of the cleaned wire by the run it came from, so the stretches the feature formed are visible." }
         definition.showRuns is boolean;
+
+        annotation { "Group Name" : "Reduction", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Control points before", "UIHint" : UIHint.READ_ONLY }
+            isInteger(definition.cpBefore, CleanWireCountBounds);
+
+            annotation { "Name" : "Control points after", "UIHint" : UIHint.READ_ONLY }
+            isInteger(definition.cpAfter, CleanWireCountBounds);
+
+            annotation { "Name" : "Control point reduction (%)", "UIHint" : UIHint.READ_ONLY }
+            isReal(definition.cpReduction, CleanWirePercentBounds);
+
+            annotation { "Name" : "Edges before", "UIHint" : UIHint.READ_ONLY }
+            isInteger(definition.edgesBefore, CleanWireCountBounds);
+
+            annotation { "Name" : "Edges after", "UIHint" : UIHint.READ_ONLY }
+            isInteger(definition.edgesAfter, CleanWireCountBounds);
+
+            annotation { "Name" : "Edge reduction (%)", "UIHint" : UIHint.READ_ONLY }
+            isReal(definition.edgeReduction, CleanWirePercentBounds);
+
+            annotation { "Name" : "Tangency fixes", "UIHint" : UIHint.READ_ONLY, "Description" : "Nearly tangent joints fitted through, so they are now exactly tangent." }
+            isInteger(definition.tangencyFixes, CleanWireCountBounds);
+        }
 
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
@@ -269,6 +297,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                     "showDeviation" : definition.showDeviation
                 });
         setFeatureComputedParameter(context, id, { "name" : "maxDeviation", "value" : measured.deviation });
+        reportReduction(context, id, chain, grouped.joints, reports);
 
         if (definition.debugShowCorners)
         {
@@ -311,6 +340,9 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
         "cornerAngle" : 3 * degree,
         "forceTangency" : true,
         "maxDeviation" : 0 * meter,
+        "cpBefore" : 0, "cpAfter" : 0, "cpReduction" : 0,
+        "edgesBefore" : 0, "edgesAfter" : 0, "edgeReduction" : 0,
+        "tangencyFixes" : 0,
         "showDeviation" : false,
         "showRuns" : false,
         "debugShowPolygons" : false,
@@ -378,6 +410,7 @@ function describeChain(context is Context, edges is Query) returns map
         const ends = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
         const definition = evCurveDefinition(context, { "edge" : edge, "returnBSplinesAsOther" : true });
         const length = evLength(context, { "entities" : edge });
+        const controlPoints = sourceControlPoints(context, edge, definition.curveType);
         const curvatureResults = evEdgeCurvatures(context, { "edge" : edge, "parameters" : stationParams });
 
         var curvatures = [];
@@ -392,6 +425,7 @@ function describeChain(context is Context, edges is Query) returns map
                     "flipped" : flipped,
                     "length" : length,
                     "curveType" : definition.curveType,
+                    "controlPoints" : controlPoints,
                     "startPoint" : flipped ? ends[1].origin : ends[0].origin,
                     "endPoint" : flipped ? ends[0].origin : ends[1].origin,
                     "startTangent" : flipped ? -1 * ends[1].direction : ends[0].direction,
@@ -401,6 +435,29 @@ function describeChain(context is Context, edges is Query) returns map
     }
 
     return { "edges" : described, "closed" : path.closed };
+}
+
+/**
+ * How many control points a source edge is worth: 2 for a line, 3 for an arc, a spline's
+ * own count, and for anything else the count the kernel's approximation of it needs.
+ */
+function sourceControlPoints(context is Context, edge is Query, curveType) returns number
+{
+    if (curveType == CurveType.LINE)
+    {
+        return 2;
+    }
+    if (curveType == CurveType.CIRCLE)
+    {
+        return 3;
+    }
+
+    const full = evCurveDefinition(context, { "edge" : edge });
+    if (full is BSplineCurve)
+    {
+        return size(full.controlPoints);
+    }
+    return size(evApproximateBSplineCurve(context, { "edge" : edge }).controlPoints);
 }
 
 // ============================================================================
@@ -810,8 +867,14 @@ function emitRun(context is Context, runId is Id, definition is map, chain is ma
         }
         opExtractWires(context, runId, { "edges" : qUnion(members) });
 
+        var copied = 0;
+        for (var i = run.first; i <= run.last; i += 1)
+        {
+            copied += chain.edges[i].controlPoints;
+        }
+
         return { "kind" : "exact", "edges" : edgeCount, "first" : run.first, "last" : run.last,
-                "samples" : 0, "controlPoints" : 0, "deviation" : 0 * meter, "tolerance" : undefined,
+                "samples" : 0, "controlPoints" : copied, "deviation" : 0 * meter, "tolerance" : undefined,
                 "group" : run.group, "start" : first.startPoint };
     }
 
@@ -876,6 +939,49 @@ function fitDeviation(curve is BSplineCurve, points is array) returns ValueWithU
 // ============================================================================
 // Reporting
 // ============================================================================
+
+/**
+ * The Reduction group: what the wire was and what it became, as read-only fields.
+ */
+function reportReduction(context is Context, id is Id, chain is map, joints is array, reports is array)
+{
+    var cpBefore = 0;
+    for (var edge in chain.edges)
+    {
+        cpBefore += edge.controlPoints;
+    }
+
+    var cpAfter = 0;
+    var edgesAfter = 0;
+    for (var report in reports)
+    {
+        cpAfter += report.controlPoints;
+        edgesAfter += (report.kind == "exact") ? report.edges : 1;
+    }
+
+    var fixes = 0;
+    for (var joint in joints)
+    {
+        if (joint.kind == "near" && !joint.isBreak)
+        {
+            fixes += 1;
+        }
+    }
+
+    const edgesBefore = size(chain.edges);
+    const percent = function(before, after)
+        {
+            return (before == 0) ? 0 : roundToPrecision(100 * (before - after) / before, 1);
+        };
+
+    setFeatureComputedParameter(context, id, { "name" : "cpBefore", "value" : cpBefore });
+    setFeatureComputedParameter(context, id, { "name" : "cpAfter", "value" : cpAfter });
+    setFeatureComputedParameter(context, id, { "name" : "cpReduction", "value" : percent(cpBefore, cpAfter) });
+    setFeatureComputedParameter(context, id, { "name" : "edgesBefore", "value" : edgesBefore });
+    setFeatureComputedParameter(context, id, { "name" : "edgesAfter", "value" : edgesAfter });
+    setFeatureComputedParameter(context, id, { "name" : "edgeReduction", "value" : percent(edgesBefore, edgesAfter) });
+    setFeatureComputedParameter(context, id, { "name" : "tangencyFixes", "value" : fixes });
+}
 
 /**
  * A run named the way the user thinks of it: by its group where it has one, otherwise by
