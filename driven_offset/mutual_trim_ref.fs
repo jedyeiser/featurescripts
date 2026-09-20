@@ -5,8 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "a2665e22c07b7a6929ce4e80", version : "");
 
 /**
- * Mutual trim to reference: the standard mutual trim, with the side to keep named by
- * geometry instead of by a flip.
+ * Mutual Trim+: the standard mutual trim, with the side to keep named by geometry
+ * instead of by a flip.
  *
  * The built-in trims two sheets against each other and keeps, on each, whichever side of
  * the split its "keep opposite side" box says -- a choice that flips whenever a surface's
@@ -28,8 +28,8 @@ const SPLIT_SUFFIX = "split";
 /** How much nearer the reference must be to one side than the other before it decides. */
 export const KEEP_SIDE_MARGIN = 1e-6 * meter;
 
-annotation { "Feature Type Name" : "Mutual trim to reference",
-        "Feature Type Description" : "Trim two surfaces against each other, keeping on each the side nearer to a reference you pick.",
+annotation { "Feature Type Name" : "Mutual Trim+",
+        "Feature Type Description" : "Mutual trim with the side to keep named by a reference: on each surface the side nearer to (or farther from) the reference is kept, whatever the surfaces' orientations.",
         "Filter Selector" : "allparts" }
 export const mutualTrimToReference = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
