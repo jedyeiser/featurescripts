@@ -2534,7 +2534,26 @@ export function arcLikeSpline(p1 is Vector, t1 is Vector, p2 is Vector, t2 is Ve
 }
 
 /**
+ * Points with no station of their own, as run point entries. Nothing for no points.
+ */
+function exactEntries(lead) returns array
+{
+    var entries = [];
+    if (lead is array)
+    {
+        for (var point in lead)
+        {
+            entries = append(entries, { "point" : point, "index" : undefined });
+        }
+    }
+    return entries;
+}
+
+/**
  * The exact tangent for a run end, or nothing where prescribing one would do harm.
+ *
+ * A terminal extension folded into the run ends on its plane with the arrival direction
+ * extendToPlane chose, and that is the tangent, whatever the station beneath it says.
  *
  * A corner treatment gives the run an exact end point where the two offset runs cross or
  * where their tangent lines meet. Two curves in space do not generally do either: where one
@@ -2549,6 +2568,15 @@ export function arcLikeSpline(p1 is Vector, t1 is Vector, p2 is Vector, t2 is Ve
 export function runEndTangent(stations is array, coords is map, offsets is array, definition is map, alongRef,
     run is map, index is number, displacement is map, atStart is boolean)
 {
+    const arrival = atStart
+        ? ((index == run.start) ? run.startArrival : undefined)
+        : ((index == run.end) ? run.endArrival : undefined);
+
+    if (arrival != undefined)
+    {
+        return arrival;
+    }
+
     // Only the run's own end carries a miss; a range clipped short of it has none.
     const miss = atStart
         ? ((index == run.start) ? run.startMiss : undefined)
@@ -3661,7 +3689,12 @@ export function applyRunMerges(runs is array, merges is array) returns array
  * Repeats closer than PARAMETER_SEPARATION of the chord go too, so a welded junction inside
  * the run contributes its vertex once and the fit's parameters stay strictly increasing.
  *
- * @returns {array} : `{ "point", "index" }` per entry, `index` undefined for an exact end.
+ * A terminal extension adds its lead -- the samples between the last station and the
+ * landing on the plane -- between the stations and the exact end, so the run is one point
+ * list from its first station to the plane.
+ *
+ * @returns {array} : `{ "point", "index" }` per entry, `index` undefined for an exact end
+ *      or a lead sample.
  */
 export function runPointEntries(points is array, run is map, from is number, to is number) returns array
 {
@@ -3680,13 +3713,15 @@ export function runPointEntries(points is array, run is map, from is number, to 
     if (leads)
     {
         stations = clearedOfExact(stations, run.startPoint, true);
-        stations = concatenateArrays([[{ "point" : run.startPoint, "index" : undefined }], stations]);
+        stations = concatenateArrays([[{ "point" : run.startPoint, "index" : undefined }],
+                    exactEntries(run.startLead), stations]);
     }
 
     if (trails)
     {
         stations = clearedOfExact(stations, run.endPoint, false);
-        stations = append(stations, { "point" : run.endPoint, "index" : undefined });
+        stations = concatenateArrays([stations, exactEntries(run.endLead),
+                    [{ "point" : run.endPoint, "index" : undefined }]]);
     }
 
     // Repeats, relative to the run's own length.

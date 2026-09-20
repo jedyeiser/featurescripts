@@ -486,6 +486,7 @@ function extendToPlane(context is Context, definition is map, runs is array, ind
 
     var landing = undefined;
     var arrival = undefined;
+    var reachAlong = undefined;
 
     if (supplied != undefined)
     {
@@ -503,6 +504,7 @@ function extendToPlane(context is Context, definition is map, runs is array, ind
 
         landing = crossing.point;
         arrival = crossing.tangent;
+        reachAlong = crossing.distance;
     }
 
     const span = norm(landing - terminal);
@@ -524,13 +526,34 @@ function extendToPlane(context is Context, definition is map, runs is array, ind
         return resolved;
     }
 
-    // Built outward at both ends. A wire body carries no preferred direction, so reversing
-    // it at the start would be ceremony. Where the arrival matches the run's own heading
-    // this degenerates to the straight line it should be.
-    const extension = arcLikeSpline(terminal, outward, landing, arrival);
+    // The extension is folded into the run rather than tacked on as a curve of its own:
+    // the landing becomes the run's exact end point, the stretch between is sampled along
+    // the same osculating arc (or the supplied ray) at the run's own station spacing, and
+    // the arrival direction becomes the run's end tangent. The fit then runs through the
+    // extension like any other part of the run and lands on the plane exactly -- one
+    // curve, one edge, and a section rebuilt from the same points reaches the plane too.
+    // Kept as a separate piece it was an extra vertex, an extra edge, an extra face and a
+    // G1 joint, and an edge count that changed with the configuration.
+    const spacing = norm(points[station] - points[station + inward]);
+    const intervals = max(1, round(span / max(spacing, OFFSET_GEOM_TOL)));
+
+    // Outward from the terminal, exclusive of both ends.
+    var outwardLead = [];
+    for (var k = 1; k < intervals; k += 1)
+    {
+        outwardLead = append(outwardLead, (supplied != undefined)
+                ? terminal + (k / intervals) * (landing - terminal)
+                : osculatingAt(terminal, outward, curvature, reachAlong * k / intervals));
+    }
+
+    // Stored in the direction of increasing station, with the tangent the fit uses there:
+    // travel is inward at the chain start, so the arrival's heading is reversed.
+    const folded = atStart
+        ? { "startPoint" : landing, "startLead" : reverse(outwardLead), "startArrival" : -arrival }
+        : { "endPoint" : landing, "endLead" : outwardLead, "endArrival" : arrival };
 
     resolved[index] = withTerminalRecord(
-        mergeMaps(run, atStart ? { "startExtension" : extension } : { "endExtension" : extension }),
+        mergeMaps(run, folded),
         atStart,
         {
             "action" : (supplied != undefined) ? "extended along direction" : "extended",

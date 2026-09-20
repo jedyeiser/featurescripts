@@ -729,24 +729,6 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                         "endDerivative" : runEndTangent(driven.stations, driven.coords, driven.sided,
                                 definition, driven.alongRef, run, to, displacement, false)
                     };
-
-                // A terminal extension -- the piece extendToPlane fabricated past the last
-                // station to reach the terminal plane -- is geometry the offset wire has
-                // and the section must have too, or the surface stops one extension short
-                // of the plane the wire reaches. A trimmed terminal needs nothing here: it
-                // arrives through the run's startPoint / endPoint, which sectionPoints
-                // already includes. The extension is carried as the curve it is, stepped
-                // sideways with the station it hangs off, and emitted as its own piece.
-                if (from == run.start && run.startExtension != undefined)
-                {
-                    plan.startExtension = steppedSpline(run.startExtension,
-                        sectionStep(definition, driven, run.start, reach));
-                }
-                if (to == run.end && run.endExtension != undefined)
-                {
-                    plan.endExtension = steppedSpline(run.endExtension,
-                        sectionStep(definition, driven, run.end, reach));
-                }
             }
         }
 
@@ -754,25 +736,6 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
     }
 
     return plans;
-}
-
-/**
- * A B-spline curve translated by `step`: every control point moved, nothing else touched.
- */
-function steppedSpline(curve is BSplineCurve, step is Vector) returns BSplineCurve
-{
-    if (norm(step) < OFFSET_GEOM_TOL)
-    {
-        return curve;
-    }
-
-    var moved = [];
-    for (var cp in curve.controlPoints)
-    {
-        moved = append(moved, cp + step);
-    }
-
-    return mergeMaps(curve, { "controlPoints" : moved }) as BSplineCurve;
 }
 
 /**
@@ -884,14 +847,12 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
     reach is ValueWithUnits, fits) returns map
 {
     var pieces = [];
-    var extensions = [];
     var kept = 0;
 
     for (var r = 0; r < size(plans); r += 1)
     {
         const plan = plans[r];
         var curve = undefined;
-        var extension = { "startExtension" : undefined, "endExtension" : undefined };
 
         if (plan != undefined)
         {
@@ -923,32 +884,9 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             {
                 printCurveDump(context, "  emitted run " ~ toString(r), curve);
             }
-
-            // The terminal extensions, as their own curves beside the run's, the way the
-            // offset wire carries them.
-            for (var side in ["startExtension", "endExtension"])
-            {
-                if (plan[side] == undefined)
-                {
-                    continue;
-                }
-
-                const extensionId = id + (side ~ r);
-                opCreateBSplineCurve(context, extensionId, { "bSplineCurve" : plan[side] });
-                extension[side] = qCreatedBy(extensionId, EntityType.EDGE);
-
-                if (reportsRun(definition, r))
-                {
-                    println("[section]   reach " ~ toString(roundToPrecision(reach / millimeter, 4))
-                        ~ " mm  run " ~ toString(r) ~ "  " ~ side ~ " "
-                        ~ toString(roundToPrecision(norm(plan[side].controlPoints[3] - plan[side].controlPoints[0]) / millimeter, 4))
-                        ~ " mm");
-                }
-            }
         }
 
         pieces = append(pieces, curve);
-        extensions = append(extensions, extension);
     }
 
     if (kept == 0)
@@ -958,14 +896,8 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
 
     // One wire, many edges. opExtractWires chains the pieces where they meet, which they do
     // because adjacent runs share a station -- and a trimmed corner shares an exact point.
-    var edges = nonEmpty(pieces);
-    for (var extension in extensions)
-    {
-        edges = concatenateArrays([edges, nonEmpty([extension.startExtension, extension.endExtension])]);
-    }
-
     const wireId = id + "wire";
-    opExtractWires(context, wireId, { "edges" : qUnion(edges) });
+    opExtractWires(context, wireId, { "edges" : qUnion(nonEmpty(pieces)) });
 
     const wires = qCreatedBy(wireId, EntityType.BODY);
 
@@ -977,7 +909,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             ~ toString(size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)))) ~ " edge(s)");
     }
 
-    return { "wire" : wires, "pieces" : pieces, "extensions" : extensions };
+    return { "wire" : wires, "pieces" : pieces };
 }
 
 /**
@@ -1498,84 +1430,30 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // station-for-station pairing.
             var patch = [];
             var chains = [];
-            var startExtensions = [];
-            var endExtensions = [];
             for (var i in members)
             {
                 var before = [];
-                var first = r;
                 if (r == stretch.first)
                 {
                     for (var c = r - 1; c >= 0 && sections[i].pieces[c] != undefined; c -= 1)
                     {
                         before = append(before, sections[i].pieces[c]);
-                        first = c;
                     }
                 }
 
                 var after = [];
-                var last = r;
                 if (r == stretch.last)
                 {
                     for (var c = r + 1; c < cellCount && sections[i].pieces[c] != undefined; c += 1)
                     {
                         after = append(after, sections[i].pieces[c]);
-                        last = c;
                     }
                 }
 
                 // In order along the edges, for the exact construction; as one query, for
                 // the loft and the reports.
-                chains = append(chains, concatenateArrays([reverse(before), [sections[i].pieces[r]], after]));
-
-                // The terminal extensions hang off the outermost pieces of the chain, and
-                // only exist where that piece is the chain's own end.
-                startExtensions = append(startExtensions, sections[i].extensions[first].startExtension);
-                endExtensions = append(endExtensions, sections[i].extensions[last].endExtension);
-            }
-
-            // Where every member was extended to the plane, the extensions face each other
-            // and get a patch of their own -- two cubics with the same knots, so the exact
-            // ruled construction takes them, and the face split follows the wires' edge
-            // split. Where only some members were extended (the others trimmed, or already
-            // on the plane) the extension is an overhang, chained onto its member the way
-            // any overhang is.
-            for (var side in [["start", startExtensions], ["end", endExtensions]])
-            {
-                const present = nonEmpty(side[1]);
-                if (size(present) == 0)
-                {
-                    continue;
-                }
-
-                if (size(present) == size(members))
-                {
-                    const terminalId = id + ("patch" ~ r ~ "_" ~ from ~ side[0] ~ "Extension");
-                    if (terminalPatch(context, terminalId, present))
-                    {
-                        sheets = append(sheets, qCreatedBy(terminalId, EntityType.BODY));
-                    }
-                    else
-                    {
-                        refused = append(refused, toString(r) ~ ":" ~ toString(members) ~ " " ~ side[0] ~ " extension");
-                    }
-                    continue;
-                }
-
-                for (var k = 0; k < size(members); k += 1)
-                {
-                    if (side[1][k] == undefined)
-                    {
-                        continue;
-                    }
-                    chains[k] = (side[0] == "start")
-                        ? concatenateArrays([[side[1][k]], chains[k]])
-                        : append(chains[k], side[1][k]);
-                }
-            }
-
-            for (var chain in chains)
-            {
+                const chain = concatenateArrays([reverse(before), [sections[i].pieces[r]], after]);
+                chains = append(chains, chain);
                 patch = append(patch, size(chain) == 1 ? chain[0] : qUnion(chain));
             }
 
@@ -2149,38 +2027,6 @@ function sharedParameterization(curves is array) returns boolean
  * @param curves {array} : the sections' evCurveDefinition results.
  * @returns {boolean} : false when the pair does not qualify, and nothing was built.
  */
-/**
- * The patch between the terminal extensions of a pairing's members: exact where the curves
- * allow it, a loft otherwise.
- *
- * @param extensions {array} : one single-edge query per member, in member order.
- * @returns {boolean} : whether a body was built.
- */
-function terminalPatch(context is Context, id is Id, extensions is array) returns boolean
-{
-    var curves = [];
-    var chains = [];
-    for (var extension in extensions)
-    {
-        const edges = evaluateQuery(context, extension);
-        curves = append(curves, size(edges) == 1 ? evCurveDefinition(context, { "edge" : edges[0] }) : undefined);
-        chains = append(chains, [extension]);
-    }
-
-    if (!(ruledPatch(context, id, curves) || unifiedPatch(context, id, chains)))
-    {
-        try silent
-        {
-            opLoft(context, id + "loft", {
-                        "profileSubqueries" : extensions,
-                        "bodyType" : ToolBodyType.SURFACE
-                    });
-        }
-    }
-
-    return size(evaluateQuery(context, qCreatedBy(id, EntityType.BODY))) > 0;
-}
-
 function ruledPatch(context is Context, id is Id, curves is array) returns boolean
 {
     if (!sharedParameterization(curves))

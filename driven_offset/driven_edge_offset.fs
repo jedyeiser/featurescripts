@@ -1193,25 +1193,6 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
                 qCreatedBy(fillId, EntityType.EDGE));
         }
 
-        // A terminal extension stays its own curve rather than joining the fit. It is
-        // geometry we fabricated past where the source data stops, and the run's tolerance
-        // should describe the offset, not the piece invented to reach a plane.
-        for (var side in ["startExtension", "endExtension"])
-        {
-            if (run[side] == undefined)
-            {
-                continue;
-            }
-
-            const extensionId = id + (side ~ r);
-            opCreateBSplineCurve(context, extensionId, { "bSplineCurve" : run[side] });
-
-            const extensionKey = "link" ~ run.linkIndex;
-            bodiesByLink[extensionKey] = append(
-                bodiesByLink[extensionKey] == undefined ? [] : bodiesByLink[extensionKey],
-                qCreatedBy(extensionId, EntityType.EDGE));
-        }
-
         // A run can collapse to a point when a profile break falls exactly on a source
         // edge boundary: the crossing pair lands immediately before the junction's left
         // station, so the run between them spans no arc at all. classifyPoints would call
