@@ -650,8 +650,14 @@ function offsetPoints(stations is array, offsets is array, definition is map, al
         // gets no point, the run breaks either side of it, and resolveFolds trims the
         // two runs back to where they cross. The direction is a run-end question,
         // asked separately where the frame's turn rates are available.
+        // Also a fold: an offset radius (margin / curvature) below the fit tolerance --
+        // an arc offset by its own radius collapses to its centre, and stations that
+        // land a few microns from it by rounding are noise, not geometry.
         const sourceMargin = offsetShrink(frame, offsets[i]);
-        if (sourceMargin <= 0)
+        const curvature = norm(curvatureVector(frame));
+        const collapsed = curvature * meter > 1e-9
+            && sourceMargin / curvature < definition.approximationTolerance;
+        if (sourceMargin <= 0 || collapsed)
         {
             points = append(points, undefined);
             margins = append(margins, sourceMargin);
@@ -763,7 +769,12 @@ function buildRuns(stations is array, offsets is array, splits is array, breakAt
 
         const newEdge = (stations[i].linkIndex != stations[i - 1].linkIndex
                 || stations[i].edgeIndex != stations[i - 1].edgeIndex);
-        const smoothJoint = !breakAtEdges && stations[i].welded == true;
+
+        // A welded joint reads straight through -- unless either side is a line or a
+        // circle. Those offset to a line or an arc and are emitted exactly; fitted
+        // together with a spline neighbour the straight part rings.
+        const exactSide = isExactSource(stations[i - 1]) || isExactSource(stations[i]);
+        const smoothJoint = !breakAtEdges && stations[i].welded == true && !exactSide;
 
         if ((newEdge && !smoothJoint) || splits[i])
         {
@@ -773,6 +784,14 @@ function buildRuns(stations is array, offsets is array, splits is array, breakAt
     }
 
     return closeRun(runs, stations, start, size(stations) - 1);
+}
+
+/**
+ * A station off a source edge the kernel holds exactly.
+ */
+function isExactSource(station is map) returns boolean
+{
+    return station.curveType == CurveType.LINE || station.curveType == CurveType.CIRCLE;
 }
 
 /**
