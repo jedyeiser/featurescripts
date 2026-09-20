@@ -138,10 +138,10 @@ function findFacesToDelete(context is Context, id is Id, definition is map, spli
 
     const reference = keepReferenceSide(context, definition);
 
-    const delete1 = sideToDelete(context, definition, "first", qOwnedByBody(definition.body1, EntityType.FACE),
-        imprint1, definition.keepNear1, splitId, reference);
-    const delete2 = sideToDelete(context, definition, "second", qOwnedByBody(definition.body2, EntityType.FACE),
-        imprint2, definition.keepNear2, splitId, reference);
+    const faces1 = qOwnedByBody(definition.body1, EntityType.FACE);
+    const faces2 = qOwnedByBody(definition.body2, EntityType.FACE);
+    const delete1 = sideToDelete(context, definition, "first", faces1, imprint1, definition.keepNear1, splitId, reference, faces2);
+    const delete2 = sideToDelete(context, definition, "second", faces2, imprint2, definition.keepNear2, splitId, reference, faces1);
 
     return qUnion([delete1, delete2]);
 }
@@ -168,14 +168,17 @@ function keepReferenceSide(context is Context, definition is map)
 /**
  * One body's faces to delete.
  *
- * With a reference, `keepNear` on keeps the side nearer to it and off the farther side:
+ * With a reference, `keepNear` on keeps the side the reference is on and off the other:
  * "keep the inside" / "keep the outside", stated in geometry, so the choice holds when
- * the inputs change. A reference that cannot tell the two sides apart is an error, not a
- * guess. Without a reference this is the built-in: on keeps the split's front side, off
- * its back side.
+ * the inputs change. "The side the reference is on" is decided against the SPLITTER --
+ * the other surface, extended: the reference and each piece of this surface get a signed
+ * distance to it, and the piece on the reference's side is the near one. Plain distance
+ * to the pieces is only the fallback: a leaning wall's upper half can reach closer to a
+ * point below the cut than the lower half does, and distance then picks the wrong side.
+ * Without a reference this is the built-in: on keeps the split's front side, off its back.
  */
 function sideToDelete(context is Context, definition is map, label is string, faces is Query, imprint is Query,
-    keepNear is boolean, splitId is Id, reference) returns Query
+    keepNear is boolean, splitId is Id, reference, splitter is Query) returns Query
 {
     const sides = classifySides(context, faces, imprint, splitId);
 
@@ -184,25 +187,66 @@ function sideToDelete(context is Context, definition is map, label is string, fa
         return keepNear ? sides.back : sides.front;
     }
 
-    const toFront = evDistance(context, { "side0" : reference, "side1" : sides.front }).distance;
-    const toBack = evDistance(context, { "side0" : reference, "side1" : sides.back }).distance;
+    var near = undefined;
+    var far = undefined;
+    var how = "";
+
+    const refSide = signedSideOf(context, reference, splitter);
+    const frontSide = signedSideOf(context, evApproximateCentroid(context, { "entities" : sides.front }), splitter);
+    const backSide = signedSideOf(context, evApproximateCentroid(context, { "entities" : sides.back }), splitter);
+
+    if (refSide != undefined && frontSide != undefined && backSide != undefined
+        && abs(refSide) > KEEP_SIDE_MARGIN && frontSide * backSide < 0 * meter * meter)
+    {
+        const refOnFront = (refSide > 0 * meter) == (frontSide > 0 * meter);
+        near = refOnFront ? sides.front : sides.back;
+        far = refOnFront ? sides.back : sides.front;
+        how = "by side of the other surface (reference " ~ fmtMM(refSide, 3, 0) ~ " mm, pieces "
+            ~ fmtMM(frontSide, 3, 0) ~ " / " ~ fmtMM(backSide, 3, 0) ~ " mm)";
+    }
+    else
+    {
+        const toFront = evDistance(context, { "side0" : reference, "side1" : sides.front }).distance;
+        const toBack = evDistance(context, { "side0" : reference, "side1" : sides.back }).distance;
+        if (abs(toFront - toBack) < KEEP_SIDE_MARGIN)
+        {
+            throw regenError("The keep side reference cannot be placed on either side of the " ~ label
+                ~ " surface; pick something clearly on the side to keep.", ["keepReference"]);
+        }
+        near = (toFront < toBack) ? sides.front : sides.back;
+        far = (toFront < toBack) ? sides.back : sides.front;
+        how = "by distance (" ~ fmtMM(toFront, 3, 0) ~ " / " ~ fmtMM(toBack, 3, 0) ~ " mm; the pieces did not straddle the other surface)";
+    }
 
     if (definition.debugPrintSides)
     {
-        println("[trim] " ~ label ~ " surface: reference is " ~ fmtMM(toFront, 4, 0) ~ " mm from one side and "
-            ~ fmtMM(toBack, 4, 0) ~ " mm from the other; keeping the " ~ (keepNear ? "nearer" : "farther") ~ " side.");
+        println("[trim] " ~ label ~ " surface: keeping the " ~ (keepNear ? "reference's" : "opposite") ~ " side, decided " ~ how ~ ".");
     }
 
-    if (abs(toFront - toBack) < KEEP_SIDE_MARGIN)
+    return keepNear ? far : near;
+}
+
+/**
+ * Signed distance from a probe (a point or an entity) to a surface, positive on the side
+ * its normal points to at the closest point. Undefined where no tangent plane exists.
+ */
+function signedSideOf(context is Context, probe, surface is Query)
+{
+    const faces = evaluateQuery(context, surface);
+    const result = evDistance(context, { "side0" : probe, "side1" : surface });
+    const face = faces[result.sides[1].index];
+
+    var normal = undefined;
+    try silent
     {
-        throw regenError("The keep side reference is as close to one side of the " ~ label
-            ~ " surface as to the other (" ~ fmtMM(toFront, 4, 0) ~ " mm); pick something clearly on the side to keep.",
-            ["keepReference"]);
+        normal = evFaceTangentPlane(context, { "face" : face, "parameter" : result.sides[1].parameter }).normal;
+    }
+    catch
+    {
+        return undefined;
     }
 
-    const nearer = (toFront < toBack) ? sides.front : sides.back;
-    const farther = (toFront < toBack) ? sides.back : sides.front;
-    return keepNear ? farther : nearer;
+    return dot(result.sides[0].point - result.sides[1].point, normal);
 }
 
 /**
