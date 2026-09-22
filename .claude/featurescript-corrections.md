@@ -1291,13 +1291,31 @@ result holds when the inputs change.
 
 ---
 
+## Correction 29: Rational / degenerate B-spline surfaces and vertex adjacency (2026-09-20)
+
+**Symptom**: `opCreateBSplineSurface` "Execution error" for an exact corner sector (arc row
++ collapsed point row); `qAdjacent(edge, AdjacencyType.EDGE, EntityType.VERTEX)` precondition
+failure.
+
+**Fix**: `bSplineSurface` requires `weights` to be a `Matrix` -- `"weights" : matrix([[wA, wB], ...])`,
+never a plain array of arrays (the precondition `definition.weights is Matrix` is what the
+"Execution error" was). Rows may be degenerate: a control row of three copies of one point
+builds fine (a cone sector from an arc to its vertex; area verified exact in the eval
+sandbox). Vertices of an edge are `qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX)`.
+
+**Lesson Learned**: the std geometry constructors are typed; when an op says "Execution
+error" with no kernel message, check the constructor's precondition first (the eval API
+prints it as a WARNING). Reproduce constructions in the eval sandbox before wiring them in.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 28
-- **Last Updated**: 2026-09-19
+- **Total Corrections**: 29
+- **Last Updated**: 2026-09-20
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
-- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27); side-of-splitter for trims (28)
+- **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27); side-of-splitter for trims (28); Matrix weights + degenerate rows for exact sectors (29)
 
 ---
 

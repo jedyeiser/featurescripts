@@ -30,8 +30,13 @@ import(path : "2b6b313ac740a0146d5bef7c", version : "");
  *   up to the corner angle                    nearly tangent: merged if "Make nearly
  *                                             tangent joints tangent", else a corner
  *   > corner angle                            a corner: the vertex is kept
- *   A sliver edge is judged by its neighbours across it: absorbed into the run when they
- *   are tangent, kept as its own exact piece (it is a chamfer or a fillet) when not.
+ *   A sliver edge is decided by its own two joints. One of them a corner and the other
+ *   tangent is a fragment hanging off the edge it meets tangentially, with the real corner
+ *   on its far side: absorbed into the tangent side, corner kept. Both corners is a chamfer
+ *   with a crease at each end: kept as its own piece. Both tangent says nothing about the
+ *   fragment, so the question is what happens ACROSS it -- a rounding between neighbours
+ *   that meet at a corner is a fillet and is kept, one between neighbours that line up is
+ *   absorbed.
  *
  * Runs
  *   A run of LINE / CIRCLE source edges is copied exactly, so it keeps its type and its
@@ -204,7 +209,7 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Make nearly tangent joints tangent", "Default" : true, "Description" : "A joint between the tangent threshold (0.57 degrees) and the corner angle is fitted through, which makes it exactly tangent within the tolerance. Off, such joints are corners." }
             definition.forceTangency is boolean;
 
-            annotation { "Name" : "Sliver length", "Description" : "Edges shorter than this are fragments: absorbed into the run when the edges either side of them line up, kept as their own piece when they sit at a corner." }
+            annotation { "Name" : "Sliver length", "Description" : "Edges shorter than this are fragments, and are decided by the joints at their own two ends rather than owning a run on their length. A fragment with a corner at one end and a tangent joint at the other is absorbed into the tangent side; one with a corner at both ends, or one whose neighbours turn through a corner across it, is a chamfer or a fillet and is kept." }
             isLength(definition.sliverLength, CleanWireSliverBounds);
 
             // A real button (std isButton): no value, no default; the press arrives in the
@@ -569,7 +574,8 @@ export function cleanWireEditLogic(context is Context, id is Id, oldDefinition i
         if (!isQueryEmpty(context, edges))
         {
             const chain = describeChain(context, edges);
-            const joints = classifyJoints(context, definition, chain);
+            const joints = classifyJoints(context, definition, chain,
+                    definition.approximationTolerance, false);
             const runs = buildRuns(definition, chain, joints, makeArray(size(chain.edges), undefined));
             for (var run in runs)
             {
@@ -611,7 +617,8 @@ function withFittedControlPoints(context is Context, definition is map) returns 
         if (!isQueryEmpty(context, edges))
         {
             const chain = describeChain(context, edges);
-            const joints = classifyJoints(context, definition, chain);
+            const joints = classifyJoints(context, definition, chain,
+                    definition.approximationTolerance, false);
             const runs = buildRuns(definition, chain, joints, makeArray(size(chain.edges), undefined));
             const settings = mergeMaps(approximationSettings(definition), {
                         "approximationMaxCPs" : MAX_CONTROL_POINTS,
@@ -663,7 +670,8 @@ function withPopulatedGroups(context is Context, definition is map) returns map
         if (!isQueryEmpty(context, edges))
         {
             const chain = describeChain(context, edges);
-            const joints = classifyJoints(context, definition, chain);
+            const joints = classifyJoints(context, definition, chain,
+                    definition.approximationTolerance, false);
             const runs = buildRuns(definition, chain, joints, makeArray(size(chain.edges), undefined));
             const settings = mergeMaps(approximationSettings(definition), {
                         "approximationMaxCPs" : MAX_CONTROL_POINTS,
@@ -756,7 +764,7 @@ function cleanChain(context is Context, id is Id, base is Id, definition is map,
     // Auto is the classifier and the global settings alone; groups and breaks are the
     // Manual definition and are not read there, so what the dialog shows is what drives.
     const auto = definition.mode == CleanWireMode.AUTO;
-    const classified = classifyJoints(context, definition, chain);
+    const classified = classifyJoints(context, definition, chain, approximation.approximationTolerance, true);
     const joints = auto ? classified : applyBreaks(context, definition, chain, classified);
     const grouped = auto
         ? { "joints" : joints, "groupOfEdge" : makeArray(size(chain.edges), undefined) }
@@ -1189,13 +1197,18 @@ function sourceControlPoints(context is Context, edge is Query, curveType) retur
 
 /**
  * One record per joint (between edge j - 1 and edge j), decided from the angle the two
- * edges meet at. A sliver's own tangents are not consulted: the joints on either side of
- * it are decided together from the edges beyond it.
+ * edges meet at. A sliver's own joints are read first and only overruled by the edges
+ * across it when they say nothing -- see the sliver block below.
  *
+ * @param tolerance {ValueWithUnits} : the pass's fit tolerance, for the jog test. The plan
+ *      pass runs at its own tolerance and would otherwise be judged at the 3D one.
+ * @param report {boolean} : whether to name what was done with each fragment. Off for the
+ *      editing-logic calls, which classify the chain again for the dialog.
  * @returns {array} : size(edges) - 1 records { "angle" (radians), "kind" ("tangent" /
  *      "near" / "corner"), "isBreak" : boolean, "sliver" : boolean, "why" : string }
  */
-function classifyJoints(context is Context, definition is map, chain is map) returns array
+function classifyJoints(context is Context, definition is map, chain is map,
+    tolerance is ValueWithUnits, report is boolean) returns array
 {
     const edges = chain.edges;
     const sliverMax = definition.sliverLength;
@@ -1210,9 +1223,14 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
     // copied as it is, with its neighbours fitted up to it. Fitting a straight stretch
     // into a cubic with the bend beside it rings; keeping the line exact and handing the
     // spline its direction at the joint does not.
+    // A fragment's OWN exactness earns it nothing: a 0.07 mm line is not a primitive worth
+    // keeping, and forcing breaks on both its joints is what would make it a run. Its
+    // neighbours' exactness still counts, so an arc beside a fragment is still emitted as
+    // an arc.
     for (var j = 0; j < size(joints); j += 1)
     {
-        if (isExactEdge(edges[j]) || isExactEdge(edges[j + 1]))
+        if ((isExactEdge(edges[j]) && edges[j].length >= sliverMax)
+            || (isExactEdge(edges[j + 1]) && edges[j + 1].length >= sliverMax))
         {
             joints[j] = mergeMaps(joints[j], { "isBreak" : true, "why" : "exact edge kept" });
         }
@@ -1229,10 +1247,51 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
         return joints;
     }
 
-    // Slivers: the joints either side of one are re-decided from the neighbours across it.
+    // Slivers. A fragment is decided by the joints at its own two ends, which are already
+    // classified above:
+    //
+    //   one a corner, one tangent   Not a rounding: a tail hanging off the edge it meets
+    //                               tangentially, with the real corner on its far side.
+    //                               The joints already say the right thing -- absorbed into
+    //                               the tangent side, corner kept where the geometry puts
+    //                               it. Deciding this from the edges ACROSS the fragment,
+    //                               as this did, added their two turns together, called the
+    //                               sum a corner, and promoted a tangent joint into one:
+    //                               a 0.07 mm edge of its own at every rout ramp corner,
+    //                               which the driven offset then fitted into a wiggle.
+    //   both corners                A chamfer with a crease at each end: its own piece.
+    //   both tangent                The fragment's own tangents carry nothing its
+    //                               neighbours do not, so the question is what happens
+    //                               across it: a rounding between two edges that meet at a
+    //                               corner is a fillet or a chamfer and is kept, and a
+    //                               fragment between two edges that line up is absorbed.
     for (var i = 1; i + 1 < size(edges); i += 1)
     {
         if (edges[i].length >= sliverMax)
+        {
+            continue;
+        }
+
+        if (joints[i - 1].isBreak || joints[i].isBreak)
+        {
+            const kept = joints[i - 1].isBreak && joints[i].isBreak;
+            const why = kept ? "sliver between corners, kept" : "sliver absorbed into its tangent side";
+            joints[i - 1] = mergeMaps(joints[i - 1], { "sliver" : true, "why" : why });
+            joints[i] = mergeMaps(joints[i], { "sliver" : true, "why" : why });
+
+            if (report && !kept)
+            {
+                println("NOTE: a " ~ fmtMM(edges[i].length, 4, 0) ~ " mm fragment at "
+                    ~ fmtVec(edges[i].startPoint / millimeter, 1, 0)
+                    ~ " mm was absorbed into the run beside it; the corner at its other end is kept.");
+            }
+            continue;
+        }
+
+        // Reading a neighbour that is itself a fragment would decide two joints from a
+        // third fragment's tangents, and which answer came out would depend on which
+        // fragment the loop reached first.
+        if (edges[i - 1].length < sliverMax || edges[i + 1].length < sliverMax)
         {
             continue;
         }
@@ -1246,7 +1305,7 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
             const gapVector = edges[i + 1].startPoint - edges[i - 1].endPoint;
             const along = normalize(edges[i - 1].endTangent + edges[i + 1].startTangent);
             const lateral = norm(gapVector - dot(gapVector, along) * along);
-            if (lateral > definition.approximationTolerance)
+            if (lateral > tolerance)
             {
                 across = mergeMaps(across, { "kind" : "corner", "isBreak" : true });
             }
@@ -1255,13 +1314,20 @@ function classifyJoints(context is Context, definition is map, chain is map) ret
         if (across.isBreak)
         {
             // A chamfer or a fillet at a corner: kept as its own piece, both joints corners.
-            joints[i - 1] = mergeMaps(across, { "why" : "sliver at a corner, kept" });
-            joints[i] = mergeMaps(across, { "why" : "sliver at a corner, kept" });
+            joints[i - 1] = mergeMaps(across, { "why" : "sliver rounding a corner, kept" });
+            joints[i] = mergeMaps(across, { "why" : "sliver rounding a corner, kept" });
         }
         else
         {
             joints[i - 1] = mergeMaps(across, { "why" : "sliver absorbed" });
             joints[i] = mergeMaps(across, { "why" : "sliver absorbed" });
+
+            if (report)
+            {
+                println("NOTE: a " ~ fmtMM(edges[i].length, 4, 0) ~ " mm fragment at "
+                    ~ fmtVec(edges[i].startPoint / millimeter, 1, 0)
+                    ~ " mm was absorbed: the edges either side of it line up.");
+            }
         }
     }
 
@@ -1570,8 +1636,13 @@ function runSamples(context is Context, chain is map, run is map, tolerance is V
             cumulative = append(cumulative, cumulative[s - 1] + density * step);
         }
 
+        // A fragment absorbed into a run carries its ends and nothing between them: three
+        // samples inside a tenth of a millimetre, beside millimetre spacing on the rest of
+        // the run, is the density jump correction 23 is about. Its chord hides less than a
+        // micron of any radius this feature meets.
         const total = cumulative[stationCount - 1];
-        const count = clamp(ceil(total), SAMPLE_MIN_PER_EDGE, SAMPLE_MAX_PER_EDGE);
+        const minSamples = (edge.length < 2 * SAMPLE_MIN_SPACING) ? 2 : SAMPLE_MIN_PER_EDGE;
+        const count = clamp(ceil(total), minSamples, SAMPLE_MAX_PER_EDGE);
 
         // Along-chain fractions at equal density increments, inverted piecewise-linearly.
         var fractions = [];

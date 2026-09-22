@@ -261,6 +261,24 @@ export const TERMINAL_NEWTON_STEPS = 4;
 export const MAX_STATIONS_PER_EDGE = 200;
 export const MIN_STATIONS_PER_EDGE = 5;
 
+/**
+ * A source edge this short is a fragment, and carries two stations: its ends.
+ *
+ * The floor of five stations is right for an edge with shape to resolve and wrong for a
+ * fragment, where it packs five stations into a tenth of a millimetre -- 25 um apart,
+ * beside millimetre spacing on the edges either side. The fitter reads that jump as the
+ * direction the curve leaves in and hooks: measured on a 0.07 mm fragment at a rout ramp
+ * corner, 41 degrees between consecutive samples on one section and a 165 degree reversal
+ * on its neighbour.
+ *
+ * Two stations lose nothing. The sagitta a chord of length L hides on a radius R is
+ * L^2 / 8R, and at 0.1 mm on the tightest radius anything here ever has (2 mm) that is
+ * 0.6 um -- under every tolerance in play, including the 1 um a ski fit is run at. Longer
+ * than this an edge keeps whatever count its control points earn it, so nothing that works
+ * today changes.
+ */
+export const FRAGMENT_EDGE = 0.1 * millimeter;
+
 // ============================================================================
 // Enums and bounds
 // ============================================================================
@@ -1188,6 +1206,14 @@ export function arcLengthAtX(context is Context, chain is map, targetX is ValueW
  */
 export function stationCount(context is Context, edgeData is map, spacing is map) returns number
 {
+    // A fragment carries its ends and nothing between them, whatever the mode: there is
+    // no shape in it to resolve, and stations 25 um apart beside millimetre spacing are
+    // what makes a fit hook. See FRAGMENT_EDGE.
+    if (edgeData.length < FRAGMENT_EDGE)
+    {
+        return 2;
+    }
+
     var count;
 
     if (spacing.mode == OffsetPointSpacing.NUM_POINTS)
