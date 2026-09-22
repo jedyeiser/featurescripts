@@ -764,7 +764,7 @@ function cleanChain(context is Context, id is Id, base is Id, definition is map,
     // Auto is the classifier and the global settings alone; groups and breaks are the
     // Manual definition and are not read there, so what the dialog shows is what drives.
     const auto = definition.mode == CleanWireMode.AUTO;
-    const classified = classifyJoints(context, definition, chain, approximation.approximationTolerance, true);
+    const classified = classifyJoints(context, definition, chain, approximation.approximationTolerance, label == "");
     const joints = auto ? classified : applyBreaks(context, definition, chain, classified);
     const grouped = auto
         ? { "joints" : joints, "groupOfEdge" : makeArray(size(chain.edges), undefined) }
@@ -1282,7 +1282,7 @@ function classifyJoints(context is Context, definition is map, chain is map,
             if (report && !kept)
             {
                 println("NOTE: a " ~ fmtMM(edges[i].length, 4, 0) ~ " mm fragment at "
-                    ~ fmtVec(edges[i].startPoint / millimeter, 1, 0)
+                    ~ pointText(edges[i].startPoint)
                     ~ " mm was absorbed into the run beside it; the corner at its other end is kept.");
             }
             continue;
@@ -1325,7 +1325,7 @@ function classifyJoints(context is Context, definition is map, chain is map,
             if (report)
             {
                 println("NOTE: a " ~ fmtMM(edges[i].length, 4, 0) ~ " mm fragment at "
-                    ~ fmtVec(edges[i].startPoint / millimeter, 1, 0)
+                    ~ pointText(edges[i].startPoint)
                     ~ " mm was absorbed: the edges either side of it line up.");
             }
         }
@@ -1340,6 +1340,16 @@ function classifyJoints(context is Context, definition is map, chain is map,
 function isExactEdge(edge is map) returns boolean
 {
     return edge.curveType == CurveType.LINE || edge.curveType == CurveType.CIRCLE;
+}
+
+/**
+ * A point in millimetres, for a note.
+ */
+function pointText(p is Vector) returns string
+{
+    const mm = p / millimeter;
+    return toString(roundToPrecision(mm[0], 1)) ~ ", " ~ toString(roundToPrecision(mm[1], 1))
+        ~ ", " ~ toString(roundToPrecision(mm[2], 1));
 }
 
 /**
