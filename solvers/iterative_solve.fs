@@ -8,7 +8,7 @@ import(path : "3b906109aa60b4adbf7f9b60", version : "");
  *
  * What a feature Pattern with "Reapply features" does when it is used as a solver, without its
  * pitfall: only the solution is returned. Each trial sets the iteration variable, re-runs the
- * listed features under its own id, measures, and is rolled back unless it meets the condition.
+ * listed features under its own id, measures, and is deleted unless it meets the condition.
  * When a trial does, it is kept and the listed features' original bodies are deleted. When
  * none does, the feature fails and the model is left as it was.
  *
@@ -394,10 +394,12 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 {
                     return { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined, "skipped" : true };
                 }
+                // The listed features run under id + "trialK", as a Pattern runs an instance under
+                // id + "1". Not inside startFeature: a re-run sketch builds nothing in a started
+                // subfeature (verified 2026-09-22), so a trial is discarded by deleting its bodies.
                 const trialId = id + ("trial" ~ k);
-                const instanceId = trialId; // EXPERIMENT: pattern layout
+                const instanceId = trialId;
 
-                startFeature(context, trialId); // EXPERIMENT B
                 setVariable(context, definition.iterationName, value);
                 if (trace)
                 {
@@ -428,13 +430,6 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                         const after = bodyCounts(context, qCreatedBy(trialId, EntityType.BODY));
                         println("    " ~ (i + 1) ~ " " ~ toString(featureIds[i]) ~ "  ok  " ~ countsDelta(counts, after)
                             ~ watchText(context, watch));
-                        // EXPERIMENT: where did it build?
-                        println("      all bodies " ~ size(evaluateQuery(context, qEverything(EntityType.BODY)))
-                            ~ "  under instance+fid " ~ size(evaluateQuery(context, qCreatedBy(instanceId + featureIds[i][0], EntityType.BODY)))
-                            ~ "  regions under instance+fid " ~ size(evaluateQuery(context, qSketchRegion(instanceId + featureIds[i][0])))
-                            ~ "  entities under instance+fid " ~ size(evaluateQuery(context, qCreatedBy(instanceId + featureIds[i][0])))
-                            ~ "  entities under trial " ~ size(evaluateQuery(context, qCreatedBy(trialId)))
-                            ~ "  instanceId " ~ toString(instanceId));
                         counts = after;
                     }
                     // A listed feature that updates the variable itself (a Pattern-style solver's own
@@ -470,13 +465,9 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                     ~ (trace ? "" : watchText(context, watch)));
 
                 const keep = outcome.accepted || probe || (keepFailed && failure != undefined);
-                if (keep)
+                if (!keep)
                 {
-                    endFeature(context, trialId); // EXPERIMENT B
-                }
-                else
-                {
-                    abortFeature(context, trialId); // EXPERIMENT B
+                    discardTrial(context, trialId);
                 }
                 if (keepFailed && failure != undefined)
                 {
@@ -937,8 +928,11 @@ function valueText(v) returns string
     return toString(v);
 }
 
-// EXPERIMENT: roll back a trial built without startFeature by deleting what it made.
-function deleteTrialBodies(context is Context, trialId is Id)
+/**
+ * Discards a trial by deleting every body it built (sketches, tool surfaces and wires included).
+ * A listed feature that modified a body from outside the list is NOT undone by this.
+ */
+function discardTrial(context is Context, trialId is Id)
 {
     const made = qCreatedBy(trialId, EntityType.BODY);
     if (!isQueryEmpty(context, made))
