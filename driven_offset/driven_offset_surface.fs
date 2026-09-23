@@ -8,6 +8,8 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da6
 import(path : "d009ddf4a8dd9534fc4dc4b5", version : "e11a408e487b65a9b42efac8");
 import(path : "6479d7fbd0ec7d11e0ae6c69", version : "4f533950f9fcbe2083572c8b");
 import(path : "786f62f4d67ed8d9c7d56d16", version : "");
+// IMPORT: design_map_query_utils.fs (embedStandardOutputs)
+import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
 // bspline_compat: exact knot/degree/join algebra for the unified patches.
 import(path : "6b635e74c92bd23387e850c1", version : "");
 
@@ -2660,4 +2662,27 @@ function finishSurface(context is Context, id is Id, definition is map, driven i
                     "value" : definition.outputName
                 });
     }
+
+    // Extract variables: the surfaces, and one key per offset wire (offsetWire1.. in the
+    // Offsets list order), empty unless "Keep offset wires" is on -- always present.
+    var queries = {};
+    for (var i = 0; i < size(driven); i += 1)
+    {
+        const named = i < size(definition.offsets) && definition.offsets[i].offsetName != "";
+        const label = named ? definition.offsets[i].offsetName : "offset " ~ (i + 1);
+        const wires = definition.keepWires && driven[i].wires is Query ? driven[i].wires : qNothing();
+        queries["offsetWire" ~ (i + 1)] = extractableQuery(wires,
+            "The wire of " ~ label ~ " (empty unless Keep offset wires is on).");
+    }
+    embedStandardOutputs(context, id, {
+                "output" : surfaces,
+                "outputDescription" : "The driven offset surfaces",
+                "inputs" : definition.offsetEdges,
+                "variables" : {
+                    "faceCount" : extractableVariable(size(evaluateQuery(context, qOwnedByBody(surfaces, EntityType.FACE))),
+                            "Faces in the surfaces."),
+                    "offsetCount" : extractableVariable(size(driven), "Offsets the surfaces were built through.")
+                },
+                "queries" : queries
+            });
 }

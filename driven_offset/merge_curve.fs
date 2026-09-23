@@ -1,5 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
+// IMPORT: design_map_query_utils.fs (embedStandardOutputs)
+import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
 
 /**
  * Merge curve
@@ -337,6 +339,23 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
 
         // 7. Name the surviving wire(s).
         nameOutput(context, output, definition.outputName);
+
+        // Extract variables. Embedded explicitly: when the merge edits the seed wire in place
+        // the output is a body this feature did not create, which qCreatedBy would miss.
+        embedStandardOutputs(context, id, {
+                    "output" : output,
+                    "outputDescription" : "The wire holding the merged curve",
+                    "inputs" : qUnion([definition.seedEdge, definition.mergeEdge]),
+                    "variables" : {
+                        "degree" : extractableVariable(spline.degree, "Degree of the merged spline."),
+                        "controlPointCount" : extractableVariable(size(spline.controlPoints), "Control points of the merged spline.")
+                    },
+                    "queries" : {
+                        "mergedEdge" : extractableQuery(qOwnedByBody(output, EntityType.EDGE)->qClosestTo(evaluateSpline({ "spline" : spline,
+                                        "parameters" : [(spline.knots[0] + spline.knots[size(spline.knots) - 1]) / 2] })[0][0]),
+                                "The merged edge itself.", DebugColor.GREEN)
+                    }
+                });
     }, {
         "keepStartDerivative" : true,
         "keepEndDerivative" : true,

@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 export import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da639ec");
 // IMPORT: merge_curve.fs
 import(path : "f531550fd26c49415f9c443a", version : "38e6742293e654b12c3cffd4");
+// IMPORT: design_map_query_utils.fs (embedStandardOutputs)
+import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
 
 /**
  * Map curve
@@ -254,6 +256,19 @@ export const mapCurve = defineFeature(function(context is Context, id is Id, def
         {
             printSummary(definition, fromResolved, toResolved, s0, s1, summary);
         }
+
+        embedStandardOutputs(context, id, {
+                    "output" : qCreatedBy(id, EntityType.BODY),
+                    "outputDescription" : "The mapped wires",
+                    "inputs" : qUnion([definition.fromEdges, definition.toEdges]),
+                    "variables" : {
+                        "spanStart" : extractableVariable(s0, "Start of the from-chain, measured from its reference point."),
+                        "spanEnd" : extractableVariable(s1, "End of the from-chain, measured from its reference point."),
+                        "toStart" : extractableVariable(t0, "Where the span starts on the to-chain (arc length from its start)."),
+                        "toEnd" : extractableVariable(t1, "Where the span ends on the to-chain (arc length from its start)."),
+                        "stationCount" : extractableVariable(summary.stations, "Stations sampled along the from-chain (0 for Trim to edges).")
+                    }
+                });
     });
 
 // ============================================================================

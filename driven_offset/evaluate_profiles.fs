@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 // out of scope on a plain common import even though geomOperations documents opDropCurve
 // in terms of it.
 import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
+// IMPORT: design_map_query_utils.fs (embedStandardOutputs)
+import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
 
 /**
  * Creates wires (or returns bSpline data) obeying special rules from either a solid body, an edge, or a chain of edges
@@ -247,6 +249,7 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         }
 
         const result = projectedProfile(context, id, definition);
+        publishProfiles(context, id, definition, result);
 
         if (definition.debugPrintScan)
         {
@@ -258,6 +261,38 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
             println("");
         }
     });
+
+/**
+ * Extract variables: the standard outputs plus one key per named profile -- top, bottom,
+ * middle, periphery, connectors -- each always present and empty when not asked for, and
+ * the projected length.
+ */
+function publishProfiles(context is Context, id is Id, definition is map, result is map)
+{
+    const output = qCreatedBy(id, EntityType.BODY);
+    const top = qCreatedBy(id + "top", EntityType.BODY);
+    const bottom = qCreatedBy(id + "bottom", EntityType.BODY);
+    const middle = qCreatedBy(id + "middle", EntityType.BODY);
+    const periphery = qCreatedBy(id + "periphery", EntityType.BODY);
+    const named = qUnion([top, bottom, middle, periphery, qCreatedBy(id + "profile", EntityType.BODY)]);
+    embedStandardOutputs(context, id, {
+                "output" : output,
+                "outputDescription" : "The profile wires",
+                "inputs" : definition.profileSource == ProfileSource.PART ? definition.profilePart : definition.profileEdges,
+                "variables" : {
+                    "length" : extractableVariable(result.length, "Length of the retained projection (the periphery for a part)."),
+                    "trimmedStart" : extractableVariable(result.trimmed.atStart, "The projection doubled back and was cut at its start."),
+                    "trimmedEnd" : extractableVariable(result.trimmed.atEnd, "The projection doubled back and was cut at its end.")
+                },
+                "queries" : {
+                    "top" : extractableQuery(top, "Top profile wire (Part)."),
+                    "bottom" : extractableQuery(bottom, "Bottom profile wire (Part)."),
+                    "middle" : extractableQuery(middle, "Middle profile wire (Part)."),
+                    "periphery" : extractableQuery(periphery, "Undivided periphery wire (Part, Return = Periphery)."),
+                    "connectors" : extractableQuery(qSubtraction(output, named), "Sections joining top and bottom (Part, Return = Full).")
+                }
+            });
+}
 
 // ============================================================================
 // Reusable core
