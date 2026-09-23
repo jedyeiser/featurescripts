@@ -316,6 +316,11 @@ export function processCrossSections(context is Context, id is Id, definition is
 
         for (var bodyEntry in bodyData)
         {
+            // A body with no outline at this station has an empty box at the frame origin
+            if (size(bodyEntry.groups) == 0)
+            {
+                continue;
+            }
             var bbox = bodyEntry.boundingBox;
             if (overallMinX == undefined || bbox.minX < overallMinX) overallMinX = bbox.minX;
             if (overallMaxX == undefined || bbox.maxX > overallMaxX) overallMaxX = bbox.maxX;

@@ -1385,10 +1385,10 @@ export function computeSectionBoundingBox(points is array) returns map
     if (size(points) == 0)
     {
         return {
-            "minX" : 0,
-            "maxX" : 0,
-            "minY" : 0,
-            "maxY" : 0,
+            "minX" : 0 * meter,
+            "maxX" : 0 * meter,
+            "minY" : 0 * meter,
+            "maxY" : 0 * meter,
             "width" : 0 * meter,
             "height" : 0 * meter
         };
