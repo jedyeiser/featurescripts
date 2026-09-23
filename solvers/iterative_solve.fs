@@ -265,6 +265,42 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
 
         annotation { "Name" : "Max trials" }
         isInteger(definition.maxTrials, SOLVE_MAX_TRIALS_BOUNDS);
+
+        annotation { "Name" : "Debug", "Description" : "Console diagnostics, a single trial at a chosen value, and keeping a failed trial." }
+        definition.debug is boolean;
+
+        if (definition.debug)
+        {
+            annotation { "Name" : "Watch variables", "Description" : "Names separated by commas or spaces, printed after every trial (and after every listed feature with the trace on)." }
+            definition.watchNames is string;
+
+            annotation { "Name" : "Feature trace", "Description" : "Each listed feature's outcome and the bodies it adds, for every trial." }
+            definition.traceFeatures is boolean;
+
+            annotation { "Name" : "Keep failed trial", "Description" : "Stop at the first trial that fails and keep its partial geometry instead of rolling it back." }
+            definition.keepFailed is boolean;
+
+            annotation { "Name" : "Run once at a value", "Description" : "Skip the search: build one trial at this value and keep it." }
+            definition.probe is boolean;
+
+            if (definition.probe && definition.iterationType == SolveValueType.LENGTH)
+            {
+                annotation { "Name" : "Value" }
+                isLength(definition.probeLength, LENGTH_BOUNDS);
+            }
+
+            if (definition.probe && definition.iterationType == SolveValueType.ANGLE)
+            {
+                annotation { "Name" : "Value" }
+                isAngle(definition.probeAngle, ANGLE_360_ZERO_DEFAULT_BOUNDS);
+            }
+
+            if (definition.probe && definition.iterationType == SolveValueType.NUMBER)
+            {
+                annotation { "Name" : "Value" }
+                isReal(definition.probeNumber, SOLVE_REAL_BOUNDS);
+            }
+        }
     }
     {
         verifyVariableNameIsValid(definition.iterationName, "iterationName");
@@ -292,7 +328,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
         }
         // The listed feature ids in the same order as `features`, to name a feature in messages.
         var idOf = {};
-        for (var featureId, fn in definition.features)
+        for (var featureId in keys(definition.features))
         {
             idOf[featureId] = featureId;
         }
@@ -333,25 +369,43 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
             throw regenError("The lower and upper bounds are equal.", ["lowerLength", "upperLength", "lowerAngle", "upperAngle", "lowerNumber", "upperNumber"]);
         }
 
+        const debug = definition.debug == true;
+        const watch = debug ? watchList(definition.watchNames) : [];
+        const trace = debug && definition.traceFeatures == true;
+        const keepFailed = debug && definition.keepFailed == true;
+        const probe = debug && definition.probe == true;
+
         // Every trial reports here, so the kept solution's measurement is known without re-running it.
         const trialCount = new box(0);
         const lastTrial = new box({});
+        const trialLog = new box([]);
+        // Set when a failed trial is kept (debug): later trials are skipped without building anything.
+        const stoppedAt = new box(undefined);
 
-        const trial = function(x is number) returns map
+        const trial = function(x is number, kind is string) returns map
             {
                 const k = trialCount[];
                 trialCount[] = k + 1;
+                const value = x * unitValue;
+                if (stoppedAt[] != undefined)
+                {
+                    return { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined, "skipped" : true };
+                }
                 const trialId = id + ("trial" ~ k);
                 const instanceId = trialId + "run";
-                const value = x * unitValue;
 
                 startFeature(context, trialId);
                 setVariable(context, definition.iterationName, value);
+                if (trace)
+                {
+                    println("trial " ~ k ~ " (" ~ kind ~ "): #" ~ definition.iterationName ~ " = " ~ valueText(value));
+                }
 
                 // The same frame a Pattern pushes around each instance (identity: nothing moves).
                 setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
                 var failure = undefined;
                 var reassignedBy = undefined;
+                var counts = trace ? bodyCounts(context, qCreatedBy(trialId, EntityType.BODY)) : undefined;
                 for (var i = 0; i < size(features); i += 1)
                 {
                     try
@@ -361,7 +415,18 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                     catch (e)
                     {
                         failure = "listed feature " ~ (i + 1) ~ " (" ~ toString(featureIds[i]) ~ ") failed: " ~ toString(e);
+                        if (trace)
+                        {
+                            println("    " ~ (i + 1) ~ " " ~ toString(featureIds[i]) ~ "  FAILED: " ~ toString(e));
+                        }
                         break;
+                    }
+                    if (trace)
+                    {
+                        const after = bodyCounts(context, qCreatedBy(trialId, EntityType.BODY));
+                        println("    " ~ (i + 1) ~ " " ~ toString(featureIds[i]) ~ "  ok  " ~ countsDelta(counts, after)
+                            ~ watchText(context, watch));
+                        counts = after;
                     }
                     if (getVariable(context, definition.iterationName, undefined) != value)
                     {
@@ -374,6 +439,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 if (reassignedBy != undefined)
                 {
                     abortFeature(context, trialId);
+                    printTrialLog(trialLog[], debug);
                     throw regenError("Listed feature " ~ (reassignedBy + 1) ~ " (" ~ toString(featureIds[reassignedBy]) ~ ") assigns #"
                         ~ definition.iterationName ~ "; the solver sets it on every trial. Remove that Variable feature from the list.", ["features"]);
                 }
@@ -388,13 +454,15 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                     }
                 }
 
-                println("trial " ~ k ~ ": #" ~ definition.iterationName ~ " = " ~ valueText(value)
+                println("trial " ~ k ~ " (" ~ kind ~ "): #" ~ definition.iterationName ~ " = " ~ valueText(value)
                     ~ (failure == undefined
                         ? ("  result " ~ valueText(outcome.result) ~ "  target " ~ valueText(outcome.target)
                             ~ (outcome.accepted ? "  ACCEPTED" : ""))
-                        : ("  FAILED: " ~ failure)));
+                        : ("  FAILED: " ~ failure))
+                    ~ (trace ? "" : watchText(context, watch)));
 
-                if (outcome.accepted)
+                const keep = outcome.accepted || probe || (keepFailed && failure != undefined);
+                if (keep)
                 {
                     endFeature(context, trialId);
                 }
@@ -402,9 +470,32 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 {
                     abortFeature(context, trialId);
                 }
-                lastTrial[] = mergeMaps(outcome, { "value" : value });
+                if (keepFailed && failure != undefined)
+                {
+                    stoppedAt[] = k;
+                }
+                trialLog[] = append(trialLog[], { "k" : k, "kind" : kind, "value" : value, "result" : outcome.result,
+                            "residual" : outcome.residual, "accepted" : outcome.accepted, "failure" : failure });
+                lastTrial[] = mergeMaps(outcome, { "value" : value, "failure" : failure });
                 return outcome;
             };
+
+        if (probe)
+        {
+            // One trial at the typed value, kept whatever it gives; the originals go so it is seen alone.
+            const probed = trial(probeValue(definition), "probe");
+            deleteOriginals(context, id, definition);
+            printTrialLog(trialLog[], debug);
+            const solution = lastTrial[];
+            if (solution.failure != undefined)
+            {
+                reportFeatureWarning(context, id, "Run once at " ~ valueText(solution.value) ~ ": " ~ solution.failure);
+                return;
+            }
+            reportFeatureInfo(context, id, "Run once at " ~ valueText(solution.value) ~ ": result " ~ valueText(solution.result)
+                ~ ", residual " ~ toString(probed.residual) ~ (probed.accepted ? " (meets the condition)." : " (does not meet the condition)."));
+            return;
+        }
 
         var solved;
         if (definition.method == SolveMethod.FIRST_MATCH)
@@ -425,21 +516,27 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
             }
             solved = solveTargetFromStart(trial, x0, step, bounds[0], bounds[1], definition.maxTrials);
         }
+        printTrialLog(trialLog[], debug);
+
+        if (stoppedAt[] != undefined)
+        {
+            // Debug: the failed trial was kept; show it alone and report instead of rolling back.
+            deleteOriginals(context, id, definition);
+            const stopped = lastTrial[];
+            reportFeatureWarning(context, id, "Stopped at trial " ~ stoppedAt[] ~ " and kept its partial geometry: " ~ stopped.failure);
+            return;
+        }
 
         if (!solved.found)
         {
             // Throwing rolls the whole feature back: every trial is gone and the originals stay.
-            throw regenError("No solution for #" ~ definition.iterationName ~ " after " ~ solved.trials
+            throw regenError("No solution for #" ~ definition.iterationName ~ " after " ~ size(trialLog[])
                 ~ " trials. " ~ solved.message, ["features"]);
         }
 
         // The accepted trial is the last one run, and the only one not rolled back.
         const solution = lastTrial[];
-        const originals = qCreatedBy(definition.features, EntityType.BODY);
-        if (!isQueryEmpty(context, originals))
-        {
-            opDeleteBodies(context, id + "deleteOriginals", { "entities" : originals });
-        }
+        deleteOriginals(context, id, definition);
         setVariable(context, definition.iterationName, solution.value);
         if (definition.resultSource != SolveResultSource.VARIABLE && definition.storeName != "")
         {
@@ -447,8 +544,116 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
         }
 
         reportFeatureInfo(context, id, "#" ~ definition.iterationName ~ " = " ~ valueText(solution.value)
-            ~ " after " ~ solved.trials ~ " trials; result " ~ valueText(solution.result) ~ ".");
+            ~ " after " ~ size(trialLog[]) ~ " trials; result " ~ valueText(solution.result) ~ ".");
     });
+
+/**
+ * Deletes the bodies the listed features built before this feature, so only a trial remains.
+ */
+function deleteOriginals(context is Context, id is Id, definition is map)
+{
+    const originals = qCreatedBy(definition.features, EntityType.BODY);
+    if (!isQueryEmpty(context, originals))
+    {
+        opDeleteBodies(context, id + "deleteOriginals", { "entities" : originals });
+    }
+}
+
+/**
+ * The debug single-trial value, as an SI number.
+ */
+function probeValue(definition is map) returns number
+{
+    if (definition.iterationType == SolveValueType.LENGTH)
+    {
+        return definition.probeLength.value;
+    }
+    if (definition.iterationType == SolveValueType.ANGLE)
+    {
+        return definition.probeAngle.value;
+    }
+    return definition.probeNumber;
+}
+
+/**
+ * Watched variable names from the debug field: commas or spaces between them.
+ */
+function watchList(names is string) returns array
+{
+    var out = [];
+    for (var name in splitByRegexp(names, "[\\s,]+"))
+    {
+        if (name != "")
+        {
+            out = append(out, name);
+        }
+    }
+    return out;
+}
+
+/**
+ * "  name = value" for each watched variable, or "" when nothing is watched.
+ */
+function watchText(context is Context, watch is array) returns string
+{
+    var text = "";
+    for (var name in watch)
+    {
+        const value = getVariable(context, name, undefined);
+        text = text ~ "  " ~ name ~ " = " ~ (value == undefined ? "(unset)" : valueText(value));
+    }
+    return text;
+}
+
+/**
+ * Solid / sheet / wire / point body counts of a query.
+ */
+function bodyCounts(context is Context, bodies is Query) returns map
+{
+    return {
+            "solid" : size(evaluateQuery(context, qBodyType(bodies, BodyType.SOLID))),
+            "sheet" : size(evaluateQuery(context, qBodyType(bodies, BodyType.SHEET))),
+            "wire" : size(evaluateQuery(context, qBodyType(bodies, BodyType.WIRE))),
+            "point" : size(evaluateQuery(context, qBodyType(bodies, BodyType.POINT)))
+        };
+}
+
+/**
+ * The change in body counts across one listed feature, e.g. "+1 solid -1 sheet", or "no body change".
+ */
+function countsDelta(before is map, after is map) returns string
+{
+    var parts = [];
+    for (var kind in ["solid", "sheet", "wire", "point"])
+    {
+        const change = after[kind] - before[kind];
+        if (change != 0)
+        {
+            parts = append(parts, ((change > 0) ? "+" : "") ~ change ~ " " ~ kind);
+        }
+    }
+    return size(parts) == 0 ? "no body change" : join(parts, " ");
+}
+
+/**
+ * The end-of-solve table (debug only): trial, step kind, value, result, residual, outcome.
+ */
+function printTrialLog(log is array, debug is boolean)
+{
+    if (!debug || size(log) == 0)
+    {
+        return;
+    }
+    println("---- trials ----");
+    for (var entry in log)
+    {
+        println(entry.k ~ "  " ~ entry.kind ~ "  " ~ valueText(entry.value)
+            ~ (entry.failure != undefined
+                ? ("  FAILED: " ~ entry.failure)
+                : ("  result " ~ valueText(entry.result) ~ "  residual " ~ toString(entry.residual)
+                    ~ (entry.accepted ? "  ACCEPTED" : ""))));
+    }
+}
 
 /**
  * The unit an SI iteration value is multiplied by.

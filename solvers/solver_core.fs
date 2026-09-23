@@ -4,7 +4,8 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 /**
  * Scalar search over one iteration variable, driven by a trial callback.
  *
- * The callback is `trial(x is number) returns map` with
+ * The callback is `trial(x is number, kind is string) returns map` -- kind names the step
+ * ("start", "step", "secant", "retry", "lower bound", "upper bound", "brent", "midpoint", "sweep") -- with
  *     { "ok" : boolean,        // false when the trial could not be built or measured
  *       "accepted" : boolean,  // the trial meets the condition; the search stops here
  *       "residual" : number }  // result - target, SI; only read when ok
@@ -34,7 +35,7 @@ export function solveTargetFromStart(trial is function, x0 is number, step is nu
     var history = [];
 
     var xa = clamp(x0, lo, hi);
-    var ra = trial(xa);
+    var ra = trial(xa, "start");
     history = append(history, historyEntry(xa, ra));
     if (ra.ok && ra.accepted)
     {
@@ -51,7 +52,7 @@ export function solveTargetFromStart(trial is function, x0 is number, step is nu
         xb = xa - step;
     }
     xb = clamp(xb, lo, hi);
-    var rb = trial(xb);
+    var rb = trial(xb, "step");
     history = append(history, historyEntry(xb, rb));
     if (rb.ok && rb.accepted)
     {
@@ -86,13 +87,13 @@ export function solveTargetFromStart(trial is function, x0 is number, step is nu
                 ~ " bound: the residual there is " ~ toString(rb.residual) ~ ".");
         }
 
-        var rn = trial(xn);
+        var rn = trial(xn, "secant");
         history = append(history, historyEntry(xn, rn));
         var retries = 0;
         while (!rn.ok && retries < SECANT_RETRIES && size(history) < maxTrials)
         {
             xn = 0.5 * (xn + xb);
-            rn = trial(xn);
+            rn = trial(xn, "retry");
             history = append(history, historyEntry(xn, rn));
             retries += 1;
         }
@@ -120,7 +121,7 @@ export function solveTargetBracketed(trial is function, lower is number, upper i
 {
     var history = [];
 
-    const ra = trial(lower);
+    const ra = trial(lower, "lower bound");
     history = append(history, historyEntry(lower, ra));
     if (ra.ok && ra.accepted)
     {
@@ -131,7 +132,7 @@ export function solveTargetBracketed(trial is function, lower is number, upper i
         return solveResult(false, lower, history, "The trial at the lower bound failed.");
     }
 
-    const rb = trial(upper);
+    const rb = trial(upper, "upper bound");
     history = append(history, historyEntry(upper, rb));
     if (rb.ok && rb.accepted)
     {
@@ -167,7 +168,7 @@ export function solveFirstMatch(trial is function, lower is number, upper is num
             return solveResult(false, lower, history, "No trial met the condition within " ~ toString(maxTrials) ~ " trials.");
         }
         const x = lower + (upper - lower) * i / steps;
-        const r = trial(x);
+        const r = trial(x, "sweep");
         history = append(history, historyEntry(x, r));
         if (r.ok && r.accepted)
         {
@@ -264,7 +265,7 @@ function brent(trial is function, a0 is number, fa0 is number, b0 is number, fb0
         fa = fb;
         var next = b + ((abs(d) > tol1) ? d : ((xm > 0) ? tol1 : -tol1));
 
-        var rn = trial(next);
+        var rn = trial(next, "brent");
         history = append(history, historyEntry(next, rn));
         if (!rn.ok)
         {
@@ -275,7 +276,7 @@ function brent(trial is function, a0 is number, fa0 is number, b0 is number, fb0
                 return solveResult(false, next, history, "The trial at " ~ toString(next) ~ " failed.");
             }
             next = mid;
-            rn = trial(next);
+            rn = trial(next, "midpoint");
             history = append(history, historyEntry(next, rn));
             if (!rn.ok)
             {
