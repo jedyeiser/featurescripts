@@ -4,10 +4,11 @@
   "document_name": "solvers",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/3cf445f157b6a28aa1d35fcf/w/fcf7d435062364f18e5eb9da",
-  "last_sync": "2026-09-23T04:17:11.142471+00:00",
+  "last_sync": "2026-09-23T04:17:36.178151+00:00",
   "feature_studios": {
     "Part_Vol": "ecfd4623a75070adad74ec70",
-    "solver_core": "3b906109aa60b4adbf7f9b60"
+    "solver_core": "3b906109aa60b4adbf7f9b60",
+    "iterative_solve": "2929b9273b1fceb463300da3"
   },
   "tab_folders": {}
 }

@@ -183,13 +183,13 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
             if (definition.resultSource == SolveResultSource.VOLUME ||
                 (definition.resultSource == SolveResultSource.VARIABLE && definition.resultType == SolveResultType.VOLUME))
             {
-                annotation { "Name" : "Target" }
-                isVolume(definition.targetVolume, VOLUME_BOUNDS);
+                annotation { "Name" : "Target (mm^3)" }
+                isReal(definition.targetVolume, SOLVE_REAL_BOUNDS);
 
                 if (definition.method == SolveMethod.TARGET)
                 {
-                    annotation { "Name" : "Tolerance" }
-                    isVolume(definition.toleranceVolume, VOLUME_BOUNDS);
+                    annotation { "Name" : "Tolerance (mm^3)" }
+                    isReal(definition.toleranceVolume, SOLVE_TOLERANCE_BOUNDS);
                 }
             }
 
@@ -231,13 +231,13 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
 
             if (definition.resultSource == SolveResultSource.VARIABLE && definition.resultType == SolveResultType.AREA)
             {
-                annotation { "Name" : "Target" }
-                isArea(definition.targetArea, AREA_BOUNDS);
+                annotation { "Name" : "Target (mm^2)" }
+                isReal(definition.targetArea, SOLVE_REAL_BOUNDS);
 
                 if (definition.method == SolveMethod.TARGET)
                 {
-                    annotation { "Name" : "Tolerance" }
-                    isArea(definition.toleranceArea, AREA_BOUNDS);
+                    annotation { "Name" : "Tolerance (mm^2)" }
+                    isReal(definition.toleranceArea, SOLVE_TOLERANCE_BOUNDS);
                 }
             }
         }
@@ -493,7 +493,7 @@ function trialTarget(context is Context, definition is map)
     }
     if (definition.resultSource == SolveResultSource.VOLUME)
     {
-        return definition.targetVolume;
+        return definition.targetVolume * cubicMillimeter;
     }
     if (definition.resultType == SolveResultType.LENGTH)
     {
@@ -505,11 +505,11 @@ function trialTarget(context is Context, definition is map)
     }
     if (definition.resultType == SolveResultType.AREA)
     {
-        return definition.targetArea;
+        return definition.targetArea * squareMillimeter;
     }
     if (definition.resultType == SolveResultType.VOLUME)
     {
-        return definition.targetVolume;
+        return definition.targetVolume * cubicMillimeter;
     }
     return definition.targetNumber;
 }
@@ -526,7 +526,7 @@ function trialTolerance(context is Context, definition is map)
     }
     if (definition.resultSource == SolveResultSource.VOLUME)
     {
-        return definition.toleranceVolume;
+        return definition.toleranceVolume * cubicMillimeter;
     }
     if (definition.resultType == SolveResultType.LENGTH)
     {
@@ -538,11 +538,11 @@ function trialTolerance(context is Context, definition is map)
     }
     if (definition.resultType == SolveResultType.AREA)
     {
-        return definition.toleranceArea;
+        return definition.toleranceArea * squareMillimeter;
     }
     if (definition.resultType == SolveResultType.VOLUME)
     {
-        return definition.toleranceVolume;
+        return definition.toleranceVolume * cubicMillimeter;
     }
     return definition.toleranceNumber;
 }
