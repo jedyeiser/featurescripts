@@ -12,7 +12,8 @@ import(path : "3b906109aa60b4adbf7f9b60", version : "");
  * When a trial does, it is kept and the listed features' original bodies are deleted. When
  * none does, the feature fails and the model is left as it was.
  *
- * Nothing in the list may assign the iteration variable -- the solver sets it before each trial.
+ * The solver owns the iteration variable: it sets it before each trial and restores it after any
+ * listed feature that assigns it, so a Pattern-style folder with its own update step works as is.
  */
 
 export enum SolveValueType
@@ -89,7 +90,7 @@ annotation { "Feature Type Name" : "Iterative Solve",
 export const iterativeSolve = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Features to iterate", "Description" : "Re-run on every trial, in tree order. None of them may assign the iteration variable." }
+        annotation { "Name" : "Features to iterate", "Description" : "Re-run on every trial, in tree order. A feature that assigns the iteration variable is overridden." }
         definition.features is FeatureList;
 
         annotation { "Name" : "Iteration variable", "Description" : "Variable name without #. Define it before the listed features." }
@@ -381,6 +382,8 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
         const trialLog = new box([]);
         // Set when a failed trial is kept (debug): later trials are skipped without building anything.
         const stoppedAt = new box(undefined);
+        // Positions of listed features seen assigning the iteration variable (reported once each).
+        const overriddenBy = new box([]);
 
         const trial = function(x is number, kind is string) returns map
             {
@@ -404,7 +407,6 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 // The same frame a Pattern pushes around each instance (identity: nothing moves).
                 setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
                 var failure = undefined;
-                var reassignedBy = undefined;
                 var counts = trace ? bodyCounts(context, qCreatedBy(trialId, EntityType.BODY)) : undefined;
                 for (var i = 0; i < size(features); i += 1)
                 {
@@ -428,21 +430,20 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                             ~ watchText(context, watch));
                         counts = after;
                     }
+                    // A listed feature that updates the variable itself (a Pattern-style solver's own
+                    // step) is overridden before the next feature reads it: the solver owns the value.
                     if (getVariable(context, definition.iterationName, undefined) != value)
                     {
-                        reassignedBy = i;
-                        break;
+                        setVariable(context, definition.iterationName, value);
+                        if (!isIn(i, overriddenBy[]))
+                        {
+                            overriddenBy[] = append(overriddenBy[], i);
+                            println("NOTE: listed feature " ~ (i + 1) ~ " (" ~ toString(featureIds[i]) ~ ") assigns #"
+                                ~ definition.iterationName ~ "; the solver's value is restored after it on every trial.");
+                        }
                     }
                 }
                 unsetFeaturePatternInstanceData(context, instanceId);
-
-                if (reassignedBy != undefined)
-                {
-                    abortFeature(context, trialId);
-                    printTrialLog(trialLog[], debug);
-                    throw regenError("Listed feature " ~ (reassignedBy + 1) ~ " (" ~ toString(featureIds[reassignedBy]) ~ ") assigns #"
-                        ~ definition.iterationName ~ "; the solver sets it on every trial. Remove that Variable feature from the list.", ["features"]);
-                }
 
                 var outcome = { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined };
                 if (failure == undefined)
