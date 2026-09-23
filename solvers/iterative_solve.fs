@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: solver_core.fs
-import(path : "SOLVER_CORE_ELEMENT_ID", version : "");
+import(path : "3b906109aa60b4adbf7f9b60", version : "");
 
 /**
  * Iterative Solve: re-runs a list of features over one variable until a result meets a condition.
