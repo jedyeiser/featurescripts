@@ -336,7 +336,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
         const featureIds = valuesSortedById(context, idOf);
 
         // Everything the trials read must exist already: the listed features ran once upstream.
-        const current = getVariable(context, definition.iterationName, undefined);
+        const current = optionalVariable(context, definition.iterationName);
         if (current == undefined)
         {
             throw regenError("#" ~ definition.iterationName ~ " is not defined before this feature. Define it with a Variable feature"
@@ -347,17 +347,17 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
             throw regenError("#" ~ definition.iterationName ~ " is " ~ valueText(current) ~ ", which does not match the variable type.",
                 ["iterationName", "iterationType"]);
         }
-        if (definition.resultSource == SolveResultSource.VARIABLE && getVariable(context, definition.resultName, undefined) == undefined)
+        if (definition.resultSource == SolveResultSource.VARIABLE && optionalVariable(context, definition.resultName) == undefined)
         {
             throw regenError("#" ~ definition.resultName ~ " is not set by the listed features.", ["resultName"]);
         }
         if (definition.targetFromVariable)
         {
-            if (getVariable(context, definition.targetName, undefined) == undefined)
+            if (optionalVariable(context, definition.targetName) == undefined)
             {
                 throw regenError("#" ~ definition.targetName ~ " is not defined.", ["targetName"]);
             }
-            if (definition.method == SolveMethod.TARGET && getVariable(context, definition.toleranceName, undefined) == undefined)
+            if (definition.method == SolveMethod.TARGET && optionalVariable(context, definition.toleranceName) == undefined)
             {
                 throw regenError("#" ~ definition.toleranceName ~ " is not defined.", ["toleranceName"]);
             }
@@ -434,7 +434,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                     }
                     // A listed feature that updates the variable itself (a Pattern-style solver's own
                     // step) is overridden before the next feature reads it: the solver owns the value.
-                    if (getVariable(context, definition.iterationName, undefined) != value)
+                    if (optionalVariable(context, definition.iterationName) != value)
                     {
                         setVariable(context, definition.iterationName, value);
                         if (!isIn(i, overriddenBy[]))
@@ -598,7 +598,7 @@ function watchText(context is Context, watch is array) returns string
     var text = "";
     for (var name in watch)
     {
-        const value = getVariable(context, name, undefined);
+        const value = optionalVariable(context, name);
         text = text ~ "  " ~ name ~ " = " ~ (value == undefined ? "(unset)" : valueText(value));
     }
     return text;
@@ -652,6 +652,19 @@ function printTrialLog(log is array, debug is boolean)
                 : ("  result " ~ valueText(entry.result) ~ "  residual " ~ toString(entry.residual)
                     ~ (entry.accepted ? "  ACCEPTED" : ""))));
     }
+}
+
+/** Marks "no such variable" for [optionalVariable]; not a value any feature publishes. */
+const MISSING_VARIABLE = "__missing_variable__";
+
+/**
+ * The variable `name`, or undefined when there is none. (getVariable with an undefined
+ * default does NOT do this: `{ defaultValue : undefined }` is no default, and it throws.)
+ */
+export function optionalVariable(context is Context, name is string)
+{
+    const value = getVariable(context, name, MISSING_VARIABLE);
+    return value == MISSING_VARIABLE ? undefined : value;
 }
 
 /**
@@ -713,7 +726,7 @@ function measureTrial(context is Context, trialId is Id, definition is map) retu
     var result;
     if (definition.resultSource == SolveResultSource.VARIABLE)
     {
-        result = getVariable(context, definition.resultName, undefined);
+        result = optionalVariable(context, definition.resultName);
         if (result == undefined)
         {
             outcome.message = "#" ~ definition.resultName ~ " was not set";

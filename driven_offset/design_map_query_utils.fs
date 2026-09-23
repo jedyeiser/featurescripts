@@ -42,6 +42,19 @@ export const EXTRACT_MANIFEST_SCHEMA = "extractManifest/2";
 /** The standard query keys every source offers, in display order. */
 export const STANDARD_OUTPUT_KEYS = ["output", "outputFaces", "outputEdges", "outputVertices"];
 
+/** Marks "no such variable" for [optionalVariable]; not a value any feature publishes. */
+const MISSING_VARIABLE = "__missing_variable__";
+
+/**
+ * The variable `name`, or undefined when there is none. (getVariable with an undefined
+ * default does NOT do this: `{ defaultValue : undefined }` is no default, and it throws.)
+ */
+export function optionalVariable(context is Context, name is string)
+{
+    const value = getVariable(context, name, MISSING_VARIABLE);
+    return value == MISSING_VARIABLE ? undefined : value;
+}
+
 // ---------------------------------------------------------------------------------
 // Entry types (enums used by the Extract variables precondition)
 // ---------------------------------------------------------------------------------
@@ -395,7 +408,7 @@ export function readSources(context is Context, sourceFeatures is map) returns m
     {
         const featureId = ordered[n];
         const slot = toString(featureId);
-        const embedded = getVariable(context, slot, undefined);
+        const embedded = optionalVariable(context, slot);
         const valid = embedded != undefined && canBeEmbeddedVariables(embedded);
         sources = append(sources, { "index" : n + 1, "slot" : slot, "embedded" : valid });
 
@@ -873,7 +886,7 @@ function nearestIndex(points is array, target is Vector) returns number
 export function checkQueryVariableName(context is Context, name is string, faultyParameter is string)
 {
     verifyVariableNameIsValid(name, faultyParameter);
-    if (getVariable(context, name, undefined) != undefined)
+    if (optionalVariable(context, name) != undefined)
     {
         throw regenError(ErrorStringEnum.QUERY_VARIABLE_NAME_ALREADY_USED_IN_NON_QUERY_VARIABLE, [faultyParameter]);
     }
