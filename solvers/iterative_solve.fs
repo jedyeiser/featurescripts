@@ -405,7 +405,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 }
 
                 // The same frame a Pattern pushes around each instance (identity: nothing moves).
-                setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
+                // EXPERIMENT: no pattern frame
                 var failure = undefined;
                 var counts = trace ? bodyCounts(context, qCreatedBy(trialId, EntityType.BODY)) : undefined;
                 for (var i = 0; i < size(features); i += 1)
@@ -443,7 +443,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                         }
                     }
                 }
-                unsetFeaturePatternInstanceData(context, instanceId);
+                // EXPERIMENT: no pattern frame (unset)
 
                 var outcome = { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined };
                 if (failure == undefined)
