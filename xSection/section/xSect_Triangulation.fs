@@ -813,33 +813,6 @@ function buildNestedHierarchy(perimeterData is array, parents is array, parentId
     return result;
 }
 
-/**
- * Compute centroid of a 2D polygon as the arithmetic mean of vertex coordinates.
- *
- * NOTE: This is NOT area-weighted (not the true centroid of the polygon area).
- * It is used only for containment testing (is point A inside polygon B?), where
- * approximate centroid location is sufficient. Do not use for section property calculations.
- *
- * @param points2D {array} : Array of [x, y] vertices
- * @returns {array} : [cx, cy] arithmetic mean of vertices
- */
-function computePolygonCentroid2D(points2D is array) returns array
-{
-    var n = size(points2D);
-    if (n == 0)
-        return [0 * meter, 0 * meter];
-    
-    var cx = 0 * meter;
-    var cy = 0 * meter;
-    
-    for (var pt in points2D)
-    {
-        cx += pt[0];
-        cy += pt[1];
-    }
-    
-    return [cx / n, cy / n];
-}
 
 /**
  * True when more than half of up to NESTING_SAMPLES vertices of `inner`, evenly spread, lie
@@ -1224,76 +1197,6 @@ function pointInTriangle2D(p is array, a is array, b is array, c is array) retur
 // SECTION PROPERTIES
 // =============================================================================
 
-/**
- * Compute section properties from triangles.
- */
-function computeSectionPropertiesFromTriangles(triangles is array, sectionPoints is array, frame is CoordSystem) returns map
-{
-    if (size(triangles) == 0)
-        return emptySectionProperties(frame);
-    
-    var totalArea = 0 * meter * meter;
-    var sumCx = 0 * meter^3;
-    var sumCy = 0 * meter^3;
-    
-    // First pass: area and centroid
-    for (var tri in triangles)
-    {
-        var a = sectionPoints[tri[0]].point2D;
-        var b = sectionPoints[tri[1]].point2D;
-        var c = sectionPoints[tri[2]].point2D;
-        
-        var triArea = triangleArea2D(a, b, c);
-        var triCx = (a[0] + b[0] + c[0]) / 3;
-        var triCy = (a[1] + b[1] + c[1]) / 3;
-        
-        totalArea += triArea;
-        sumCx += triArea * triCx;
-        sumCy += triArea * triCy;
-    }
-    
-    if (abs(totalArea) < 1e-20 * meter * meter)
-        return emptySectionProperties(frame);
-    
-    var centroidX = sumCx / totalArea;
-    var centroidY = sumCy / totalArea;
-    
-    // Second pass: moments about centroid
-    var Ixx = 0 * meter^4;
-    var Iyy = 0 * meter^4;
-    var Ixy = 0 * meter^4;
-    
-    for (var tri in triangles)
-    {
-        var a = sectionPoints[tri[0]].point2D;
-        var b = sectionPoints[tri[1]].point2D;
-        var c = sectionPoints[tri[2]].point2D;
-        
-        var ax = a[0] - centroidX;
-        var ay = a[1] - centroidY;
-        var bx = b[0] - centroidX;
-        var by = b[1] - centroidY;
-        var cx = c[0] - centroidX;
-        var cy = c[1] - centroidY;
-        
-        var triArea = triangleArea2D(a, b, c);
-        
-        Ixx += (triArea / 6) * (ay*ay + ay*by + by*by + ay*cy + by*cy + cy*cy);
-        Iyy += (triArea / 6) * (ax*ax + ax*bx + bx*bx + ax*cx + bx*cx + cx*cx);
-        Ixy += (triArea / 12) * (ax*(2*ay + by + cy) + bx*(ay + 2*by + cy) + cx*(ay + by + 2*cy));
-    }
-    
-    var centroid3D = frame2DToWorld([centroidX, centroidY], frame);
-    
-    return {
-        "area" : abs(totalArea),
-        "centroid2D" : [centroidX, centroidY],
-        "centroid3D" : centroid3D,
-        "Ixx" : abs(Ixx),
-        "Iyy" : abs(Iyy),
-        "Ixy" : Ixy
-    };
-}
 
 /**
  * Compute nested section properties with alternating signs.
@@ -1386,7 +1289,7 @@ function addSectionProperties(a is map, b is map) returns map
 
 /**
  * Exact section properties of a simple polygon from its outline (Green's theorem), about the
- * polygon's own centroid -- the same convention as computeSectionPropertiesFromTriangles:
+ * polygon's own centroid, in the convention the rest of this module uses:
  * Ixx = integral of y^2, Iyy = integral of x^2, Ixy = integral of xy, frame 2D coordinates.
  * O(n) and independent of any triangulation. Coordinates are taken relative to the first
  * vertex so the sums do not cancel.
@@ -1588,22 +1491,6 @@ function removeIndex(arr is array, index is number) returns array
     return result;
 }
 
-/**
- * Insert element at index in array.
- */
-function insertAtIndex(arr is array, index is number, element) returns array
-{
-    var result = [];
-    for (var i = 0; i < size(arr); i += 1)
-    {
-        if (i == index)
-            result = append(result, element);
-        result = append(result, arr[i]);
-    }
-    if (index >= size(arr))
-        result = append(result, element);
-    return result;
-}
 
 /**
  * Check if an ear's diagonal lies inside the polygon.
