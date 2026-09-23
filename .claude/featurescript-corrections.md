@@ -1309,10 +1309,26 @@ prints it as a WARNING). Reproduce constructions in the eval sandbox before wiri
 
 ---
 
+## Correction 30: isVolume / isArea are not dialog parameters (2026-09-22)
+
+**Symptom**: `Nonconforming feature function 'x': precondition analysis failed` plus
+`No definition passed to predicate isVolume` at the `isVolume(definition.v, VOLUME_BOUNDS)` line.
+
+**Fix**: the precondition analyser accepts `isLength`, `isAngle`, `isInteger`, `isReal`
+(and the enum/boolean/string/Query/FeatureList types) -- std never declares a dialog parameter
+with `isVolume` or `isArea`. Take a plain `isReal` in a stated unit ("Target (mm^3)") and
+multiply by `cubicMillimeter` / `squareMillimeter` in the body. No mass or density bound spec
+exists either -- same approach (g, g/cm^3).
+
+**Lesson Learned**: before using a value predicate as a parameter, grep std for
+`is<Kind>(definition.` -- if std never does it, the analyser will not either.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 29
-- **Last Updated**: 2026-09-20
+- **Total Corrections**: 30
+- **Last Updated**: 2026-09-22
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
 - **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27); side-of-splitter for trims (28); Matrix weights + degenerate rows for exact sectors (29)

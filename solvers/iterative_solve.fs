@@ -33,6 +33,14 @@ export enum SolveMethod
     FIRST_MATCH
 }
 
+export enum SolveStart
+{
+    annotation { "Name" : "Current value of the variable" }
+    CURRENT,
+    annotation { "Name" : "Both bounds" }
+    BOUNDS
+}
+
 export enum SolveCondition
 {
     annotation { "Name" : "Result < target" }
@@ -73,6 +81,7 @@ const SOLVE_REAL_BOUNDS = { (unitless) : [-1e12, 0, 1e12] } as RealBoundSpec;
 const SOLVE_TOLERANCE_BOUNDS = { (unitless) : [0, 0.01, 1e12] } as RealBoundSpec;
 const SOLVE_DENSITY_BOUNDS = { (unitless) : [1e-9, 1, 1e6] } as RealBoundSpec;
 const SOLVE_STEPS_BOUNDS = { (unitless) : [1, 20, 1000] } as IntegerBoundSpec;
+const SOLVE_STEP_PERCENT_BOUNDS = { (unitless) : [1e-6, 5, 100] } as RealBoundSpec;
 const SOLVE_MAX_TRIALS_BOUNDS = { (unitless) : [2, 30, 1000] } as IntegerBoundSpec;
 
 annotation { "Feature Type Name" : "Iterative Solve",
@@ -116,6 +125,18 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
 
         annotation { "Name" : "Method" }
         definition.method is SolveMethod;
+
+        if (definition.method == SolveMethod.TARGET)
+        {
+            annotation { "Name" : "Start from", "Description" : "Current value: secant steps from the variable's upstream value, bounds only as limits. Both bounds: a trial at each bound first." }
+            definition.start is SolveStart;
+
+            if (definition.start == SolveStart.CURRENT)
+            {
+                annotation { "Name" : "First step (%)", "Description" : "The second trial, as a percentage of the starting value." }
+                isReal(definition.stepPercent, SOLVE_STEP_PERCENT_BOUNDS);
+            }
+        }
 
         if (definition.method == SolveMethod.FIRST_MATCH)
         {
@@ -269,6 +290,41 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
         {
             throw regenError("Select the features to iterate.", ["features"]);
         }
+        // The listed feature ids in the same order as `features`, to name a feature in messages.
+        var idOf = {};
+        for (var featureId, fn in definition.features)
+        {
+            idOf[featureId] = featureId;
+        }
+        const featureIds = valuesSortedById(context, idOf);
+
+        // Everything the trials read must exist already: the listed features ran once upstream.
+        const current = getVariable(context, definition.iterationName, undefined);
+        if (current == undefined)
+        {
+            throw regenError("#" ~ definition.iterationName ~ " is not defined before this feature. Define it with a Variable feature"
+                ~ " ahead of the listed features -- they must read it.", ["iterationName"]);
+        }
+        if (!matchesValueType(current, definition.iterationType))
+        {
+            throw regenError("#" ~ definition.iterationName ~ " is " ~ valueText(current) ~ ", which does not match the variable type.",
+                ["iterationName", "iterationType"]);
+        }
+        if (definition.resultSource == SolveResultSource.VARIABLE && getVariable(context, definition.resultName, undefined) == undefined)
+        {
+            throw regenError("#" ~ definition.resultName ~ " is not set by the listed features.", ["resultName"]);
+        }
+        if (definition.targetFromVariable)
+        {
+            if (getVariable(context, definition.targetName, undefined) == undefined)
+            {
+                throw regenError("#" ~ definition.targetName ~ " is not defined.", ["targetName"]);
+            }
+            if (definition.method == SolveMethod.TARGET && getVariable(context, definition.toleranceName, undefined) == undefined)
+            {
+                throw regenError("#" ~ definition.toleranceName ~ " is not defined.", ["toleranceName"]);
+            }
+        }
 
         const unitValue = iterationUnit(definition.iterationType);
         const bounds = iterationBounds(definition);
@@ -295,25 +351,31 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 // The same frame a Pattern pushes around each instance (identity: nothing moves).
                 setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
                 var failure = undefined;
-                for (var feature in features)
+                var reassignedBy = undefined;
+                for (var i = 0; i < size(features); i += 1)
                 {
                     try
                     {
-                        feature(instanceId);
+                        features[i](instanceId);
                     }
                     catch (e)
                     {
-                        failure = "a listed feature failed (" ~ toString(e) ~ ")";
+                        failure = "listed feature " ~ (i + 1) ~ " (" ~ toString(featureIds[i]) ~ ") failed: " ~ toString(e);
+                        break;
+                    }
+                    if (getVariable(context, definition.iterationName, undefined) != value)
+                    {
+                        reassignedBy = i;
                         break;
                     }
                 }
                 unsetFeaturePatternInstanceData(context, instanceId);
 
-                if (failure == undefined && getVariable(context, definition.iterationName) != value)
+                if (reassignedBy != undefined)
                 {
                     abortFeature(context, trialId);
-                    throw regenError("A listed feature assigns #" ~ definition.iterationName
-                        ~ "; the solver sets it on every trial. Remove that Variable feature from the list.", ["features"]);
+                    throw regenError("Listed feature " ~ (reassignedBy + 1) ~ " (" ~ toString(featureIds[reassignedBy]) ~ ") assigns #"
+                        ~ definition.iterationName ~ "; the solver sets it on every trial. Remove that Variable feature from the list.", ["features"]);
                 }
 
                 var outcome = { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined };
@@ -344,9 +406,25 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 return outcome;
             };
 
-        const solved = definition.method == SolveMethod.TARGET
-            ? solveTargetBracketed(trial, bounds[0], bounds[1], definition.maxTrials)
-            : solveFirstMatch(trial, bounds[0], bounds[1], definition.steps, definition.maxTrials);
+        var solved;
+        if (definition.method == SolveMethod.FIRST_MATCH)
+        {
+            solved = solveFirstMatch(trial, bounds[0], bounds[1], definition.steps, definition.maxTrials);
+        }
+        else if (definition.start == SolveStart.BOUNDS)
+        {
+            solved = solveTargetBracketed(trial, bounds[0], bounds[1], definition.maxTrials);
+        }
+        else
+        {
+            const x0 = (current is ValueWithUnits) ? current.value : current;
+            var step = abs(x0) * definition.stepPercent / 100;
+            if (step == 0)
+            {
+                step = abs(bounds[1] - bounds[0]) * definition.stepPercent / 100;
+            }
+            solved = solveTargetFromStart(trial, x0, step, bounds[0], bounds[1], definition.maxTrials);
+        }
 
         if (!solved.found)
         {
@@ -386,6 +464,22 @@ function iterationUnit(valueType is SolveValueType)
         return radian;
     }
     return 1;
+}
+
+/**
+ * True when a variable's value has the units the iteration type gives it.
+ */
+function matchesValueType(value, valueType is SolveValueType) returns boolean
+{
+    if (valueType == SolveValueType.LENGTH)
+    {
+        return value is ValueWithUnits && value.unit == LENGTH_UNITS;
+    }
+    if (valueType == SolveValueType.ANGLE)
+    {
+        return value is ValueWithUnits && value.unit == ANGLE_UNITS;
+    }
+    return value is number;
 }
 
 /**

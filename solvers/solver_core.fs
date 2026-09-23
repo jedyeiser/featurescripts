@@ -19,55 +19,187 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 /** Relative bracket width below which the bracketed search gives up. */
 export const SOLVER_X_TOLERANCE = 1e-12;
 
+/** Retries, each halving the step, when a secant trial fails to build. */
+const SECANT_RETRIES = 3;
+
 /**
- * Bracketed root finding on the residual (Brent: inverse quadratic / secant steps, bisection
- * fallback). `lower` and `upper` must give residuals of opposite sign. A failed interior
- * trial is replaced by the midpoint of the current bracket.
+ * Secant search from a starting value, then Brent once two trials straddle the target.
+ * `x0` is the starting value, `step` the first perturbation; every trial is held inside
+ * [lower, upper] -- the bounds are limits, not trials.
+ */
+export function solveTargetFromStart(trial is function, x0 is number, step is number, lower is number, upper is number, maxTrials is number) returns map
+{
+    const lo = min(lower, upper);
+    const hi = max(lower, upper);
+    var history = [];
+
+    var xa = clamp(x0, lo, hi);
+    var ra = trial(xa);
+    history = append(history, historyEntry(xa, ra));
+    if (ra.ok && ra.accepted)
+    {
+        return solveResult(true, xa, history, "");
+    }
+    if (!ra.ok)
+    {
+        return solveResult(false, xa, history, "The trial at the starting value failed.");
+    }
+
+    var xb = xa + step;
+    if (xb > hi || xb < lo)
+    {
+        xb = xa - step;
+    }
+    xb = clamp(xb, lo, hi);
+    var rb = trial(xb);
+    history = append(history, historyEntry(xb, rb));
+    if (rb.ok && rb.accepted)
+    {
+        return solveResult(true, xb, history, "");
+    }
+    if (!rb.ok)
+    {
+        return solveResult(false, xb, history, "The trial at the first perturbation failed; try a smaller step.");
+    }
+    if (rb.residual == ra.residual)
+    {
+        return solveResult(false, xb, history, insensitiveMessage());
+    }
+
+    while (size(history) < maxTrials)
+    {
+        if (oppositeSigns(ra.residual, rb.residual))
+        {
+            return brent(trial, xa, ra.residual, xb, rb.residual, history, maxTrials);
+        }
+        if (rb.residual == ra.residual)
+        {
+            return solveResult(false, xb, history, "Two trials gave the same result; the secant step is undefined.");
+        }
+
+        // Secant step from the two latest trials, held inside the bounds.
+        const secant = xb - rb.residual * (xb - xa) / (rb.residual - ra.residual);
+        var xn = clamp(secant, lo, hi);
+        if (abs(xn - xb) <= SOLVER_X_TOLERANCE * max(abs(xb), 1))
+        {
+            return solveResult(false, xb, history, "The target lies beyond the " ~ ((xn == hi) ? "upper" : "lower")
+                ~ " bound: the residual there is " ~ toString(rb.residual) ~ ".");
+        }
+
+        var rn = trial(xn);
+        history = append(history, historyEntry(xn, rn));
+        var retries = 0;
+        while (!rn.ok && retries < SECANT_RETRIES && size(history) < maxTrials)
+        {
+            xn = 0.5 * (xn + xb);
+            rn = trial(xn);
+            history = append(history, historyEntry(xn, rn));
+            retries += 1;
+        }
+        if (!rn.ok)
+        {
+            return solveResult(false, xn, history, "Trials failed to build near " ~ toString(xn) ~ ".");
+        }
+        if (rn.accepted)
+        {
+            return solveResult(true, xn, history, "");
+        }
+        xa = xb;
+        ra = rb;
+        xb = xn;
+        rb = rn;
+    }
+    return solveResult(false, xb, history, "No trial met the tolerance within " ~ toString(maxTrials) ~ " trials.");
+}
+
+/**
+ * Bracketed root finding on the residual, starting with a trial at each bound.
+ * The bounds must give residuals of opposite sign.
  */
 export function solveTargetBracketed(trial is function, lower is number, upper is number, maxTrials is number) returns map
 {
     var history = [];
-    var a = lower;
-    var b = upper;
 
-    var ra = trial(a);
-    history = append(history, historyEntry(a, ra));
+    const ra = trial(lower);
+    history = append(history, historyEntry(lower, ra));
     if (ra.ok && ra.accepted)
     {
-        return solveResult(true, a, history, "");
+        return solveResult(true, lower, history, "");
     }
     if (!ra.ok)
     {
-        return solveResult(false, a, history, "The trial at the lower bound failed.");
+        return solveResult(false, lower, history, "The trial at the lower bound failed.");
     }
 
-    var rb = trial(b);
-    history = append(history, historyEntry(b, rb));
+    const rb = trial(upper);
+    history = append(history, historyEntry(upper, rb));
     if (rb.ok && rb.accepted)
     {
-        return solveResult(true, b, history, "");
+        return solveResult(true, upper, history, "");
     }
     if (!rb.ok)
     {
-        return solveResult(false, b, history, "The trial at the upper bound failed.");
+        return solveResult(false, upper, history, "The trial at the upper bound failed.");
     }
-
-    var fa = ra.residual;
-    var fb = rb.residual;
-    if ((fa > 0 && fb > 0) || (fa < 0 && fb < 0))
+    if (rb.residual == ra.residual)
     {
-        return solveResult(false, b, history, "The bounds do not bracket the target: residual "
-            ~ toString(fa) ~ " at the lower bound, " ~ toString(fb) ~ " at the upper.");
+        return solveResult(false, upper, history, insensitiveMessage());
     }
+    if (!oppositeSigns(ra.residual, rb.residual))
+    {
+        return solveResult(false, upper, history, "The bounds do not bracket the target: residual "
+            ~ toString(ra.residual) ~ " at the lower bound, " ~ toString(rb.residual) ~ " at the upper.");
+    }
+    return brent(trial, lower, ra.residual, upper, rb.residual, history, maxTrials);
+}
 
-    // Brent, after Numerical Recipes zbrent: b is the best estimate, [b, c] brackets the root.
+/**
+ * First value meeting the condition, stepping from `lower` to `upper` in `steps` equal steps
+ * (steps + 1 values, both bounds included). A failed trial is skipped.
+ */
+export function solveFirstMatch(trial is function, lower is number, upper is number, steps is number, maxTrials is number) returns map
+{
+    var history = [];
+    for (var i = 0; i <= steps; i += 1)
+    {
+        if (size(history) >= maxTrials)
+        {
+            return solveResult(false, lower, history, "No trial met the condition within " ~ toString(maxTrials) ~ " trials.");
+        }
+        const x = lower + (upper - lower) * i / steps;
+        const r = trial(x);
+        history = append(history, historyEntry(x, r));
+        if (r.ok && r.accepted)
+        {
+            return solveResult(true, x, history, "");
+        }
+        if (size(history) == 2 && history[0].ok && r.ok && history[0].residual == r.residual)
+        {
+            return solveResult(false, x, history, insensitiveMessage());
+        }
+    }
+    return solveResult(false, upper, history, "No value between the bounds met the condition.");
+}
+
+/**
+ * Brent (inverse quadratic / secant steps, bisection fallback), after Numerical Recipes zbrent,
+ * on a bracket [a, b] whose residuals fa, fb have opposite signs and are already in `history`.
+ * A failed trial is replaced by the midpoint of the current bracket.
+ */
+function brent(trial is function, a0 is number, fa0 is number, b0 is number, fb0 is number, history0 is array, maxTrials is number) returns map
+{
+    var history = history0;
+    var a = a0;
+    var fa = fa0;
+    var b = b0;
+    var fb = fb0;
     var c = a;
     var fc = fa;
     var d = b - a;
     var e = d;
     while (size(history) < maxTrials)
     {
-        if ((fb > 0 && fc > 0) || (fb < 0 && fc < 0))
+        if (!oppositeSigns(fb, fc))
         {
             c = a;
             fc = fa;
@@ -162,28 +294,14 @@ export function solveTargetBracketed(trial is function, lower is number, upper i
     return solveResult(false, b, history, "No trial met the tolerance within " ~ toString(maxTrials) ~ " trials.");
 }
 
-/**
- * First value meeting the condition, stepping from `lower` to `upper` in `steps` equal steps
- * (steps + 1 values, both bounds included). A failed trial is skipped.
- */
-export function solveFirstMatch(trial is function, lower is number, upper is number, steps is number, maxTrials is number) returns map
+function oppositeSigns(f1 is number, f2 is number) returns boolean
 {
-    var history = [];
-    for (var i = 0; i <= steps; i += 1)
-    {
-        if (size(history) >= maxTrials)
-        {
-            return solveResult(false, lower, history, "No trial met the condition within " ~ toString(maxTrials) ~ " trials.");
-        }
-        const x = lower + (upper - lower) * i / steps;
-        const r = trial(x);
-        history = append(history, historyEntry(x, r));
-        if (r.ok && r.accepted)
-        {
-            return solveResult(true, x, history, "");
-        }
-    }
-    return solveResult(false, upper, history, "No value between the bounds met the condition.");
+    return (f1 > 0 && f2 < 0) || (f1 < 0 && f2 > 0);
+}
+
+function insensitiveMessage() returns string
+{
+    return "The first two trials gave exactly the same result: the result does not depend on the iteration variable. Do the listed features read it?";
 }
 
 function historyEntry(x is number, r is map) returns map
