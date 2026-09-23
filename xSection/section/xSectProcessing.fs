@@ -21,7 +21,7 @@ import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf45572");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
 import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "21d3e842eb10e8e5c0a46fee");
+import(path : "08d3a8d4e34a60d45d46e261", version : "2a88df21eb5c57e22a79652c");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
 
