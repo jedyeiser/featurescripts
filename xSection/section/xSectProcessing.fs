@@ -183,57 +183,91 @@ export function processCrossSections(context is Context, id is Id, definition is
     // never stored (the stored map's shape is consumed downstream and must not change).
     var diagnostics = [];
 
-    for (var i = 0; i < size(frameData); i += 1)
+    // -----------------------------------------------------------------
+    // BATCHED INTERSECTION. One opIntersectFaces per body against every station plane that
+    // crosses it, instead of one per station per body (stations x bodies ops, the bulk of the
+    // kernel calls). Each resulting edge lies on exactly one plane; it is assigned to that
+    // station by the signed distance of its first control point.
+    // -----------------------------------------------------------------
+    const stationCount = size(frameData);
+    var stationPlanes = [];
+    var stationBodies = [];       // per station: bodies crossing its plane, in query order
+    var stationsOfBody = {};      // bodyIdx -> station indices whose plane crosses the body
+    var entityOfBody = {};        // bodyIdx -> the body entity query
+    for (var i = 0; i < stationCount; i += 1)
     {
-        var frame = frameData[i].frame;
-        var stationNumber = frameData[i].stationNumber;
-        var xSectPlane = plane(frame.origin, frame.zAxis);
-
+        const frame = frameData[i].frame;
+        const xSectPlane = plane(frame.origin, frame.zAxis);
         opPlane(context, id + ("plane" ~ i), { "plane" : xSectPlane });
-        var planeQ = qCreatedBy(id + ("plane" ~ i), EntityType.FACE);
+        stationPlanes = append(stationPlanes, xSectPlane);
 
-        var intersectingBodies = evaluateQuery(context, qIntersectsPlane(qUnion(bodyQueries), xSectPlane));
-
-        var wireQueries = [];
-        var allBSplines = [];
-        var bodyToCurves = {};
-
-        // PHASE A: Intersect all bodies and extract B-splines
-        for (var b = 0; b < size(intersectingBodies); b += 1)
+        const crossing = evaluateQuery(context, qIntersectsPlane(qUnion(bodyQueries), xSectPlane));
+        stationBodies = append(stationBodies, crossing);
+        for (var body in crossing)
         {
-            var body = intersectingBodies[b];
-
-            // Use O(1) map lookup instead of O(n) search
-            var bodyIdx = bodyIndexMap[toString(body)];
+            const bodyIdx = bodyIndexMap[toString(body)];
             if (bodyIdx == undefined)
             {
                 continue;
             }
+            stationsOfBody[bodyIdx] = append(stationsOfBody[bodyIdx] == undefined ? [] : stationsOfBody[bodyIdx], i);
+            entityOfBody[bodyIdx] = body;
+        }
+    }
 
-            opIntersectFaces(context, id + ("intersect" ~ i ~ "_" ~ b), {
-                    "tools" : planeQ,
-                    "targets" : body
-            });
+    var curvesAt = makeArray(stationCount, {});   // curvesAt[station][bodyIdx] = [curveData]
+    for (var bodyIdx, stations in stationsOfBody)
+    {
+        var tools = [];
+        for (var s in stations)
+        {
+            tools = append(tools, qCreatedBy(id + ("plane" ~ s), EntityType.FACE));
+        }
+        const intersectId = id + ("intersectBody" ~ bodyIdx);
+        opIntersectFaces(context, intersectId, {
+                "tools" : qUnion(tools),
+                "targets" : entityOfBody[bodyIdx]
+        });
 
-            wireQueries = append(wireQueries, qCreatedBy(id + ("intersect" ~ i ~ "_" ~ b), EntityType.BODY));
+        for (var edge in evaluateQuery(context, qCreatedBy(intersectId, EntityType.EDGE)))
+        {
+            const bspline = evApproximateBSplineCurve(context, { "edge" : edge });
+            const station = nearestStation(bspline, stations, stationPlanes);
+            const curveData = {
+                "bSplineCurve" : bspline,
+                "bodyIndices" : [bodyIdx],
+                "bbox2D" : computeCurveBoundingBox2D(bspline, stationPlanes[station])
+            };
+            const existing = curvesAt[station][bodyIdx];
+            curvesAt[station][bodyIdx] = append(existing == undefined ? [] : existing, curveData);
+        }
+    }
 
-            var edges = evaluateQuery(context, qCreatedBy(id + ("intersect" ~ i ~ "_" ~ b), EntityType.EDGE));
-            var bodyCurves = [];
+    for (var i = 0; i < stationCount; i += 1)
+    {
+        var frame = frameData[i].frame;
+        var stationNumber = frameData[i].stationNumber;
+        var xSectPlane = stationPlanes[i];
 
-            for (var e = 0; e < size(edges); e += 1)
+        var intersectingBodies = stationBodies[i];
+
+        var allBSplines = [];
+        var bodyToCurves = {};
+
+        // PHASE A: Collect this station's B-splines, body by body in query order
+        for (var b = 0; b < size(intersectingBodies); b += 1)
+        {
+            var bodyIdx = bodyIndexMap[toString(intersectingBodies[b])];
+            if (bodyIdx == undefined)
             {
-                var bspline = evApproximateBSplineCurve(context, { "edge" : edges[e] });
-
-                var curveData = {
-                    "bSplineCurve" : bspline,
-                    "bodyIndices" : [bodyIdx],
-                    "bbox2D" : computeCurveBoundingBox2D(bspline, xSectPlane)
-                };
-
-                allBSplines = append(allBSplines, curveData);
-                bodyCurves = append(bodyCurves, curveData);
+                continue;
             }
-
+            var bodyCurves = curvesAt[i][bodyIdx];
+            if (bodyCurves == undefined)
+            {
+                bodyCurves = [];
+            }
+            allBSplines = concatenateArrays([allBSplines, bodyCurves]);
             bodyToCurves[bodyIdx] = bodyCurves;
         }
 
@@ -293,19 +327,6 @@ export function processCrossSections(context is Context, id is Id, definition is
                 "totalSectionProperties" : result.bodyData.totalSectionProperties,
                 "boundingBox" : result.bodyData.boundingBox
             });
-        }
-
-        // Cleanup (before the empty-section branch below, which skips the rest of the loop)
-        try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
-        catch (e)
-        {
-        }
-        if (size(wireQueries) > 0)
-        {
-            try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
-            catch (e)
-            {
-            }
         }
 
         // Aggregate bounding boxes from all bodies at this section
@@ -372,11 +393,39 @@ export function processCrossSections(context is Context, id is Id, definition is
         });
     }
 
+    // Every plane and section wire was created under this id: one deletion for all of them.
+    const scratch = qCreatedBy(id, EntityType.BODY);
+    if (!isQueryEmpty(context, scratch))
+    {
+        opDeleteBodies(context, id + "cleanup", { "entities" : scratch });
+    }
+
     return {
         "bodies" : bodies,
         "crossSections" : crossSections,
         "diagnostics" : diagnostics
     };
+}
+
+/**
+ * The station, among `stations`, whose plane the curve lies on: the smallest distance from
+ * the first control point of the curve (an end point, on the plane to kernel precision).
+ */
+function nearestStation(curve is BSplineCurve, stations is array, planes is array) returns number
+{
+    const p = curve.controlPoints[0];
+    var best = stations[0];
+    var bestDistance = inf * meter;
+    for (var s in stations)
+    {
+        const d = abs(dot(p - planes[s].origin, planes[s].normal));
+        if (d < bestDistance)
+        {
+            bestDistance = d;
+            best = s;
+        }
+    }
+    return best;
 }
 
 

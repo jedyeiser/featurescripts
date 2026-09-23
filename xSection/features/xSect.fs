@@ -482,15 +482,17 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
             debugVisualization(context, id, crossSectionData, definition);
         }
 
-        reportSectionDiagnostics(context, id, sectionDiagnostics);
+        reportSectionDiagnostics(context, id, sectionDiagnostics, fcpX, acpX);
     });
 
 /**
  * Reports section outlines that had to be repaired (duplicate edges, bridged gaps) and any
  * body that still came out with no area -- previously these showed only as dips in EI.
- * One console line per case; one notice for the feature.
+ * One console line per case; one notice for the feature. Only stations between FCP and ACP
+ * (all stations when either is unset) can raise a warning: outside the reference region a
+ * lost body is reported, but it does not make the feature look failed.
  */
-function reportSectionDiagnostics(context is Context, id is Id, diagnostics)
+function reportSectionDiagnostics(context is Context, id is Id, diagnostics, fcpX, acpX)
 {
     if (!(diagnostics is array) || size(diagnostics) == 0)
     {
@@ -500,7 +502,9 @@ function reportSectionDiagnostics(context is Context, id is Id, diagnostics)
     for (var d in diagnostics)
     {
         const lost = d.zeroArea || d.openChains > 0;
-        if (lost)
+        const inReference = fcpX == undefined || acpX == undefined
+            || (d.xCoord >= min(fcpX, acpX) && d.xCoord <= max(fcpX, acpX));
+        if (lost && inReference)
         {
             failed += 1;
         }
@@ -510,11 +514,12 @@ function reportSectionDiagnostics(context is Context, id is Id, diagnostics)
             ~ (d.degenerateRemoved > 0 ? (d.degenerateRemoved ~ " zero-length edge(s) removed; ") : "")
             ~ (d.maxBridge > 0 * meter ? ("gap of " ~ roundToPrecision(d.maxBridge / millimeter * 1000, 1) ~ " um bridged; ") : "")
             ~ (d.openChains > 0 ? (d.openChains ~ " outline(s) left open and closed by a chord; ") : "")
-            ~ (d.zeroArea ? "NO AREA -- this body is missing from the section" : ""));
+            ~ (d.zeroArea ? "NO AREA -- this body is missing from the section" : "")
+            ~ (inReference ? "" : " (outside FCP-ACP)"));
     }
     if (failed > 0)
     {
-        reportFeatureWarning(context, id, failed ~ " body section(s) could not be closed or came out with no area; EI is low there. See the console.");
+        reportFeatureWarning(context, id, failed ~ " body section(s) between FCP and ACP could not be closed or came out with no area; EI is low there. See the console.");
     }
     else
     {
