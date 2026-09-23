@@ -428,6 +428,13 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                         const after = bodyCounts(context, qCreatedBy(trialId, EntityType.BODY));
                         println("    " ~ (i + 1) ~ " " ~ toString(featureIds[i]) ~ "  ok  " ~ countsDelta(counts, after)
                             ~ watchText(context, watch));
+                        // EXPERIMENT: where did it build?
+                        println("      all bodies " ~ size(evaluateQuery(context, qEverything(EntityType.BODY)))
+                            ~ "  under instance+fid " ~ size(evaluateQuery(context, qCreatedBy(instanceId + featureIds[i][0], EntityType.BODY)))
+                            ~ "  regions under instance+fid " ~ size(evaluateQuery(context, qSketchRegion(instanceId + featureIds[i][0])))
+                            ~ "  entities under instance+fid " ~ size(evaluateQuery(context, qCreatedBy(instanceId + featureIds[i][0])))
+                            ~ "  entities under trial " ~ size(evaluateQuery(context, qCreatedBy(trialId)))
+                            ~ "  instanceId " ~ toString(instanceId));
                         counts = after;
                     }
                     // A listed feature that updates the variable itself (a Pattern-style solver's own
