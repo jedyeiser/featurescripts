@@ -1325,9 +1325,32 @@ exists either -- same approach (g, g/cm^3).
 
 ---
 
+## Correction 31: FeatureList functions -- call them like Pattern does, never inside startFeature (2026-09-22)
+
+**Symptom**: re-running a Part Studio feature list from a custom feature (`f(prefixId)` for each
+value of a `FeatureList`), the re-run sketch reports success but builds NOTHING (no bodies,
+no entities anywhere); the next extrude fails `EXTRUDE_NO_SELECTED_REGION`.
+
+**Cause**: the calls were wrapped in `startFeature(context, id + "trialK")` ... `abortFeature`
+for cheap rollback. Inside a started subfeature a re-run sketch is a no-op. Bisected live:
+no startFeature + prefix `id + "trialK"` builds all 27 features; the same with startFeature
+fails. The pattern frame (`setFeaturePatternInstanceData`) is irrelevant to this.
+
+**Fix**: do exactly what `applyPattern` (patternUtils.fs:336) does -- prefix `id + name`,
+push `setFeaturePatternInstanceData(context, prefix, {transform: identityTransform()})`, call
+every function with the prefix, unset. Discard a trial by `opDeleteBodies` on
+`qCreatedBy(prefix, EntityType.BODY)`. That cannot undo a listed feature that modified a body
+from outside the list.
+
+**Lesson Learned**: `startFeature`/`abortFeature` rollback is fine for ops you call yourself;
+it is not for generated Part Studio feature functions. Also: a variable-feature in the list
+that reassigns the solver's variable must be overridden after it runs, not rejected.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 30
+- **Total Corrections**: 31
 - **Last Updated**: 2026-09-22
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
