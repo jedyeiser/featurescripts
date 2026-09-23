@@ -397,7 +397,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 const trialId = id + ("trial" ~ k);
                 const instanceId = trialId; // EXPERIMENT: pattern layout
 
-                // EXPERIMENT: no startFeature
+                startFeature(context, trialId); // EXPERIMENT B
                 setVariable(context, definition.iterationName, value);
                 if (trace)
                 {
@@ -472,11 +472,11 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 const keep = outcome.accepted || probe || (keepFailed && failure != undefined);
                 if (keep)
                 {
-                    // EXPERIMENT: kept as built
+                    endFeature(context, trialId); // EXPERIMENT B
                 }
                 else
                 {
-                    deleteTrialBodies(context, trialId); // EXPERIMENT
+                    abortFeature(context, trialId); // EXPERIMENT B
                 }
                 if (keepFailed && failure != undefined)
                 {
