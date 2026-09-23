@@ -11,7 +11,7 @@ import(path : "onshape/std/curveextensionshape.gen.fs", version : "3070.0");
 // declared there are reachable as feature parameter types.
 export import(path : "a2665e22c07b7a6929ce4e80", version : "");
 // design_map_query_utils: embedVariableMap and the extractable wrappers.
-import(path : "2b6b313ac740a0146d5bef7c", version : "");
+import(path : "2b6b313ac740a0146d5bef7c", version : "fcd613ccd9dc304e38c5c249");
 
 /**
  * Clean wire: one wire in, one wire out, the same shape with fewer edges and fewer
