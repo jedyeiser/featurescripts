@@ -481,15 +481,14 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         reportOutcome(context, id, definition, chain, grouped.joints, runs, reports, measured.deviation);
 
-        embedVariableMap(context, id, {
-                    "variable" : {
-                        "edgeCount" : extractableVariable(size(runs), "Edges in the cleaned wire."),
-                        "sourceEdgeCount" : extractableVariable(size(chain.edges), "Edges in the wire that was cleaned.")
-                    },
-                    "query" : {
-                        "cleanWire" : extractableQuery(wire, "The cleaned wire.", DebugColor.GREEN),
-                        "cleanEdges" : extractableQuery(qOwnedByBody(wire, EntityType.EDGE), "Edges of the cleaned wire."),
-                        "sourceEdges" : extractableQuery(definition.sourceEdges, "The wire that was cleaned.", DebugColor.BLUE)
+        embedStandardOutputs(context, id, {
+                    "output" : wire,
+                    "outputDescription" : "The cleaned wire",
+                    "inputs" : definition.sourceEdges,
+                    "variables" : {
+                        "curveCount" : extractableVariable(size(runs), "Edges in the cleaned wire."),
+                        "inputCount" : extractableVariable(size(chain.edges), "Edges in the wire that was cleaned."),
+                        "maxDeviation" : extractableVariable(measured.deviation, "Largest distance from the source wire to the cleaned wire.")
                     }
                 });
     }, {

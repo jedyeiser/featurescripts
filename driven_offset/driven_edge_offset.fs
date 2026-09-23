@@ -1300,6 +1300,9 @@ function publishOutputs(context is Context, id is Id, definition is map, emitted
             "curveCount" : extractableVariable(size(emitted),
                     "Number of curves this offset emitted.")
         };
+    // Both ends are always published; an end without a plane reads "none".
+    variables = withTerminalVariables(variables, "start", undefined);
+    variables = withTerminalVariables(variables, "end", undefined);
 
     var radii = [];
 
@@ -1325,45 +1328,35 @@ function publishOutputs(context is Context, id is Id, definition is map, emitted
     variables["cornerArcCount"] = extractableVariable(size(radii),
         "G0 corners that were rounded with a true arc.");
 
-    if (size(radii) > 0)
-    {
-        variables["cornerArcRadii"] = extractableVariable(radii,
-            "Radius of each rounded corner, in chain order.");
-    }
+    variables["cornerArcRadii"] = extractableVariable(radii,
+        "Radius of each rounded corner, in chain order (empty when none).");
 
-    embedVariableMap(context, id, {
-                "variable" : variables,
-                "query" : {
-                    "offsetBodies" : extractableQuery(qCreatedBy(id, EntityType.BODY),
-                            "Bodies produced by this offset.", DebugColor.GREEN),
-                    "offsetEdges" : extractableQuery(qCreatedBy(id, EntityType.EDGE),
-                            "Edges of the offset result.", DebugColor.GREEN),
-                    "sourceEdges" : extractableQuery(definition.offsetEdges,
-                            "The edges this offset was taken from.", DebugColor.BLUE)
-                }
+    embedStandardOutputs(context, id, {
+                "output" : qCreatedBy(id, EntityType.BODY),
+                "outputDescription" : "The offset wires",
+                "inputs" : definition.offsetEdges,
+                "variables" : variables
             });
 }
 
 /**
- * Fold one end's terminal record into the published variables.
+ * Fold one end's terminal record into the published variables. With no record (the end has
+ * no plane) the keys still appear: action "none", distance and angles zero.
  */
-function withTerminalVariables(variables is map, side is string, record is map) returns map
+function withTerminalVariables(variables is map, side is string, record) returns map
 {
     var out = variables;
+    const present = record is map;
 
-    out[side ~ "Action"] = extractableVariable(record.action,
-        "What happened where the offset met its " ~ side ~ " plane.");
-    out[side ~ "Distance"] = extractableVariable(abs(record.distance),
+    out[side ~ "Action"] = extractableVariable(present ? record.action : "none",
+        "What happened where the offset met its " ~ side ~ " plane (none = no plane).");
+    out[side ~ "Distance"] = extractableVariable(present ? abs(record.distance) : 0 * meter,
         "How far the " ~ side ~ " of the offset was trimmed or extended.");
-    out[side ~ "Squareness"] = extractableVariable(record.squareness,
+    out[side ~ "Squareness"] = extractableVariable(present ? record.squareness : 0 * degree,
         "Angle between the source tangent and the " ~ side ~ " plane normal. Zero means the "
         ~ "source ended square and the offset would have landed on the plane unaided.");
-
-    if (record.kink != undefined)
-    {
-        out[side ~ "Kink"] = extractableVariable(record.kink,
-            "Angle between the offset's own heading and the direction it was told to arrive at.");
-    }
+    out[side ~ "Kink"] = extractableVariable(present && record.kink != undefined ? record.kink : 0 * degree,
+        "Angle between the offset's own heading and the direction it was told to arrive at (zero when not extended).");
 
     return out;
 }
