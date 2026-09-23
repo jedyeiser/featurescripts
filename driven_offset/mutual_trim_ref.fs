@@ -105,9 +105,7 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
         // The trim boundary: imprint edges left bounding a kept face on one side only. Frozen
         // now and tracked, so the merge below (which fuses the two sides' boundary edges into
         // one) does not lose them.
-        const boundary = qUnion(evaluateQuery(context, qEdgeTopologyFilter(qIntersection([found.imprint,
-                                qUnion([qOwnedByBody(definition.body1, EntityType.EDGE), qOwnedByBody(definition.body2, EntityType.EDGE)])]),
-                        EdgeTopology.ONE_SIDED)));
+        const boundary = qUnion(evaluateQuery(context, qEdgeTopologyFilter(found.imprint, EdgeTopology.ONE_SIDED)));
         const trimEdges = qUnion([boundary, startTracking(context, boundary)]);
 
         if (definition.merge)
@@ -168,11 +166,14 @@ function findFacesToDelete(context is Context, id is Id, definition is map, spli
     }
     base = qUnion([base, qSplitBy(splitId, EntityType.EDGE, false), qSplitBy(splitId, EntityType.EDGE, true)]);
 
+    // Unfiltered: after the delete the trim boundary is ONE-sided, so the caller filters
+    // this set itself (the two-sided filter below would drop exactly the edges it wants).
+    const imprintAll = qIntersection([base, qUnion([qOwnedByBody(definition.body1, EntityType.EDGE), qOwnedByBody(definition.body2, EntityType.EDGE)])]);
     const imprint1 = qIntersection([base, qOwnedByBody(definition.body1, EntityType.EDGE)])->qEdgeTopologyFilter(EdgeTopology.TWO_SIDED);
     const imprint2 = qIntersection([base, qOwnedByBody(definition.body2, EntityType.EDGE)])->qEdgeTopologyFilter(EdgeTopology.TWO_SIDED);
     if (isQueryEmpty(context, imprint1) || isQueryEmpty(context, imprint2))
     {
-        return { "faces" : qNothing(), "imprint" : qUnion([imprint1, imprint2]) };
+        return { "faces" : qNothing(), "imprint" : imprintAll };
     }
 
     const reference = keepReferenceSide(context, definition);
@@ -182,7 +183,7 @@ function findFacesToDelete(context is Context, id is Id, definition is map, spli
     const delete1 = sideToDelete(context, definition, "first", faces1, imprint1, definition.keepNear1, splitId, reference, faces2);
     const delete2 = sideToDelete(context, definition, "second", faces2, imprint2, definition.keepNear2, splitId, reference, faces1);
 
-    return { "faces" : qUnion([delete1, delete2]), "imprint" : qUnion([imprint1, imprint2]) };
+    return { "faces" : qUnion([delete1, delete2]), "imprint" : imprintAll };
 }
 
 /**
