@@ -2,10 +2,10 @@ FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
 // xSectPredicates (UI definitions)
-export import(path : "17142132b20343b5f125e7e7", version : "5c41b954a2288d5e049c2652");
+export import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf45572");
 
 // xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "f8fad5c7a9dc73fec637138b");
+import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
 
 // xSectCLT (CLT computations)
 import(path : "74231d1d53f5a117d47d17a9", version : "b720b4aad9776846e4774be7");
@@ -16,7 +16,7 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "995918706a03f1f08e8720c3");
 //import xSectMatrials
 import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
 //import xSectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "bf6d68db7963faa6818a4b2c");
+import(path : "3cb3cff6974529bf6bed096b", version : "9de58a9f890682d82cc9108e");
 //import xSectVisualization
 import(path : "19991d0446ad0551339572d9", version : "230a0a74bf793a956adf7736");
 //import xSectStorage
@@ -24,7 +24,7 @@ import(path : "a2f2ae10eb446d33ccd47bb9", version : "9ec104d77376b1aff9ee63a4");
 //import xSectComposites
 import(path : "8c01f1526e7b93cc89fe9811", version : "bb55903e08c2566261af685f");
 //import xSectDebug
-import(path : "4973f90e73d48ab3578831f0", version : "7834b1fb03851bb858cb3ec0");
+import(path : "4973f90e73d48ab3578831f0", version : "f53a35d9be24a701e1a16c6c");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "6e68ed6cb07a952caa490205");
 // xSect_GJ (torsional stiffness)
@@ -360,6 +360,7 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // Step 2: Process all cross-sections (intersect, triangulate)
         // -----------------------------------------------------------------
         var crossSectionData = processCrossSections(context, id + "process", definition, fcpX, acpX);
+        const sectionDiagnostics = crossSectionData.diagnostics;
 
         // -----------------------------------------------------------------
         // Step 3: Compute CLT mechanical properties (ABD, EI, neutral axis)
@@ -480,4 +481,43 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         {
             debugVisualization(context, id, crossSectionData, definition);
         }
+
+        reportSectionDiagnostics(context, id, sectionDiagnostics);
     });
+
+/**
+ * Reports section outlines that had to be repaired (duplicate edges, bridged gaps) and any
+ * body that still came out with no area -- previously these showed only as dips in EI.
+ * One console line per case; one notice for the feature.
+ */
+function reportSectionDiagnostics(context is Context, id is Id, diagnostics)
+{
+    if (!(diagnostics is array) || size(diagnostics) == 0)
+    {
+        return;
+    }
+    var failed = 0;
+    for (var d in diagnostics)
+    {
+        const lost = d.zeroArea || d.openChains > 0;
+        if (lost)
+        {
+            failed += 1;
+        }
+        println("xSect: station " ~ d.stationNumber ~ " (x = " ~ roundToPrecision(d.xCoord / millimeter, 1) ~ " mm), "
+            ~ (d.bodyName == undefined ? ("body " ~ d.bodyIdx) : d.bodyName) ~ ": "
+            ~ (d.duplicatesRemoved > 0 ? (d.duplicatesRemoved ~ " duplicate edge(s) removed; ") : "")
+            ~ (d.degenerateRemoved > 0 ? (d.degenerateRemoved ~ " zero-length edge(s) removed; ") : "")
+            ~ (d.maxBridge > 0 * meter ? ("gap of " ~ roundToPrecision(d.maxBridge / millimeter * 1000, 1) ~ " um bridged; ") : "")
+            ~ (d.openChains > 0 ? (d.openChains ~ " outline(s) left open and closed by a chord; ") : "")
+            ~ (d.zeroArea ? "NO AREA -- this body is missing from the section" : ""));
+    }
+    if (failed > 0)
+    {
+        reportFeatureWarning(context, id, failed ~ " body section(s) could not be closed or came out with no area; EI is low there. See the console.");
+    }
+    else
+    {
+        reportFeatureInfo(context, id, "Repaired " ~ size(diagnostics) ~ " body section outline(s) (duplicate edges or micron gaps from the cut). See the console.");
+    }
+}

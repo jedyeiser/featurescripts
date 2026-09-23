@@ -5,7 +5,7 @@ import(path : "onshape/std/table.fs", version : "2892.0");
 // xSectMaterials (for tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
 
-import(path : "17142132b20343b5f125e7e7", version : "5c41b954a2288d5e049c2652");
+import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf45572");
 
 /**
  * CROSS-SECTION ANALYSIS TABLE MODULE

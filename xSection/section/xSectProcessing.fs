@@ -17,11 +17,11 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  */
 
 // IMPORTS - xSectPredicates (for MaterialBehavior and MaterialType enums)
-import(path : "17142132b20343b5f125e7e7", version : "5c41b954a2288d5e049c2652");
+import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf45572");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "f8fad5c7a9dc73fec637138b");
+import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "99937de761680e0ec20562fe");
+import(path : "08d3a8d4e34a60d45d46e261", version : "0a25c9bd7ebe556f421f4b0a");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
 
@@ -179,6 +179,9 @@ export function processCrossSections(context is Context, id is Id, definition is
     }
 
     var crossSections = [];
+    // Repairs and failures of section outlines, per station and body. Reported by the feature;
+    // never stored (the stored map's shape is consumed downstream and must not change).
+    var diagnostics = [];
 
     for (var i = 0; i < size(frameData); i += 1)
     {
@@ -271,12 +274,38 @@ export function processCrossSections(context is Context, id is Id, definition is
             sectionPoints = result.sectionPoints;
             spatialGrid = result.spatialGrid;
 
+            const d = result.diagnostics;
+            if (d.duplicatesRemoved > 0 || d.degenerateRemoved > 0 || d.maxBridge > 0 * meter
+                || d.openChains > 0 || (d.zeroArea && size(bodyCurves) > 0))
+            {
+                diagnostics = append(diagnostics, mergeMaps(d, {
+                                "station" : i,
+                                "stationNumber" : stationNumber,
+                                "xCoord" : frame.origin[0],
+                                "bodyIdx" : bodyIdx,
+                                "bodyName" : bodies[bodyIdx].bodyName
+                            }));
+            }
+
             bodyData = append(bodyData, {
                 "bodyIdx" : bodyIdx,
                 "groups" : result.bodyData.groups,
                 "totalSectionProperties" : result.bodyData.totalSectionProperties,
                 "boundingBox" : result.bodyData.boundingBox
             });
+        }
+
+        // Cleanup (before the empty-section branch below, which skips the rest of the loop)
+        try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
+        catch (e)
+        {
+        }
+        if (size(wireQueries) > 0)
+        {
+            try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
+            catch (e)
+            {
+            }
         }
 
         // Aggregate bounding boxes from all bodies at this section
@@ -328,19 +357,6 @@ export function processCrossSections(context is Context, id is Id, definition is
             "height" : (overallMaxY - overallMinY)
         };
 
-        // Cleanup
-        try { opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : qCreatedBy(id + ("plane" ~ i), EntityType.BODY) }); }
-        catch (e)
-        {
-        }
-        if (size(wireQueries) > 0)
-        {
-            try { opDeleteBodies(context, id + ("deleteWires" ~ i), { "entities" : qUnion(wireQueries) }); }
-            catch (e)
-            {
-            }
-        }
-
         crossSections = append(crossSections, {
             "frame" : frame,
             "stationNumber" : stationNumber,
@@ -353,7 +369,8 @@ export function processCrossSections(context is Context, id is Id, definition is
 
     return {
         "bodies" : bodies,
-        "crossSections" : crossSections
+        "crossSections" : crossSections,
+        "diagnostics" : diagnostics
     };
 }
 

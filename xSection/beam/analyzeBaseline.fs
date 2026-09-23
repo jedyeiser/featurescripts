@@ -5,7 +5,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
 import(path : "08fddb59786b6bfee020ee05", version : "6e68ed6cb07a952caa490205");
 
 // IMPORT: xSectUtils.fs
-import(path : "c2c3edd39b85fde5e6062533", version : "f8fad5c7a9dc73fec637138b");
+import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
 
 /**
  * This function takes a query of multiple edges (must be G1 continuous)
