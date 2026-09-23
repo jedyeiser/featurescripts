@@ -3,6 +3,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 
 // edge_offset_utils: formatting helpers for the console. Nothing geometric is shared.
 import(path : "a2665e22c07b7a6929ce4e80", version : "");
+// IMPORT: design_map_query_utils.fs (embedStandardOutputs)
+import(path : "2b6b313ac740a0146d5bef7c", version : "fcd613ccd9dc304e38c5c249");
 
 /**
  * Mutual Trim+: the standard mutual trim, with the side to keep named by geometry
@@ -21,6 +23,10 @@ import(path : "a2665e22c07b7a6929ce4e80", version : "");
  * sheets along their extended intersection; qSplitBy labels the two sides; a flood fill
  * bounded by the imprint edges partitions each body's faces into two sets; the set to
  * delete goes to opDeleteFace; the survivors are optionally unioned.
+ *
+ * Publishes (Extract variables): output (the trimmed surfaces, merged or not) and
+ * trimEdges -- the intersection curve the trim left, i.e. the imprint edges that bound the
+ * kept faces, tracked through the merge. That is the edge set a fillet along the trim wants.
  */
 
 const SPLIT_SUFFIX = "split";
@@ -80,10 +86,12 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
         if (getFeatureStatus(context, splitId).statusEnum == ErrorStringEnum.SPLIT_FACE_NO_CHANGE)
         {
             reportFeatureInfo(context, id, ErrorStringEnum.BOOLEAN_UNION_NO_OP);
+            publishTrim(context, id, definition, qNothing());
             return;
         }
 
-        const facesToDelete = findFacesToDelete(context, id, definition, splitId, splitResult.splittingEdges);
+        const found = findFacesToDelete(context, id, definition, splitId, splitResult.splittingEdges);
+        const facesToDelete = found.faces;
         if (!isQueryEmpty(context, facesToDelete))
         {
             opDeleteFace(context, id + "deleteFaces", {
@@ -94,6 +102,14 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
                     });
         }
 
+        // The trim boundary: imprint edges left bounding a kept face on one side only. Frozen
+        // now and tracked, so the merge below (which fuses the two sides' boundary edges into
+        // one) does not lose them.
+        const boundary = qUnion(evaluateQuery(context, qEdgeTopologyFilter(qIntersection([found.imprint,
+                                qUnion([qOwnedByBody(definition.body1, EntityType.EDGE), qOwnedByBody(definition.body2, EntityType.EDGE)])]),
+                        EdgeTopology.ONE_SIDED)));
+        const trimEdges = qUnion([boundary, startTracking(context, boundary)]);
+
         if (definition.merge)
         {
             callSubfeatureAndProcessStatus(id, opBoolean, context, id + "merge", {
@@ -101,6 +117,8 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
                         "operationType" : BooleanOperationType.UNION
                     }, { "propagateErrorDisplay" : true });
         }
+
+        publishTrim(context, id, definition, trimEdges);
     }, {
         "merge" : true,
         "keepNear1" : true,
@@ -114,13 +132,34 @@ export const mutualTrimToReference = defineFeature(function(context is Context, 
 // ============================================================================
 
 /**
- * The faces to delete on both bodies.
+ * Publishes the standard outputs (the trimmed surfaces: body1 carries the merge) plus
+ * trimEdges, the intersection curve along which the surfaces were trimmed.
+ */
+function publishTrim(context is Context, id is Id, definition is map, trimEdges is Query)
+{
+    embedStandardOutputs(context, id, {
+                "output" : qUnion([definition.body1, definition.body2]),
+                "outputDescription" : "The trimmed surfaces",
+                "inputs" : qUnion([definition.body1, definition.body2]),
+                "variables" : {
+                    "trimEdgeCount" : extractableVariable(size(evaluateQuery(context, trimEdges)),
+                            "Edges along the intersection the trim left.")
+                },
+                "queries" : {
+                    "trimEdges" : extractableQuery(trimEdges,
+                            "The intersection edges along which the surfaces were trimmed (fillet here).", DebugColor.MAGENTA)
+                }
+            });
+}
+
+/**
+ * The faces to delete on both bodies, and the imprint edges (both bodies) that bound them.
  *
  * The imprint edges -- the split's own edges on each body, two-sided ones only -- bound
  * the two sides of every body. Each body is classified into its two sides; the reference,
  * where there is one, says which side stays.
  */
-function findFacesToDelete(context is Context, id is Id, definition is map, splitId is Id, splittingEdges is array) returns Query
+function findFacesToDelete(context is Context, id is Id, definition is map, splitId is Id, splittingEdges is array) returns map
 {
     var base = qCreatedBy(id, EntityType.EDGE);
     for (var edge in splittingEdges)
@@ -133,7 +172,7 @@ function findFacesToDelete(context is Context, id is Id, definition is map, spli
     const imprint2 = qIntersection([base, qOwnedByBody(definition.body2, EntityType.EDGE)])->qEdgeTopologyFilter(EdgeTopology.TWO_SIDED);
     if (isQueryEmpty(context, imprint1) || isQueryEmpty(context, imprint2))
     {
-        return qNothing();
+        return { "faces" : qNothing(), "imprint" : qUnion([imprint1, imprint2]) };
     }
 
     const reference = keepReferenceSide(context, definition);
@@ -143,7 +182,7 @@ function findFacesToDelete(context is Context, id is Id, definition is map, spli
     const delete1 = sideToDelete(context, definition, "first", faces1, imprint1, definition.keepNear1, splitId, reference, faces2);
     const delete2 = sideToDelete(context, definition, "second", faces2, imprint2, definition.keepNear2, splitId, reference, faces1);
 
-    return qUnion([delete1, delete2]);
+    return { "faces" : qUnion([delete1, delete2]), "imprint" : qUnion([imprint1, imprint2]) };
 }
 
 /**
