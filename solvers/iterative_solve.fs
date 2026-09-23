@@ -395,9 +395,9 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                     return { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined, "skipped" : true };
                 }
                 const trialId = id + ("trial" ~ k);
-                const instanceId = trialId + "run";
+                const instanceId = trialId; // EXPERIMENT: pattern layout
 
-                startFeature(context, trialId);
+                // EXPERIMENT: no startFeature
                 setVariable(context, definition.iterationName, value);
                 if (trace)
                 {
@@ -405,7 +405,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 }
 
                 // The same frame a Pattern pushes around each instance (identity: nothing moves).
-                // EXPERIMENT: no pattern frame
+                setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
                 var failure = undefined;
                 var counts = trace ? bodyCounts(context, qCreatedBy(trialId, EntityType.BODY)) : undefined;
                 for (var i = 0; i < size(features); i += 1)
@@ -450,7 +450,7 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                         }
                     }
                 }
-                // EXPERIMENT: no pattern frame (unset)
+                unsetFeaturePatternInstanceData(context, instanceId);
 
                 var outcome = { "ok" : false, "accepted" : false, "residual" : undefined, "result" : undefined };
                 if (failure == undefined)
@@ -472,11 +472,11 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                 const keep = outcome.accepted || probe || (keepFailed && failure != undefined);
                 if (keep)
                 {
-                    endFeature(context, trialId);
+                    // EXPERIMENT: kept as built
                 }
                 else
                 {
-                    abortFeature(context, trialId);
+                    deleteTrialBodies(context, trialId); // EXPERIMENT
                 }
                 if (keepFailed && failure != undefined)
                 {
@@ -935,4 +935,14 @@ function valueText(v) returns string
         return toString(roundToPrecision(v, 6));
     }
     return toString(v);
+}
+
+// EXPERIMENT: roll back a trial built without startFeature by deleting what it made.
+function deleteTrialBodies(context is Context, trialId is Id)
+{
+    const made = qCreatedBy(trialId, EntityType.BODY);
+    if (!isQueryEmpty(context, made))
+    {
+        opDeleteBodies(context, trialId + "discard", { "entities" : made });
+    }
 }
