@@ -280,6 +280,17 @@
       "last_push": "2026-09-24T22:04:21.005203+00:00",
       "document_id": "2143812a99089658c704f0bc",
       "workspace_id": "4ea63c7ef14610f212917c42"
+    },
+    {
+      "name": "publish_tools",
+      "description": "Publish & Drawing tools: Station definition + Station geometry (drawing composites)",
+      "working_directory": "./publish_tools",
+      "onshape_url": "https://k2-sports.onshape.com/documents/73271cfcd708b3f5e3fc315c/w/fea83d30106dba0a4e066761/e/bb2cddb24faf53d9d043c38e",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "73271cfcd708b3f5e3fc315c",
+      "workspace_id": "fea83d30106dba0a4e066761"
     }
   ],
   "sync_metadata": {}
