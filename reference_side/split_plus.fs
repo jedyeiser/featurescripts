@@ -25,9 +25,25 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  * plane). A multi-face surface splits by its faces as they are; "Trim to face boundaries"
  * applies to single faces, as in the built-in.
  *
- * Publishes (Extract variables): output (all resulting pieces), splitFaces (faces the
- * splits created -- the caps on solids), splitEdges (edges they created -- the cut on
- * surfaces), pieceCount.
+ * REGIONS. Every resulting piece is placed by which side of each tool it lies on (its
+ * centroid's signed distance), and named by position along the tools, in the order picked:
+ *     1 tool      near / far (from the keep side reference), or front / back (the sides the
+ *                 tool's normal points to and from) when there is no reference
+ *     2 tools     start (beyond the first tool, away from the second), middle, end
+ *     3+ tools    start, middle1 .. middleN-1, end
+ * "Forward" for a tool is the side the next tool is on (for the last: away from the one
+ * before), so orientation never matters. Tools that cross inside the part, or were picked
+ * out of order, give a piece that fits no band -- refused with a message.
+ *
+ * Publishes (Extract variables), every key always present (empty when not applicable):
+ *     output                 all resulting pieces; pieceCount, regionCount
+ *     <region>               the pieces of each region (bodies)
+ *     <region>Edges          their edges except the cuts (boundary edges of a surface)
+ *     outside / outsideEdges start + end;   inside / insideEdges  every middle region
+ *     splitEdges             every cut, one edge per cut (the edge on the piece in front of
+ *                            its tool); per tool: cut (1 tool), startCut / endCut (2),
+ *                            cut1 .. cutN (3+)
+ *     splitFaces             faces the splits created (the caps on solids)
  */
 annotation { "Feature Type Name" : "Split+",
         "Feature Type Description" : "Split parts, surfaces or curves with several tools; when one side is kept, the side is the one a reference is on, whatever the tools' orientations.",
@@ -109,9 +125,11 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             pieces = qUnion([pieces, qCreatedBy(splitId, EntityType.BODY)]);
         }
 
-        // One edge per cut, read while the temporary planes still exist.
-        const splitEdges = oneEdgePerCut(context, qIntersection([qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE),
-                        qCreatedBy(id, EntityType.EDGE)]), resolvedTools);
+        // Cuts and regions, read while the tools (and the temporary planes) still exist.
+        const allCuts = qIntersection([qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE), qCreatedBy(id, EntityType.EDGE)]);
+        const splitEdges = oneEdgePerCut(context, allCuts, resolvedTools);
+        const regions = classifyRegions(context, evaluateQuery(context, pieces), resolvedTools, probe);
+        const cutsByTool = cutsPerTool(context, splitEdges, resolvedTools);
 
         if (size(tempPlanes) > 0)
         {
@@ -132,20 +150,58 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             throw regenError("Nothing is left: no part of the targets lies on the kept side of every tool.", ["keepReference"]);
         }
 
+        var queries = {
+            "splitFaces" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
+                    "Faces the splits created (the caps on solids).", DebugColor.MAGENTA),
+            "splitEdges" : extractableQuery(splitEdges,
+                    "The cuts: one edge per cut, the one on the piece in front of its tool (the side the tool's normal points to).",
+                    DebugColor.MAGENTA)
+        };
+        const cutNames = cutKeyNames(size(resolvedTools));
+        for (var k = 0; k < size(cutNames); k += 1)
+        {
+            queries[cutNames[k]] = extractableQuery(cutsByTool[k], "The cut made by tool " ~ (k + 1) ~ ".", DebugColor.MAGENTA);
+        }
+        var outside = [];
+        var inside = [];
+        for (var r = 0; r < size(regions.names); r += 1)
+        {
+            const name = regions.names[r];
+            const bodies = qUnion(regions.bodies[r]);
+            queries[name] = extractableQuery(bodies, "Region " ~ name ~ ": " ~ regions.descriptions[r] ~ ".", DebugColor.CYAN);
+            queries[name ~ "Edges"] = extractableQuery(regionEdges(bodies, allCuts),
+                    "Edges of region " ~ name ~ " except the cuts (a surface's boundary edges).", DebugColor.CYAN);
+            if (regions.outside[r])
+            {
+                outside = append(outside, bodies);
+            }
+            else if (regions.inside[r])
+            {
+                inside = append(inside, bodies);
+            }
+        }
+        queries["outside"] = extractableQuery(qUnion(outside), "The regions beyond the first and last tools (start and end).", DebugColor.CYAN);
+        queries["outsideEdges"] = extractableQuery(regionEdges(qUnion(outside), allCuts), "Edges of the outside regions except the cuts.", DebugColor.CYAN);
+        queries["inside"] = extractableQuery(qUnion(inside), "Every region between the first and last tools.", DebugColor.CYAN);
+        queries["insideEdges"] = extractableQuery(regionEdges(qUnion(inside), allCuts), "Edges of the inside regions except the cuts.", DebugColor.CYAN);
+
+        if (definition.debugPrintSides)
+        {
+            for (var r = 0; r < size(regions.names); r += 1)
+            {
+                println("[split+] region " ~ regions.names[r] ~ ": " ~ size(regions.bodies[r]) ~ " piece(s).");
+            }
+        }
+
         embedStandardOutputs(context, id, {
                     "output" : kept,
                     "outputDescription" : "The split pieces",
                     "inputs" : qUnion([definition.targets, definition.tools]),
                     "variables" : {
-                        "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces the split left.")
+                        "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces the split left."),
+                        "regionCount" : extractableVariable(size(regions.names), "Regions the tools define: 2 for one tool, N + 1 for N tools.")
                     },
-                    "queries" : {
-                        "splitFaces" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
-                                "Faces the splits created (the caps on solids).", DebugColor.MAGENTA),
-                        "splitEdges" : extractableQuery(splitEdges,
-                                "The cuts: one edge per cut, the one on the piece in front of its tool (the side the tool's normal points to).",
-                                DebugColor.MAGENTA)
-                    }
+                    "queries" : queries
                 });
     }, {
         "keepTools" : false,
@@ -245,6 +301,178 @@ function edgeSide(context is Context, edge is Query, tool is Query) returns Valu
         }
     }
     return best;
+}
+
+/** The per-tool cut keys: cut (1 tool), startCut / endCut (2), cut1 .. cutN (3+). */
+function cutKeyNames(toolCount is number) returns array
+{
+    if (toolCount == 1)
+    {
+        return ["cut"];
+    }
+    if (toolCount == 2)
+    {
+        return ["startCut", "endCut"];
+    }
+    var names = [];
+    for (var k = 0; k < toolCount; k += 1)
+    {
+        names = append(names, "cut" ~ (k + 1));
+    }
+    return names;
+}
+
+/** The cut edges split by the tool that made each (the nearest tool). */
+function cutsPerTool(context is Context, cuts is Query, tools is array) returns array
+{
+    var byTool = makeArray(size(tools), []);
+    for (var e in evaluateQuery(context, cuts))
+    {
+        const middle = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
+        var best = 0;
+        var bestDistance = inf * meter;
+        for (var k = 0; k < size(tools); k += 1)
+        {
+            const d = evDistance(context, { "side0" : middle, "side1" : tools[k] }).distance;
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = k;
+            }
+        }
+        byTool[best] = append(byTool[best], e);
+    }
+    var result = [];
+    for (var list in byTool)
+    {
+        result = append(result, qUnion(list));
+    }
+    return result;
+}
+
+/** A region's edges except the cuts; for surfaces only their boundary (one-sided) edges. */
+function regionEdges(bodies is Query, cuts is Query) returns Query
+{
+    const sheetEdges = qEdgeTopologyFilter(qOwnedByBody(qBodyType(bodies, BodyType.SHEET), EntityType.EDGE), EdgeTopology.ONE_SIDED);
+    const otherEdges = qOwnedByBody(qUnion([qBodyType(bodies, BodyType.SOLID), qBodyType(bodies, BodyType.WIRE)]), EntityType.EDGE);
+    return qSubtraction(qUnion([sheetEdges, otherEdges]), cuts);
+}
+
+/**
+ * Every piece placed in a region by the side of each tool its centroid is on.
+ *
+ * @returns {map} : { names, descriptions, bodies (array of arrays of body queries), outside
+ *      (booleans), inside (booleans) } -- one entry per region, in order along the tools.
+ */
+function classifyRegions(context is Context, pieces is array, tools is array, probe) returns map
+{
+    const n = size(tools);
+    var sides = [];
+    for (var piece in pieces)
+    {
+        const centroid = evApproximateCentroid(context, { "entities" : piece });
+        var row = [];
+        for (var k = 0; k < n; k += 1)
+        {
+            row = append(row, sideSign(context, centroid, tools[k]));
+        }
+        sides = append(sides, row);
+    }
+
+    if (n == 1)
+    {
+        // Two regions, named by the reference when there is one, else by the tool's normal.
+        var refSide = 0;
+        if (probe != undefined)
+        {
+            refSide = sideSign(context, probe, tools[0]);
+        }
+        const named = refSide != 0;
+        var first = [];
+        var second = [];
+        for (var i = 0; i < size(pieces); i += 1)
+        {
+            if (sides[i][0] == 0)
+            {
+                throw regenError("A piece lies on the tool; its side cannot be read.", ["tools"]);
+            }
+            if (named ? sides[i][0] == refSide : sides[i][0] > 0)
+            {
+                first = append(first, pieces[i]);
+            }
+            else
+            {
+                second = append(second, pieces[i]);
+            }
+        }
+        return {
+                "names" : named ? ["near", "far"] : ["front", "back"],
+                "descriptions" : named ? ["the side of the tool the reference is on", "the other side of the tool"]
+                                       : ["the side the tool's normal points to", "the side the tool's normal points away from"],
+                "bodies" : [first, second],
+                "outside" : [false, false],
+                "inside" : [false, false]
+            };
+    }
+
+    // forward[k]: the side of tool k the next tool is on (the last: away from the one before).
+    var forward = [];
+    for (var k = 0; k < n; k += 1)
+    {
+        const other = k < n - 1 ? tools[k + 1] : tools[k - 1];
+        const at = sideSign(context, evApproximateCentroid(context, { "entities" : other }), tools[k]);
+        if (at == 0)
+        {
+            throw regenError("Tools " ~ (k + 1) ~ " and " ~ (k < n - 1 ? k + 2 : k) ~ " meet or cross; regions need tools that do not cross inside the part.", ["tools"]);
+        }
+        forward = append(forward, k < n - 1 ? at : -at);
+    }
+
+    var names = ["start"];
+    var descriptions = ["beyond tool 1, away from tool 2"];
+    for (var j = 1; j < n; j += 1)
+    {
+        names = append(names, n == 2 ? "middle" : "middle" ~ j);
+        descriptions = append(descriptions, "between tools " ~ j ~ " and " ~ (j + 1));
+    }
+    names = append(names, "end");
+    descriptions = append(descriptions, "beyond tool " ~ n ~ ", away from tool " ~ (n - 1));
+
+    var bodies = makeArray(n + 1, []);
+    for (var i = 0; i < size(pieces); i += 1)
+    {
+        // A piece in region j is forward of tools 1..j and behind tools j+1..n.
+        var region = 0;
+        var consistent = true;
+        for (var k = 0; k < n; k += 1)
+        {
+            if (sides[i][k] == 0)
+            {
+                consistent = false;
+            }
+            else if (sides[i][k] == forward[k])
+            {
+                if (region != k)
+                {
+                    consistent = false;
+                }
+                region = k + 1;
+            }
+        }
+        if (!consistent)
+        {
+            throw regenError("A piece fits no region: pick the tools in order along the part, and use tools that do not cross inside it.", ["tools"]);
+        }
+        bodies[region] = append(bodies[region], pieces[i]);
+    }
+
+    var outside = makeArray(n + 1, false);
+    var inside = makeArray(n + 1, true);
+    outside[0] = true;
+    outside[n] = true;
+    inside[0] = false;
+    inside[n] = false;
+    return { "names" : names, "descriptions" : descriptions, "bodies" : bodies, "outside" : outside, "inside" : inside };
 }
 
 /** A mate connector's frame, or undefined for anything else. */

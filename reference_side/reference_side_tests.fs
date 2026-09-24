@@ -239,6 +239,46 @@ function splitTests(context is Context, id is Id) returns array
         const pieces = size(evaluateQuery(context, embedded.query.output.value));
         out = append(out, result("Split+ keep both sides on a sheet: one splitEdge per cut", size(seams) == 2 && pieces == 3,
                     size(seams) ~ " split edges (expected 2), " ~ pieces ~ " pieces (expected 3)"));
+
+        // Regions along the tools (tool 1 at x 1480, tool 2 at x 1520, normals opposed):
+        // start = x < 1480, middle = 1480..1520, end = x > 1520, whatever the normals.
+        var detail = "";
+        var ok = embedded.variable.regionCount.value == 3;
+        for (var region in [["start", 1465], ["middle", 1500], ["end", 1535]])
+        {
+            const bodies = evaluateQuery(context, embedded.query[region[0]].value);
+            const x = size(bodies) == 1 ? evApproximateCentroid(context, { "entities" : bodies[0] })[0] : 0 * meter;
+            ok = ok && size(bodies) == 1 && near(x, mm(region[1]), mm(0.01));
+            detail ~= region[0] ~ " " ~ size(bodies) ~ " piece at x " ~ fmt(x) ~ "; ";
+        }
+        const middleEdges = size(evaluateQuery(context, embedded.query.middleEdges.value));
+        const startCut = size(evaluateQuery(context, embedded.query.startCut.value));
+        const endCut = size(evaluateQuery(context, embedded.query.endCut.value));
+        const outsideCount = size(evaluateQuery(context, embedded.query.outside.value));
+        ok = ok && middleEdges == 2 && startCut == 1 && endCut == 1 && outsideCount == 2;
+        out = append(out, result("Split+ regions start / middle / end on a sheet", ok,
+                    detail ~ "middleEdges " ~ middleEdges ~ " (expected 2), startCut " ~ startCut ~ ", endCut " ~ endCut ~ ", outside " ~ outsideCount ~ " (expected 2)"));
+    }
+
+    // One tool with a reference: regions near / far.
+    {
+        const cid = id + "onetool";
+        const sheet = sheetFromCube(context, cid + "t", pt(1450, 150, -10), pt(1550, 250, 0), pt(1500, 200, 0));
+        opPlane(context, cid + "p", { "plane" : plane(pt(1500, 200, 0), vector(1, 0, 0)), "width" : mm(400), "height" : mm(400) });
+        const reference = marker(context, cid + "r", pt(1400, 200, 0));
+        splitPlus(context, cid + "split", {
+                    "targets" : sheet,
+                    "tools" : qCreatedBy(cid + "p", EntityType.FACE),
+                    "keepBothSides" : false,
+                    "keepReference" : reference,
+                    "keepNear" : true
+                });
+        const embedded = getVariable(context, toString(cid + "split"));
+        const nearBodies = evaluateQuery(context, embedded.query.near.value);
+        const farBodies = evaluateQuery(context, embedded.query.far.value);
+        const x = size(nearBodies) == 1 ? evApproximateCentroid(context, { "entities" : nearBodies[0] })[0] : 0 * meter;
+        out = append(out, result("Split+ one tool: regions near / far", size(nearBodies) == 1 && size(farBodies) == 0 && near(x, mm(1475), mm(0.01)),
+                    "near " ~ size(nearBodies) ~ " piece at x " ~ fmt(x) ~ " (expected 1 at 1475), far " ~ size(farBodies) ~ " (expected 0: that side was removed)"));
     }
 
     // A sheet tool that is deleted afterwards (Keep tools off).
