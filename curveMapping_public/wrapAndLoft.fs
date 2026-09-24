@@ -9,11 +9,11 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/210ec1ea806a181c52651e89/683d867c35fdab9c98d47556", version : "3e5bb927da731e43e52c71e7");
+export import(path : "08e8748f2ef24eea16072b75/db2cc0404916178b88f3c711/683d867c35fdab9c98d47556", version : "e274f80c159e1a565add92d5");
 
 
-//import wrapCurve.fs
-import(path : "0e53e9b1145a1bd7bbfa0193", version : "34db733c248c49dca4b30a8f");
+// wrapCurve is deliberately NOT imported: nothing here uses it, and its export-import of
+// the core pins an older core version -- two versions of one element in this scope.
 
 IconNamespace::import(path : "c48716411f633a6103e1f75a", version : "5a44541ac4f3841aa65431da");
 
@@ -404,8 +404,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             for (var tei = 0; tei < size(toEdgeArray); tei += 1)
             {
-                var edgeLen = evLength(context, { "entities": toEdgeArray[tei] });
-                var nProj   = max([5, ceil(edgeLen / samplingDensity) + 1]);
+                // Sampled by the reference edge's own control points, as the engine does; at the
+                // source density (1 mm by default) a long reference took thousands of points.
+                var refBSpline = evApproximateBSplineCurve(context, { "edge": toEdgeArray[tei] });
+                var nProj   = max([10, 3 * size(refBSpline.controlPoints)]);
                 var toSamples_origins = mapArray(evEdgeTangentLines(context, {
                     "edge"       : toEdgeArray[tei],
                     "parameters" : range(0, 1, nProj)
@@ -424,10 +426,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     "tolerance"          : definition.approximationTolerance,
                     "maxControlPoints"   : definition.approximationMaxCPs,
                     "degree"             : degree,
-                    "isPeriodic"         : false,
-                    "interpolateIndices" : [0, size(projPoints) - 1]
+                    "isPeriodic"         : false
                 };
-                var projCurve = approximateSpline(context, projApproxDef)[0];
+                var projCurve = snapEndControlPoints(approximateSpline(context, projApproxDef)[0],
+                    projPoints[0], projPoints[size(projPoints) - 1]);
 
                 var projId = id + "projectedFrom" + ("curve" ~ toString(tei));
                 opCreateBSplineCurve(context, projId, { "bSplineCurve": projCurve });
@@ -500,7 +502,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             // (arcs and lines preserved exactly). Emits the wrapped span plus its
             // primary/secondary offsets as composed rigid transforms, then skips the
             // sampling/mapping/G2 pipeline. Ineligible curves fall through below.
-            if (CM_LINEAR_FASTPATH)
+            if (CM_LINEAR_FASTPATH && pathHasLine(fromFrenetPath) && pathHasLine(toFrenetPath))
             {
                 var probePts = mapArray(evEdgeTangentLines(context, {
                     "edge"       : sourceCurveArray[i],
@@ -512,32 +514,60 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 {
                     var wBefore = size(allWrappedSegQueries);
                     var linId   = id + (toString(i) ~ "lin");
+                    var withSecondary = definition.secondDirection && definition.secondOffset > 0 * millimeter;
                     try
                     {
+                        // All or nothing, as in the fitted path: make every copy, then record.
+                        // Wrapped curve = rigid move of the source.
                         opExtractWires(context, linId + "w", { "edges": sourceCurveArray[i] });
                         opTransform(context, linId + "wx", { "bodies": qCreatedBy(linId + "w", EntityType.BODY), "transform": lin.transform });
-                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(linId + "w", EntityType.EDGE));
-                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(linId + "w", EntityType.BODY));
-                        spanIsFast           = append(spanIsFast, true);
-
                         // Primary offset = wrapped translated by primaryOffset along the constant normal.
                         opExtractWires(context, linId + "p", { "edges": sourceCurveArray[i] });
                         opTransform(context, linId + "px", { "bodies": qCreatedBy(linId + "p", EntityType.BODY),
                                 "transform": transform(offsetSign * definition.primaryOffset * lin.offsetDir) * lin.transform });
-                        allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(linId + "p", EntityType.EDGE));
-                        allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(linId + "p", EntityType.BODY));
-
-                        if (definition.secondDirection && definition.secondOffset > 0 * millimeter)
+                        // Secondary offset (opposite side), when enabled.
+                        if (withSecondary)
                         {
                             opExtractWires(context, linId + "s", { "edges": sourceCurveArray[i] });
                             opTransform(context, linId + "sx", { "bodies": qCreatedBy(linId + "s", EntityType.BODY),
                                     "transform": transform(-1 * offsetSign * definition.secondOffset * lin.offsetDir) * lin.transform });
+                        }
+
+                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(linId + "w", EntityType.EDGE));
+                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(linId + "w", EntityType.BODY));
+                        spanIsFast           = append(spanIsFast, true);
+                        allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(linId + "p", EntityType.EDGE));
+                        allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(linId + "p", EntityType.BODY));
+                        if (withSecondary)
+                        {
                             allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(linId + "s", EntityType.EDGE));
                             allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(linId + "s", EntityType.BODY));
                         }
-                    }
-                    catch (e) { println("ERROR wrapAndLoft linearFastPath " ~ toString(i) ~ ": " ~ toString(e)); }
 
+                        // Register both ends in the cross-curve weld, so a fitted neighbour
+                        // processed later adopts this curve's (constant) offset direction and
+                        // its offset lands on this one's. A neighbour processed EARLIER keeps
+                        // its own direction: a rigid copy cannot bend to meet it.
+                        for (var pk in [0, size(probePts) - 1])
+                        {
+                            junctionOffsetCache = append(junctionOffsetCache, {
+                                "point"     : lin.transform * probePts[pk],
+                                "offsetDir" : lin.offsetDir
+                            });
+                        }
+                    }
+                    catch (e)
+                    {
+                        println("ERROR wrapAndLoft linearFastPath " ~ toString(i) ~ ": " ~ toString(e));
+                        const partial = qUnion([qCreatedBy(linId + "w", EntityType.BODY), qCreatedBy(linId + "p", EntityType.BODY),
+                                    qCreatedBy(linId + "s", EntityType.BODY)]);
+                        if (!isQueryEmpty(context, partial))
+                        {
+                            opDeleteBodies(context, linId + "discardPartial", { "entities": partial });
+                        }
+                    }
+
+                    // One entry per source curve (0 if the ops failed) so the loft slicing stays aligned.
                     segCountPerSourceCurve = append(segCountPerSourceCurve, size(allWrappedSegQueries) - wBefore);
                     continue;
                 }
@@ -546,9 +576,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var srcSamplingMode = (definition.sourceSamplingMode != undefined)
                 ? definition.sourceSamplingMode
                 : SamplingMode.CP_BASED;
-            var srcBSpline = (srcSamplingMode == SamplingMode.CP_BASED)
+            var srcBSpline = (srcSamplingMode == SamplingMode.CP_BASED || definition.keepDegree == true)
                 ? evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] })
                 : undefined;
+            // Keep source degree: the higher of the target degree and the source curve's own.
+            var curveDegree = (definition.keepDegree == true && srcBSpline != undefined)
+                ? max([degree, srcBSpline.degree])
+                : degree;
 
             var sampleResult = sampleSourceEdge(context, sourceCurveArray[i], srcSamplingMode, {
                 "samplingDensity"    : samplingDensity,
@@ -570,44 +604,18 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             // Map each sampled point through the Frenet frame transformation;
             // record which to-edge each mapped point lands on for span splitting
             var mappedData = [];
+            var projHint   = undefined;
             for (var sIdx = 0; sIdx < size(srcPoints); sIdx += 1)
             {
-                var pt = srcPoints[sIdx];
-
-                // Project source point onto from-path; get Frenet frame there
-                var s_from     = projectOntoFrenetPath(fromFrenetPath, pt, undefined).arcLength;
-                var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
-
-                // Express point in from-frame local coordinates
-                var localCoords = worldPointToFrenet(pt, fromResult);
-
-                // Linear arc-length mapping from from-path to to-path
-                var s_to = toRefArc + (s_from - fromRefArc);
-
-                // Get to-frame at mapped arc-length
-                var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
-
-                // Apply flipToNormal toggle then reconcile normal sign
-                var toSign = toResult.sign;
-                if (definition.flipToNormal)
-                {
-                    toSign = -1 * toSign;
-                }
-
-                var toFrameResult = toResult;
-                if (toSign != fromResult.sign)
-                {
-                    var flippedFrame = coordSystem(toResult.frame.origin,
-                                                   -1 * toResult.frame.xAxis,
-                                                   toResult.frame.zAxis);
-                    toFrameResult = mergeMaps(toResult, { "frame": flippedFrame });
-                }
-
+                // Seeded from the previous point's foot on the from-path.
+                var r = mapSinglePoint(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, srcPoints[sIdx], projHint);
+                projHint = r.hint;
                 mappedData = append(mappedData, {
-                    "edgeIndex" : toResult.edgeIndex,
-                    "point"     : toFrameResult.frame.origin + toFrameResult.frame.xAxis * localCoords[1] + yAxis(toFrameResult.frame) * localCoords[2] + toFrameResult.frame.zAxis * localCoords[0],
-                    "sFrom"     : s_from,
-                    "offsetDir" : toFrameResult.frame.xAxis  // to-frame normal = loft thickness direction (~worldZ for XZ-curved to-paths)
+                    "edgeIndex" : r.edgeIndex,
+                    "point"     : r.point,
+                    "sFrom"     : r.sFrom,
+                    "offsetDir" : r.offsetDir  // to-frame normal = loft thickness direction
                 });
             }
 
@@ -757,9 +765,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
-                var startParam      = srcFlipped ? 1 : 0;
-                var startLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [startParam] })[0];
-                var startSrcTangent = srcFlipped ? -1 * startLine.direction : startLine.direction;
+                var startDirection  = srcFlipped ? sampleResult.endTangent : sampleResult.startTangent;   // sampled at parameter 1 / 0
+                var startSrcTangent = srcFlipped ? -1 * startDirection : startDirection;
                 var s_from_0        = mappedData[0].sFrom;
                 var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
                 var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
@@ -818,7 +825,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 // to-path, so a span can still land below the degree+1 the fit needs.
                 // Subdivide this span's own gaps rather than sampling the whole curve more
                 // densely: the deficit is local.
-                var spanShortfall = (degree + 1) - (size(segPoints) + segEndIdx - segStartIdx + 1);
+                var spanShortfall = (curveDegree + 1) - (size(segPoints) + segEndIdx - segStartIdx + 1);
                 var perGap        = (spanShortfall > 0 && segEndIdx > segStartIdx)
                     ? ceil(spanShortfall / (segEndIdx - segStartIdx))
                     : 0;
@@ -846,7 +853,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 if (segEndIdx + 1 < size(mappedData))
                 {
                     var nextEdgeIdx    = mappedData[segEndIdx + 1].edgeIndex;
-                    var boundaryEdgeIdx = max([currentEdge, nextEdgeIdx]);
+                    // The first edge boundary past the current run, in the direction of travel. Same as
+                    // max(current, next) for adjacent edges; still right when a merged sliver run makes them
+                    // non-adjacent.
+                    var boundaryEdgeIdx = (nextEdgeIdx > currentEdge) ? currentEdge + 1 : currentEdge;
                     var s_to_boundary = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
 
                     // Invert arc-length mapping to get from-path position at boundary
@@ -875,10 +885,21 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // FIX: use evEdgeTangentLines for exact position and tangent at junction
                     var junctionParam    = (segEndIdx + t) / (numSamples - 1);
                     var srcJunctionParam = srcFlipped ? 1 - junctionParam : junctionParam;
-                    var junctionLine     = evEdgeTangentLines(context, {
+                    // One batched call: the junction, the 2 oversampling points and the +/- pair of the
+                    // curvature finite difference (these were four separate kernel calls).
+                    var jEpsB       = 0.005;
+                    var extraParams = [];
+                    for (var exB = 1; exB <= 2; exB += 1)
+                    {
+                        var extraParamB = segEndIdx / (numSamples - 1) + (exB / 3.0) * (junctionParam - segEndIdx / (numSamples - 1));
+                        extraParams = append(extraParams, srcFlipped ? 1 - extraParamB : extraParamB);
+                    }
+                    var junctionLines = evEdgeTangentLines(context, {
                         "edge"       : sourceCurveArray[i],
-                        "parameters" : [srcJunctionParam]
-                    })[0];
+                        "parameters" : concatenateArrays([[srcJunctionParam], extraParams,
+                            [max([0, srcJunctionParam - jEpsB]), min([1, srcJunctionParam + jEpsB])]])
+                    });
+                    var junctionLine     = junctionLines[0];
                     var pt_junction = junctionLine.origin;
                     var srcTangent  = srcFlipped ? -1 * junctionLine.direction : junctionLine.direction;
 
@@ -907,12 +928,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         for (var ex = 1; ex <= nExtra; ex += 1)
                         {
                             var alpha      = ex / (nExtra + 1.0);
-                            var extraParam    = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
-                            var srcExtraParam = srcFlipped ? 1 - extraParam : extraParam;
-                            var extraLine     = evEdgeTangentLines(context, {
-                                "edge"       : sourceCurveArray[i],
-                                "parameters" : [srcExtraParam]
-                            })[0];
+                            var extraLine     = junctionLines[ex];   // batched above
                             var sFrom_extra   = mappedData[segEndIdx].sFrom + alpha * (s_from_junction - mappedData[segEndIdx].sFrom);
                             var fromResult_e  = getFrameAtArcLength(context, fromFrenetPath, sFrom_extra);
                             var localCoords_e = worldPointToFrenet(extraLine.origin, fromResult_e);
@@ -929,14 +945,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
                     // Phase 2: finite-difference source curvature at junction (chord-based arc length step)
                     {
-                        var jEps   = 0.005;
-                        var srcJP  = srcFlipped ? 1 - junctionParam : junctionParam;
-                        var pJm    = max([0, srcJP - jEps]);
-                        var pJp    = min([1, srcJP + jEps]);
-                        var kLines = evEdgeTangentLines(context, {
-                            "edge"       : sourceCurveArray[i],
-                            "parameters" : [pJm, pJp]
-                        });
+                        var kLines = [junctionLines[3], junctionLines[4]];   // batched above
                         var dsJ    = norm(kLines[1].origin - kLines[0].origin);
                         var deltaT = kLines[1].direction - kLines[0].direction;
                         if (dsJ > 1e-10 * meter && norm(deltaT) > 1e-10)
@@ -959,9 +968,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 else
                 {
                     // Last span — constrain end tangent from source edge at parameter 1
-                    var endParam      = srcFlipped ? 0 : 1;
-                    var endLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [endParam] })[0];
-                    var endSrcTangent = srcFlipped ? -1 * endLine.direction : endLine.direction;
+                    var endDirection    = srcFlipped ? sampleResult.startTangent : sampleResult.endTangent;   // sampled at parameter 0 / 1
+                    var endSrcTangent = srcFlipped ? -1 * endDirection : endDirection;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
                     var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
                     var s_to_end          = toRefArc + (s_from_end - fromRefArc);
@@ -994,13 +1002,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
                 // Never discard a span. Dropping it opened a gap in the wrapped curve, and
                 // did so with no message at all here -- not even a debug-gated one.
-                var fitDegree = degree;
-                if (size(segPoints) < degree + 1)
+                var fitDegree = curveDegree;
+                if (size(segPoints) < curveDegree + 1)
                 {
                     fitDegree = max([1, size(segPoints) - 1]);
                     println("WARNING: wrapAndLoft span " ~ toString(i) ~ "." ~ toString(segCount)
                         ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
-                        ~ toString(degree + 1) ~ " for degree " ~ toString(degree)
+                        ~ toString(curveDegree + 1) ~ " for degree " ~ toString(curveDegree)
                         ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
                 }
 
@@ -1152,34 +1160,46 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var thisSegCount = segCount;
                     segCount += 1;
 
+                    // All or nothing: the span's curves are created first and recorded only once
+                    // every one exists. Recording the wrapped curve before its offsets were made
+                    // let one failed offset shift every later loft pair out of step.
+                    var wrappedId         = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "wrappedCurve");
+                    var primaryOffsetId   = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "primaryOffset");
+                    var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "secondaryOffset");
                     try
                     {
-                        var wrappedId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "wrappedCurve");
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
-                        allWrappedSegQueries  = append(allWrappedSegQueries,  qCreatedBy(wrappedId, EntityType.EDGE));
-                        allWrappedSegBodies   = append(allWrappedSegBodies,   qCreatedBy(wrappedId, EntityType.BODY));
-                        spanIsFast            = append(spanIsFast, false);
+                        opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
+                        if (secondaryOffsetCurve != undefined)
+                        {
+                            opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
+                        }
+
+                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
+                        allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
+                        spanIsFast           = append(spanIsFast, false);
                         wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
-
-                        var primaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "primaryOffset");
-                        opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
                         allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(primaryOffsetId, EntityType.BODY));
-
                         if (secondaryOffsetCurve != undefined)
                         {
-                            var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "secondaryOffset");
-                            opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
                             allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(secondaryOffsetId, EntityType.EDGE));
                             allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(secondaryOffsetId, EntityType.BODY));
                         }
                     }
                     catch (e)
                     {
+                        // Remove whatever part of this span was made before the failure.
+                        const partial = qUnion([qCreatedBy(wrappedId, EntityType.BODY), qCreatedBy(primaryOffsetId, EntityType.BODY),
+                                    qCreatedBy(secondaryOffsetId, EntityType.BODY)]);
+                        if (!isQueryEmpty(context, partial))
+                        {
+                            opDeleteBodies(context, id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "discardPartial"), { "entities": partial });
+                        }
                         println("ERROR: wrapAndLoft opCreateBSplineCurve BAD_GEOMETRY - " ~ e);
-                        println("  curve i=" ~ i ~ "  seg=" ~ segCount ~
+                        println("  curve i=" ~ i ~ "  seg=" ~ thisSegCount ~
                                 "  segPoints count=" ~ size(segPoints));
                         println("  approxScale=" ~ toString(approxScale / millimeter) ~ " mm");
                         println("  carryOverTangent defined=" ~ (carryOverTangent != undefined));
@@ -1333,51 +1353,31 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
             }
 
-            // Collect multi-span segments into wire bodies (one wire per connected run)
-            var wrappedWireId = id + "wrappedWires";
-            opExtractWires(context, wrappedWireId, { "edges": qUnion(allWrappedSegQueries) });
-            var wrappedWireBodies = qCreatedBy(wrappedWireId, EntityType.BODY);
-
-            var primaryWireId = id + "primaryOffsetWires";
-            opExtractWires(context, primaryWireId, { "edges": qUnion(allPrimaryOffsetSegQueries) });
-            var primaryWireBodies = qCreatedBy(primaryWireId, EntityType.BODY);
-
-            var secondaryWireBodies = undefined;
-            if (size(allSecondaryOffsetSegQueries) > 0)
+            // Wire output: extract only the wires that are kept. (All three used to be
+            // extracted and then deleted again when curves are not kept, and the offsets in
+            // "Keep wrapped".)
+            var keepWrapped = definition.keepOutputCurves;
+            var keepOffsets = definition.keepOutputCurves && definition.outputCurveMode != OutputCurveMode.KEEP_WRAPPED;
+            if (keepWrapped)
             {
-                var secondaryWireId = id + "secondaryOffsetWires";
-                opExtractWires(context, secondaryWireId, { "edges": qUnion(allSecondaryOffsetSegQueries) });
-                secondaryWireBodies = qCreatedBy(secondaryWireId, EntityType.BODY);
+                opExtractWires(context, id + "wrappedWires", { "edges": qUnion(allWrappedSegQueries) });
+            }
+            if (keepOffsets)
+            {
+                opExtractWires(context, id + "primaryOffsetWires", { "edges": qUnion(allPrimaryOffsetSegQueries) });
+                if (size(allSecondaryOffsetSegQueries) > 0)
+                {
+                    opExtractWires(context, id + "secondaryOffsetWires", { "edges": qUnion(allSecondaryOffsetSegQueries) });
+                }
             }
 
-            // Delete original per-segment bodies — wire bodies are the canonical output
+            // Delete original per-segment bodies -- the extracted wire bodies (if any) are the output
             var allSegBodies = qUnion([qUnion(allWrappedSegBodies), qUnion(allPrimaryOffsetSegBodies)]);
             if (size(allSecondaryOffsetSegBodies) > 0)
             {
                 allSegBodies = qUnion([allSegBodies, qUnion(allSecondaryOffsetSegBodies)]);
             }
             opDeleteBodies(context, id + "deleteSegBodies", { "entities": allSegBodies });
-
-            // Curve output cleanup
-            if (!definition.keepOutputCurves)
-            {
-                var wiresToDelete = [wrappedWireBodies, primaryWireBodies];
-                if (secondaryWireBodies != undefined)
-                {
-                    wiresToDelete = append(wiresToDelete, secondaryWireBodies);
-                }
-                opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(wiresToDelete) });
-            }
-            else if (definition.outputCurveMode == OutputCurveMode.KEEP_WRAPPED)
-            {
-                var offsetWiresToDelete = [primaryWireBodies];
-                if (secondaryWireBodies != undefined)
-                {
-                    offsetWiresToDelete = append(offsetWiresToDelete, secondaryWireBodies);
-                }
-                opDeleteBodies(context, id + "deleteOffsetWires", { "entities": qUnion(offsetWiresToDelete) });
-            }
-            // OutputCurveMode.KEEP_ALL: keep all wire bodies
         }
 
         // ===== Cleanup planar projected from-curves =====

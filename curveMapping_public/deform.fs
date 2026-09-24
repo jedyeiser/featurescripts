@@ -4,7 +4,7 @@ import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
 
 
 //import curveMappingCore
-export import(path : "08e8748f2ef24eea16072b75/210ec1ea806a181c52651e89/683d867c35fdab9c98d47556", version : "3e5bb927da731e43e52c71e7");
+export import(path : "08e8748f2ef24eea16072b75/db2cc0404916178b88f3c711/683d867c35fdab9c98d47556", version : "e274f80c159e1a565add92d5");
 
 IconNamespace::import(path : "c20a7510f15da01b0a06a167", version : "f014fb4b0c37e21215ee7872");
 
@@ -85,7 +85,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Frame orientation", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet uses the curvature normal (can flip at inflections on near-flat curves). Binormal builds a flip-free in-plane normal from a supplied plane normal; requires planar, coplanar references." }
+            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet transports one normal along the whole reference; flip-free, and works on any G1 chain. Binormal builds an in-plane normal from a supplied plane normal; requires planar, coplanar references." }
             definition.frameNormalMode is FrameNormalMode;
 
             if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
@@ -439,6 +439,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 // opCreateCurvesOnFace adds significant computation per face.
                 var guideVerticesQuery = qNothing();
                 var guideVtxDeleteId   = undefined;
+                // Declared outside the try so a failure part-way through the loop can remove the
+                // points already made (they used to be left behind as stray point bodies).
+                var faceGuideVtxQueries = [];
                 if (definition.useFacePoints) try
                 {
                     var guidePoints = transformFacepoints(
@@ -446,7 +449,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         definition.faceUsamplingMultiplier, definition.faceVsamplingMultiplier,
                         fromFrenetPath, toFrenetPath, settings);
 
-                    var faceGuideVtxQueries = [];
                     for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
                     {
                         var vtxId = id + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
@@ -464,6 +466,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 {
                     println("WARNING: guide point generation failed for face " ~ fIdx ~
                             ": " ~ toString(guideErr));
+                    if (size(faceGuideVtxQueries) > 0)
+                    {
+                        opDeleteBodies(context, id + ("discardGuideVtx" ~ fIdx), { "entities": qUnion(faceGuideVtxQueries) });
+                    }
                 }
 
                 var fillId = id + ("fill" ~ fIdx);
