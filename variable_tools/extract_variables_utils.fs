@@ -3,7 +3,7 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 // common.fs does not re-export queryVariable.fs; needed for setQueryVariable.
 import(path : "onshape/std/queryVariable.fs", version : "3070.0");
 // IMPORT: extract_outputs.fs (producer library; re-exported so the feature sees it)
-export import(path : "EXTRACT_OUTPUTS_ID", version : "");
+export import(path : "3cac74f0bc2b98272db13cd3", version : "");
 
 /**
  * Extract variables -- CONSUMER library, used by the "Extract variables" feature
