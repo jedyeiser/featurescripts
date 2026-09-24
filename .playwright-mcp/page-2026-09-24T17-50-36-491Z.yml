@@ -1,0 +1,233 @@
+- generic [ref=e4]:
+  - navigation [ref=e5]:
+    - generic [ref=e6]:
+      - link [ref=e9] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=e10]
+      - generic [ref=e12] [cursor=pointer]
+    - generic [ref=e15]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: Stray_Weight_Concept_1
+        - generic [ref=e19]: Main
+      - generic [ref=e21] [cursor=pointer]
+      - link "ID_Concepts" [ref=e25] [cursor=pointer]:
+        - /url: /documents?nodeId=de0f87d5f2ac69acd64a653f&resourceType=folder
+    - generic [ref=e29]:
+      - generic [ref=e37] [cursor=pointer]
+      - generic [ref=e43] [cursor=pointer]
+      - button "Notifications" [ref=e48] [cursor=pointer]:
+        - generic "(9 unread notifications)" [ref=e56]: "9"
+      - link "Navigates you to Onshape app store in a new window." [ref=e59] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=e64] [cursor=pointer]
+      - button "Share" [ref=e68] [cursor=pointer]
+      - generic "Help menu" [ref=e70] [cursor=pointer]
+      - button "Jed Yeiser" [ref=e74] [cursor=pointer]
+  - generic [ref=e84]:
+    - generic [ref=e86]:
+      - generic [ref=e87]:
+        - generic [ref=e88]:
+          - generic [ref=e89] [cursor=pointer]
+          - generic [ref=e92] [cursor=pointer]
+          - generic [ref=e95] [cursor=pointer]
+          - generic [ref=e98] [cursor=pointer]
+          - generic [ref=e101] [cursor=pointer]
+          - generic [ref=e104] [cursor=pointer]
+          - generic [ref=e107] [cursor=pointer]
+          - generic [ref=e110] [cursor=pointer]
+        - generic [ref=e114] [cursor=pointer]
+      - generic [ref=e118] [cursor=pointer]
+    - generic [ref=e125]:
+      - generic [ref=e132]:
+        - generic [ref=e144]:
+          - generic [ref=e145]: Sketch
+          - generic [ref=e157]:
+            - generic [ref=e158] [cursor=pointer]
+            - generic [ref=e162] [cursor=pointer]
+            - generic [ref=e166] [cursor=pointer]
+            - generic [ref=e170] [cursor=pointer]
+            - generic [ref=e175]:
+              - generic [ref=e176] [cursor=pointer]
+              - generic [ref=e180] [cursor=pointer]
+          - generic [ref=e186]:
+            - generic [ref=e188]:
+              - generic [ref=e189] [cursor=pointer]
+              - generic [ref=e193] [cursor=pointer]
+            - generic [ref=e196] [cursor=pointer]
+            - generic [ref=e201]:
+              - generic [ref=e202] [cursor=pointer]
+              - generic [ref=e206] [cursor=pointer]
+            - generic [ref=e209] [cursor=pointer]
+            - generic [ref=e213] [cursor=pointer]
+            - generic [ref=e217] [cursor=pointer]
+            - generic [ref=e221] [cursor=pointer]
+          - generic [ref=e228]:
+            - generic [ref=e230]:
+              - generic [ref=e231] [cursor=pointer]
+              - generic [ref=e235] [cursor=pointer]
+            - generic [ref=e238] [cursor=pointer]
+          - generic [ref=e245]:
+            - generic [ref=e246] [cursor=pointer]
+            - generic [ref=e250] [cursor=pointer]
+            - generic [ref=e255]:
+              - generic [ref=e256] [cursor=pointer]
+              - generic [ref=e260] [cursor=pointer]
+            - generic [ref=e263] [cursor=pointer]
+          - generic [ref=e270]:
+            - generic [ref=e271] [cursor=pointer]
+            - generic [ref=e275] [cursor=pointer]
+            - generic [ref=e279] [cursor=pointer]
+            - generic [ref=e283] [cursor=pointer]
+          - generic [ref=e291]:
+            - generic [ref=e292] [cursor=pointer]
+            - generic [ref=e296] [cursor=pointer]
+          - generic [ref=e303]:
+            - generic [ref=e304] [cursor=pointer]: SA
+            - generic [ref=e307] [cursor=pointer]
+          - generic [ref=e314] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=e321] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=e322]:
+            - generic [ref=e323]: alt/⌥
+            - generic [ref=e324]: c
+      - generic [ref=e328]:
+        - generic [ref=e331]:
+          - generic [ref=e333]:
+            - generic [ref=e334]:
+              - generic [ref=e335]: Configurations
+              - button "Configuration actions" [ref=e341] [cursor=pointer]
+            - generic [ref=e345]:
+              - generic [ref=e349]:
+                - generic [ref=e350]: Target_Weight_g
+                - textbox [ref=e352]: "10"
+              - generic [ref=e356]:
+                - generic [ref=e357]: Rout_Angle
+                - textbox [ref=e359]: 5 deg
+              - generic [ref=e363]:
+                - generic [ref=e364]: Rout_Above_Bottom
+                - textbox [ref=e366]: 1.7 mm
+              - generic [ref=e370]:
+                - generic [ref=e371]: Rout_Step_In
+                - textbox [ref=e373]: 0.8 mm
+              - generic [ref=e377]:
+                - generic [ref=e378]: SW_Height
+                - textbox [ref=e380]: 5 mm
+              - generic [ref=e384]:
+                - generic [ref=e385]: End_Taper_Dist
+                - textbox [ref=e387]: 60 mm
+              - generic [ref=e391]:
+                - generic [ref=e392]: Max_Offset
+                - textbox [ref=e394]: 10 mm
+              - generic [ref=e398]:
+                - generic [ref=e399]: Dovetail_Angle
+                - textbox [ref=e401]: 30 deg
+              - generic [ref=e405]:
+                - generic [ref=e406]: pinch_radius
+                - textbox [ref=e408]: 2 mm
+              - generic [ref=e412]:
+                - generic [ref=e413]: Start_Wall_Angle
+                - textbox [ref=e415]: 45 deg
+              - generic [ref=e419]:
+                - generic [ref=e420]: End_Wall_Angle
+                - textbox [ref=e422]: 60 deg
+              - generic [ref=e426]:
+                - generic [ref=e427]: Pinch_Offset
+                - textbox [ref=e429]: 0.25 mm
+              - generic [ref=e433]:
+                - generic [ref=e434]: SW_Taper_Dist
+                - textbox [ref=e436]: 10 mm
+              - generic [ref=e440]:
+                - generic [ref=e441]: SW_Width
+                - textbox [ref=e443]: 5 mm
+              - generic [ref=e447]:
+                - generic [ref=e448]: SW_Shelf
+                - textbox [ref=e450]: 2 mm
+          - generic [ref=e453]:
+            - generic [ref=e454]:
+              - generic [ref=e456]:
+                - button [ref=e458] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=e463]
+              - generic [ref=e464]:
+                - button [ref=e465] [cursor=pointer]
+                - generic [ref=e468]: Features (76)
+                - button [ref=e469] [cursor=pointer]
+                - button [ref=e472] [cursor=pointer]
+                - button [ref=e475] [cursor=pointer]
+            - generic [ref=e479]:
+              - generic [ref=e480]:
+                - generic [ref=e482]:
+                  - generic [ref=e483] [cursor=pointer]
+                  - generic [ref=e486]: Default geometry
+                - generic [ref=e488]: Origin
+                - generic [ref=e498]: Top
+                - generic [ref=e508]: Front
+                - generic [ref=e518]: Right
+                - generic [ref=e528]: "#Exp_Top_Thck = 1.01 mm"
+                - generic [ref=e536]: "#solver_tol = 1"
+                - generic [ref=e544]: "#min_length = 80 mm"
+                - generic [ref=e552]: "#density_g_mm_3 = 0.003"
+                - generic [ref=e560]: "#target_vol_mm_3 = 2941.176"
+                - generic [ref=e568]: "#flat_length = 20 mm"
+                - generic [ref=e576]: "#solver_count = 0"
+                - generic [ref=e584]: "#sol_found = false"
+                - generic [ref=e592]: "#change_pct = 1"
+                - generic [ref=e600]: "#flat_length = 20 mm"
+                - generic [ref=e608]: "#solver_count = 1"
+                - generic [ref=e617]:
+                  - generic [ref=e619] [cursor=pointer]
+                  - generic [ref=e622]: Iteration (27)
+                - generic [ref=e627]: "#output_face"
+                - generic [ref=e635]: "#lid_surf"
+                - generic [ref=e643]: "#rout_surf"
+                - generic [ref=e651]: "#top_exp_surf"
+                - generic [ref=e659]: "#weight_body"
+                - generic [ref=e667]: "#footprint_face"
+                - generic [ref=e675]: "#sw_outside"
+                - generic [ref=e683]: "#sw_inside"
+                - generic [ref=e694]:
+                  - generic [ref=e695]: IS
+                  - generic [ref=e697]: Iterative Solve 1
+                - generic [ref=e698]: Get_Stable_Face
+                - generic [ref=e707]:
+                  - generic [ref=e709] [cursor=pointer]
+                  - generic [ref=e715]: Logo (8)
+                - generic [ref=e721]:
+                  - generic [ref=e723] [cursor=pointer]
+                  - generic [ref=e729]: Finishing (11)
+                - generic [ref=e734]: Fillet 4
+              - list
+          - generic [ref=e748]:
+            - generic [ref=e750]:
+              - generic [ref=e752] [cursor=pointer]
+              - generic [ref=e755]: Parts (2)
+            - generic [ref=e757]: Iter_1_13g
+            - generic [ref=e767]: K2 Logo Lid Inverted Emboss
+            - generic [ref=e778]:
+              - generic [ref=e780] [cursor=pointer]
+              - generic [ref=e783]: Surfaces (5)
+            - generic [ref=e786]:
+              - generic [ref=e788] [cursor=pointer]
+              - generic [ref=e791]: Curves (2)
+        - generic [ref=e794]:
+          - generic [ref=e796] [cursor=pointer]
+          - generic [ref=e800]:
+            - generic [ref=e802]:
+              - button [ref=e803] [cursor=pointer]
+              - button [ref=e807] [cursor=pointer]
+              - button [ref=e811] [cursor=pointer]
+            - generic [ref=e815] [cursor=pointer]
+          - generic [ref=e820]:
+            - generic [ref=e821] [cursor=pointer]
+            - generic [ref=e825] [cursor=pointer]
+            - generic [ref=e829] [cursor=pointer]
+            - generic [ref=e833] [cursor=pointer]
+            - generic [ref=e837] [cursor=pointer]
+            - generic [ref=e841] [cursor=pointer]
+            - generic [ref=e844] [cursor=pointer]
+      - generic [ref=e848]:
+        - img [ref=e851] [cursor=pointer]
+        - generic [ref=e854]:
+          - generic [ref=e855]: Part Studio 1
+          - generic [ref=e866] [cursor=pointer]: Part_Vol
+          - generic [ref=e872] [cursor=pointer]: Assembly 1
+          - generic [ref=e878] [cursor=pointer]: solver_core
+          - generic [ref=e884] [cursor=pointer]: iterative_solve

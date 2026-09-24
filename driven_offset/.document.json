@@ -9,21 +9,17 @@
     "driven_offset_surface": "c47cbd0497baf3011c60ecf8",
     "offset_run_treatment": "d009ddf4a8dd9534fc4dc4b5",
     "offset_debug": "6479d7fbd0ec7d11e0ae6c69",
-    "design_map_query_utils": "2b6b313ac740a0146d5bef7c",
     "evaluate_offset": "a2ebb5abc7ddda01f64ff8df",
     "driven_edge_offset": "786f62f4d67ed8d9c7d56d16",
     "edge_offset_utils": "a2665e22c07b7a6929ce4e80",
     "unwrap": "a84cdaa8963f2a55db1c016b",
-    "bspline_compat": "6b635e74c92bd23387e850c1",
-    "clean_wire": "729dac2dde79d1d7a39b5862",
-    "mutual_trim_ref": "12f356c75dbe94a26998834b"
+    "bspline_compat": "6b635e74c92bd23387e850c1"
   },
   "tab_folders": {
     "General": "Variable Studios",
     "Tooling": "Variable Studios",
     "Layup": "Variable Studios",
     "Baseline": "Variable Studios",
-    "design_map_query_utils": "featurescripts",
     "evaluate_offset": "featurescripts",
     "driven_edge_offset": "featurescripts",
     "edge_offset_utils": "featurescripts",

@@ -25,17 +25,18 @@ Design_Master: element `643b702dc551feb3cc001826` in workspace `5b11f323ab31b04c
   (`2143812a99089658c704f0bc/9e83163997d1397b495d1bfe/02d7784437f621c76397f0d6`, microversion
   `9d6f0887be37c851829c40c3`), so every feature importing `edge_offset_utils` still sees them.
   Design_Master regenerated **identically** afterwards (Default and the complex test configuration).
-- **Legacy tabs, kept only until Design_Master's instances are migrated -- do not develop them here:**
-  - `clean_wire`, `map_curve`, `merge_curve`, `evaluate_profiles` -> develop in `curve_tools/`.
-    Design_Master uses 1 Clean wire (and no Map curve / Merge curve / Evaluate profiles).
-  - `mutual_trim_ref` (Mutual Trim+) -> develop in `reference_side/mutual_trim_plus.fs`.
-    Design_Master has 7 instances.
-  - `design_map` (Extract variables) and `design_map_query_utils` -> develop in `variable_tools/`.
-    The producers here (Driven edge offset, Driven offset surface, and the legacy tabs) still
-    import `design_map_query_utils` at microversion `5ab212db97cb46b643862b40`. Re-pinning them
-    to Variable_tools V1 `extract_outputs` is pending. The embedded map is recognised
-    structurally, so both versions are readable by either Extract variables.
-- `query_varialble_ref.fs`, `Reese_*.fs`, `export_package_manager.fs`: third-party / reference copies.
+- **Legacy tabs: ALL GONE (2026-09-24).** Design_Master's 7 Mutual Trim+ now use Reference_Side V1
+  `mutualTrimPlus`, its Clean wire uses Curve_tools V2 `cleanWire` (inserted in place, old deleted,
+  query variables clean_pinch_wire / pinch_radius_edges / top_edge_Edges re-pointed via their
+  createdByFeatures list). Fingerprint identical before/after in both configurations (baselines
+  re-saved after the swap). Tabs clean_wire, mutual_trim_ref, design_map_query_utils, map_curve,
+  merge_curve, evaluate_profiles, design_map, query_varialble_ref, export_package_manager deleted.
+  Restore point: BeamBuilder V6. Driven edge offset / Driven offset surface import Variable_tools V1
+  `extract_outputs`.
+- Moving an instance to a feature in ANOTHER document cannot be done in place: the features API
+  answers "Feature does not match" to any namespace change across elements, even for the same
+  featureType. Insert the new feature at the old position (rollback bar), delete the old, re-point
+  references. Deletes can 504 -- check state before retrying.
 
 ## Import chain (who pins whom) -- re-pin in this order after changing a callee
 
@@ -46,7 +47,6 @@ curve_core (Curve_tools, by VERSION)
        <- offset_debug (6479d7fb...)                          current mv 3d13f8cddcd8668502860216
        <- driven_edge_offset (786f62f4..., export import eou; imports ORT + debug)
        <- driven_offset_surface (c47cbd04..., export import eou; imports ORT, debug, DEO, bspline_compat)
-       <- legacy: map_curve, clean_wire, mutual_trim_ref
 ```
 
 - Same-document imports pin an ELEMENT microversion (`GET documents/d/{did}/w/{wid}/elements`,
@@ -97,11 +97,16 @@ curve_core (Curve_tools, by VERSION)
 - Research / design notes in this folder: `research_*.md`, `extract_variables_schema.md`
   (the producer / Extract variables contract -- a copy lives in `variable_tools/`).
 
+## In design
+
+- **create_offset_profile** (new tab, not started): builds DEO/DOS offset profiles from Regions or Points;
+  profile breaks instead of zero-length connectors; consumers choose how to join breaks. Design:
+  `research_create_offset_profile.md`.
+
 ## Known open items touching this document
 
-- Re-pin the producers here from `design_map_query_utils` to Variable_tools `extract_outputs`.
-- Migrate Design_Master's 1 Clean wire and 7 Mutual Trim+ to the new documents, then retire the
-  legacy tabs.
+- Design_Master's Clean wire is on Curve_tools V2; when Curve_tools V3 exists, bump its namespace
+  (same element -> in-place update works) to get the ends / runs / breaks outputs.
 - `Pinch_Fillet` (std fillet) shows ERROR in Default on 2026-09-23; not caused by the rewire
   (identical geometry) -- check whether it was already red.
 - `chainStations` (now in curve_core) still computes offset frames the curve tools never read; a
