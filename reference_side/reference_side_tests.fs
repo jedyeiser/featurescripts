@@ -108,7 +108,7 @@ function polyline(context is Context, id is Id, points is array, z0 is number, c
         skLineSegment(sketch, "line" ~ i, { "start" : points[i], "end" : points[(i + 1) % size(points)] });
     }
     skSolve(sketch);
-    return qCreatedBy(id, EntityType.EDGE);
+    return qOwnedByBody(qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE), EntityType.EDGE);
 }
 
 function result(name is string, ok is boolean, detail is string) returns map
