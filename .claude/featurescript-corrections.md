@@ -1376,10 +1376,26 @@ variables or constants.
 
 ---
 
+## Correction 34: opSplitFace -- the split face's id dies, qCreatedBy has no faces (2026-09-24)
+
+**Symptom**: after `opSplitFace`, both an evaluated (transient) query of the target face and
+`qCreatedBy(splitId, EntityType.FACE)` resolve to NOTHING; code tracking "the faces so far"
+ends up empty (Split+ face mode threw "Nothing is left").
+
+**Verified** (eval API): top face of a cube split by a plane -> transient query 0,
+qCreatedBy FACE 0, qCreatedBy EDGE 1 (the new cut), qSplitBy(id, FACE, false) 1 and
+qSplitBy(id, FACE, true) 1 (the two halves). A lazy query (qContainsPoint) still resolves.
+
+**Fix**: after each split, faces = untouched faces (their ids survive) + both qSplitBy sides:
+`qUnion([faces, qSplitBy(splitId, EntityType.FACE, false), qSplitBy(splitId, EntityType.FACE, true)])`,
+evaluated to dedupe.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 33
-- **Last Updated**: 2026-09-23
+- **Total Corrections**: 34
+- **Last Updated**: 2026-09-24
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
 - **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27); side-of-splitter for trims (28); Matrix weights + degenerate rows for exact sectors (29)

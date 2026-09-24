@@ -10,7 +10,7 @@ export import(path : "3cac74f0bc2b98272db13cd3", version : "");
  * (extract_variables.fs): reading a FeatureList of sources -- with or without an embedded
  * map -- into one table of addressable keys, resolving the entry types (source key,
  * filtered, closest to point, shared edges, chain end, edges between points, bridging curve
- * input), and publishing ordinary variables and query variables with the std robust freeze.
+ * input, region), and publishing ordinary variables and query variables with the std robust freeze.
  *
  * (Evan Reese's "Extract Variables" approach, ported to FS 3070 and grown into our own.)
  * Producers do not import this tab; they import extract_outputs.fs.
@@ -39,7 +39,9 @@ export enum ExtractEntryType
     annotation { "Name" : "Edges between points" }
     EDGES_BETWEEN,
     annotation { "Name" : "Bridging curve input" }
-    BRIDGING
+    BRIDGING,
+    annotation { "Name" : "Region" }
+    REGION
 }
 
 export enum ExtractEntityType
@@ -64,6 +66,17 @@ export enum ExtractBodyType
     SHEET,
     annotation { "Name" : "Wire" }
     WIRE
+}
+
+/** What a Region entry publishes. */
+export enum ExtractRegionOutput
+{
+    annotation { "Name" : "Faces" }
+    FACES,
+    annotation { "Name" : "Boundary edges" }
+    BOUNDARY,
+    annotation { "Name" : "Faces and boundary edges" }
+    BOTH
 }
 
 export enum ExtractEndRule
@@ -317,6 +330,34 @@ export function resolveEntry(context is Context, available is map, entry is map)
         }
         result = qIntersection([edgesOf(q), edgesOf(other.value)]);
         description = "Edges shared by " ~ entry.x_sourceKey ~ " and " ~ entry.x_secondKey ~ ".";
+    }
+    else if (entry.x_type == ExtractEntryType.REGION)
+    {
+        const seed = pointLocation(context, entry.x_point);
+        if (seed == undefined)
+        {
+            return { "error" : "pick a vertex or mate connector in the region", "parameter" : "x_point" };
+        }
+        var boundary = qNothing();
+        if (entry.x_secondKey != "")
+        {
+            const other = lookupKey(available, entry.x_secondKey);
+            if (other.error != undefined || other.kind != "query")
+            {
+                return { "error" : other.error != undefined ? other.error : "'" ~ entry.x_secondKey ~ "' is not geometry", "parameter" : "x_secondKey" };
+            }
+            boundary = edgesOf(other.value);
+        }
+        const found = regionAround(context, entitiesOfType(q, ExtractEntityType.FACE), boundary, seed);
+        if (found.error != undefined)
+        {
+            return { "error" : found.error, "parameter" : "x_sourceKey" };
+        }
+        const output = entry.x_regionOutput;
+        result = output == ExtractRegionOutput.FACES ? found.faces
+            : (output == ExtractRegionOutput.BOUNDARY ? found.boundary : qUnion([found.faces, found.boundary]));
+        description = "Region of " ~ entry.x_sourceKey ~ " around a point"
+            ~ (entry.x_secondKey != "" ? ", bounded by " ~ entry.x_secondKey : "") ~ ".";
     }
     else if (entry.x_type == ExtractEntryType.CHAIN_END || entry.x_type == ExtractEntryType.BRIDGING)
     {
@@ -591,6 +632,46 @@ function edgesBetween(context is Context, edges is Query, a is Vector, b is Vect
     }
     const shorterIsInside = insideLength <= outsideLength;
     return { "edges" : qUnion((shorterIsInside != otherSide) ? inside : outside) };
+}
+
+/**
+ * The faces reachable from the face nearest `seed` without crossing a boundary edge (or
+ * leaving `faces`), and the region's boundary: its edges with exactly one adjacent face in
+ * the region. Without boundary edges the region is the seed face's connected patch.
+ *
+ * @returns {map} : { faces : Query, boundary : Query } or { error }.
+ */
+export function regionAround(context is Context, faces is Query, boundaryEdges is Query, seed is Vector) returns map
+{
+    const all = qUnion(evaluateQuery(context, faces));
+    if (isQueryEmpty(context, all))
+    {
+        return { "error" : "the source has no faces" };
+    }
+    var region = qClosestTo(all, seed);
+    var count = size(evaluateQuery(context, region));
+    while (true)
+    {
+        const grown = qUnion([region, qIntersection([all,
+                            region->qAdjacent(AdjacencyType.EDGE, EntityType.EDGE)->qSubtraction(boundaryEdges)->qAdjacent(AdjacencyType.EDGE, EntityType.FACE)])]);
+        const list = evaluateQuery(context, grown);
+        region = qUnion(list);
+        if (size(list) == count)
+        {
+            break;
+        }
+        count = size(list);
+    }
+
+    var boundary = [];
+    for (var e in evaluateQuery(context, qAdjacent(region, AdjacencyType.EDGE, EntityType.EDGE)))
+    {
+        if (size(evaluateQuery(context, qIntersection([qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE), region]))) == 1)
+        {
+            boundary = append(boundary, e);
+        }
+    }
+    return { "faces" : region, "boundary" : qUnion(boundary) };
 }
 
 function nearestIndex(points is array, target is Vector) returns number

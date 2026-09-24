@@ -17,7 +17,8 @@ export import(path : "a4dcd70ce9ceec588536fb0c", version : "");
  *
  * Entry types: a source key as is; filtered (entity type, body type, name, largest N);
  * closest to a point; edges shared by two sources; a chain end; the edges of a chain
- * between two points; bridging curve input (the end edge and its vertex). Composed entries
+ * between two points; bridging curve input (the end edge and its vertex); a region (the faces
+ * around a point, flood-filled up to boundary edges, or that region's boundary). Composed entries
  * hold the entities present now (std robust freeze); a source key may re-evaluate on use.
  *
  * Names: `<prefix>_<name>`, the name defaulting to the key ("output@2" -> "output_2").
@@ -51,9 +52,10 @@ export const extractVariables = defineFeature(function(context is Context, id is
             annotation { "Name" : "Source key", "MaxLength" : 256, "Description" : "A key the sources offer: output, outputEdges, ... or a producer's own. key@n picks source n when several offer it." }
             entry.x_sourceKey is string;
 
-            if (entry.x_type == ExtractEntryType.SHARED_EDGES)
+            if (entry.x_type == ExtractEntryType.SHARED_EDGES || entry.x_type == ExtractEntryType.REGION)
             {
-                annotation { "Name" : "Second source key", "MaxLength" : 256 }
+                annotation { "Name" : "Second source key", "MaxLength" : 256,
+                            "Description" : "Shared edges: the other key. Region: the key holding the boundary edges (empty = the seed face's whole connected patch)." }
                 entry.x_secondKey is string;
             }
 
@@ -85,7 +87,8 @@ export const extractVariables = defineFeature(function(context is Context, id is
             }
 
             if (entry.x_type == ExtractEntryType.CLOSEST || entry.x_type == ExtractEntryType.CHAIN_END ||
-                entry.x_type == ExtractEntryType.BRIDGING || entry.x_type == ExtractEntryType.EDGES_BETWEEN)
+                entry.x_type == ExtractEntryType.BRIDGING || entry.x_type == ExtractEntryType.EDGES_BETWEEN ||
+                entry.x_type == ExtractEntryType.REGION)
             {
                 annotation { "Name" : "Point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
                 entry.x_point is Query;
@@ -98,6 +101,12 @@ export const extractVariables = defineFeature(function(context is Context, id is
 
                 annotation { "Name" : "Other side", "Default" : false, "Description" : "Closed chains only: take the longer way round." }
                 entry.x_otherSide is boolean;
+            }
+
+            if (entry.x_type == ExtractEntryType.REGION)
+            {
+                annotation { "Name" : "Publish", "Default" : ExtractRegionOutput.FACES }
+                entry.x_regionOutput is ExtractRegionOutput;
             }
 
             if (entry.x_type == ExtractEntryType.CHAIN_END)

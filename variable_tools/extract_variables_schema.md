@@ -51,6 +51,7 @@ published name is the address with `@` -> `_` (`output_2`), under the feature's 
 | Chain end | key, point, nearest/farthest, vertex/edge/both | the free end of a chain |
 | Edges between points | key, two points, other side | whole chain edges between the nearest vertices |
 | Bridging curve input | key, point | the end edge and its free vertex, as one query |
+| Region | key (faces / bodies), second key (boundary edges, optional), point, publish | faces flood-filled from the face nearest the point without crossing a boundary edge; or the region's boundary edges (one adjacent face in the region); or both |
 
 Composed types are always frozen (std robust freeze) at the Extract variables feature.
 
