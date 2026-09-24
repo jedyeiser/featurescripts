@@ -671,6 +671,16 @@ export function mapBetweenSamples(context is Context, flipToNormal is boolean, s
  */
 export function pathIsSmoothAcross(frenetPath is map, edgeA is number, edgeB is number) returns boolean
 {
+    return pathIsSmoothAcross(frenetPath, edgeA, edgeB, false);
+}
+
+/**
+ * [pathIsSmoothAcross], and with `curvatureBreaks` also NOT smooth across a curvature jump
+ * (see the check below). Off keeps span topology as it was: turning it on adds spans, so
+ * faces and edges downstream of the output change.
+ */
+export function pathIsSmoothAcross(frenetPath is map, edgeA is number, edgeB is number, curvatureBreaks is boolean) returns boolean
+{
     if (edgeA == edgeB)
     {
         return true;
@@ -698,6 +708,10 @@ export function pathIsSmoothAcross(frenetPath is map, edgeA is number, edgeB is 
     // arcs of clearly different radius) the wrapped curve's own curvature jumps too, and one
     // span fitted across it rings. Break there; each side then keeps its curvature, with the
     // exact junction point and each side's exact tangent.
+    if (!curvatureBreaks)
+    {
+        return true;
+    }
     var kA  = edgeEndCurvature(edgeData[lo], true);
     var kB  = edgeEndCurvature(edgeData[hi], false);
     var big = max(norm(kA), norm(kB));

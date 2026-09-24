@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "8462eb38af6e4ab10aabbe0a");
+export import(path : "683d867c35fdab9c98d47556", version : "e274f80c159e1a565add92d5");
 
 
 
@@ -91,6 +91,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 }
             }
         }
+
+        annotation { "Name" : "Break spans at curvature jumps and corners", "Default" : false, "Description" : "Also end a span where the to-path changes curvature abruptly (a line meeting an arc, arcs of clearly different radius) and where the source crosses a from-path corner, so each side keeps its own curvature instead of one fit ringing across it. Off by default: it adds spans, so the faces and edges of the output (and selections of them downstream) change." }
+
+        definition.breakAtCurvatureJumps is boolean;
+
 
         annotation { "Group Name" : "Advanced options", "Collapsed By Default" : true }
         {
@@ -411,9 +416,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var segEndIdx = segStartIdx;
                 while (segEndIdx + 1 < size(mappedData)
                        && pathIsSmoothAcross(toFrenetPath, mappedData[segEndIdx].edgeIndex,
-                                             mappedData[segEndIdx + 1].edgeIndex)
-                       && pathIsSmoothAcross(fromFrenetPath, mappedData[segEndIdx].fromEdgeIndex,
-                                             mappedData[segEndIdx + 1].fromEdgeIndex))
+                                             mappedData[segEndIdx + 1].edgeIndex, definition.breakAtCurvatureJumps == true)
+                       && (!(definition.breakAtCurvatureJumps == true) || pathIsSmoothAcross(fromFrenetPath, mappedData[segEndIdx].fromEdgeIndex,
+                                             mappedData[segEndIdx + 1].fromEdgeIndex, true)))
                 {
                     segEndIdx += 1;
                 }
@@ -487,7 +492,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // curvature jump of the from-path); place the junction at that one.
                     var s_to_boundary;
                     var s_from_junction;
-                    if (!pathIsSmoothAcross(toFrenetPath, currentEdge, nextEdgeIdx))
+                    if (!pathIsSmoothAcross(toFrenetPath, currentEdge, nextEdgeIdx, definition.breakAtCurvatureJumps == true))
                     {
                         s_to_boundary   = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
                         s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
