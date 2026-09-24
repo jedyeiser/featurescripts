@@ -55,6 +55,10 @@ published name is the address with `@` -> `_` (`output_2`), under the feature's 
 
 Composed types are always frozen (std robust freeze) at the Extract variables feature.
 
+Every entry has **Show** (default off): while the feature is being edited it highlights what
+the entry resolves to (the producer's `debugColor` when the key has one, else a colour cycled
+per entry) and prints `[show] <name>: N entities` -- or `<name> = <value>` -- to the notices.
+
 ## What Extract variables publishes
 
 - Ordinary variables `<prefix>_<name>`: `#name`, `getVariable(context, name)`.

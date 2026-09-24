@@ -62,6 +62,10 @@ export const extractVariables = defineFeature(function(context is Context, id is
             annotation { "Name" : "Published name", "Default" : "", "MaxLength" : 256, "Description" : "Empty = the key." }
             entry.x_name is string;
 
+            annotation { "Name" : "Show", "Default" : false,
+                        "Description" : "Highlight what this entry resolves to while the feature is being edited (in the producer's colour when it gives one), and print the count or value to the FeatureScript notices." }
+            entry.x_show is boolean;
+
             if (entry.x_type == ExtractEntryType.FILTERED || entry.x_type == ExtractEntryType.CLOSEST)
             {
                 annotation { "Name" : "Entity type", "Default" : ExtractEntityType.EDGE }
@@ -166,6 +170,10 @@ export const extractVariables = defineFeature(function(context is Context, id is
                 throw regenError(label ~ ": '" ~ name ~ "' is already published by an earlier entry.", [nameParameter]);
             }
             published[name] = true;
+            if (entry.x_show == true)
+            {
+                showEntry(context, name, resolved, i);
+            }
 
             if (resolved.kind == "query")
             {
@@ -215,6 +223,29 @@ export const extractVariables = defineFeature(function(context is Context, id is
             "printKeys" : false,
             "manifest" : ""
         });
+
+/** Colours for shown entries whose producer gives none, cycled by entry. */
+const SHOW_COLORS = [DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, DebugColor.MAGENTA, DebugColor.ORANGE, DebugColor.CYAN, DebugColor.YELLOW];
+
+/**
+ * An entry's "Show": its entities highlighted (debug entities are drawn while the feature is
+ * being edited), plus one notices line with the count or the value.
+ */
+function showEntry(context is Context, name is string, resolved is map, index is number)
+{
+    if (resolved.kind != "query")
+    {
+        println("[show] " ~ name ~ " = " ~ toString(resolved.value));
+        return;
+    }
+    const color = resolved.debugColor is DebugColor ? resolved.debugColor : SHOW_COLORS[index % size(SHOW_COLORS)];
+    const entities = evaluateQuery(context, resolved.value);
+    println("[show] " ~ name ~ ": " ~ size(entities) ~ " entit" ~ (size(entities) == 1 ? "y" : "ies") ~ " (" ~ toString(color) ~ ")");
+    if (size(entities) > 0)
+    {
+        addDebugEntities(context, qUnion(entities), color);
+    }
+}
 
 /**
  * "Add keys from sources": one Source key entry per key the sources offer that no entry

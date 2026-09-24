@@ -295,7 +295,8 @@ export function resolveEntry(context is Context, available is map, entry is map)
                 "kind" : input.kind,
                 "value" : input.value,
                 "description" : input.description,
-                "evaluateOnUse" : input.kind == "query" && entry.x_evaluateOnUse == true
+                "evaluateOnUse" : input.kind == "query" && entry.x_evaluateOnUse == true,
+                "debugColor" : input.debugColor
             };
     }
 
