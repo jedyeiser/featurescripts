@@ -651,12 +651,20 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
     {
         for (var at in [f.pointA, f.pointB])
         {
-            const half = min(1 * millimeter, 0.25 * min(f.dA, f.dB));
+            // As small as practical: another stretch of the wire within `half` of the cut would be cut too.
+            const half = min(0.1 * millimeter, 0.25 * min(f.dA, f.dB));
             const tool = cuttingSheet(context, id + ("cutSheet" ~ k), at, half);
             const splitId = id + ("cut" ~ k);
+            const before = size(evaluateQuery(context, qBodyType(pieces, BodyType.WIRE)));
             opSplitPart(context, splitId, { "targets" : pieces, "tool" : tool.sheet, "keepTools" : true, "useTrimmed" : true });
             pieces = qUnion([pieces, qCreatedBy(splitId, EntityType.BODY)]);
             opDeleteBodies(context, id + ("deleteSheet" ~ k), { "entities" : tool.bodies });
+            const after = size(evaluateQuery(context, qBodyType(pieces, BodyType.WIRE)));
+            if (after != before + 1)
+            {
+                throw regenError("The cut at " ~ fmtPoint(at.origin) ~ " split the wire into " ~ (after - before + 1)
+                    ~ " pieces instead of 2: another part of the wire passes within " ~ fmtMM(half) ~ " mm of it.");
+            }
             k += 1;
         }
     }
@@ -693,7 +701,9 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
 /**
  * A small square sheet (2 * half across) through `at.origin`, perpendicular to `at.direction`: the tool that cuts
  * a wire at exactly one point. A construction plane is NOT usable here -- it cuts as an infinite plane even with
- * "trim to face boundaries", so it would split the wire wherever else it crosses the plane.
+ * "trim to face boundaries", so it would split the wire wherever else it crosses the plane. A split at a
+ * PARAMETER (opSplitEdges) is exact but keeps the wire one body, and opEditCurve needs each corner piece to be its
+ * own wire; opSplitPart takes only sheets, planes and faces as tools. Hence the sheet.
  */
 function cuttingSheet(context is Context, id is Id, at is Line, half is ValueWithUnits) returns map
 {
