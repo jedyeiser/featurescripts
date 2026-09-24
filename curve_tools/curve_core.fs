@@ -21,28 +21,6 @@ import(path : "onshape/std/common.fs", version : "3070.0");
  * Kernel calls are the runtime driver, so every evaluation here is batched: one
  * ev* call per edge with an array of parameters, never one call per point.
  */
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
-
-/**
- * Math and geometry utilities for driven_edge_offset and unwrap.
- *
- * Everything these features need lives in this document -- no cross-document imports.
- *
- * Vocabulary
- *   CHAIN     an ordered set of G0-connected LINKS; a link is one Path.
- *             Chains are oriented so increasing arc length means increasing world X.
- *   STATION   one evaluation point on a chain, carrying its frame and coordinate.
- *   COORD     the value looked up in the offset profile. What it measures is set
- *             by MeasureAlong: a world X coordinate, arc length along the edges
- *             being offset, or distance along a separate reference wire. All three
- *             are measured from the zero point.
- *   FRAME     tangent + width axis + height axis. A profile point (x, y, z) offsets
- *             by y along width and z along height at coordinate x.
- *
- * Kernel calls are the runtime driver, so every evaluation here is batched: one
- * ev* call per edge with an array of parameters, never one call per point.
- */
 
 // ============================================================================
 // Constants
