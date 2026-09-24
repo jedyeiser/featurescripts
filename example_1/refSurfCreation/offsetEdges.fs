@@ -207,7 +207,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
         definition.flipBinormal is boolean;
 
         annotation { "Name" : "Source arcs", "Default" : VaryingArcMode.SPLINE,
-                     "Description" : "How circular source edges are output. Keep as arcs: each becomes a true arc (clicking it shows a radius) -- one concentric arc where the offset is constant, two tangent arcs where it varies (both end offsets and tangents exact, the joint placed closest to the true offset); blends over arcs are arcs too, and splines meeting them join tangent. Convert to splines: fitted splines, like every other source edge. Source splines are always output as splines." }
+                     "Description" : "How circular source edges are output. Keep as arcs: each becomes a true arc (clicking it shows a radius) -- one concentric arc where the offset is constant, two tangent arcs where it varies (both end offsets and tangents exact, the joint placed closest to the true offset); blends over arcs are arcs too. Convert to splines: fitted splines, like every other source edge. Source splines are always output as splines." }
         definition.arcMode is VaryingArcMode;
 
         annotation { "Name" : "Sampling density",
@@ -1831,19 +1831,26 @@ function zonePoint(context is Context, pathInfo is map, definition is map, zone 
 }
 
 
-// Unit tangent of a zone's offset curve at t, in the direction of travel: central difference,
-// one-sided at the zone's ends; the frame tangent if the offset curve is momentarily stationary.
+// Unit tangent of a zone's offset curve at t, in the direction of travel: central difference
+// inside the zone, second-order one-sided (-3 P0 + 4 P1 - P2) at its ends, so the two pieces
+// meeting at a joint read the same tangent to O(h^2); the frame tangent if the offset curve is
+// momentarily stationary.
 function zoneTangent(context is Context, pathInfo is map, definition is map, zone is map, t is number) returns Vector
 {
-    var dtp = 1e-4;
-    var tHi = min(t + dtp, zone.tHi);
-    var tLo = max(t - dtp, zone.tLo);
-    if (tHi - tLo < 1e-12)
+    var h = 1e-4;
+    var dir;
+    if (t - h >= zone.tLo && t + h <= zone.tHi)
     {
-        tHi = min(t + dtp, 1.0);
-        tLo = max(t - dtp, 0.0);
+        dir = zonePoint(context, pathInfo, definition, zone, t + h) - zonePoint(context, pathInfo, definition, zone, t - h);
     }
-    var dir  = zonePoint(context, pathInfo, definition, zone, tHi) - zonePoint(context, pathInfo, definition, zone, tLo);
+    else
+    {
+        var sgn = (t + 2 * h <= zone.tHi) ? 1 : -1;
+        var p0  = zonePoint(context, pathInfo, definition, zone, t);
+        var p1  = zonePoint(context, pathInfo, definition, zone, t + sgn * h);
+        var p2  = zonePoint(context, pathInfo, definition, zone, t + sgn * 2 * h);
+        dir = sgn * (4 * p1 - 3 * p0 - p2);
+    }
     var dLen = norm(dir);
     if (dLen / meter < 1e-12)
     {
@@ -2201,23 +2208,24 @@ function emitSourceArc(context is Context, wireId is Id, pathInfo is map, defini
 }
 
 
-// Fits and creates one spline piece. In "Keep as arcs" mode both ends are pinned to the true
-// offset tangent of the zone, so a spline meeting an arc joins it G1 (the arc carries that
-// tangent exactly) instead of approximately.
+// Fits and creates one spline piece with both ends pinned to the true offset tangent of its
+// zone. Neighbouring pieces (the next source edge, a blend and its regions, an arc) each pin
+// their own zone's tangent at the shared point, and those agree wherever the offset is meant
+// to be smooth (G1 / G2 blends, G1 source edges), so the joint is tangent by construction
+// rather than to fit accuracy (~0.05 deg unpinned).
 function emitSplinePiece(context is Context, wireId is Id, pathInfo is map, definition is map,
     zone is map, tA is number, tB is number, pts is array, interpolateIndices is array, maxCP is number) returns Query
 {
-    var target = { "positions" : pts };
-    if (definition.arcMode == VaryingArcMode.BIARC)
+    var chord = 0 * meter;
+    for (var k = 0; k < size(pts) - 1; k += 1)
     {
-        var chord = 0 * meter;
-        for (var k = 0; k < size(pts) - 1; k += 1)
-        {
-            chord += norm(pts[k + 1] - pts[k]);
-        }
-        target.startDerivative = zoneTangent(context, pathInfo, definition, zone, tA) * chord;
-        target.endDerivative   = zoneTangent(context, pathInfo, definition, zone, tB) * chord;
+        chord += norm(pts[k + 1] - pts[k]);
     }
+    var target = {
+        "positions"       : pts,
+        "startDerivative" : zoneTangent(context, pathInfo, definition, zone, tA) * chord,
+        "endDerivative"   : zoneTangent(context, pathInfo, definition, zone, tB) * chord
+    };
     var bspline = approximateSpline(context, {
         "degree"             : definition.approxDegree,
         "tolerance"          : definition.approxTolerance,
