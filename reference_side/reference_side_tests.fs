@@ -77,7 +77,7 @@ function pt(x is number, y is number, z is number) returns Vector
     return vector(x, y, z) * millimeter;
 }
 
-function cube(context is Context, id is Id, c1 is Vector, c2 is Vector) returns Query
+function makeCube(context is Context, id is Id, c1 is Vector, c2 is Vector) returns Query
 {
     fCuboid(context, id, { "corner1" : c1, "corner2" : c2 });
     return qCreatedBy(id, EntityType.BODY);
@@ -86,13 +86,13 @@ function cube(context is Context, id is Id, c1 is Vector, c2 is Vector) returns 
 /** A small cube at p: a reference body. */
 function marker(context is Context, id is Id, p is Vector) returns Query
 {
-    return cube(context, id, p - pt(0.5, 0.5, 0.5), p + pt(0.5, 0.5, 0.5));
+    return makeCube(context, id, p - pt(0.5, 0.5, 0.5), p + pt(0.5, 0.5, 0.5));
 }
 
 /** A sheet copied from the face of a new cube through point p (the cube is deleted). */
 function sheetFromCube(context is Context, id is Id, c1 is Vector, c2 is Vector, p is Vector) returns Query
 {
-    const body = cube(context, id + "cube", c1, c2);
+    const body = makeCube(context, id + "cube", c1, c2);
     opExtractSurface(context, id + "sheet", { "faces" : qContainsPoint(qOwnedByBody(body, EntityType.FACE), p) });
     opDeleteBodies(context, id + "delete", { "entities" : body });
     return qCreatedBy(id + "sheet", EntityType.BODY);
@@ -169,8 +169,8 @@ function splitTests(context is Context, id is Id) returns array
         for (var keepNear in [true, false])
         {
             const cid = id + ("c" ~ (flip ? "f" : "n") ~ (keepNear ? "k" : "o"));
-            const target = cube(context, cid + "t", pt(-50, -50, -50), pt(50, 50, 50));
-            const missed = cube(context, cid + "m", pt(-200, -10, -10), pt(-180, 10, 10));
+            const target = makeCube(context, cid + "t", pt(-50, -50, -50), pt(50, 50, 50));
+            const missed = makeCube(context, cid + "m", pt(-200, -10, -10), pt(-180, 10, 10));
             opPlane(context, cid + "pz", { "plane" : plane(pt(0, 0, 0), vector(0, 0, flip ? -1 : 1)), "width" : mm(400), "height" : mm(400) });
             opPlane(context, cid + "px", { "plane" : plane(pt(0, 0, 0), vector(flip ? 1 : -1, 0, 0)), "width" : mm(400), "height" : mm(400) });
             const reference = marker(context, cid + "r", pt(30, 0, 30));
@@ -210,7 +210,7 @@ function splitTests(context is Context, id is Id) returns array
     // Keep both sides, two tools: four pieces.
     {
         const cid = id + "both";
-        const target = cube(context, cid + "t", pt(950, -50, -50), pt(1050, 50, 50));
+        const target = makeCube(context, cid + "t", pt(950, -50, -50), pt(1050, 50, 50));
         opPlane(context, cid + "pz", { "plane" : plane(pt(1000, 0, 0), vector(0, 0, 1)), "width" : mm(400), "height" : mm(400) });
         opPlane(context, cid + "px", { "plane" : plane(pt(1000, 0, 0), vector(1, 0, 0)), "width" : mm(400), "height" : mm(400) });
         splitPlus(context, cid + "split", {
@@ -225,7 +225,7 @@ function splitTests(context is Context, id is Id) returns array
     // A sheet tool that is deleted afterwards (Keep tools off).
     {
         const cid = id + "sheet";
-        const target = cube(context, cid + "t", pt(1950, -50, -50), pt(2050, 50, 50));
+        const target = makeCube(context, cid + "t", pt(1950, -50, -50), pt(2050, 50, 50));
         const tool = sheetFromCube(context, cid + "tool", pt(1900, -100, -100), pt(2100, 100, 0), pt(2000, 0, 0));
         const reference = marker(context, cid + "r", pt(2000, 0, -30));
         splitPlus(context, cid + "split", {
