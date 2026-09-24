@@ -797,7 +797,17 @@ export function publishQueryVariable(context is Context, name is string, descrip
         var held = makeRobustQueriesBatched(context, q);
         if (track)
         {
-            held = append(held, startTracking(context, q));
+            // Only the entity types held now: features built from these entities (a Ruled
+            // surface on tracked edges) are derived from them too, and would add their bodies
+            // and faces.
+            const tracking = startTracking(context, q);
+            for (var t in [EntityType.BODY, EntityType.FACE, EntityType.EDGE, EntityType.VERTEX])
+            {
+                if (!isQueryEmpty(context, qEntityFilter(q, t)))
+                {
+                    held = append(held, qEntityFilter(tracking, t));
+                }
+            }
         }
         stored = qUnion(held);
     }
