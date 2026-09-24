@@ -25,6 +25,12 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  * plane). A multi-face surface splits by its faces as they are; "Trim to face boundaries"
  * applies to single faces, as in the built-in.
  *
+ * FACE split type: the faces picked are split by every tool in turn (opSplitFace; planes
+ * and mate connectors infinite, surfaces and faces as they are); nothing is removed, and
+ * the pieces and regions below are FACES. The side reference, when given, only names the
+ * regions of a one-tool split (near / far). Edge tools are not offered: the side rule needs
+ * a surface; use the built-in Split for projected edges.
+ *
  * REGIONS. Every resulting piece is placed by which side of each tool it lies on (its
  * centroid's signed distance), and named by position along the tools, in the order picked:
  *     1 tool      near / far (from the keep side reference), or front / back (the sides the
@@ -47,14 +53,25 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  *     splitFaces             faces the splits created (the caps on solids)
  */
 annotation { "Feature Type Name" : "Split+",
-        "Feature Type Description" : "Split parts, surfaces or curves with several tools; when one side is kept, the side is the one a reference is on, whatever the tools' orientations.",
+        "Feature Type Description" : "Split parts, surfaces, curves or faces with several tools; when one side is kept, the side is the one a reference is on, whatever the tools' orientations.",
         "Filter Selector" : "allparts" }
 export const splitPlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Parts, surfaces, or curves to split",
-                    "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE) && ModifiableEntityOnly.YES && SketchObject.NO }
-        definition.targets is Query;
+        annotation { "Name" : "Split type", "UIHint" : UIHint.HORIZONTAL_ENUM, "Default" : SplitPlusType.PART }
+        definition.splitType is SplitPlusType;
+
+        if (definition.splitType == SplitPlusType.PART)
+        {
+            annotation { "Name" : "Parts, surfaces, or curves to split",
+                        "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE) && ModifiableEntityOnly.YES && SketchObject.NO }
+            definition.targets is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Faces to split", "Filter" : EntityType.FACE && SketchObject.NO && ConstructionObject.NO && ModifiableEntityOnly.YES }
+            definition.faceTargets is Query;
+        }
 
         annotation { "Name" : "Entities to split with",
                     "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR,
@@ -64,18 +81,24 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Keep tools", "Default" : false }
         definition.keepTools is boolean;
 
-        annotation { "Name" : "Trim to face boundaries", "Default" : false }
-        definition.useTrimmed is boolean;
-
-        annotation { "Name" : "Keep both sides", "Default" : true }
-        definition.keepBothSides is boolean;
-
-        if (!definition.keepBothSides)
+        if (definition.splitType == SplitPlusType.PART)
         {
-            annotation { "Name" : "Keep side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                        "Description" : "Geometry on the side to keep of every tool. Leave empty for the built-in front / back choice." }
-            definition.keepReference is Query;
+            annotation { "Name" : "Trim to face boundaries", "Default" : false }
+            definition.useTrimmed is boolean;
 
+            annotation { "Name" : "Keep both sides", "Default" : true }
+            definition.keepBothSides is boolean;
+        }
+
+        if (definition.splitType == SplitPlusType.FACE || !definition.keepBothSides)
+        {
+            annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Geometry on one side of the tools. Part split keeping one side: the side of every tool to keep (empty = the built-in front / back choice). With one tool it also names the regions near / far." }
+            definition.keepReference is Query;
+        }
+
+        if (definition.splitType == SplitPlusType.PART && !definition.keepBothSides)
+        {
             annotation { "Name" : "Keep side nearest reference", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION,
                         "Description" : "On: keep the side of each tool the reference is on. Off: keep the other side. Without a reference: on keeps each tool's front (the side its normal points to), off its back." }
             definition.keepNear is boolean;
@@ -88,22 +111,34 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         }
     }
     {
-        verifyNonemptyQuery(context, definition, "targets", ErrorStringEnum.SPLIT_SELECT_TARGETS);
+        const faceMode = definition.splitType == SplitPlusType.FACE;
+        if (faceMode)
+        {
+            verifyNonemptyQuery(context, definition, "faceTargets", ErrorStringEnum.SPLIT_SELECT_TARGETS);
+        }
+        else
+        {
+            verifyNonemptyQuery(context, definition, "targets", ErrorStringEnum.SPLIT_SELECT_TARGETS);
+        }
         verifyNonemptyQuery(context, definition, "tools", ErrorStringEnum.SPLIT_SELECT_TOOL);
-        if (!isQueryEmpty(context, qIntersection([definition.targets, qOwnerBody(definition.tools)])))
+        const clash = faceMode ? qIntersection([definition.faceTargets, facesOf(definition.tools)])
+                               : qIntersection([definition.targets, qOwnerBody(definition.tools)]);
+        if (!isQueryEmpty(context, clash))
         {
             throw regenError("A tool is also a target; pick it only once.", ["tools"]);
         }
 
-        const probe = definition.keepBothSides ? undefined : referenceProbe(context, definition.keepReference);
+        // A face split removes nothing; there the reference only names the sides.
+        const probe = (faceMode || !definition.keepBothSides) ? referenceProbe(context, definition.keepReference) : undefined;
         const tools = evaluateQuery(context, definition.tools);
 
         var tempPlanes = [];
         var resolvedTools = [];
-        var pieces = definition.targets;
+        var pieces = faceMode ? qEntityFilter(definition.faceTargets, EntityType.FACE) : definition.targets;
         for (var i = 0; i < size(tools); i += 1)
         {
             var tool = tools[i];
+            var isPlane = false;
             const cSys = mateConnectorFrame(context, tool);
             if (cSys != undefined)
             {
@@ -111,9 +146,18 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                 opPlane(context, planeId, { "plane" : plane(cSys) });
                 tool = qCreatedBy(planeId, EntityType.FACE);
                 tempPlanes = append(tempPlanes, qCreatedBy(planeId, EntityType.BODY));
+                isPlane = true;
+            }
+            resolvedTools = append(resolvedTools, tool);
+
+            if (faceMode)
+            {
+                const faceSplitId = id + ("splitFace" ~ i);
+                opSplitFace(context, faceSplitId, faceSplitDefinition(context, pieces, tool, isPlane));
+                pieces = qUnion(evaluateQuery(context, qUnion([pieces, qCreatedBy(faceSplitId, EntityType.FACE)])));
+                continue;
             }
 
-            resolvedTools = append(resolvedTools, tool);
             const keepType = keepTypeFor(context, definition, probe, tool, i);
             const splitId = id + ("split" ~ i);
             opSplitPart(context, splitId, {
@@ -127,7 +171,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         }
 
         // Cuts and regions, read while the tools (and the temporary planes) still exist.
-        const allCuts = qIntersection([qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE), qCreatedBy(id, EntityType.EDGE)]);
+        const pieceEdges = faceMode ? qAdjacent(pieces, AdjacencyType.EDGE, EntityType.EDGE)
+                                    : qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE);
+        const allCuts = qIntersection([pieceEdges, qCreatedBy(id, EntityType.EDGE)]);
         const splitEdges = oneEdgePerCut(context, allCuts, resolvedTools);
         const regions = classifyRegions(context, evaluateQuery(context, pieces), resolvedTools, probe);
         const cutsByTool = cutsPerTool(context, splitEdges, resolvedTools);
@@ -150,10 +196,14 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         {
             throw regenError("Nothing is left: no part of the targets lies on the kept side of every tool.", ["keepReference"]);
         }
+        const edgesOf = function(q is Query) returns Query
+            {
+                return faceMode ? faceRegionEdges(context, q, allCuts) : regionEdges(q, allCuts);
+            };
 
         var queries = {
-            "splitFaces" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
-                    "Faces the splits created (the caps on solids).", DebugColor.MAGENTA),
+            "splitFaces" : extractableQuery(faceMode ? qNothing() : qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
+                    "Faces the splits created (the caps on solids; empty in a face split).", DebugColor.MAGENTA),
             "splitEdges" : extractableQuery(splitEdges,
                     "The cuts: one edge per cut, the one on the piece in front of its tool (the side the tool's normal points to).",
                     DebugColor.MAGENTA)
@@ -170,7 +220,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             const name = regions.names[r];
             const bodies = qUnion(regions.bodies[r]);
             queries[name] = extractableQuery(bodies, "Region " ~ name ~ ": " ~ regions.descriptions[r] ~ ".", DebugColor.CYAN);
-            queries[name ~ "Edges"] = extractableQuery(regionEdges(bodies, allCuts),
+            queries[name ~ "Edges"] = extractableQuery(edgesOf(bodies),
                     "Edges of region " ~ name ~ " except the cuts (a surface's boundary edges).", DebugColor.CYAN);
             if (regions.outside[r])
             {
@@ -182,9 +232,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             }
         }
         queries["outside"] = extractableQuery(qUnion(outside), "The regions beyond the first and last tools (start and end).", DebugColor.CYAN);
-        queries["outsideEdges"] = extractableQuery(regionEdges(qUnion(outside), allCuts), "Edges of the outside regions except the cuts.", DebugColor.CYAN);
+        queries["outsideEdges"] = extractableQuery(edgesOf(qUnion(outside)), "Edges of the outside regions except the cuts.", DebugColor.CYAN);
         queries["inside"] = extractableQuery(qUnion(inside), "Every region between the first and last tools.", DebugColor.CYAN);
-        queries["insideEdges"] = extractableQuery(regionEdges(qUnion(inside), allCuts), "Edges of the inside regions except the cuts.", DebugColor.CYAN);
+        queries["insideEdges"] = extractableQuery(edgesOf(qUnion(inside)), "Edges of the inside regions except the cuts.", DebugColor.CYAN);
 
         if (regions.problem != undefined)
         {
@@ -200,15 +250,18 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
 
         embedStandardOutputs(context, id, {
                     "output" : kept,
-                    "outputDescription" : "The split pieces",
-                    "inputs" : qUnion([definition.targets, definition.tools]),
+                    "outputDescription" : faceMode ? "The split faces" : "The split pieces",
+                    "inputs" : qUnion([faceMode ? definition.faceTargets : definition.targets, definition.tools]),
                     "variables" : {
-                        "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces the split left."),
+                        "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces the split left (faces, in a face split)."),
                         "regionCount" : extractableVariable(size(regions.names), "Regions the tools define: 2 for one tool, N + 1 for N tools.")
                     },
                     "queries" : queries
                 });
     }, {
+        "splitType" : SplitPlusType.PART,
+        "targets" : qNothing(),
+        "faceTargets" : qNothing(),
         "keepTools" : false,
         "useTrimmed" : false,
         "keepBothSides" : true,
@@ -216,6 +269,67 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         "keepNear" : true,
         "debugPrintSides" : false
     });
+
+/** Split whole parts (bodies), or only faces (nothing removed). */
+export enum SplitPlusType
+{
+    annotation { "Name" : "Part" }
+    PART,
+    annotation { "Name" : "Face" }
+    FACE
+}
+
+/**
+ * The opSplitFace definition for one tool: construction planes and mate-connector planes
+ * are infinite (planeTools), a surface body cuts as a body, any other face as a face.
+ */
+function faceSplitDefinition(context is Context, faces is Query, tool is Query, isPlane is boolean) returns map
+{
+    var result = { "faceTargets" : faces, "keepToolSurfaces" : true };
+    if (isPlane || !isQueryEmpty(context, qConstructionFilter(qEntityFilter(tool, EntityType.FACE), ConstructionObject.YES)))
+    {
+        result.planeTools = tool;
+    }
+    else if (!isQueryEmpty(context, qEntityFilter(tool, EntityType.BODY)))
+    {
+        result.bodyTools = tool;
+    }
+    else
+    {
+        result.faceTools = tool;
+    }
+    return result;
+}
+
+/** The boundary of a set of faces except the cuts: edges with exactly one adjacent face in the set. */
+function faceRegionEdges(context is Context, faces is Query, cuts is Query) returns Query
+{
+    const set = qUnion(evaluateQuery(context, faces));
+    var boundary = [];
+    for (var e in evaluateQuery(context, qSubtraction(qAdjacent(set, AdjacencyType.EDGE, EntityType.EDGE), cuts)))
+    {
+        if (size(evaluateQuery(context, qIntersection([qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE), set]))) == 1)
+        {
+            boundary = append(boundary, e);
+        }
+    }
+    return qUnion(boundary);
+}
+
+/**
+ * The point that stands for a piece when reading its side of a tool: a face's point nearest
+ * its centroid (a curved face's centroid can lie off it, even across a tool), else the
+ * body's centroid.
+ */
+function piecePoint(context is Context, piece is Query) returns Vector
+{
+    const centroid = evApproximateCentroid(context, { "entities" : piece });
+    if (isQueryEmpty(context, qEntityFilter(piece, EntityType.FACE)))
+    {
+        return centroid;
+    }
+    return evDistance(context, { "side0" : centroid, "side1" : piece }).sides[1].point;
+}
 
 /**
  * The cut edges with each coincident pair reduced to one. Keeping both sides leaves every cut
@@ -375,7 +489,7 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
     var sides = [];
     for (var piece in pieces)
     {
-        const centroid = evApproximateCentroid(context, { "entities" : piece });
+        const centroid = piecePoint(context, piece);
         var row = [];
         for (var k = 0; k < n; k += 1)
         {

@@ -300,6 +300,68 @@ function splitTests(context is Context, id is Id) returns array
         out = append(out, result("Split+ sheet tool, reference below", size(bodies) == 1 && near(c[2], mm(-25), mm(0.01)) && toolGone,
                     size(bodies) ~ " bodies, centroid z " ~ fmt(c[2]) ~ " (expected -25), tool deleted " ~ toolGone));
     }
+
+    // Face split: two faces of a cube (top z 50, front y -50) by two planes x 2480 / 2520
+    // with opposed normals. Nothing removed; regions are faces.
+    {
+        const cid = id + "faces";
+        const cube = makeCube(context, cid + "t", pt(2450, -50, -50), pt(2550, 50, 50));
+        const faces = qUnion([qContainsPoint(qOwnedByBody(cube, EntityType.FACE), pt(2500, 0, 50)),
+                    qContainsPoint(qOwnedByBody(cube, EntityType.FACE), pt(2500, -50, 0))]);
+        opPlane(context, cid + "p1", { "plane" : plane(pt(2480, 0, 0), vector(1, 0, 0)), "width" : mm(400), "height" : mm(400) });
+        opPlane(context, cid + "p2", { "plane" : plane(pt(2520, 0, 0), vector(1, 0, 0)), "width" : mm(400), "height" : mm(400) });
+        splitPlus(context, cid + "split", {
+                    "splitType" : SplitPlusType.FACE,
+                    "faceTargets" : faces,
+                    "tools" : qUnion([qCreatedBy(cid + "p1", EntityType.FACE), qCreatedBy(cid + "p2", EntityType.FACE)]),
+                    "keepTools" : true
+                });
+        const embedded = getVariable(context, toString(cid + "split"));
+        var detail = "";
+        var ok = size(evaluateQuery(context, cube)) == 1 && size(evaluateQuery(context, qOwnedByBody(cube, EntityType.FACE))) == 10;
+        for (var region in [["start", 2465], ["middle", 2500], ["end", 2535]])
+        {
+            const found = evaluateQuery(context, embedded.query[region[0]].value);
+            var xs = "";
+            for (var f in found)
+            {
+                ok = ok && near(evApproximateCentroid(context, { "entities" : f })[0], mm(region[1]), mm(0.01));
+                xs ~= fmt(evApproximateCentroid(context, { "entities" : f })[0]) ~ " ";
+            }
+            ok = ok && size(found) == 2;
+            detail ~= region[0] ~ " " ~ size(found) ~ " faces at x " ~ xs ~ "; ";
+        }
+        const middleEdges = size(evaluateQuery(context, embedded.query.middleEdges.value));
+        const startCut = size(evaluateQuery(context, embedded.query.startCut.value));
+        const splitEdges = size(evaluateQuery(context, embedded.query.splitEdges.value));
+        ok = ok && middleEdges == 2 && startCut == 2 && splitEdges == 4 && embedded.variable.pieceCount.value == 6;
+        out = append(out, result("Split+ face split: regions of faces", ok,
+                    detail ~ "middleEdges " ~ middleEdges ~ " (expected 2), startCut " ~ startCut ~ " (expected 2), splitEdges " ~ splitEdges
+                    ~ " (expected 4), pieceCount " ~ embedded.variable.pieceCount.value ~ " (expected 6), cube faces "
+                    ~ size(evaluateQuery(context, qOwnedByBody(cube, EntityType.FACE))) ~ " (expected 10)"));
+    }
+
+    // Face split by a sheet tool (deleted afterwards), reference names near / far.
+    {
+        const cid = id + "facesheet";
+        const cube = makeCube(context, cid + "t", pt(3450, -50, -50), pt(3550, 50, 50));
+        const top = qContainsPoint(qOwnedByBody(cube, EntityType.FACE), pt(3500, 0, 50));
+        const tool = sheetFromCube(context, cid + "tool", pt(3500, -100, -100), pt(3600, 100, 100), pt(3500, 0, 0));
+        const reference = marker(context, cid + "r", pt(3400, 0, 0));
+        splitPlus(context, cid + "split", {
+                    "splitType" : SplitPlusType.FACE,
+                    "faceTargets" : top,
+                    "tools" : tool,
+                    "keepReference" : reference
+                });
+        const embedded = getVariable(context, toString(cid + "split"));
+        const nearFaces = evaluateQuery(context, embedded.query.near.value);
+        const farFaces = evaluateQuery(context, embedded.query.far.value);
+        const x = size(nearFaces) == 1 ? evApproximateCentroid(context, { "entities" : nearFaces[0] })[0] : 0 * meter;
+        const toolGone = isQueryEmpty(context, tool);
+        out = append(out, result("Split+ face split by a sheet: near / far", size(nearFaces) == 1 && size(farFaces) == 1 && near(x, mm(3475), mm(0.01)) && toolGone,
+                    "near " ~ size(nearFaces) ~ " face at x " ~ fmt(x) ~ " (expected 1 at 3475), far " ~ size(farFaces) ~ " (expected 1), tool deleted " ~ toolGone));
+    }
     return out;
 }
 
