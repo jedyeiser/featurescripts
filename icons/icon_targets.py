@@ -9,6 +9,7 @@ TARGETS = [
     ("curve_tools", "map_curve", "map_curve"),
     ("curve_tools", "merge_curve", "merge_curve"),
     ("curve_tools", "evaluate_profiles", "evaluate_profiles"),
+    ("curve_tools", "fillet_wire", "fillet_wire"),
     ("driven_offset", "create_offset_profile", "create_offset_profile"),
     ("driven_offset", "driven_edge_offset", "driven_edge_offset"),
     ("driven_offset", "driven_offset_surface", "driven_offset_surface"),

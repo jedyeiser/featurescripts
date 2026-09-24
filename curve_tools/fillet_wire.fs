@@ -4,6 +4,8 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/bridgingCurve.fs", version : "3083.0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: fillet_wire_icon.svg (feature icon)
+IconNamespace::import(path : "afe1013370939dbb2fb18df8", version : "2a05e21e8b34f6331d641275");
 
 /**
  * Fillet wire: rounds chosen G0 corners of a curve (a wire, or a chain of edges) with a radius.
@@ -39,7 +41,7 @@ const FILLET_TOLERANCE = 1e-7 * meter;
 /** Corner angle: default 0.5 degrees. */
 export const FILLET_CORNER_ANGLE_BOUNDS = { (degree) : [0.001, 0.5, 90] } as AngleBoundSpec;
 
-annotation { "Feature Type Name" : "Fillet wire",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Fillet wire",
         "Feature Type Description" : "Round the corners of a wire or a chain of edges: exact arcs (tangent) or curvature-continuous blends.",
         "Manipulator Change Function" : "filletWireManipulatorChange" }
 export const filletWire = defineFeature(function(context is Context, id is Id, definition is map)
