@@ -139,8 +139,11 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
         {
             annotation { "Group Name" : "Fit", "Collapsed By Default" : true }
             {
-                annotation { "Name" : "Samples per edge", "Description" : "Offset stations per source edge; the fit passes within tolerance of every one." }
+                annotation { "Name" : "Samples per edge", "Description" : "At least this many offset stations per source edge; the fit passes within tolerance of every one." }
                 isInteger(definition.samplesPerEdge, { (unitless) : [4, 24, 500] } as IntegerBoundSpec);
+
+                annotation { "Name" : "Max station spacing", "Description" : "Long edges get more stations, at most this far apart. Between stations the offset is interpolated, so this bounds the error there." }
+                isLength(definition.maxSpacing, { (millimeter) : [0.1, 5, 1000] } as LengthBoundSpec);
 
                 annotation { "Name" : "Fit tolerance" }
                 isLength(definition.fitTolerance, { (millimeter) : [0.0001, 0.001, 1] } as LengthBoundSpec);
@@ -172,6 +175,7 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
         "sideReference" : qNothing(),
         "towardReference" : true,
         "samplesPerEdge" : 24,
+        "maxSpacing" : 5 * millimeter,
         "fitTolerance" : 0.001 * millimeter,
         "debugPrint" : false
     });
@@ -300,9 +304,8 @@ function offsetCurves(context is Context, id is Id, definition is map, probe)
  */
 function offsetPath(context is Context, id is Id, definition is map, path is Path, probe, axis is Vector, index is number) returns map
 {
-    const count = definition.samplesPerEdge;
-    const stations = pathStations(context, path, count);
-    const perEdge = count + 5;
+    const sampled = pathStations(context, path, definition.samplesPerEdge, definition.maxSpacing);
+    const stations = sampled.stations;
     const nEdges = size(path.edges);
 
     // Station nearest the reference: where the side is read (and the transport frame starts).
@@ -342,8 +345,8 @@ function offsetPath(context is Context, id is Id, definition is map, path is Pat
     var pieces = [];
     for (var j = 0; j < nEdges; j += 1)
     {
-        const base = j * perEdge;
-        const last = base + perEdge - 1;
+        const base = sampled.first[j];
+        const last = sampled.last[j];
         var positions = [stations[base].x + d * directions[base]];
         for (var k = base + 3; k <= last - 3; k += 1)
         {
@@ -479,23 +482,29 @@ function offsetPath(context is Context, id is Id, definition is map, path is Pat
 
 /**
  * Stations along a chain, edge by edge in travel order: per edge the start, two helper
- * stations just after it, count - 1 interior stations, two helpers just before the end, and
- * the end -- count + 5 per edge. Helpers only feed the end tangents. Tangents follow the
- * direction of travel.
+ * stations just after it, n - 1 interior stations, two helpers just before the end, and the
+ * end, n being the larger of `count` and length / maxSpacing. Helpers only feed the end
+ * tangents. Tangents follow the direction of travel.
+ *
+ * @returns {map} : { stations, first, last } -- first[j] / last[j] the index of edge j's
+ *      start and end station.
  */
-function pathStations(context is Context, path is Path, count is number) returns array
+function pathStations(context is Context, path is Path, count is number, maxSpacing is ValueWithUnits) returns map
 {
-    var ts = [0, TANGENT_STEP, 2 * TANGENT_STEP];
-    for (var k = 1; k < count; k += 1)
-    {
-        ts = append(ts, k / count);
-    }
-    ts = concatenateArrays([ts, [1 - 2 * TANGENT_STEP, 1 - TANGENT_STEP, 1]]);
-    const m = size(ts);
-
     var stations = [];
+    var first = [];
+    var last = [];
     for (var j = 0; j < size(path.edges); j += 1)
     {
+        const n = max(count, ceil(evLength(context, { "entities" : path.edges[j] }) / maxSpacing));
+        var ts = [0, TANGENT_STEP, 2 * TANGENT_STEP];
+        for (var k = 1; k < n; k += 1)
+        {
+            ts = append(ts, k / n);
+        }
+        ts = concatenateArrays([ts, [1 - 2 * TANGENT_STEP, 1 - TANGENT_STEP, 1]]);
+        const m = size(ts);
+
         const flipped = path.flipped[j];
         var parameters = [];
         for (var t in ts)
@@ -503,6 +512,7 @@ function pathStations(context is Context, path is Path, count is number) returns
             parameters = append(parameters, flipped ? 1 - t : t);
         }
         const lines = evEdgeTangentLines(context, { "edge" : path.edges[j], "parameters" : parameters });
+        first = append(first, size(stations));
         for (var k = 0; k < m; k += 1)
         {
             stations = append(stations, {
@@ -511,8 +521,9 @@ function pathStations(context is Context, path is Path, count is number) returns
                         "helper" : k == 1 || k == 2 || k == m - 2 || k == m - 3
                     });
         }
+        last = append(last, size(stations) - 1);
     }
-    return stations;
+    return { "stations" : stations, "first" : first, "last" : last };
 }
 
 /**
