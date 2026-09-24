@@ -1,0 +1,55 @@
+Modify curve end 1 | modCurveEnd | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 1 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 4 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 5 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 6 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Modify curve end 2 | modCurveEnd | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 7 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 8 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Final_FPT | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Scale Footprint 1 | scaleFootprint | bodies 2 | edges 34 len 3787.51735 | faces 0 area 0
+Analyze footprint 1 | analyzeFootprint | bodies 7 | edges 7 len 3242.97743 | faces 0 area 0
+Join_Ref_Wires | joinWires | bodies 1 | edges 4 len 1904.45184 | faces 0 area 0
+joinProfileWires | joinWires | bodies 1 | edges 3 len 1830.19559 | faces 0 area 0
+Generate baseline 1 | generateBaseline | bodies 8 | edges 10 len 4316.54976 | faces 0 area 0
+Join wires 3 | joinWires | bodies 1 | edges 6 len 1904.56769 | faces 0 area 0
+Wrap_Periphery | wrapAndLoft | bodies 2 | edges 69 len 6044.10806 | faces 17 area 39609.387
+Name_wire | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Name_surf | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Footprint_wrap | wrapCurve | bodies 1 | edges 17 len 1893.74813 | faces 0 area 0
+profile_wrap | wrapCurve | bodies 1 | edges 3 len 1825.49215 | faces 0 area 0
+wrap_profile_refs | wrapAndLoft | bodies 4 | edges 16 len 760 | faces 4 area 6000
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+name_profile_refs | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Top_Edge | drivenEdgeOffset | bodies 1 | edges 17 len 1889.27494 | faces 0 area 0
+Bottom_Surf | extrudeEdge | bodies 1 | edges 19 len 4334.13538 | faces 6 area 142842.5961
+Ski_Thck_Profile | extrudeEdge | bodies 1 | edges 10 len 3950.98431 | faces 3 area 136911.8914
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+SW_Shelf_Driven_Offset | drivenEdgeOffset | bodies 1 | edges 22 len 1900.04434 | faces 0 area 0
+SW_Shelf_Surface | wrapAndLoft | bodies 1 | edges 67 len 4298.48346 | faces 22 area 40062.3373
+Cavity_Depth | drivenOffsetSurface | bodies 2 | edges 33 len 6159.12218 | faces 8 area 137103.0552
+SW_Rout_Surface | drivenOffsetSurface | bodies 1 | edges 28 len 1803.81454 | faces 14 area 14865.2763
+SW_Rout_Periphery_Trim | mutualTrimToReference | bodies 0 | edges 10 len 871.35782 | faces 0 area 0
+Clean_Pinch_Offset_Wire | cleanWire | bodies 1 | edges 9 len 1892.11519 | faces 0 area 0
+Cap_Wall_Surface | drivenOffsetSurface | bodies 5 | edges 92 len 11413.32501 | faces 13 area 23068.2325
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+CD_Wall_Mutual_+ | mutualTrimToReference | bodies 0 | edges 0 len 0 | faces 0 area 0
+Wall_Top_Mutal_+ | mutualTrimToReference | bodies 0 | edges 0 len 0 | faces 0 area 0
+Mutual Trim+ 1 | mutualTrimToReference | bodies 0 | edges 0 len 0 | faces 0 area 0
+Mutual Trim+ 2 | mutualTrimToReference | bodies 0 | edges 0 len 0 | faces 0 area 0
+Top_Periphery | mutualTrimToReference | bodies 0 | edges 0 len 0 | faces 0 area 0
+Periphery_Bottom | mutualTrimToReference | bodies 0 | edges 0 len 0 | faces 0 area 0
+ALL bodies 193 total edge length 130128.7265

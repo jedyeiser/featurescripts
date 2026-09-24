@@ -18,7 +18,16 @@ std/           - Core geometry, math, and utility modules (33 files)
 tools/         - BSpline & geometry utilities (14 files, production-ready)
 footprint/     - Footprint geometry analysis feature (archived)
 gordonSurface/ - Gordon surface interpolation feature (archived)
+driven_offset/ - Driven edge offset / surface (Design_Master document) -- read driven_offset/DOCUMENT_MAP.md first
+curve_tools/   - Curve_tools document: curve_core + Clean wire, Map curve, Merge curve, Evaluate profiles
+variable_tools/- Variable_tools document: Extract variables + extract_outputs (producer library)
+reference_side/- Reference_Side_Features document: Mutual Trim+, Split+, Offset+ (+ test harness)
+devtools/onshape/ - eval API runner, feature-insertion helpers, Design_Master regression fingerprint
 ```
+
+These four documents import each other: curve_core and extract_outputs are pinned by
+Onshape VERSION, and only the user creates versions. Import chains, legacy tabs and
+re-pin procedure: `driven_offset/DOCUMENT_MAP.md`.
 
 ## Import Pattern
 
