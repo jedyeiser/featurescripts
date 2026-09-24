@@ -10,7 +10,8 @@ export import(path : "3cac74f0bc2b98272db13cd3", version : "");
  * (extract_variables.fs): reading a FeatureList of sources -- with or without an embedded
  * map -- into one table of addressable keys, resolving the entry types (source key,
  * filtered, closest to point, shared edges, chain end, edges between points, bridging curve
- * input, region), and publishing ordinary variables and query variables with the std robust freeze.
+ * input, region), and publishing ordinary variables and query variables (std robust freeze, optionally
+ * tracked). Every source also offers modifiedFaces / modifiedEdges / modifiedVertices.
  *
  * (Evan Reese's "Extract Variables" approach, ported to FS 3070 and grown into our own.)
  * Producers do not import this tab; they import extract_outputs.fs.
@@ -185,6 +186,16 @@ export function readSources(context is Context, sourceFeatures is map) returns m
                             "description" : "Created by source " ~ (n + 1) ~ " (" ~ key ~ ")." });
             }
         }
+        // Resolved only when an entry uses one (see keyValue): each is a scan of the Part Studio.
+        for (var key in keys(MODIFIED_KEYS))
+        {
+            if (offeredHere[key] != true)
+            {
+                offers = append(offers, { "key" : key, "source" : n + 1, "kind" : "query", "implicit" : true,
+                            "modifiedBy" : featureId, "entityType" : MODIFIED_KEYS[key],
+                            "description" : "Created or modified by source " ~ (n + 1) ~ " and not changed since (" ~ key ~ ")." });
+            }
+        }
     }
 
     // Second pass: addresses.
@@ -218,6 +229,61 @@ function implicitOutputs(featureId is Id) returns map
             "outputEdges" : qCreatedBy(featureId, EntityType.EDGE),
             "outputVertices" : qCreatedBy(featureId, EntityType.VERTEX)
         };
+}
+
+/**
+ * The keys every source offers besides the standard outputs: the entities whose last
+ * modifying operation belongs to the source -- what an in-place feature (Move boundary,
+ * Replace face, ...) changed, since it creates nothing for outputEdges to find.
+ */
+export const MODIFIED_KEYS = {
+        "modifiedFaces" : EntityType.FACE,
+        "modifiedEdges" : EntityType.EDGE,
+        "modifiedVertices" : EntityType.VERTEX
+    };
+
+/**
+ * Entities of `entityType` that `featureId` created or last modified, as of this point in
+ * the tree. There is no query for this, so it checks every such entity in the Part Studio.
+ */
+export function qModifiedBy(context is Context, featureId is Id, entityType is EntityType) returns Query
+{
+    var found = [];
+    for (var e in evaluateQuery(context, qEverything(entityType)))
+    {
+        if (idStartsWith(lastModifyingOperationId(context, e), featureId))
+        {
+            found = append(found, e);
+        }
+    }
+    return qUnion(found);
+}
+
+/** True when operation id `opId` is `featureId` or one of its sub-operations. */
+function idStartsWith(opId is Id, featureId is Id) returns boolean
+{
+    if (size(opId) < size(featureId))
+    {
+        return false;
+    }
+    for (var k = 0; k < size(featureId); k += 1)
+    {
+        if (opId[k] != featureId[k])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** A key record's value; the modified* keys are resolved here, on first use. */
+export function keyValue(context is Context, record is map)
+{
+    if (record.modifiedBy != undefined)
+    {
+        return qModifiedBy(context, record.modifiedBy, record.entityType);
+    }
+    return record.value;
 }
 
 /**
@@ -279,7 +345,7 @@ export function describeSuffix(description) returns string
 /**
  * Resolves one Extract variables entry to what it publishes.
  *
- * @returns {map} : { kind ("variable" | "query"), value, description, evaluateOnUse }
+ * @returns {map} : { kind ("variable" | "query"), value, description, evaluateOnUse, track }
  *                  or { error : message, parameter : inner parameter id }.
  */
 export function resolveEntry(context is Context, available is map, entry is map) returns map
@@ -291,11 +357,13 @@ export function resolveEntry(context is Context, available is map, entry is map)
     }
     if (entry.x_type == ExtractEntryType.SOURCE_KEY)
     {
+        const evaluateOnUse = input.kind == "query" && entry.x_evaluateOnUse == true;
         return {
                 "kind" : input.kind,
-                "value" : input.value,
+                "value" : keyValue(context, input),
                 "description" : input.description,
-                "evaluateOnUse" : input.kind == "query" && entry.x_evaluateOnUse == true,
+                "evaluateOnUse" : evaluateOnUse,
+                "track" : input.kind == "query" && !evaluateOnUse && entry.x_track == true,
                 "debugColor" : input.debugColor
             };
     }
@@ -304,7 +372,7 @@ export function resolveEntry(context is Context, available is map, entry is map)
     {
         return { "error" : "'" ~ entry.x_sourceKey ~ "' is a value, not geometry", "parameter" : "x_sourceKey" };
     }
-    const q = input.value;
+    const q = keyValue(context, input);
     var result;
     var description;
     if (entry.x_type == ExtractEntryType.FILTERED)
@@ -329,7 +397,7 @@ export function resolveEntry(context is Context, available is map, entry is map)
         {
             return { "error" : other.error != undefined ? other.error : "'" ~ entry.x_secondKey ~ "' is not geometry", "parameter" : "x_secondKey" };
         }
-        result = qIntersection([edgesOf(q), edgesOf(other.value)]);
+        result = qIntersection([edgesOf(q), edgesOf(keyValue(context, other))]);
         description = "Edges shared by " ~ entry.x_sourceKey ~ " and " ~ entry.x_secondKey ~ ".";
     }
     else if (entry.x_type == ExtractEntryType.REGION)
@@ -347,7 +415,7 @@ export function resolveEntry(context is Context, available is map, entry is map)
             {
                 return { "error" : other.error != undefined ? other.error : "'" ~ entry.x_secondKey ~ "' is not geometry", "parameter" : "x_secondKey" };
             }
-            boundary = edgesOf(other.value);
+            boundary = edgesOf(keyValue(context, other));
         }
         const found = regionAround(context, entitiesOfType(q, ExtractEntityType.FACE), boundary, seed);
         if (found.error != undefined)
@@ -396,7 +464,7 @@ export function resolveEntry(context is Context, available is map, entry is map)
         description = "Edges of " ~ entry.x_sourceKey ~ " between two points.";
     }
     // Composed from what exists now: always held, never re-evaluated.
-    return { "kind" : "query", "value" : result, "description" : description, "evaluateOnUse" : false };
+    return { "kind" : "query", "value" : result, "description" : description, "evaluateOnUse" : false, "track" : entry.x_track == true };
 }
 
 /** Entities of a type, from a query holding bodies and/or entities. */
@@ -709,15 +777,29 @@ export function checkQueryVariableName(context is Context, name is string, fault
 }
 
 /**
- * Publishes `q` as query variable `name`. With `evaluateOnUse` off the stored query is the
- * std robust freeze `qUnion(makeRobustQueriesBatched(context, q))` -- the entities present
- * now, each tracked through identity-preserving edits (what the std Query variable feature
- * stores). With it on, `q` is stored symbolic and re-resolves wherever it is used.
+ * Publishes `q` as query variable `name`.
+ *
+ * Held (default): the std robust freeze `qUnion(makeRobustQueriesBatched(context, q))` -- the
+ * entities present now, each followed through identity-preserving edits (what the std Query
+ * variable feature stores).
+ * Tracked: that freeze plus `startTracking(context, q)` -- also every entity later derived from
+ * them (the halves of a split edge, the edge an extend rebuilt), resolved wherever the variable
+ * is used, so the same name can mean different entities before and after an edit.
+ * Evaluate on use: `q` stored as is and re-resolved wherever used.
  */
 export function publishQueryVariable(context is Context, name is string, description is string, q is Query,
-    evaluateOnUse is boolean, faultyParameter is string)
+    evaluateOnUse is boolean, track is boolean, faultyParameter is string)
 {
     checkQueryVariableName(context, name, faultyParameter);
-    const stored = evaluateOnUse ? q : qUnion(makeRobustQueriesBatched(context, q));
+    var stored = q;
+    if (!evaluateOnUse)
+    {
+        var held = makeRobustQueriesBatched(context, q);
+        if (track)
+        {
+            held = append(held, startTracking(context, q));
+        }
+        stored = qUnion(held);
+    }
     setQueryVariable(context, name, description, stored);
 }

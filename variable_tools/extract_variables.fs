@@ -15,13 +15,17 @@ IconNamespace::import(path : "1fec12e049522ab98f8177ff", version : "9c7ddae6a84d
  *
  * Sources need not be producers: every source offers the standard keys output /
  * outputFaces / outputEdges / outputVertices (embedded by a producer, else what the feature
- * created). Producers add their own keys. "Add keys from sources" lists them all.
+ * created), and modifiedFaces / modifiedEdges / modifiedVertices (what it created or last
+ * modified -- the only way to reach what an in-place feature like Move boundary changed).
+ * Producers add their own keys. "Add keys from sources" lists them all.
  *
  * Entry types: a source key as is; filtered (entity type, body type, name, largest N);
  * closest to a point; edges shared by two sources; a chain end; the edges of a chain
  * between two points; bridging curve input (the end edge and its vertex); a region (the faces
  * around a point, flood-filled up to boundary edges, or that region's boundary). Composed entries
  * hold the entities present now (std robust freeze); a source key may re-evaluate on use.
+ * "Track" adds a tracking query to the freeze, so the variable follows its entities through
+ * later splits and in-place edits.
  *
  * Names: `<prefix>_<name>`, the name defaulting to the key ("output@2" -> "output_2").
  * Notices: one per regeneration; a warning only when an entry could not be published.
@@ -129,6 +133,13 @@ export const extractVariables = defineFeature(function(context is Context, id is
                 annotation { "Name" : "Evaluate on use", "Default" : false, "Description" : "Queries only. Off: hold the entities present now. On: re-resolve wherever used." }
                 entry.x_evaluateOnUse is boolean;
             }
+
+            if (entry.x_type != ExtractEntryType.SOURCE_KEY || !entry.x_evaluateOnUse)
+            {
+                annotation { "Name" : "Track", "Default" : false,
+                            "Description" : "Queries only. Also follow the entities through later edits: a split edge gives both halves, an edge that Move boundary rebuilt gives the new edge. Wherever the variable is used it resolves to what the entities have become there. Entities that are consumed (deleted) are still lost." }
+                entry.x_track is boolean;
+            }
         }
 
         annotation { "Name" : "Print keys", "Default" : false, "Description" : "Print every key the sources offer to the FeatureScript notices." }
@@ -183,7 +194,7 @@ export const extractVariables = defineFeature(function(context is Context, id is
                 {
                     emptyEntries = append(emptyEntries, name);
                 }
-                publishQueryVariable(context, name, resolved.description, resolved.value, resolved.evaluateOnUse, nameParameter);
+                publishQueryVariable(context, name, resolved.description, resolved.value, resolved.evaluateOnUse, resolved.track == true, nameParameter);
                 manifest.queries = append(manifest.queries, name);
             }
             else
@@ -274,8 +285,14 @@ export function extractVariablesEditLogic(context is Context, id is Id, oldDefin
     for (var address in available.order)
     {
         // Faces, vertices and inputs are plumbing; add them by hand when a block needs them.
-        const key = available.keys[address].key;
-        if (listed[address] == true || isIn(key, ["outputFaces", "outputVertices", "inputs"]))
+        const record = available.keys[address];
+        const key = record.key;
+        if (listed[address] == true || isIn(key, ["outputFaces", "outputVertices", "inputs", "modifiedFaces", "modifiedVertices"]))
+        {
+            continue;
+        }
+        // modifiedEdges only for a source that publishes nothing itself (an in-place std feature).
+        if (key == "modifiedEdges" && available.sources[record.source - 1].embedded)
         {
             continue;
         }
@@ -283,7 +300,8 @@ export function extractVariablesEditLogic(context is Context, id is Id, oldDefin
                     "x_type" : ExtractEntryType.SOURCE_KEY,
                     "x_sourceKey" : address,
                     "x_name" : "",
-                    "x_evaluateOnUse" : false
+                    "x_evaluateOnUse" : false,
+                    "x_track" : false
                 });
     }
     return result;
