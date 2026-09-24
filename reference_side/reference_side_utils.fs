@@ -100,6 +100,63 @@ export function referencePointNear(context is Context, probe, near) returns Vect
     return evDistance(context, { "side0" : probe, "side1" : near }).sides[0].point;
 }
 
+/**
+ * The END outputs of chains of edges, named the same in every feature: for each open chain
+ * in `edges`, its free vertex nearest the matching entry of `startPoints` (where that
+ * chain's source starts) is the start, the other free vertex the end; each end's edge
+ * goes with it. Closed chains have no ends. `startPoints` holds one point per chain, or
+ * one for all.
+ *
+ * @returns {map} : { startVertex, endVertex, startEdge, endEdge } (queries, unions over chains)
+ */
+export function chainEnds(context is Context, chains is array, startPoints is array) returns map
+{
+    var result = { "startVertex" : [], "endVertex" : [], "startEdge" : [], "endEdge" : [] };
+    for (var c = 0; c < size(chains); c += 1)
+    {
+        var uses = {};
+        var edgeOf = {};
+        var vertexOf = {};
+        for (var edge in evaluateQuery(context, chains[c]))
+        {
+            for (var vertex in evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX)))
+            {
+                const key = toString(vertex);
+                uses[key] = (uses[key] == undefined ? 0 : uses[key]) + 1;
+                edgeOf[key] = edge;
+                vertexOf[key] = vertex;
+            }
+        }
+        var free = [];
+        for (var entry in uses)
+        {
+            if (entry.value == 1)
+            {
+                free = append(free, entry.key);
+            }
+        }
+        if (size(free) != 2)
+        {
+            continue;
+        }
+        const startPoint = startPoints[min(c, size(startPoints) - 1)];
+        const d0 = norm(evVertexPoint(context, { "vertex" : vertexOf[free[0]] }) - startPoint);
+        const d1 = norm(evVertexPoint(context, { "vertex" : vertexOf[free[1]] }) - startPoint);
+        const s = d0 <= d1 ? free[0] : free[1];
+        const e = d0 <= d1 ? free[1] : free[0];
+        result.startVertex = append(result.startVertex, vertexOf[s]);
+        result.endVertex = append(result.endVertex, vertexOf[e]);
+        result.startEdge = append(result.startEdge, edgeOf[s]);
+        result.endEdge = append(result.endEdge, edgeOf[e]);
+    }
+    return {
+            "startVertex" : qUnion(result.startVertex),
+            "endVertex" : qUnion(result.endVertex),
+            "startEdge" : qUnion(result.startEdge),
+            "endEdge" : qUnion(result.endEdge)
+        };
+}
+
 /** A length in mm with `digits` decimals, for the console. */
 export function fmtMM(value is ValueWithUnits, digits is number) returns string
 {

@@ -400,8 +400,9 @@ function offsetSurfaceTests(context is Context, id is Id) returns array
         {
             shown = append(shown, fmt(z));
         }
-        out = append(out, result("Offset+ surfaces of opposite normals, " ~ (toward ? "toward" : "away from") ~ " reference", ok,
-                    "z = " ~ join(shown, ", ") ~ " (expected +-" ~ fmt(want) ~ ")"));
+        const boundaryCount = size(evaluateQuery(context, getVariable(context, toString(cid + "offset")).query.boundaryEdges.value));
+        out = append(out, result("Offset+ surfaces of opposite normals, " ~ (toward ? "toward" : "away from") ~ " reference", ok && boundaryCount == 8,
+                    "z = " ~ join(shown, ", ") ~ " (expected +-" ~ fmt(want) ~ "), boundaryEdges " ~ boundaryCount ~ " (expected 8)"));
     }
     return out;
 }
@@ -529,6 +530,21 @@ function offsetCurveTests(context is Context, id is Id) returns array
         const range = distanceRange(context, wire, chain);
         out = append(out, result("Offset+ curve Z chain, one round + one trim", size(evaluateQuery(context, wire)) == 1 && near(length, want, mm(0.01)) && near(range.lo, d, mm(0.002)),
                     "length " ~ fmt(length) ~ " (expected " ~ fmt(want) ~ "), distance " ~ fmt(range.lo) ~ " .. " ~ fmt(range.hi)));
+
+        // Ends: start where the source starts (10000, -10), end at (10200, 90); one corner arc.
+        const embedded = getVariable(context, toString(cid + "offset"));
+        const starts = evaluateQuery(context, embedded.query.startVertex.value);
+        const ends = evaluateQuery(context, embedded.query.endVertex.value);
+        const arcs = evaluateQuery(context, embedded.query.cornerArcs.value);
+        const startEdges = evaluateQuery(context, embedded.query.startEdge.value);
+        const startAt = size(starts) == 1 ? evVertexPoint(context, { "vertex" : starts[0] }) : pt(0, 0, 0);
+        const endAt = size(ends) == 1 ? evVertexPoint(context, { "vertex" : ends[0] }) : pt(0, 0, 0);
+        const arcLength = size(arcs) == 1 ? evLength(context, { "entities" : arcs[0] }) : 0 * meter;
+        const startEdgeOk = size(startEdges) == 1 && !isQueryEmpty(context, qIntersection([qAdjacent(startEdges[0], AdjacencyType.VERTEX, EntityType.VERTEX), qUnion(starts)]));
+        out = append(out, result("Offset+ curve Z chain: ends and corner arc",
+                    norm(startAt - pt(10000, -10, 0)) < mm(0.01) && norm(endAt - pt(10200, 90, 0)) < mm(0.01) && near(arcLength, mm(5 * PI), mm(0.01)) && startEdgeOk,
+                    "start " ~ fmtV(startAt) ~ " (expected (10000, -10, 0)), end " ~ fmtV(endAt) ~ " (expected (10200, 90, 0)), "
+                    ~ size(arcs) ~ " arc(s) of length " ~ fmt(arcLength) ~ " (expected 1 of " ~ fmt(mm(5 * PI)) ~ "), start edge at the start " ~ startEdgeOk));
     }
     return out;
 }
@@ -567,6 +583,22 @@ function trimTests(context is Context, id is Id) returns array
         out = append(out, result("Mutual Trim+ " ~ (near1 ? "keep reference side on both" : "first surface keeps the far side"),
                     near(area, 10000 * millimeter * millimeter, 0.01 * millimeter * millimeter) && norm(c - want) < mm(0.01),
                     "area " ~ toString(roundToPrecision(area / (millimeter * millimeter), 3)) ~ " mm^2 (expected 10000), centroid " ~ fmtV(c) ~ ", expected " ~ fmtV(want)));
+
+        // Kept faces told apart after the merge: first surface z 0, second x x0.
+        const embedded = getVariable(context, toString(cid + "trim"));
+        const kept1 = embedded.query.keptFaces1.value;
+        const kept2 = embedded.query.keptFaces2.value;
+        const c1 = evApproximateCentroid(context, { "entities" : kept1 });
+        const c2 = evApproximateCentroid(context, { "entities" : kept2 });
+        const want1 = near1 ? pt(x0 + 25, 0, 0) : pt(x0 - 25, 0, 0);
+        const want2 = pt(x0, 0, 25);
+        const a1 = evArea(context, { "entities" : kept1 });
+        const a2 = evArea(context, { "entities" : kept2 });
+        const areaOk = near(a1, 5000 * millimeter * millimeter, 0.01 * millimeter * millimeter) && near(a2, 5000 * millimeter * millimeter, 0.01 * millimeter * millimeter);
+        out = append(out, result("Mutual Trim+ keptFaces1 / keptFaces2 " ~ (near1 ? "(near)" : "(far)"),
+                    areaOk && norm(c1 - want1) < mm(0.01) && norm(c2 - want2) < mm(0.01),
+                    "kept 1 at " ~ fmtV(c1) ~ " (expected " ~ fmtV(want1) ~ "), kept 2 at " ~ fmtV(c2) ~ " (expected " ~ fmtV(want2) ~ "), areas "
+                    ~ toString(roundToPrecision(a1 / (millimeter * millimeter), 2)) ~ " / " ~ toString(roundToPrecision(a2 / (millimeter * millimeter), 2)) ~ " (expected 5000 each)"));
     }
     return out;
 }

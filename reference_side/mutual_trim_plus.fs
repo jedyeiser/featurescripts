@@ -83,7 +83,7 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
         if (getFeatureStatus(context, splitId).statusEnum == ErrorStringEnum.SPLIT_FACE_NO_CHANGE)
         {
             reportFeatureInfo(context, id, ErrorStringEnum.BOOLEAN_UNION_NO_OP);
-            publishTrim(context, id, definition, qNothing());
+            publishTrim(context, id, definition, qNothing(), qOwnedByBody(definition.body1, EntityType.FACE), qOwnedByBody(definition.body2, EntityType.FACE));
             return;
         }
 
@@ -104,6 +104,8 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
         // one) does not lose them.
         const boundary = qUnion(evaluateQuery(context, qEdgeTopologyFilter(found.imprint, EdgeTopology.ONE_SIDED)));
         const trimEdges = qUnion([boundary, startTracking(context, boundary)]);
+        const keptFaces1 = frozenAndTracked(context, qOwnedByBody(definition.body1, EntityType.FACE));
+        const keptFaces2 = frozenAndTracked(context, qOwnedByBody(definition.body2, EntityType.FACE));
 
         if (definition.merge)
         {
@@ -113,7 +115,7 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
                     }, { "propagateErrorDisplay" : true });
         }
 
-        publishTrim(context, id, definition, trimEdges);
+        publishTrim(context, id, definition, trimEdges, keptFaces1, keptFaces2);
     }, {
         "merge" : true,
         "keepNear1" : true,
@@ -128,9 +130,10 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
 
 /**
  * Publishes the standard outputs (the trimmed surfaces: body1 carries the merge) plus
- * trimEdges, the intersection curve along which the surfaces were trimmed.
+ * trimEdges, the intersection curve along which the surfaces were trimmed, and the faces
+ * each surface kept (regions: keptFaces1 / keptFaces2).
  */
-function publishTrim(context is Context, id is Id, definition is map, trimEdges is Query)
+function publishTrim(context is Context, id is Id, definition is map, trimEdges is Query, keptFaces1 is Query, keptFaces2 is Query)
 {
     embedStandardOutputs(context, id, {
                 "output" : qUnion([definition.body1, definition.body2]),
@@ -142,7 +145,9 @@ function publishTrim(context is Context, id is Id, definition is map, trimEdges 
                 },
                 "queries" : {
                     "trimEdges" : extractableQuery(trimEdges,
-                            "The intersection edges along which the surfaces were trimmed (fillet here).", DebugColor.MAGENTA)
+                            "The intersection edges along which the surfaces were trimmed (fillet here).", DebugColor.MAGENTA),
+                    "keptFaces1" : extractableQuery(keptFaces1, "The faces the first surface kept (still told apart after the merge).", DebugColor.CYAN),
+                    "keptFaces2" : extractableQuery(keptFaces2, "The faces the second surface kept.", DebugColor.YELLOW)
                 }
             });
 }
@@ -345,4 +350,11 @@ function checkSelections(context is Context, definition is map)
     verifyNonemptyQuery(context, definition, "body2", ErrorStringEnum.MUTUAL_TRIM_SURFACE_NOT_SELECTED);
     verify(!isQueryEmpty(context, qSubtraction(definition.body1, definition.body2)), ErrorStringEnum.MUTUAL_TRIM_SAME_SURFACE_USED,
         { "faultyParameters" : ["body1", "body2"] });
+}
+
+/** The entities of a query now, and whatever they become later in this feature (a merge). */
+function frozenAndTracked(context is Context, q is Query) returns Query
+{
+    const now = qUnion(evaluateQuery(context, q));
+    return qUnion([now, startTracking(context, now)]);
 }

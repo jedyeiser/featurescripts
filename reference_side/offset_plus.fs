@@ -231,7 +231,9 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
                     "roundedCorners" : extractableVariable(0, "Curve offsets only."),
                     "trimmedCorners" : extractableVariable(0, "Curve offsets only."),
                     "openCorners" : extractableVariable(0, "Curve offsets only.")
-                }
+                },
+                "queries" : offsetPlusQueries(context, [], [], [],
+                        qEdgeTopologyFilter(qOwnedByBody(qCreatedBy(id, EntityType.BODY), EntityType.EDGE), EdgeTopology.ONE_SIDED))
             });
 }
 
@@ -266,10 +268,14 @@ function offsetCurves(context is Context, id is Id, definition is map, probe)
     const paths = constructPaths(context, edges, {});
     var counts = { "rounded" : 0, "trimmed" : 0, "open" : 0 };
     var wires = [];
+    var cornerArcs = [];
+    var sourceStarts = [];
     for (var p = 0; p < size(paths); p += 1)
     {
         const result = offsetPath(context, id + ("path" ~ p), definition, paths[p], probe, axis, p);
         wires = append(wires, result.wire);
+        cornerArcs = concatenateArrays([cornerArcs, result.cornerArcs]);
+        sourceStarts = append(sourceStarts, result.sourceStart);
         counts.rounded += result.rounded;
         counts.trimmed += result.trimmed;
         counts.open += result.open;
@@ -293,14 +299,40 @@ function offsetCurves(context is Context, id is Id, definition is map, probe)
                     "roundedCorners" : extractableVariable(counts.rounded, "Corners closed with an arc."),
                     "trimmedCorners" : extractableVariable(counts.trimmed, "Corners trimmed back to the crossing."),
                     "openCorners" : extractableVariable(counts.open, "Corners left open.")
-                }
+                },
+                "queries" : offsetPlusQueries(context, wires, sourceStarts, cornerArcs, qNothing())
             });
+}
+
+/**
+ * The keys Offset+ publishes beyond the standard ones, the same set in both modes (empty
+ * where they do not apply): ends of each offset wire (start = the end at the source's
+ * start), the corner arcs, and a surface offset's boundary edges.
+ */
+function offsetPlusQueries(context is Context, wires is array, sourceStarts is array, cornerArcs is array, boundaryEdges is Query) returns map
+{
+    var chains = [];
+    for (var wire in wires)
+    {
+        chains = append(chains, qOwnedByBody(wire, EntityType.EDGE));
+    }
+    const ends = size(chains) > 0 ? chainEnds(context, chains, sourceStarts)
+        : { "startVertex" : qNothing(), "endVertex" : qNothing(), "startEdge" : qNothing(), "endEdge" : qNothing() };
+    return {
+            "startVertex" : extractableQuery(ends.startVertex, "Curves: the end of each offset wire where its source starts.", DebugColor.GREEN),
+            "endVertex" : extractableQuery(ends.endVertex, "Curves: the other end of each offset wire.", DebugColor.RED),
+            "startEdge" : extractableQuery(ends.startEdge, "Curves: the edge at each startVertex.", DebugColor.GREEN),
+            "endEdge" : extractableQuery(ends.endEdge, "Curves: the edge at each endVertex.", DebugColor.RED),
+            "cornerArcs" : extractableQuery(qUnion(cornerArcs), "Curves: the arcs that round the corners.", DebugColor.MAGENTA),
+            "boundaryEdges" : extractableQuery(boundaryEdges, "Surfaces: the open boundary edges of the offset surfaces.", DebugColor.CYAN)
+        };
 }
 
 /**
  * One chain: stations, offset directions, side, per-edge point runs, corners, fits, wire.
  *
- * @returns {map} : { wire (Query), rounded, trimmed, open }
+ * @returns {map} : { wire (Query), rounded, trimmed, open, cornerArcs (edges of the wire),
+ *      sourceStart (where the source chain starts) }
  */
 function offsetPath(context is Context, id is Id, definition is map, path is Path, probe, axis is Vector, index is number) returns map
 {
@@ -467,6 +499,7 @@ function offsetPath(context is Context, id is Id, definition is map, path is Pat
 
     // Fit, create, stitch.
     var bodies = [];
+    var arcMiddles = [];
     for (var j = 0; j < nEdges; j += 1)
     {
         const curve = fitPiece(context, definition, pieces[j]);
@@ -483,13 +516,22 @@ function offsetPath(context is Context, id is Id, definition is map, path is Pat
             const arcId = id + ("arc" ~ j ~ "_" ~ k);
             opCreateBSplineCurve(context, arcId, { "bSplineCurve" : arcsAfter[j][k] });
             bodies = append(bodies, qCreatedBy(arcId, EntityType.BODY));
+            arcMiddles = append(arcMiddles, evEdgeTangentLine(context, { "edge" : qCreatedBy(arcId, EntityType.EDGE), "parameter" : 0.5 }).origin);
         }
     }
     const pieceBodies = qUnion(bodies);
     opExtractWires(context, id + "wire", { "edges" : qOwnedByBody(pieceBodies, EntityType.EDGE) });
     opDeleteBodies(context, id + "deletePieces", { "entities" : pieceBodies });
 
-    return { "wire" : qCreatedBy(id + "wire", EntityType.BODY), "rounded" : rounded, "trimmed" : trimmed, "open" : open };
+    // The corner arcs as edges of the wire: the wire edge through each arc's middle.
+    const wire = qCreatedBy(id + "wire", EntityType.BODY);
+    var arcEdges = [];
+    for (var middle in arcMiddles)
+    {
+        arcEdges = append(arcEdges, evaluateQuery(context, qClosestTo(qOwnedByBody(wire, EntityType.EDGE), middle))[0]);
+    }
+    const first = evEdgeTangentLine(context, { "edge" : path.edges[0], "parameter" : path.flipped[0] ? 1 : 0 }).origin;
+    return { "wire" : wire, "rounded" : rounded, "trimmed" : trimmed, "open" : open, "cornerArcs" : arcEdges, "sourceStart" : first };
 }
 
 /**
