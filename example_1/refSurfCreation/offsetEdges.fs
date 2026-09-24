@@ -1987,11 +1987,21 @@ function biarcWithRatio(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, 
 }
 
 
+/** Shortest biarc leg, as a fraction of the span's chord. */
+const BIARC_MIN_LEG = 0.2;
+
 // Largest distance from the sample points to the biarc; inf when the biarc is degenerate
 // (a straight leg cannot be emitted as an arc).
 function biarcDeviation(p0 is Vector, t0 is Vector, p1 is Vector, bi is map, samples is array) returns ValueWithUnits
 {
     if (!bi.ok)
+    {
+        return inf * meter;
+    }
+    // Each leg at least BIARC_MIN_LEG of the span: on a flat arc the closest pair otherwise
+    // puts the joint a few mm from one end, a leg too short and straight to be an arc.
+    const span = norm(p1 - p0);
+    if (norm(bi.joint - p0) < BIARC_MIN_LEG * span || norm(p1 - bi.joint) < BIARC_MIN_LEG * span)
     {
         return inf * meter;
     }
@@ -2084,6 +2094,23 @@ function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vect
 }
 
 
+// True when three points define an arc: the angle at pStart between the chords to pMid and to
+// pEnd is not ~0. Relative, so a short leg of a very flat arc (4 mm on R 15 m bends by
+// ~7e-5) still counts.
+function arcPointsBend(pStart is Vector, pMid is Vector, pEnd is Vector) returns boolean
+{
+    var a = pMid - pStart;
+    var b = pEnd - pStart;
+    var la = norm(a);
+    var lb = norm(b);
+    if (la / meter < 1e-12 || lb / meter < 1e-12)
+    {
+        return false;
+    }
+    return norm(cross(a, b)) / (la * lb) > 1e-7;
+}
+
+
 // Builds a sketch arc through 3 world points on their common plane, under arcId. The sketch
 // is what makes Onshape treat the output as an arc (clicking it shows a radius); a BSpline
 // with the same shape reads as a spline. Returns qCreatedBy(arcId, EntityType.BODY), or
@@ -2091,7 +2118,7 @@ function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vect
 function emitArc3Point(context is Context, arcId is Id, pStart is Vector, pMid is Vector, pEnd is Vector)
 {
     var nrm = cross(pMid - pStart, pEnd - pStart);
-    if (norm(nrm) < 1e-9 * meter * meter)
+    if (!arcPointsBend(pStart, pMid, pEnd))
     {
         return undefined;
     }
@@ -2154,9 +2181,7 @@ function emitSourceArc(context is Context, wireId is Id, pathInfo is map, defini
 
     // Both legs must be real arcs (same threshold emitArc3Point uses) before anything is built,
     // so a failure leaves no orphan sketch.
-    var legsOk = bi.ok
-        && norm(cross(bi.midA - p0,       bi.joint - p0)) >= 1e-9 * meter * meter
-        && norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
+    var legsOk = bi.ok && arcPointsBend(p0, bi.midA, bi.joint) && arcPointsBend(bi.joint, bi.midB, p1);
     if (!legsOk)
     {
         if (definition.printCurveDetails)
