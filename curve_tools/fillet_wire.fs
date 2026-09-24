@@ -692,13 +692,13 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
         }
         opEditCurve(context, id + ("edit" ~ i), { "wire" : piece, "edge" : qCreatedBy(curveId, EntityType.EDGE) });
         opDeleteBodies(context, id + ("deleteFillet" ~ i), { "entities" : qCreatedBy(curveId, EntityType.BODY) });
-        filletEdges = append(filletEdges, qClosestTo(qOwnedByBody(pieces, EntityType.EDGE), evaluateSpline({ "spline" : f.curve, "parameters" : [0.5] })[0][0]));
+        filletEdges = append(filletEdges, qClosestTo(qOwnedByBody(pieces, EntityType.EDGE), filletMiddle(f)));
     }
 
     const all = qUnion(evaluateQuery(context, qBodyType(pieces, BodyType.WIRE)));
     if (!chain.inPlace || definition.joinPieces)
     {
-        const fillPoints = mapArray(fillets, function(f) { return evaluateSpline({ "spline" : f.curve, "parameters" : [0.5] })[0][0]; });
+        const fillPoints = mapArray(fillets, function(f) { return filletMiddle(f); });
         opExtractWires(context, id + "join", { "edges" : qOwnedByBody(all, EntityType.EDGE) });
         opDeleteBodies(context, id + "deletePieces", { "entities" : qSubtraction(all, qCreatedBy(id + "join", EntityType.BODY)) });
         const joined = qCreatedBy(id + "join", EntityType.BODY);
@@ -723,10 +723,27 @@ function sketchArc(context is Context, id is Id, f is map)
     const sketch = newSketchOnPlane(context, id, { "sketchPlane" : pl });
     skArc(sketch, "arc", {
                 "start" : at2d(f.pointA.origin),
-                "mid" : at2d(evaluateSpline({ "spline" : f.curve, "parameters" : [0.5] })[0][0]),
+                "mid" : at2d(arcMiddle(f)),
                 "end" : at2d(f.pointB.origin)
             });
     skSolve(sketch);
+}
+
+/** A point in the middle of a fillet (to find its edge again). */
+function filletMiddle(f is map) returns Vector
+{
+    return f.arc != undefined ? arcMiddle(f) : evaluateSpline({ "spline" : f.curve, "parameters" : [0.5] })[0][0];
+}
+
+/**
+ * The middle of a tangent-mode fillet arc: from its centre, along the bisector of the two tangent points. (Not
+ * evaluateSpline on the rational B-spline: that does not apply the weights, so it gives a point off the circle.)
+ */
+function arcMiddle(f is map) returns Vector
+{
+    const toA = normalize(f.pointA.origin - f.arc.centre);
+    const toB = normalize(f.pointB.origin - f.arc.centre);
+    return f.arc.centre + norm(f.pointA.origin - f.arc.centre) * normalize(toA + toB);
 }
 
 /**

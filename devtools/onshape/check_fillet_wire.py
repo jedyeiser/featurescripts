@@ -46,6 +46,11 @@ HELPERS = r'''
             }
             return out;
         };
+    // a true arc: Onshape knows it as a circle (radius shown, measured as an arc), not a spline
+    const isArc = function(edge is Query) returns boolean
+        {
+            return evCurveDefinition(context, { "edge" : edge }) is Circle;
+        };
     const curvatures = function(edge is Query) returns array
         {
             var ks = [];
@@ -68,6 +73,8 @@ CHECKS = {
         {
             for (var k in curvatures(f)) { ok = ok && abs(k - 0.1 / millimeter) < 1e-6 / millimeter; }
             for (var j in joints(f, edges)) { ok = ok && j.angle < 1e-6 * radian; txt ~= " G1 angle " ~ toString(j.angle); }
+            ok = ok && isArc(f);
+            txt ~= " arc " ~ isArc(f) ~ ";";
         }
         return [ok, size(evaluateQuery(context, output)) ~ " wire, length " ~ fmt(len) ~ " (291.41593), " ~ size(fillets) ~ " fillets of curvature 0.1/mm;" ~ txt];''',
     "W2": r'''
@@ -79,10 +86,11 @@ CHECKS = {
         for (var f in fillets)
         {
             const k = curvatures(f)[2];
-            radii = append(radii, fmt(1 / k));
+            radii = append(radii, fmt(1 / k) ~ (isArc(f) ? " arc" : " SPLINE"));
+            ok = ok && isArc(f);
             for (var j in joints(f, edges)) { ok = ok && j.angle < 1e-6 * radian; }
         }
-        ok = ok && isIn("5", radii) && isIn("10", radii);
+        ok = ok && isIn("5 arc", radii) && isIn("10 arc", radii);
         const sharp = !isQueryEmpty(context, qContainsPoint(qOwnedByBody(output, EntityType.VERTEX), vector(100, 400, 0) * millimeter));
         const traced = size(evaluateQuery(context, qBodyType(qCreatedBy(makeId(SOURCE), EntityType.BODY), BodyType.WIRE)));
         ok = ok && sharp && traced == 5;
@@ -99,6 +107,8 @@ CHECKS = {
             const js = joints(fillets[0], edges);
             ok = ok && size(js) == 2;
             for (var j in js) { ok = ok && j.angle < 1e-6 * radian; txt ~= " G1 angle " ~ toString(j.angle) ~ ";"; }
+            ok = ok && isArc(fillets[0]);
+            txt ~= " arc " ~ isArc(fillets[0]);
         }
         return [ok, size(fillets) ~ " fillet, constant curvature 0.1/mm, tangent to the line and the arc:" ~ txt];''',
     "W4": r'''
