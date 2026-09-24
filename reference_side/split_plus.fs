@@ -134,9 +134,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                         "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces the split left.")
                     },
                     "queries" : {
-                        "splitFaces" : extractableQuery(qOwnedByBody(kept, EntityType.FACE)->qIntersection([qCreatedBy(id, EntityType.FACE)]),
+                        "splitFaces" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
                                 "Faces the splits created (the caps on solids).", DebugColor.MAGENTA),
-                        "splitEdges" : extractableQuery(qOwnedByBody(kept, EntityType.EDGE)->qIntersection([qCreatedBy(id, EntityType.EDGE)]),
+                        "splitEdges" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.EDGE), qCreatedBy(id, EntityType.EDGE)]),
                                 "Edges the splits created (the cut on surfaces).", DebugColor.MAGENTA)
                     }
                 });
