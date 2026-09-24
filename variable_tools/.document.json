@@ -4,10 +4,11 @@
   "document_name": "variable_tools",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/a47f90bfa6b17a59e20cebd0/w/0bd1fa4306898d9fe9c9fb47",
-  "last_sync": "2026-09-24T03:33:40.280696+00:00",
+  "last_sync": "2026-09-24T03:34:15.248934+00:00",
   "feature_studios": {
     "extract_outputs": "3cac74f0bc2b98272db13cd3",
-    "extract_variables_utils": "a4dcd70ce9ceec588536fb0c"
+    "extract_variables_utils": "a4dcd70ce9ceec588536fb0c",
+    "extract_variables": "7510fab48b6a9d60dce8a917"
   },
   "tab_folders": {}
 }
