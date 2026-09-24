@@ -1,0 +1,493 @@
+FeatureScript 3070;
+import(path : "onshape/std/common.fs", version : "3070.0");
+// IMPORT: station_utils.fs
+export import(path : "STATION_UTILS_ID", version : "");
+// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+
+/**
+ * Station geometry: the drawing-aid geometry for one part, generated instead of hand-built
+ * sketches.
+ *
+ * For each view (plan = datum XY, profile = datum XZ, or any mate connector's XY) it projects
+ * the part onto the view plane and builds, in that plane:
+ *     outline wires   the part's silhouette (outer loops)
+ *     outline surface the region inside them (optional)
+ *     station lines   one wire per station, spanning the silhouette where the station crosses it
+ *     datum point     the view origin, for ordinate dimensions
+ * and groups them WITH THE PART in an open composite "<prefix> <VIEW>", excluded from the
+ * BOM. The part stays its own body; open composites may share it.
+ *
+ * Stations come from a Station definition variable plus any listed here. Every station's
+ * operation id is its name, so adding or removing a station never re-binds another
+ * station's drawing dimensions.
+ *
+ * Open composites cannot move, so the datum frame changes numbers, not geometry: the
+ * published station table is measured from the datum, and "Flat copy at datum" adds a
+ * separate copy of the outline surface moved onto world XY with the datum at the origin
+ * (for DXF export).
+ */
+
+/** Samples per edge when looking for where it crosses a station plane. */
+const CROSSING_SAMPLES = 33;
+/** Rounds of subdividing a bracketed crossing, and points per round. */
+const REFINE_ROUNDS = 4;
+const REFINE_POINTS = 9;
+/** View planes are this large; the part must project inside. */
+const VIEW_PLANE_SIZE = 20 * meter;
+
+annotation { "Feature Type Name" : "Station geometry",
+            "Feature Type Description" : "Outline, station lines and datum for a part's drawing views, grouped with the part in open composites." }
+export const stationGeometry = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Part", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET)) || BodyType.COMPOSITE, "MaxNumberOfPicks" : 1 }
+        definition.part is Query;
+
+        annotation { "Name" : "Datum", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                    "Description" : "Origin of every measurement. X is the measuring axis, Z is up. Empty = the world origin." }
+        definition.datum is Query;
+
+        annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the part's name." }
+        definition.prefix is string;
+
+        annotation { "Name" : "Plan (datum XY)", "Default" : true }
+        definition.planView is boolean;
+
+        annotation { "Name" : "Profile (datum XZ)", "Default" : false }
+        definition.profileView is boolean;
+
+        annotation { "Name" : "Other views", "Item name" : "view", "Item label template" : "#viewName" }
+        definition.otherViews is array;
+        for (var view in definition.otherViews)
+        {
+            annotation { "Name" : "View name", "Default" : "VIEW", "MaxLength" : 32 }
+            view.viewName is string;
+
+            annotation { "Name" : "Connector", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Projects onto the connector's XY plane; its X is the measuring axis and its origin the datum." }
+            view.viewConnector is Query;
+        }
+
+        annotation { "Name" : "Station set", "Default" : "", "MaxLength" : 64,
+                    "Description" : "Variable written by a Station definition (e.g. stations). Empty = none." }
+        definition.stationSet is string;
+
+        annotation { "Name" : "More stations", "Item name" : "station", "Item label template" : "#stationName" }
+        definition.stations is array;
+        for (var entry in definition.stations)
+        {
+            stationEntryPredicate(entry);
+        }
+
+        annotation { "Name" : "Station lines", "Default" : true }
+        definition.stationLines is boolean;
+
+        annotation { "Name" : "Outline wires", "Default" : true }
+        definition.outlineWires is boolean;
+
+        annotation { "Name" : "Outline surface", "Default" : false }
+        definition.outlineSurface is boolean;
+
+        annotation { "Name" : "Datum point", "Default" : true }
+        definition.datumPoint is boolean;
+
+        annotation { "Name" : "Flat copy at datum", "Default" : false,
+                    "Description" : "A separate copy of the outline surface with the view on world XY and the datum at the origin -- for DXF export." }
+        definition.flatCopy is boolean;
+
+        annotation { "Name" : "Print table", "Default" : false }
+        definition.printTable is boolean;
+    }
+    {
+        if (isQueryEmpty(context, definition.part))
+        {
+            throw regenError("Select a part.", ["part"]);
+        }
+
+        const prefix = definition.prefix != "" ? definition.prefix
+            : getProperty(context, { "entity" : definition.part, "propertyType" : PropertyType.NAME });
+        const stations = collectStations(context, definition.stationSet, definition.stations);
+        const views = viewFrames(context, definition);
+        if (size(views) == 0)
+        {
+            throw regenError("Turn on at least one view.", ["planView"]);
+        }
+
+        var outputs = [];
+        var queries = {};
+        var table = [];
+        var missed = [];
+        for (var view in views)
+        {
+            const built = buildView(context, id + view.key, definition, view, stations, prefix);
+            outputs = append(outputs, built.output);
+            queries = mergeMaps(queries, built.queries);
+            table = concatenateArrays([table, built.rows]);
+            if (size(built.missed) > 0)
+            {
+                missed = append(missed, view.label ~ ": " ~ join(built.missed, ", "));
+            }
+        }
+
+        if (definition.printTable)
+        {
+            printTable(table);
+        }
+
+        embedStandardOutputs(context, id, {
+                    "output" : qUnion(outputs),
+                    "outputDescription" : "The view composites and flat copies",
+                    "inputs" : definition.part,
+                    "variables" : {
+                        "stationTable" : extractableVariable(table, "One row per view and station: view, id, x, lo, hi, span in mm from the datum; hit false = the station misses the part."),
+                        "stationCount" : extractableVariable(size(stations), "Stations measured in each view.")
+                    },
+                    "queries" : queries
+                });
+
+        const summary = size(stations) ~ " stations in " ~ size(views) ~ " view(s).";
+        if (size(missed) > 0)
+        {
+            reportFeatureInfo(context, id, summary ~ " Missing the part -- " ~ join(missed, "; "));
+        }
+        else
+        {
+            reportFeatureInfo(context, id, summary);
+        }
+    }, {});
+
+/**
+ * The views to build: { key, label, cs }. cs X = measuring axis, cs Z = view normal.
+ */
+function viewFrames(context is Context, definition is map) returns array
+{
+    var datum = coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1));
+    if (!isQueryEmpty(context, definition.datum))
+    {
+        datum = evMateConnector(context, { "mateConnector" : definition.datum });
+    }
+
+    var views = [];
+    if (definition.planView)
+    {
+        views = append(views, { "key" : "plan", "label" : "PLAN", "cs" : datum });
+    }
+    if (definition.profileView)
+    {
+        // Looking from datum -Y: X stays the measuring axis and datum Z reads as up.
+        const yAxis = cross(datum.zAxis, datum.xAxis);
+        views = append(views, { "key" : "profile", "label" : "PROFILE", "cs" : coordSystem(datum.origin, datum.xAxis, -yAxis) });
+    }
+    for (var i = 0; i < size(definition.otherViews); i += 1)
+    {
+        const v = definition.otherViews[i];
+        if (isQueryEmpty(context, v.viewConnector))
+        {
+            throw regenError("View " ~ v.viewName ~ ": select a connector.");
+        }
+        const label = stationIdFromName(v.viewName);
+        views = append(views, { "key" : "view_" ~ label, "label" : label,
+                    "cs" : evMateConnector(context, { "mateConnector" : v.viewConnector }) });
+    }
+    return views;
+}
+
+/**
+ * Builds one view's geometry and composite. Returns { output, queries, rows, missed }.
+ */
+function buildView(context is Context, vid is Id, definition is map, view is map, stations is array, prefix is string) returns map
+{
+    const cs = view.cs;
+    const n = cs.zAxis;
+    const u = cs.xAxis;
+    const viewPlane = plane(cs.origin, n, u);
+    const namePrefix = prefix ~ " " ~ view.label;
+
+    // Silhouette on the view plane. The outline refuses a composite, so give it the members.
+    opPlane(context, vid + "target", { "plane" : viewPlane, "width" : VIEW_PLANE_SIZE, "height" : VIEW_PLANE_SIZE });
+    opCreateOutline(context, vid + "outline", {
+                "tools" : qUnion([qBodyType(definition.part, [BodyType.SOLID, BodyType.SHEET]), qFlattenedCompositeParts(definition.part)]),
+                "target" : qCreatedBy(vid + "target", EntityType.FACE)
+            });
+    opDeleteBodies(context, vid + "deleteTarget", { "entities" : qCreatedBy(vid + "target", EntityType.BODY) });
+
+    const outlineFaces = qCreatedBy(vid + "outline", EntityType.FACE);
+    if (isQueryEmpty(context, outlineFaces))
+    {
+        throw regenError(view.label ~ ": the part has no outline in this view.", ["part"]);
+    }
+    const outlineBody = qCreatedBy(vid + "outline", EntityType.BODY);
+    const outlineEdges = qLoopEdges(outlineFaces);
+
+    var members = [];
+    var queries = {};
+    var rows = [];
+    var missed = [];
+
+    for (var s in stations)
+    {
+        const stationId = vid + ("st_" ~ s.id);
+        const key = view.key ~ "_" ~ s.id;
+        queries[key] = qNothing();
+
+        const p = project(viewPlane, s.origin);
+        var w = cross(n, u);
+        if (s.hasDirection)
+        {
+            const inPlane = s.direction - n * dot(s.direction, n);
+            if (norm(inPlane) < 1e-6)
+            {
+                missed = append(missed, s.id);
+                rows = append(rows, missRow(view.key, s.id, dot(p - cs.origin, u)));
+                continue;
+            }
+            w = normalize(cross(n, inPlane));
+        }
+
+        const ends = spanAcross(context, outlineEdges, p, w, n);
+        if (ends == undefined)
+        {
+            missed = append(missed, s.id);
+            rows = append(rows, missRow(view.key, s.id, dot(p - cs.origin, u)));
+            continue;
+        }
+
+        const v = cross(n, u);
+        rows = append(rows, {
+                    "view" : view.key,
+                    "id" : s.id,
+                    "x" : dot(p - cs.origin, u) / millimeter,
+                    "lo" : dot(ends[0] - cs.origin, v) / millimeter,
+                    "hi" : dot(ends[1] - cs.origin, v) / millimeter,
+                    "span" : norm(ends[1] - ends[0]) / millimeter,
+                    "hit" : true
+                });
+
+        if (definition.stationLines)
+        {
+            opFitSpline(context, stationId, { "points" : ends });
+            const wire = qCreatedBy(stationId, EntityType.BODY);
+            nameBodies(context, wire, namePrefix ~ " ST " ~ s.id);
+            members = append(members, wire);
+            queries[key] = wire;
+        }
+    }
+
+    // Outline wires from the silhouette's outer loops (holes are not part of it).
+    queries[view.key ~ "Outline"] = qNothing();
+    if (definition.outlineWires)
+    {
+        opExtractWires(context, vid + "outlineWires", { "edges" : outlineEdges });
+        const wires = qCreatedBy(vid + "outlineWires", EntityType.BODY);
+        nameBodies(context, wires, namePrefix ~ " OUTLINE");
+        members = append(members, wires);
+        queries[view.key ~ "Outline"] = wires;
+    }
+
+    queries[view.key ~ "Datum"] = qNothing();
+    if (definition.datumPoint)
+    {
+        opPoint(context, vid + "datum", { "point" : cs.origin });
+        const pt = qCreatedBy(vid + "datum", EntityType.BODY);
+        nameBodies(context, pt, namePrefix ~ " DATUM");
+        members = append(members, pt);
+        queries[view.key ~ "Datum"] = pt;
+    }
+
+    queries[view.key ~ "Flat"] = qNothing();
+    var output = [];
+    if (definition.flatCopy)
+    {
+        opPattern(context, vid + "flat", {
+                    "entities" : outlineBody,
+                    "transforms" : [fromWorld(cs)],
+                    "instanceNames" : ["flat"]
+                });
+        const flat = qCreatedBy(vid + "flat", EntityType.BODY);
+        nameBodies(context, flat, namePrefix ~ " FLAT");
+        output = append(output, flat);
+        queries[view.key ~ "Flat"] = flat;
+    }
+
+    queries[view.key ~ "Surface"] = qNothing();
+    if (definition.outlineSurface)
+    {
+        nameBodies(context, outlineBody, namePrefix ~ " REGION");
+        members = append(members, outlineBody);
+        queries[view.key ~ "Surface"] = outlineBody;
+    }
+    else
+    {
+        opDeleteBodies(context, vid + "deleteOutline", { "entities" : outlineBody });
+    }
+
+    opCreateCompositePart(context, vid + "composite", {
+                "bodies" : qUnion(concatenateArrays([[definition.part], members])),
+                "closed" : false
+            });
+    const composite = qBodyType(qCreatedBy(vid + "composite", EntityType.BODY), BodyType.COMPOSITE);
+    nameBodies(context, composite, namePrefix);
+    setProperty(context, { "entities" : composite, "propertyType" : PropertyType.EXCLUDE_FROM_BOM, "value" : true });
+    queries[view.key ~ "Composite"] = composite;
+    output = append(output, composite);
+
+    return { "output" : qUnion(output), "queries" : queries, "rows" : rows, "missed" : missed };
+}
+
+function missRow(viewKey is string, stationId is string, x is ValueWithUnits) returns map
+{
+    return { "view" : viewKey, "id" : stationId, "x" : x / millimeter, "lo" : 0, "hi" : 0, "span" : 0, "hit" : false };
+}
+
+function nameBodies(context is Context, bodies is Query, name is string)
+{
+    setProperty(context, { "entities" : bodies, "propertyType" : PropertyType.NAME, "value" : name });
+}
+
+/**
+ * Where the line through `p` along `w` (in the view plane, normal `n`) enters and leaves the
+ * silhouette: the extreme crossings of the outline edges with the plane through that line.
+ * Returns [low end, high end] along w, or undefined when the line misses the part.
+ */
+function spanAcross(context is Context, outlineEdges is Query, p is Vector, w is Vector, n is Vector)
+{
+    const sp = plane(p, normalize(cross(w, n)));
+    var lo = undefined;
+    var hi = undefined;
+    for (var edge in evaluateQuery(context, qIntersectsPlane(outlineEdges, sp)))
+    {
+        for (var c in edgePlaneCrossings(context, edge, sp))
+        {
+            const t = dot(c - p, w);
+            if (lo == undefined || t < lo)
+            {
+                lo = t;
+            }
+            if (hi == undefined || t > hi)
+            {
+                hi = t;
+            }
+        }
+    }
+    if (lo == undefined || hi - lo < TOLERANCE.zeroLength * meter)
+    {
+        return undefined;
+    }
+    return [p + w * lo, p + w * hi];
+}
+
+/**
+ * Every point where `edge` crosses `sp`. evDistance returns one point per edge; an outline
+ * edge round a tip can cross a station twice, so sample the edge, bracket each sign change
+ * and refine it. An edge lying in the plane contributes its ends.
+ */
+function edgePlaneCrossings(context is Context, edge is Query, sp is Plane) returns array
+{
+    const tol = TOLERANCE.zeroLength * meter;
+    var ts = [];
+    for (var i = 0; i < CROSSING_SAMPLES; i += 1)
+    {
+        ts = append(ts, i / (CROSSING_SAMPLES - 1));
+    }
+    const pts = sampleEdge(context, edge, ts);
+    var ds = [];
+    var onPlane = true;
+    for (var pt in pts)
+    {
+        const d = dot(pt - sp.origin, sp.normal);
+        ds = append(ds, d);
+        if (abs(d) > tol)
+        {
+            onPlane = false;
+        }
+    }
+    if (onPlane)
+    {
+        return [pts[0], pts[size(pts) - 1]];
+    }
+
+    var out = [];
+    for (var i = 0; i < CROSSING_SAMPLES; i += 1)
+    {
+        if (abs(ds[i]) <= tol)
+        {
+            out = append(out, pts[i]);
+        }
+        else if (i + 1 < CROSSING_SAMPLES && abs(ds[i + 1]) > tol && (ds[i] > 0 * meter) != (ds[i + 1] > 0 * meter))
+        {
+            out = append(out, refineCrossing(context, edge, sp, ts[i], ts[i + 1], ds[i]));
+        }
+    }
+    return out;
+}
+
+function refineCrossing(context is Context, edge is Query, sp is Plane, t0 is number, t1 is number, d0 is ValueWithUnits) returns Vector
+{
+    var a = t0;
+    var b = t1;
+    var da = d0;
+    for (var round = 0; round < REFINE_ROUNDS; round += 1)
+    {
+        var ts = [];
+        for (var k = 0; k < REFINE_POINTS; k += 1)
+        {
+            ts = append(ts, a + (b - a) * k / (REFINE_POINTS - 1));
+        }
+        const pts = sampleEdge(context, edge, ts);
+        var prevT = ts[0];
+        var prevD = da;
+        for (var k = 1; k < REFINE_POINTS; k += 1)
+        {
+            const d = dot(pts[k] - sp.origin, sp.normal);
+            if (abs(d) <= TOLERANCE.zeroLength * meter)
+            {
+                return pts[k];
+            }
+            if ((d > 0 * meter) != (prevD > 0 * meter))
+            {
+                a = prevT;
+                b = ts[k];
+                da = prevD;
+                break;
+            }
+            prevT = ts[k];
+            prevD = d;
+        }
+    }
+    const ends = sampleEdge(context, edge, [a, b]);
+    const d1 = dot(ends[1] - sp.origin, sp.normal);
+    const f = da / (da - d1);
+    return ends[0] + (ends[1] - ends[0]) * f;
+}
+
+function sampleEdge(context is Context, edge is Query, ts is array) returns array
+{
+    var pts = [];
+    for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : ts, "arcLengthParameterization" : false }))
+    {
+        pts = append(pts, tl.origin);
+    }
+    return pts;
+}
+
+function printTable(table is array)
+{
+    println("[stations] view | id | x | lo | hi | span (mm from datum)");
+    for (var r in table)
+    {
+        if (r.hit)
+        {
+            println("[stations] " ~ r.view ~ " | " ~ r.id ~ " | " ~ roundTo(r.x) ~ " | " ~ roundTo(r.lo) ~ " | " ~ roundTo(r.hi) ~ " | " ~ roundTo(r.span));
+        }
+        else
+        {
+            println("[stations] " ~ r.view ~ " | " ~ r.id ~ " | " ~ roundTo(r.x) ~ " | misses the part");
+        }
+    }
+}
+
+function roundTo(value is number) returns number
+{
+    return round(value * 1000) / 1000;
+}

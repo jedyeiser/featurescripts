@@ -11,7 +11,8 @@
     "merge_curve": "584469527ba0d496604523ec",
     "clean_wire": "ad14cae77548843ba119071c",
     "map_curve": "83aa07e20d0c8710c97a6cd7",
-    "curve_tools_tests": "84ae001c145ed508f726d0f3"
+    "curve_tools_tests": "84ae001c145ed508f726d0f3",
+    "fillet_wire": "c61139f64181d988af590a94"
   },
   "tab_folders": {}
 }
