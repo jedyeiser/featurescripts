@@ -154,7 +154,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             {
                 const faceSplitId = id + ("splitFace" ~ i);
                 opSplitFace(context, faceSplitId, faceSplitDefinition(context, pieces, tool, isPlane));
-                pieces = qUnion(evaluateQuery(context, qUnion([pieces, qCreatedBy(faceSplitId, EntityType.FACE)])));
+                // A split face loses its id and qCreatedBy holds no faces: the halves are
+                // qSplitBy's two sides; faces the tool missed keep theirs.
+                pieces = qUnion(evaluateQuery(context, qUnion([pieces, qSplitBy(faceSplitId, EntityType.FACE, false), qSplitBy(faceSplitId, EntityType.FACE, true)])));
                 continue;
             }
 
