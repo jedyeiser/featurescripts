@@ -283,6 +283,26 @@ export const mapCurve = defineFeature(function(context is Context, id is Id, def
                         "endEdge" : extractableQuery(ends.endEdge, "The edge at endVertex.", DebugColor.RED)
                     }
                 });
+    }, {
+        // Only for callers that omit parameters (API, other features); the dialog sets all.
+        "mapMode" : MapMode.FROM_EDGES,
+        "refPointMode" : RefPointMode.SHARED,
+        "offsetRefPoint" : qNothing(),
+        "fromRefPoint" : qNothing(),
+        "toRefPoint" : qNothing(),
+        "projectionMode" : ProjectionMode.WORLD_X,
+        "flipTo" : false,
+        "edgeOffsetSpacingDef" : OffsetPointSpacing.CTRL_POINT,
+        "ctrlPointMultiplier" : 3,
+        "pointsPerEdge" : 25,
+        "targetPointSpacing" : 10 * millimeter,
+        "approximationDegree" : 3,
+        "approximationTolerance" : 1e-5 * meter,
+        "approximationMaxCPs" : 15,
+        "wireOutput" : WireOutput.PER_LINK,
+        "outputName" : "",
+        "debugShowChainEnds" : false,
+        "debugPrint" : false
     });
 
 // ============================================================================
