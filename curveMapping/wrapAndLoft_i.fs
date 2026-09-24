@@ -773,7 +773,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
-                var startParam      = srcFlipped ? 1 : 0;
                 var startDirection  = srcFlipped ? sampleResult.endTangent : sampleResult.startTangent;   // sampled at parameter 1 / 0
                 var startSrcTangent = srcFlipped ? -1 * startDirection : startDirection;
                 var s_from_0        = mappedData[0].sFrom;
@@ -938,7 +937,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         for (var ex = 1; ex <= nExtra; ex += 1)
                         {
                             var alpha      = ex / (nExtra + 1.0);
-                            var extraParam    = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
                             var extraLine     = junctionLines[ex];   // batched above
                             var sFrom_extra   = mappedData[segEndIdx].sFrom + alpha * (s_from_junction - mappedData[segEndIdx].sFrom);
                             var fromResult_e  = getFrameAtArcLength(context, fromFrenetPath, sFrom_extra);
@@ -957,10 +955,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // Phase 2: compute and map source curvature at junction via finite differences.
                     // kappaSrc = dT/ds ≈ (T(t+ε) - T(t-ε)) / arc_length_step  (units: 1/m)
                     {
-                        var jEps   = 0.005;
-                        var srcJP  = srcFlipped ? 1 - junctionParam : junctionParam;
-                        var pJm    = max([0, srcJP - jEps]);
-                        var pJp    = min([1, srcJP + jEps]);
                         var kLines = [junctionLines[3], junctionLines[4]];   // batched above
                         var dsJ    = norm(kLines[1].origin - kLines[0].origin);  // chord between evaluation points
                         var deltaT     = kLines[1].direction - kLines[0].direction;
@@ -984,7 +978,6 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 else
                 {
                     // Last span — constrain end tangent from source edge at parameter 1
-                    var endParam      = srcFlipped ? 0 : 1;
                     var endDirection    = srcFlipped ? sampleResult.startTangent : sampleResult.endTangent;   // sampled at parameter 0 / 1
                     var endSrcTangent = srcFlipped ? -1 * endDirection : endDirection;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
