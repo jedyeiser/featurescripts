@@ -41,9 +41,9 @@ export enum OffsetType
 
 export enum VaryingArcMode
 {
-    annotation { "Name" : "Convert to spline" }
+    annotation { "Name" : "Convert to splines" }
     SPLINE,
-    annotation { "Name" : "Best-fit biarc" }
+    annotation { "Name" : "Keep as arcs" }
     BIARC
 }
 
@@ -206,9 +206,8 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                      "Description" : "Inverts the Frenet binormal direction" }
         definition.flipBinormal is boolean;
 
-        annotation { "Name" : "Varying-offset arc handling", "Default" : VaryingArcMode.SPLINE,
-                     "UIHint" : UIHint.HORIZONTAL_ENUM,
-                     "Description" : "For a circular source edge whose offset VARIES along it: 'Convert to spline' approximates it as a best-fit BSpline (default); 'Best-fit biarc' emits two tangent arcs that match the endpoint offsets exactly and stay tangent to the neighboring curves on both sides. Constant-offset arcs are always kept as exact arcs regardless of this setting." }
+        annotation { "Name" : "Source arcs", "Default" : VaryingArcMode.SPLINE,
+                     "Description" : "How circular source edges are output. Keep as arcs: each becomes a true arc (clicking it shows a radius) -- one concentric arc where the offset is constant, two tangent arcs where it varies (both end offsets and tangents exact, the joint placed closest to the true offset); blends over arcs are arcs too, and splines meeting them join tangent. Convert to splines: fitted splines, like every other source edge. Source splines are always output as splines." }
         definition.arcMode is VaryingArcMode;
 
         annotation { "Name" : "Sampling density",
@@ -599,7 +598,53 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 // current core carries one normal along the whole path and has no such check.)
 function frameAtArc(context is Context, frenetPath is map, arcLength) returns map
 {
-    return getFrameAtArcLength(context, frenetPath, arcLength);
+    var edgeData = frenetPath.edgeData;
+    var s = arcLength;
+    if (s < 0 * meter)
+    {
+        s = 0 * meter;
+    }
+    if (s > frenetPath.totalLength)
+    {
+        s = frenetPath.totalLength;
+    }
+
+    var lo = 0;
+    var hi = size(edgeData) - 1;
+    while (lo < hi)
+    {
+        var mid = ceil((lo + hi) / 2);
+        if (edgeData[mid].startArcLength <= s)
+        {
+            lo = mid;
+        }
+        else
+        {
+            hi = mid - 1;
+        }
+    }
+    var ed = edgeData[lo];
+    if (ed.exactFrames != true)
+    {
+        return getFrameAtArcLength(context, frenetPath, s);
+    }
+
+    // Curved source edge: the real curve, not the core's sampled table. The core treats an
+    // edge within 0.1% of straight as its chord (a R 20 m arc over 100 mm qualifies), so the
+    // offset of such an arc came out straight -- up to the arc's sagitta off, and collinear, so
+    // no arc could be built through it.
+    var frac = (ed.length / meter > 1e-12) ? (s - ed.startArcLength) / ed.length : 0;
+    frac = min(max(frac, 0), 1);
+    var tl = evEdgeTangentLine(context, {
+                "edge"                      : ed.query,
+                "parameter"                 : ed.stdDir ? frac : 1 - frac,
+                "arcLengthParameterization" : true
+            });
+    var tangent = ed.stdDir ? tl.direction : -tl.direction;
+    return {
+        "frame"     : coordSystem(tl.origin, perpendicularVector(tangent), tangent),
+        "edgeIndex" : lo
+    };
 }
 
 
@@ -808,6 +853,13 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 {
     var edges       = expandEdgeQuery(definition.userSelection);
     var frenetPath  = buildFrenetPath(context, id, edges, definition.flipDirection);
+    var edgeData    = frenetPath.edgeData;
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        var curveType = evCurveDefinition(context, { "edge" : edgeData[i].query }).curveType;
+        edgeData[i]   = mergeMaps(edgeData[i], { "exactFrames" : curveType != CurveType.LINE });
+    }
+    frenetPath      = mergeMaps(frenetPath, { "edgeData" : edgeData });
     var totalLength = frenetPath.totalLength;
 
     var numPTSamples = max([100, definition.numRegionPoints * 4]);
@@ -1467,40 +1519,6 @@ function computeOffsetPoint(context is Context, pathInfo is map, definition is m
 }
 
 
-/**
- * Unit tangent of the offset curve at path parameter t, in the direction of increasing t
- * (the travel direction). Central finite difference of computeOffsetPoint, clamped so the
- * step stays inside [region.tStart, region.tEnd]; falls back to the frame tangent if the
- * offset curve is momentarily stationary. Used to seed the best-fit biarc endpoints.
- */
-function offsetTangentAt(context is Context, pathInfo is map, definition is map,
-    region is map, t is number) returns Vector
-{
-    var dtp = 1e-4;
-    var tHi = min(t + dtp, region.tEnd);
-    var tLo = max(t - dtp, region.tStart);
-    if (tHi - tLo < 1e-12)
-    {
-        tHi = min(t + dtp, 1.0);
-        tLo = max(t - dtp, 0.0);
-    }
-
-    var oHi = computeOffsetsAt(region, tHi);
-    var oLo = computeOffsetsAt(region, tLo);
-    var pHi = computeOffsetPoint(context, pathInfo, definition, tHi, oHi.normalOff, oHi.binormalOff);
-    var pLo = computeOffsetPoint(context, pathInfo, definition, tLo, oLo.normalOff, oLo.binormalOff);
-
-    var dir  = pHi - pLo;
-    var dLen = norm(dir);
-    if (dLen / meter < 1e-12)
-    {
-        var fr = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length);
-        return fr.frame.zAxis;
-    }
-    return dir / dLen;
-}
-
-
 // --- Point arrays -------------------------------------------------------------
 
 /**
@@ -1663,20 +1681,20 @@ function blendOffsetAt(s is number,
 
 
 /**
- * Samples n points across the blend zone [tBlendStart, tBlendEnd].
- * Normal and binormal offsets are blended independently via blendOffsetAt.
- *
- * Heights at the blend boundaries are evaluated at the actual tPath positions
- * (not region endpoints) so the blend wire meets the trimmed region wire.
+ * The offsets across a blend zone [tBlendStart, tBlendEnd] as a zone (see [regionZone]):
+ * normal and binormal offsets blended independently via blendOffsetAt, from the heights (and
+ * slopes / curvatures the continuity asks for) of the two regions at the blend ends -- the
+ * actual tPath positions, not the region endpoints, so the blend meets the trimmed regions.
  */
-function generateBlendPoints(context is Context, pathInfo is map, definition is map,
-    tBlendStart is number, tBlendEnd is number,
-    regA is map, regB is map, intr is map) returns array
+function blendZone(pathInfo is map, definition is map, bz is map) returns map
 {
-    var n = definition.numRegionPoints;
+    var tBlendStart = bz.tBlendStart;
+    var tBlendEnd   = bz.tBlendEnd;
+    var regA = bz.regA;
+    var regB = bz.regB;
     var L = tBlendEnd - tBlendStart;
-    var contStart = intr.startContinuity;
-    var contEnd   = intr.endContinuity;
+    var contStart = bz.intr.startContinuity;
+    var contEnd   = bz.intr.endContinuity;
 
     var needSlopeStart = (contStart == GeometricContinuity.G1 || contStart == GeometricContinuity.G2);
     var needSlopeEnd   = (contEnd   == GeometricContinuity.G1 || contEnd   == GeometricContinuity.G2);
@@ -1728,16 +1746,18 @@ function generateBlendPoints(context is Context, pathInfo is map, definition is 
         bOff1 = offB.binormalOff;
     }
 
-    var points = [];
-    for (var i = 0; i < n; i += 1)
-    {
-        var s    = i / (n - 1);
-        var t    = tBlendStart + L * s;
-        var nOff = blendOffsetAt(s, nOff0, nSlope0, nCurv0, nOff1, nSlope1, nCurv1, contStart, contEnd);
-        var bOff = blendOffsetAt(s, bOff0, bSlope0, bCurv0, bOff1, bSlope1, bCurv1, contStart, contEnd);
-        points = append(points, computeOffsetPoint(context, pathInfo, definition, t, nOff, bOff));
-    }
-    return points;
+    return {
+        "offsetsAt" : function(t)
+            {
+                var s = (t - tBlendStart) / L;
+                return {
+                    "normalOff"   : blendOffsetAt(s, nOff0, nSlope0, nCurv0, nOff1, nSlope1, nCurv1, contStart, contEnd),
+                    "binormalOff" : blendOffsetAt(s, bOff0, bSlope0, bCurv0, bOff1, bSlope1, bCurv1, contStart, contEnd)
+                };
+            },
+        "tLo" : tBlendStart,
+        "tHi" : tBlendEnd
+    };
 }
 
 
@@ -1765,41 +1785,71 @@ function sourceEdgeIsArc(context is Context, frenetPath is map, t is number, tot
 }
 
 
-// True when both offset components are constant (within tolerance) across [tA, tB].
-// A constant offset over a circular source edge yields an exact concentric/translated arc.
-function offsetConstantOver(region is map, tA is number, tB is number) returns boolean
+// The offsets of one zone (a region or a blend) as a function of path parameter t:
+// function(t) returns { "normalOff", "binormalOff" }, plus the zone's extent [tLo, tHi]
+// (tangents are read one-sided at its ends).
+function regionZone(region is map) returns map
 {
-    var nSamp = 5;
-    var n0    = 0 * meter;
-    var b0    = 0 * meter;
-    var maxN  = 0 * meter;
-    var maxB  = 0 * meter;
+    return {
+        "offsetsAt" : function(t) { return computeOffsetsAt(region, t); },
+        "tLo"       : region.tStart,
+        "tHi"       : region.tEnd
+    };
+}
 
-    for (var i = 0; i < nSamp; i += 1)
+
+// A zone's offsets at path parameter t.
+function zoneOffsets(zone is map, t is number) returns map
+{
+    const offsetsAt = zone.offsetsAt;
+    return offsetsAt(t);
+}
+
+
+// True when both offset components of a zone are constant (within 1 um) across [tA, tB]; a
+// constant offset over a circular source edge is exactly a concentric / translated arc.
+function zoneOffsetConstant(zone is map, tA is number, tB is number) returns boolean
+{
+    var o0 = zoneOffsets(zone, tA);
+    for (var i = 1; i < 5; i += 1)
     {
-        var t    = tA + (tB - tA) * i / (nSamp - 1);
-        var offs = computeOffsetsAt(region, t);
-        if (i == 0)
+        var o = zoneOffsets(zone, tA + (tB - tA) * i / 4);
+        if (abs(o.normalOff - o0.normalOff) > 1e-6 * meter || abs(o.binormalOff - o0.binormalOff) > 1e-6 * meter)
         {
-            n0 = offs.normalOff;
-            b0 = offs.binormalOff;
-        }
-        else
-        {
-            var dn = abs(offs.normalOff - n0);
-            var db = abs(offs.binormalOff - b0);
-            if (dn > maxN)
-            {
-                maxN = dn;
-            }
-            if (db > maxB)
-            {
-                maxB = db;
-            }
+            return false;
         }
     }
+    return true;
+}
 
-    return (maxN < 1e-6 * meter) && (maxB < 1e-6 * meter);
+
+// World point of a zone's offset curve at path parameter t.
+function zonePoint(context is Context, pathInfo is map, definition is map, zone is map, t is number) returns Vector
+{
+    var o = zoneOffsets(zone, t);
+    return computeOffsetPoint(context, pathInfo, definition, t, o.normalOff, o.binormalOff);
+}
+
+
+// Unit tangent of a zone's offset curve at t, in the direction of travel: central difference,
+// one-sided at the zone's ends; the frame tangent if the offset curve is momentarily stationary.
+function zoneTangent(context is Context, pathInfo is map, definition is map, zone is map, t is number) returns Vector
+{
+    var dtp = 1e-4;
+    var tHi = min(t + dtp, zone.tHi);
+    var tLo = max(t - dtp, zone.tLo);
+    if (tHi - tLo < 1e-12)
+    {
+        tHi = min(t + dtp, 1.0);
+        tLo = max(t - dtp, 0.0);
+    }
+    var dir  = zonePoint(context, pathInfo, definition, zone, tHi) - zonePoint(context, pathInfo, definition, zone, tLo);
+    var dLen = norm(dir);
+    if (dLen / meter < 1e-12)
+    {
+        return sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length).frame.zAxis;
+    }
+    return dir / dLen;
 }
 
 
@@ -2033,9 +2083,10 @@ function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vect
 }
 
 
-// Builds a sketch arc through 3 world points on their common plane, under arcId.
-// Returns qCreatedBy(arcId, EntityType.BODY), or undefined if the points are collinear
-// (no unique arc) so the caller can fall back to a spline.
+// Builds a sketch arc through 3 world points on their common plane, under arcId. The sketch
+// is what makes Onshape treat the output as an arc (clicking it shows a radius); a BSpline
+// with the same shape reads as a spline. Returns qCreatedBy(arcId, EntityType.BODY), or
+// undefined if the points are collinear (no unique arc) so the caller can fall back.
 function emitArc3Point(context is Context, arcId is Id, pStart is Vector, pMid is Vector, pEnd is Vector)
 {
     var nrm = cross(pMid - pStart, pEnd - pStart);
@@ -2057,36 +2108,122 @@ function emitArc3Point(context is Context, arcId is Id, pStart is Vector, pMid i
 }
 
 
-// Emits the constant-offset arc over [tA, tB] as a sketch arc (3-point start/mid/end) so the
-// output edge shows a radius. Returns the created sketch body query, or undefined when the
-// three sample points are collinear (not a real arc) so the caller falls back to a spline.
-function emitOffsetArc(context is Context, wireId is Id, pathInfo is map, definition is map,
-    region is map, tA is number, tB is number)
-{
-    var tMid = (tA + tB) / 2;
-    var oA   = computeOffsetsAt(region, tA);
-    var oM   = computeOffsetsAt(region, tMid);
-    var oB   = computeOffsetsAt(region, tB);
-    var p0   = computeOffsetPoint(context, pathInfo, definition, tA,   oA.normalOff, oA.binormalOff);
-    var pM   = computeOffsetPoint(context, pathInfo, definition, tMid, oM.normalOff, oM.binormalOff);
-    var p1   = computeOffsetPoint(context, pathInfo, definition, tB,   oB.normalOff, oB.binormalOff);
-
-    return emitArc3Point(context, wireId, p0, pM, p1);
-}
-
-
 /** Interior points on which a best-fit biarc's deviation from the true offset is measured. */
 const BIARC_DEVIATION_SAMPLES = 10;
 
-/** Path-parameter step used to read the source edge on either side of an edge boundary. */
-const EDGE_SIDE_EPS = 1e-7;
+
+// The arc output for [tA, tB] of a zone lying on one circular source edge:
+//   - constant offset -> the exact concentric / translated arc (3-point sketch arc);
+//   - varying offset  -> two tangent sketch arcs matching both end points and both end
+//                        tangents of the true offset curve, the joint placed where the pair
+//                        stays closest to it.
+// Returns { ok, bodies, edges, isPair, deviation }; ok = false builds nothing (degenerate
+// geometry), and the caller fits a spline instead.
+function emitSourceArc(context is Context, wireId is Id, pathInfo is map, definition is map,
+    zone is map, tA is number, tB is number) returns map
+{
+    var none = { "ok" : false };
+    var p0 = zonePoint(context, pathInfo, definition, zone, tA);
+    var p1 = zonePoint(context, pathInfo, definition, zone, tB);
+
+    if (zoneOffsetConstant(zone, tA, tB))
+    {
+        var pM   = zonePoint(context, pathInfo, definition, zone, (tA + tB) / 2);
+        var body = emitArc3Point(context, wireId, p0, pM, p1);
+        if (body == undefined)
+        {
+            return none;
+        }
+        return { "ok" : true, "bodies" : [body], "edges" : [qCreatedBy(wireId, EntityType.EDGE)],
+                 "isPair" : false, "deviation" : 0 * meter };
+    }
+
+    var t0 = zoneTangent(context, pathInfo, definition, zone, tA);
+    var t1 = zoneTangent(context, pathInfo, definition, zone, tB);
+    var truePts = [];
+    for (var k = 1; k < BIARC_DEVIATION_SAMPLES; k += 1)
+    {
+        truePts = append(truePts, zonePoint(context, pathInfo, definition, zone, tA + (tB - tA) * k / BIARC_DEVIATION_SAMPLES));
+    }
+    var bi = computeBiarcPoints(p0, t0, p1, t1, truePts);
+
+    // Both legs must be real arcs (same threshold emitArc3Point uses) before anything is built,
+    // so a failure leaves no orphan sketch.
+    var legsOk = bi.ok
+        && norm(cross(bi.midA - p0,       bi.joint - p0)) >= 1e-9 * meter * meter
+        && norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
+    if (!legsOk)
+    {
+        return none;
+    }
+    var idA = wireId + "A";
+    var idB = wireId + "B";
+    emitArc3Point(context, idA, p0, bi.midA, bi.joint);
+    emitArc3Point(context, idB, bi.joint, bi.midB, p1);
+    return { "ok" : true,
+             "bodies" : [qCreatedBy(idA, EntityType.BODY), qCreatedBy(idB, EntityType.BODY)],
+             "edges"  : [qCreatedBy(idA, EntityType.EDGE), qCreatedBy(idB, EntityType.EDGE)],
+             "isPair" : true, "deviation" : bi.deviation };
+}
+
+
+// Fits and creates one spline piece. In "Keep as arcs" mode both ends are pinned to the true
+// offset tangent of the zone, so a spline meeting an arc joins it G1 (the arc carries that
+// tangent exactly) instead of approximately.
+function emitSplinePiece(context is Context, wireId is Id, pathInfo is map, definition is map,
+    zone is map, tA is number, tB is number, pts is array, interpolateIndices is array, maxCP is number) returns Query
+{
+    var target = { "positions" : pts };
+    if (definition.arcMode == VaryingArcMode.BIARC)
+    {
+        var chord = 0 * meter;
+        for (var k = 0; k < size(pts) - 1; k += 1)
+        {
+            chord += norm(pts[k + 1] - pts[k]);
+        }
+        target.startDerivative = zoneTangent(context, pathInfo, definition, zone, tA) * chord;
+        target.endDerivative   = zoneTangent(context, pathInfo, definition, zone, tB) * chord;
+    }
+    var bspline = approximateSpline(context, {
+        "degree"             : definition.approxDegree,
+        "tolerance"          : definition.approxTolerance,
+        "isPeriodic"         : false,
+        "maxControlPoints"   : maxCP,
+        "targets"            : [approximationTarget(target)],
+        "interpolateIndices" : interpolateIndices
+    })[0];
+    opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
+    if (definition.printCurveDetails)
+    {
+        println("  degree " ~ toString(bspline.degree) ~ "  CPs " ~ toString(size(bspline.controlPoints))
+            ~ "  samples " ~ toString(size(pts)) ~ "  t [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+    }
+    return qCreatedBy(wireId, EntityType.BODY);
+}
+
+
+// Split points of [tStart, tEnd]: its ends plus every source-edge boundary strictly inside.
+function splitAtEdgeBoundaries(edgeBoundaryTs is array, tStart is number, tEnd is number) returns array
+{
+    var splitTs = [tStart];
+    for (var tb in edgeBoundaryTs)
+    {
+        if (tb > tStart + 1e-6 && tb < tEnd - 1e-6)
+        {
+            splitTs = append(splitTs, tb);
+        }
+    }
+    return append(splitTs, tEnd);
+}
+
 
 function buildOutputWire(context is Context, id is Id, definition is map,
     pathInfo is map, sortedRegions is array)
 {
+    var keepArcs      = definition.arcMode == VaryingArcMode.BIARC;
     var allWireBodies = [];
     var allWireEdges  = [];
-    var biarcCount    = 0;            // source arcs emitted as arc pairs
+    var biarcCount    = 0;            // varying-offset source arcs emitted as arc pairs
     var biarcWorst    = 0 * meter;    // their largest deviation from the true offset
 
     // Collect active blend zones (SINGLE_REGION mode declares no intersections)
@@ -2095,17 +2232,27 @@ function buildOutputWire(context is Context, id is Id, definition is map,
     for (var intr in intersections)
     {
         if (!intr.isValid || !intr.blend)
+        {
             continue;
+        }
 
         var regA = undefined;
         var regB = undefined;
         for (var reg in sortedRegions)
         {
-            if (reg.regionName == intr.region1) regA = reg;
-            if (reg.regionName == intr.region2) regB = reg;
+            if (reg.regionName == intr.region1)
+            {
+                regA = reg;
+            }
+            if (reg.regionName == intr.region2)
+            {
+                regB = reg;
+            }
         }
         if (regA == undefined || regB == undefined)
+        {
             continue;
+        }
 
         var tBlendStart = regA.tEnd   - intr.startDist / pathInfo.length;
         var tBlendEnd   = regB.tStart + intr.endDist   / pathInfo.length;
@@ -2140,26 +2287,33 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         });
     }
 
-    // Collect edge-boundary t-values (one per inter-edge junction in the FrenetPath)
+    // Edge-boundary t-values (one per inter-edge junction in the FrenetPath)
     var edgeBoundaryTs = [];
     var edgeData = pathInfo.frenetPath.edgeData;
     for (var ei = 1; ei < size(edgeData); ei += 1)
+    {
         edgeBoundaryTs = append(edgeBoundaryTs, edgeData[ei].startArcLength / pathInfo.length);
+    }
 
-    // One or more BSpline wires per region -- split at edge boundaries so each
-    // output curve spans at most one source edge.
+    // One or more wires per region -- split at edge boundaries so each output curve spans at
+    // most one source edge.
     for (var ri = 0; ri < size(sortedRegions); ri += 1)
     {
         var reg       = sortedRegions[ri];
+        var zone      = regionZone(reg);
         var tSegStart = reg.tStart;
         var tSegEnd   = reg.tEnd;
 
         for (var bz in blendZones)
         {
             if (bz.regA.regionName == reg.regionName)
+            {
                 tSegEnd   = min(tSegEnd,   bz.tBlendStart);
+            }
             if (bz.regB.regionName == reg.regionName)
+            {
                 tSegStart = max(tSegStart, bz.tBlendEnd);
+            }
         }
 
         if (tSegEnd - tSegStart < 1e-6)
@@ -2170,16 +2324,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             continue;
         }
 
-        // Build the ordered list of split points: region endpoints + any edge
-        // boundaries that fall strictly inside the trimmed segment
-        var splitTs = [tSegStart];
-        for (var tb in edgeBoundaryTs)
-        {
-            if (tb > tSegStart + 1e-6 && tb < tSegEnd - 1e-6)
-                splitTs = append(splitTs, tb);
-        }
-        splitTs = append(splitTs, tSegEnd);
-
+        var splitTs = splitAtEdgeBoundaries(edgeBoundaryTs, tSegStart, tSegEnd);
         for (var si = 0; si < size(splitTs) - 1; si += 1)
         {
             var tA = splitTs[si];
@@ -2190,93 +2335,39 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             }
 
             var wireId = id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si));
-            var tMid   = (tA + tB) / 2;
-
-            // Arc preservation. When this sub-curve lies on a single circular source edge:
-            //   - constant offset            -> exact concentric/translated arc (always)
-            //   - varying offset + BIARC mode -> two tangent arcs matching both endpoint
-            //                                    offsets and staying tangent to neighbors
-            // Anything else falls through to the best-fit spline below.
-            if (sourceEdgeIsArc(context, pathInfo.frenetPath, tMid, pathInfo.length))
+            var colour = (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA;
+            if (definition.printCurveDetails)
             {
-                if (offsetConstantOver(reg, tA, tB))
+                println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " ===");
+            }
+
+            if (keepArcs && sourceEdgeIsArc(context, pathInfo.frenetPath, (tA + tB) / 2, pathInfo.length))
+            {
+                var arcOut = emitSourceArc(context, wireId, pathInfo, definition, zone, tA, tB);
+                if (arcOut.ok)
                 {
-                    var arcBody = emitOffsetArc(context, wireId, pathInfo, definition, reg, tA, tB);
-                    if (arcBody != undefined)
-                    {
-                        allWireBodies = append(allWireBodies, arcBody);
-                        allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
-                        if (definition.printCurveDetails)
-                        {
-                            println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [ARC] ===");
-                            println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
-                        }
-                        if (definition.showRegions)
-                        {
-                            addDebugEntities(context, arcBody, (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
-                        }
-                        continue;
-                    }
-                }
-                else if (definition.arcMode == VaryingArcMode.BIARC)
-                {
-                    var oA = computeOffsetsAt(reg, tA);
-                    var oB = computeOffsetsAt(reg, tB);
-                    var p0 = computeOffsetPoint(context, pathInfo, definition, tA, oA.normalOff, oA.binormalOff);
-                    var p1 = computeOffsetPoint(context, pathInfo, definition, tB, oB.normalOff, oB.binormalOff);
-                    var t0 = offsetTangentAt(context, pathInfo, definition, reg, tA);
-                    var t1 = offsetTangentAt(context, pathInfo, definition, reg, tB);
-
-                    // The true offset curve inside the span: the joint is placed where the arc
-                    // pair stays closest to it (both ends and both end tangents are exact for
-                    // every placement).
-                    var truePts = [];
-                    for (var k = 1; k < BIARC_DEVIATION_SAMPLES; k += 1)
-                    {
-                        var tk = tA + (tB - tA) * k / BIARC_DEVIATION_SAMPLES;
-                        var ok = computeOffsetsAt(reg, tk);
-                        truePts = append(truePts, computeOffsetPoint(context, pathInfo, definition, tk, ok.normalOff, ok.binormalOff));
-                    }
-                    var bi = computeBiarcPoints(p0, t0, p1, t1, truePts);
-
-                    // Pre-check both legs are non-collinear (same threshold emitArc3Point uses),
-                    // so we only create sketches when BOTH will succeed -- no orphan bodies.
-                    var legsOk = bi.ok
-                        && norm(cross(bi.midA - p0,       bi.joint - p0)) >= 1e-9 * meter * meter
-                        && norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
-
-                    if (legsOk)
+                    allWireBodies = concatenateArrays([allWireBodies, arcOut.bodies]);
+                    allWireEdges  = concatenateArrays([allWireEdges,  arcOut.edges]);
+                    if (arcOut.isPair)
                     {
                         biarcCount += 1;
-                        biarcWorst  = max(biarcWorst, bi.deviation);
-                        var idA = wireId + "A";
-                        var idB = wireId + "B";
-                        emitArc3Point(context, idA, p0, bi.midA, bi.joint);
-                        emitArc3Point(context, idB, bi.joint, bi.midB, p1);
-                        allWireBodies = append(allWireBodies, qCreatedBy(idA, EntityType.BODY));
-                        allWireBodies = append(allWireBodies, qCreatedBy(idB, EntityType.BODY));
-                        allWireEdges  = append(allWireEdges, qCreatedBy(idA, EntityType.EDGE));
-                        allWireEdges  = append(allWireEdges, qCreatedBy(idB, EntityType.EDGE));
-                        if (definition.printCurveDetails)
-                        {
-                            println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [BIARC] ===");
-                            println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
-                            println("  deviation from true offset: " ~ toString(bi.deviation / millimeter) ~ " mm");
-                        }
-                        if (definition.showRegions)
-                        {
-                            addDebugEntities(context, qCreatedBy(idA, EntityType.BODY), (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
-                            addDebugEntities(context, qCreatedBy(idB, EntityType.BODY), (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
-                        }
-                        continue;
+                        biarcWorst  = max(biarcWorst, arcOut.deviation);
                     }
-                    // biarc degenerate or a near-straight leg -> fall through to spline
+                    if (definition.printCurveDetails)
+                    {
+                        println((arcOut.isPair ? "  ARC PAIR, deviation from true offset " ~ toString(arcOut.deviation / millimeter) ~ " mm" : "  ARC")
+                            ~ "  t [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+                    }
+                    if (definition.showRegions)
+                    {
+                        addDebugEntities(context, qUnion(arcOut.bodies), colour);
+                    }
+                    continue;
                 }
             }
 
             var seg = generateSegmentPoints(context, pathInfo, definition, reg, tA, tB);
-            var pts = seg.points;
-            if (size(pts) < 2)
+            if (size(seg.points) < 2)
             {
                 continue;
             }
@@ -2291,92 +2382,81 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                     " to honor all interior station/dwell pins.");
             }
 
-            // Where this spline meets an arc (at a source-edge boundary with a circular edge
-            // on the other side) its end tangent is pinned to the true offset tangent -- the
-            // tangent the arc has there -- so the joint is G1 rather than fit-approximate.
-            var target = { "positions" : pts };
-            var chord  = 0 * meter;
-            for (var k = 0; k < size(pts) - 1; k += 1)
-            {
-                chord += norm(pts[k + 1] - pts[k]);
-            }
-            if (si > 0 && sourceEdgeIsArc(context, pathInfo.frenetPath, tA - EDGE_SIDE_EPS, pathInfo.length))
-            {
-                target.startDerivative = offsetTangentAt(context, pathInfo, definition, reg, tA) * chord;
-            }
-            if (si < size(splitTs) - 2 && sourceEdgeIsArc(context, pathInfo.frenetPath, tB + EDGE_SIDE_EPS, pathInfo.length))
-            {
-                target.endDerivative = offsetTangentAt(context, pathInfo, definition, reg, tB) * chord;
-            }
-
-            var bspline = approximateSpline(context, {
-                "degree"             : definition.approxDegree,
-                "tolerance"          : definition.approxTolerance,
-                "isPeriodic"         : false,
-                "maxControlPoints"   : effMaxCP,
-                "targets"            : [approximationTarget(target)],
-                "interpolateIndices" : seg.interpolateIndices
-            })[0];
-
-            opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
-            allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
+            var body = emitSplinePiece(context, wireId, pathInfo, definition, zone, tA, tB,
+                seg.points, seg.interpolateIndices, effMaxCP);
+            allWireBodies = append(allWireBodies, body);
             allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
-
-            if (definition.printCurveDetails)
-            {
-                println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " ===");
-                println("  degree:  " ~ toString(bspline.degree));
-                println("  CPs:     " ~ toString(size(bspline.controlPoints)));
-                println("  samples: " ~ toString(size(pts)));
-                println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
-            }
-
             if (definition.showRegions)
             {
-                addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY),
-                    (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
+                addDebugEntities(context, body, colour);
+            }
+        }
+    }
+
+    // Blends. "Convert to splines": one spline per blend, as always. "Keep as arcs": split at
+    // source-edge boundaries like the regions, so a blend over a source arc is an arc too.
+    for (var bzi = 0; bzi < size(blendZones); bzi += 1)
+    {
+        var bz   = blendZones[bzi];
+        var zone = blendZone(pathInfo, definition, bz);
+        if (definition.printCurveDetails)
+        {
+            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' -> '" ~ bz.regB.regionName ~ "') ===");
+        }
+
+        var splitTs = keepArcs ? splitAtEdgeBoundaries(edgeBoundaryTs, bz.tBlendStart, bz.tBlendEnd) : [bz.tBlendStart, bz.tBlendEnd];
+        for (var si = 0; si < size(splitTs) - 1; si += 1)
+        {
+            var tA = splitTs[si];
+            var tB = splitTs[si + 1];
+            if (tB - tA < 1e-6)
+            {
+                continue;
+            }
+            var wireId = keepArcs ? id + ("blend_" ~ toString(bzi) ~ "_" ~ toString(si)) : id + ("blend_" ~ toString(bzi));
+
+            if (keepArcs && sourceEdgeIsArc(context, pathInfo.frenetPath, (tA + tB) / 2, pathInfo.length))
+            {
+                var arcOut = emitSourceArc(context, wireId, pathInfo, definition, zone, tA, tB);
+                if (arcOut.ok)
+                {
+                    allWireBodies = concatenateArrays([allWireBodies, arcOut.bodies]);
+                    allWireEdges  = concatenateArrays([allWireEdges,  arcOut.edges]);
+                    if (arcOut.isPair)
+                    {
+                        biarcCount += 1;
+                        biarcWorst  = max(biarcWorst, arcOut.deviation);
+                    }
+                    if (definition.showBlends)
+                    {
+                        addDebugEntities(context, qUnion(arcOut.bodies), DebugColor.YELLOW);
+                    }
+                    continue;
+                }
+            }
+
+            // Points in proportion to this piece's share of the blend (all of it when unsplit).
+            var n   = max([definition.approxDegree + 1, floor(definition.numRegionPoints * (tB - tA) / (bz.tBlendEnd - bz.tBlendStart) + 0.5)]);
+            var pts = [];
+            for (var i = 0; i < n; i += 1)
+            {
+                pts = append(pts, zonePoint(context, pathInfo, definition, zone, tA + (tB - tA) * i / (n - 1)));
+            }
+            var body = emitSplinePiece(context, wireId, pathInfo, definition, zone, tA, tB,
+                pts, [0, size(pts) - 1], definition.approxMaxCP);
+            allWireBodies = append(allWireBodies, body);
+            allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
+            if (definition.showBlends)
+            {
+                addDebugEntities(context, body, DebugColor.YELLOW);
             }
         }
     }
 
     if (biarcCount > 0)
     {
-        reportFeatureInfo(context, id, toString(biarcCount) ~ " varying-offset arc(s) built as tangent arc pairs; " ~
+        reportFeatureInfo(context, id, toString(biarcCount) ~ " varying-offset source arc(s) built as tangent arc pairs; " ~
             "largest deviation from the true offset " ~ toString(roundToPrecision(biarcWorst / millimeter, 4)) ~ " mm.");
-    }
-
-    // One BSpline wire per active blend zone
-    for (var bzi = 0; bzi < size(blendZones); bzi += 1)
-    {
-        var bz  = blendZones[bzi];
-        var pts = generateBlendPoints(context, pathInfo, definition,
-            bz.tBlendStart, bz.tBlendEnd, bz.regA, bz.regB, bz.intr);
-        if (size(pts) < 2) continue;
-
-        var bspline = approximateSpline(context, {
-            "degree"             : definition.approxDegree,
-            "tolerance"          : definition.approxTolerance,
-            "isPeriodic"         : false,
-            "maxControlPoints"   : definition.approxMaxCP,
-            "targets"            : [approximationTarget({ "positions" : pts })],
-            "interpolateIndices" : [0, size(pts) - 1]
-        })[0];
-
-        var wireId = id + ("blend_" ~ toString(bzi));
-        opCreateBSplineCurve(context, wireId, { "bSplineCurve" : bspline });
-        allWireBodies = append(allWireBodies, qCreatedBy(wireId, EntityType.BODY));
-        allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
-
-        if (definition.printCurveDetails)
-        {
-            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' -> '" ~ bz.regB.regionName ~ "') ===");
-            println("  degree:  " ~ toString(bspline.degree));
-            println("  CPs:     " ~ toString(size(bspline.controlPoints)));
-            println("  samples: " ~ toString(size(pts)));
-        }
-
-        if (definition.showBlends)
-            addDebugEntities(context, qCreatedBy(wireId, EntityType.BODY), DebugColor.YELLOW);
     }
 
     // Collect all edges from individual wire bodies into one combined wire, then delete originals
