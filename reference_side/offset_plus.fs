@@ -401,6 +401,18 @@ function offsetPath(context is Context, id is Id, definition is map, path is Pat
             continue;
         }
 
+        if (norm(b - a) <= definition.fitTolerance)
+        {
+            // A real corner whose offsets already meet within the fit tolerance (a kink the
+            // offset direction lies along, carried by the transport frame to within microns):
+            // close it at one shared point, each side keeping its own tangent. An arc here
+            // would be a sliver edge.
+            const shared = (a + b) / 2;
+            pieces[j].positions[size(A) - 1] = shared;
+            pieces[n].positions[0] = shared;
+            continue;
+        }
+
         if (dot(b - a, pieces[j].tEnd) > 0 * meter)
         {
             // The offsets separate: round the gap about the corner point.

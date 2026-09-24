@@ -4,11 +4,13 @@
   "document_name": "curve_tools",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/2143812a99089658c704f0bc/w/4ea63c7ef14610f212917c42",
-  "last_sync": "2026-09-24T04:11:07.171164+00:00",
+  "last_sync": "2026-09-24T04:11:35.984124+00:00",
   "feature_studios": {
     "curve_core": "02d7784437f621c76397f0d6",
     "evaluate_profiles": "707d2062cd3680bf9a6466fa",
-    "merge_curve": "584469527ba0d496604523ec"
+    "merge_curve": "584469527ba0d496604523ec",
+    "clean_wire": "ad14cae77548843ba119071c",
+    "map_curve": "83aa07e20d0c8710c97a6cd7"
   },
   "tab_folders": {}
 }
