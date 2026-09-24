@@ -491,14 +491,9 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
  */
 function noRegions(names is array, why is string) returns map
 {
-    var descriptions = [];
-    for (var name in names)
-    {
-        descriptions = append(descriptions, "not defined: " ~ why);
-    }
     return {
             "names" : names,
-            "descriptions" : descriptions,
+            "descriptions" : makeArray(size(names), "not defined: " ~ why),
             "bodies" : makeArray(size(names), []),
             "outside" : makeArray(size(names), false),
             "inside" : makeArray(size(names), false),
