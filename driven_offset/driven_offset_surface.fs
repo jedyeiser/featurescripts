@@ -8,8 +8,8 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "eb23f15e06a23d0fd2e2
 import(path : "d009ddf4a8dd9534fc4dc4b5", version : "bd81293ec01682880717eb76");
 import(path : "6479d7fbd0ec7d11e0ae6c69", version : "3d13f8cddcd8668502860216");
 import(path : "786f62f4d67ed8d9c7d56d16", version : "");
-// IMPORT: design_map_query_utils.fs (embedStandardOutputs)
-import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
+// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // bspline_compat: exact knot/degree/join algebra for the unified patches.
 import(path : "6b635e74c92bd23387e850c1", version : "");
 
