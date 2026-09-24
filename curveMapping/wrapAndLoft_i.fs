@@ -500,7 +500,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var allWrappedSegBodies           = [];
         var allPrimaryOffsetSegBodies     = [];
         var allSecondaryOffsetSegBodies   = [];
-        var wrappedBSplines               = [];        var primaryBSplines       = [];   // per fitted span, parallel to wrappedBSplines        var secondaryBSplines     = [];
+        var wrappedBSplines               = [];
+        var primaryBSplines       = [];   // per fitted span, parallel to wrappedBSplines
+        var secondaryBSplines     = [];
         var wrappedIds                    = [];
         var allJunctionCurvatures         = [];
         var segCountPerSourceCurve        = [];
@@ -773,7 +775,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var segCount                  = 0;
             var wrappedCountBefore        = size(allWrappedSegQueries);  // track successful spans
             var junctionPt                = undefined;
-            var junctionTangent           = undefined;            var junctionTangentInfo = undefined;  // exact tangent record at the current span's END            var nextStartInfo       = undefined;  // exact tangent record at the next span's START
+            var junctionTangent           = undefined;
+            var junctionTangentInfo = undefined;  // exact tangent record at the current span's END
+            var nextStartInfo       = undefined;  // exact tangent record at the next span's START
             var junctionOffsetDir         = undefined;
             var junctionCurvature         = undefined;  // carry-over mapped source curvature at span END
 
@@ -827,7 +831,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var segOffsetDirs = [];
 
                 // Capture carry-over junction data before clearing for this span
-                // The next span starts with the AFTER side of the junction (or the curve's start).                var carryOverInfo      = (nextStartInfo != undefined) ? nextStartInfo : junctionTangentInfo;                var carryOverTangent   = (carryOverInfo != undefined) ? carryOverInfo.tangent : junctionTangent;                nextStartInfo          = undefined;                junctionTangentInfo    = undefined;
+                // The next span starts with the AFTER side of the junction (or the curve's start).
+                var carryOverInfo      = (nextStartInfo != undefined) ? nextStartInfo : junctionTangentInfo;
+                var carryOverTangent   = (carryOverInfo != undefined) ? carryOverInfo.tangent : junctionTangent;
+                nextStartInfo          = undefined;
+                junctionTangentInfo    = undefined;
                 var carryOverOffsetDir = junctionOffsetDir;
                 junctionTangent   = undefined;
                 junctionOffsetDir = undefined;
@@ -876,7 +884,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // max(current, next) for adjacent edges; unlike it, still right after the
                     // clustering fix merges a sliver run and the two edges are no longer adjacent.
                     var boundaryEdgeIdx = (nextEdgeIdx > currentEdge) ? currentEdge + 1 : currentEdge;
-                    // The span ended at a to-edge boundary, or else at a from-edge boundary (a corner or                    // curvature jump of the from-path); place the junction at that one.                    var s_to_boundary;                    var s_from_junction;                    if (!pathIsSmoothAcross(toFrenetPath, currentEdge, nextEdgeIdx))                    {                        s_to_boundary   = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;                        s_from_junction = fromRefArc + (s_to_boundary - toRefArc);                    }                    else                    {                        var fromK  = mappedData[segEndIdx].fromEdgeIndex;                        var fromK1 = mappedData[segEndIdx + 1].fromEdgeIndex;                        s_from_junction = fromFrenetPath.edgeData[(fromK1 > fromK) ? fromK + 1 : fromK].startArcLength;                        s_to_boundary   = toRefArc + (s_from_junction - fromRefArc);                    }
+                    // The span ended at a to-edge boundary, or else at a from-edge boundary (a corner or
+                    // curvature jump of the from-path); place the junction at that one.
+                    var s_to_boundary;
+                    var s_from_junction;
+                    if (!pathIsSmoothAcross(toFrenetPath, currentEdge, nextEdgeIdx))
+                    {
+                        s_to_boundary   = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
+                        s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
+                    }
+                    else
+                    {
+                        var fromK  = mappedData[segEndIdx].fromEdgeIndex;
+                        var fromK1 = mappedData[segEndIdx + 1].fromEdgeIndex;
+                        s_from_junction = fromFrenetPath.edgeData[(fromK1 > fromK) ? fromK + 1 : fromK].startArcLength;
+                        s_to_boundary   = toRefArc + (s_from_junction - fromRefArc);
+                    }
                     if (s_from_junction < 0 * meter)
                     {
                         s_from_junction = 0 * meter;
@@ -980,7 +1003,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     segPoints         = append(segPoints,     junctionWorldPt);
                     segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
                     junctionPt        = junctionWorldPt;
-                    // Each side of the junction gets its own frame and curvature (before / after).                    junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, -1,                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);                    nextStartInfo       = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, 1,                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);                    junctionTangent     = junctionTangentInfo.tangent;
+                    // Each side of the junction gets its own frame and curvature (before / after).
+                    junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, -1,
+                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);
+                    nextStartInfo       = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, 1,
+                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);
+                    junctionTangent     = junctionTangentInfo.tangent;
                     junctionOffsetDir = junctionOffDir;
                 }
                 else
@@ -1136,7 +1164,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // CP[0] = C(t0) and CP[-1] = C(t_end) exactly, so this costs nothing
                     // geometrically but makes boundary edges bit-identical across source curves,
                     // which is required for the surface union to stitch correctly.
-                    if (!coupledFit)                    {
+                    if (!coupledFit)
+                    {
                         var cps = primaryOffsetCurve.controlPoints;
                         var m   = size(cps) - 1;
                         var snapped = [];
@@ -1184,41 +1213,77 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
 
                     // Exact ruled surface: the wrapped and offset curves fitted in ONE call share their knots
+
                     // exactly (std: multi-target fits are consistently parameterized), so each span\'s surface
+
                     // can be written as the ruled B-spline between them. Every member has the same point count
+
                     // and the same derivative constraints present, as std requires.
+
                     if (coupledFit)
+
                     {
+
                         var familyTargets = [approximationTarget(wrappedTargetDef), approximationTarget(primaryOffsetTargetDef)];
+
                         var withSecond    = definition.secondDirection && definition.secondOffset > 0 * millimeter;
+
                         if (withSecond)
+
                         {
+
                             // Rebuilt here: the separate secondary target is declared inside its own block.
+
                             var secondChord = 0 * meter;
+
                             for (var k = 0; k < size(secondaryOffsetPoints) - 1; k += 1)
+
                             {
+
                                 secondChord += norm(secondaryOffsetPoints[k + 1] - secondaryOffsetPoints[k]);
+
                             }
+
                             var secondDef = { "positions": secondaryOffsetPoints };
+
                             if (carryOverTangent != undefined)
+
                             {
+
                                 secondDef = mergeMaps(secondDef, { "startDerivative": offsetCurveTangent(carryOverInfo, -1 * offsetSign * definition.secondOffset, segOffsetDirs[0]) * secondChord });
+
                             }
+
                             if (junctionTangent != undefined)
+
                             {
+
                                 secondDef = mergeMaps(secondDef, { "endDerivative": offsetCurveTangent(junctionTangentInfo, -1 * offsetSign * definition.secondOffset, segOffsetDirs[size(segOffsetDirs) - 1]) * secondChord });
+
                             }
+
                             familyTargets = append(familyTargets, approximationTarget(secondDef));
+
                         }
+
                         var family = approximateSpline(context, mergeMaps(offsetApproxBase, { "targets": familyTargets }));
+
                         mappedCurve        = snapEndControlPoints(family[0], segPoints[0], segPoints[size(segPoints) - 1]);
+
                         primaryOffsetCurve = snapEndControlPoints(family[1], primaryOffsetPoints[0], primaryOffsetPoints[size(primaryOffsetPoints) - 1]);
+
                         if (withSecond)
+
                         {
+
                             secondaryOffsetCurve = snapEndControlPoints(family[2], secondaryOffsetPoints[0], secondaryOffsetPoints[size(secondaryOffsetPoints) - 1]);
+
                         }
+
                     }
+
                     
+
                     // Capture and pre-increment so a failed op can never reuse the same Id
                     var thisSegCount = segCount;
                     segCount += 1;
@@ -1241,7 +1306,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
                         allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
                         spanIsFast           = append(spanIsFast, false);
-                        wrappedBSplines       = append(wrappedBSplines,       mappedCurve);                        primaryBSplines       = append(primaryBSplines,       primaryOffsetCurve);                        secondaryBSplines     = append(secondaryBSplines,     secondaryOffsetCurve);
+                        wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
+                        primaryBSplines       = append(primaryBSplines,       primaryOffsetCurve);
+                        secondaryBSplines     = append(secondaryBSplines,     secondaryOffsetCurve);
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
