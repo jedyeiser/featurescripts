@@ -641,8 +641,9 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
         return { "output" : wire, "fillets" : [] };
     }
 
-    // split into wires at both tangent points of every fillet (tiny trimmed planes: nothing else is cut)
-    var pieces = wire;
+    // split into wires at both tangent points of every fillet (tiny trimmed planes: nothing else is cut).
+    // Tracked: a split body's own id does not survive the split (cf. correction 34), its tracking query does.
+    var pieces = qUnion([wire, startTracking(context, wire)]);
     var k = 0;
     for (var f in fillets)
     {

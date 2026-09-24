@@ -1407,6 +1407,39 @@ bottom-right corner (Onshape's add-variable-button).
 
 ---
 
+## Correction 36: getProperty (e.g. NAME) throws inside a feature's regeneration (2026-09-24)
+
+**Symptom**: `@getProperty: Cannot get properties during feature regeneration in current context`
+from `getProperty(context, { "entity" : part, "propertyType" : PropertyType.NAME })` in a feature
+body. The same call works in the eval API.
+
+**Fix**: never default a feature's naming from the selected part's name; take a prefix string
+(Station geometry "Name prefix" is required). `setProperty` is fine.
+
+---
+
+## Correction 37: opCreateOutline refuses a composite part (2026-09-24)
+
+**Symptom**: `@opCreateOutline: INVALID_INPUT` with a composite (4501) as `tools`.
+
+**Fix**: pass the members -- `qUnion([qBodyType(q, [BodyType.SOLID, BodyType.SHEET]), qFlattenedCompositeParts(q)])`.
+Verified in the same spike: an OPEN composite accepts a point body (opPoint), wires, a nested
+composite, and a part that already belongs to another open composite.
+
+---
+
+## Correction 38: inserting a custom feature with an array parameter through the REST API (2026-09-24)
+
+**Symptom**: `400 Parameter stations ... does not match its feature spec`.
+
+**Fix**: (1) every array item must carry EVERY parameter of the item spec, hidden ones included
+(send empty query lists / defaults); (2) a custom enum's `namespace` is the namespace of the feature
+studio that defines the FEATURE (`e<eid>::m<mv>`, same as the feature's), not blank. Read the spec
+with `GET /api/v10/featurestudios/d/{d}/w/{w}/e/{e}/featurespecs`. Queries by deterministic id
+(`fsapi.qids`, transient ids from an eval run) are stored as persistent queries.
+
+---
+
 ## Statistics
 
 - **Total Corrections**: 35
