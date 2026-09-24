@@ -6,11 +6,10 @@ import(path : "onshape/std/movecurveboundarytype.gen.fs", version : "3070.0");
 import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3070.0");
 import(path : "onshape/std/curveextensionshape.gen.fs", version : "3070.0");
 
-// edge_offset_utils: the fitter (approximateFamily), emitters, classifiers, the
-// approximation predicate and bounds, formatting helpers. export import so the enums
-// declared there are reachable as feature parameter types.
-export import(path : "a2665e22c07b7a6929ce4e80", version : "");
-// design_map_query_utils: embedVariableMap and the extractable wrappers.
+// IMPORT: curve_core.fs -- the fitter (approximateFamily), emitters, classifiers, the
+// approximation predicate and bounds, formatting helpers.
+export import(path : "02d7784437f621c76397f0d6", version : "");
+// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs and the extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
 /**

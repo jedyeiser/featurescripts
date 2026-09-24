@@ -1,10 +1,10 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-// IMPORT: edge_offset_utils.fs
-export import(path : "a2665e22c07b7a6929ce4e80", version : "d49252259f7b34bf7da639ec");
+// IMPORT: curve_core.fs (export import: OffsetPointSpacing is a parameter type here)
+export import(path : "02d7784437f621c76397f0d6", version : "");
 // IMPORT: merge_curve.fs
-import(path : "f531550fd26c49415f9c443a", version : "38e6742293e654b12c3cffd4");
+import(path : "584469527ba0d496604523ec", version : "");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
