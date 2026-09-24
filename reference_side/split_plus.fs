@@ -32,8 +32,9 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  *     2 tools     start (beyond the first tool, away from the second), middle, end
  *     3+ tools    start, middle1 .. middleN-1, end
  * "Forward" for a tool is the side the next tool is on (for the last: away from the one
- * before), so orientation never matters. Tools that cross inside the part, or were picked
- * out of order, give a piece that fits no band -- refused with a message.
+ * before), so orientation never matters. When the tools cross inside the part (a normal
+ * way to keep a corner) or were picked out of order, no piece fits a band: the split is
+ * made as asked and the region keys are published empty, with an info notice saying why.
  *
  * Publishes (Extract variables), every key always present (empty when not applicable):
  *     output                 all resulting pieces; pieceCount, regionCount
@@ -185,6 +186,10 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         queries["inside"] = extractableQuery(qUnion(inside), "Every region between the first and last tools.", DebugColor.CYAN);
         queries["insideEdges"] = extractableQuery(regionEdges(qUnion(inside), allCuts), "Edges of the inside regions except the cuts.", DebugColor.CYAN);
 
+        if (regions.problem != undefined)
+        {
+            reportFeatureInfo(context, id, "Split done; regions not published: " ~ regions.problem ~ ".");
+        }
         if (definition.debugPrintSides)
         {
             for (var r = 0; r < size(regions.names); r += 1)
@@ -394,7 +399,7 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
         {
             if (sides[i][0] == 0)
             {
-                throw regenError("A piece lies on the tool; its side cannot be read.", ["tools"]);
+                return noRegions(named ? ["near", "far"] : ["front", "back"], "a piece lies on the tool, so its side cannot be read");
             }
             if (named ? sides[i][0] == refSide : sides[i][0] > 0)
             {
@@ -421,10 +426,6 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
     {
         const other = k < n - 1 ? tools[k + 1] : tools[k - 1];
         const at = sideSign(context, evApproximateCentroid(context, { "entities" : other }), tools[k]);
-        if (at == 0)
-        {
-            throw regenError("Tools " ~ (k + 1) ~ " and " ~ (k < n - 1 ? k + 2 : k) ~ " meet or cross; regions need tools that do not cross inside the part.", ["tools"]);
-        }
         forward = append(forward, k < n - 1 ? at : -at);
     }
 
@@ -437,6 +438,14 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
     }
     names = append(names, "end");
     descriptions = append(descriptions, "beyond tool " ~ n ~ ", away from tool " ~ (n - 1));
+
+    for (var k = 0; k < n; k += 1)
+    {
+        if (forward[k] == 0)
+        {
+            return noRegions(names, "tools " ~ (k + 1) ~ " and " ~ (k < n - 1 ? k + 2 : k) ~ " meet or cross");
+        }
+    }
 
     var bodies = makeArray(n + 1, []);
     for (var i = 0; i < size(pieces); i += 1)
@@ -461,7 +470,7 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
         }
         if (!consistent)
         {
-            throw regenError("A piece fits no region: pick the tools in order along the part, and use tools that do not cross inside it.", ["tools"]);
+            return noRegions(names, "a piece fits no band -- the tools cross inside the part, or were not picked in order along it");
         }
         bodies[region] = append(bodies[region], pieces[i]);
     }
@@ -473,6 +482,28 @@ function classifyRegions(context is Context, pieces is array, tools is array, pr
     inside[0] = false;
     inside[n] = false;
     return { "names" : names, "descriptions" : descriptions, "bodies" : bodies, "outside" : outside, "inside" : inside };
+}
+
+/**
+ * The region keys, all empty, and why: the tools do not define bands (they cross, or were
+ * picked out of order). The split itself is unaffected -- crossing tools are a normal way
+ * to keep a corner.
+ */
+function noRegions(names is array, why is string) returns map
+{
+    var descriptions = [];
+    for (var name in names)
+    {
+        descriptions = append(descriptions, "not defined: " ~ why);
+    }
+    return {
+            "names" : names,
+            "descriptions" : descriptions,
+            "bodies" : makeArray(size(names), []),
+            "outside" : makeArray(size(names), false),
+            "inside" : makeArray(size(names), false),
+            "problem" : why
+        };
 }
 
 /** A mate connector's frame, or undefined for anything else. */
