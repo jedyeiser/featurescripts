@@ -57,7 +57,7 @@ export const filletWire = defineFeature(function(context is Context, id is Id, d
                     "Description" : "Fillet every corner that can be filleted. Off: only the corners clicked in the graphics area." }
         definition.applyToAll is boolean;
 
-        annotation { "Name" : "Corners", "Item name" : "Corner", "Item label template" : "#radius",
+        annotation { "Name" : "Corners", "Item name" : "Corner", "Item label template" : "#cornerRadius",
                     "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
                     "Description" : "Filled in by clicking corners in the graphics area. Each can override the radius." }
         definition.corners is array;
@@ -72,7 +72,7 @@ export const filletWire = defineFeature(function(context is Context, id is Id, d
             if (corner.overrideRadius)
             {
                 annotation { "Name" : "Radius" }
-                isLength(corner.radius, BLEND_BOUNDS);
+                isLength(corner.cornerRadius, BLEND_BOUNDS);
             }
         }
 
@@ -139,7 +139,7 @@ export const filletWire = defineFeature(function(context is Context, id is Id, d
         for (var c = 0; c < size(chains); c += 1)
         {
             var mine = [];
-            for (var corner in chains[c].corners)
+            for (var j = 0; j < size(chains[c].corners); j += 1)
             {
                 if (solved[k] != undefined)
                 {
@@ -237,7 +237,7 @@ export function filletWireManipulatorChange(context is Context, definition is ma
         }
         if (entry == undefined)
         {
-            entry = { "vertex" : makeRobustQuery(context, corner.vertex), "overrideRadius" : false, "radius" : definition.radius };
+            entry = { "vertex" : makeRobustQuery(context, corner.vertex), "overrideRadius" : false, "cornerRadius" : definition.radius };
         }
         corners = append(corners, entry);
     }
@@ -268,7 +268,7 @@ function pickedCorners(context is Context, definition is map, all is array) retu
                 chosen[i] = true;
                 if (entry.overrideRadius == true)
                 {
-                    radius[i] = entry.radius;
+                    radius[i] = entry.cornerRadius;
                 }
             }
         }
