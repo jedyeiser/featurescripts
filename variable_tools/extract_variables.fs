@@ -2,6 +2,8 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: extract_variables_utils.fs (re-exports extract_outputs.fs)
 export import(path : "a4dcd70ce9ceec588536fb0c", version : "");
+// IMPORT: extract_variables_icon.svg (feature icon)
+IconNamespace::import(path : "1fec12e049522ab98f8177ff", version : "9c7ddae6a84d0131481b57c4");
 
 
 /**
@@ -24,7 +26,7 @@ export import(path : "a4dcd70ce9ceec588536fb0c", version : "");
  * Names: `<prefix>_<name>`, the name defaulting to the key ("output@2" -> "output_2").
  * Notices: one per regeneration; a warning only when an entry could not be published.
  */
-annotation {
+annotation { "Icon" : IconNamespace::BLOB_DATA,
         "Feature Type Name" : "Extract variables",
         "Feature Type Description" : "Publish variables and query variables from a block of features: their standard outputs, embedded keys, or composed selections.",
         "UIHint" : UIHint.NO_PREVIEW_PROVIDED,

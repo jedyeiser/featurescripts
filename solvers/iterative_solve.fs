@@ -2,6 +2,8 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: solver_core.fs
 import(path : "3b906109aa60b4adbf7f9b60", version : "");
+// IMPORT: iterative_solve_icon.svg (feature icon)
+IconNamespace::import(path : "e9d7259c3c694292b86e1ae0", version : "dea984a918fd44259ebe0e47");
 
 /**
  * Iterative Solve: re-runs a list of features over one variable until a result meets a condition.
@@ -85,7 +87,7 @@ const SOLVE_STEPS_BOUNDS = { (unitless) : [1, 20, 1000] } as IntegerBoundSpec;
 const SOLVE_STEP_PERCENT_BOUNDS = { (unitless) : [1e-6, 5, 100] } as RealBoundSpec;
 const SOLVE_MAX_TRIALS_BOUNDS = { (unitless) : [2, 30, 1000] } as IntegerBoundSpec;
 
-annotation { "Feature Type Name" : "Iterative Solve",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Iterative Solve",
         "Feature Type Description" : "Re-runs a list of features over one variable until a result meets a condition; returns only the solution." }
 export const iterativeSolve = defineFeature(function(context is Context, id is Id, definition is map)
     precondition

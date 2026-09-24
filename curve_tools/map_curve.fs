@@ -7,6 +7,8 @@ export import(path : "02d7784437f621c76397f0d6", version : "");
 import(path : "584469527ba0d496604523ec", version : "");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: map_curve_icon.svg (feature icon)
+IconNamespace::import(path : "45065c466dba5711602641c3", version : "dc2902a68da2b41d350af736");
 
 /**
  * Map curve
@@ -114,7 +116,7 @@ export const SPAN_X_MARGIN = 1e-9 * meter;
 // Feature
 // ============================================================================
 
-annotation { "Feature Type Name" : "Map curve", "Feature Type Description" : "Map curve data from one chain of edges onto another, preserving distance along the curve from a reference point" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Map curve", "Feature Type Description" : "Map curve data from one chain of edges onto another, preserving distance along the curve from a reference point" }
 export const mapCurve = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

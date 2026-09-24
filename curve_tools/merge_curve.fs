@@ -4,6 +4,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // IMPORT: curve_core.fs (wireEnds)
 import(path : "02d7784437f621c76397f0d6", version : "");
+// IMPORT: merge_curve_icon.svg (feature icon)
+IconNamespace::import(path : "9d830ffc9fcdfc64a425815d", version : "00ea719489177cb0dbe7a4e1");
 
 /**
  * Merge curve
@@ -191,7 +193,7 @@ export function mergeCurves(context is Context, id is Id, edges is Query, option
 // Feature
 // ============================================================================
 
-annotation { "Feature Type Name" : "Merge curve",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Merge curve",
         "Feature Type Description" : "Merge a G0-adjacent edge into a seed edge as one spline curve.",
         "Editing Logic Function" : "mergeCurveEditLogic" }
 export const mergeCurve = defineFeature(function(context is Context, id is Id, definition is map)

@@ -12,6 +12,8 @@ import(path : "786f62f4d67ed8d9c7d56d16", version : "");
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // bspline_compat: exact knot/degree/join algebra for the unified patches.
 import(path : "6b635e74c92bd23387e850c1", version : "");
+// IMPORT: driven_offset_surface_icon.svg (feature icon)
+IconNamespace::import(path : "d6d3dc643042de1bb4c78db1", version : "e673b7b067a42dbd524c9a3a");
 
 /**
  * This feature extends driven_offset_Profile to create a variety of surfaces from driven offsets. We have three basic modes.
@@ -102,7 +104,7 @@ export enum RuledDirection
 // Feature
 // ============================================================================
 
-annotation { "Feature Type Name" : "Driven offset surface",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Driven offset surface",
         "Feature Type Description" : "Build surfaces from one or more driven offsets of the same edges." }
 export const drivenOffsetSurface = defineFeature(function(context is Context, id is Id, definition is map)
     precondition

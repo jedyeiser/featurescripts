@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "9aebe5ead538258b285aec19", version : "");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: split_plus_icon.svg (feature icon)
+IconNamespace::import(path : "3dba0e19457f30c7c2f9dddd", version : "0f63f7efa33cc8032cc45c9e");
 
 /**
  * Split+: the standard part split, with several targets and several tools, and -- when one
@@ -52,7 +54,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  *                            cut1 .. cutN (3+)
  *     splitFaces             faces the splits created (the caps on solids)
  */
-annotation { "Feature Type Name" : "Split+",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Split+",
         "Feature Type Description" : "Split parts, surfaces, curves or faces with several tools; when one side is kept, the side is the one a reference is on, whatever the tools' orientations.",
         "Filter Selector" : "allparts" }
 export const splitPlus = defineFeature(function(context is Context, id is Id, definition is map)

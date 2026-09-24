@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "9aebe5ead538258b285aec19", version : "");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: offset_plus_icon.svg (feature icon)
+IconNamespace::import(path : "250e65ad6c2a37cefa5bf135", version : "09bf184eb261553dabe52522");
 
 /**
  * Offset+: offset surfaces or curves toward (or away from) a reference, instead of along
@@ -80,7 +82,7 @@ const TANGENT_STEP = 1e-4;
 /** Stations closer than this are one point: the step between them is a pure rotation. */
 const SAME_POINT = 1e-9;
 
-annotation { "Feature Type Name" : "Offset+",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Offset+",
         "Feature Type Description" : "Offset surfaces, or curves by a transport frame, a surface's normal or a plane, toward the side a reference is on.",
         "Filter Selector" : "allparts" }
 export const offsetPlus = defineFeature(function(context is Context, id is Id, definition is map)

@@ -22,6 +22,7 @@ driven_offset/ - Driven edge offset / surface (Design_Master document) -- read d
 curve_tools/   - Curve_tools document: curve_core + Clean wire, Map curve, Merge curve, Evaluate profiles
 variable_tools/- Variable_tools document: Extract variables + extract_outputs (producer library)
 reference_side/- Reference_Side_Features document: Mutual Trim+, Split+, Offset+ (+ test harness)
+publish_tools/ - Publish & Drawing tools document: station-geometry / drawing composites (test doc 73271cfc)
 devtools/onshape/ - eval API runner, feature-insertion helpers, Design_Master regression fingerprint
 ```
 

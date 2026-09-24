@@ -1392,9 +1392,24 @@ evaluated to dedupe.
 
 ---
 
+## Correction 35: feature icons -- the one allowed `name::` import (2026-09-24)
+
+**Context**: CLAUDE.md says FeatureScript has no namespace imports. Icons are the exception.
+
+**How**: upload the SVG into the document as its own tab (a blob element), then at the top of the feature file
+`IconNamespace::import(path : "<svg element id>", version : "<microversion>");` (cross-document:
+`"<doc>/<version>/<element>"`) and in the feature annotation `"Icon" : IconNamespace::BLOB_DATA`. A description
+image works the same way (`ImageNamespace::import(...)`, `"Description Image" : ImageNamespace::BLOB_DATA`).
+
+**Style** (from Onshape's own icon symbols, exported to icons/onshape_reference/): 20 x 20 viewBox; outline
+#333333, fill #FFFFFF, secondary #999999, accent blue #1651B0. "Plus" variants = base glyph + blue "+" in the
+bottom-right corner (Onshape's add-variable-button).
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 34
+- **Total Corrections**: 35
 - **Last Updated**: 2026-09-24
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)

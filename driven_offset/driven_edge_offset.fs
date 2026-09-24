@@ -6,6 +6,8 @@ import(path : "d009ddf4a8dd9534fc4dc4b5", version : "bd81293ec01682880717eb76");
 import(path : "6479d7fbd0ec7d11e0ae6c69", version : "3d13f8cddcd8668502860216");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedVariableMap, embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: driven_edge_offset_icon.svg (feature icon)
+IconNamespace::import(path : "a5478e383c9502910040f17c", version : "234ff09fac32522d9e5809af");
 
 
 /**
@@ -46,7 +48,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  *   that is circular within tolerance is emitted through a sketch, so it carries a
  *   real radius. Everything else is fitted. One wire is extracted per G0 path.
  */
-annotation { "Feature Type Name" : "Driven edge offset", "Feature Type Description" : "Offset edges by a profile curve" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Driven edge offset", "Feature Type Description" : "Offset edges by a profile curve" }
 export const drivenEdgeOffset = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

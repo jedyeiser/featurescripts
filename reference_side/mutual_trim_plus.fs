@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "9aebe5ead538258b285aec19", version : "");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: mutual_trim_plus_icon.svg (feature icon)
+IconNamespace::import(path : "ae64f5f432c178294f9b4d71", version : "80c08feb26502577f86ec001");
 
 /**
  * Mutual Trim+: the standard mutual trim, with the side to keep named by geometry
@@ -31,7 +33,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
 
 const SPLIT_SUFFIX = "split";
 
-annotation { "Feature Type Name" : "Mutual Trim+",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Mutual Trim+",
         "Feature Type Description" : "Mutual trim with the side to keep named by a reference: on each surface the side nearer to (or farther from) the reference is kept, whatever the surfaces' orientations.",
         "Filter Selector" : "allparts" }
 export const mutualTrimPlus = defineFeature(function(context is Context, id is Id, definition is map)

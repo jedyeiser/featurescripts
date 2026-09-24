@@ -11,6 +11,8 @@ import(path : "onshape/std/curveextensionshape.gen.fs", version : "3070.0");
 export import(path : "02d7784437f621c76397f0d6", version : "");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs and the extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: clean_wire_icon.svg (feature icon)
+IconNamespace::import(path : "1e73d83b62d863a0542f795b", version : "e46007f7d293943c9b73b950");
 
 /**
  * Clean wire: one wire in, one wire out, the same shape with fewer edges and fewer
@@ -122,7 +124,7 @@ export const CleanWirePercentBounds = { (unitless) : [-1e9, 0, 1e9] } as RealBou
 // Feature
 // ============================================================================
 
-annotation { "Feature Type Name" : "Clean wire",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Clean wire",
         "Feature Type Description" : "Rebuild a wire with fewer edges and control points: tangent stretches become one spline each, corners are kept, exact lines and arcs pass through.",
         "Editing Logic Function" : "cleanWireEditLogic" }
 export const cleanWire = defineFeature(function(context is Context, id is Id, definition is map)

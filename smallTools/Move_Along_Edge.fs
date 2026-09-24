@@ -1,7 +1,9 @@
 FeatureScript 3008;
 import(path : "onshape/std/common.fs", version : "3008.0");
+// IMPORT: move_along_edge_icon.svg (feature icon)
+IconNamespace::import(path : "e00a212f91b5216e53c5e66f", version : "6c54073813e984b5ed59167d");
 
-annotation { "Feature Type Name" : "Move Along Edge", "Feature Type Description" : "Takes a body and moves it a specified distance along an edge or a connected path of edges, keeping orientation." }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Move Along Edge", "Feature Type Description" : "Takes a body and moves it a specified distance along an edge or a connected path of edges, keeping orientation." }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

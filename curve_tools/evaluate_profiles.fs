@@ -7,6 +7,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: evaluate_profiles_icon.svg (feature icon)
+IconNamespace::import(path : "aca8bd60d103ad58f786f552", version : "c0ce2898b20e07d454e41631");
 
 /**
  * Creates wires (or returns bSpline data) obeying special rules from either a solid body, an edge, or a chain of edges
@@ -177,7 +179,7 @@ export enum ProfilePart
 // Feature
 // ============================================================================
 
-annotation { "Feature Type Name" : "Evaluate profiles",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Evaluate profiles",
         "Feature Type Description" : "Project a chain of edges onto a planar face, trim it where it doubles back, and emit it as a clean wire" }
 export const evaluateProfiles = defineFeature(function(context is Context, id is Id, definition is map)
     precondition

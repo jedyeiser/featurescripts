@@ -99,9 +99,12 @@ curve_core (Curve_tools, by VERSION)
 
 ## In design
 
-- **create_offset_profile** (new tab, not started): builds DEO/DOS offset profiles from Regions or Points;
-  profile breaks instead of zero-length connectors; consumers choose how to join breaks. Design:
-  `research_create_offset_profile.md`.
+- **create_offset_profile** (tab 3fccdcb24013c744bd0fd8a2, BUILT 2026-09-24): builds DEO/DOS offset
+  profiles from Regions or Points; profile BREAKS instead of zero-length connectors; exact Beziers.
+  Tests are REAL instances T1..T5 in Part Studio "Offset profile tests" (e18678532ec07b057b372dbd), named by
+  case and expected result; check them with `PYTHONPATH=. python devtools/onshape/check_offset_profile.py`
+  (7/7 pass incl. 2 error cases via temporary instances). No test tabs (user preference). Not yet done: consumer-side break handling in DEO / DOS (None / Line per break).
+  Design: `research_create_offset_profile.md`.
 
 ## Known open items touching this document
 
