@@ -2,7 +2,7 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // edge_offset_utils: formatting helpers for the console. Nothing geometric is shared.
-import(path : "a2665e22c07b7a6929ce4e80", version : "");
+import(path : "a2665e22c07b7a6929ce4e80", version : "eb23f15e06a23d0fd2e2197e");
 // IMPORT: design_map_query_utils.fs (embedStandardOutputs)
 import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
 

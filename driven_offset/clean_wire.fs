@@ -9,7 +9,7 @@ import(path : "onshape/std/curveextensionshape.gen.fs", version : "3070.0");
 // edge_offset_utils: the fitter (approximateFamily), emitters, classifiers, the
 // approximation predicate and bounds, formatting helpers. export import so the enums
 // declared there are reachable as feature parameter types.
-export import(path : "a2665e22c07b7a6929ce4e80", version : "");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "eb23f15e06a23d0fd2e2197e");
 // design_map_query_utils: embedVariableMap and the extractable wrappers.
 import(path : "2b6b313ac740a0146d5bef7c", version : "5ab212db97cb46b643862b40");
 
