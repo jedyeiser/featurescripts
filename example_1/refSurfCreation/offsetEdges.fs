@@ -3,12 +3,12 @@ import(path : "onshape/std/common.fs", version : "2909.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2909.0");
 
 //import CurveWrapping_full/curveMappingCore
-import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
+import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/683d867c35fdab9c98d47556", version : "08ced7a9bfddd7090ead6e97");
 //import CurveWrapping_full/Utils
-import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
+import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
 
 
-// --- Enums --------------------------------------------------------------------
+// ─── Enums ────────────────────────────────────────────────────────────────────
 
 export enum RegionType
 {
@@ -56,7 +56,7 @@ export enum OffsetMode
 }
 
 
-// --- Bounds -------------------------------------------------------------------
+// ─── Bounds ───────────────────────────────────────────────────────────────────
 
 export const RegionPointsBounds    = {(unitless)   : [20, 20, 100]}        as IntegerBoundSpec;
 export const OffsetBounds          = {(millimeter) : [-100, 0, 100]}       as LengthBoundSpec;
@@ -66,7 +66,7 @@ export const ApproxDegreeBounds    = {(unitless)   : [2, 3, 5]}            as In
 export const ApproxMaxCPBounds     = {(unitless)   : [10, 100, 500]}       as IntegerBoundSpec;
 
 
-// --- Editing logic ------------------------------------------------------------
+// ─── Editing logic ────────────────────────────────────────────────────────────
 
 export function generateOffsetEdgesEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
@@ -171,7 +171,7 @@ export function generateOffsetEdgesEditingLogic(context is Context, id is Id,
 }
 
 
-// --- Feature ------------------------------------------------------------------
+// ─── Feature ──────────────────────────────────────────────────────────────────
 
 annotation { "Feature Type Name" : "Offset edges",
              "Feature Type Description" : "Offsets a G1-continuous edge chain by per-region normal and binormal amounts in the Frenet frame",
@@ -442,7 +442,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
             definition.printPathData is boolean;
 
             annotation { "Name" : "Print edge data",
-                         "Description" : "Print per-edge arc lengths and lengths" }
+                         "Description" : "Print per-edge arc lengths, lengths, and startSign values" }
             definition.printEdgeData is boolean;
 
             annotation { "Name" : "Print frame samples",
@@ -543,7 +543,8 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                     var ed = edgeData[ei];
                     println("  Edge " ~ toString(ei) ~ ":"
                         ~ "  startArc=" ~ toString(ed.startArcLength / millimeter) ~ "mm"
-                        ~ "  len="      ~ toString(ed.length          / millimeter) ~ "mm");
+                        ~ "  len="      ~ toString(ed.length          / millimeter) ~ "mm"
+                        ~ "  startSign=" ~ toString(ed.startSign));
                 }
             }
 
@@ -557,6 +558,7 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
                     var arcStart = ed.startArcLength;
                     var arcEnd   = arcStart + ed.length;
                     println("  -- Edge " ~ toString(ei)
+                        ~ "  startSign=" ~ toString(ed.startSign)
                         ~ "  len=" ~ toString(ed.length / millimeter) ~ "mm --");
                     for (var si = 0; si <= 4; si += 1)
                     {
@@ -586,106 +588,152 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
     });
 
 
-// --- Path processing ----------------------------------------------------------
+// ─── Path processing ──────────────────────────────────────────────────────────
 
-// A frame at any arc length along the path. Only origin and tangent (zAxis) are used: the
-// offset directions come from this feature's own parallel-transport table, seeded once at
-// s = 0 by [ptSeedNormal].
+// Corrects startSign mismatches at inter-edge junctions that buildFrenetPath leaves unfixed.
 //
-// (Until 2026-09-23 this read per-edge Frenet normals with sign tracking from the July
-// curveMapping core, whose buildFrenetPath threw "Reference edge normals are not coplanar"
-// when three or more consecutive flat arcs (sagitta < 0.1% of length, e.g. R 20 m over
-// 100 mm) were treated as lines and the middle one fell back to a world-axis normal. The
-// current core carries one normal along the whole path and has no such check.)
-function frameAtArc(context is Context, frenetPath is map, arcLength) returns map
-{
-    return getFrameAtArcLength(context, frenetPath, arcLength);
-}
-
-
-// True when the old core treated this edge as a line: a real line, or an edge whose control
-// polygon deviates from its chord by less than 0.1% of its length.
-function seedTreatsAsLine(context is Context, edgeDat is map) returns boolean
-{
-    var curveDef = evCurveDefinition(context, { "edge" : edgeDat.query });
-    if (curveDef.curveType == CurveType.LINE)
-    {
-        return true;
-    }
-    var cps      = edgeDat.bspline.controlPoints;
-    var nCPs     = size(cps);
-    var chord    = cps[nCPs - 1] - cps[0];
-    var chordLen = norm(chord);
-    if (chordLen < 1e-10 * meter)
-    {
-        return false;
-    }
-    var chordDir = chord / chordLen;
-    var maxDev   = 0 * meter;
-    for (var j = 1; j < nCPs - 1; j += 1)
-    {
-        var diff    = cps[j] - cps[0];
-        var lateral = norm(diff - dot(diff, chordDir) * chordDir);
-        if (lateral > maxDev)
-        {
-            maxDev = lateral;
-        }
-    }
-    return maxDev < 0.001 * edgeDat.length;
-}
-
-
-// Curvature normal (toward the centre) at the traversal start of an edge.
-function traversalStartNormal(context is Context, edgeDat is map) returns Vector
-{
-    return evEdgeCurvature(context, {
-                "edge"                      : edgeDat.query,
-                "parameter"                 : edgeDat.stdDir ? 0 : 1,
-                "arcLengthParameterization" : true
-            }).frame.xAxis;
-}
-
-
-// The normal the transport table starts from at s = 0 -- the same choice the old core made
-// there, so offsets keep their side on every chain that worked before:
-//   - a circular first edge: toward its centre;
-//   - a first edge the old core treated as a line: the next edge's curvature normal at its
-//     start (when that edge is curved), otherwise a world-axis perpendicular;
-//   - any other first edge: its curvature normal at the start.
-function ptSeedNormal(context is Context, frenetPath is map, startFrame is CoordSystem) returns Vector
+// buildFrenetPath propagates startSign across the chain accounting only for intra-edge
+// inflections. At junctions where the raw curvature direction is antiparallel between
+// adjacent edges, it leaves startSign_{i+1} inconsistent with endSign_i.
+//
+// We detect this algebraically: the effective sign at the END of edge i is
+//   endSign_i = startSign_i * (-1)^(number of inflections in edge i)
+// If endSign_i != startSign_{i+1}, the junction is antiparallel and all edges i+1..n-1
+// need their startSign flipped.
+//
+// This approach is robust against inflections near edge endpoints (which made the previous
+// eps-based dot-product probe unreliable).
+function fixFrenetPathSigns(frenetPath is map, printLog is boolean) returns map
 {
     var edgeData = frenetPath.edgeData;
-    var first    = edgeData[0];
-    var tangent  = startFrame.zAxis;
-    var curveDef = evCurveDefinition(context, { "edge" : first.query });
-
-    var seed;
-    if (curveDef.curveType == CurveType.CIRCLE)
+    var n = size(edgeData);
+    if (n < 2)
     {
-        seed = normalize(curveDef.coordSystem.origin - startFrame.origin);
+        return frenetPath;
     }
-    else if (seedTreatsAsLine(context, first))
+
+    if (printLog)
+        println("=== fixFrenetPathSigns (" ~ toString(n) ~ " edges) ===");
+
+    for (var i = 0; i < n - 1; i += 1)
     {
-        if (size(edgeData) > 1 && !seedTreatsAsLine(context, edgeData[1]))
+        var inflArcs   = edgeData[i].localInflectionArcs;
+        var inflCount  = (inflArcs == undefined) ? 0 : size(inflArcs);
+        var endSign    = edgeData[i].startSign * (inflCount % 2 == 1 ? -1 : 1);
+        var nextStart  = edgeData[i + 1].startSign;
+        var needsFlip  = (endSign != nextStart);
+
+        if (printLog)
         {
-            seed = traversalStartNormal(context, edgeData[1]);
+            var action = needsFlip
+                ? "  -> FLIPPING edges " ~ toString(i + 1) ~ ".." ~ toString(n - 1)
+                : "  -> OK";
+            println("  Junction " ~ toString(i) ~ "->" ~ toString(i + 1)
+                ~ "  startSign[" ~ toString(i) ~ "]=" ~ toString(edgeData[i].startSign)
+                ~ "  inflections=" ~ toString(inflCount)
+                ~ "  endSign=" ~ toString(endSign)
+                ~ "  startSign[" ~ toString(i + 1) ~ "]=" ~ toString(nextStart)
+                ~ action);
         }
-        else
+
+        if (needsFlip)
         {
-            seed = lineFrenetFrame({ "origin" : startFrame.origin, "direction" : tangent }).xAxis;
+            for (var j = i + 1; j < n; j += 1)
+            {
+                edgeData[j] = mergeMaps(edgeData[j], {
+                    "startSign": -1 * edgeData[j].startSign
+                });
+            }
+            frenetPath = mergeMaps(frenetPath, { "edgeData": edgeData });
         }
+    }
+
+    return frenetPath;
+}
+
+
+// Returns a frame at the given arc length along the path, handling both BSpline/line edges
+// (delegated to getFrameAtArcLength) and circular arc edges (computed natively).
+//
+// For circular arcs, getFrameAtArcLength fails internally because evApproximateBSplineCurve
+// returns a rational NURBS and the arc-length table pipeline does not support weighted
+// BSplines.  We bypass it entirely:
+//   - position + tangent  via evEdgeTangentLine  (native, works for any edge type)
+//   - centripetal normal  via (center - position) (geometric, no BSpline needed)
+//   - traversal direction via edgeData.stdDir
+//   - sign correction     via edgeData.startSign  (same convention as getFrameAtArcLength)
+//
+// The returned map has the same shape as getFrameAtArcLength: { frame, sign, edgeIndex }.
+function evalNativeFrame(context is Context, frenetPath is map, arcLength) returns map
+{
+    var edgeData = frenetPath.edgeData;
+    var n        = size(edgeData);
+
+    // Find the edge that contains this arc length
+    var ei = n - 1;
+    for (var i = 0; i < n - 1; i += 1)
+    {
+        if (edgeData[i + 1].startArcLength > arcLength)
+        {
+            ei = i;
+            break;
+        }
+    }
+    var ed = edgeData[ei];
+
+    // Check curve type; only circles need special handling.
+    // evCurveDefinition uses the field name "curveType" (not "type").
+    var curveDef = evCurveDefinition(context, { "edge": ed.query });
+    if (curveDef.curveType != CurveType.CIRCLE)
+    {
+        return getFrameAtArcLength(context, frenetPath, arcLength);
+    }
+
+    // ── Circular arc: compute frame directly ──────────────────────────────────
+
+    // Convert local arc length to native edge parameter [0, 1].
+    // For a circular arc, the native parameter is proportional to arc length.
+    var localArc = arcLength - ed.startArcLength;
+    var edgeLen  = ed.length;
+    var p        = (edgeLen / meter > 1e-10) ? localArc / edgeLen : 0.0;
+    p = ed.stdDir ? p : (1.0 - p);
+    p = min(max(p, 0.0), 1.0);
+
+    // Position and tangent from the native edge query
+    var tl      = evEdgeTangentLine(context, { "edge": ed.query, "parameter": p });
+    var origin  = tl.origin;
+    var tangent = ed.stdDir ? tl.direction : -tl.direction;
+
+    // Centripetal normal: direction from the point on the arc toward the circle center.
+    // curveDef.coordSystem.origin IS the circle center for CurveType.CIRCLE.
+    var center  = curveDef.coordSystem.origin;
+    var diff    = center - origin;
+    var diffLen = norm(diff);
+    var rawNorm = (diffLen / meter > 1e-10) ? diff / diffLen : curveDef.coordSystem.xAxis;
+
+    // Apply startSign (same convention buildFrenetPath uses for BSpline edges)
+    var sign  = ed.startSign;
+    var xAxis = sign * rawNorm;
+
+    // Re-orthogonalize against tangent — should already be perpendicular for a true circle,
+    // but floating-point and edge parameterization can introduce small errors.
+    xAxis     = xAxis - tangent * dot(tangent, xAxis);
+    var xLen  = norm(xAxis);
+    if (xLen > 1e-10)
+    {
+        xAxis = xAxis / xLen;
     }
     else
     {
-        seed = traversalStartNormal(context, first);
+        // True degenerate (query point at circle center — geometrically impossible for valid input)
+        xAxis = rawNorm;
     }
 
-    seed = seed - dot(seed, tangent) * tangent;
-    if (norm(seed) < 1e-9)
-    {
-        seed = lineFrenetFrame({ "origin" : startFrame.origin, "direction" : tangent }).xAxis;
-    }
-    return normalize(seed);
+    return {
+        "frame"     : coordSystem(origin, xAxis, tangent),
+        "sign"      : sign,
+        "edgeIndex" : ei
+    };
 }
 
 
@@ -694,15 +742,15 @@ function ptSeedNormal(context is Context, frenetPath is map, startFrame is Coord
 // Starting from the Frenet frame at s=0, each step rotates the previous xAxis by
 // the same rotation that carries prevTangent -> currTangent (Rodrigues formula).
 // This eliminates the torsion-driven spinning of the Frenet normal while preserving
-// tangent continuity -- the frame never flips direction on smooth G1 BSpline chains.
+// tangent continuity — the frame never flips direction on smooth G1 BSpline chains.
 //
 // Returns an array of { arcLength, xAxis } entries at numSamples uniform positions.
 // yAxis = cross(tangent, xAxis) is not stored; it is computed on demand.
 function buildParallelTransportTable(context is Context, frenetPath is map, numSamples is number) returns array
 {
     var totalLength = frenetPath.totalLength;
-    var fr0         = frameAtArc(context, frenetPath, 0 * meter);
-    var prevXAxis   = ptSeedNormal(context, frenetPath, fr0.frame);
+    var fr0         = evalNativeFrame(context, frenetPath, 0 * meter);
+    var prevXAxis   = fr0.frame.xAxis;
     var prevTangent = fr0.frame.zAxis;
 
     var table = [{ "arcLength" : 0 * meter, "xAxis" : prevXAxis }];
@@ -710,7 +758,7 @@ function buildParallelTransportTable(context is Context, frenetPath is map, numS
     for (var i = 1; i < numSamples; i += 1)
     {
         var s           = totalLength * i / (numSamples - 1);
-        var fr          = frameAtArc(context, frenetPath, s);
+        var fr          = evalNativeFrame(context, frenetPath, s);
         var currTangent = fr.frame.zAxis;
 
         // Rodrigues rotation: rotate prevXAxis by the rotation taking prevTangent -> currTangent
@@ -752,7 +800,7 @@ function sampleParallelTransportFrame(context is Context, frenetPath is map, ptT
     arcLength) returns map
 {
     var n  = size(ptTable);
-    var fr = frameAtArc(context, frenetPath, arcLength);
+    var fr = evalNativeFrame(context, frenetPath, arcLength);
 
     if (n == 0)
     {
@@ -808,6 +856,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 {
     var edges       = expandEdgeQuery(definition.userSelection);
     var frenetPath  = buildFrenetPath(context, id, edges, definition.flipDirection);
+    frenetPath      = fixFrenetPathSigns(frenetPath, definition.printFrameSamples);
     var totalLength = frenetPath.totalLength;
 
     var numPTSamples = max([100, definition.numRegionPoints * 4]);
@@ -826,7 +875,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 }
 
 
-// --- Region processing --------------------------------------------------------
+// ─── Region processing ────────────────────────────────────────────────────────
 /**
  * Region processing
  * @param context {Context} : context
@@ -1116,13 +1165,13 @@ function sortRegionsByTStart(regions is array) returns array
 }
 
 
-// --- Profile evaluation -------------------------------------------------------
+// ─── Profile evaluation ───────────────────────────────────────────────────────
 
 /**
- * Returns the interpolated offset at normalized position t in [0,1] within a region.
+ * Returns the interpolated offset at normalized position t ∈ [0,1] within a region.
  *   LINEAR    : linear ramp
- *   QUADRATIC : true quadratic -- one endpoint has zero slope
- *   SMOOTH    : smootherstep (6t^5 - 15t^4 + 10t^3) -- C2 at both endpoints
+ *   QUADRATIC : true quadratic — one endpoint has zero slope
+ *   SMOOTH    : smootherstep (6t⁵ − 15t⁴ + 10t³) — C2 at both endpoints
  */
 function profileValueAt(t is number, startVal is ValueWithUnits, endVal is ValueWithUnits,
     regionType, quadZeroSlope) returns ValueWithUnits
@@ -1450,7 +1499,7 @@ function computeOffsetDerivativesAt(region is map, tPath is number) returns map
 }
 
 
-// --- Offset point computation -------------------------------------------------
+// ─── Offset point computation ─────────────────────────────────────────────────
 
 /**
  * Computes the 3D world point at path parameter t with the given Frenet-space offsets.
@@ -1501,7 +1550,7 @@ function offsetTangentAt(context is Context, pathInfo is map, definition is map,
 }
 
 
-// --- Point arrays -------------------------------------------------------------
+// ─── Point arrays ─────────────────────────────────────────────────────────────
 
 /**
  * Samples points along [tSegStart, tSegEnd], evaluating the region profile at each, and
@@ -1569,15 +1618,15 @@ function generateSegmentPoints(context is Context, pathInfo is map, definition i
 
 
 /**
- * Evaluates the Hermite blend polynomial at s in [0,1] for a single scalar offset component.
+ * Evaluates the Hermite blend polynomial at s ∈ [0,1] for a single scalar offset component.
  *
- * All slope/curvature args are in s-space (multiply region dOffset/dt by L, d^2Offset/dt^2 by L^2
- * before calling, where L = tBlendEnd - tBlendStart).
+ * All slope/curvature args are in s-space (multiply region dOffset/dt by L, d²Offset/dt² by L²
+ * before calling, where L = tBlendEnd − tBlendStart).
  *
  * Continuity dispatch:
- *   G0+G0 -> linear          G1+G0 / G0+G1 -> quadratic
- *   G1+G1 -> cubic Hermite   G2+G0 / G0+G2 -> cubic
- *   G2+G1 / G1+G2 -> quartic               G2+G2 -> quintic Hermite
+ *   G0+G0 → linear          G1+G0 / G0+G1 → quadratic
+ *   G1+G1 → cubic Hermite   G2+G0 / G0+G2 → cubic
+ *   G2+G1 / G1+G2 → quartic               G2+G2 → quintic Hermite
  */
 function blendOffsetAt(s is number,
     h0 is ValueWithUnits, m0 is ValueWithUnits, k0 is ValueWithUnits,
@@ -1601,29 +1650,29 @@ function blendOffsetAt(s is number,
     }
     else if (matchSlopeStart && !matchCurvStart && !matchSlopeEnd)
     {
-        // G1+G0: quadratic -- h0, m0, h1
+        // G1+G0: quadratic — h0, m0, h1
         return h0 + m0 * s + (h1 - h0 - m0) * s2;
     }
     else if (!matchSlopeStart && matchSlopeEnd && !matchCurvEnd)
     {
-        // G0+G1: quadratic -- h0, h1, m1
+        // G0+G1: quadratic — h0, h1, m1
         var dh = h1 - h0;
         return h0 + (2 * dh - m1) * s + (m1 - dh) * s2;
     }
     else if (matchSlopeStart && !matchCurvStart && matchSlopeEnd && !matchCurvEnd)
     {
-        // G1+G1: cubic Hermite -- h0, m0, h1, m1
+        // G1+G1: cubic Hermite — h0, m0, h1, m1
         return h0 * (2*s3 - 3*s2 + 1) + m0 * (s3 - 2*s2 + s)
              + h1 * (-2*s3 + 3*s2)    + m1 * (s3 - s2);
     }
     else if (matchCurvStart && !matchSlopeEnd)
     {
-        // G2+G0: cubic -- h0, m0, k0, h1
+        // G2+G0: cubic — h0, m0, k0, h1
         return h0 + m0 * s + (k0 / 2) * s2 + (h1 - h0 - m0 - k0 / 2) * s3;
     }
     else if (!matchSlopeStart && matchCurvEnd)
     {
-        // G0+G2: cubic -- h0, h1, m1, k1
+        // G0+G2: cubic — h0, h1, m1, k1
         var dh = h1 - h0;
         var d  = dh - m1 + k1 / 2;
         var c  = -(k1 + 3 * (dh - m1));
@@ -1632,7 +1681,7 @@ function blendOffsetAt(s is number,
     }
     else if (matchCurvStart && matchSlopeEnd && !matchCurvEnd)
     {
-        // G2+G1: quartic -- h0, m0, k0, h1, m1
+        // G2+G1: quartic — h0, m0, k0, h1, m1
         var dh = h1 - h0;
         var a4 = m1 + 2 * m0 + k0 / 2 - 3 * dh;
         var a3 = 4 * dh - 3 * m0 - k0 - m1;
@@ -1640,7 +1689,7 @@ function blendOffsetAt(s is number,
     }
     else if (matchSlopeStart && !matchCurvStart && matchCurvEnd)
     {
-        // G1+G2: quartic -- h0, m0, h1, m1, k1
+        // G1+G2: quartic — h0, m0, h1, m1, k1
         var H  = h1 - h0 - m0;
         var M  = m1 - m0;
         var K  = k1;
@@ -1651,7 +1700,7 @@ function blendOffsetAt(s is number,
     }
     else
     {
-        // G2+G2: quintic Hermite -- h0, m0, k0, h1, m1, k1
+        // G2+G2: quintic Hermite — h0, m0, k0, h1, m1, k1
         return h0 * (1 - 10*s3 + 15*s4 - 6*s5)
              + m0 * (s - 6*s3 + 8*s4 - 3*s5)
              + k0 * (s2/2 - 3*s3/2 + 3*s4/2 - s5/2)
@@ -1741,7 +1790,7 @@ function generateBlendPoints(context is Context, pathInfo is map, definition is 
 }
 
 
-// --- Wire construction --------------------------------------------------------
+// ─── Wire construction ────────────────────────────────────────────────────────
 
 // True when the source edge covering path parameter t is a circular arc.
 function sourceEdgeIsArc(context is Context, frenetPath is map, t is number, totalLength is ValueWithUnits) returns boolean
@@ -1803,22 +1852,26 @@ function offsetConstantOver(region is map, tA is number, tB is number) returns b
 }
 
 
-// The circular arc that STARTS at pStart travelling along tStartOut (unit, outgoing tangent)
-// and ENDS at pEnd. Returns { straight, center, radius, e0, yA, sweep, nTravel }: the arc is
-// center + radius * (cos(a) e0 + sin(a) yA) for a in [0, sweep], travelled with increasing a.
-// straight = true when the chord is parallel to the tangent (no finite arc).
-function arcFromStart(pStart is Vector, tStartOut is Vector, pEnd is Vector) returns map
+// Point at the mid of the circular arc that STARTS at pStart travelling along tStartOut
+// (unit, outgoing tangent) and ENDS at pEnd. The returned point lies on the actual traveled
+// arc at HALF the swept angle -- the correct side / branch, so it uniquely reconstructs the
+// intended arc via a 3-point skArc. pStart/pEnd carry length units; tStartOut is unitless.
+// Returns { "mid" : Vector, "straight" : boolean }. When the arc degenerates to a straight
+// line (chord parallel to the tangent) the chord midpoint is returned with straight = true.
+function biarcArcMid(pStart is Vector, tStartOut is Vector, pEnd is Vector) returns map
 {
-    const c    = pEnd - pStart;
+    const c = pEnd - pStart;
     const cLen = norm(c);
     if (cLen / meter < 1e-12)
     {
-        return { "straight" : true };
+        return { "mid" : pStart, "straight" : true };
     }
+
+    // Straightness: chord parallel to the tangent -> zero curvature.
     const sinTheta = norm(cross(tStartOut, c / cLen));
     if (sinTheta < 1e-7)
     {
-        return { "straight" : true };
+        return { "mid" : pStart + 0.5 * c, "straight" : true };
     }
 
     // Plane of the arc, and the in-plane unit normal to the tangent.
@@ -1838,197 +1891,88 @@ function arcFromStart(pStart is Vector, tStartOut is Vector, pEnd is Vector) ret
 
     // Signed sweep from pStart (angle 0) to pEnd, on the positive (traveled) branch.
     const ve = pEnd - center;
-    var sweep = atan2(dot(ve, yA) / meter, dot(ve, e0) / meter) / radian;
+    const ex = dot(ve, e0);
+    const ey = dot(ve, yA);
+    var sweep = atan2(ey / meter, ex / meter) / radian;
     if (sweep <= 0)
     {
         sweep = sweep + 2 * PI;
     }
-    return { "straight" : false, "center" : center, "radius" : R, "e0" : e0, "yA" : yA,
-             "sweep" : sweep, "nTravel" : nTravel };
+
+    const midAng = (sweep / 2) * radian;
+    const mid    = center + R * (cos(midAng) * e0 + sin(midAng) * yA);
+    return { "mid" : mid, "straight" : false };
 }
 
 
-// Point at the mid of the arc from [arcFromStart] -- on the travelled branch, so it uniquely
-// reconstructs the intended arc via a 3-point skArc. Returns { "mid", "straight" }; a
-// straight arc returns the chord midpoint.
-function biarcArcMid(pStart is Vector, tStartOut is Vector, pEnd is Vector) returns map
+// Constructs an equal-tangent-length (Bolton/Sabin k=1) 3D biarc interpolating POSITION and
+// TANGENT at both endpoints, meeting G1 at a joint J. Returns one mid point on each sub-arc so
+// each can be drawn as skArc({start, mid, end}): arc A = (p0, midA, J), arc B = (J, midB, p1).
+// p0/p1 length units; t0/t1 unit tangents in the DIRECTION OF TRAVEL from p0 toward p1.
+// Returns { "ok" : boolean, "joint" : Vector, "midA" : Vector, "midB" : Vector }.
+function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector) returns map
 {
-    const arc = arcFromStart(pStart, tStartOut, pEnd);
-    if (arc.straight)
-    {
-        return { "mid" : pStart + 0.5 * (pEnd - pStart), "straight" : true };
-    }
-    const midAng = (arc.sweep / 2) * radian;
-    return { "mid" : arc.center + arc.radius * (cos(midAng) * arc.e0 + sin(midAng) * arc.yA), "straight" : false };
-}
+    const fail = { "ok" : false, "joint" : p0, "midA" : p0, "midB" : p1 };
 
-
-// Distance from point p to an arc from [arcFromStart] (to its end points when p lies outside
-// the swept angle).
-function distanceToArc(arc is map, pStart is Vector, pEnd is Vector, p is Vector) returns ValueWithUnits
-{
-    const v      = p - arc.center;
-    const normal = dot(v, arc.nTravel);
-    const inPl   = v - normal * arc.nTravel;
-    var ang = atan2(dot(inPl, arc.yA) / meter, dot(inPl, arc.e0) / meter) / radian;
-    if (ang < 0)
-    {
-        ang = ang + 2 * PI;
-    }
-    if (ang <= arc.sweep)
-    {
-        const radial = norm(inPl) - arc.radius;
-        return sqrt(radial * radial + normal * normal);
-    }
-    return min(norm(p - pStart), norm(p - pEnd));
-}
-
-
-// The G1 biarc from p0 (tangent t0) to p1 (tangent t1), unit tangents in the direction of
-// travel, with tangent-length ratio r = a / b (Q0 = p0 + a t0, Q1 = p1 - b t1,
-// |Q1 - Q0| = a + b, joint J on Q0Q1 at a : b). Every such biarc matches both end points and
-// both end tangents; r only moves the joint. r = 1 is the equal-tangent-length biarc.
-//   |d - b (r t0 + t1)| = b (r + 1)  =>  2 r (1 - c) b^2 + 2 D b - |d|^2 = 0,
-// with d = p1 - p0, c = t0 . t1, D = d . (r t0 + t1).
-// Returns { ok, joint, tJoint }.
-function biarcWithRatio(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, r is number) returns map
-{
-    const fail = { "ok" : false };
     const d    = p1 - p0;
     const dd   = dot(d, d);
-    if (sqrt(dd) / meter < 1e-9)
+    const dLen = norm(d);
+    if (dLen / meter < 1e-9)
     {
         return fail;
     }
-    const c  = dot(t0, t1);
-    const qa = 2 * r * (1 - c);
-    const D  = dot(d, r * t0 + t1);
-    var b;
-    if (qa < 1e-12)
+
+    const ct = dot(t0, t1);          // cos(angle between tangents)
+    const a  = 1 - ct;               // >= 0; 0 iff tangents identical
+    const ds = dot(d, t0 + t1);
+
+    // Equal-tangent-length condition |Q0 - Q1| = 2*alpha yields
+    //   2*a*alpha^2 + 2*ds*alpha - dd = 0 , a = 1 - t0.t1 .
+    var alpha;
+    if (a < 1e-12)
     {
-        if (D / meter < 1e-12)
+        // Parallel, same-direction tangents: quadratic collapses to the linear special case.
+        if (ds / dLen < 1e-9)
         {
             return fail;
         }
-        b = dd / (2 * D);
+        alpha = dd / (2 * ds);
     }
     else
     {
-        b = (-D + sqrt(D * D + qa * dd)) / qa;
+        const disc = ds * ds + 2 * a * dd;
+        alpha = (-ds + sqrt(disc)) / (2 * a);
     }
-    if (b / meter < 1e-12)
+
+    if (alpha / meter < 1e-12)
     {
         return fail;
     }
-    const a  = r * b;
-    const Q0 = p0 + a * t0;
-    const Q1 = p1 - b * t1;
+
+    const Q0 = p0 + alpha * t0;
+    const Q1 = p1 - alpha * t1;
+    const J  = 0.5 * (Q0 + Q1);
+
     const jm = Q1 - Q0;
     if (norm(jm) / meter < 1e-12)
     {
         return fail;
     }
-    const J = (b * Q0 + a * Q1) / (a + b);
+    const tJ = normalize(jm);
+
     if (norm(J - p0) / meter < 1e-9 || norm(p1 - J) / meter < 1e-9)
     {
         return fail;
     }
-    return { "ok" : true, "joint" : J, "tJoint" : normalize(jm) };
-}
 
+    const resA = biarcArcMid(p0, t0, J);
+    const resB = biarcArcMid(J, tJ, p1);
 
-// Largest distance from the sample points to the biarc; inf when the biarc is degenerate
-// (a straight leg cannot be emitted as an arc).
-function biarcDeviation(p0 is Vector, t0 is Vector, p1 is Vector, bi is map, samples is array) returns ValueWithUnits
-{
-    if (!bi.ok)
-    {
-        return inf * meter;
-    }
-    const arcA = arcFromStart(p0, t0, bi.joint);
-    const arcB = arcFromStart(bi.joint, bi.tJoint, p1);
-    if (arcA.straight || arcB.straight)
-    {
-        return inf * meter;
-    }
-    var worst = 0 * meter;
-    for (var p in samples)
-    {
-        const dist = min(distanceToArc(arcA, p0, bi.joint, p), distanceToArc(arcB, bi.joint, p1, p));
-        if (dist > worst)
-        {
-            worst = dist;
-        }
-    }
-    return worst;
-}
-
-
-// The G1 biarc from (p0, t0) to (p1, t1) that stays closest to the true offset curve (the
-// sample points): the joint is placed by minimizing the largest deviation over the
-// tangent-length ratio (coarse scan in log r, then golden-section refinement). Every
-// candidate keeps both end points and both end tangents exact.
-// Returns { ok, joint, midA, midB, deviation }.
-function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, samples is array) returns map
-{
-    const LOG_MIN = -3;
-    const LOG_MAX = 3;
-    const N_SCAN  = 13;
-
-    var bestU   = 0;
-    var bestDev = biarcDeviation(p0, t0, p1, biarcWithRatio(p0, t0, p1, t1, 1), samples);
-    for (var i = 0; i < N_SCAN; i += 1)
-    {
-        const u   = LOG_MIN + (LOG_MAX - LOG_MIN) * i / (N_SCAN - 1);
-        const dev = biarcDeviation(p0, t0, p1, biarcWithRatio(p0, t0, p1, t1, exp(u)), samples);
-        if (dev < bestDev)
-        {
-            bestDev = dev;
-            bestU   = u;
-        }
-    }
-    if (bestDev == inf * meter)
-    {
-        return { "ok" : false };
-    }
-
-    // Golden-section refinement on the scan cell around the best sample.
-    const cell   = (LOG_MAX - LOG_MIN) / (N_SCAN - 1);
-    const golden = (sqrt(5) - 1) / 2;
-    var lo = bestU - cell;
-    var hi = bestU + cell;
-    var x1 = hi - golden * (hi - lo);
-    var x2 = lo + golden * (hi - lo);
-    var f1 = biarcDeviation(p0, t0, p1, biarcWithRatio(p0, t0, p1, t1, exp(x1)), samples);
-    var f2 = biarcDeviation(p0, t0, p1, biarcWithRatio(p0, t0, p1, t1, exp(x2)), samples);
-    for (var k = 0; k < 16; k += 1)
-    {
-        if (f1 < f2)
-        {
-            hi = x2; x2 = x1; f2 = f1;
-            x1 = hi - golden * (hi - lo);
-            f1 = biarcDeviation(p0, t0, p1, biarcWithRatio(p0, t0, p1, t1, exp(x1)), samples);
-        }
-        else
-        {
-            lo = x1; x1 = x2; f1 = f2;
-            x2 = lo + golden * (hi - lo);
-            f2 = biarcDeviation(p0, t0, p1, biarcWithRatio(p0, t0, p1, t1, exp(x2)), samples);
-        }
-    }
-    if (min(f1, f2) < bestDev)
-    {
-        bestU   = (f1 < f2) ? x1 : x2;
-        bestDev = min(f1, f2);
-    }
-
-    const bi = biarcWithRatio(p0, t0, p1, t1, exp(bestU));
     return {
-        "ok"        : true,
-        "joint"     : bi.joint,
-        "midA"      : biarcArcMid(p0, t0, bi.joint).mid,
-        "midB"      : biarcArcMid(bi.joint, bi.tJoint, p1).mid,
-        "deviation" : bestDev
+        "ok"    : true,
+        "joint" : J,
+        "midA"  : resA.mid,
+        "midB"  : resB.mid
     };
 }
 
@@ -2075,19 +2019,11 @@ function emitOffsetArc(context is Context, wireId is Id, pathInfo is map, defini
 }
 
 
-/** Interior points on which a best-fit biarc's deviation from the true offset is measured. */
-const BIARC_DEVIATION_SAMPLES = 10;
-
-/** Path-parameter step used to read the source edge on either side of an edge boundary. */
-const EDGE_SIDE_EPS = 1e-7;
-
 function buildOutputWire(context is Context, id is Id, definition is map,
     pathInfo is map, sortedRegions is array)
 {
     var allWireBodies = [];
     var allWireEdges  = [];
-    var biarcCount    = 0;            // source arcs emitted as arc pairs
-    var biarcWorst    = 0 * meter;    // their largest deviation from the true offset
 
     // Collect active blend zones (SINGLE_REGION mode declares no intersections)
     var blendZones = [];
@@ -2146,7 +2082,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
     for (var ei = 1; ei < size(edgeData); ei += 1)
         edgeBoundaryTs = append(edgeBoundaryTs, edgeData[ei].startArcLength / pathInfo.length);
 
-    // One or more BSpline wires per region -- split at edge boundaries so each
+    // One or more BSpline wires per region — split at edge boundaries so each
     // output curve spans at most one source edge.
     for (var ri = 0; ri < size(sortedRegions); ri += 1)
     {
@@ -2226,29 +2162,15 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                     var p1 = computeOffsetPoint(context, pathInfo, definition, tB, oB.normalOff, oB.binormalOff);
                     var t0 = offsetTangentAt(context, pathInfo, definition, reg, tA);
                     var t1 = offsetTangentAt(context, pathInfo, definition, reg, tB);
-
-                    // The true offset curve inside the span: the joint is placed where the arc
-                    // pair stays closest to it (both ends and both end tangents are exact for
-                    // every placement).
-                    var truePts = [];
-                    for (var k = 1; k < BIARC_DEVIATION_SAMPLES; k += 1)
-                    {
-                        var tk = tA + (tB - tA) * k / BIARC_DEVIATION_SAMPLES;
-                        var ok = computeOffsetsAt(reg, tk);
-                        truePts = append(truePts, computeOffsetPoint(context, pathInfo, definition, tk, ok.normalOff, ok.binormalOff));
-                    }
-                    var bi = computeBiarcPoints(p0, t0, p1, t1, truePts);
+                    var bi = computeBiarcPoints(p0, t0, p1, t1);
 
                     // Pre-check both legs are non-collinear (same threshold emitArc3Point uses),
                     // so we only create sketches when BOTH will succeed -- no orphan bodies.
-                    var legsOk = bi.ok
-                        && norm(cross(bi.midA - p0,       bi.joint - p0)) >= 1e-9 * meter * meter
-                        && norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
+                    var legAOk = norm(cross(bi.midA - p0,       bi.joint - p0)) >= 1e-9 * meter * meter;
+                    var legBOk = norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
 
-                    if (legsOk)
+                    if (bi.ok && legAOk && legBOk)
                     {
-                        biarcCount += 1;
-                        biarcWorst  = max(biarcWorst, bi.deviation);
                         var idA = wireId + "A";
                         var idB = wireId + "B";
                         emitArc3Point(context, idA, p0, bi.midA, bi.joint);
@@ -2261,7 +2183,6 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                         {
                             println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " [BIARC] ===");
                             println("  t range: [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
-                            println("  deviation from true offset: " ~ toString(bi.deviation / millimeter) ~ " mm");
                         }
                         if (definition.showRegions)
                         {
@@ -2291,30 +2212,12 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                     " to honor all interior station/dwell pins.");
             }
 
-            // Where this spline meets an arc (at a source-edge boundary with a circular edge
-            // on the other side) its end tangent is pinned to the true offset tangent -- the
-            // tangent the arc has there -- so the joint is G1 rather than fit-approximate.
-            var target = { "positions" : pts };
-            var chord  = 0 * meter;
-            for (var k = 0; k < size(pts) - 1; k += 1)
-            {
-                chord += norm(pts[k + 1] - pts[k]);
-            }
-            if (si > 0 && sourceEdgeIsArc(context, pathInfo.frenetPath, tA - EDGE_SIDE_EPS, pathInfo.length))
-            {
-                target.startDerivative = offsetTangentAt(context, pathInfo, definition, reg, tA) * chord;
-            }
-            if (si < size(splitTs) - 2 && sourceEdgeIsArc(context, pathInfo.frenetPath, tB + EDGE_SIDE_EPS, pathInfo.length))
-            {
-                target.endDerivative = offsetTangentAt(context, pathInfo, definition, reg, tB) * chord;
-            }
-
             var bspline = approximateSpline(context, {
                 "degree"             : definition.approxDegree,
                 "tolerance"          : definition.approxTolerance,
                 "isPeriodic"         : false,
                 "maxControlPoints"   : effMaxCP,
-                "targets"            : [approximationTarget(target)],
+                "targets"            : [approximationTarget({ "positions" : pts })],
                 "interpolateIndices" : seg.interpolateIndices
             })[0];
 
@@ -2337,12 +2240,6 @@ function buildOutputWire(context is Context, id is Id, definition is map,
                     (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA);
             }
         }
-    }
-
-    if (biarcCount > 0)
-    {
-        reportFeatureInfo(context, id, toString(biarcCount) ~ " varying-offset arc(s) built as tangent arc pairs; " ~
-            "largest deviation from the true offset " ~ toString(roundToPrecision(biarcWorst / millimeter, 4)) ~ " mm.");
     }
 
     // One BSpline wire per active blend zone
@@ -2369,7 +2266,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
 
         if (definition.printCurveDetails)
         {
-            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' -> '" ~ bz.regB.regionName ~ "') ===");
+            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' → '" ~ bz.regB.regionName ~ "') ===");
             println("  degree:  " ~ toString(bspline.degree));
             println("  CPs:     " ~ toString(size(bspline.controlPoints)));
             println("  samples: " ~ toString(size(pts)));
