@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// Onshape's bridging-curve maths (computeBridgingControlPoints) for the curvature-continuous fillet
+import(path : "onshape/std/bridgingCurve.fs", version : "3083.0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
@@ -173,7 +175,9 @@ export const filletWire = defineFeature(function(context is Context, id is Id, d
             for (var i = 0; i < size(all); i += 1)
             {
                 println("[fillet wire] corner " ~ (i + 1) ~ " at " ~ fmtPoint(all[i].point) ~ ": turn " ~ roundToPrecision(all[i].angle / degree, 3)
-                    ~ " deg" ~ (solved[i] != undefined ? ", filleted, setbacks " ~ fmtMM(solved[i].dA) ~ " / " ~ fmtMM(solved[i].dB) ~ " mm" : ""));
+                    ~ " deg" ~ (solved[i] != undefined ? ", filleted, setbacks " ~ fmtMM(solved[i].dA) ~ " / " ~ fmtMM(solved[i].dB) ~ " mm"
+                        ~ (solved[i].averageCurvature != undefined ? ", curvature average " ~ fmtCurvature(solved[i].averageCurvature)
+                            ~ " min " ~ fmtCurvature(solved[i].minCurvature) ~ " max " ~ fmtCurvature(solved[i].maxCurvature) ~ " 1/mm" : "") : ""));
             }
         }
 
@@ -403,7 +407,7 @@ function solveCorner(context is Context, definition is map, corner is map, r is 
 {
     if (definition.continuity == FilletWireContinuity.CURVATURE)
     {
-        return { "error" : "Curvature continuity is not built yet" };
+        return solveBlend(context, corner, r);
     }
     return solveArc(context, corner, r);
 }
@@ -472,6 +476,114 @@ function solveArc(context is Context, corner is map, r is ValueWithUnits) return
                 "controlPoints" : [sa.origin, sa.origin + reach * sa.direction, sb.origin],
                 "weights" : [1, cos(sweep / 2), 1], "knots" : knotArray([0, 1]) });
     return { "dA" : dA, "dB" : dB, "curve" : curve, "corner" : corner, "pointA" : sa, "pointB" : sb };
+}
+
+/**
+ * Curvature mode: a curvature-continuous (G2) blend -- Onshape's bridging curve between the two tangent points,
+ * matching position, tangent and curvature of each edge -- whose AVERAGE curvature (turn between its end
+ * tangents / its length) is 1 / r, as an arc of radius r would have. The setback d (the same distance into
+ * both edges) is found by bisection: the average curvature falls as d grows.
+ */
+function solveBlend(context is Context, corner is map, r is ValueWithUnits) returns map
+{
+    const build = function(d is ValueWithUnits) returns map
+        {
+            const a = blendSide(context, corner, d, true);
+            const b = blendSide(context, corner, d, false);
+            const controls = computeBridgingControlPoints(context, a.side, b.side);
+            const curve = bSplineCurve({ "degree" : size(controls) - 1, "isPeriodic" : false, "controlPoints" : controls, "knots" : knotArray([0, 1]) });
+            const stats = curveStats(curve);
+            return { "curve" : curve, "pointA" : a.at, "pointB" : b.at, "length" : stats.length,
+                    "average" : angleBetween(a.at.direction, b.at.direction).value / stats.length,
+                    "maxCurvature" : stats.maxCurvature, "minCurvature" : stats.minCurvature };
+        };
+    const target = 1 / r;
+    var lo = 1e-3 * r;
+    var hi = 0.98 * min(corner.lengthA, corner.lengthB);
+    if (hi <= lo)
+    {
+        return { "error" : "the edges at this corner are too short" };
+    }
+    if (build(hi).average > target)
+    {
+        return { "error" : "the radius is too large for the edges at this corner" };
+    }
+    var best = undefined;
+    for (var iteration = 0; iteration < 60; iteration += 1)
+    {
+        const mid = (lo + hi) / 2;
+        best = build(mid);
+        if (abs(best.average - target) * r < 1e-9)
+        {
+            lo = mid;
+            hi = mid;
+            break;
+        }
+        if (best.average > target)
+        {
+            lo = mid;
+        }
+        else
+        {
+            hi = mid;
+        }
+    }
+    const d = (lo + hi) / 2;
+    best = build(d);
+    return { "dA" : d, "dB" : d, "curve" : best.curve, "corner" : corner, "pointA" : best.pointA, "pointB" : best.pointB,
+            "averageCurvature" : best.average, "maxCurvature" : best.maxCurvature, "minCurvature" : best.minCurvature };
+}
+
+/**
+ * One end of the blend at setback d: the point on the edge, the direction of travel there, and the bridging
+ * side data (tangent pointing INTO the blend: along the travel on edge A, against it on edge B; the edge's own
+ * curvature).
+ */
+function blendSide(context is Context, corner is map, d is ValueWithUnits, onA is boolean) returns map
+{
+    const at = onA ? sideA(context, corner, d) : sideB(context, corner, d);
+    const u = d / (onA ? corner.lengthA : corner.lengthB);
+    const flipped = onA ? corner.flipA : corner.flipB;
+    const t = onA ? (flipped ? u : 1 - u) : (flipped ? 1 - u : u);
+    const c = evEdgeCurvature(context, { "edge" : onA ? corner.edgeA : corner.edgeB, "parameter" : t });
+    return { "at" : at, "side" : {
+                "degree" : 2,
+                "position" : at.origin,
+                "tangent" : onA ? at.direction : -at.direction,
+                "curvatureDirection" : curvatureFrameNormal(c),
+                "curvature" : c.curvature
+            } as BridgingSideData };
+}
+
+/** Length and curvature range of a curve, sampled (200 points, Simpson's rule for the length). */
+function curveStats(curve is BSplineCurve) returns map
+{
+    const n = 200;
+    var parameters = [];
+    for (var i = 0; i <= n; i += 1)
+    {
+        parameters = append(parameters, i / n);
+    }
+    const values = evaluateSpline({ "spline" : curve, "parameters" : parameters, "nDerivatives" : 2 });
+    var speeds = [];
+    var maxK = 0 / meter;
+    var minK = inf / meter;
+    for (var i = 0; i <= n; i += 1)
+    {
+        const d1 = values[1][i];
+        const d2 = values[2][i];
+        const speed = norm(d1);
+        speeds = append(speeds, speed);
+        const k = norm(cross(d1, d2)) / (speed * speed * speed);
+        maxK = max(maxK, k);
+        minK = min(minK, k);
+    }
+    var length = 0 * meter;
+    for (var i = 0; i < n; i += 2)
+    {
+        length += (speeds[i] + 4 * speeds[i + 1] + speeds[i + 2]) / (3 * n);
+    }
+    return { "length" : length, "maxCurvature" : maxK, "minCurvature" : minK };
 }
 
 /** A corner whose setback runs into the next corner's is not filleted. Returns the updated { solved, skipped }. */
@@ -583,6 +695,11 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
 function fmtMM(v is ValueWithUnits) returns string
 {
     return toString(roundToPrecision(v / millimeter, 4));
+}
+
+function fmtCurvature(k is ValueWithUnits) returns string
+{
+    return toString(roundToPrecision(k * millimeter, 6));
 }
 
 function fmtPoint(p is Vector) returns string
