@@ -650,12 +650,11 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
         for (var at in [f.pointA, f.pointB])
         {
             const half = min(1 * millimeter, 0.25 * min(f.dA, f.dB));
-            const planeId = id + ("cutPlane" ~ k);
-            opPlane(context, planeId, { "plane" : plane(at.origin, at.direction), "width" : 2 * half, "height" : 2 * half });
+            const tool = cuttingSheet(context, id + ("cutSheet" ~ k), at, half);
             const splitId = id + ("cut" ~ k);
-            opSplitPart(context, splitId, { "targets" : pieces, "tool" : qCreatedBy(planeId, EntityType.FACE), "keepTools" : false, "useTrimmed" : true });
+            opSplitPart(context, splitId, { "targets" : pieces, "tool" : tool.sheet, "keepTools" : true, "useTrimmed" : true });
             pieces = qUnion([pieces, qCreatedBy(splitId, EntityType.BODY)]);
-            opDeleteBodies(context, id + ("deletePlane" ~ k), { "entities" : qCreatedBy(planeId, EntityType.BODY) });
+            opDeleteBodies(context, id + ("deleteSheet" ~ k), { "entities" : tool.bodies });
             k += 1;
         }
     }
@@ -687,6 +686,26 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
         return { "output" : joined, "fillets" : mapArray(fillPoints, function(p) { return qClosestTo(qOwnedByBody(joined, EntityType.EDGE), p); }) };
     }
     return { "output" : all, "fillets" : filletEdges };
+}
+
+/**
+ * A small square sheet (2 * half across) through `at.origin`, perpendicular to `at.direction`: the tool that cuts
+ * a wire at exactly one point. A construction plane is NOT usable here -- it cuts as an infinite plane even with
+ * "trim to face boundaries", so it would split the wire wherever else it crosses the plane.
+ */
+function cuttingSheet(context is Context, id is Id, at is Line, half is ValueWithUnits) returns map
+{
+    const u = perpendicularVector(at.direction);
+    const w = cross(at.direction, u);
+    opFitSpline(context, id + "line", { "points" : [at.origin - half * u - half * w, at.origin + half * u - half * w] });
+    opExtrude(context, id + "sheet", {
+                "entities" : qCreatedBy(id + "line", EntityType.EDGE),
+                "direction" : w,
+                "endBound" : BoundingType.BLIND,
+                "endDepth" : 2 * half
+            });
+    return { "sheet" : qCreatedBy(id + "sheet", EntityType.BODY),
+            "bodies" : qUnion([qCreatedBy(id + "line", EntityType.BODY), qCreatedBy(id + "sheet", EntityType.BODY)]) };
 }
 
 // ============================================================================
