@@ -1348,10 +1348,24 @@ that reassigns the solver's variable must be overridden after it runs, not rejec
 
 ---
 
+## Correction 32: getVariable with an `undefined` default still throws (2026-09-23)
+
+**Symptom**: `getVariable(context, name, undefined)` raised `@getVariable: VARIABLE_NOT_FOUND`
+for a missing name, exactly like the two-argument form.
+
+**Cause**: the overload passes `{ "name" : name, "defaultValue" : defaultValue }`; a map entry
+set to `undefined` is an ABSENT entry, so there is no default at all.
+
+**Fix**: a sentinel default, e.g. `const v = getVariable(context, name, "__missing__");` and
+compare -- wrapped once as `optionalVariable` (design_map_query_utils.fs, iterative_solve.fs).
+The same applies to any std call taking an optional map field: `undefined` means "not given".
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 31
-- **Last Updated**: 2026-09-22
+- **Total Corrections**: 32
+- **Last Updated**: 2026-09-23
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
 - **Latest Additions**: annotation Default migrates into saved features; chord-length parameters for approximateSpline (23); frame length axis is not the velocity (26); isButton + clickedButton (27); side-of-splitter for trims (28); Matrix weights + degenerate rows for exact sectors (29)

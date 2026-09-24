@@ -3,10 +3,10 @@ import(path : "onshape/std/common.fs", version : "3008.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
 
 //export import wrapCurve
-export import(path : "6863116065bf5063633f30ac", version : "e692ba3166b7cd2cbc1a7da2");
+export import(path : "6863116065bf5063633f30ac", version : "4958c10656e1f0fcbcbdae61");
 
 //import curveMappingCore
-import(path : "683d867c35fdab9c98d47556", version : "7010180c5e3be2311ad5359e");
+import(path : "683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
 
 
 

@@ -5,7 +5,7 @@ import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "ad98c7f43a25a4c0e8a428e7", version : "5a7ce93901d19ca9f12bd4ba");
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -932,9 +932,16 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
         var extTan       = straight
             ? tangent
             : normalize(cos(theta * radian) * tangent + sin(theta * radian) * toCentre);
+        // The normal turns with the tangent: on the circle it is -sin(theta) T + cos(theta) N.
+        // Keeping the boundary normal (as this did) leaves it theta off perpendicular to the
+        // rotated tangent, and coordSystem's perpendicularVectors precondition fails once the
+        // overflow on a curved end is large enough.
+        var extNormal    = straight
+            ? toCentre
+            : normalize(-sin(theta * radian) * tangent + cos(theta * radian) * toCentre);
 
         var extPos   = boundary.frame.origin + alongTangent * tangent + towardCentre * toCentre;
-        var extFrame = coordSystem(extPos, boundary.frame.xAxis, extTan);
+        var extFrame = coordSystem(extPos, extNormal, extTan);
 
         return mergeMaps(boundary, { "frame": extFrame });
     }
