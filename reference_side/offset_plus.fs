@@ -810,12 +810,6 @@ function clamp01(x is number) returns number
     return min(1, max(0, x));
 }
 
-/** Angle between two unit vectors, robust near 0. */
-function angleBetween(u is Vector, v is Vector) returns ValueWithUnits
-{
-    return atan2(norm(cross(u, v)) * meter, dot(u, v) * meter);
-}
-
 /** The unit vector along v, or the fallback when v vanishes. */
 function normalizeOr(v is Vector, fallback is Vector) returns Vector
 {
