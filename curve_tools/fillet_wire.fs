@@ -15,8 +15,9 @@ IconNamespace::import(path : "afe1013370939dbb2fb18df8", version : "2a05e21e8b34
  * in the graphics area; click them to choose which to fillet, or use Apply to all. Each chosen corner can
  * override the radius.
  *
- * Tangent (default): an exact circular arc of the radius, tangent to both edges. Only possible where the two
- * edges lie in one plane at the corner; other corners are reported and left sharp.
+ * Tangent (default): an exact circular arc of the radius, tangent to both edges -- built as a sketch arc, so
+ * Onshape knows it is an arc (radius shown, measured as one). Only possible where the two edges lie in one
+ * plane at the corner; other corners are reported and left sharp.
  * Curvature: a curvature-continuous blend whose average curvature is 1 / radius (the length an arc of that
  * radius would need for the same turn).
  *
@@ -477,7 +478,8 @@ function solveArc(context is Context, corner is map, r is ValueWithUnits) return
     const curve = bSplineCurve({ "degree" : 2, "isPeriodic" : false,
                 "controlPoints" : [sa.origin, sa.origin + reach * sa.direction, sb.origin],
                 "weights" : [1, cos(sweep / 2), 1], "knots" : knotArray([0, 1]) });
-    return { "dA" : dA, "dB" : dB, "curve" : curve, "corner" : corner, "pointA" : sa, "pointB" : sb };
+    return { "dA" : dA, "dB" : dB, "curve" : curve, "corner" : corner, "pointA" : sa, "pointB" : sb,
+            "arc" : { "centre" : centre, "normal" : n } };
 }
 
 /**
@@ -680,7 +682,14 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
             throw regenError("Internal: the piece around the corner at " ~ fmtPoint(f.corner.point) ~ " was not isolated.");
         }
         const curveId = id + ("fillet" ~ i);
-        opCreateBSplineCurve(context, curveId, { "bSplineCurve" : f.curve });
+        if (f.arc != undefined)
+        {
+            sketchArc(context, curveId, f);
+        }
+        else
+        {
+            opCreateBSplineCurve(context, curveId, { "bSplineCurve" : f.curve });
+        }
         opEditCurve(context, id + ("edit" ~ i), { "wire" : piece, "edge" : qCreatedBy(curveId, EntityType.EDGE) });
         opDeleteBodies(context, id + ("deleteFillet" ~ i), { "entities" : qCreatedBy(curveId, EntityType.BODY) });
         filletEdges = append(filletEdges, qClosestTo(qOwnedByBody(pieces, EntityType.EDGE), evaluateSpline({ "spline" : f.curve, "parameters" : [0.5] })[0][0]));
@@ -696,6 +705,28 @@ function filletChain(context is Context, id is Id, definition is map, chain is m
         return { "output" : joined, "fillets" : mapArray(fillPoints, function(p) { return qClosestTo(qOwnedByBody(joined, EntityType.EDGE), p); }) };
     }
     return { "output" : all, "fillets" : filletEdges };
+}
+
+/**
+ * A tangent-mode fillet as a sketch arc (start, middle, end of the solved arc, in the arc's own plane), so the
+ * edge is a true circle -- Onshape shows its radius and measures it as an arc. The same arc as a rational
+ * B-spline (f.curve) is exact too, but Onshape can only call it a spline.
+ */
+function sketchArc(context is Context, id is Id, f is map)
+{
+    const pl = plane(f.arc.centre, f.arc.normal, normalize(f.pointA.origin - f.arc.centre));
+    const at2d = function(p is Vector) returns Vector
+        {
+            const local = worldToPlane(pl, p);
+            return vector(local[0], local[1]);
+        };
+    const sketch = newSketchOnPlane(context, id, { "sketchPlane" : pl });
+    skArc(sketch, "arc", {
+                "start" : at2d(f.pointA.origin),
+                "mid" : at2d(evaluateSpline({ "spline" : f.curve, "parameters" : [0.5] })[0][0]),
+                "end" : at2d(f.pointB.origin)
+            });
+    skSolve(sketch);
 }
 
 /**
