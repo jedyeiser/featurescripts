@@ -48,7 +48,8 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
                     "Description" : "Origin of every measurement. X is the measuring axis, Z is up. Empty = the world origin." }
         definition.datum is Query;
 
-        annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the part's name." }
+        annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
+                    "Description" : "Starts every body name: <prefix> PLAN, <prefix> PLAN ST MRS, ... (a feature cannot read the part's name while it regenerates)." }
         definition.prefix is string;
 
         annotation { "Name" : "Plan (datum XY)", "Default" : true }
@@ -105,8 +106,11 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
             throw regenError("Select a part.", ["part"]);
         }
 
-        const prefix = definition.prefix != "" ? definition.prefix
-            : getProperty(context, { "entity" : definition.part, "propertyType" : PropertyType.NAME });
+        if (definition.prefix == "")
+        {
+            throw regenError("Enter a name prefix, e.g. the part number.", ["prefix"]);
+        }
+        const prefix = definition.prefix;
         const stations = collectStations(context, definition.stationSet, definition.stations);
         const views = viewFrames(context, definition);
         if (size(views) == 0)
