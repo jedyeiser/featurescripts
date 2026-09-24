@@ -9,7 +9,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "e274f80c159e1a565add92d5");
+export import(path : "683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
 
 // wrapCurve is deliberately NOT imported: nothing here calls it, and its export-import of the
 // core could bring a second version of the core into this scope.
