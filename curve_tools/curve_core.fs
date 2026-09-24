@@ -1384,6 +1384,108 @@ function snapEnds(curve is BSplineCurve, points is array) returns BSplineCurve
 // ============================================================================
 
 /**
+ * The END outputs of wires, named the same in every Curve_tools feature: for each open
+ * chain of edges, its free vertex nearest `startPoint` (where the source starts) is the
+ * start, the other free vertex the end, each with its edge; the vertices between (used by
+ * two edges) are the breaks; the edges ordered from the start are the runs. Chains that
+ * are closed or branch have no ends. Results are unions over the chains.
+ *
+ * @returns {map} : { startVertex, endVertex, startEdge, endEdge, breakVertices (Queries),
+ *      orderedEdges (array of edge Queries of the FIRST open chain, from its start) }
+ */
+export function wireEnds(context is Context, chains is array, startPoint is Vector) returns map
+{
+    var result = { "startVertex" : [], "endVertex" : [], "startEdge" : [], "endEdge" : [], "breakVertices" : [] };
+    var orderedEdges = undefined;
+    for (var chainEdges in chains)
+    {
+        var uses = {};
+        var edgesAt = {};
+        var vertexOf = {};
+        const edgeList = evaluateQuery(context, chainEdges);
+        for (var edge in edgeList)
+        {
+            for (var vertex in evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX)))
+            {
+                const key = toString(vertex);
+                uses[key] = (uses[key] == undefined ? 0 : uses[key]) + 1;
+                edgesAt[key] = append(edgesAt[key] == undefined ? [] : edgesAt[key], edge);
+                vertexOf[key] = vertex;
+            }
+        }
+        var free = [];
+        var branching = false;
+        for (var entry in uses)
+        {
+            if (entry.value == 1)
+            {
+                free = append(free, entry.key);
+            }
+            else if (entry.value == 2)
+            {
+                result.breakVertices = append(result.breakVertices, vertexOf[entry.key]);
+            }
+            else
+            {
+                branching = true;
+            }
+        }
+        if (size(free) != 2 || branching)
+        {
+            continue;
+        }
+        const d0 = norm(evVertexPoint(context, { "vertex" : vertexOf[free[0]] }) - startPoint);
+        const d1 = norm(evVertexPoint(context, { "vertex" : vertexOf[free[1]] }) - startPoint);
+        const s = d0 <= d1 ? free[0] : free[1];
+        const e = d0 <= d1 ? free[1] : free[0];
+        result.startVertex = append(result.startVertex, vertexOf[s]);
+        result.endVertex = append(result.endVertex, vertexOf[e]);
+        result.startEdge = append(result.startEdge, edgesAt[s][0]);
+        result.endEdge = append(result.endEdge, edgesAt[e][0]);
+
+        if (orderedEdges == undefined)
+        {
+            // Walk from the start: each vertex hands over to the edge not yet taken.
+            orderedEdges = [];
+            var taken = {};
+            var edge = edgesAt[s][0];
+            var at = s;
+            while (edge != undefined)
+            {
+                orderedEdges = append(orderedEdges, edge);
+                taken[toString(edge)] = true;
+                var next = undefined;
+                for (var vertex in evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX)))
+                {
+                    const key = toString(vertex);
+                    if (key != at)
+                    {
+                        at = key;
+                        for (var candidate in edgesAt[key])
+                        {
+                            if (taken[toString(candidate)] != true)
+                            {
+                                next = candidate;
+                            }
+                        }
+                        break;
+                    }
+                }
+                edge = next;
+            }
+        }
+    }
+    return {
+            "startVertex" : qUnion(result.startVertex),
+            "endVertex" : qUnion(result.endVertex),
+            "startEdge" : qUnion(result.startEdge),
+            "endEdge" : qUnion(result.endEdge),
+            "breakVertices" : qUnion(result.breakVertices),
+            "orderedEdges" : orderedEdges == undefined ? [] : orderedEdges
+        };
+}
+
+/**
  * Right-align text in a fixed-width column.
  */
 export function padLeft(text is string, width is number) returns string

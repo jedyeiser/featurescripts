@@ -2,6 +2,8 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: curve_core.fs (wireEnds)
+import(path : "02d7784437f621c76397f0d6", version : "");
 
 /**
  * Merge curve
@@ -342,6 +344,14 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
 
         // Extract variables. Embedded explicitly: when the merge edits the seed wire in place
         // the output is a body this feature did not create, which qCreatedBy would miss.
+        // Ends: start = the end of the output wire nearer where the merged spline starts.
+        var outputChains = [];
+        for (var body in evaluateQuery(context, output))
+        {
+            outputChains = append(outputChains, qOwnedByBody(body, EntityType.EDGE));
+        }
+        const ends = wireEnds(context, outputChains, evaluateSpline({ "spline" : spline, "parameters" : [spline.knots[0]] })[0][0]);
+
         embedStandardOutputs(context, id, {
                     "output" : output,
                     "outputDescription" : "The wire holding the merged curve",
@@ -353,7 +363,11 @@ export const mergeCurve = defineFeature(function(context is Context, id is Id, d
                     "queries" : {
                         "mergedEdge" : extractableQuery(qOwnedByBody(output, EntityType.EDGE)->qClosestTo(evaluateSpline({ "spline" : spline,
                                         "parameters" : [(spline.knots[0] + spline.knots[size(spline.knots) - 1]) / 2] })[0][0]),
-                                "The merged edge itself.", DebugColor.GREEN)
+                                "The merged edge itself.", DebugColor.GREEN),
+                        "startVertex" : extractableQuery(ends.startVertex, "The end of the wire where its source starts.", DebugColor.GREEN),
+                        "endVertex" : extractableQuery(ends.endVertex, "The other end of the wire.", DebugColor.RED),
+                        "startEdge" : extractableQuery(ends.startEdge, "The edge at startVertex.", DebugColor.GREEN),
+                        "endEdge" : extractableQuery(ends.endEdge, "The edge at endVertex.", DebugColor.RED)
                     }
                 });
     }, {

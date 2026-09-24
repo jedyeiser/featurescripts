@@ -257,6 +257,14 @@ export const mapCurve = defineFeature(function(context is Context, id is Id, def
             printSummary(definition, fromResolved, toResolved, s0, s1, summary);
         }
 
+        // Ends: start = the end of each mapped wire nearer the to-chain's start.
+        var mappedChains = [];
+        for (var body in evaluateQuery(context, qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE)))
+        {
+            mappedChains = append(mappedChains, qOwnedByBody(body, EntityType.EDGE));
+        }
+        const ends = wireEnds(context, mappedChains, toChain.links[0].edges[0].startPoint);
+
         embedStandardOutputs(context, id, {
                     "output" : qCreatedBy(id, EntityType.BODY),
                     "outputDescription" : "The mapped wires",
@@ -267,6 +275,12 @@ export const mapCurve = defineFeature(function(context is Context, id is Id, def
                         "toStart" : extractableVariable(t0, "Where the span starts on the to-chain (arc length from its start)."),
                         "toEnd" : extractableVariable(t1, "Where the span ends on the to-chain (arc length from its start)."),
                         "stationCount" : extractableVariable(summary.stations, "Stations sampled along the from-chain (0 for Trim to edges).")
+                    },
+                    "queries" : {
+                        "startVertex" : extractableQuery(ends.startVertex, "The end of the wire where its source starts.", DebugColor.GREEN),
+                        "endVertex" : extractableQuery(ends.endVertex, "The other end of the wire.", DebugColor.RED),
+                        "startEdge" : extractableQuery(ends.startEdge, "The edge at startVertex.", DebugColor.GREEN),
+                        "endEdge" : extractableQuery(ends.endEdge, "The edge at endVertex.", DebugColor.RED)
                     }
                 });
     });
