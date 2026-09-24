@@ -3,9 +3,9 @@ import(path : "onshape/std/common.fs", version : "2909.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2909.0");
 
 //import CurveWrapping_full/curveMappingCore
-import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
+import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/683d867c35fdab9c98d47556", version : "08ced7a9bfddd7090ead6e97");
 //import CurveWrapping_full/Utils
-import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
+import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
 
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
