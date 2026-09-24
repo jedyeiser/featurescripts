@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "3008.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-export import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
+export import(path : "08e8748f2ef24eea16072b75/210ec1ea806a181c52651e89/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/b51a369d724ce2629fd5ae61/683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
+export import(path : "08e8748f2ef24eea16072b75/210ec1ea806a181c52651e89/683d867c35fdab9c98d47556", version : "3e5bb927da731e43e52c71e7");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");

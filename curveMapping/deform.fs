@@ -2,11 +2,10 @@ FeatureScript 3008;
 import(path : "onshape/std/common.fs", version : "3008.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
 
-//export import wrapCurve
-export import(path : "6863116065bf5063633f30ac", version : "4958c10656e1f0fcbcbdae61");
-
-//import curveMappingCore
-import(path : "683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
+// curveMappingCore, EXPORT-imported: the dialog's enums (SamplingMode, FrameNormalMode,
+// BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
+// export-import of the core could bring a second version of the core into this scope.
+export import(path : "683d867c35fdab9c98d47556", version : "3e5bb927da731e43e52c71e7");
 
 
 
@@ -438,6 +437,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 // opCreateCurvesOnFace adds significant computation per face.
                 var guideVerticesQuery = qNothing();
                 var guideVtxDeleteId   = undefined;
+                // Declared outside the try so a failure part-way through the loop can remove the
+                // points already made (they used to be left behind as stray point bodies).
+                var faceGuideVtxQueries = [];
                 if (definition.useFacePoints) try
                 {
                     var guidePoints = transformFacepoints(
@@ -445,7 +447,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         definition.faceUsamplingMultiplier, definition.faceVsamplingMultiplier,
                         fromFrenetPath, toFrenetPath, settings);
 
-                    var faceGuideVtxQueries = [];
                     for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
                     {
                         var vtxId = id + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
@@ -463,6 +464,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 {
                     println("WARNING: guide point generation failed for face " ~ fIdx ~
                             ": " ~ toString(guideErr));
+                    if (size(faceGuideVtxQueries) > 0)
+                    {
+                        opDeleteBodies(context, id + ("discardGuideVtx" ~ fIdx), { "entities": qUnion(faceGuideVtxQueries) });
+                    }
                 }
 
                 var fillId = id + ("fill" ~ fIdx);

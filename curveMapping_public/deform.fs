@@ -4,7 +4,7 @@ import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
 
 
 //import curveMappingCore
-export import(path : "08e8748f2ef24eea16072b75/b51a369d724ce2629fd5ae61/683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
+export import(path : "08e8748f2ef24eea16072b75/210ec1ea806a181c52651e89/683d867c35fdab9c98d47556", version : "3e5bb927da731e43e52c71e7");
 
 IconNamespace::import(path : "c20a7510f15da01b0a06a167", version : "f014fb4b0c37e21215ee7872");
 

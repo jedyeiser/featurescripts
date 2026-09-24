@@ -1031,70 +1031,194 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
 /**
  * Project a point onto a FrenetPath and return the global arc-length position.
  *
- * Tests each edge's BSpline, picks the closest, then converts the BSpline
- * parameter to arc-length accounting for traversal direction.
+ * Foot-point search on the frames the path already sampled at build time -- no spline
+ * evaluation, no kernel call. A line edge is solved in closed form; a curved edge by
+ * Newton on dot(P - A(s), T(s)) = 0 over the Hermite position table, the same table
+ * getFrameAtArcLength reads, so the arc found here and the frame read there share one
+ * parameterisation. (The old projection fitted the approximated BSpline and converted its
+ * parameter through a separate trapezoid table: 20-80 native spline evaluations per point,
+ * and two arc-length measures that differed mid-edge.)
+ *
+ * With a hint, only the hinted edge (seeded at the hinted arc) and its two neighbours are
+ * searched -- consecutive samples of a curve move little. Without one, a coarse scan of
+ * every edge's table picks the seed, so an unordered point (a Deform vertex) still finds
+ * the global nearest foot.
  *
  * @param frenetPath {map}    - result from buildFrenetPath
  * @param point      {Vector} - query point with units
- * @param hint               - optional map { "edgeIndex", "param" } from previous call;
- *                             when provided, only scans hint edge ± 1 neighbor (warm-start).
- *                             Pass undefined for full scan.
+ * @param hint               - optional { "edgeIndex", "param" } from a previous call
+ *                             ("param" is the local arc on that edge); undefined = full scan.
  * @returns {map} :
  *   "arcLength" {ValueWithUnits} - arc-length along the path
  *   "hint"      {map}            - { "edgeIndex", "param" } for next call
  */
 export function projectOntoFrenetPath(frenetPath is map, point is Vector, hint) returns map
 {
-    var edgeData    = frenetPath.edgeData;
-    var nEdges      = size(edgeData);
-    var bestDist    = inf * meter;
-    var bestEdgeIdx = 0;
-    var bestParam   = 0;
+    var edgeData = frenetPath.edgeData;
+    var nEdges   = size(edgeData);
 
+    // Candidate (edge, seed arc) pairs.
+    var centre;
+    var centreSeed;
     if (hint != undefined && hint.edgeIndex >= 0 && hint.edgeIndex < nEdges)
     {
-        // Warm-start: only scan hinted edge ± 1 neighbor to handle edge crossings
-        var iMin = max([0, hint.edgeIndex - 1]);
-        var iMax = min([nEdges - 1, hint.edgeIndex + 1]);
-        for (var i = iMin; i <= iMax; i += 1)
-        {
-            var result = projectPointOnCurve(edgeData[i].bspline, point, {});
-            if (result.distance < bestDist)
-            {
-                bestDist    = result.distance;
-                bestEdgeIdx = i;
-                bestParam   = result.parameter;
-            }
-        }
+        centre     = hint.edgeIndex;
+        centreSeed = (hint.param is ValueWithUnits) ? hint.param : 0.5 * edgeData[centre].length;
     }
     else
     {
-        // Full scan across all edges
-        for (var i = 0; i < nEdges; i += 1)
+        var coarse = coarseNearest(edgeData, point);
+        centre     = coarse.edge;
+        centreSeed = coarse.localArc;
+    }
+    var candidates = [{ "edge": centre, "seed": centreSeed }];
+    if (centre > 0)
+    {
+        candidates = append(candidates, { "edge": centre - 1, "seed": edgeData[centre - 1].length });
+    }
+    if (centre < nEdges - 1)
+    {
+        candidates = append(candidates, { "edge": centre + 1, "seed": 0 * meter });
+    }
+
+    var bestDist     = inf * meter;
+    var bestEdgeIdx  = centre;
+    var bestLocalArc = 0 * meter;
+    for (var c in candidates)
+    {
+        var foot = footOnEdge(edgeData[c.edge], point, c.seed);
+        if (foot.distance < bestDist)
         {
-            var result = projectPointOnCurve(edgeData[i].bspline, point, {});
-            if (result.distance < bestDist)
-            {
-                bestDist    = result.distance;
-                bestEdgeIdx = i;
-                bestParam   = result.parameter;
-            }
+            bestDist     = foot.distance;
+            bestEdgeIdx  = c.edge;
+            bestLocalArc = foot.localArc;
         }
     }
 
-    var edgeDat = edgeData[bestEdgeIdx];
-
-    // Convert BSpline parameter → arc-length from BSpline uMin
-    var physFrac      = arcLengthFraction(edgeDat.arcLengthTable, bestParam);
-    var physArcLength = physFrac * edgeDat.length;
-
-    // Convert to local arc from traversal start
-    var localArc = edgeDat.stdDir ? physArcLength : (edgeDat.length - physArcLength);
-
     return {
-        "arcLength" : edgeDat.startArcLength + localArc,
-        "hint"      : { "edgeIndex": bestEdgeIdx, "param": bestParam }
+        "arcLength" : edgeData[bestEdgeIdx].startArcLength + bestLocalArc,
+        "hint"      : { "edgeIndex": bestEdgeIdx, "param": bestLocalArc }
     };
+}
+
+/** Table stride of the coarse scan; the best stride sample is then refined by Newton. */
+const CM_PROJECTION_STRIDE = 5;
+
+/**
+ * The edge and local arc of the table sample nearest `point`, over the whole path: every
+ * CM_PROJECTION_STRIDE-th sample of each curved edge (and its last), closed form on lines.
+ */
+function coarseNearest(edgeData is array, point is Vector) returns map
+{
+    var bestEdge = 0;
+    var bestArc  = 0 * meter;
+    var bestDist = inf * meter;
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        var edgeDat = edgeData[i];
+        if (edgeDat.isLine)
+        {
+            var t = clamp(dot(point - edgeDat.lineStartPt, edgeDat.lineFrame.zAxis), 0 * meter, edgeDat.length);
+            var dLine = norm(point - (edgeDat.lineStartPt + t * edgeDat.lineFrame.zAxis));
+            if (dLine < bestDist)
+            {
+                bestDist = dLine;
+                bestEdge = i;
+                bestArc  = t;
+            }
+            continue;
+        }
+        var origins = edgeDat.frameSamples.origins;
+        var last    = size(origins) - 1;
+        var span    = edgeDat.length / last;
+        var j = 0;
+        while (true)
+        {
+            var d = norm(point - origins[j]);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestEdge = i;
+                bestArc  = j * span;
+            }
+            if (j == last)
+            {
+                break;
+            }
+            j = min(j + CM_PROJECTION_STRIDE, last);
+        }
+    }
+    return { "edge": bestEdge, "localArc": bestArc };
+}
+
+/**
+ * The foot of `point` on one edge: closed form on a line, Newton from `seed` on a curved
+ * edge's Hermite table, clamped to the edge. Returns { localArc, distance }.
+ *
+ * Newton step ds = dot(P - A, T) / (1 - dot(P - A, dT/ds)), the curvature term from the
+ * table cell. The denominator is floored so a point near the centre of curvature (where
+ * several feet exist) moves conservatively instead of jumping across the edge.
+ */
+function footOnEdge(edgeDat is map, point is Vector, seed is ValueWithUnits) returns map
+{
+    var length = edgeDat.length;
+    if (edgeDat.isLine)
+    {
+        var t = clamp(dot(point - edgeDat.lineStartPt, edgeDat.lineFrame.zAxis), 0 * meter, length);
+        return { "localArc": t, "distance": norm(point - (edgeDat.lineStartPt + t * edgeDat.lineFrame.zAxis)) };
+    }
+
+    var samples = edgeDat.frameSamples;
+    var last    = size(samples.origins) - 1;
+    var span    = length / last;
+    var s       = clamp(seed, 0 * meter, length);
+    for (var k = 0; k < 12; k += 1)
+    {
+        var cell  = hermiteCell(samples, span, last, s);
+        var d     = point - cell.origin;
+        var g     = dot(d, cell.tangent);
+        var denom = 1 - dot(d, cell.tangentRate);
+        if (denom < 0.2)
+        {
+            denom = 0.2;
+        }
+        var next  = clamp(s + g / denom, 0 * meter, length);
+        var moved = abs(next - s);
+        s = next;
+        if (moved < 1e-10 * meter)
+        {
+            break;
+        }
+    }
+    var finalCell = hermiteCell(samples, span, last, s);
+    return { "localArc": s, "distance": norm(point - finalCell.origin) };
+}
+
+/**
+ * Hermite position, blended unit tangent and the cell's tangent rate (dT/ds) at a local
+ * arc -- the position half of frameAtLocalArc, without the normal.
+ */
+function hermiteCell(samples is map, span is ValueWithUnits, last is number, localArc is ValueWithUnits) returns map
+{
+    var t = localArc / span;
+    var i = floor(t);
+    if (i < 0)        { i = 0; }
+    if (i > last - 1) { i = last - 1; }
+    var f = t - i;
+    if (f < 0) { f = 0; }
+    if (f > 1) { f = 1; }
+
+    var t0 = samples.tangents[i];
+    var t1 = samples.tangents[i + 1];
+    var f2 = f * f;
+    var f3 = f2 * f;
+    var origin = (2 * f3 - 3 * f2 + 1) * samples.origins[i]
+        + (f3 - 2 * f2 + f) * span * t0
+        + (-2 * f3 + 3 * f2) * samples.origins[i + 1]
+        + (f3 - f2) * span * t1;
+    var tangent = (1 - f) * t0 + f * t1;
+    tangent = (norm(tangent) < 1e-9) ? t0 : normalize(tangent);
+    return { "origin": origin, "tangent": tangent, "tangentRate": (t1 - t0) / span };
 }
 
 
@@ -1230,6 +1354,33 @@ export function mapWorldPoints(context is Context,
 }
 
 
+/**
+ * mapWorldPoints for ORDERED points (samples along one curve): each projection is seeded
+ * from the previous point's foot, so it searches three edges near there instead of the
+ * whole path. For unordered points (a body's vertices) use mapWorldPoints, whose every
+ * projection does the global coarse scan.
+ */
+export function mapWorldPointChain(context is Context,
+                                   fromFrenetPath is map,
+                                   toFrenetPath   is map,
+                                   fromRefArc     is ValueWithUnits,
+                                   toRefArc       is ValueWithUnits,
+                                   flipToNormal   is boolean,
+                                   points         is array) returns array
+{
+    var result = makeArray(size(points));
+    var hint = undefined;
+    for (var i = 0; i < size(points); i += 1)
+    {
+        var r = mapSinglePoint(context, fromFrenetPath, toFrenetPath,
+            fromRefArc, toRefArc, flipToNormal, points[i], hint);
+        result[i] = r.point;
+        hint = r.hint;
+    }
+    return result;
+}
+
+
 // ============================================================================
 // LINEAR-REGION FAST PATH
 // ============================================================================
@@ -1305,7 +1456,8 @@ function linearRegionTransformAt(context is Context, fromMap is map, toMap is ma
 export function linearRegionMove(context is Context, fromMap is map, toMap is map,
     fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits, flipToNormal is boolean, samplePts is array) returns map
 {
-    if (size(samplePts) == 0)
+    // Both references need a line somewhere, or no span can be doubly straight.
+    if (size(samplePts) == 0 || !pathHasLine(fromMap) || !pathHasLine(toMap))
     {
         return { "eligible" : false };
     }
@@ -1316,12 +1468,20 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
     {
         return { "eligible" : false };   // cheap reject: source is not over a line
     }
+    // Cheap reject on the to side too, before projecting the other probes.
+    var toArc0 = proj0.arcLength + (toRefArc - fromRefArc);
+    if (toArc0 < 0 * meter || toArc0 > toMap.totalLength || !toMap.edgeData[edgeIndexAtArcLength(toMap, toArc0)].isLine)
+    {
+        return { "eligible" : false };
+    }
 
     var sMin = proj0.arcLength;
     var sMax = proj0.arcLength;
+    var probeHint = proj0.hint;
     for (var k = 1; k < size(samplePts); k += 1)
     {
-        var proj = projectOntoFrenetPath(fromMap, samplePts[k], undefined);
+        var proj = projectOntoFrenetPath(fromMap, samplePts[k], probeHint);
+        probeHint = proj.hint;
         if (proj.hint.edgeIndex != fromEdgeIdx)
         {
             return { "eligible" : false };   // straddles two from-edges
@@ -1543,21 +1703,27 @@ export function sampleSourceEdge(context is Context, edge is Query,
         numSamples = max([10, ceil(edgeLen / params.samplingDensity) + 1]);
     }
 
-    var points = mapArray(evEdgeTangentLines(context, {
+    var lines = evEdgeTangentLines(context, {
         "edge"       : edge,
         "parameters" : range(0, 1, numSamples)
-    }), function(x) { return x.origin; });
+    });
+    var points = mapArray(lines, function(x) { return x.origin; });
 
-    var arcLengths = [0 * meter];
+    var arcLengths = makeArray(size(points));
+    arcLengths[0] = 0 * meter;
     for (var k = 1; k < size(points); k += 1)
     {
-        arcLengths = append(arcLengths, arcLengths[k - 1] + norm(points[k] - points[k - 1]));
+        arcLengths[k] = arcLengths[k - 1] + norm(points[k] - points[k - 1]);
     }
 
     return {
-        "points"     : points,
-        "arcLengths" : arcLengths,
-        "numSamples" : numSamples
+        "points"       : points,
+        "arcLengths"   : arcLengths,
+        "numSamples"   : numSamples,
+        // The source tangents at the first and last sample (parameters 0 and 1), already
+        // evaluated here -- callers need not ask the kernel for them again.
+        "startTangent" : lines[0].direction,
+        "endTangent"   : lines[size(lines) - 1].direction
     };
 }
 
@@ -1652,8 +1818,49 @@ export function jostleG2Junctions(context is Context, id is Id,
     matchTol is ValueWithUnits, junctionCurvatures is array,
     frontPlaneOnly is boolean) returns map
 {
-    var numSpans       = size(wrappedBSplines);
+    // All the adjustment is arithmetic on the BSplines; each span it changed is then
+    // replaced ONCE, however many of its ends moved (it used to be deleted and recreated
+    // per adjusted end).
+    const jostled  = jostleG2Splines(wrappedBSplines, matchTol, junctionCurvatures, frontPlaneOnly);
+    const numSpans = size(wrappedBSplines);
     var wrappedCurrIds = wrappedIds;
+    for (var k = 0; k < numSpans; k += 1)
+    {
+        if (!jostled.changed[k])
+        {
+            continue;
+        }
+        const newId = id + ("g2_cr_" ~ toString(k));
+        opDeleteBodies(context, id + ("g2_del_" ~ toString(k)), { "entities": qCreatedBy(wrappedIds[k], EntityType.BODY) });
+        opCreateBSplineCurve(context, newId, { "bSplineCurve": jostled.bsplines[k] });
+        wrappedCurrIds[k] = newId;
+    }
+
+    var finalEdgeQueries = makeArray(numSpans);
+    var finalBodyQueries = makeArray(numSpans);
+    for (var k = 0; k < numSpans; k += 1)
+    {
+        finalEdgeQueries[k] = qCreatedBy(wrappedCurrIds[k], EntityType.EDGE);
+        finalBodyQueries[k] = qCreatedBy(wrappedCurrIds[k], EntityType.BODY);
+    }
+    return {
+        "bsplines"    : jostled.bsplines,
+        "ids"         : wrappedCurrIds,
+        "edgeQueries" : finalEdgeQueries,
+        "bodyQueries" : finalBodyQueries
+    };
+}
+
+/**
+ * The G2 adjustment of [jostleG2Junctions] on the BSplines alone: no bodies are touched.
+ *
+ * @returns {map} : { "bsplines" : adjusted curves (same order), "changed" : [boolean] per span }
+ */
+export function jostleG2Splines(wrappedBSplines is array, matchTol is ValueWithUnits,
+    junctionCurvatures is array, frontPlaneOnly is boolean) returns map
+{
+    var numSpans = size(wrappedBSplines);
+    var changed  = makeArray(numSpans, false);
 
     // Build adjacency: spanNext[si] = index whose first CP matches si's last CP (-1 if none)
     var spanNext = [];
@@ -1755,22 +1962,10 @@ export function jostleG2Junctions(context is Context, id is Id,
                     var scA  = norm(P1A - P0A) * dA;
                     if (scA > 0 * meter && shA > 0 * meter && shA < 0.2 * scA)
                     {
-                        var ncA = [];
-                        for (var ci = 0; ci < size(CPA); ci += 1)
-                            ncA = append(ncA, ci == 2 ? P2An : CPA[ci]);
-                        var adjA = mergeMaps(splineAfter, { "controlPoints": ncA });
-                        var nbA  = [];
-                        for (var bi = 0; bi < numSpans; bi += 1)
-                            nbA = append(nbA, bi == sjNext ? adjA : wrappedBSplines[bi]);
-                        wrappedBSplines = nbA;
-                        var g2ADelId = id + ("g2A_del_" ~ toString(sj) ~ "_" ~ toString(sjNext));
-                        var g2ACrId  = id + ("g2A_cr_"  ~ toString(sj) ~ "_" ~ toString(sjNext));
-                        opDeleteBodies(context, g2ADelId, { "entities": qCreatedBy(wrappedCurrIds[sjNext], EntityType.BODY) });
-                        opCreateBSplineCurve(context, g2ACrId, { "bSplineCurve": adjA });
-                        var nciA = [];
-                        for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
-                            nciA = append(nciA, ci2 == sjNext ? g2ACrId : wrappedCurrIds[ci2]);
-                        wrappedCurrIds = nciA;
+                        var ncA = CPA;
+                        ncA[2] = P2An;
+                        wrappedBSplines[sjNext] = mergeMaps(splineAfter, { "controlPoints": ncA });
+                        changed[sjNext] = true;
                     }
                 }
             }
@@ -1800,43 +1995,17 @@ export function jostleG2Junctions(context is Context, id is Id,
                     var scB  = norm(Pm - Pm1) * dB;
                     if (scB > 0 * meter && shB > 0 * meter && shB < 0.2 * scB)
                     {
-                        var ncB = [];
-                        for (var ci = 0; ci < mB; ci += 1)
-                            ncB = append(ncB, ci == mB - 3 ? Pm2n : CPB[ci]);
-                        var adjB = mergeMaps(splineBefore, { "controlPoints": ncB });
-                        var nbB  = [];
-                        for (var bi = 0; bi < numSpans; bi += 1)
-                            nbB = append(nbB, bi == sj ? adjB : wrappedBSplines[bi]);
-                        wrappedBSplines = nbB;
-                        var g2BDelId = id + ("g2B_del_" ~ toString(sj) ~ "_" ~ toString(sjNext));
-                        var g2BCrId  = id + ("g2B_cr_"  ~ toString(sj) ~ "_" ~ toString(sjNext));
-                        opDeleteBodies(context, g2BDelId, { "entities": qCreatedBy(wrappedCurrIds[sj], EntityType.BODY) });
-                        opCreateBSplineCurve(context, g2BCrId, { "bSplineCurve": adjB });
-                        var nciB = [];
-                        for (var ci2 = 0; ci2 < numSpans; ci2 += 1)
-                            nciB = append(nciB, ci2 == sj ? g2BCrId : wrappedCurrIds[ci2]);
-                        wrappedCurrIds = nciB;
+                        var ncB = CPB;
+                        ncB[mB - 3] = Pm2n;
+                        wrappedBSplines[sj] = mergeMaps(splineBefore, { "controlPoints": ncB });
+                        changed[sj] = true;
                     }
                 }
             }
         }
     }
 
-    // Build clean output arrays using final Ids
-    var finalEdgeQueries = [];
-    var finalBodyQueries = [];
-    for (var k = 0; k < numSpans; k += 1)
-    {
-        finalEdgeQueries = append(finalEdgeQueries, qCreatedBy(wrappedCurrIds[k], EntityType.EDGE));
-        finalBodyQueries = append(finalBodyQueries, qCreatedBy(wrappedCurrIds[k], EntityType.BODY));
-    }
-
-    return {
-        "bsplines"    : wrappedBSplines,
-        "ids"         : wrappedCurrIds,
-        "edgeQueries" : finalEdgeQueries,
-        "bodyQueries" : finalBodyQueries
-    };
+    return { "bsplines" : wrappedBSplines, "changed" : changed };
 }
 
 
@@ -1968,6 +2137,10 @@ export function debugDrawFrames(context is Context, frenetPath is map, numSample
  */
 export function transformEdges(context is Context, id is Id, edgeArray is array, fromMap is map, toMap is map, settings is map) returns array
 {
+    // The rigid fast path needs BOTH references straight over the edge's span, so it can
+    // only ever apply when both contain a line; otherwise skip its probe for every edge.
+    const fastPathPossible = CM_LINEAR_FASTPATH && pathHasLine(fromMap) && pathHasLine(toMap);
+
     var result = [];
     for (var i = 0; i < size(edgeArray); i += 1)
     {
@@ -1976,7 +2149,7 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
         // Fast path: if the whole edge sits in a doubly-linear region, the wrap is
         // one rigid transform - copy and move the edge, preserving exact geometry
         // (arcs stay arcs, weights intact). Ineligible edges fall through below.
-        if (CM_LINEAR_FASTPATH)
+        if (fastPathPossible)
         {
             var probePts = mapArray(evEdgeTangentLines(context, {
                 "edge"       : edge,
@@ -2005,7 +2178,6 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             }
         }
 
-        var edgeLen = evLength(context, { "entities": edge });
         var edgeBSpline;
         if (settings.samplingMode == SamplingMode.CP_BASED || settings.keepDegree)
         {
@@ -2019,6 +2191,7 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
         }
         else
         {
+            var edgeLen = evLength(context, { "entities": edge });
             numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
         }
 
@@ -2027,7 +2200,8 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             "parameters" : range(0, 1, numSamples)
         }), function(x) { return x.origin; });
 
-        var mappedPoints = mapWorldPoints(context, fromMap, toMap,
+        // Ordered samples: each projection is seeded from the previous one.
+        var mappedPoints = mapWorldPointChain(context, fromMap, toMap,
             settings.fromRefArc, settings.toRefArc, settings.flipToNormal, srcPoints);
 
         // Snap endpoints to pre-computed vertex-mapped positions so that all edges
@@ -2072,15 +2246,18 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             ? max([settings.approximationDegree, edgeBSpline.degree])
             : settings.approximationDegree;
 
+        // Fit freely, then put the clamped spline's end control points -- which ARE its end
+        // points -- on the mapped ends. Same bit-identical shared endpoints as before, without
+        // interpolateIndices, which makes the fitter far slower (lessons-learned: ~36 s).
         var approxDef = {
             "targets"            : [approximationTarget({ "positions": mappedPoints })],
             "tolerance"          : settings.approximationTolerance,
             "maxControlPoints"   : settings.approximationMaxCPs,
             "degree"             : approxDegree,
-            "isPeriodic"         : false,
-            "interpolateIndices" : [0, size(mappedPoints) - 1]
+            "isPeriodic"         : false
         };
-        var wrappedCurve = approximateSpline(context, approxDef)[0];
+        var wrappedCurve = snapEndControlPoints(approximateSpline(context, approxDef)[0],
+            mappedPoints[0], mappedPoints[size(mappedPoints) - 1]);
 
         var wrappedId = id + (toString(i) ~ "edge");
         try
@@ -2097,38 +2274,69 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
     return result;
 }
 
+/**
+ * The same curve with its first and last control points moved to `first` and `last`. On
+ * a clamped, non-periodic spline those control points are the curve's end points, so this
+ * pins the ends exactly without constraining the fit.
+ */
+export function snapEndControlPoints(curve is BSplineCurve, first is Vector, last is Vector) returns BSplineCurve
+{
+    var cps = curve.controlPoints;
+    cps[0] = first;
+    cps[size(cps) - 1] = last;
+    return mergeMaps(curve, { "controlPoints": cps }) as BSplineCurve;
+}
+
+/** True when any edge of the path is a line (the rigid fast path is only possible then). */
+export function pathHasLine(frenetPath is map) returns boolean
+{
+    for (var edgeDat in frenetPath.edgeData)
+    {
+        if (edgeDat.isLine)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 // ============================================================================
 // transformFacepoints
 // ============================================================================
 
 /**
- * Samples interior points from a face by creating isoparametric curves,
- * maps them through the Frenet transform, and returns the mapped positions
- * for use as guide vertices in opFillSurface.
+ * Most interior guide points one face contributes. Each costs an opPoint and a constraint in
+ * opFillSurface; past a few dozen the fill slows sharply and fails more often, while the
+ * shape it can express does not improve.
+ */
+export const CM_MAX_FACE_GUIDE_POINTS = 25;
+
+/** Interior samples per iso curve in CP-based sampling (the density field is hidden then). */
+const CM_GUIDE_SAMPLES_PER_ISO = 5;
+
+/**
+ * Samples interior points from a face along isoparametric curves (which lie inside the
+ * face, trimmed or not), maps them through the Frenet transform, and returns the mapped
+ * positions for use as guide vertices in opFillSurface.
  *
- * Interior-only sampling (parameters 0 and 1 excluded) avoids duplicating
- * points that are already captured by the transformed boundary edges.
+ * Interior-only sampling (parameters 0 and 1 excluded) avoids duplicating points that are
+ * already captured by the transformed boundary edges. At most CM_MAX_FACE_GUIDE_POINTS are
+ * returned, thinned evenly. The iso-curve spacing follows the sampling mode: the density
+ * in length-based sampling, a fixed count per curve in CP-based sampling.
  *
- * @param context      {Context}
- * @param id           {Id}
- * @param face         {Query}  : source face
  * @param uMultiplier  {number} : u iso curve count = uMultiplier * u control-point dimension
  * @param vMultiplier  {number} : v iso curve count = vMultiplier * v control-point dimension
- * @param fromMap      {map}    : result from buildFrenetPath (source reference)
- * @param toMap        {map}    : result from buildFrenetPath (target reference)
- * @param settings     {map}    : { fromRefArc, toRefArc, flipToNormal, samplingDensity, ... }
- * @returns {array} : array of mapped Vector positions (interior guide points)
+ * @param settings     {map}    : { fromRefArc, toRefArc, flipToNormal, samplingMode, samplingDensity, ... }
+ * @returns {array} : mapped Vector positions (interior guide points)
  */
 export function transformFacepoints(context is Context, id is Id, face is Query, uMultiplier is number, vMultiplier is number, fromMap is map, toMap is map, settings is map) returns array
 {
     // 1. Get BSpline surface dimensions from the face approximation
     var surfData = evApproximateBSplineSurface(context, { "face": face });
     var bspl     = surfData.bSplineSurface;
-    var uDim     = size(bspl.controlPoints);
-    var vDim     = size(bspl.controlPoints[0]);
-    var nU       = uMultiplier * uDim;
-    var nV       = vMultiplier * vDim;
+    var nU       = uMultiplier * size(bspl.controlPoints);
+    var nV       = vMultiplier * size(bspl.controlPoints[0]);
 
     // 2. Create isoparametric curves on the face
     var isoId  = id + "isoCurves";
@@ -2145,34 +2353,47 @@ export function transformFacepoints(context is Context, id is Id, face is Query,
     });
     var isoBodies = qCreatedBy(isoId, EntityType.BODY);
 
-    // 3. Sample each iso curve at interior parameters, skip boundary endpoints
-    var interiorPoints = [];
-    var isoEdges = evaluateQuery(context, qCreatedBy(isoId, EntityType.EDGE));
-    for (var e in isoEdges)
+    // 3. Sample each iso curve at interior parameters; keep each curve's points in order so
+    //    its projections can be chained.
+    var lengthBased = settings.samplingMode == SamplingMode.LENGTH_BASED;
+    var chains = [];
+    var total  = 0;
+    for (var e in evaluateQuery(context, qCreatedBy(isoId, EntityType.EDGE)))
     {
-        var elen  = evLength(context, { "entities": e });
-        var nSamp = max([3, ceil(elen / settings.samplingDensity) + 1]);
-
-        // Parameters strictly between 0 and 1 (endpoints lie on boundary edges)
+        var nSamp = CM_GUIDE_SAMPLES_PER_ISO + 2;
+        if (lengthBased)
+        {
+            nSamp = max([3, ceil(evLength(context, { "entities": e }) / settings.samplingDensity) + 1]);
+        }
         var params = [];
         for (var k = 1; k < nSamp - 1; k += 1)
         {
             params = append(params, k / (nSamp - 1));
         }
         if (size(params) == 0) { continue; }
-
-        var tangentLines = evEdgeTangentLines(context, { "edge": e, "parameters": params });
-        for (var tl in tangentLines)
-        {
-            interiorPoints = append(interiorPoints, tl.origin);
-        }
+        var pts = mapArray(evEdgeTangentLines(context, { "edge": e, "parameters": params }), function(x) { return x.origin; });
+        chains = append(chains, pts);
+        total += size(pts);
     }
 
     // 4. Delete iso curve bodies — they were only needed for sampling
     opDeleteBodies(context, id + "deleteIso", { "entities": isoBodies });
 
-    // 5. Map all collected interior points through the Frenet transform
-    if (size(interiorPoints) == 0) { return []; }
-    return mapWorldPoints(context, fromMap, toMap,
-        settings.fromRefArc, settings.toRefArc, settings.flipToNormal, interiorPoints);
+    // 5. Map each curve's points as a chain, then thin evenly to the cap.
+    var mapped = [];
+    for (var pts in chains)
+    {
+        mapped = concatenateArrays([mapped, mapWorldPointChain(context, fromMap, toMap,
+                        settings.fromRefArc, settings.toRefArc, settings.flipToNormal, pts)]);
+    }
+    if (size(mapped) <= CM_MAX_FACE_GUIDE_POINTS)
+    {
+        return mapped;
+    }
+    var thinned = [];
+    for (var k = 0; k < CM_MAX_FACE_GUIDE_POINTS; k += 1)
+    {
+        thinned = append(thinned, mapped[floor(k * size(mapped) / CM_MAX_FACE_GUIDE_POINTS)]);
+    }
+    return thinned;
 }

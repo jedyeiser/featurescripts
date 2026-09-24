@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "4342dff2d99706a45108be41");
+export import(path : "683d867c35fdab9c98d47556", version : "3e5bb927da731e43e52c71e7");
 
 
 
@@ -239,7 +239,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // Visualize the frame at the reference points: GREEN = binormal (the supplied plane
         // normal, shared by both paths, shown once), RED = derived in-plane normal
         // (ref x tangent, the offset direction) on each curve.
-        if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
+        if (definition.frameNormalMode == FrameNormalMode.BINORMAL && definition.debugShowFromFrames == true)
         {
             var arrowLen  = 0.05 * meter;
             var arrowRad  = 0.0015 * meter;
@@ -277,7 +277,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             // Fast path: whole source curve inside a doubly-linear region -> rigid
             // move (arcs and lines preserved exactly). Skips sampling, span
             // splitting, and the G2 jostle. Ineligible curves fall through below.
-            if (CM_LINEAR_FASTPATH)
+            if (CM_LINEAR_FASTPATH && pathHasLine(fromFrenetPath) && pathHasLine(toFrenetPath))
             {
                 var probePts = mapArray(evEdgeTangentLines(context, {
                     "edge"       : sourceCurveArray[i],
@@ -303,7 +303,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 }
             }
 
-            var srcBSpline = evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] });
+            // Only CP-based sampling, Keep degree and the source debug print read the source
+            // BSpline; skip the kernel call otherwise.
+            var srcBSpline = (definition.sourceSamplingMode == SamplingMode.CP_BASED || definition.keepDegree || definition.debugSourceBSplines)
+                ? evApproximateBSplineCurve(context, { "edge": sourceCurveArray[i] })
+                : undefined;
             var approxDegree = definition.keepDegree
                 ? max([definition.approximationDegree, srcBSpline.degree])
                 : definition.approximationDegree;
@@ -376,8 +380,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             // Pre-constrain first span's start tangent from source edge at parameter 0
             {
                 var startParam      = srcFlipped ? 1 : 0;
-                var startLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [startParam] })[0];
-                var startSrcTangent = srcFlipped ? -1 * startLine.direction : startLine.direction;
+                var startDirection  = srcFlipped ? sampleResult.endTangent : sampleResult.startTangent;   // sampled at parameter 1 / 0
+                var startSrcTangent = srcFlipped ? -1 * startDirection : startDirection;
                 var s_from_0        = mappedData[0].sFrom;
                 var fromResult_0    = getFrameAtArcLength(context, fromFrenetPath, s_from_0);
                 var s_to_0          = toRefArc + (s_from_0 - fromRefArc);
@@ -463,8 +467,11 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 if (segEndIdx + 1 < size(mappedData))
                 {
                     var nextEdgeIdx   = mappedData[segEndIdx + 1].edgeIndex;
-                    // Use the higher-index edge's startArcLength — works for both forward and backward transitions
-                    var boundaryEdgeIdx = max([currentEdge, nextEdgeIdx]);
+                    // The first edge boundary past the current run, in the direction of travel: the
+                    // start of currentEdge + 1 going forward, of currentEdge going backward. Same as
+                    // max(current, next) for adjacent edges; unlike it, still right when a merged
+                    // sliver run makes the two edges non-adjacent.
+                    var boundaryEdgeIdx = (nextEdgeIdx > currentEdge) ? currentEdge + 1 : currentEdge;
                     var s_to_boundary = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
 
                     // Invert arc-length mapping to get from-path position at boundary
@@ -494,10 +501,21 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // Natural parameter for sample k is k/(numSamples-1); interpolate with t.
                     var junctionParam    = (segEndIdx + t) / (numSamples - 1);
                     var srcJunctionParam = srcFlipped ? 1 - junctionParam : junctionParam;
-                    var junctionLine     = evEdgeTangentLines(context, {
+                    // One batched call: the junction, the 2 oversampling points and the +/- pair of the
+                    // curvature finite difference (these were four separate kernel calls).
+                    var jEpsB       = 0.005;
+                    var extraParams = [];
+                    for (var exB = 1; exB <= 2; exB += 1)
+                    {
+                        var extraParamB = segEndIdx / (numSamples - 1) + (exB / 3.0) * (junctionParam - segEndIdx / (numSamples - 1));
+                        extraParams = append(extraParams, srcFlipped ? 1 - extraParamB : extraParamB);
+                    }
+                    var junctionLines = evEdgeTangentLines(context, {
                         "edge"       : sourceCurveArray[i],
-                        "parameters" : [srcJunctionParam]
-                    })[0];
+                        "parameters" : concatenateArrays([[srcJunctionParam], extraParams,
+                            [max([0, srcJunctionParam - jEpsB]), min([1, srcJunctionParam + jEpsB])]])
+                    });
+                    var junctionLine     = junctionLines[0];
                     var pt_junction = junctionLine.origin;
                     var srcTangent  = srcFlipped ? -1 * junctionLine.direction : junctionLine.direction;
 
@@ -527,11 +545,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         {
                             var alpha      = ex / (nExtra + 1.0);
                             var extraParam    = segEndIdx / (numSamples - 1) + alpha * (junctionParam - segEndIdx / (numSamples - 1));
-                            var srcExtraParam = srcFlipped ? 1 - extraParam : extraParam;
-                            var extraLine     = evEdgeTangentLines(context, {
-                                "edge"       : sourceCurveArray[i],
-                                "parameters" : [srcExtraParam]
-                            })[0];
+                            var extraLine     = junctionLines[ex];   // batched above
                             var sFrom_extra   = mappedData[segEndIdx].sFrom + alpha * (s_from_junction - mappedData[segEndIdx].sFrom);
                             var fromResult_e  = getFrameAtArcLength(context, fromFrenetPath, sFrom_extra);
                             var localCoords_e = worldPointToFrenet(extraLine.origin, fromResult_e);
@@ -552,10 +566,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         var srcJP  = srcFlipped ? 1 - junctionParam : junctionParam;
                         var pJm    = max([0, srcJP - jEps]);
                         var pJp    = min([1, srcJP + jEps]);
-                        var kLines = evEdgeTangentLines(context, {
-                            "edge"       : sourceCurveArray[i],
-                            "parameters" : [pJm, pJp]
-                        });
+                        var kLines = [junctionLines[3], junctionLines[4]];   // batched above
                         var dsJ    = norm(kLines[1].origin - kLines[0].origin);  // chord between evaluation points
                         var deltaT     = kLines[1].direction - kLines[0].direction;
                         if (dsJ > 1e-10 * meter && norm(deltaT) > 1e-10)
@@ -578,8 +589,8 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 {
                     // Last span — constrain end tangent from source edge at parameter 1 (or 0 if flipped)
                     var endParam      = srcFlipped ? 0 : 1;
-                    var endLine       = evEdgeTangentLines(context, { "edge": sourceCurveArray[i], "parameters": [endParam] })[0];
-                    var endSrcTangent = srcFlipped ? -1 * endLine.direction : endLine.direction;
+                    var endDirection    = srcFlipped ? sampleResult.startTangent : sampleResult.endTangent;   // sampled at parameter 0 / 1
+                    var endSrcTangent = srcFlipped ? -1 * endDirection : endDirection;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
                     var fromResult_end    = getFrameAtArcLength(context, fromFrenetPath, s_from_end);
                     var s_to_end          = toRefArc + (s_from_end - fromRefArc);
