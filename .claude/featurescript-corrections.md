@@ -1362,9 +1362,23 @@ The same applies to any std call taking an optional map field: `undefined` means
 
 ---
 
+## Correction 33: a selection "Filter" must be a literal expression, not a constant (2026-09-23)
+
+**Symptom**: `annotation { "Filter" : REFERENCE_FILTER, ... }` with
+`export const REFERENCE_FILTER = EntityType.BODY || ... || BodyType.MATE_CONNECTOR;` compiled
+with warnings "Invalid filter expression variable reference" and "Nonconforming feature
+function: precondition analysis failed" -- the feature would not be usable.
+
+**Cause**: the precondition analyser reads filters statically; it resolves enum literals, not
+variables or constants.
+
+**Fix**: write the filter out in every annotation. Share it by copy, not by name.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 32
+- **Total Corrections**: 33
 - **Last Updated**: 2026-09-23
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)
