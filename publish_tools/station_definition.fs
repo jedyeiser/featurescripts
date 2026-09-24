@@ -1,7 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: station_utils.fs
-export import(path : "STATION_UTILS_ID", version : "");
+export import(path : "8a8c023e223cf0814d973a63", version : "");
 
 /**
  * Station definition: names the places along a ski where drawings measure it, once, for any
