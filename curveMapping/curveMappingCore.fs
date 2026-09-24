@@ -371,6 +371,43 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
     seed = seed - dot(seed, seedTangent) * seedTangent;
     seed = (norm(seed) < 1e-9) ? perpendicularVector(seedTangent) : normalize(seed);
 
+    // Seed from the seed edge's most-curved INTERIOR sample, carried back to its start, not
+    // from the kernel normal at parameter 0 -- endpoint curvature evaluations are the least
+    // reliable (driven_offset measured a sign flip there), and where the start is nearly
+    // straight that normal is arbitrary and rolls the whole field. Oriented to agree with the
+    // old seed, so a planar reference -- where the two agree -- is unchanged.
+    if (!edgeData[seedIdx].isLine)
+    {
+        var seedSamples = edgeData[seedIdx].frameSamples;
+        var bestJ = 0;
+        var bestTurn = 0;
+        for (var j = 1; j < CM_FRAME_SAMPLES - 1; j += 1)
+        {
+            var turn = norm(seedSamples.tangents[j + 1] - seedSamples.tangents[j - 1]);
+            if (turn > bestTurn)
+            {
+                bestTurn = turn;
+                bestJ = j;
+            }
+        }
+        if (bestJ > 0 && bestTurn > 1e-6)
+        {
+            var interior = seedSamples.normals[bestJ];
+            interior = interior - dot(interior, seedSamples.tangents[bestJ]) * seedSamples.tangents[bestJ];
+            if (norm(interior) > 1e-9)
+            {
+                var carriedBack = normalize(interior);
+                var backT = seedSamples.tangents[bestJ];
+                for (var j = bestJ - 1; j >= 0; j -= 1)
+                {
+                    carriedBack = cmTransportNormal(carriedBack, backT, seedSamples.tangents[j]);
+                    backT = seedSamples.tangents[j];
+                }
+                seed = (dot(carriedBack, seed) < 0) ? -1 * carriedBack : carriedBack;
+            }
+        }
+    }
+
     var carried         = seed;
     var previousTangent = seedTangent;
 
@@ -652,8 +689,19 @@ export function pathIsSmoothAcross(frenetPath is map, edgeA is number, edgeB is 
         return false;
     }
 
-    return dot(edgeEndTangent(edgeData[lo]), edgeStartTangent(edgeData[hi]))
-        >= cos(CM_SPAN_MERGE_ANGLE);
+    if (dot(edgeEndTangent(edgeData[lo]), edgeStartTangent(edgeData[hi])) < cos(CM_SPAN_MERGE_ANGLE))
+    {
+        return false;
+    }
+
+    // Tangent-continuous is not enough: across a curvature jump (a line meeting an arc, or
+    // arcs of clearly different radius) the wrapped curve's own curvature jumps too, and one
+    // span fitted across it rings. Break there; each side then keeps its curvature, with the
+    // exact junction point and each side's exact tangent.
+    var kA  = edgeEndCurvature(edgeData[lo], true);
+    var kB  = edgeEndCurvature(edgeData[hi], false);
+    var big = max(norm(kA), norm(kB));
+    return !(big > CM_CURVATURE_FLOOR && norm(kA - kB) > CM_CURVATURE_JUMP_REL * big);
 }
 
 /**
@@ -2396,4 +2444,205 @@ export function transformFacepoints(context is Context, id is Id, face is Query,
         thinned = append(thinned, mapped[floor(k * size(mapped) / CM_MAX_FACE_GUIDE_POINTS)]);
     }
     return thinned;
+}
+
+// ============================================================================
+// EXACT SPAN ENDS (2026-09-23)
+// ============================================================================
+
+/**
+ * Relative curvature change across a to-edge boundary above which the path is NOT smooth
+ * there: a line meeting an arc, or two arcs of clearly different radius. A span fitted
+ * across such a boundary rings, because the wrapped curve's own curvature jumps there;
+ * breaking it lets each side keep its curvature.
+ */
+export const CM_CURVATURE_JUMP_REL = 0.1;
+
+/** Curvature below this (radius above 10 m) counts as straight for the jump test. */
+export const CM_CURVATURE_FLOOR = 0.1 / meter;
+
+/** Arc offset used to read "just before" / "just after" a junction. */
+const CM_SIDE_EPSILON = 1e-7 * meter;
+
+/** The zero curvature vector. */
+function zeroCurvature() returns Vector
+{
+    return vector(0, 0, 0) / meter;
+}
+
+/**
+ * The curvature vector (dT/ds, pointing to the centre) at the start or end of one edge, in
+ * traversal order, from its frame table. Zero on a line.
+ */
+export function edgeEndCurvature(edgeDat is map, atEnd is boolean) returns Vector
+{
+    if (edgeDat.isLine || edgeDat.frameSamples == undefined)
+    {
+        return zeroCurvature();
+    }
+    var tangents = edgeDat.frameSamples.tangents;
+    var last     = size(tangents) - 1;
+    var span     = edgeDat.length / last;
+    return atEnd ? (tangents[last] - tangents[last - 1]) / span : (tangents[1] - tangents[0]) / span;
+}
+
+/**
+ * The curvature vector at a global arc, read from the frame table (zero on lines). Clamped
+ * to the path. `side` < 0 reads just before `arc`, > 0 just after, 0 at it -- at an edge
+ * boundary that picks the edge.
+ */
+export function curvatureVectorAtArc(frenetPath is map, arc is ValueWithUnits, side is number) returns Vector
+{
+    var s = arc + side * CM_SIDE_EPSILON;
+    if (s < 0 * meter)                 { s = 0 * meter; }
+    if (s > frenetPath.totalLength)    { s = frenetPath.totalLength; }
+    var edgeData = frenetPath.edgeData;
+    var idx = 0;
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        if (edgeData[i].startArcLength <= s)
+        {
+            idx = i;
+        }
+    }
+    var edgeDat = edgeData[idx];
+    if (edgeDat.isLine || edgeDat.frameSamples == undefined)
+    {
+        return zeroCurvature();
+    }
+    var samples = edgeDat.frameSamples;
+    var last    = size(samples.origins) - 1;
+    return hermiteCell(samples, edgeDat.length / last, last, s - edgeDat.startArcLength).tangentRate;
+}
+
+/**
+ * The to-frame with the user's normal flip applied -- the same reconciliation every mapping
+ * site repeats (signs are always +1 with the transported normal, so it reduces to
+ * "invert iff flipToNormal").
+ */
+export function reconciledToFrame(toResult is map, fromResult is map, flipToNormal is boolean) returns map
+{
+    var toSign = flipToNormal ? -1 * toResult.sign : toResult.sign;
+    if (toSign == fromResult.sign)
+    {
+        return toResult;
+    }
+    return mergeMaps(toResult, { "frame": coordSystem(toResult.frame.origin, -1 * toResult.frame.xAxis, toResult.frame.zAxis) });
+}
+
+/**
+ * The exact image of a source tangent under the bending map, at one point.
+ *
+ * The map keeps the along-reference position and the (normal, binormal) coordinates, so a
+ * source point moving by d(sigma) along srcTangent moves the reference foot by
+ * a_t / (1 - (p - A_from).kappa_from) and its image by
+ *     a_t * (1 - (q - A_to).kappa_to) / (1 - (p - A_from).kappa_from) * T_to
+ *   + a_n * N_to + a_b * B_to
+ * with (a_t, a_n, a_b) the source tangent in the from-frame, p the source point, q its
+ * image. mapEdgeJunctionTangent is this with both stretch factors taken as 1, i.e. exact
+ * only on the references themselves; 20 mm off a 200 mm tip radius it was ~3 deg out.
+ *
+ * @returns {map} : "tangent" (unit), "velocity" (unnormalized, per unit source arc),
+ *      "alongRate" (reference arc per unit source arc), "kappa" (to-side curvature vector),
+ *      "axis" (to-side tangent) -- the last three for [offsetCurveTangent].
+ */
+export function mapTangentExact(srcTangent is Vector, srcPoint is Vector, fromResult is map, toFrameResult is map,
+    kappaFrom is Vector, kappaTo is Vector, mappedPoint is Vector) returns map
+{
+    var ff = fromResult.frame;
+    var tf = toFrameResult.frame;
+    var aT = dot(srcTangent, ff.zAxis);
+    var aN = dot(srcTangent, ff.xAxis);
+    var aB = dot(srcTangent, yAxis(ff));
+    var scaleFrom = 1 - dot(srcPoint - ff.origin, kappaFrom);
+    var scaleTo   = 1 - dot(mappedPoint - tf.origin, kappaTo);
+    // Past a centre of curvature the parallel curve folds; keep the plain rotation there.
+    if (scaleFrom < 0.05 || scaleTo < 0.05)
+    {
+        scaleFrom = 1;
+        scaleTo   = 1;
+    }
+    var alongRate = aT / scaleFrom;
+    var velocity  = (aT * scaleTo / scaleFrom) * tf.zAxis + aN * tf.xAxis + aB * yAxis(tf);
+    var n = norm(velocity);
+    return {
+        "tangent"   : (n < 1e-12) ? tf.zAxis : velocity / n,
+        "velocity"  : velocity,
+        "alongRate" : alongRate,
+        "kappa"     : kappaTo,
+        "axis"      : tf.zAxis
+    };
+}
+
+/**
+ * Unit tangent of an offset curve Q = image + d * offsetDir at the same point, from the
+ * wrapped curve's [mapTangentExact] record: the offset direction turns with the reference,
+ * d(offsetDir)/ds = -(kappa . offsetDir) T, which the wrapped tangent does not carry.
+ */
+export function offsetCurveTangent(info is map, signedOffset is ValueWithUnits, offsetDir is Vector) returns Vector
+{
+    var v = info.velocity - signedOffset * dot(info.kappa, offsetDir) * info.alongRate * info.axis;
+    var n = norm(v);
+    return (n < 1e-12) ? info.tangent : v / n;
+}
+
+/**
+ * The exact tangent record at a source point, read on one side (`side` -1 before, +1 after,
+ * 0 at) of its arc on both paths. Frames and curvatures come from that side, so a junction
+ * at a to-path corner gives each span its own frame instead of both the after-side one.
+ */
+export function exactTangentAt(context is Context, fromPath is map, toPath is map,
+    sFrom is ValueWithUnits, sTo is ValueWithUnits, side is number, flipToNormal is boolean,
+    srcTangent is Vector, srcPoint is Vector, mappedPoint is Vector) returns map
+{
+    var fromResult = getFrameAtArcLength(context, fromPath, clampArc(fromPath, sFrom + side * CM_SIDE_EPSILON));
+    var toResult   = getFrameAtArcLength(context, toPath, sTo + side * CM_SIDE_EPSILON);
+    var toFrame    = reconciledToFrame(toResult, fromResult, flipToNormal);
+    return mapTangentExact(srcTangent, srcPoint, fromResult, toFrame,
+        curvatureVectorAtArc(fromPath, sFrom, side), curvatureVectorAtArc(toPath, sTo, side), mappedPoint);
+}
+
+function clampArc(frenetPath is map, s is ValueWithUnits) returns ValueWithUnits
+{
+    if (s < 0 * meter)              { return 0 * meter; }
+    if (s > frenetPath.totalLength) { return frenetPath.totalLength; }
+    return s;
+}
+
+/**
+ * The exact ruled surface between two curves that share a parameterization (same degree,
+ * knots and control-point count, non-rational): u along the curves, v straight across at
+ * degree 1, the control net the two polygons side by side. Returns false, having built
+ * nothing, when the pair does not qualify or the kernel refuses; the caller lofts instead.
+ */
+export function ruledSurfaceBetween(context is Context, id is Id, a is BSplineCurve, b is BSplineCurve) returns boolean
+{
+    if (a.degree != b.degree || a.isPeriodic || b.isPeriodic || a.weights != undefined || b.weights != undefined
+        || size(a.controlPoints) != size(b.controlPoints) || a.knots != b.knots)
+    {
+        return false;
+    }
+    var grid = [];
+    for (var i = 0; i < size(a.controlPoints); i += 1)
+    {
+        grid = append(grid, [a.controlPoints[i], b.controlPoints[i]]);
+    }
+    var refusal = undefined;
+    try silent
+    {
+        opCreateBSplineSurface(context, id, { "bSplineSurface" : bSplineSurface({
+                            "uDegree" : a.degree,
+                            "vDegree" : 1,
+                            "isUPeriodic" : false,
+                            "isVPeriodic" : false,
+                            "controlPoints" : controlPointMatrix(grid),
+                            "uKnots" : a.knots,
+                            "vKnots" : knotArray([0, 0, 1, 1])
+                        }) });
+    }
+    catch (error)
+    {
+        refusal = error;
+    }
+    return refusal == undefined;
 }

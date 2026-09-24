@@ -352,6 +352,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 }
                 mappedData = append(mappedData, {
                     "edgeIndex": r.edgeIndex,
+                    "fromEdgeIndex" : r.hint.edgeIndex,
                     "point"    : r.point,
                     "sFrom"    : r.sFrom
                 });
@@ -374,7 +375,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             var segCount        = 0;
             var wrappedIdsBefore  = size(wrappedIds);  // snapshot before this source curve's spans
             var junctionPt        = undefined;  // carry-over exact junction point between spans
-            var junctionTangent   = undefined;  // carry-over junction tangent direction in to-space
+            var junctionTangent   = undefined;  // carry-over junction tangent direction in to-space            var junctionTangentInfo = undefined;  // exact tangent record at the current span's END            var nextStartInfo       = undefined;  // exact tangent record at the next span's START
             var junctionCurvature = undefined;  // carry-over mapped source curvature at span END
 
             // Pre-constrain first span's start tangent from source edge at parameter 0
@@ -389,7 +390,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
                     ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
                     : toResult_0;
-                junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
+                junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_0, s_to_0, 0,
+                    definition.flipToNormal, startSrcTangent,
+                    sampleResult.points[srcFlipped ? size(sampleResult.points) - 1 : 0], mappedData[0].point);
+                junctionTangent = junctionTangentInfo.tangent;
             }
 
             while (segStartIdx < size(mappedData))
@@ -405,7 +409,9 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var segEndIdx = segStartIdx;
                 while (segEndIdx + 1 < size(mappedData)
                        && pathIsSmoothAcross(toFrenetPath, mappedData[segEndIdx].edgeIndex,
-                                             mappedData[segEndIdx + 1].edgeIndex))
+                                             mappedData[segEndIdx + 1].edgeIndex)
+                       && pathIsSmoothAcross(fromFrenetPath, mappedData[segEndIdx].fromEdgeIndex,
+                                             mappedData[segEndIdx + 1].fromEdgeIndex))
                 {
                     segEndIdx += 1;
                 }
@@ -426,7 +432,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 var segPoints = [];
 
                 // Capture carry-over tangent from previous span's junction before clearing
-                var carryOverTangent   = junctionTangent;
+                // The next span starts with the AFTER side of the junction (or the curve's start).                var carryOverInfo      = (nextStartInfo != undefined) ? nextStartInfo : junctionTangentInfo;                var carryOverTangent   = (carryOverInfo != undefined) ? carryOverInfo.tangent : junctionTangent;                nextStartInfo          = undefined;                junctionTangentInfo    = undefined;
                 junctionTangent   = undefined;
                 junctionCurvature = undefined;
 
@@ -471,10 +477,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // max(current, next) for adjacent edges; unlike it, still right when a merged
                     // sliver run makes the two edges non-adjacent.
                     var boundaryEdgeIdx = (nextEdgeIdx > currentEdge) ? currentEdge + 1 : currentEdge;
-                    var s_to_boundary = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
-
-                    // Invert arc-length mapping to get from-path position at boundary
-                    var s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
+                    // The span ended at a to-edge boundary, or else at a from-edge boundary (a corner or                    // curvature jump of the from-path); place the junction at that one.                    var s_to_boundary;                    var s_from_junction;                    if (!pathIsSmoothAcross(toFrenetPath, currentEdge, nextEdgeIdx))                    {                        s_to_boundary   = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;                        s_from_junction = fromRefArc + (s_to_boundary - toRefArc);                    }                    else                    {                        var fromK  = mappedData[segEndIdx].fromEdgeIndex;                        var fromK1 = mappedData[segEndIdx + 1].fromEdgeIndex;                        s_from_junction = fromFrenetPath.edgeData[(fromK1 > fromK) ? fromK + 1 : fromK].startArcLength;                        s_to_boundary   = toRefArc + (s_from_junction - fromRefArc);                    }
                     if (s_from_junction < 0 * meter)
                     {
                         s_from_junction = 0 * meter;
@@ -577,7 +580,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // Append to current span; carry over to next span's start
                     segPoints       = append(segPoints, junctionWorldPt);
                     junctionPt      = junctionWorldPt;
-                    junctionTangent = mapEdgeJunctionTangent(srcTangent, fromResult_j, toFrameResult_j);
+                    // Each side of the junction gets its own frame and curvature (before / after).                    junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, -1,                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);                    nextStartInfo       = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, 1,                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);                    junctionTangent     = junctionTangentInfo.tangent;
                 }
                 else
                 {
@@ -592,7 +595,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     var toFrameResult_end = (toSign_end != fromResult_end.sign)
                         ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
                         : toResult_end;
-                    junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
+                    junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_end, s_to_end, 0,
+                        definition.flipToNormal, endSrcTangent,
+                        sampleResult.points[srcFlipped ? 0 : size(sampleResult.points) - 1], mappedData[size(mappedData) - 1].point);
+                    junctionTangent = junctionTangentInfo.tangent;
                 }
 
                 // Remove near-coincident points to prevent degenerate spline.
@@ -720,13 +726,10 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             }
         }
 
-        // G2 junction smoothing: averages curvature at span junctions and jostles P2/P_{m-2}.
-        if (size(wrappedBSplines) >= 2)
-        {
-            var jostleResult = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures, true);
-            allSegEdges  = jostleResult.edgeQueries;
-            allSegBodies = jostleResult.bodyQueries;
-        }
+        // No G2 junction smoothing. Span junctions only remain at to-path corners and curvature
+        // jumps, from-path corners, and joints between source curves -- all places where the
+        // continuity is the geometry's, not something to force. Each side's end tangent is
+        // exact instead (mapTangentExact).
 
         // Merge in the linear fast-path outputs (already exact and rigid; kept out
         // of the jostle, which replaces allSegEdges wholesale above).
