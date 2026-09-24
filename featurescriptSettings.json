@@ -247,6 +247,17 @@
       "last_push": "2026-09-23T23:12:47.028955+00:00",
       "document_id": "3cf445f157b6a28aa1d35fcf",
       "workspace_id": "fcf7d435062364f18e5eb9da"
+    },
+    {
+      "name": "reference_side",
+      "description": "Reference_Side_Features: Mutual Trim+, Split+, Offset+ with keep-side references",
+      "working_directory": "./reference_side",
+      "onshape_url": "https://k2-sports.onshape.com/documents/22764764a00a7f607dbc1c4d/w/3b5e11a121111a161684adee/e/e94b3282e4a5717b8a4b629a",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "22764764a00a7f607dbc1c4d",
+      "workspace_id": "3b5e11a121111a161684adee"
     }
   ],
   "sync_metadata": {}
