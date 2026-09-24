@@ -9,7 +9,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/db2cc0404916178b88f3c711/683d867c35fdab9c98d47556", version : "e274f80c159e1a565add92d5");
+export import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
 
 
 // wrapCurve is deliberately NOT imported: nothing here uses it, and its export-import of
@@ -276,6 +276,18 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
         }
 
+        annotation { "Name" : "Break spans at curvature jumps and corners", "Default" : false, "Description" : "Also end a span where the to-path changes curvature abruptly (a line meeting an arc, arcs of clearly different radius) and where the source crosses a from-path corner, so each side keeps its own curvature instead of one fit ringing across it. Off by default: it adds spans, so the faces and edges of the output (and selections of them downstream) change." }
+
+        definition.breakAtCurvatureJumps is boolean;
+
+
+        annotation { "Name" : "Exact ruled surface", "Default" : false, "Description" : "Fit each span's wrapped and offset curves together (shared knots) and build the surface as the exact ruled B-spline between them. Off by default: turning it on changes the internal ids of the surface, so selections of it downstream must be redone. A source curve with a straight-region span, or a patch the kernel refuses, is lofted as before." }
+
+
+        definition.exactRuledSurface is boolean;
+
+
+
         annotation { "Group Name" : "Debug Options",
                     "Collapsed By Default" : true }
         {
@@ -483,6 +495,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         var allPrimaryOffsetSegBodies     = [];
         var allSecondaryOffsetSegBodies   = [];
         var wrappedBSplines               = [];
+        var primaryBSplines       = [];   // per fitted span, parallel to wrappedBSplines
+        var secondaryBSplines     = [];
         var wrappedIds                    = [];
         var allJunctionCurvatures         = [];
         var segCountPerSourceCurve        = [];
@@ -613,6 +627,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 projHint = r.hint;
                 mappedData = append(mappedData, {
                     "edgeIndex" : r.edgeIndex,
+                    "fromEdgeIndex" : r.hint.edgeIndex,
                     "point"     : r.point,
                     "sFrom"     : r.sFrom,
                     "offsetDir" : r.offsetDir  // to-frame normal = loft thickness direction
@@ -759,6 +774,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             var segCount                  = 0;
             var junctionPt                = undefined;
             var junctionTangent           = undefined;
+            var junctionTangentInfo = undefined;  // exact tangent record at the current span's END
+            var nextStartInfo       = undefined;  // exact tangent record at the next span's START
             var junctionOffsetDir         = undefined;
             var junctionCurvature         = undefined;
             var wrappedCountBefore        = size(allWrappedSegQueries);
@@ -775,7 +792,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var toFrameResult_0 = (toSign_0 != fromResult_0.sign)
                     ? mergeMaps(toResult_0, { "frame": coordSystem(toResult_0.frame.origin, -1 * toResult_0.frame.xAxis, toResult_0.frame.zAxis) })
                     : toResult_0;
-                junctionTangent = mapEdgeJunctionTangent(startSrcTangent, fromResult_0, toFrameResult_0);
+                junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_0, s_to_0, 0,
+                    definition.flipToNormal, startSrcTangent,
+                    sampleResult.points[srcFlipped ? size(sampleResult.points) - 1 : 0], mappedData[0].point);
+                junctionTangent = junctionTangentInfo.tangent;
             }
 
             while (segStartIdx < size(mappedData))
@@ -787,7 +807,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var segEndIdx = segStartIdx;
                 while (segEndIdx + 1 < size(mappedData)
                        && pathIsSmoothAcross(toFrenetPath, mappedData[segEndIdx].edgeIndex,
-                                             mappedData[segEndIdx + 1].edgeIndex))
+                                             mappedData[segEndIdx + 1].edgeIndex, definition.breakAtCurvatureJumps == true)
+                       && (!(definition.breakAtCurvatureJumps == true) || pathIsSmoothAcross(fromFrenetPath, mappedData[segEndIdx].fromEdgeIndex,
+                                             mappedData[segEndIdx + 1].fromEdgeIndex)))
                 {
                     segEndIdx += 1;
                 }
@@ -807,7 +829,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var segOffsetDirs = [];
 
                 // Capture carry-over junction data before clearing for this span
-                var carryOverTangent   = junctionTangent;
+                // The next span starts with the AFTER side of the junction (or the curve's start).
+                var carryOverInfo      = (nextStartInfo != undefined) ? nextStartInfo : junctionTangentInfo;
+                var carryOverTangent   = (carryOverInfo != undefined) ? carryOverInfo.tangent : junctionTangent;
+                nextStartInfo          = undefined;
+                junctionTangentInfo    = undefined;
                 var carryOverOffsetDir = junctionOffsetDir;
                 junctionTangent   = undefined;
                 junctionOffsetDir = undefined;
@@ -857,10 +883,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // max(current, next) for adjacent edges; still right when a merged sliver run makes them
                     // non-adjacent.
                     var boundaryEdgeIdx = (nextEdgeIdx > currentEdge) ? currentEdge + 1 : currentEdge;
-                    var s_to_boundary = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
-
-                    // Invert arc-length mapping to get from-path position at boundary
-                    var s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
+                    // The span ended at a to-edge boundary, or else at a from-edge boundary (a corner or
+                    // curvature jump of the from-path); place the junction at that one.
+                    var s_to_boundary;
+                    var s_from_junction;
+                    if (!pathIsSmoothAcross(toFrenetPath, currentEdge, nextEdgeIdx, definition.breakAtCurvatureJumps == true))
+                    {
+                        s_to_boundary   = toFrenetPath.edgeData[boundaryEdgeIdx].startArcLength;
+                        s_from_junction = fromRefArc + (s_to_boundary - toRefArc);
+                    }
+                    else
+                    {
+                        var fromK  = mappedData[segEndIdx].fromEdgeIndex;
+                        var fromK1 = mappedData[segEndIdx + 1].fromEdgeIndex;
+                        s_from_junction = fromFrenetPath.edgeData[(fromK1 > fromK) ? fromK + 1 : fromK].startArcLength;
+                        s_to_boundary   = toRefArc + (s_from_junction - fromRefArc);
+                    }
                     if (s_from_junction < 0 * meter)
                     {
                         s_from_junction = 0 * meter;
@@ -962,7 +1000,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     segPoints         = append(segPoints,     junctionWorldPt);
                     segOffsetDirs     = append(segOffsetDirs, junctionOffDir);
                     junctionPt        = junctionWorldPt;
-                    junctionTangent   = mapEdgeJunctionTangent(srcTangent, fromResult_j, toFrameResult_j);
+                    // Each side of the junction gets its own frame and curvature (before / after).
+                    junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, -1,
+                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);
+                    nextStartInfo       = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_junction, s_to_boundary, 1,
+                        definition.flipToNormal, srcTangent, pt_junction, junctionWorldPt);
+                    junctionTangent     = junctionTangentInfo.tangent;
                     junctionOffsetDir = junctionOffDir;
                 }
                 else
@@ -978,7 +1021,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var toFrameResult_end = (toSign_end != fromResult_end.sign)
                         ? mergeMaps(toResult_end, { "frame": coordSystem(toResult_end.frame.origin, -1 * toResult_end.frame.xAxis, toResult_end.frame.zAxis) })
                         : toResult_end;
-                    junctionTangent = mapEdgeJunctionTangent(endSrcTangent, fromResult_end, toFrameResult_end);
+                    junctionTangentInfo = exactTangentAt(context, fromFrenetPath, toFrenetPath, s_from_end, s_to_end, 0,
+                        definition.flipToNormal, endSrcTangent,
+                        sampleResult.points[srcFlipped ? 0 : size(sampleResult.points) - 1], mappedData[size(mappedData) - 1].point);
+                    junctionTangent = junctionTangentInfo.tangent;
                 }
 
                 // Remove near-coincident points (segOffsetDirs kept in sync).
@@ -1106,11 +1152,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         primaryOffsetChord += norm(primaryOffsetPoints[k + 1] - primaryOffsetPoints[k]);
                     var primaryOffsetTargetDef = { "positions": primaryOffsetPoints };
                     if (carryOverTangent != undefined)
-                        primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "startDerivative": carryOverTangent * primaryOffsetChord });
+                        primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "startDerivative": offsetCurveTangent(carryOverInfo, offsetSign * definition.primaryOffset, segOffsetDirs[0]) * primaryOffsetChord });
                     if (junctionTangent != undefined)
-                        primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "endDerivative": junctionTangent * primaryOffsetChord });
+                        primaryOffsetTargetDef = mergeMaps(primaryOffsetTargetDef, { "endDerivative": offsetCurveTangent(junctionTangentInfo, offsetSign * definition.primaryOffset, segOffsetDirs[size(segOffsetDirs) - 1]) * primaryOffsetChord });
                     var primaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(primaryOffsetTargetDef)] });
-                    var primaryOffsetCurve     = approximateSpline(context, primaryOffsetApproxDef)[0];
+                    var coupledFit         = definition.exactRuledSurface == true;
+                    var primaryOffsetCurve = coupledFit ? undefined : approximateSpline(context, primaryOffsetApproxDef)[0];
+                    if (!coupledFit)
                     {
                         var cps = primaryOffsetCurve.controlPoints;
                         var m   = size(cps) - 1;
@@ -1135,11 +1183,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             secondaryOffsetChord += norm(secondaryOffsetPoints[k + 1] - secondaryOffsetPoints[k]);
                         var secondaryOffsetTargetDef = { "positions": secondaryOffsetPoints };
                         if (carryOverTangent != undefined)
-                            secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "startDerivative": carryOverTangent * secondaryOffsetChord });
+                            secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "startDerivative": offsetCurveTangent(carryOverInfo, -1 * offsetSign * definition.secondOffset, segOffsetDirs[0]) * secondaryOffsetChord });
                         if (junctionTangent != undefined)
-                            secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "endDerivative": junctionTangent * secondaryOffsetChord });
+                            secondaryOffsetTargetDef = mergeMaps(secondaryOffsetTargetDef, { "endDerivative": offsetCurveTangent(junctionTangentInfo, -1 * offsetSign * definition.secondOffset, segOffsetDirs[size(segOffsetDirs) - 1]) * secondaryOffsetChord });
                         var secondaryOffsetApproxDef = mergeMaps(offsetApproxBase, { "targets": [approximationTarget(secondaryOffsetTargetDef)] });
-                        secondaryOffsetCurve         = approximateSpline(context, secondaryOffsetApproxDef)[0];
+                        secondaryOffsetCurve         = coupledFit ? undefined : approximateSpline(context, secondaryOffsetApproxDef)[0];
+                        if (!coupledFit)
                         {
                             var cps = secondaryOffsetCurve.controlPoints;
                             var m   = size(cps) - 1;
@@ -1157,6 +1206,79 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         }
                     }
 
+                    // Exact ruled surface: the wrapped and offset curves fitted in ONE call share their knots
+
+                    // exactly (std: multi-target fits are consistently parameterized), so each span\'s surface
+
+                    // can be written as the ruled B-spline between them. Every member has the same point count
+
+                    // and the same derivative constraints present, as std requires.
+
+                    if (coupledFit)
+
+                    {
+
+                        var familyTargets = [approximationTarget(wrappedTargetDef), approximationTarget(primaryOffsetTargetDef)];
+
+                        var withSecond    = definition.secondDirection && definition.secondOffset > 0 * millimeter;
+
+                        if (withSecond)
+
+                        {
+
+                            // Rebuilt here: the separate secondary target is declared inside its own block.
+
+                            var secondChord = 0 * meter;
+
+                            for (var k = 0; k < size(secondaryOffsetPoints) - 1; k += 1)
+
+                            {
+
+                                secondChord += norm(secondaryOffsetPoints[k + 1] - secondaryOffsetPoints[k]);
+
+                            }
+
+                            var secondDef = { "positions": secondaryOffsetPoints };
+
+                            if (carryOverTangent != undefined)
+
+                            {
+
+                                secondDef = mergeMaps(secondDef, { "startDerivative": offsetCurveTangent(carryOverInfo, -1 * offsetSign * definition.secondOffset, segOffsetDirs[0]) * secondChord });
+
+                            }
+
+                            if (junctionTangent != undefined)
+
+                            {
+
+                                secondDef = mergeMaps(secondDef, { "endDerivative": offsetCurveTangent(junctionTangentInfo, -1 * offsetSign * definition.secondOffset, segOffsetDirs[size(segOffsetDirs) - 1]) * secondChord });
+
+                            }
+
+                            familyTargets = append(familyTargets, approximationTarget(secondDef));
+
+                        }
+
+                        var family = approximateSpline(context, mergeMaps(offsetApproxBase, { "targets": familyTargets }));
+
+                        mappedCurve        = snapEndControlPoints(family[0], segPoints[0], segPoints[size(segPoints) - 1]);
+
+                        primaryOffsetCurve = snapEndControlPoints(family[1], primaryOffsetPoints[0], primaryOffsetPoints[size(primaryOffsetPoints) - 1]);
+
+                        if (withSecond)
+
+                        {
+
+                            secondaryOffsetCurve = snapEndControlPoints(family[2], secondaryOffsetPoints[0], secondaryOffsetPoints[size(secondaryOffsetPoints) - 1]);
+
+                        }
+
+                    }
+
+                    
+
+                    // Capture and pre-increment so a failed op can never reuse the same Id
                     var thisSegCount = segCount;
                     segCount += 1;
 
@@ -1179,6 +1301,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
                         spanIsFast           = append(spanIsFast, false);
                         wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
+                        primaryBSplines       = append(primaryBSplines,       primaryOffsetCurve);
+                        secondaryBSplines     = append(secondaryBSplines,     secondaryOffsetCurve);
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
                         allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
@@ -1250,36 +1374,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 "Enable 'Fix control-point clustering' to merge them.");
         }
 
-        // ===== G2 junction smoothing =====
-        if (size(wrappedBSplines) >= 2)
-        {
-            var preWrapped       = allWrappedSegQueries;
-            var preWrappedBodies = allWrappedSegBodies;
-            var jostleResult     = jostleG2Junctions(context, id, wrappedBSplines, wrappedIds, 1e-6 * meter, allJunctionCurvatures, true);
-
-            // jostle reprocessed only the slow (created-BSpline) spans, in order. Rebuild
-            // the full arrays so linear fast-path spans stay in their original positions
-            // (and remain index-aligned with the primary/secondary offset arrays).
-            var rebuiltEdges  = [];
-            var rebuiltBodies = [];
-            var jIdx = 0;
-            for (var pos = 0; pos < size(spanIsFast); pos += 1)
-            {
-                if (spanIsFast[pos])
-                {
-                    rebuiltEdges  = append(rebuiltEdges,  preWrapped[pos]);
-                    rebuiltBodies = append(rebuiltBodies, preWrappedBodies[pos]);
-                }
-                else
-                {
-                    rebuiltEdges  = append(rebuiltEdges,  jostleResult.edgeQueries[jIdx]);
-                    rebuiltBodies = append(rebuiltBodies, jostleResult.bodyQueries[jIdx]);
-                    jIdx += 1;
-                }
-            }
-            allWrappedSegQueries = rebuiltEdges;
-            allWrappedSegBodies  = rebuiltBodies;
-        }
+        // No G2 junction smoothing. Span junctions only remain at to-path corners and curvature
+        // jumps, from-path corners, and joints between source curves -- all places where the
+        // continuity is the geometry's, not something to force. Each side's end tangent is
+        // exact instead (mapTangentExact).
 
         // ===== Per-source-curve loft =====
         // One opLoft per source curve — prevents opLoft from chaining all spans into one huge surface.
@@ -1317,7 +1415,46 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     loftProfile2 = qUnion(iSecondaryQueries);
                 }
 
-                if (size(iWrappedQueries) > 0 && size(iPrimaryQueries) > 0)
+                // Exact ruled surface per span, when every span of this curve was fitted as a family.
+                var ruledDone = false;
+                if (definition.exactRuledSurface == true && size(iWrappedQueries) > 0 && size(iPrimaryQueries) > 0)
+                {
+                    var allFitted = true;
+                    var slowIdx   = [];
+                    for (var k = 0; k < iCount; k += 1)
+                    {
+                        var pos = segOffset + k;
+                        if (spanIsFast[pos]) { allFitted = false; break; }
+                        var before = 0;
+                        for (var q = 0; q < pos; q += 1) { if (spanIsFast[q]) { before += 1; } }
+                        slowIdx = append(slowIdx, pos - before);
+                    }
+                    if (allFitted)
+                    {
+                        var ruledId = id + ("ruled_" ~ toString(li));
+                        ruledDone = true;
+                        for (var k = 0; k < iCount && ruledDone; k += 1)
+                        {
+                            var b = slowIdx[k];
+                            var useSecond = definition.secondDirection && b < size(secondaryBSplines) && secondaryBSplines[b] != undefined;
+                            var profA = useSecond ? primaryBSplines[b] : wrappedBSplines[b];
+                            var profB = useSecond ? secondaryBSplines[b] : primaryBSplines[b];
+                            ruledDone = profA != undefined && profB != undefined
+                                && ruledSurfaceBetween(context, ruledId + ("s" ~ toString(k)), profA, profB);
+                        }
+                        if (ruledDone)
+                        {
+                            allLoftBodyQueries = append(allLoftBodyQueries, qCreatedBy(ruledId, EntityType.BODY));
+                        }
+                        else if (!isQueryEmpty(context, qCreatedBy(ruledId, EntityType.BODY)))
+                        {
+                            // A refused patch: remove this curve's partial surfaces and loft it instead.
+                            opDeleteBodies(context, ruledId + "discard", { "entities": qCreatedBy(ruledId, EntityType.BODY) });
+                        }
+                    }
+                }
+
+                if (!ruledDone && size(iWrappedQueries) > 0 && size(iPrimaryQueries) > 0)
                 {
                     try
                     {
