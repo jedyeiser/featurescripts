@@ -127,7 +127,7 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
         annotation { "Name" : "Distance", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
         isLength(definition.distance, NONNEGATIVE_LENGTH_BOUNDS);
 
-        annotation { "Name" : "Side reference", "Filter" : REFERENCE_FILTER, "MaxNumberOfPicks" : 1,
+        annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                     "Description" : "Geometry on the side to offset toward. Leave empty to use the flip alone." }
         definition.sideReference is Query;
 

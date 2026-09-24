@@ -55,7 +55,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
 
         if (!definition.keepBothSides)
         {
-            annotation { "Name" : "Keep side reference", "Filter" : REFERENCE_FILTER, "MaxNumberOfPicks" : 1,
+            annotation { "Name" : "Keep side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                         "Description" : "Geometry on the side to keep of every tool. Leave empty for the built-in front / back choice." }
             definition.keepReference is Query;
 

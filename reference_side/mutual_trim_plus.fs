@@ -54,7 +54,7 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
         definition.keepNear2 is boolean;
 
         annotation { "Name" : "Keep side reference",
-                    "Filter" : REFERENCE_FILTER,
+                    "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
                     "MaxNumberOfPicks" : 1,
                     "Description" : "Geometry on the keep side of both surfaces. On each surface the side nearer to it is kept, whatever the surfaces' orientations. Leave empty for the built-in behaviour." }
         definition.keepReference is Query;

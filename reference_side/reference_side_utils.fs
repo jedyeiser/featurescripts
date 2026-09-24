@@ -20,9 +20,6 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 /** How far the reference must be from a surface before its side counts. */
 export const REFERENCE_SIDE_MARGIN = 1e-6 * meter;
 
-/** Selection filter for a keep-side reference. */
-export const REFERENCE_FILTER = EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR;
-
 /**
  * The reference as something evDistance can measure from: the entity itself, or a mate
  * connector's origin (a mate connector is a body with no geometry to measure). Undefined
