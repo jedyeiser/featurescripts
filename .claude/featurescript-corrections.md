@@ -1413,16 +1413,18 @@ bottom-right corner (Onshape's add-variable-button).
 from `getProperty(context, { "entity" : part, "propertyType" : PropertyType.NAME })` in a feature
 body. The same call works in the eval API.
 
-**Fix**: never default a feature's naming from the selected part's name; take a prefix string
-(Station geometry "Name prefix" is required). `setProperty` is fine.
+**Fix**: read names in the EDITING LOGIC function (getProperty works there) and write them into a
+string parameter -- Station geometry fills "Name prefix" from the picked part. `setProperty` is fine
+in the body.
 
 ---
 
 ## Correction 37: opCreateOutline refuses a composite part (2026-09-24)
 
-**Symptom**: `@opCreateOutline: INVALID_INPUT` with a composite (4501) as `tools`.
+**Symptom**: `@opCreateOutline: INVALID_INPUT` when the SELECTED part is itself a composite
+(4501 in the ski docs is an open composite of core strips). A plain part goes in as is.
 
-**Fix**: pass the members -- `qUnion([qBodyType(q, [BodyType.SOLID, BodyType.SHEET]), qFlattenedCompositeParts(q)])`.
+**Fix**: for a selected composite, pass its members -- `qUnion([qBodyType(q, [BodyType.SOLID, BodyType.SHEET]), qFlattenedCompositeParts(q)])`.
 Verified in the same spike: an OPEN composite accepts a point body (opPoint), wires, a nested
 composite, and a part that already belongs to another open composite.
 

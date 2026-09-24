@@ -37,7 +37,8 @@ const REFINE_POINTS = 9;
 const VIEW_PLANE_SIZE = 20 * meter;
 
 annotation { "Feature Type Name" : "Station geometry",
-            "Feature Type Description" : "Outline, station lines and datum for a part's drawing views, grouped with the part in open composites." }
+            "Feature Type Description" : "Outline, station lines and datum for a part's drawing views, grouped with the part in open composites.",
+            "Editing Logic Function" : "stationGeometryEditLogic" }
 export const stationGeometry = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -49,7 +50,7 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         definition.datum is Query;
 
         annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
-                    "Description" : "Starts every body name: <prefix> PLAN, <prefix> PLAN ST MRS, ... (a feature cannot read the part's name while it regenerates)." }
+                    "Description" : "Starts every body name: <prefix> PLAN, <prefix> PLAN ST MRS, ... Filled with the part's name when the part is picked." }
         definition.prefix is string;
 
         annotation { "Name" : "Plan (datum XY)", "Default" : true }
@@ -160,6 +161,31 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
             reportFeatureInfo(context, id, summary);
         }
     }, {});
+
+/**
+ * Fills the name prefix with the part's name when the part is picked, and follows a part
+ * change as long as the prefix still is the previous part's name. A typed prefix is kept.
+ * (The body cannot read names: getProperty throws during regeneration.)
+ */
+export function stationGeometryEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map) returns map
+{
+    if (isQueryEmpty(context, definition.part))
+    {
+        return definition;
+    }
+    const partName = getProperty(context, { "entity" : definition.part, "propertyType" : PropertyType.NAME });
+    if (definition.prefix == "")
+    {
+        definition.prefix = partName;
+    }
+    else if (oldDefinition.part != undefined && !isQueryEmpty(context, oldDefinition.part)
+        && definition.prefix == getProperty(context, { "entity" : oldDefinition.part, "propertyType" : PropertyType.NAME }))
+    {
+        definition.prefix = partName;
+    }
+    return definition;
+}
 
 /**
  * The views to build: { key, label, cs }. cs X = measuring axis, cs Z = view normal.
