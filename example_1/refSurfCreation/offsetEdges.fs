@@ -2039,7 +2039,8 @@ function computeBiarcPoints(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vect
     }
     if (bestDev == inf * meter)
     {
-        return { "ok" : false };
+        var at1 = biarcWithRatio(p0, t0, p1, t1, 1);
+        return { "ok" : false, "reason" : at1.ok ? "every joint placement leaves a straight leg" : "degenerate end points / tangents" };
     }
 
     // Golden-section refinement on the scan cell around the best sample.
@@ -2132,6 +2133,10 @@ function emitSourceArc(context is Context, wireId is Id, pathInfo is map, defini
         var body = emitArc3Point(context, wireId, p0, pM, p1);
         if (body == undefined)
         {
+            if (definition.printCurveDetails)
+            {
+                println("  constant-offset arc: the three points are collinear -> spline");
+            }
             return none;
         }
         return { "ok" : true, "bodies" : [body], "edges" : [qCreatedBy(wireId, EntityType.EDGE)],
@@ -2154,6 +2159,10 @@ function emitSourceArc(context is Context, wireId is Id, pathInfo is map, defini
         && norm(cross(bi.midB - bi.joint, p1 - bi.joint)) >= 1e-9 * meter * meter;
     if (!legsOk)
     {
+        if (definition.printCurveDetails)
+        {
+            println("  varying-offset arc pair not possible (" ~ (bi.ok ? "a leg is straight" : "no biarc: " ~ toString(bi.reason)) ~ ") -> spline");
+        }
         return none;
     }
     var idA = wireId + "A";
