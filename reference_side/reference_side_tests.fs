@@ -222,6 +222,25 @@ function splitTests(context is Context, id is Id) returns array
         out = append(out, result("Split+ keep both sides, two tools", n == 4, n ~ " pieces, expected 4"));
     }
 
+    // Keep both sides on a SHEET cut by two planes: three pieces, and splitEdges publishes
+    // one edge per cut (2), not the coincident pair each cut leaves (4).
+    {
+        const cid = id + "seams";
+        const sheet = sheetFromCube(context, cid + "t", pt(1450, -50, -10), pt(1550, 50, 0), pt(1500, 0, 0));
+        opPlane(context, cid + "p1", { "plane" : plane(pt(1480, 0, 0), vector(1, 0, 0)), "width" : mm(400), "height" : mm(400) });
+        opPlane(context, cid + "p2", { "plane" : plane(pt(1520, 0, 0), vector(-1, 0, 0)), "width" : mm(400), "height" : mm(400) });
+        splitPlus(context, cid + "split", {
+                    "targets" : sheet,
+                    "tools" : qUnion([qCreatedBy(cid + "p1", EntityType.FACE), qCreatedBy(cid + "p2", EntityType.FACE)]),
+                    "keepBothSides" : true
+                });
+        const embedded = getVariable(context, toString(cid + "split"));
+        const seams = evaluateQuery(context, embedded.query.splitEdges.value);
+        const pieces = size(evaluateQuery(context, embedded.query.output.value));
+        out = append(out, result("Split+ keep both sides on a sheet: one splitEdge per cut", size(seams) == 2 && pieces == 3,
+                    size(seams) ~ " split edges (expected 2), " ~ pieces ~ " pieces (expected 3)"));
+    }
+
     // A sheet tool that is deleted afterwards (Keep tools off).
     {
         const cid = id + "sheet";
