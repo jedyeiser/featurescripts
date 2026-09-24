@@ -82,6 +82,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         const tools = evaluateQuery(context, definition.tools);
 
         var tempPlanes = [];
+        var resolvedTools = [];
         var pieces = definition.targets;
         for (var i = 0; i < size(tools); i += 1)
         {
@@ -95,6 +96,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                 tempPlanes = append(tempPlanes, qCreatedBy(planeId, EntityType.BODY));
             }
 
+            resolvedTools = append(resolvedTools, tool);
             const keepType = keepTypeFor(context, definition, probe, tool, i);
             const splitId = id + ("split" ~ i);
             opSplitPart(context, splitId, {
@@ -106,6 +108,10 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                     });
             pieces = qUnion([pieces, qCreatedBy(splitId, EntityType.BODY)]);
         }
+
+        // One edge per cut, read while the temporary planes still exist.
+        const splitEdges = oneEdgePerCut(context, qIntersection([qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE),
+                        qCreatedBy(id, EntityType.EDGE)]), resolvedTools);
 
         if (size(tempPlanes) > 0)
         {
@@ -136,8 +142,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                     "queries" : {
                         "splitFaces" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
                                 "Faces the splits created (the caps on solids).", DebugColor.MAGENTA),
-                        "splitEdges" : extractableQuery(qIntersection([qOwnedByBody(kept, EntityType.EDGE), qCreatedBy(id, EntityType.EDGE)]),
-                                "Edges the splits created (the cut on surfaces).", DebugColor.MAGENTA)
+                        "splitEdges" : extractableQuery(splitEdges,
+                                "The cuts: one edge per cut, the one on the piece in front of its tool (the side the tool's normal points to).",
+                                DebugColor.MAGENTA)
                     }
                 });
     }, {
@@ -148,6 +155,97 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         "keepNear" : true,
         "debugPrintSides" : false
     });
+
+/**
+ * The cut edges with each coincident pair reduced to one. Keeping both sides leaves every cut
+ * as two edges on top of each other, one per piece, and anything built on both -- an
+ * extrude, a fillet -- fails on the overlap. Of a pair, the edge kept is the one on the
+ * piece in front of the tool that made it (the side the tool's normal points to).
+ */
+function oneEdgePerCut(context is Context, edges is Query, tools is array) returns Query
+{
+    const all = evaluateQuery(context, edges);
+    var middles = [];
+    var lengths = [];
+    for (var e in all)
+    {
+        middles = append(middles, evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin);
+        lengths = append(lengths, evLength(context, { "entities" : e }));
+    }
+
+    var used = makeArray(size(all), false);
+    var result = [];
+    for (var i = 0; i < size(all); i += 1)
+    {
+        if (used[i])
+        {
+            continue;
+        }
+        var group = [i];
+        for (var j = i + 1; j < size(all); j += 1)
+        {
+            if (!used[j] && abs(lengths[i] - lengths[j]) < REFERENCE_SIDE_MARGIN && norm(middles[i] - middles[j]) < REFERENCE_SIDE_MARGIN)
+            {
+                group = append(group, j);
+                used[j] = true;
+            }
+        }
+        if (size(group) == 1)
+        {
+            result = append(result, all[i]);
+            continue;
+        }
+
+        const tool = nearestTool(context, middles[i], tools);
+        var chosen = all[group[0]];
+        for (var g in group)
+        {
+            if (edgeSide(context, all[g], tool) > 0 * meter)
+            {
+                chosen = all[g];
+                break;
+            }
+        }
+        result = append(result, chosen);
+    }
+    return qUnion(result);
+}
+
+/** The tool nearest a point. */
+function nearestTool(context is Context, point is Vector, tools is array) returns Query
+{
+    var best = tools[0];
+    var bestDistance = inf * meter;
+    for (var tool in tools)
+    {
+        const d = evDistance(context, { "side0" : point, "side1" : tool }).distance;
+        if (d < bestDistance)
+        {
+            bestDistance = d;
+            best = tool;
+        }
+    }
+    return best;
+}
+
+/**
+ * Signed distance to the tool of the piece an edge bounds, read on its adjacent faces (a
+ * point on each face; the largest reading wins, since a cap face lies on the tool itself).
+ */
+function edgeSide(context is Context, edge is Query, tool is Query) returns ValueWithUnits
+{
+    var best = 0 * meter;
+    for (var face in evaluateQuery(context, qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE)))
+    {
+        const onFace = evDistance(context, { "side0" : evApproximateCentroid(context, { "entities" : face }), "side1" : face }).sides[1].point;
+        const side = signedSideOf(context, onFace, tool);
+        if (side != undefined && abs(side) > abs(best))
+        {
+            best = side;
+        }
+    }
+    return best;
+}
 
 /** A mate connector's frame, or undefined for anything else. */
 function mateConnectorFrame(context is Context, tool is Query)
