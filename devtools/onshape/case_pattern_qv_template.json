@@ -1,0 +1,222 @@
+[
+ {
+  "btType": "BTMParameterString-149",
+  "libraryRelationType": "DEFAULT",
+  "value": "facesToIterate",
+  "parameterId": "name",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterString-149",
+  "libraryRelationType": "DEFAULT",
+  "value": "",
+  "parameterId": "description",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "SelectionType",
+  "value": "CREATED_BY",
+  "parameterId": "selectionType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "SeedType",
+  "value": "FACE",
+  "parameterId": "seedType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTAndFilter-110",
+   "operand1": {
+    "btType": "BTAllowMeshGeometryFilter-1026",
+    "allowsMeshGeometry": true
+   },
+   "operand2": {
+    "btType": "BTFlatSheetMetalFilter-3018",
+    "allows": "MODEL_AND_FLATTENED"
+   }
+  },
+  "parameterId": "selectionQuery",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterFeatureList-1749",
+  "featureIds": [
+   "FwhlKgkFta3MEnC_0"
+  ],
+  "libraryRelationType": "DEFAULT",
+  "parameterId": "createdByFeatures",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTAndFilter-110",
+   "operand1": {
+    "btType": "BTAndFilter-110",
+    "operand1": {
+     "btType": "BTEntityTypeFilter-124",
+     "entityType": "BODY"
+    },
+    "operand2": {
+     "btType": "BTFlatSheetMetalFilter-3018",
+     "allows": "MODEL_AND_FLATTENED"
+    }
+   },
+   "operand2": {
+    "btType": "BTAllowMeshGeometryFilter-1026",
+    "allowsMeshGeometry": true
+   }
+  },
+  "parameterId": "seedBodies",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTEntityTypeFilter-124",
+   "entityType": "FACE"
+  },
+  "parameterId": "seedFaces",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTOrFilter-167",
+   "operand1": {
+    "btType": "BTEntityTypeFilter-124",
+    "entityType": "EDGE"
+   },
+   "operand2": {
+    "btType": "BTEntityTypeFilter-124",
+    "entityType": "FACE"
+   }
+  },
+  "parameterId": "seedEdgesOrFaces",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTEntityTypeFilter-124",
+   "entityType": "EDGE"
+  },
+  "parameterId": "seedEdges",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "EntityType",
+  "value": "FACE",
+  "parameterId": "entityType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "FilletCompare",
+  "value": "EQUAL",
+  "parameterId": "filletCompareType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTOrFilter-167",
+   "operand1": {
+    "btType": "BTEntityTypeFilter-124",
+    "entityType": "EDGE"
+   },
+   "operand2": {
+    "btType": "BTEntityTypeFilter-124",
+    "entityType": "FACE"
+   }
+  },
+  "parameterId": "boundedFacesBounds",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "EdgeConvexityType",
+  "value": "CONVEX",
+  "parameterId": "edgeConvexityType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": true,
+  "parameterId": "filterConstruction",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "filterByBodyType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "BodyTypeOptions",
+  "value": "SOLID",
+  "parameterId": "createdByBodyType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "addAdditionalQueries",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterArray-2025",
+  "libraryRelationType": "DEFAULT",
+  "items": [],
+  "parameterId": "additionalQueries",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "evaluateOnUse",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": true,
+  "parameterId": "showSelection",
+  "parameterName": ""
+ }
+]

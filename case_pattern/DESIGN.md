@@ -1,7 +1,7 @@
 # Case Pattern -- design note
 
 Document: case_pattern (2099413dd91f34578b385892 / w a875a90e6a8ebf49cc0eff73).
-Status: design, 2026-09-24. Nothing built yet.
+Status: v1 built and passing tests T1-T5, 2026-09-24 (case_pattern.fs holds both features).
 
 ## 1. Idea
 
@@ -14,20 +14,29 @@ entity. Nothing public rebinds several variables per iteration (Konst_Sh asked f
 Query Pattern thread; IR 6933 "user-defined feature lists" is open since 2017). Closest
 analogue outside Onshape is CATIA PowerCopy.
 
-## 2. Mechanism (proven by Query Pattern)
+## 2. Mechanism (verified 2026-09-24, correction 41)
 
     for each case k:
-        bind every template name to case k's queries   (setQueryVariable)
-        applyPattern(context, id + caseKey, {
-            patternType : PatternType.FEATURE, fullFeaturePattern : true,
-            transforms : [identityTransform()], instanceNames : [...],
-            instanceFunction : featureList, sketchPatternInfo : ... }, identityTransform())
-    restore case-1 bindings
+        bind every template name to case k's selections   (setQueryVariable)
+        push pattern frame (identity transform) for id + "caseK"
+        for each listed feature f:
+            f(id + "caseK")                       -- in the frame
+            on SELF_INTERSECTING_CURVE_SELECTED only:
+                pop frame; f(id + "caseK" + "directI"); push frame
+        pop frame; delete unkept bodies; name new bodies
+    rebind case 1
 
-Identity transform = nothing moves; the feature functions are simply re-run under a new id.
-Features that read `#name` at runtime rebuild on the new inputs. References between features
-INSIDE the list remap to the current case's copies (verified in Query Pattern's panel example:
-a QV "edges created by Extrude 1" inside the loop fillets each copy).
+What the frame does, measured:
+- Remaps FeatureList parameters of listed features onto the case's copies -- a Query Variable
+  "created by <listed feature>" follows each case. Clicks and qCreatedBy(makeId(...)) query
+  strings do NOT remap; they stay on case 1 (tests T3, T4 are expected ERRORs documenting this).
+- Refuses kernel edits of geometry from outside the list (fillet an existing edge, move an
+  existing face) with SELF_INTERSECTING_CURVE_SELECTED -- Query Pattern's open Move face bug.
+  Those run fine outside the frame under a fresh sub-id, so only that error is retried; any other
+  failure stands, because outside the frame an unremapped in-list reference would hit case 1.
+
+User rule: **reference geometry made inside the list through a Query Variable "created by"**, never
+by clicking it. The Case template's inputs cover everything outside the list.
 
 ## 3. Features
 
@@ -89,13 +98,14 @@ contains a sketch (`containsSketch`).
 - All failed -> `regenError`.
 - Sketches present -> `reportFeatureInfo` (section 5).
 
-## 7. Known risks to test first
-1. Move face / Delete face as the FIRST body feature (Query Pattern's open bug,
-   SELF_INTERSECTING_CURVE_SELECTED). Our bindings are user selections, not forEachEntity
-   transients, so it may not apply -- test anyway.
-2. Template feature re-run inside the replay picks up the pending bindings (3.1).
+## 7. Risks
+1. DONE: Move face first (T2) works via the outside-frame retry.
+2. DONE: template re-run inside the replay skips (isInFeaturePattern) -- T1-T5.
 3. Mate connector owned by a body made inside the list attaches to each case's copy.
-4. `getProperty(NAME)` in Case pattern returns names the user typed in the parts list.
+   Owner is a query -> probably needs a Query Variable "created by" to follow. Test.
+4. ANSWERED: getProperty throws during regen (correction 36). Template names are cached by the
+   editing logic, so they refresh only when the Case pattern dialog is edited.
+7. Delete face, chamfer, shell, boolean on outside geometry: do they refuse with the same code?
 5. Sketch on a mate connector on `#face`, dimensioned to an Extract of `#face` edges, follows
    two differently shaped faces.
 6. Case k sees case k-1's results (sequential) -- document it, test a boolean-ADD body.
@@ -108,7 +118,7 @@ expected result, checked from devtools (no harness tabs).
 - API add-on: tree-context-menu action "Explode case k to features" (writes native features
   with re-pointed references; fully adaptive sketches, sheet metal, per-case edits).
   Note: an API app cannot add a feature-tree item or run at regen -- FS is the only live option.
-- Per-case numeric overrides (a variable per case, e.g. depth).
+- Per-case values (non-query variables) -- user asked 2026-09-24; see proposal in chat.
 - `#caseName` string variable inside the body.
 - Cross-document PowerCopy.
 

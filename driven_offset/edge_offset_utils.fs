@@ -1327,14 +1327,55 @@ export function referenceSurfacePoint(alongRef is map, arc is ValueWithUnits, v 
  */
 export function unwrapChart(context is Context, selection is Query, alignPoint is Vector, delta is ValueWithUnits) returns map
 {
-    const alongRef = buildAlongReference(context, selection, alignPoint, delta);
-    const align = referenceSurfaceCoords(alongRef, alignPoint);
+    return chartFromReference(buildAlongReference(context, selection, alignPoint, delta), alignPoint);
+}
 
+export function chartFromReference(alongRef is map, alignPoint is Vector) returns map
+{
+    const packed = packChart(alongRef);
+    const seed = referenceArcAtX(alongRef, alignPoint[0]).value;
+    const f = chartFoot(packed, alignPoint[0].value, alignPoint[1].value, alignPoint[2].value, seed, 0);
     return {
         "alongRef" : alongRef,
-        "align" : align,
-        "alignCoord" : alongCoordinate(alongRef, align.arc)
+        "packed" : packed,
+        "align" : { "arc" : f[0] * meter, "v" : f[2] * meter, "height" : f[3] * meter },
+        "alignCoord" : (f[0] - packed.delta * f[4]) * meter,
+        "alignX" : f[0] - packed.delta * f[4],
+        "alignV" : f[2],
+        "alignHeight" : f[3]
     };
+}
+
+/**
+ * Chart coordinates of a wrapped point in plain metres, plus its foot for the next call.
+ * @param previous : undefined (seed from X), or the previous result along the same edge (warm start).
+ * @returns {array} : [x, y, z, arc, span, tx, ty, tz, kappa, scale, height]
+ */
+export function unwrapFast(chart is map, point is Vector, previous) returns array
+{
+    const c = chart.packed;
+    const a0 = (previous == undefined) ? referenceArcAtX(chart.alongRef, point[0]).value : previous[3];
+    const i0 = (previous == undefined) ? 0 : previous[4];
+    const f = chartFoot(c, point[0].value, point[1].value, point[2].value, a0, i0);
+    return [f[0] - c.delta * f[4] - chart.alignX, chart.alignV - f[2], f[3] - chart.alignHeight,
+            f[0], f[1], f[5], f[6], f[7], f[8], f[9], f[3]];
+}
+
+/**
+ * Unwrapped direction of a wrapped unit direction d at a point whose unwrapFast result is u.
+ * x = arc - delta * theta, d(arc) = dot(d, t) / (scale - kappa * height), d(x) = scale * d(arc).
+ * Exact; replaces the two extra map calls and the 10 um finite difference per edge.
+ */
+export function unwrapDirection(chart is map, cs is CoordSystem, u is array, d is Vector) returns Vector
+{
+    const c = chart.packed;
+    const nx = c.ny * u[7] - c.nz * u[6];
+    const ny = c.nz * u[5] - c.nx * u[7];
+    const nz = c.nx * u[6] - c.ny * u[5];
+    const along = u[9] * (d[0] * u[5] + d[1] * u[6] + d[2] * u[7]) / (u[9] - u[8] * u[10]);
+    const across = -(d[0] * c.nx + d[1] * c.ny + d[2] * c.nz);
+    const up = d[0] * nx + d[1] * ny + d[2] * nz;
+    return normalize(along * cs.xAxis + across * cross(cs.zAxis, cs.xAxis) + up * cs.zAxis);
 }
 
 /**
@@ -1347,11 +1388,8 @@ export function unwrapChart(context is Context, selection is Query, alignPoint i
  */
 export function unwrapCoords(chart is map, point is Vector) returns Vector
 {
-    const surf = referenceSurfaceCoords(chart.alongRef, point);
-
-    return vector(alongCoordinate(chart.alongRef, surf.arc) - chart.alignCoord,
-        chart.align.v - surf.v,
-        surf.height - chart.align.height);
+    const u = unwrapFast(chart, point, undefined);
+    return vector(u[0], u[1], u[2]) * meter;
 }
 
 /**
@@ -1364,6 +1402,144 @@ export function unwrapPoint(chart is map, cs is CoordSystem, zShift is ValueWith
 {
     const c = unwrapCoords(chart, point);
     return toWorld(cs, vector(c[0], c[1], c[2] + zShift));
+}
+
+// ----------------------------------------------------------------------------
+// Packed chart: the same map in plain numbers (metres, radians, 1/m). Unit arithmetic is
+// operator overloading in FeatureScript and costs ~40x plain arithmetic; the per-point map ran
+// 46x faster this way (research_unwrap_perf.md 2.3). The tangent is the derivative of the SAME
+// Hermite cubic as the position and theta is Hermite with curvature as its slope, so the foot is
+// the foot of one consistent curve (0.44 um worst case before, sub-micron after).
+// ----------------------------------------------------------------------------
+
+/** Newton on the foot stops below this residual, metres (REFERENCE_FOOT_TOL as a number). */
+const CHART_FOOT_TOL = 1e-10;
+
+/**
+ * The chart's tables as plain numbers (metres, radians, 1/m): unit arithmetic is FS-level operator
+ * overloading and costs ~40x plain arithmetic in the inner loop. Rates are d(offset point)/d(wire arc).
+ */
+export function packChart(alongRef is map) returns map
+{
+    const count = size(alongRef.arcs);
+    var arcs = makeArray(count);
+    var px = makeArray(count);
+    var py = makeArray(count);
+    var pz = makeArray(count);
+    var rx = makeArray(count);
+    var ry = makeArray(count);
+    var rz = makeArray(count);
+    var kappa = makeArray(count);
+    var theta = makeArray(count);
+    for (var i = 0; i < count; i += 1)
+    {
+        const scale = 1 - alongRef.delta * alongRef.curvatures[i];
+        arcs[i] = alongRef.arcs[i].value;
+        px[i] = alongRef.points[i][0].value;
+        py[i] = alongRef.points[i][1].value;
+        pz[i] = alongRef.points[i][2].value;
+        rx[i] = scale * alongRef.tangents[i][0];
+        ry[i] = scale * alongRef.tangents[i][1];
+        rz[i] = scale * alongRef.tangents[i][2];
+        kappa[i] = alongRef.curvatures[i].value;
+        theta[i] = alongRef.thetas[i];
+    }
+    return { "count" : count, "arcs" : arcs, "px" : px, "py" : py, "pz" : pz, "rx" : rx, "ry" : ry, "rz" : rz,
+            "kappa" : kappa, "theta" : theta, "delta" : alongRef.delta.value,
+            "nx" : alongRef.planeNormal[0], "ny" : alongRef.planeNormal[1], "nz" : alongRef.planeNormal[2] };
+}
+
+/** The span holding arc a, walked from the previous span. Never lands on a zero-length join span. */
+function chartSpan(c is map, a is number, hint is number) returns number
+{
+    var i = min(max(hint, 0), c.count - 2);
+    while (i < c.count - 2 && a > c.arcs[i + 1])
+    {
+        i += 1;
+    }
+    while (i > 0 && a <= c.arcs[i])
+    {
+        i -= 1;
+    }
+    return i;
+}
+
+/**
+ * Chart at arc a in span i: [ax, ay, az, tx, ty, tz, theta, kappa, scale]. The tangent is the
+ * derivative of the same Hermite cubic as the position, so the foot is the foot of THIS curve.
+ * Past either end the reference runs on straight (position linear, theta and tangent held).
+ */
+function chartEval(c is map, a is number, i is number) returns array
+{
+    const last = c.count - 1;
+    if (a <= c.arcs[0] || a >= c.arcs[last])
+    {
+        const j = (a <= c.arcs[0]) ? 0 : last;
+        const d = a - c.arcs[j];
+        const s = sqrt(c.rx[j] * c.rx[j] + c.ry[j] * c.ry[j] + c.rz[j] * c.rz[j]);
+        return [c.px[j] + d * c.rx[j], c.py[j] + d * c.ry[j], c.pz[j] + d * c.rz[j],
+                c.rx[j] / s, c.ry[j] / s, c.rz[j] / s, c.theta[j], 0, s];
+    }
+    const k = i + 1;
+    const h = c.arcs[k] - c.arcs[i];
+    const f = (a - c.arcs[i]) / h;
+    const f2 = f * f;
+    const f3 = f2 * f;
+    const h00 = 2 * f3 - 3 * f2 + 1;
+    const h10 = (f3 - 2 * f2 + f) * h;
+    const h01 = 3 * f2 - 2 * f3;
+    const h11 = (f3 - f2) * h;
+    const g0 = (6 * f2 - 6 * f) / h;
+    const g10 = 3 * f2 - 4 * f + 1;
+    const g11 = 3 * f2 - 2 * f;
+    const dx = g0 * (c.px[i] - c.px[k]) + g10 * c.rx[i] + g11 * c.rx[k];
+    const dy = g0 * (c.py[i] - c.py[k]) + g10 * c.ry[i] + g11 * c.ry[k];
+    const dz = g0 * (c.pz[i] - c.pz[k]) + g10 * c.rz[i] + g11 * c.rz[k];
+    const s = sqrt(dx * dx + dy * dy + dz * dz);
+    return [h00 * c.px[i] + h10 * c.rx[i] + h01 * c.px[k] + h11 * c.rx[k],
+            h00 * c.py[i] + h10 * c.ry[i] + h01 * c.py[k] + h11 * c.ry[k],
+            h00 * c.pz[i] + h10 * c.rz[i] + h01 * c.pz[k] + h11 * c.rz[k],
+            dx / s, dy / s, dz / s,
+            h00 * c.theta[i] + h10 * c.kappa[i] + h01 * c.theta[k] + h11 * c.kappa[k],
+            c.kappa[i] + (c.kappa[k] - c.kappa[i]) * f,
+            s];
+}
+
+/**
+ * Foot of point (qx, qy, qz) on the packed chart, Newton on dot(Q - A(a), t(a)) = 0 with slope
+ * scale - kappa * height (referenceSurfaceCoords' walk, plain numbers).
+ * @returns {array} : [arc, span, v, height, theta, tx, ty, tz, kappa, scale]
+ */
+export function chartFoot(c is map, qx is number, qy is number, qz is number, a0 is number, hint is number) returns array
+{
+    var a = a0;
+    var i = hint;
+    var result = undefined;
+    for (var step = 0; step <= REFERENCE_FOOT_STEPS; step += 1)
+    {
+        i = chartSpan(c, a, i);
+        const e = chartEval(c, a, i);
+        const dx = qx - e[0];
+        const dy = qy - e[1];
+        const dz = qz - e[2];
+        const nx = c.ny * e[5] - c.nz * e[4];
+        const ny = c.nz * e[3] - c.nx * e[5];
+        const nz = c.nx * e[4] - c.ny * e[3];
+        const residual = dx * e[3] + dy * e[4] + dz * e[5];
+        const height = dx * nx + dy * ny + dz * nz;
+        if (abs(residual) < CHART_FOOT_TOL || step == REFERENCE_FOOT_STEPS)
+        {
+            result = [a, i, dx * c.nx + dy * c.ny + dz * c.nz, height, e[6], e[3], e[4], e[5], e[7], e[8]];
+            break;
+        }
+        var slope = e[8] - e[7] * height;
+        if (slope < 1e-3)
+        {
+            slope = e[8];
+        }
+        a = a + residual / slope;
+    }
+    return result;
 }
 
 /**

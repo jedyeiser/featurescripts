@@ -287,16 +287,15 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             var failure = undefined;
             for (var i = 0; i < size(functions); i += 1)
             {
-                // A failed feature ends only its case; the others are still built and the
-                // failure is reported by name below.
-                try
+                const outcome = runListedFeature(context, functions, i, caseId);
+                if (outcome.error != undefined)
                 {
-                    functions[i](caseId);
-                }
-                catch (e)
-                {
-                    failure = "feature " ~ (i + 1) ~ " failed (" ~ errorText(e) ~ ")";
+                    failure = "feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")";
                     break;
+                }
+                if (!outcome.inFrame)
+                {
+                    println(toString(caseId) ~ ": feature " ~ (i + 1) ~ " ran outside the pattern frame");
                 }
                 const after = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
                 var j = 0;
@@ -543,6 +542,56 @@ function unkeptBodies(caseBodies is Query, definition is map) returns Query
         dropped = append(dropped, qBodyType(qConstructionFilter(solidModel, ConstructionObject.YES), BodyType.SHEET));
     }
     return qUnion(dropped);
+}
+
+/**
+ * Runs one listed feature for a case whose pattern frame is already pushed.
+ *
+ * The frame (identity transform) is what makes FeatureList parameters of the listed features --
+ * a Query Variable "created by", say -- resolve to this case's copies. Plain queries (clicks,
+ * qCreatedBy(makeId(...))) are NOT remapped; they keep pointing at case 1 (verified 2026-09-24).
+ *
+ * A kernel op that edits geometry from outside the list (fillet an existing edge, move an existing
+ * face) refuses to run in the frame with SELF_INTERSECTING_CURVE_SELECTED -- Query Pattern's open
+ * Move face bug. Only that refusal is retried, once, with the frame popped and under a fresh
+ * sub-id (the aborted attempt's ids are not reusable); any other failure stands, so a feature
+ * whose in-list reference did not remap cannot fall back onto case 1's geometry.
+ */
+function runListedFeature(context is Context, functions is array, i is number, caseId is Id) returns map
+{
+    var frameError = undefined;
+    try
+    {
+        functions[i](caseId);
+    }
+    catch (e)
+    {
+        frameError = errorText(e);
+    }
+    if (frameError == undefined)
+    {
+        return { "inFrame" : true };
+    }
+    if (indexOf(frameError, "SELF_INTERSECTING_CURVE_SELECTED") < 0)
+    {
+        return { "inFrame" : true, "error" : frameError };
+    }
+    unsetFeaturePatternInstanceData(context, caseId);
+    var directError = undefined;
+    try
+    {
+        functions[i](caseId + ("direct" ~ i));
+    }
+    catch (e)
+    {
+        directError = errorText(e);
+    }
+    setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
+    if (directError != undefined)
+    {
+        return { "inFrame" : false, "error" : directError };
+    }
+    return { "inFrame" : false };
 }
 
 /** A short text for a caught regen error. */

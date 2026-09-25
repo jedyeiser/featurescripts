@@ -1457,6 +1457,33 @@ with `GET /api/v10/featurestudios/d/{d}/w/{w}/e/{e}/featurespecs`. Queries by de
 
 ---
 
+## Correction 41: re-running a FeatureList inside a pattern frame -- what remaps, what refuses (2026-09-24)
+
+Verified live in case_pattern (tests T1-T5, "Case pattern tests" Part Studio), replaying listed
+feature functions under `id + "caseK"` with `setFeaturePatternInstanceData(identityTransform())`:
+
+- **Remapped onto the replay's copies**: only FeatureList parameters of the listed features (e.g. a
+  native Query Variable "created by <listed feature>"; it builds `qCreatedBy(feature.key)`).
+- **NOT remapped**: plain queries -- click selections (qCompressed persistent queries) and
+  `qCreatedBy(makeId("<listed feature>"))` strings. They keep resolving to the ORIGINAL (template)
+  geometry, in or out of the frame.
+- **Refused in the frame**: a kernel op that edits geometry from OUTSIDE the list (opFillet on an
+  existing block edge, opOffsetFace for Move face) throws SELF_INTERSECTING_CURVE_SELECTED. This is
+  Query Pattern's "Move face as first feature" bug; it is not about being first. The same call with
+  the frame popped succeeds -- but under a FRESH sub-id: re-calling with the aborted attempt's id
+  fails again.
+- Without any frame, listed FeatureList references do not remap either (resolve to the template).
+
+**Fix pattern**: keep the frame pushed for the whole replay; retry a feature outside the frame only
+on SELF_INTERSECTING_CURVE_SELECTED (any other failure may be an unremapped in-list reference,
+and outside the frame it would act on the template's geometry). Tell users to reference in-list
+geometry through Query Variables "created by", not clicks.
+
+**Also**: fscheck flags a call through a function-valued PARAMETER (`listed(id)`) as UNDEFINED;
+index an array of functions instead (`functions[i](id)`), as iterative_solve does.
+
+---
+
 ## Correction 40: a custom feature with the std boolean step (2026-09-24)
 
 **Symptom**: `booleanDefinition.operationType: Enum used as parameter type must be exported` and

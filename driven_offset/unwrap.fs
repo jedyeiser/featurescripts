@@ -106,8 +106,6 @@ const UNWRAP_MIN_SAMPLES = 17;
 const UNWRAP_MAX_SAMPLES = 201;
 const UNWRAP_SAMPLE_SPACING = 5 * millimeter;
 
-/** Step used to unwrap an edge's end tangent by differencing. */
-const UNWRAP_TANGENT_STEP = 1e-5 * meter;
 
 /** Face samples (per direction) when looking for a plate's two sides. */
 const UNWRAP_FACE_GRID = 4;
@@ -421,25 +419,28 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         }
         const tangentLines = evEdgeTangentLines(context, { "edge" : edges[e], "parameters" : parameters });
 
+        // Fast map, warm-started from the previous sample's foot; exact end tangents from the map's
+        // derivative (research_unwrap_perf.md 2.3).
         var points = [];
+        var feet = [];
+        var previous = undefined;
+        const yAxis = cross(cs.zAxis, cs.xAxis);
         for (var tl in tangentLines)
         {
-            var p = unwrapPoint(chart, cs, zShift, tl.origin);
+            const u = unwrapFast(chart, tl.origin, previous);
+            previous = u;
+            var z = u[2] + zShift.value;
             if (flatZ != undefined)
             {
-                const off = dot(p - cs.origin, cs.zAxis) - flatZ;
-                worstFlat = max(worstFlat, abs(off));
-                p = p - off * cs.zAxis;
+                const off = z - flatZ.value;
+                worstFlat = max(worstFlat, abs(off) * meter);
+                z = flatZ.value;
             }
-            points = append(points, p);
+            points = append(points, cs.origin + (u[0] * meter) * cs.xAxis + (u[1] * meter) * yAxis + (z * meter) * cs.zAxis);
+            feet = append(feet, u);
         }
-
-        // Exactly unwrapped end tangents, by differencing the map a step along the edge. These
-        // are what the line / arc answer must agree with, and what a fitted spline is held to.
-        const first = tangentLines[0];
-        const last = tangentLines[count - 1];
-        const startTangent = flattened(cs, flatZ, unwrapPoint(chart, cs, zShift, first.origin + UNWRAP_TANGENT_STEP * first.direction) - points[0]);
-        const endTangent = flattened(cs, flatZ, points[count - 1] - unwrapPoint(chart, cs, zShift, last.origin - UNWRAP_TANGENT_STEP * last.direction));
+        const startTangent = flattened(cs, flatZ, unwrapDirection(chart, cs, feet[0], tangentLines[0].direction));
+        const endTangent = flattened(cs, flatZ, unwrapDirection(chart, cs, feet[count - 1], tangentLines[count - 1].direction));
 
         var shape = { "kind" : "freeform" };
         var gate = "";
