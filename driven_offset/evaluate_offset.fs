@@ -681,7 +681,7 @@ function measuredRows(stations is array, coords is map, cuts is array, zeroPoint
 /**
  * Group the rows into pieces (continuous wires) of runs (one curve each).
  *
- * A gap the target runs on unbroken across is bridged by a straight run; any other gap breaks
+ * A gap the target runs on unbroken across is bridged by the run's own fit; any other gap breaks
  * the profile. A run ends at every inserted crossing (a target vertex, so a target corner is a
  * profile corner), where two stations at one coordinate disagree, where the target edge changes
  * without a crossing, and where the coordinate turns back. A piece ends where the next run does
@@ -711,29 +711,25 @@ function buildPieces(stations is array, rows is array, targets is array) returns
         if (gap)
         {
             gap = false;
-            piece = closeRunInto(piece, run);
-            const last = run[size(run) - 1];
 
             if (targetsConnected(targets, previous.targetIndex, row.targetIndex))
             {
                 // The target runs on unbroken across stations it could not be measured at -- an
                 // inside corner the forward offset trimmed, or stations dropped as folded. The
-                // offset there is whatever the forward feature cuts away again, so bridge it
-                // with a straight run rather than breaking the profile.
-                if (norm(row.point - last) >= EVAL_STEP_TOL)
+                // offset there is whatever the forward feature cuts away again, so the run just
+                // carries on: its fit bridges the gap with the curvature either side, where a
+                // straight bridge measured 0.07 mm off at a trimmed corner.
+                if (norm(row.point - run[size(run) - 1]) >= EVAL_STEP_TOL
+                    && abs(row.coord - previous.coord) >= OFFSET_GEOM_TOL)
                 {
-                    piece = closeRunInto(piece, [last, row.point]);
-                    run = [row.point];
-                }
-                else
-                {
-                    run = [last];
+                    run = append(run, row.point);
                 }
                 direction = 0;
                 previous = row;
                 continue;
             }
 
+            piece = closeRunInto(piece, run);
             pieces = closePieceInto(pieces, piece);
             piece = [];
             previous = undefined;
