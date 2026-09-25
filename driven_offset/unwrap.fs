@@ -63,29 +63,49 @@ import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b982
  */
 
 /*
- * v1 AS BUILT (2026-09-24). Design record: driven_offset/research_unwrap.md, section 0.
+ * AS BUILT (2026-09-25). Design records: driven_offset/research_unwrap.md (section 0), research_unwrap_part.md,
+ * research_undrape_*.md.
  *
- * The map. The reference is a planar tangent chain; swept along its plane's normal it is a surface that
- * flattens without stretching, so every point has exact chart coordinates (arc along the reference, v
- * across the plane, height off the surface) -- referenceSurfaceCoords. Unwrapping writes them out flat
- * in the origin mate connector's frame: x = length along the reference offset by the preserve-length
- * offset (s - offset * theta), y = across, z = height. The alignment point lands on the origin.
+ * The map (edge_offset_utils.fs: unwrapChart / unwrapFast). The reference is ONE planar tangent chain (joints
+ * within 1 deg) whose X rises steadily; swept along its plane's normal it is a surface that flattens without
+ * stretching, so every point has exact chart coordinates (arc along the reference, v across the plane, height
+ * off the surface). Unwrapping writes them out flat in the origin's frame (a mate connector, or a plane / planar
+ * face): x = length along the reference offset by the preserve-length offset (s - offset * theta), y = across,
+ * z = height. The alignment point, which must lie within the reference's X span, lands on the origin. A point
+ * past the reference's centre of curvature has no foot and cannot be unwrapped.
  *
- * EDGES: every selected edge is sampled, unwrapped, and emitted as a line or a (sketch) arc where the
- * points are one within tolerance AND the exactly-unwrapped end tangents agree with it (continuity is
- * kept), a fitted spline otherwise. One output per source body, named by the Names & properties table.
+ * Three modes, one output (set of bodies) per source body:
  *
- * CONSTANT-THICKNESS PART (undrape a plate such as a topsheet; research_undrape_*.md): the two sides and
- * t come from evOffsetDetection + tangent growth, no reference needed. The part's MID-SURFACE is mapped
- * onto the TARGET = the wire's extrusion along its plane normal, offset by the target offset; the wire is
- * picked, or is the section of the mid-surface by a picked face. Where the part is draped (curved across
- * the wire's plane) this is a deformation: each station's section is unrolled flat (width = arc length
- * across the section), measured and reported (undrape_utils.fs). The flat mid-surface outline is rebuilt
- * as a plate t/2 each side: a plane split by the outline, material by loop parity -- exact planes, arcs
- * stay arcs, holes and slots cut.
+ * EDGES / WIRES: every selected edge is sampled, unwrapped, and emitted as a line or a (sketch) arc where the
+ * points are one within tolerance AND the exactly-unwrapped end tangents agree with it (continuity is kept), a
+ * fitted spline otherwise. The outputs are wires, one per body owning selected edges.
  *
- * Not in v1: surfaces, composite parts, mate connectors, general part deform, neutral axis, planes /
- * planar faces as the unwrap target, projection of a wire onto a plane normal to the unwrap plane.
+ * CONSTANT-THICKNESS PART (undrape a plate such as a topsheet; undrape_utils.fs): the two sides and t come
+ * from evOffsetDetection + tangent growth (a raycast seed as fallback), no reference needed for that. The
+ * part's MID-SURFACE is mapped onto the TARGET = the wire's extrusion along its plane normal, offset by the
+ * target offset; the wire is picked, or is the section of the mid-surface by a picked face. Where the part is
+ * draped (curved across the wire's plane) this is a deformation: each station's section is unrolled flat
+ * (width = arc length across the section), optionally measured, and reported; stations the undrape could not
+ * solve are reported as a warning. The flat outline is rebuilt as a plate t/2 each side: a plane split by the
+ * outline, material by loop parity -- exact planes, arcs stay arcs, holes and slots cut.
+ *
+ * PART (SOLID) (unwrap_part.fs): any solid along the reference, e.g. a core. Split where the reference
+ * changes between straight and curved; straight pieces move rigidly, curved pieces are rebuilt through the
+ * map; optionally with square walls.
+ *
+ * Every mode ends with a length check (the preserved curve's wrapped length over the source's extent vs the
+ * flat result's X extent; flat / source volume for solids), optionally kept as two wires.
+ *
+ * Names & properties. The Outputs table is filled by the editing logic (getProperty cannot run in the body,
+ * correction 36), ONLY when "Read names and properties" is pressed (the user's rule: nothing is copied behind
+ * their back). A row whose source name matches an existing row keeps its edited output name and its
+ * "Copy material and appearance" choice. The body pairs row i with source body i (it cannot read names), so a
+ * source set that changes after the last press (a selection or upstream edit) can leave the rows stale: when the row
+ * count differs from the body count the table is not applied and a warning says so; a same-count reorder
+ * cannot be detected.
+ *
+ * Not built: surfaces, composite parts, mate connectors as inputs, neutral axis, projection of a wire onto a
+ * plane normal to the unwrap plane.
  */
 
 /** What is being unwrapped. */
@@ -117,14 +137,14 @@ export enum UndrapeTargetSource
     FACE
 }
 
+// ============================================================================
+// Constants
+// ============================================================================
+
 /** Samples per unwrapped edge: at least this many, and one per UNWRAP_SAMPLE_SPACING of length. */
 const UNWRAP_MIN_SAMPLES = 17;
 const UNWRAP_MAX_SAMPLES = 201;
 const UNWRAP_SAMPLE_SPACING = 5 * millimeter;
-
-
-
-
 
 /** Unwrap's own fit defaults: 0.005 mm leaves half the 0.01 mm budget to everything else. */
 const UNWRAP_FIT_TOLERANCE_BOUNDS = { (millimeter) : [1e-5, 0.005, 1] } as LengthBoundSpec;
@@ -132,6 +152,26 @@ const UNWRAP_MAX_CP_BOUNDS = { (unitless) : [4, 60, MAX_CONTROL_POINTS] } as Int
 
 const UNWRAP_LENGTH_BOUNDS = { (millimeter) : [-1e4, 0, 1e4] } as LengthBoundSpec;
 const UNWRAP_SPACING_BOUNDS = { (millimeter) : [0.5, 6, 50] } as LengthBoundSpec;
+
+/** How far a supplied end tangent may disagree with the edge's own three end points. */
+const UNWRAP_TANGENT_AGREE = 2 * degree;
+
+/** Samples per reference edge for the "X rises along the reference" check (the chart re-checks densely). */
+const UNWRAP_REFERENCE_X_SAMPLES = 9;
+
+/** Vertices read for a body's extent in the length check, and samples on the wrapped length curve. */
+const UNWRAP_CHECK_VERTICES = 400;
+const UNWRAP_CHECK_SAMPLES = 400;
+
+/** Edges touching a vertex within this arc (metres) of either end of the extent are sampled along their length. */
+const UNWRAP_CHECK_END_ZONE = 0.03;
+const UNWRAP_CHECK_EDGE_SAMPLES = 40;
+
+/** The two sides and their plate area must cover this fraction of the part's area. */
+const UNWRAP_SIDE_AREA_FRACTION = 0.6;
+
+/** A number as stored in the Outputs table's data strings: optionally signed, decimal, with an exponent. */
+const UNWRAP_NUMBER_PATTERN = "^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$";
 
 annotation { "Feature Type Name" : "Unwrap",
         "Feature Type Description" : "Unwrap edges or a constant-thickness part from along a planar reference chain onto a plane, preserving length.",
@@ -248,7 +288,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             definition.nameSuffix is string;
 
             annotation { "Name" : "Read names and properties",
-                        "Description" : "Fill the table from the source bodies: name + suffix, material, appearance. Properties are copied only when this is pressed." }
+                        "Description" : "Read the source bodies' names, materials and appearances into the table. Only this button updates it; output names you edited are kept for sources whose name still matches." }
             isButton(definition.readProperties);
 
             annotation { "Name" : "Outputs", "Item name" : "Output", "Item label template" : "#outputName",
@@ -287,6 +327,13 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Keep length curves", "Default" : false,
                         "Description" : "Keep the two curves the unwrap preserves length along: the wrapped one (the reference offset by the preserve-length offset, over the part's extent) and its flat image. A good unwrap leaves their lengths equal." }
             definition.debugKeepLengthCurves is boolean;
+
+            if (definition.unwrapType == UnwrapType.THICKENED)
+            {
+                annotation { "Name" : "Measure deformation", "Default" : true,
+                            "Description" : "Measure the undrape's lengthwise stretch and shear for the report. Off is faster." }
+                definition.measureDeformation is boolean;
+            }
         }
     }
     {
@@ -324,48 +371,64 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             };
 
         var outputs = [];
+        var outputBodies = [];
         var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
         var records = [];
         var edgesOnPlane = [];
         var checks = [];
 
         const edgeChart = (definition.unwrapType != UnwrapType.THICKENED)
-            ? unwrapChart(context, definition.reference, alignPoint, lengthOffset(definition))
+            ? checkedChart(context, definition.reference, "reference", alignPoint, lengthOffset(definition))
             : undefined;
 
         for (var i = 0; i < size(sources); i += 1)
         {
             const bodyId = id + ("body" ~ i);
             var result;
+            var extent; // the edges whose extent along the reference the length check measures
             if (definition.unwrapType == UnwrapType.EDGES)
             {
                 const edges = evaluateQuery(context, qIntersection([qOwnedByBody(sources[i], EntityType.EDGE), expandEdgeQuery(definition.edges)]));
                 result = unwrapEdgesToWires(context, bodyId, edgeChart, cs, edges, settings);
+                extent = qUnion(edges);
             }
             else if (definition.unwrapType == UnwrapType.PART)
             {
                 result = unwrapPart(context, bodyId, definition, edgeChart, cs, sources[i], settings);
+                extent = qOwnedByBody(sources[i], EntityType.EDGE);
             }
             else
             {
                 result = unwrapPlate(context, bodyId, definition, sources[i], alignPoint, cs, settings);
                 edgesOnPlane = append(edgesOnPlane, result.edgesOnPlane);
+                extent = qOwnedByBody(sources[i], EntityType.EDGE);
             }
 
-            const check = lengthAndVolume(context, bodyId + "lengthCurves", result.chart, cs, sources[i], result.bodies,
+            const check = lengthAndVolume(context, bodyId + "lengthCurves", result.chart, cs, sources[i], extent, result.bodies,
                 result.lengthZ, definition.debugKeepLengthCurves);
             checks = append(checks, check);
 
             tally = addTally(tally, result.tally);
             records = append(records, mergeMaps(result.record, { "check" : check }));
             outputs = append(outputs, { "source" : sources[i], "bodies" : result.bodies });
+            outputBodies = append(outputBodies, result.bodies);
         }
 
-        applyNamesAndProperties(context, definition, outputs);
-        reportSummary(context, id, definition, tally, records);
+        // Rows are paired with bodies by index (the body cannot read names, correction 36); the editing logic
+        // keeps them in step while the dialog is open. A count mismatch means the sources changed without it:
+        // naming by index would then name the wrong bodies, so the table is skipped.
+        var warnings = [];
+        const tableUsable = size(definition.outputs) == size(sources);
+        if (size(definition.outputs) > 0 && !tableUsable)
+        {
+            warnings = append(warnings, "The Outputs table has " ~ size(definition.outputs) ~ " row(s) for " ~ size(sources)
+                ~ " source bod" ~ (size(sources) == 1 ? "y" : "ies") ~ ", so names and properties were not applied: edit the feature to refresh it.");
+        }
+        applyNamesAndProperties(context, definition, outputs, tableUsable);
+        reportSummary(context, id, definition, tally, records, warnings);
 
         embedStandardOutputs(context, id, {
-                    "output" : qCreatedBy(id, EntityType.BODY),
+                    "output" : qUnion(outputBodies),
                     "outputDescription" : "The unwrapped bodies",
                     "inputs" : qUnion(sources),
                     "variables" : {
@@ -380,7 +443,28 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                         "edgesOnPlane" : extractableQuery(qUnion(edgesOnPlane), "Edges of the part sides laid on the unwrap plane.", DebugColor.MAGENTA)
                     }
                 });
-    }, {});
+    }, {
+            // Parameters added after the first release: a saved feature that lacks one regenerates with the
+            // old behaviour instead of failing its precondition (corrections 16.3, 25). No buttons (correction 27).
+            "squareWalls" : false,
+            "debugKeepLengthCurves" : false,
+            "targetFrom" : UndrapeTargetSource.WIRE,
+            "sampleSpacing" : 6 * millimeter,
+            "recogniseShapes" : true,
+            "approximationDegree" : 3,
+            "approximationTolerance" : 0.005 * millimeter,
+            "approximationMaxCPs" : 60,
+            "layOnPlane" : true,
+            "nameSuffix" : "_UNWRAPPED",
+            "copyAttributes" : true,
+            "debugPrintEdges" : false,
+            "targetOffset" : 0 * millimeter,
+            "flipTargetOffset" : false,
+            "preserveLength" : UnwrapPreserveLength.REFERENCE,
+            "lengthOffset" : 0 * millimeter,
+            "flipLengthOffset" : false,
+            "measureDeformation" : true
+        });
 
 // ============================================================================
 // Inputs
@@ -412,20 +496,96 @@ function sourceBodies(context is Context, definition is map) returns array
  */
 function frameOf(context is Context, selection is Query) returns CoordSystem
 {
-    if (!isQueryEmpty(context, qBodyType(selection, BodyType.MATE_CONNECTOR)))
+    const connector = mateConnectorOf(context, selection);
+    if (connector != undefined)
     {
-        return evMateConnector(context, { "mateConnector" : selection });
+        return evMateConnector(context, { "mateConnector" : connector });
     }
     return planeToCSys(evPlane(context, { "face" : selection }));
 }
 
 function pointOf(context is Context, selection is Query) returns Vector
 {
-    if (!isQueryEmpty(context, qBodyType(selection, BodyType.MATE_CONNECTOR)))
+    const connector = mateConnectorOf(context, selection);
+    if (connector != undefined)
     {
-        return evMateConnector(context, { "mateConnector" : selection }).origin;
+        return evMateConnector(context, { "mateConnector" : connector }).origin;
     }
     return evVertexPoint(context, { "vertex" : selection });
+}
+
+/**
+ * The mate connector body a selection belongs to, or undefined. The dialog can hand over the connector's
+ * VERTEX rather than its body (correction 44), so resolve through the owner body.
+ */
+function mateConnectorOf(context is Context, selection is Query)
+{
+    const connectors = evaluateQuery(context, qBodyType(qOwnerBody(selection), BodyType.MATE_CONNECTOR));
+    return (size(connectors) > 0) ? connectors[0] : undefined;
+}
+
+/**
+ * unwrapChart behind the checks it cannot make with a clear message: the reference's X must rise (or fall)
+ * steadily along it, and the alignment point's X must lie within the reference's X span (it seeds the chart's
+ * zero). unwrapChart itself refuses a reference that is not one tangent chain.
+ *
+ * @param referenceKey {string} : the parameter to highlight for a bad reference ("reference", "profileFace").
+ */
+function checkedChart(context is Context, reference is Query, referenceKey is string, alignPoint is Vector,
+    offset is ValueWithUnits) returns map
+{
+    const edges = evaluateQuery(context, expandEdgeQuery(reference));
+    if (size(edges) == 0)
+    {
+        throw regenError("The wrapped reference has no edges.", [referenceKey]);
+    }
+
+    // Each edge monotonic in X, and the edges' X intervals end to end: then the chain is.
+    const tol = TOLERANCE.zeroLength;
+    var spans = [];
+    for (var edge in edges)
+    {
+        const tangentLines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, UNWRAP_REFERENCE_X_SAMPLES) });
+        const x0 = tangentLines[0].origin[0].value;
+        const x1 = tangentLines[UNWRAP_REFERENCE_X_SAMPLES - 1].origin[0].value;
+        const sense = (x1 >= x0) ? 1 : -1;
+        for (var tl in tangentLines)
+        {
+            if (sense * tl.direction[0] < 1e-6)
+            {
+                throw regenError("The wrapped reference must run along world X: X must rise steadily along it, but it turns back (or runs across X) near X = "
+                        ~ roundToPrecision(tl.origin[0] / millimeter, 1) ~ " mm.", [referenceKey], edge);
+            }
+        }
+        spans = append(spans, [min(x0, x1), max(x0, x1)]);
+    }
+    spans = sort(spans, function(a, b)
+        {
+            return a[0] - b[0];
+        });
+    for (var k = 1; k < size(spans); k += 1)
+    {
+        if (spans[k][0] < spans[k - 1][1] - tol)
+        {
+            throw regenError("The wrapped reference must run along world X: it covers X = "
+                    ~ roundToPrecision(spans[k][0] * 1000, 1) ~ " mm more than once.", [referenceKey]);
+        }
+    }
+
+    const xLow = spans[0][0];
+    var xHigh = spans[0][1];
+    for (var s in spans)
+    {
+        xHigh = max(xHigh, s[1]);
+    }
+    const ax = alignPoint[0].value;
+    if (ax < xLow - tol || ax > xHigh + tol)
+    {
+        throw regenError("The wrapped alignment point (X = " ~ roundToPrecision(ax * 1000, 1) ~ " mm) must lie within the reference's X span ("
+                ~ roundToPrecision(xLow * 1000, 1) ~ " .. " ~ roundToPrecision(xHigh * 1000, 1) ~ " mm).", ["alignPoint"]);
+    }
+
+    return unwrapChart(context, reference, alignPoint, offset);
 }
 
 /**
@@ -446,14 +606,11 @@ function lengthOffset(definition is map) returns ValueWithUnits
 
 /**
  * Unwrap edges and extract them as wires.
- *
- * @param flatZ : undefined, or the z (in cs) every unwrapped point is put on -- the plate path
- *      enforces that the outline it lays on the plane IS planar, and reports how far it was off.
- * @returns {map} : { "bodies" (Query), "curves" (Query of the emitted edges), "tally", "record" }
+ * @returns {map} : { "bodies" (Query), "tally", "record", "chart", "lengthZ" }
  */
 function unwrapEdgesToWires(context is Context, id is Id, chart is map, cs is CoordSystem, edges is array, settings is map) returns map
 {
-    const emitted = unwrapEdges(context, id, chart, cs, 0 * meter, undefined, edges, settings);
+    const emitted = unwrapEdges(context, id, chart, cs, edges, settings);
     if (size(emitted.curves) == 0)
     {
         return { "bodies" : qNothing(), "tally" : emitted.tally, "record" : emitted.record,
@@ -469,52 +626,53 @@ function unwrapEdgesToWires(context is Context, id is Id, chart is map, cs is Co
 }
 
 /**
- * @returns {map} : { "curves" : array of body Queries, "tally", "record", "points" (all unwrapped samples) }
+ * @returns {map} : { "curves" : array of body Queries, "tally", "record" }
  */
-function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSystem, zShift is ValueWithUnits, flatZ,
-    edges is array, settings is map) returns map
+function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSystem, edges is array, settings is map) returns map
 {
     var curves = [];
     var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
-    var allPoints = [];
-    var worstFlat = 0 * meter;
     var lines = [];
+
+    // The frame as plain numbers: each point is built unitless and given metres once.
+    const o = cs.origin / meter;
+    const xa = cs.xAxis;
+    const ya = cross(cs.zAxis, cs.xAxis);
+    const za = cs.zAxis;
 
     for (var e = 0; e < size(edges); e += 1)
     {
         const edgeId = id + ("edge" ~ e);
         const length = evLength(context, { "entities" : edges[e] });
         const count = min(UNWRAP_MAX_SAMPLES, max(UNWRAP_MIN_SAMPLES, ceil(length / UNWRAP_SAMPLE_SPACING) + 1));
-
-        var parameters = [];
-        for (var j = 0; j < count; j += 1)
-        {
-            parameters = append(parameters, j / (count - 1));
-        }
-        const tangentLines = evEdgeTangentLines(context, { "edge" : edges[e], "parameters" : parameters });
+        const tangentLines = evEdgeTangentLines(context, { "edge" : edges[e], "parameters" : range(0, 1, count) });
 
         // Fast map, warm-started from the previous sample's foot; exact end tangents from the map's
         // derivative (research_unwrap_perf.md 2.3).
-        var points = [];
-        var feet = [];
+        var points = makeArray(count);
+        var feet = makeArray(count);
         var previous = undefined;
-        const yAxis = cross(cs.zAxis, cs.xAxis);
-        for (var tl in tangentLines)
+        for (var j = 0; j < count; j += 1)
         {
-            const u = unwrapFast(chart, tl.origin, previous);
-            previous = u;
-            var z = u[2] + zShift.value;
-            if (flatZ != undefined)
+            var u = unwrapFast(chart, tangentLines[j].origin, previous);
+            if (!chartFootConverged(u) && previous != undefined)
             {
-                const off = z - flatZ.value;
-                worstFlat = max(worstFlat, abs(off) * meter);
-                z = flatZ.value;
+                // A warm start can overshoot where the reference turns sharply: retry from X.
+                u = unwrapFast(chart, tangentLines[j].origin, undefined);
             }
-            points = append(points, cs.origin + (u[0] * meter) * cs.xAxis + (u[1] * meter) * yAxis + (z * meter) * cs.zAxis);
-            feet = append(feet, u);
+            if (!chartFootConverged(u))
+            {
+                throw regenError("An edge cannot be unwrapped (highlighted): a point on it lies past the reference's centre of curvature, so it has no foot on the reference.",
+                    ["edges"], edges[e]);
+            }
+            previous = u;
+            points[j] = vector(o[0] + u[0] * xa[0] + u[1] * ya[0] + u[2] * za[0],
+                        o[1] + u[0] * xa[1] + u[1] * ya[1] + u[2] * za[1],
+                        o[2] + u[0] * xa[2] + u[1] * ya[2] + u[2] * za[2]) * meter;
+            feet[j] = u;
         }
-        const startTangent = flattened(cs, flatZ, unwrapDirection(chart, cs, feet[0], tangentLines[0].direction));
-        const endTangent = flattened(cs, flatZ, unwrapDirection(chart, cs, feet[count - 1], tangentLines[count - 1].direction));
+        const startTangent = unwrapDirection(chart, cs, feet[0], tangentLines[0].direction);
+        const endTangent = unwrapDirection(chart, cs, feet[count - 1], tangentLines[count - 1].direction);
 
         const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
         const shape = emitted.shape;
@@ -522,7 +680,6 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
 
         tally[shape.kind] += 1;
         curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
-        allPoints = concatenateArrays([allPoints, points]);
         lines = append(lines, "    edge " ~ e ~ ": " ~ shape.kind
             ~ (shape.kind == "arc" ? " R " ~ fmtMM(shape.radius, 4, 0) : "")
             ~ ", length " ~ fmtMM(length, 3, 0) ~ " -> chord " ~ fmtMM(norm(points[count - 1] - points[0]), 3, 0) ~ gate);
@@ -539,8 +696,7 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
     return {
         "curves" : curves,
         "tally" : tally,
-        "points" : allPoints,
-        "record" : { "edges" : size(edges), "worstFlat" : worstFlat }
+        "record" : { "edges" : size(edges) }
     };
 }
 
@@ -551,11 +707,7 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
 function unwrapPart(context is Context, id is Id, definition is map, chart is map, cs is CoordSystem, part is Query,
     settings is map) returns map
 {
-    const result = unwrapSolid(context, id, chart, cs, part, {
-                "squareWalls" : definition.squareWalls,
-                "flatTolerance" : 0.001 * millimeter,
-                "print" : settings.print
-            });
+    const result = unwrapSolid(context, id, chart, cs, part, { "squareWalls" : definition.squareWalls });
     if (settings.print)
     {
         for (var text in result.lines)
@@ -588,77 +740,107 @@ function unwrapPart(context is Context, id is Id, definition is map, chart is ma
  * Length and volume check for one unwrapped body.
  *
  * Wrapped: the preserved curve -- the reference offset by the preserve-length offset -- measured in 3D (a dense
- * polyline on the chart's position tables) between the stations of the source part's extreme vertices. Flat: the flat
- * result's extent along the unwrapped X. The unwrap maps length along exactly that curve to X, so the two agree for a
- * good unwrap; a difference means the ends moved (a leaning wall, undrape stretch at the ends, a rebuild error).
+ * polyline on the chart's packed position tables) between the stations of the source's extreme points. Flat: the
+ * flat result's extent along the unwrapped X. The unwrap maps length along exactly that curve to X, so the two agree
+ * for a good unwrap; a difference means the ends moved (a leaning wall, undrape stretch at the ends, a rebuild error).
  * Volume: flat / source, solids only.
  *
+ * @param extent {Query} : the edges whose extent is measured -- the selected edges in Edges mode, all of the
+ *      part's edges otherwise. Points with no foot on the reference are skipped.
+ *
  * With `keep`, both curves are left in the model as wires: the wrapped one in the reference plane, the flat one at
- * the height the preserved curve lands at.
+ * the height the preserved curve lands at. They are not part of the feature's "output".
  */
-function lengthAndVolume(context is Context, id is Id, chart is map, cs is CoordSystem, source is Query, bodies is Query,
-    lengthZ is ValueWithUnits, keep is boolean) returns map
+function lengthAndVolume(context is Context, id is Id, chart is map, cs is CoordSystem, source is Query, extent is Query,
+    bodies is Query, lengthZ is ValueWithUnits, keep is boolean) returns map
 {
     if (isQueryEmpty(context, bodies))
     {
         return { "wrapped" : 0 * meter, "flat" : 0 * meter, "volumeRatio" : 0 };
     }
 
-    // Source extent in the chart: the extreme stations over its vertices (at most UNWRAP_CHECK_VERTICES of them).
-    const vertices = evaluateQuery(context, qOwnedByBody(source, EntityType.VERTEX));
+    // Extent in the chart: the extreme stations over the extent's vertices (at most UNWRAP_CHECK_VERTICES of them),
+    // each mapped once from a cold seed (vertices are unrelated, so no warm start).
+    const vertices = evaluateQuery(context, qAdjacent(extent, AdjacencyType.VERTEX, EntityType.VERTEX));
     const stride = max(1, ceil(size(vertices) / UNWRAP_CHECK_VERTICES));
     var arcLo = undefined;
     var arcHi = undefined;
-    var previous = undefined;
+    var sampled = [];
     for (var k = 0; k < size(vertices); k += stride)
     {
-        const u = unwrapFast(chart, evVertexPoint(context, { "vertex" : vertices[k] }), previous);
-        previous = u;
+        const u = unwrapFast(chart, evVertexPoint(context, { "vertex" : vertices[k] }), undefined);
+        if (!chartFootConverged(u))
+        {
+            continue;
+        }
+        sampled = append(sampled, { "vertex" : vertices[k], "arc" : u[3] });
         arcLo = (arcLo == undefined) ? u[3] : min(arcLo, u[3]);
         arcHi = (arcHi == undefined) ? u[3] : max(arcHi, u[3]);
     }
 
-    // A rounded end or a U-turn reaches furthest part way along an edge, not at a vertex: sample the edges that
-    // touch a vertex near either end of the extent.
-    var nearEnds = [];
-    previous = undefined;
-    for (var k = 0; k < size(vertices); k += stride)
+    // A rounded end or a U-turn reaches furthest part way along an edge, not at a vertex: sample the extent's edges
+    // that touch a vertex near either end (all of them when no vertex could be placed).
+    var endEdges = extent;
+    if (arcLo != undefined)
     {
-        const u = unwrapFast(chart, evVertexPoint(context, { "vertex" : vertices[k] }), previous);
-        previous = u;
-        if (u[3] - arcLo < UNWRAP_CHECK_END_ZONE || arcHi - u[3] < UNWRAP_CHECK_END_ZONE)
+        var nearEnds = [];
+        for (var s in sampled)
         {
-            nearEnds = append(nearEnds, vertices[k]);
+            if (s.arc - arcLo < UNWRAP_CHECK_END_ZONE || arcHi - s.arc < UNWRAP_CHECK_END_ZONE)
+            {
+                nearEnds = append(nearEnds, s.vertex);
+            }
         }
+        endEdges = qIntersection([qAdjacent(qUnion(nearEnds), AdjacencyType.VERTEX, EntityType.EDGE), extent]);
     }
-    var params = [];
-    for (var j = 1; j < UNWRAP_CHECK_EDGE_SAMPLES; j += 1)
+    const params = range(0, 1, UNWRAP_CHECK_EDGE_SAMPLES + 1);
+    for (var edge in evaluateQuery(context, endEdges))
     {
-        params = append(params, j / UNWRAP_CHECK_EDGE_SAMPLES);
-    }
-    for (var edge in evaluateQuery(context, qAdjacent(qUnion(nearEnds), AdjacencyType.VERTEX, EntityType.EDGE)))
-    {
-        previous = undefined;
-        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params }))
+        var previous = undefined;
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params, "arcLengthParameterization" : false }))
         {
-            const u = unwrapFast(chart, tl.origin, previous);
+            var u = unwrapFast(chart, tl.origin, previous);
+            if (!chartFootConverged(u) && previous != undefined)
+            {
+                u = unwrapFast(chart, tl.origin, undefined);
+            }
+            if (!chartFootConverged(u))
+            {
+                previous = undefined;
+                continue;
+            }
             previous = u;
-            arcLo = min(arcLo, u[3]);
-            arcHi = max(arcHi, u[3]);
+            arcLo = (arcLo == undefined) ? u[3] : min(arcLo, u[3]);
+            arcHi = (arcHi == undefined) ? u[3] : max(arcHi, u[3]);
         }
+    }
+    if (arcLo == undefined)
+    {
+        return { "wrapped" : 0 * meter, "flat" : 0 * meter, "volumeRatio" : 0 };
     }
 
+    // The preserved curve on the packed tables (plain metres; the same Hermite as referencePointAtArc).
+    const c = chart.packed;
+    var span = chartSpanOf(c, arcLo);
+    var last = undefined;
+    var wrappedM = 0;
     var points = [];
-    var wrapped = 0 * meter;
     for (var j = 0; j <= UNWRAP_CHECK_SAMPLES; j += 1)
     {
-        const p = referencePointAtArc(chart.alongRef, (arcLo + (arcHi - arcLo) * j / UNWRAP_CHECK_SAMPLES) * meter);
-        if (j > 0)
+        const a = arcLo + (arcHi - arcLo) * j / UNWRAP_CHECK_SAMPLES;
+        span = chartSpan(c, a, span);
+        const e = chartEval(c, a, span);
+        if (last != undefined)
         {
-            wrapped += norm(p - points[j - 1]);
+            wrappedM += sqrt((e[0] - last[0]) * (e[0] - last[0]) + (e[1] - last[1]) * (e[1] - last[1]) + (e[2] - last[2]) * (e[2] - last[2]));
         }
-        points = append(points, p);
+        last = e;
+        if (keep)
+        {
+            points = append(points, vector(e[0], e[1], e[2]) * meter);
+        }
     }
+    const wrapped = wrappedM * meter;
 
     const bb = evBox3d(context, { "topology" : bodies, "tight" : true, "cSys" : cs });
     const flat = bb.maxCorner[0] - bb.minCorner[0];
@@ -690,14 +872,6 @@ function lengthAndVolume(context is Context, id is Id, chart is map, cs is Coord
     return { "wrapped" : wrapped, "flat" : flat, "volumeRatio" : volumeRatio };
 }
 
-/** Vertices read for a body's extent in the length check, and samples on the wrapped length curve. */
-const UNWRAP_CHECK_VERTICES = 400;
-const UNWRAP_CHECK_SAMPLES = 400;
-
-/** Edges touching a vertex within this arc of either end of the extent are sampled along their length. */
-const UNWRAP_CHECK_END_ZONE = 0.03;
-const UNWRAP_CHECK_EDGE_SAMPLES = 40;
-
 function checkValues(checks is array, key is string) returns array
 {
     var values = [];
@@ -707,9 +881,6 @@ function checkValues(checks is array, key is string) returns array
     }
     return values;
 }
-
-/** How far a supplied end tangent may disagree with the edge's own three end points. */
-const UNWRAP_TANGENT_AGREE = 2 * degree;
 
 /**
  * Unit tangent at p0 of the parabola through p0, p1, p2 (chord spacing), pointing from p0 towards p1.
@@ -792,18 +963,6 @@ function emitFlatCurve(context is Context, id is Id, points is array, startTange
 }
 
 /**
- * A difference vector with its cs-Z component removed when the points are being laid flat, normalized.
- */
-function flattened(cs is CoordSystem, flatZ, v is Vector) returns Vector
-{
-    if (flatZ == undefined)
-    {
-        return normalize(v);
-    }
-    return normalize(v - dot(v, cs.zAxis) * cs.zAxis);
-}
-
-/**
  * Unit tangents of a line or arc answer at its two ends, pointed the way the edge runs.
  */
 function shapeEndTangents(shape is map, startHint is Vector, endHint is Vector) returns array
@@ -855,7 +1014,8 @@ function plateSidesGeneral(context is Context, part is Query) returns map
     {
         // Grow from EVERY pair of the group: a side whose faces are not all tangent-connected is only
         // reached in full from several seeds.
-        const candidate = grownSides(context, qUnion(g.side0), qUnion(g.side1), 0.5 * (g.offsetLow + g.offsetHigh));
+        const candidate = grownSides(context, qUnion(g.side0), qUnion(g.side1), 0.5 * (g.offsetLow + g.offsetHigh),
+            g.offsetHigh - g.offsetLow);
         if (candidate != undefined && (best == undefined || candidate.area > best.area))
         {
             best = candidate;
@@ -873,20 +1033,18 @@ function plateSidesGeneral(context is Context, part is Query) returns map
     }
     if (best == undefined || best.area < UNWRAP_SIDE_AREA_FRACTION * totalArea)
     {
-        throw regenError("Could not find the two sides of a constant-thickness plate on this part: it looks like a solid block. Part unwrapping is not built yet.", ["parts"]);
+        throw regenError("Could not find the two sides of a constant-thickness plate on this part: it looks like a solid block. Use Unwrap = Part (solid) for it.", ["parts"]);
     }
 
     return mergeMaps(best, { "walls" : qSubtraction(allFaces, qUnion([best.side0, best.side1])) });
 }
 
-/** The two sides and their plate area must cover this fraction of the part's area. */
-const UNWRAP_SIDE_AREA_FRACTION = 0.6;
-
 /**
  * Two seed faces grown by tangency into the plate's sides (45 deg: sides are G1 or gently creased,
  * walls meet them at 72-90 deg). undefined when the two grow into each other.
+ * @param spread : how far the seed pairs' offsets disagree (offsetHigh - offsetLow; 0 for a raycast seed).
  */
-function grownSides(context is Context, seed0 is Query, seed1 is Query, thickness is ValueWithUnits)
+function grownSides(context is Context, seed0 is Query, seed1 is Query, thickness is ValueWithUnits, spread is ValueWithUnits)
 {
     const side0 = qUnion(evaluateQuery(context, qTangentConnectedFaces(seed0, 45 * degree)));
     const side1 = qUnion(evaluateQuery(context, qTangentConnectedFaces(seed1, 45 * degree)));
@@ -898,7 +1056,7 @@ function grownSides(context is Context, seed0 is Query, seed1 is Query, thicknes
         "side0" : side0,
         "side1" : side1,
         "thickness" : thickness,
-        "spread" : 0 * meter,
+        "spread" : spread,
         "area" : evArea(context, { "entities" : qUnion([side0, side1])})
     };
 }
@@ -956,7 +1114,7 @@ function raycastSides(context is Context, part is Query)
         {
             continue;
         }
-        const candidate = grownSides(context, f, hits[0].entity, hits[0].distance + 1e-6 * meter);
+        const candidate = grownSides(context, f, hits[0].entity, hits[0].distance + 1e-6 * meter, 0 * meter);
         if (candidate != undefined)
         {
             return candidate;
@@ -1086,6 +1244,22 @@ function plateFromOutline(context is Context, id is Id, wireEdges is Query, flat
 }
 
 /**
+ * The faces of a plate side the section plane crosses, plus their neighbours on that side (so every crossed face
+ * is offset with the faces around it, as useFacesAroundToTrimOffset expects). The whole side when the plane
+ * crosses none of it -- profileFromFace then reports that the section misses the part.
+ */
+function facesNearPlane(context is Context, side is Query, pl is Plane) returns Query
+{
+    const crossed = evaluateQuery(context, qIntersectsPlane(side, pl));
+    if (size(crossed) == 0)
+    {
+        return side;
+    }
+    return qUnion(evaluateQuery(context, qUnion([qUnion(crossed),
+                        qIntersection([qAdjacent(qUnion(crossed), AdjacencyType.EDGE, EntityType.FACE), side])])));
+}
+
+/**
  * Undrape one constant-thickness part: its mid-surface onto the target (the wire's extrusion,
  * offset by the target offset), unwrapped flat and re-thickened.
  */
@@ -1099,31 +1273,40 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     var temporary = [];
     if (definition.targetFrom == UndrapeTargetSource.FACE)
     {
-        // The kernel refuses the trimmed offset of one side on some parts (4305: side 0 fails with
-        // DIRECT_EDIT_OFFSET_FACE_FAILED, side 1 works); either side gives the same mid-surface.
+        // Only the part of the mid-surface the section plane crosses is needed: offset just those side faces and
+        // their neighbours (~1 s per plate for all of them). The kernel refuses the trimmed offset of one side on
+        // some parts (4305: side 0 fails with DIRECT_EDIT_OFFSET_FACE_FAILED, side 1 works); either side gives the
+        // same mid-surface.
+        const sectionPlane = evPlane(context, { "face" : definition.profileFace });
         try silent
         {
             opExtractSurface(context, id + "mid", {
-                        "faces" : sides.side0,
+                        "faces" : facesNearPlane(context, sides.side0, sectionPlane),
                         "offset" : -0.5 * thickness,
                         "useFacesAroundToTrimOffset" : true
                     });
         }
         catch
         {
-            opExtractSurface(context, id + "mid", {
-                        "faces" : sides.side1,
+            // Its own id: a failed operation can still hold the first one ("Duplicate id").
+            opExtractSurface(context, id + "midAlt", {
+                        "faces" : facesNearPlane(context, sides.side1, sectionPlane),
                         "offset" : -0.5 * thickness,
                         "useFacesAroundToTrimOffset" : true
                     });
         }
-        wire = profileFromFace(context, id + "profile", qCreatedBy(id + "mid", EntityType.BODY), definition.profileFace);
-        temporary = [qCreatedBy(id + "mid", EntityType.BODY), wire];
+        const mid = qUnion([qCreatedBy(id + "mid", EntityType.BODY), qCreatedBy(id + "midAlt", EntityType.BODY)]);
+        wire = profileFromFace(context, id + "profile", mid, definition.profileFace);
+        temporary = [mid, wire];
     }
 
     const offset = definition.flipTargetOffset ? -definition.targetOffset : definition.targetOffset;
-    const chart = unwrapChart(context, wire, alignPoint, offset);
-    const undraped = undrapeOutline(context, id + "undrape", chart, sides.side0, sides.side1, thickness, definition.sampleSpacing);
+    const chart = checkedChart(context, wire, (definition.targetFrom == UndrapeTargetSource.FACE) ? "profileFace" : "reference",
+        alignPoint, offset);
+    const undraped = undrapeOutline(context, id + "undrape", chart, sides.side0, sides.side1, thickness, {
+                "spacing" : definition.sampleSpacing,
+                "deformation" : definition.measureDeformation
+            });
 
     // The mid-surface lands on the target, chart height 0 on it: cs z = -alignHeight. Laid on the plane,
     // the plate's lower face is on cs's XY plane instead.
@@ -1155,13 +1338,10 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         if (settings.print)
         {
             // Printed BEFORE emitting, so an edge the kernel refuses names itself.
-            println("    loop " ~ edge.loop ~ " edge " ~ edge.index ~ ": " ~ size(points) ~ " points, "
-                ~ fmtVec(points[0] / millimeter, 3, 0) ~ " -> " ~ fmtVec(points[size(points) - 1] / millimeter, 3, 0) ~ " mm, chord "
-                ~ fmtMM(norm(points[size(points) - 1] - points[0]), 4, 0) ~ " mm, end tangents "
-                ~ fmtVec(startTangent, 4, 0) ~ " / " ~ fmtVec(endTangent, 4, 0));
-        }
-        if (settings.print)
-        {
+            println("    loop " ~ edge.loop ~ " edge " ~ edge.index ~ ": " ~ size(points) ~ " points,"
+                ~ fmtVec(points[0] / millimeter, 3, 11) ~ " ->" ~ fmtVec(points[size(points) - 1] / millimeter, 3, 11) ~ " mm, chord "
+                ~ fmtMM(norm(points[size(points) - 1] - points[0]), 4, 0) ~ " mm, end tangents"
+                ~ fmtVec(startTangent, 4, 8) ~ " /" ~ fmtVec(endTangent, 4, 8));
             var pts = "";
             for (var i = 0; i < size(edge.points); i += 1)
             {
@@ -1211,56 +1391,147 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
 // ============================================================================
 
 /**
- * Read the source bodies' names, materials and appearances into the Outputs table -- only when the
- * button is pressed (getProperty works in editing logic, never in the feature body; correction 36).
- * Rows keep the user's output name when the source is unchanged.
+ * Keep the Outputs table in step with the source bodies (getProperty works in editing logic, never in the
+ * feature body; correction 36). Rebuilt when "Read names and properties" is pressed or the source bodies
+ * (by name, in order) differ from the rows; a name-suffix change renames the rows that still carry the
+ * automatic name. A rebuilt row whose source name matches an existing row keeps that row's edited output
+ * name and its "Copy material and appearance" choice; without the button press it also keeps the material
+ * and appearance it read before (properties are re-read only on the button).
  */
 export function unwrapEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
 {
-    if (clickedButton != "readProperties")
+    // Only the button updates the table (the user's rule: metadata is copied on request, never behind their back).
+    // A press keeps a row's edited output name and copy choice when its source name still matches.
+    const pressed = clickedButton == "readProperties";
+    if (!pressed)
     {
         return definition;
     }
+    const oldRows = (definition.outputs == undefined) ? [] : definition.outputs;
+    const oldSuffix = (oldDefinition.nameSuffix == undefined) ? definition.nameSuffix : oldDefinition.nameSuffix;
 
-    var rows = [];
-    for (var body in sourceBodies(context, definition))
+    const sources = sourceBodies(context, definition);
+    var names = [];
+    for (var body in sources)
     {
-        const name = getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME });
-        const mat = getProperty(context, { "entity" : body, "propertyType" : PropertyType.MATERIAL });
-        const look = getProperty(context, { "entity" : body, "propertyType" : PropertyType.APPEARANCE });
+        names = append(names, propertyText(getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME })));
+    }
 
-        var materialData = "";
-        var materialLabel = "(none)";
-        if (mat != undefined)
+    var used = makeArray(size(oldRows), false);
+    var rows = [];
+    for (var i = 0; i < size(names); i += 1)
+    {
+        var previous = undefined;
+        for (var k = 0; k < size(oldRows); k += 1)
         {
-            const density = mat.density / (kilogram / meter ^ 3);
-            materialData = mat.name ~ "|" ~ toString(density);
-            materialLabel = mat.name ~ " (" ~ toString(roundToPrecision(density, 3)) ~ " kg/m^3)";
-        }
-        var appearanceData = "";
-        if (look != undefined)
-        {
-            appearanceData = look.red ~ "|" ~ look.green ~ "|" ~ look.blue ~ "|" ~ look.alpha;
+            if (!used[k] && oldRows[k].sourceName == names[i])
+            {
+                used[k] = true;
+                previous = oldRows[k];
+                break;
+            }
         }
 
-        rows = append(rows, {
-                    "sourceName" : name,
-                    "outputName" : name ~ definition.nameSuffix,
-                    "materialLabel" : materialLabel,
-                    "copyProperties" : true,
-                    "materialData" : materialData,
-                    "appearanceData" : appearanceData
-                });
+        var row = (pressed || previous == undefined) ? readRow(context, sources[i], names[i], definition.nameSuffix) : previous;
+        if (previous != undefined)
+        {
+            row.copyProperties = previous.copyProperties;
+            const automatic = previous.outputName == "" || previous.outputName == previous.sourceName ~ oldSuffix
+                || previous.outputName == previous.sourceName ~ definition.nameSuffix;
+            row.outputName = automatic ? names[i] ~ definition.nameSuffix : previous.outputName;
+        }
+        rows = append(rows, row);
     }
     definition.outputs = rows;
     return definition;
 }
 
+/** One Outputs row read from a source body: material stored as "density|name" (a name may hold a bar). */
+function readRow(context is Context, body is Query, name is string, suffix is string) returns map
+{
+    const mat = getProperty(context, { "entity" : body, "propertyType" : PropertyType.MATERIAL });
+    const look = getProperty(context, { "entity" : body, "propertyType" : PropertyType.APPEARANCE });
+
+    var materialData = "";
+    var materialLabel = "(none)";
+    if (mat != undefined && mat.density != undefined)
+    {
+        const density = mat.density / (kilogram / meter ^ 3);
+        const matName = propertyText(mat.name);
+        materialData = toString(density) ~ "|" ~ matName;
+        materialLabel = matName ~ " (" ~ toString(roundToPrecision(density, 3)) ~ " kg/m^3)";
+    }
+    var appearanceData = "";
+    if (look != undefined)
+    {
+        appearanceData = look.red ~ "|" ~ look.green ~ "|" ~ look.blue ~ "|" ~ look.alpha;
+    }
+
+    return {
+        "sourceName" : name,
+        "outputName" : name ~ suffix,
+        "materialLabel" : materialLabel,
+        "copyProperties" : true,
+        "materialData" : materialData,
+        "appearanceData" : appearanceData
+    };
+}
+
+/** A property read back as text: "" when undefined (a sketch-owned wire can have no name). */
+function propertyText(value) returns string
+{
+    if (value == undefined)
+    {
+        return "";
+    }
+    return (value is string) ? value : toString(value);
+}
+
+/**
+ * A row's material data as { "name", "density" (kg/m^3 number) }, or undefined when it cannot be read.
+ * Current format "density|name"; the first release wrote "name|density", still read.
+ */
+function parseMaterialData(data is string)
+{
+    const current = match(data, "^([^|]*)\\|(.*)$");
+    if (current.hasMatch && match(current.captures[1], UNWRAP_NUMBER_PATTERN).hasMatch)
+    {
+        return { "density" : stringToNumber(current.captures[1]), "name" : current.captures[2] };
+    }
+    const legacy = match(data, "^(.*)\\|([^|]*)$");
+    if (legacy.hasMatch && match(legacy.captures[2], UNWRAP_NUMBER_PATTERN).hasMatch)
+    {
+        return { "density" : stringToNumber(legacy.captures[2]), "name" : legacy.captures[1] };
+    }
+    return undefined;
+}
+
+/** A row's appearance data "r|g|b|a" as four numbers, or undefined when it cannot be read. */
+function parseAppearanceData(data is string)
+{
+    const parts = splitByRegexp(data, "\\|");
+    if (size(parts) != 4)
+    {
+        return undefined;
+    }
+    var values = [];
+    for (var p in parts)
+    {
+        if (!match(p, UNWRAP_NUMBER_PATTERN).hasMatch)
+        {
+            return undefined;
+        }
+        values = append(values, stringToNumber(p));
+    }
+    return values;
+}
+
 /**
  * Name each output from its table row and copy what the row carries; attributes straight from the source.
+ * @param useTable : false when the rows no longer pair with the sources (then only attributes are copied).
  */
-function applyNamesAndProperties(context is Context, definition is map, outputs is array)
+function applyNamesAndProperties(context is Context, definition is map, outputs is array, useTable is boolean)
 {
     for (var i = 0; i < size(outputs); i += 1)
     {
@@ -1278,7 +1549,7 @@ function applyNamesAndProperties(context is Context, definition is map, outputs 
             }
         }
 
-        if (i >= size(definition.outputs))
+        if (!useTable || i >= size(definition.outputs))
         {
             continue;
         }
@@ -1291,17 +1562,17 @@ function applyNamesAndProperties(context is Context, definition is map, outputs 
         {
             continue;
         }
-        if (row.materialData != "")
+        const mat = parseMaterialData(row.materialData);
+        if (mat != undefined)
         {
-            const parts = splitByRegexp(row.materialData, "\\|");
             setProperty(context, { "entities" : bodies, "propertyType" : PropertyType.MATERIAL,
-                        "value" : material(parts[0], stringToNumber(parts[1]) * kilogram / meter ^ 3) });
+                        "value" : material(mat.name, mat.density * kilogram / meter ^ 3) });
         }
-        if (row.appearanceData != "")
+        const look = parseAppearanceData(row.appearanceData);
+        if (look != undefined)
         {
-            const c = splitByRegexp(row.appearanceData, "\\|");
             setProperty(context, { "entities" : bodies, "propertyType" : PropertyType.APPEARANCE,
-                        "value" : color(stringToNumber(c[0]), stringToNumber(c[1]), stringToNumber(c[2]), stringToNumber(c[3])) });
+                        "value" : color(look[0], look[1], look[2], look[3]) });
         }
     }
 }
@@ -1310,8 +1581,13 @@ function applyNamesAndProperties(context is Context, definition is map, outputs 
 // Reporting
 // ============================================================================
 
-function reportSummary(context is Context, id is Id, definition is map, tally is map, records is array)
+/**
+ * One line for the feature's notice: info, or a warning when `warnings` (or an undrape's failed stations /
+ * dropped points) are present -- the requested output then exists but is known to be incomplete or unnamed.
+ */
+function reportSummary(context is Context, id is Id, definition is map, tally is map, records is array, warningsIn is array)
 {
+    var warnings = warningsIn;
     var text = "Unwrapped " ~ size(records) ~ " bod" ~ (size(records) == 1 ? "y" : "ies") ~ ": "
         ~ tally.line ~ " line(s), " ~ tally.arc ~ " arc(s), " ~ tally.freeform ~ " spline(s).";
     for (var r in records)
@@ -1321,11 +1597,33 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
             const u = r.report;
             text = text ~ " Thickness " ~ fmtMM(r.thickness, 4, 0) ~ " mm (offset pairs within " ~ fmtMM(r.spread, 5, 0)
                 ~ " mm); mid-surface mapped to the target offset " ~ fmtMM(r.offset, 4, 0) ~ " mm; "
-                ~ u.stations ~ " stations, " ~ u.fallbacks ~ " kernel sections. Deformation: lengthwise stretch "
-                ~ toString(roundToPrecision(u.stretchMin * 100, 3)) ~ "% .. " ~ toString(roundToPrecision(u.stretchMax * 100, 3))
-                ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax * 180 / PI, 2)) ~ " deg; rim "
-                ~ fmtMM(u.rim3d, 3, 0) ~ " mm draped -> " ~ fmtMM(u.rimFlat, 3, 0) ~ " mm flat"
+                ~ u.stations ~ " stations, " ~ u.fallbacks ~ " kernel sections.";
+            if (definition.measureDeformation != false && u.stretchMin != undefined && u.stretchMax != undefined && u.shearMax != undefined)
+            {
+                text = text ~ " Deformation: lengthwise stretch "
+                    ~ toString(roundToPrecision(u.stretchMin * 100, 3)) ~ "% .. " ~ toString(roundToPrecision(u.stretchMax * 100, 3))
+                    ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax * 180 / PI, 2)) ~ " deg;";
+            }
+            text = text ~ " rim " ~ fmtMM(u.rim3d, 3, 0) ~ " mm draped -> " ~ fmtMM(u.rimFlat, 3, 0) ~ " mm flat"
                 ~ (r.pieces > 1 ? "; " ~ r.pieces ~ " solids" : "") ~ ".";
+
+            const failed = countOf(u.failed);
+            const dropped = countOf(u.droppedPoints);
+            if (failed > 0 || dropped > 0)
+            {
+                var where = "";
+                if (u.failedArcs is array)
+                {
+                    for (var k = 0; k < size(u.failedArcs); k += 1)
+                    {
+                        where = where ~ (k > 0 ? ", " : "") ~ toString(roundToPrecision(u.failedArcs[k], 1));
+                    }
+                }
+                warnings = append(warnings, "Undrape: " ~ failed ~ " station(s) could not be solved"
+                    ~ (where != "" ? " (at arc " ~ where ~ " mm)" : "")
+                    ~ (dropped > 0 ? ", " ~ dropped ~ " outline point(s) dropped" : "")
+                    ~ "; the flat outline is fitted across the gaps.");
+            }
         }
     }
     for (var r in records)
@@ -1346,10 +1644,36 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
                 ~ ((k.volumeRatio > 0) ? "; volume x" ~ toString(roundToPrecision(k.volumeRatio, 6)) : "") ~ ".";
         }
     }
-    println("[unwrap] " ~ text);
-    if (size(definition.outputs) != size(records))
+    if (definition.debugPrintEdges)
+    {
+        println("[unwrap] " ~ text);
+    }
+    if (size(definition.outputs) == 0)
     {
         text = text ~ " Press 'Read names and properties' to name the outputs.";
     }
-    reportFeatureInfo(context, id, text);
+
+    if (size(warnings) > 0)
+    {
+        var head = "";
+        for (var w in warnings)
+        {
+            head = head ~ w ~ " ";
+        }
+        reportFeatureWarning(context, id, head ~ text);
+    }
+    else
+    {
+        reportFeatureInfo(context, id, text);
+    }
+}
+
+/** A count that may arrive as a number, an array or undefined. */
+function countOf(value) returns number
+{
+    if (value == undefined)
+    {
+        return 0;
+    }
+    return (value is array) ? size(value) : value;
 }

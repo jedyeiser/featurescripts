@@ -96,8 +96,11 @@ export const UNDRAPE_LENGTHWISE = 0.5;
 /** Station arcs closer than this share one station, metres. */
 export const UNDRAPE_STATION_MERGE = 1e-8;
 
-/** Outline end points of rim edges closer than this are one vertex, metres. */
-export const UNDRAPE_VERTEX_TOL = 1e-7;
+/**
+ * Rim edge ends closer than this are one outline vertex where the topological vertex keys miss
+ * (undrapeRimLoops), metres: tolerant models leave ends up to ~0.6 um apart (4305).
+ */
+export const UNDRAPE_VERTEX_MATCH = 1e-6;
 
 /** Step between the three stations inside each edge end that give the flat edge its end tangent, metres. */
 export const UNDRAPE_TANGENT_STEP = 2e-4;
@@ -132,64 +135,8 @@ export const UNDRAPE_KERNEL_RETRIES = [0, 1e-6, -1e-6, 5e-5, -5e-5];
 //   23 face0, 24 face1         the edge's side faces (indices into the side's faces; -1: none, a rim edge)
 
 // ============================================================================
-// Chart access (plain numbers)
+// Chart access (plain numbers; chartEval / chartSeedArc / chartSpanOf / chartFoot are edge_offset_utils')
 // ============================================================================
-
-/**
- * The packed chart at arc a: [ax, ay, az, tx, ty, tz, theta, kappa, scale]. Same cubic as
- * edge_offset_utils' chartEval (whose foot chartFoot solves), with a binary span search so that
- * stations in any order cost O(log n). Past either end the reference runs on straight.
- */
-export function undrapeChartAt(c is map, a is number) returns array
-{
-    const last = c.count - 1;
-    if (a <= c.arcs[0] || a >= c.arcs[last])
-    {
-        const j = (a <= c.arcs[0]) ? 0 : last;
-        const d = a - c.arcs[j];
-        const s = sqrt(c.rx[j] * c.rx[j] + c.ry[j] * c.ry[j] + c.rz[j] * c.rz[j]);
-        return [c.px[j] + d * c.rx[j], c.py[j] + d * c.ry[j], c.pz[j] + d * c.rz[j],
-                c.rx[j] / s, c.ry[j] / s, c.rz[j] / s, c.theta[j], 0, s];
-    }
-    var low = 0;
-    var high = last - 1;
-    while (low < high)
-    {
-        const half = floor((low + high) / 2);
-        if (a <= c.arcs[half + 1])
-        {
-            high = half;
-        }
-        else
-        {
-            low = half + 1;
-        }
-    }
-    const i = low;
-    const k = i + 1;
-    const hs = c.arcs[k] - c.arcs[i];
-    const f = (a - c.arcs[i]) / hs;
-    const f2 = f * f;
-    const f3 = f2 * f;
-    const h00 = 2 * f3 - 3 * f2 + 1;
-    const h10 = (f3 - 2 * f2 + f) * hs;
-    const h01 = 3 * f2 - 2 * f3;
-    const h11 = (f3 - f2) * hs;
-    const g0 = (6 * f2 - 6 * f) / hs;
-    const g10 = 3 * f2 - 4 * f + 1;
-    const g11 = 3 * f2 - 2 * f;
-    const dx = g0 * (c.px[i] - c.px[k]) + g10 * c.rx[i] + g11 * c.rx[k];
-    const dy = g0 * (c.py[i] - c.py[k]) + g10 * c.ry[i] + g11 * c.ry[k];
-    const dz = g0 * (c.pz[i] - c.pz[k]) + g10 * c.rz[i] + g11 * c.rz[k];
-    const s = sqrt(dx * dx + dy * dy + dz * dz);
-    return [h00 * c.px[i] + h10 * c.rx[i] + h01 * c.px[k] + h11 * c.rx[k],
-            h00 * c.py[i] + h10 * c.ry[i] + h01 * c.py[k] + h11 * c.ry[k],
-            h00 * c.pz[i] + h10 * c.rz[i] + h01 * c.pz[k] + h11 * c.rz[k],
-            dx / s, dy / s, dz / s,
-            h00 * c.theta[i] + h10 * c.kappa[i] + h01 * c.theta[k] + h11 * c.kappa[k],
-            c.kappa[i] + (c.kappa[k] - c.kappa[i]) * f,
-            s];
-}
 
 /**
  * A station: its plane and the flat x of everything on it (before the alignment is subtracted).
@@ -197,7 +144,7 @@ export function undrapeChartAt(c is map, a is number) returns array
  */
 export function undrapeFrame(c is map, a is number) returns map
 {
-    const e = undrapeChartAt(c, a);
+    const e = chartEval(c, a, chartSpanOf(c, a));
     return {
         "arc" : a,
         "x" : a - c.delta * e[6],
@@ -210,65 +157,11 @@ export function undrapeFrame(c is map, a is number) returns map
     };
 }
 
-/** Seed arc for chartFoot from a world X: linear in the packed samples (W runs in +X, unwrapChart checks). */
-export function undrapeSeedArc(c is map, qx is number) returns number
-{
-    const last = c.count - 1;
-    if (qx <= c.px[0])
-    {
-        return c.arcs[0] + (qx - c.px[0]);
-    }
-    if (qx >= c.px[last])
-    {
-        return c.arcs[last] + (qx - c.px[last]);
-    }
-    var low = 0;
-    var high = last - 1;
-    while (low < high)
-    {
-        const half = floor((low + high) / 2);
-        if (qx <= c.px[half + 1])
-        {
-            high = half;
-        }
-        else
-        {
-            low = half + 1;
-        }
-    }
-    const span = c.px[low + 1] - c.px[low];
-    if (span < 1e-15)
-    {
-        return c.arcs[low];
-    }
-    return c.arcs[low] + (c.arcs[low + 1] - c.arcs[low]) * (qx - c.px[low]) / span;
-}
-
-/** Span of the packed chart holding arc a (binary search): the hint chartFoot walks from. */
-export function undrapeSpanOf(c is map, a is number) returns number
-{
-    var low = 0;
-    var high = c.count - 2;
-    while (low < high)
-    {
-        const half = floor((low + high) / 2);
-        if (a <= c.arcs[half + 1])
-        {
-            high = half;
-        }
-        else
-        {
-            low = half + 1;
-        }
-    }
-    return low;
-}
-
 /** Chart arc of a world point (plain metres): the station whose plane holds it. */
 export function undrapeFootArc(c is map, p is array, seed) returns number
 {
-    const a0 = (seed == undefined) ? undrapeSeedArc(c, p[0]) : seed;
-    return chartFoot(c, p[0], p[1], p[2], a0, undrapeSpanOf(c, a0))[0];
+    const a0 = (seed == undefined) ? chartSeedArc(c, p[0]) : seed;
+    return chartFoot(c, p[0], p[1], p[2], a0, chartSpanOf(c, a0))[0];
 }
 
 // ============================================================================
@@ -505,8 +398,8 @@ export function undrapeSampleSide(context is Context, side is Query, c is map) r
         if (size(sideFaces) > 1)
         {
             const o = rough3[1].origin;
-            const a0 = undrapeSeedArc(c, o[0].value);
-            const f = chartFoot(c, o[0].value, o[1].value, o[2].value, a0, undrapeSpanOf(c, a0));
+            const a0 = chartSeedArc(c, o[0].value);
+            const f = chartFoot(c, o[0].value, o[1].value, o[2].value, a0, chartSpanOf(c, a0));
             const u = rough3[1].direction;
             creased = abs(u[0] * f[5] + u[1] * f[6] + u[2] * f[7]) >= UNDRAPE_LENGTHWISE
                 && evEdgeConvexity(context, { "edge" : edge }) != EdgeConvexityType.SMOOTH;
@@ -1770,7 +1663,8 @@ export function undrapeChainMidAt(section is map, w0 is number, h0 is number) re
 /**
  * One side's kernel section at a station: the plane sheet `planeId` intersected with the side's faces
  * whose boxes straddle it, read back as a chain ordered by width.
- * @returns {map} : { "ws", "hs", "arcs" } (side arc along the chain, from its first point)
+ * @returns {map} : { "ws", "hs", "arcs" } (side arc along the chain, from its first point); "refused" : true
+ *      when the kernel could not intersect.
  */
 export function undrapeKernelChain(context is Context, ixId is Id, planeId is Id, faces is array, boxes is array, fr is map) returns map
 {
@@ -1787,7 +1681,18 @@ export function undrapeKernelChain(context is Context, ixId is Id, planeId is Id
     {
         return { "ws" : [], "hs" : [], "arcs" : [] };
     }
-    opIntersectFaces(context, ixId, { "tools" : qCreatedBy(planeId, EntityType.FACE), "targets" : qUnion(hits) });
+    // only the kernel op may fail here (a plane exactly through a vertex: "Failed to completely
+    // disambiguate created topology"); everything after it is ours and must not be silenced
+    var cut = false;
+    try silent
+    {
+        opIntersectFaces(context, ixId, { "tools" : qCreatedBy(planeId, EntityType.FACE), "targets" : qUnion(hits) });
+        cut = true;
+    }
+    if (!cut)
+    {
+        return { "ws" : [], "hs" : [], "arcs" : [], "refused" : true };
+    }
 
     const a = fr.a;
     var pieces = [];
@@ -2070,10 +1975,27 @@ export function undrapeChainByEnds(pieces is array) returns map
 export function undrapeKernelSection(context is Context, kid is Id, kernel is map, fr is map, reach is number) returns map
 {
     const size2 = 2 * reach + 0.02;
-    opPlane(context, kid + "plane", { "plane" : plane(vector(fr.a[0], fr.a[1], fr.a[2]) * meter, vector(fr.t[0], fr.t[1], fr.t[2]),
-                        vector(fr.w[0], fr.w[1], fr.w[2])), "width" : size2 * meter, "height" : size2 * meter });
+    var made = false;
+    try silent
+    {
+        opPlane(context, kid + "plane", { "plane" : plane(vector(fr.a[0], fr.a[1], fr.a[2]) * meter, vector(fr.t[0], fr.t[1], fr.t[2]),
+                            vector(fr.w[0], fr.w[1], fr.w[2])), "width" : size2 * meter, "height" : size2 * meter });
+        made = true;
+    }
+    if (!made)
+    {
+        return { "ok" : false, "why" : "kernel refused the section plane" };
+    }
     const chainA = undrapeKernelChain(context, kid + "ixA", kid + "plane", kernel.facesA, kernel.boxesA, fr);
+    if (chainA.refused == true)
+    {
+        return { "ok" : false, "why" : "kernel refused the section" };
+    }
     const chainB = undrapeKernelChain(context, kid + "ixB", kid + "plane", kernel.facesB, kernel.boxesB, fr);
+    if (chainB.refused == true)
+    {
+        return { "ok" : false, "why" : "kernel refused the section" };
+    }
     if (size(chainA.ws) < 2 || size(chainB.ws) < 2)
     {
         return { "ok" : false, "why" : "empty kernel section" };
@@ -2098,7 +2020,8 @@ export function undrapeKernelSection(context is Context, kid is Id, kernel is ma
  *
  * A plane exactly through a vertex can fail in the kernel ("Failed to completely disambiguate created
  * topology"); the station is retried shifted by UNDRAPE_KERNEL_RETRIES. The frame actually used is
- * returned so the caller maps with it.
+ * returned: edge crossings are read on it (their x is the shifted station's), but a "point" request keeps
+ * its own station's x (the shifted frame only finds the section; up to 5e-5 m of x error otherwise).
  *
  * @returns {map} : { "ok", "why", "section", "frame", "attempts" }
  */
@@ -2108,16 +2031,13 @@ export function undrapeRefusedSection(context is Context, id is Id, kernel is ma
     for (var r = 0; r < size(UNDRAPE_KERNEL_RETRIES); r += 1)
     {
         const shifted = (r == 0) ? fr : undrapeFrame(c, fr.arc + UNDRAPE_KERNEL_RETRIES[r]);
-        var section = undefined;
-        try silent
-        {
-            section = undrapeKernelSection(context, id + (tag ~ "_" ~ r), kernel, shifted, reach);
-        }
-        if (section != undefined && section.ok)
+        // the kernel ops inside are guarded there (try silent around opPlane / opIntersectFaces only)
+        const section = undrapeKernelSection(context, id + (tag ~ "_" ~ r), kernel, shifted, reach);
+        if (section.ok)
         {
             return { "ok" : true, "section" : section, "frame" : shifted, "attempts" : r + 1 };
         }
-        why = (section == undefined) ? "kernel refused the section" : section.why;
+        why = section.why;
     }
     return { "ok" : false, "why" : why, "attempts" : size(UNDRAPE_KERNEL_RETRIES) };
 }
@@ -2152,7 +2072,8 @@ export function undrapeKernelFaces(context is Context, sideA is Query, sideB is 
 /**
  * The side's rim edges chained into closed loops by their end points.
  * @returns {map} : { "loops" : array of arrays of [tableIndex, reversed], "vertexOf" : map table ->
- *      [startVertex, endVertex], "vertices" : array of [x, y, z], "open" : number of chains that did not close }
+ *      [startVertex, endVertex], "vertices" : array of [x, y, z], "open" : number of chains that did not close,
+ *      "openAt" : array of [x, y, z], the vertex where each open chain stopped }
  */
 export function undrapeRimLoops(tables is array, rim is array) returns map
 {
@@ -2169,28 +2090,36 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
         {
             const i = (end == 0) ? 0 : last;
             const p = [tb.px[i], tb.py[i], tb.pz[i]];
-            // topological vertex first (tolerant models leave edge ends apart), else by position
+            // topological vertex first (tolerant models leave edge ends apart); whenever that lookup misses
+            // (no key, or a key not met yet: the model has two vertices where the outline has one), the
+            // nearest vertex within UNDRAPE_VERTEX_MATCH that is not already met by two rim edges
             const key = (tb.vertexKeys == undefined) ? undefined : tb.vertexKeys[end];
             var found = (key == undefined || byKey[key] == undefined) ? -1 : byKey[key];
-            for (var v = 0; found < 0 && key == undefined && v < size(vertices); v += 1)
+            if (found < 0)
             {
-                const dx = vertices[v][0] - p[0];
-                const dy = vertices[v][1] - p[1];
-                const dz = vertices[v][2] - p[2];
-                if (dx * dx + dy * dy + dz * dz < UNDRAPE_VERTEX_TOL * UNDRAPE_VERTEX_TOL)
+                var nearest = UNDRAPE_VERTEX_MATCH * UNDRAPE_VERTEX_MATCH;
+                for (var v = 0; v < size(vertices); v += 1)
                 {
-                    found = v;
+                    const dx = vertices[v][0] - p[0];
+                    const dy = vertices[v][1] - p[1];
+                    const dz = vertices[v][2] - p[2];
+                    const d2 = dx * dx + dy * dy + dz * dz;
+                    if (d2 < nearest && size(incident[v]) < 2)
+                    {
+                        nearest = d2;
+                        found = v;
+                    }
                 }
-            }
-            if (found < 0 && key != undefined)
-            {
-                byKey[key] = size(vertices);
             }
             if (found < 0)
             {
                 found = size(vertices);
                 vertices = append(vertices, p);
                 incident = append(incident, []);
+            }
+            if (key != undefined && byKey[key] == undefined)
+            {
+                byKey[key] = found;
             }
             ends = append(ends, found);
             if (size(ends) == 1 || ends[1] != ends[0])
@@ -2204,6 +2133,7 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
     var used = {};
     var loops = [];
     var open = 0;
+    var openAt = [];
     for (var r in rim)
     {
         if (used[r] == true)
@@ -2228,6 +2158,7 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
             if (next < 0)
             {
                 open += 1;
+                openAt = append(openAt, vertices[current]);
                 break;
             }
             used[next] = true;
@@ -2237,7 +2168,7 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
         }
         loops = append(loops, loop);
     }
-    return { "loops" : loops, "vertexOf" : vertexOf, "vertices" : vertices, "open" : open };
+    return { "loops" : loops, "vertexOf" : vertexOf, "vertices" : vertices, "open" : open, "openAt" : openAt };
 }
 
 // ============================================================================
@@ -2249,7 +2180,11 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
  * @param chart : from unwrapChart(context, W, alignPoint, d).
  * @param side0, side1 {Query} : the plate's two side face sets (side0 outward normals point away from side1).
  * @param thickness {ValueWithUnits}
- * @param spacing {ValueWithUnits} : outline sample spacing (default the caller passes 6 mm).
+ * @param options {{
+ *      @field spacing {ValueWithUnits} : outline sample spacing (the caller's default is 6 mm).
+ *      @field deformation {boolean} : compute the deformation report (stretch / shear along the rim and bend
+ *          lines, ~0.2 s on the topsheet); false leaves stretchMin / stretchMax / shearMax at 0.
+ * }}
  * @returns {map} : {
  *   "edges" : array, one per outline (rim) edge of the chosen side, each {
  *        "loop" : number (which closed loop), "index" : position in that loop (loops ordered, edges in order around the loop),
@@ -2260,15 +2195,19 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
  *     consecutive edges of a loop share their end point EXACTLY (each shared vertex is computed once).
  *     Loop 0 is the outer loop (largest area) and runs counter-clockwise in (x, y); the others clockwise.
  *   "report" : { "stations", "fallbacks", "stretchMin", "stretchMax", "stretchWhere" ([x, y] metres), "shearMax" (radians),
- *                "rim3d", "rimFlat" (ValueWithUnits) },
+ *                "rim3d", "rimFlat" (ValueWithUnits), "failed" (stations that could not be measured), "failedArcs" (their
+ *                chart arcs, mm), "droppedPoints" (outline samples left out because their station failed),
+ *                "shifted" (refused stations the kernel sectioned only at a shifted arc) },
+ *   Throws when a rim loop does not close, or when a station through an outline vertex cannot be measured.
  *   "lines" : array of strings for a debug print }
  */
 export function undrapeOutline(context is Context, id is Id, chart is map, side0 is Query, side1 is Query,
-    thickness is ValueWithUnits, spacing is ValueWithUnits) returns map
+    thickness is ValueWithUnits, options is map) returns map
 {
     const c = chart.packed;
     const tk = thickness.value;
-    const sp = max(spacing.value, 5e-4);
+    const sp = max(options.spacing.value, 5e-4);
+    const withDeformation = options.deformation != false;
 
     // 1. Side: the one with fewer edges (either works); the other is only read by the kernel fallback.
     // Unless the two sides' areas disagree by more than 1 %: then one of them was found incomplete (its faces
@@ -2301,6 +2240,13 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         throw regenError("Undrape: the plate side has no rim edges.");
     }
     const loopData = undrapeRimLoops(tables, rim);
+    if (loopData.open > 0)
+    {
+        const q = loopData.openAt[0];
+        throw regenError("Undrape: the plate's outline does not close: " ~ loopData.open ~ " rim chain(s) end open, the first at ("
+                ~ roundToPrecision(q[0] * 1000, 3) ~ ", " ~ roundToPrecision(q[1] * 1000, 3) ~ ", " ~ roundToPrecision(q[2] * 1000, 3)
+                ~ ") mm.");
+    }
     const plan = undrapeRequests(c, tables, rim, loopData, sp);
     var requests = plan.requests;
 
@@ -2336,6 +2282,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     var fallbacks = 0;
     var fallbackArcs = [];
     var failed = [];
+    var shifted = 0;
     var lines = [];
     var sections = makeArray(nSt);
     var crossingsAt = makeArray(nSt);
@@ -2373,7 +2320,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
             fallbackArcs = append(fallbackArcs, roundToPrecision(fr.arc * 1000, 2) ~ " (" ~ section.why ~ ")");
             if (!refused.ok)
             {
-                failed = append(failed, fr.arc);
+                failed = append(failed, roundToPrecision(fr.arc * 1000, 3));
                 lines = append(lines, "undrape: station at arc " ~ roundToPrecision(fr.arc * 1000, 3) ~ " mm could not be measured ("
                         ~ section.why ~ "; " ~ refused.why ~ ")");
                 sections[s] = { "ok" : false };
@@ -2383,6 +2330,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
             section = refused.section;
             if (refused.frame.arc != fr.arc)
             {
+                shifted += 1;
                 fr = refused.frame;
                 frames[s] = fr;
                 crossings = [];
@@ -2395,10 +2343,18 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         sections[s] = section;
         crossingsAt[s] = crossings;
 
-        // 8. Map the requests at this station.
+        // 8. Map the requests at this station. A "point" request keeps its own (unshifted) station's x and arc:
+        // a shifted frame only finds the section.
         for (var k in atStation[s])
         {
             results[k] = undrapeResolve(requests[k], section, crossings, fr, chart, tk);
+            if (fr.arc != arcs[s] && requests[k].kind == "point")
+            {
+                var q = results[k];
+                q[0] = undrapeFrame(c, arcs[s]).x - chart.alignX;
+                q[5] = arcs[s];
+                results[k] = q;
+            }
         }
     }
     if (kernel != undefined)
@@ -2410,11 +2366,31 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         }
     }
 
+    // Outline samples lost with their station (a vertex's throws in undrapeAssemble).
+    var dropped = 0;
+    for (var er in plan.edgeRequests)
+    {
+        for (var i = 1; i + 1 < size(er.points); i += 1)
+        {
+            const k = er.points[i];
+            if (results[k] == undefined && !sections[stationOf[k]].ok)
+            {
+                dropped += 1;
+            }
+        }
+    }
+    if (size(failed) > 0)
+    {
+        lines = append(lines, "undrape: " ~ size(failed) ~ " station(s) could not be measured, " ~ dropped
+                ~ " outline sample(s) dropped");
+    }
+
     // Edges and loops.
     const assembled = undrapeAssemble(plan, results, loopData);
 
     // 9. Deformation report.
-    const deform = undrapeDeformation(sections, crossingsAt, frames, chart, tk);
+    const deform = withDeformation ? undrapeDeformation(sections, crossingsAt, frames, chart, tk)
+        : { "stretchMin" : 0, "stretchMax" : 0, "where" : [0, 0], "shearMax" : 0 };
     var rim3d = 0;
     var rimFlat = 0;
     for (var er in plan.edgeRequests)
@@ -2440,11 +2416,13 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
                         ~ (loopData.open > 0 ? " (" ~ loopData.open ~ " did not close)" : ""),
                     "undrape: " ~ nSt ~ " stations (" ~ nReq ~ " samples), " ~ roundToPrecision(candidateTotal / max(nSt, 1), 1)
                         ~ " candidate edges per station, " ~ fallbacks ~ " kernel fallbacks"
-                        ~ (size(fallbackArcs) > 0 ? " at arc (mm) " ~ undrapeJoin(fallbackArcs) : ""),
-                    "undrape: stretch along rim and bend lines " ~ roundToPrecision(deform.stretchMin * 100, 3) ~ " % .. "
-                        ~ roundToPrecision(deform.stretchMax * 100, 3) ~ " % (max at x " ~ roundToPrecision(deform.where[0] * 1000, 1)
-                        ~ ", y " ~ roundToPrecision(deform.where[1] * 1000, 1) ~ " mm), shear up to "
-                        ~ roundToPrecision(deform.shearMax * 180 / PI, 2) ~ " deg",
+                        ~ (size(fallbackArcs) > 0 ? " at arc (mm) " ~ undrapeJoin(fallbackArcs) : "")
+                        ~ (shifted > 0 ? " (" ~ shifted ~ " sectioned at a shifted arc)" : ""),
+                    withDeformation ? ("undrape: stretch along rim and bend lines " ~ roundToPrecision(deform.stretchMin * 100, 3)
+                            ~ " % .. " ~ roundToPrecision(deform.stretchMax * 100, 3) ~ " % (max at x "
+                            ~ roundToPrecision(deform.where[0] * 1000, 1) ~ ", y " ~ roundToPrecision(deform.where[1] * 1000, 1)
+                            ~ " mm), shear up to " ~ roundToPrecision(deform.shearMax * 180 / PI, 2) ~ " deg")
+                        : "undrape: deformation report skipped",
                     "undrape: rim 3D " ~ roundToPrecision(rim3d * 1000, 3) ~ " mm, flat " ~ roundToPrecision(rimFlat * 1000, 3) ~ " mm"
                 ], lines]);
 
@@ -2454,6 +2432,9 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
             "stations" : nSt,
             "fallbacks" : fallbacks,
             "failed" : size(failed),
+            "failedArcs" : failed,
+            "droppedPoints" : dropped,
+            "shifted" : shifted,
             "stretchMin" : deform.stretchMin,
             "stretchMax" : deform.stretchMax,
             "stretchWhere" : deform.where,
@@ -2486,8 +2467,8 @@ export function undrapeSideSign(c is map, tables is array) returns number
     for (var e = 0; e < min(size(tables), 60); e += 1)
     {
         const tb = tables[e];
-        const a0 = undrapeSeedArc(c, tb.px[0]);
-        const f = chartFoot(c, tb.px[0], tb.py[0], tb.pz[0], a0, undrapeSpanOf(c, a0));
+        const a0 = chartSeedArc(c, tb.px[0]);
+        const f = chartFoot(c, tb.px[0], tb.py[0], tb.pz[0], a0, chartSpanOf(c, a0));
         const hx = c.ny * f[7] - c.nz * f[6];
         const hy = c.nz * f[5] - c.nx * f[7];
         const hz = c.nx * f[6] - c.ny * f[5];
@@ -2566,8 +2547,8 @@ export function undrapeRequests(c is map, tables is array, rim is array, loopDat
         var hint = -1;
         for (var i = 0; i < tb.count; i += 1)
         {
-            const a0 = (hint < 0) ? undrapeSeedArc(c, tb.px[i]) : sampleArcs[i - 1];
-            const f = chartFoot(c, tb.px[i], tb.py[i], tb.pz[i], a0, (hint < 0) ? undrapeSpanOf(c, a0) : hint);
+            const a0 = (hint < 0) ? chartSeedArc(c, tb.px[i]) : sampleArcs[i - 1];
+            const f = chartFoot(c, tb.px[i], tb.py[i], tb.pz[i], a0, (hint < 0) ? chartSpanOf(c, a0) : hint);
             sampleArcs[i] = f[0];
             hint = f[1];
             if (abs(tb.ux[i] * f[5] + tb.uy[i] * f[6] + tb.uz[i] * f[7]) < UNDRAPE_LENGTHWISE)
@@ -2758,7 +2739,10 @@ export function undrapeAssemble(plan is map, results is array, loopData is map) 
                 {
                     if (i == 0 || i == size(er.points) - 1)
                     {
-                        throw regenError("Undrape: a section through an outline vertex could not be measured.");
+                        const p = plan.requests[er.points[i]].p;
+                        throw regenError("Undrape: the section through the outline vertex at (" ~ roundToPrecision(p[0] * 1000, 3)
+                                ~ ", " ~ roundToPrecision(p[1] * 1000, 3) ~ ", " ~ roundToPrecision(p[2] * 1000, 3)
+                                ~ ") mm could not be measured.");
                     }
                     continue;
                 }

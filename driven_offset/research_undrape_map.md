@@ -1038,3 +1038,35 @@ with a spurious -6.9 % stretch there), stretch +-0.01 %, flat area 188661.8 vs m
 **For unwrap.fs (not changed here):** in the harness `opExtractSurface(side0, offset -t/2,
 useFacesAroundToTrimOffset)` fails on 4305 with DIRECT_EDIT_OFFSET_FACE_FAILED (side0 at +t/2, side1 at -t/2 and
 untrimmed variants all work). The mid-surface for "target from face" came from side1 here.
+
+## 14. As built (2026-09-25): robustness pass and new interface
+
+`undrapeOutline(context, id, chart, side0, side1, thickness, options)` with options `{ "spacing" : ValueWithUnits,
+"deformation" : boolean }` (the old 7th argument `spacing` is gone; unwrap.fs must pass the map).
+
+- **Chart code shared**: `undrapeChartAt` / `undrapeSeedArc` / `undrapeSpanOf` deleted; `undrapeFrame` uses
+  `chartEval(c, a, chartSpanOf(c, a))`, seeds use `chartSeedArc` / `chartSpanOf` from edge_offset_utils. Same
+  arithmetic: outline points identical to <= 9e-16 m on every test part.
+- **Failures surfaced**: report gains `failed`, `failedArcs` (mm), `droppedPoints` (outline samples lost with their
+  station), `shifted` (refused stations the kernel sectioned only at a shifted arc); a line is printed when any
+  station fails. The vertex-station regenError now names the vertex position (mm). Forced check (no kernel
+  retries, topsheet): 11 failed at 42..60 and 1788..1824 mm, 22 samples dropped.
+- **Rim loops**: whenever the topological vertex key misses (none, or not met yet), an end joins the nearest vertex
+  within `UNDRAPE_VERTEX_MATCH` = 1 um that is not already met by two rim edges (`UNDRAPE_VERTEX_TOL` removed).
+  Any chain left open throws "the plate's outline does not close ... the first at (x, y, z) mm". Check on 4305
+  with the keys disabled: position matching alone now closes the one loop (output identical); at 0.1 um it throws
+  (7 open chains, first at (516.846, -48.722, 1.64) mm).
+- **Shifted kernel stations (M4)**: "point" requests at a station the kernel could only section shifted keep their
+  own station's x and arc (the shifted frame only finds the section); edge crossings keep the shifted x (they are
+  there). None of the test parts retries; forced (all interior stations of mat Rtjb through the kernel at
+  +5e-5 m): old code moved 62 samples by 5e-5 in x and the flat rim by -0.10 mm, new code 36 (edge crossings only),
+  flat rim -0.004 mm.
+- **try silent narrowed** to `opPlane` (undrapeKernelSection) and `opIntersectFaces` (undrapeKernelChain); the
+  chaining and reads run outside it, so an FS error there is no longer reported as "kernel refused the section".
+- **options.deformation = false** skips undrapeDeformation (report stretch/shear 0, line "deformation report
+  skipped").
+
+Timing (eval API, min of 5, setup-only subtracted; server load varies +-0.05 s): topsheet RnRD undrapeOutline
+old 5.67 s, new 5.71 s, new without deformation 5.47 s; 4305 old 1.30 s, new 1.33 s, without deformation 1.20 s.
+Outputs identical (<= 9e-16 m points, <= 4e-12 tangents, same station/fallback counts) on RnRD, 4305 RtjT, base
+RtjP, 6005 Rtjf, 4310 Rtjj, mats RtjX and Rtjb. Harness: scratchpad agentB/run.py (sources snapshotted in agentB/src).

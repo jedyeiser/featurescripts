@@ -59,8 +59,37 @@ export const UNWRAP_PART_BOX_MARGIN = 0.002;
 /** A curved chain within this of a circle is emitted as an exact arc. */
 export const UNWRAP_PART_ARC_TOL = 1e-7 * meter;
 
-/** Grid samples farther than this from their face (outside its trim) are not classified. */
-export const UNWRAP_PART_ON_FACE = 1e-8 * meter;
+/** Spline tools are fitted (approximateSpline, degree 3, chord parameters, exact end tangents) to this. */
+export const UNWRAP_PART_FIT_TOL = 1e-7 * meter;
+
+/** Control-point cap of a spline tool fit (never reached in practice; approximateFamily warns if it is). */
+export const UNWRAP_PART_FIT_MAX_CPS = 500;
+
+/** Consecutive fit points closer than this share of the chain's chord are thinned (approximateSpline wants
+ * chord parameters strictly increasing by 1e-6). */
+export const UNWRAP_PART_FIT_SEPARATION = 2e-6;
+
+/** RULED rows also sample their bottom and top rows this far (face parameter) inside each end, for the tool's end
+ * tangents. */
+export const UNWRAP_PART_END_STEP = 1e-4;
+
+/** A ruling of a RULED tool rising less than this share of its length is degenerate (the face is reported). */
+export const UNWRAP_PART_RULING_RISE = 0.5;
+
+/** The counted keys of a report (pieces add them up; maxLean is a maximum). */
+export const UNWRAP_PART_COUNT_KEYS = ["cells", "keptCells", "tools", "planeTools", "arcTools", "splineTools", "ruledTools",
+        "snappedTools", "squaredWalls"];
+
+/** An empty report: every UNWRAP_PART_COUNT_KEYS entry 0, plus maxLean 0. */
+export function emptyPartReport() returns map
+{
+    var report = { "maxLean" : 0 };
+    for (var key in UNWRAP_PART_COUNT_KEYS)
+    {
+        report[key] = 0;
+    }
+    return report;
+}
 
 // ============================================================================
 // Entry point
@@ -87,10 +116,9 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
             "flatTolerance" : (options.flatTolerance == undefined) ? 0.001 * millimeter : options.flatTolerance,
             "part" : part
         };
-    var report = { "pieces" : 0, "rigidPieces" : 0, "rebuiltPieces" : 0, "cells" : 0, "keptCells" : 0, "tools" : 0,
-            "planeTools" : 0, "arcTools" : 0, "splineTools" : 0, "ruledTools" : 0, "snappedTools" : 0, "squaredWalls" : 0,
-            "maxLean" : 0 };
+    var report = mergeMaps(emptyPartReport(), { "pieces" : 0, "rigidPieces" : 0, "rebuiltPieces" : 0 });
     var lines = [];
+    const inputSolids = evaluateQuery(context, qBodyType(part, BodyType.SOLID));
 
     opPattern(context, id + "copy", { "entities" : part, "transforms" : [identityTransform()], "instanceNames" : ["copy"] });
     const piecesQ = qBodyType(qUnion([qCreatedBy(id + "copy", EntityType.BODY), qCreatedBy(id + "junction", EntityType.BODY)]),
@@ -124,10 +152,16 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
     {
         const piece = pieces[k];
         const inside = interiorPoint(context, piece);
-        const span = spanAt(spans, unwrapFast(chart, inside, undefined)[3]);
+        const foot = chartFootAt(chart, inside, undefined);
+        if (!chartFootConverged(foot))
+        {
+            throw regenError("Unwrap part: " ~ partName(context, part) ~ " reaches past the reference's centre of curvature "
+                    ~ "(the chart has no foot there).", part);
+        }
+        const span = spanAt(spans, foot[3]);
         if (span.straight)
         {
-            opTransform(context, id + ("rigid" ~ k), { "bodies" : piece, "transform" : rigidTransform(chart, inside, span.direction) });
+            opTransform(context, id + ("rigid" ~ k), { "bodies" : piece, "transform" : rigidTransform(chart, foot, inside, span.direction) });
             results = append(results, piece);
             report.rigidPieces += 1;
             lines = append(lines, "  piece " ~ k ~ ": over a line, moved rigidly ("
@@ -139,7 +173,7 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
             opDeleteBodies(context, id + ("deletePiece" ~ k), { "entities" : piece });
             results = append(results, rebuilt.body);
             report.rebuiltPieces += 1;
-            for (var key in ["cells", "keptCells", "tools", "planeTools", "arcTools", "splineTools", "ruledTools", "snappedTools", "squaredWalls"])
+            for (var key in UNWRAP_PART_COUNT_KEYS)
             {
                 report[key] += rebuilt.report[key];
             }
@@ -166,6 +200,12 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
         opDeleteBodies(context, id + "deleteScrap", { "entities" : scrap });
     }
     const bodies = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID);
+    const resultCount = size(evaluateQuery(context, bodies));
+    if (resultCount > size(inputSolids))
+    {
+        throw regenError("Unwrap part: the unwrapped pieces of " ~ partName(context, part) ~ " did not fuse (" ~ resultCount
+                ~ " solids from " ~ size(inputSolids) ~ ").", part);
+    }
     opTransform(context, id + "place", { "bodies" : bodies, "transform" : toWorld(cs) });
 
     lines = concatenateArrays([["Unwrap part: " ~ report.pieces ~ " piece(s), " ~ report.rigidPieces ~ " moved rigidly, "
@@ -191,9 +231,15 @@ export function referenceSpans(chart is map) returns array
     {
         for (var e in link.edges)
         {
+            const f0 = unwrapFast(chart, e.startPoint, undefined);
+            const f1 = unwrapFast(chart, e.endPoint, undefined);
+            if (!chartFootConverged(f0) || !chartFootConverged(f1))
+            {
+                throw regenError("Unwrap part: the chart does not find the reference's own edge ends.");
+            }
             spans = append(spans, {
-                        "a0" : unwrapFast(chart, e.startPoint, undefined)[3],
-                        "a1" : unwrapFast(chart, e.endPoint, undefined)[3],
+                        "a0" : f0[3],
+                        "a1" : f1[3],
                         "straight" : e.curveType == CurveType.LINE,
                         "start" : e.startPoint,
                         "direction" : normalize(e.endPoint - e.startPoint)
@@ -219,10 +265,10 @@ export function spanAt(spans is array, a is number) returns map
 /**
  * The chart map over a straight span, as a transform into the chart frame: the frame (tangent, -planeNormal,
  * planeNormal x tangent) at `point` lands on the world axes at the point's chart coordinates.
+ * @param u : unwrapFast(chart, point, ...) (converged).
  */
-export function rigidTransform(chart is map, point is Vector, tangent is Vector) returns Transform
+export function rigidTransform(chart is map, u is array, point is Vector, tangent is Vector) returns Transform
 {
-    const u = unwrapFast(chart, point, undefined);
     const normal = normalize(cross(chart.alongRef.planeNormal, tangent));
     return toWorld(coordSystem(vector(u[0], u[1], u[2]) * meter, vector(1, 0, 0), vector(0, 0, 1)))
         * fromWorld(coordSystem(point, tangent, normal));
@@ -279,28 +325,28 @@ export function interiorPoint(context is Context, body is Query) returns Vector
 }
 
 /**
- * The wrapped point at chart coordinates (x, y, z), plain metres: inverse of unwrapFast. x = arc - delta * theta(arc)
- * is solved for arc by Newton (slope 1 - delta * kappa); with delta = 0 it is one step.
+ * unwrapFast with a cold retry: a warm start from a far-away previous foot can fail where a cold seed does not.
+ * The caller checks chartFootConverged on the result; a point whose foot is not found is never used as mapped.
  */
-export function unflatPoint(chart is map, x is number, y is number, z is number) returns Vector
+export function chartFootAt(chart is map, point is Vector, previous) returns array
 {
-    const alongRef = chart.alongRef;
-    const delta = alongRef.delta.value;
-    const target = x + chart.alignX;
-    var a = target;
-    for (var step = 0; step < 20 && delta != 0; step += 1)
+    const u = unwrapFast(chart, point, previous);
+    if (previous == undefined || chartFootConverged(u))
     {
-        const arc = a * meter;
-        const residual = target - (a - delta * interpolate(alongRef.arcs, alongRef.thetas, arc));
-        if (abs(residual) < 1e-12)
-        {
-            break;
-        }
-        a = a + residual / (1 - delta * interpolate(alongRef.arcs, alongRef.curvatures, arc).value);
+        return u;
     }
-    const basis = referenceBasisAtArc(alongRef, a * meter);
-    return referencePointAtArc(alongRef, a * meter) + ((chart.alignV - y) * meter) * alongRef.planeNormal
-        + ((z + chart.alignHeight) * meter) * basis.normal;
+    return unwrapFast(chart, point, undefined);
+}
+
+/** The name of the first solid of a selection, for messages ("the part" when it has none). */
+export function partName(context is Context, part is Query) returns string
+{
+    const solids = evaluateQuery(context, qBodyType(part, BodyType.SOLID));
+    if (size(solids) == 0)
+    {
+        return "the part";
+    }
+    return "\"" ~ getProperty(context, { "entity" : solids[0], "propertyType" : PropertyType.NAME }) ~ "\"";
 }
 
 /**
@@ -327,14 +373,13 @@ export function flatNormal(chart is map, u is array, n is Vector) returns array
 
 /**
  * Rebuild one piece in the chart frame: classify its faces, sample one row per face, chain and dedupe the rows,
- * build a tool sheet per chain across the piece's flat box, split the box by every tool, keep the cells that map
- * back inside the piece, unite them.
+ * build a tool per chain across the piece's flat box (a plane for a straight chain), split the box by every tool,
+ * keep the cells that map back inside the piece, unite them.
  * @returns {map} : { "body" : Query, "report", "text" }
  */
 export function rebuildPiece(context is Context, id is Id, chart is map, piece is Query, settings is map) returns map
 {
-    var report = { "cells" : 0, "keptCells" : 0, "tools" : 0, "planeTools" : 0, "arcTools" : 0, "splineTools" : 0, "ruledTools" : 0,
-            "snappedTools" : 0, "squaredWalls" : 0, "maxLean" : 0 };
+    var report = emptyPartReport();
 
     // 1. Classify faces; one row per face.
     const G = UNWRAP_PART_GRID;
@@ -346,7 +391,7 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
             grid = append(grid, vector(i / (G - 1), j / (G - 1)));
         }
     }
-    const extent = chartExtent(context, chart, piece);
+    const extent = chartExtent(context, chart, piece, settings.part);
     var lo = extent[0];
     var hi = extent[1];
     var rows = [];
@@ -357,21 +402,38 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
         const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : grid });
         var feet = [];
         var flatGrid = [];
+        var misses = 0;
         var previous = undefined;
         for (var tp in planes)
         {
-            const u = unwrapFast(chart, tp.origin, previous);
-            previous = u;
-            feet = append(feet, u);
-            flatGrid = append(flatGrid, [u[0], u[1], u[2]]);
+            const u = chartFootAt(chart, tp.origin, previous);
+            if (chartFootConverged(u))
+            {
+                previous = u;
+                feet = append(feet, u);
+                flatGrid = append(flatGrid, [u[0], u[1], u[2]]);
+            }
+            else
+            {
+                // Only grid points on the surface's extension can get here; on-face ones throw below.
+                misses += 1;
+                feet = append(feet, undefined);
+                flatGrid = append(flatGrid, undefined);
+            }
         }
         // Grid points outside the face's trim lie on its surface's extension, which is at worst less of a profile
-        // or wall than the face; so only a face that does not pass on the whole grid is re-read on its trim alone.
-        var shares = normalShares(context, chart, face, planes, feet, false);
-        var kind = faceKind(shares);
+        // or wall than the face; so only a face that does not pass on the whole grid (or has an unmapped grid point)
+        // is re-read on its trim alone.
+        var kind = "FAIL";
+        var shares = undefined;
+        if (misses == 0)
+        {
+            shares = normalShares(chart, planes, feet);
+            kind = faceKind(shares);
+        }
         if (kind != "PROFILE" && kind != "WALL")
         {
-            shares = normalShares(context, chart, face, planes, feet, true);
+            shares = onFaceShares(context, chart, face, grid, settings.part);
             kind = faceKind(shares);
         }
         if (kind == "LEANING")
@@ -391,13 +453,13 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
             failed = append(failed, face);
             continue;
         }
-        rows = append(rows, faceRow(context, chart, face, kind, flatGrid));
+        rows = append(rows, faceRow(context, chart, face, kind, flatGrid, settings.part));
     }
     if (size(failed) > 0)
     {
-        throw regenError("Unwrap part: " ~ size(failed) ~ " face(s) over the curved part of the reference are neither "
-                ~ "extruded across the reference plane nor walls normal to the reference; they cannot be unwrapped exactly.",
-            settings.part);
+        throw regenError("Unwrap part: " ~ size(failed) ~ " face(s) of " ~ partName(context, settings.part)
+                ~ " over the curved part of the reference are neither extruded across the reference plane nor walls normal "
+                ~ "to the reference; they cannot be unwrapped exactly.", qUnion(failed));
     }
 
     // 2. Chain tangent rows of one kind, drop duplicates.
@@ -408,7 +470,7 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
     }
     chains = distinctChains(chains, settings.flatTolerance.value);
 
-    // 3. One tool sheet per chain, across the box.
+    // 3. One tool per chain, across the box.
     for (var ax in [0, 1, 2])
     {
         lo[ax] -= UNWRAP_PART_BOX_MARGIN;
@@ -416,10 +478,15 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
     }
     const reach = sqrt((hi[0] - lo[0]) ^ 2 + (hi[1] - lo[1]) ^ 2 + (hi[2] - lo[2]) ^ 2) + 0.01;
     var tools = [];
+    var sheets = [];
     for (var i = 0; i < size(chains); i += 1)
     {
         const tool = chainTool(context, id + "tool" + ("t" ~ i), chains[i], lo, hi, reach);
-        tools = append(tools, tool.body);
+        tools = append(tools, tool);
+        if (tool.body != undefined)
+        {
+            sheets = append(sheets, tool.body);
+        }
         report[tool.counter] += 1;
         if (chains[i].snapped)
         {
@@ -428,22 +495,30 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
     }
     report.tools = size(tools);
 
-    // 4. Box, split by every tool.
+    // 4. Box, split by every tool (one at a time: one opSplitPart with several tools uses only the first).
     fCuboid(context, id + "box", { "corner1" : vector(lo[0], lo[1], lo[2]) * meter, "corner2" : vector(hi[0], hi[1], hi[2]) * meter });
     const cellsQ = qBodyType(qUnion([qCreatedBy(id + "box", EntityType.BODY), qCreatedBy(id + "split", EntityType.BODY)]), BodyType.SOLID);
     for (var i = 0; i < size(tools); i += 1)
     {
-        opSplitPart(context, id + "split" + ("s" ~ i), { "targets" : cellsQ, "tool" : tools[i], "keepTools" : true });
+        if (tools[i].plane != undefined)
+        {
+            opSplitPart(context, id + "split" + ("s" ~ i), { "targets" : cellsQ, "tool" : tools[i].plane });
+        }
+        else
+        {
+            opSplitPart(context, id + "split" + ("s" ~ i), { "targets" : cellsQ, "tool" : tools[i].body, "keepTools" : true });
+        }
     }
 
-    // 5. Keep the cells whose interior maps back inside the piece.
+    // 5. Keep the cells whose interior maps back inside the piece (unwrapInverse: the forward map's own tables).
     const cells = evaluateQuery(context, cellsQ);
     var keep = [];
     var drop = [];
     for (var cell in cells)
     {
         const pt = interiorPoint(context, cell) / meter;
-        if (isQueryEmpty(context, qContainsPoint(piece, unflatPoint(chart, pt[0], pt[1], pt[2]))))
+        const wrapped = unwrapInverse(chart, pt[0], pt[1], pt[2]);
+        if (isQueryEmpty(context, qContainsPoint(piece, vector(wrapped[0], wrapped[1], wrapped[2]) * meter)))
         {
             drop = append(drop, cell);
         }
@@ -456,13 +531,17 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
     report.keptCells = size(keep);
     if (size(keep) == 0)
     {
-        throw regenError("Unwrap part: no cell of a rebuilt piece mapped back inside the part.", settings.part);
+        throw regenError("Unwrap part: no cell of a rebuilt piece of " ~ partName(context, settings.part)
+                ~ " mapped back inside the part.", settings.part);
     }
     if (size(drop) > 0)
     {
         opDeleteBodies(context, id + "dropCells", { "entities" : qUnion(drop) });
     }
-    opDeleteBodies(context, id + "dropTools", { "entities" : qUnion(tools) });
+    if (size(sheets) > 0)
+    {
+        opDeleteBodies(context, id + "dropTools", { "entities" : qUnion(sheets) });
+    }
     if (size(keep) > 1)
     {
         try silent
@@ -471,8 +550,8 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
         }
         catch
         {
-            throw regenError("Unwrap part: the rebuilt cells of a curved piece would not unite "
-                    ~ "(tools touching tangentially, e.g. a groove running out onto a face).", settings.part);
+            throw regenError("Unwrap part: the rebuilt cells of a curved piece of " ~ partName(context, settings.part)
+                    ~ " would not unite (tools touching tangentially, e.g. a groove running out onto a face).", settings.part);
         }
     }
 
@@ -483,9 +562,9 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
 /**
  * The piece's extent in the chart frame, [lo, hi] (plain metres), from its edges sampled every 2 mm (at least 9
  * points each). The faces here are extrusions, whose extremes lie on their boundary edges; the box grows by
- * UNWRAP_PART_BOX_MARGIN anyway.
+ * UNWRAP_PART_BOX_MARGIN anyway. An edge point the chart cannot map is an error on that edge.
  */
-export function chartExtent(context is Context, chart is map, piece is Query) returns array
+export function chartExtent(context is Context, chart is map, piece is Query, part is Query) returns array
 {
     var lo = [1e9, 1e9, 1e9];
     var hi = [-1e9, -1e9, -1e9];
@@ -498,9 +577,14 @@ export function chartExtent(context is Context, chart is map, piece is Query) re
             parameters = append(parameters, k / (count - 1));
         }
         var previous = undefined;
-        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }))
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters, "arcLengthParameterization" : false }))
         {
-            const u = unwrapFast(chart, tl.origin, previous);
+            const u = chartFootAt(chart, tl.origin, previous);
+            if (!chartFootConverged(u))
+            {
+                throw regenError("Unwrap part: an edge of " ~ partName(context, part)
+                        ~ " reaches past the reference's centre of curvature (the chart has no foot there).", edge);
+            }
             previous = u;
             for (var ax in [0, 1, 2])
             {
@@ -512,26 +596,46 @@ export function chartExtent(context is Context, chart is map, piece is Query) re
     return [lo, hi];
 }
 
-/**
- * [max |b|, max |c|] of a face's flat normal over its classification grid; onFaceOnly skips grid points outside
- * the face's trim (one evDistance each).
- */
-export function normalShares(context is Context, chart is map, face is Query, planes is array, feet is array,
-    onFaceOnly is boolean) returns array
+/** [max |b|, max |c|] of a face's flat normal over grid planes with their (converged) feet. */
+export function normalShares(chart is map, planes is array, feet is array) returns array
 {
     var maxB = 0;
     var maxC = 0;
     for (var k = 0; k < size(planes); k += 1)
     {
-        if (onFaceOnly && evDistance(context, { "side0" : planes[k].origin, "side1" : face }).distance > UNWRAP_PART_ON_FACE)
-        {
-            continue;
-        }
         const fn = flatNormal(chart, feet[k], planes[k].normal);
         maxB = max(maxB, abs(fn[1]));
         maxC = max(maxC, abs(fn[2]));
     }
     return [maxB, maxC];
+}
+
+/**
+ * [max |b|, max |c|] over the grid points on the face's trim only (one evFaceTangentPlanes call with
+ * returnUndefinedOutsideFace). An on-face point the chart cannot map is an error on the face.
+ */
+export function onFaceShares(context is Context, chart is map, face is Query, grid is array, part is Query) returns array
+{
+    var planes = [];
+    var feet = [];
+    var previous = undefined;
+    for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : grid, "returnUndefinedOutsideFace" : true }))
+    {
+        if (tp == undefined)
+        {
+            continue;
+        }
+        const u = chartFootAt(chart, tp.origin, previous);
+        if (!chartFootConverged(u))
+        {
+            throw regenError("Unwrap part: a face of " ~ partName(context, part)
+                    ~ " reaches past the reference's centre of curvature (the chart has no foot there).", face);
+        }
+        previous = u;
+        planes = append(planes, tp);
+        feet = append(feet, u);
+    }
+    return normalShares(chart, planes, feet);
 }
 
 /** PROFILE (image extruded along flat Y), WALL (vertical), LEANING (a wall leaning < UNWRAP_PART_RULED_TOL), FAIL. */
@@ -556,19 +660,23 @@ export function faceKind(shares is array) returns string
  * One row of chart points across a face, along its curve direction (the parameter direction in which the image
  * spreads most in the kind's plane), at mid-parameter of the other. PROFILE rows are (x, z), WALL and RULED rows
  * (x, y); a RULED row also carries the face's bottom and top rows in 3D, packed as [x, y, bottom, top].
- * @param flatGrid : chart points of the classification grid (index i * G + j for parameter (i, j) / (G - 1)).
+ * @param flatGrid : chart points of the classification grid (index i * G + j for parameter (i, j) / (G - 1));
+ *      undefined where the chart found no foot.
+ * @returns {map} : { "kind", "pts", "e0", "e1", "faces" }: e0 / e1 describe the row's first / last end: "n" the flat
+ *      normal there in the kind's plane; for RULED, "near" = [bottom, top] UNWRAP_PART_END_STEP inside that end.
  */
-export function faceRow(context is Context, chart is map, face is Query, kind is string, flatGrid is array) returns map
+export function faceRow(context is Context, chart is map, face is Query, kind is string, flatGrid is array, part is Query) returns map
 {
     const G = UNWRAP_PART_GRID;
     const ib = (kind == "PROFILE") ? 2 : 1;
     const mid = (G - 1) / 2;
-    const u0 = flatGrid[mid];
-    const u1 = flatGrid[(G - 1) * G + mid];
-    const v0 = flatGrid[mid * G];
-    const v1 = flatGrid[mid * G + G - 1];
-    const spreadU = sqrt((u1[0] - u0[0]) ^ 2 + (u1[ib] - u0[ib]) ^ 2);
-    const spreadV = sqrt((v1[0] - v0[0]) ^ 2 + (v1[ib] - v0[ib]) ^ 2);
+    const spreadU = planarSpread(flatGrid[mid], flatGrid[(G - 1) * G + mid], ib);
+    const spreadV = planarSpread(flatGrid[mid * G], flatGrid[mid * G + G - 1], ib);
+    if (spreadU < 0 && spreadV < 0)
+    {
+        throw regenError("Unwrap part: a face of " ~ partName(context, part)
+                ~ " reaches past the reference's centre of curvature (the chart has no foot there).", face);
+    }
     const alongU = spreadU >= spreadV;
     const count = min(max(ceil(max(spreadU, spreadV) / UNWRAP_PART_ROW_SPACING), UNWRAP_PART_ROW_MIN), UNWRAP_PART_ROW_MAX);
 
@@ -582,57 +690,97 @@ export function faceRow(context is Context, chart is map, face is Query, kind is
         bottom = append(bottom, alongU ? vector(f, 0) : vector(0, f));
         top = append(top, alongU ? vector(f, 1) : vector(1, f));
     }
-    const pts = chartPoints(context, chart, face, middle);
+    for (var f in [UNWRAP_PART_END_STEP, 1 - UNWRAP_PART_END_STEP])
+    {
+        bottom = append(bottom, alongU ? vector(f, 0) : vector(0, f));
+        top = append(top, alongU ? vector(f, 1) : vector(1, f));
+    }
+    const mapped = chartRow(context, chart, face, middle, part);
     var row = [];
-    for (var p in pts)
+    for (var p in mapped.pts)
     {
         row = append(row, [p[0], p[ib]]);
     }
+    var e0 = { "n" : [mapped.n0[0], mapped.n0[ib]] };
+    var e1 = { "n" : [mapped.n1[0], mapped.n1[ib]] };
     if (kind == "RULED")
     {
-        const b = chartPoints(context, chart, face, bottom);
-        const t = chartPoints(context, chart, face, top);
+        const b = chartRow(context, chart, face, bottom, part).pts;
+        const t = chartRow(context, chart, face, top, part).pts;
         for (var k = 0; k < count; k += 1)
         {
             row[k] = [row[k][0], row[k][1], vector(b[k][0], b[k][1], b[k][2]), vector(t[k][0], t[k][1], t[k][2])];
         }
+        e0.near = [vector(b[count][0], b[count][1], b[count][2]), vector(t[count][0], t[count][1], t[count][2])];
+        e1.near = [vector(b[count + 1][0], b[count + 1][1], b[count + 1][2]), vector(t[count + 1][0], t[count + 1][1], t[count + 1][2])];
     }
-    return { "kind" : kind, "pts" : row };
+    return { "kind" : kind, "pts" : row, "e0" : e0, "e1" : e1, "faces" : [face] };
 }
 
-/** Chart points [x, y, z] of a face at the given parameters, warm-started along the row. */
-export function chartPoints(context is Context, chart is map, face is Query, parameters is array) returns array
+/** Planar spread of two chart points in (x, coordinate ib); -1 when either is undefined. */
+export function planarSpread(p, q, ib is number) returns number
+{
+    if (p == undefined || q == undefined)
+    {
+        return -1;
+    }
+    return sqrt((q[0] - p[0]) ^ 2 + (q[ib] - p[ib]) ^ 2);
+}
+
+/**
+ * Chart points [x, y, z] of a face at the given parameters, warm-started along the row, and the flat normals at
+ * the first and last. A point the chart cannot map is an error on the face.
+ * @returns {map} : { "pts", "n0", "n1" }
+ */
+export function chartRow(context is Context, chart is map, face is Query, parameters is array, part is Query) returns map
 {
     var out = [];
     var previous = undefined;
-    for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters }))
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters });
+    var n0 = undefined;
+    var n1 = undefined;
+    for (var k = 0; k < size(planes); k += 1)
     {
-        const u = unwrapFast(chart, tp.origin, previous);
+        const u = chartFootAt(chart, planes[k].origin, previous);
+        if (!chartFootConverged(u))
+        {
+            throw regenError("Unwrap part: a face of " ~ partName(context, part)
+                    ~ " reaches past the reference's centre of curvature (the chart has no foot there).", face);
+        }
         previous = u;
         out = append(out, [u[0], u[1], u[2]]);
+        if (k == 0)
+        {
+            n0 = flatNormal(chart, u, planes[k].normal);
+        }
+        if (k == size(planes) - 1)
+        {
+            n1 = flatNormal(chart, u, planes[k].normal);
+        }
     }
-    return out;
+    return { "pts" : out, "n0" : n0, "n1" : n1 };
 }
 
-function planarDistance(p is array, q is array) returns number
+export function planarDistance(p is array, q is array) returns number
 {
     return sqrt((p[0] - q[0]) ^ 2 + (p[1] - q[1]) ^ 2);
 }
 
-function planarDirection(p is array, q is array) returns array
+export function planarDirection(p is array, q is array) returns array
 {
     const l = planarDistance(p, q);
     return [(q[0] - p[0]) / l, (q[1] - p[1]) / l];
 }
 
-function planarDot(a is array, b is array) returns number
+export function planarDot(a is array, b is array) returns number
 {
     return a[0] * b[0] + a[1] * b[1];
 }
 
 /**
  * Chain the rows of one kind whose ends meet with tangents agreeing (tangent-continuous neighbours extended
- * separately give near-coincident tools and sliver cells). A chain's points run in one direction.
+ * separately give near-coincident tools and sliver cells). A chain's points run in one direction; e0 / e1 describe
+ * its first / last end (faceRow) and faces are its source faces.
  */
 export function chainRows(rows is array, kind is string) returns array
 {
@@ -641,7 +789,7 @@ export function chainRows(rows is array, kind is string) returns array
     {
         if (r.kind == kind)
         {
-            pool = append(pool, r.pts);
+            pool = append(pool, r);
         }
     }
     var used = makeArray(size(pool), false);
@@ -664,54 +812,57 @@ export function chainRows(rows is array, kind is string) returns array
                 {
                     continue;
                 }
-                const q = pool[j];
+                const q = pool[j].pts;
                 const n = size(q);
-                const cn = size(ch);
-                const endDir = planarDirection(ch[cn - 2], ch[cn - 1]);
-                const startDir = planarDirection(ch[0], ch[1]);
+                const pts = ch.pts;
+                const cn = size(pts);
+                const endDir = planarDirection(pts[cn - 2], pts[cn - 1]);
+                const startDir = planarDirection(pts[0], pts[1]);
                 var joined = undefined;
-                if (planarDistance(ch[cn - 1], q[0]) < UNWRAP_PART_JOIN
+                if (planarDistance(pts[cn - 1], q[0]) < UNWRAP_PART_JOIN
                     && planarDot(endDir, planarDirection(q[0], q[1])) > UNWRAP_PART_TANGENT_DOT)
                 {
-                    joined = concatenateArrays([ch, subArray(q, 1, n)]);
+                    joined = { "pts" : concatenateArrays([pts, subArray(q, 1, n)]), "e0" : ch.e0, "e1" : pool[j].e1 };
                 }
-                else if (planarDistance(ch[cn - 1], q[n - 1]) < UNWRAP_PART_JOIN
+                else if (planarDistance(pts[cn - 1], q[n - 1]) < UNWRAP_PART_JOIN
                     && planarDot(endDir, planarDirection(q[n - 1], q[n - 2])) > UNWRAP_PART_TANGENT_DOT)
                 {
-                    joined = concatenateArrays([ch, reverse(subArray(q, 0, n - 1))]);
+                    joined = { "pts" : concatenateArrays([pts, reverse(subArray(q, 0, n - 1))]), "e0" : ch.e0, "e1" : pool[j].e0 };
                 }
-                else if (planarDistance(ch[0], q[n - 1]) < UNWRAP_PART_JOIN
+                else if (planarDistance(pts[0], q[n - 1]) < UNWRAP_PART_JOIN
                     && planarDot(startDir, planarDirection(q[n - 2], q[n - 1])) > UNWRAP_PART_TANGENT_DOT)
                 {
-                    joined = concatenateArrays([subArray(q, 0, n - 1), ch]);
+                    joined = { "pts" : concatenateArrays([subArray(q, 0, n - 1), pts]), "e0" : pool[j].e0, "e1" : ch.e1 };
                 }
-                else if (planarDistance(ch[0], q[0]) < UNWRAP_PART_JOIN
+                else if (planarDistance(pts[0], q[0]) < UNWRAP_PART_JOIN
                     && planarDot(startDir, planarDirection(q[1], q[0])) > UNWRAP_PART_TANGENT_DOT)
                 {
-                    joined = concatenateArrays([reverse(subArray(q, 1, n)), ch]);
+                    joined = { "pts" : concatenateArrays([reverse(subArray(q, 1, n)), pts]), "e0" : pool[j].e1, "e1" : ch.e1 };
                 }
                 if (joined != undefined)
                 {
+                    joined.kind = kind;
+                    joined.faces = concatenateArrays([ch.faces, pool[j].faces]);
                     ch = joined;
                     used[j] = true;
                     grew = true;
                 }
             }
         }
-        chains = append(chains, { "kind" : kind, "pts" : ch });
+        chains = append(chains, { "kind" : kind, "pts" : ch.pts, "e0" : ch.e0, "e1" : ch.e1, "faces" : ch.faces });
     }
     return chains;
 }
 
 /** Signed distance of p from the line through a and b (planar). */
-function lineOffset(a is array, b is array, p is array) returns number
+export function lineOffset(a is array, b is array, p is array) returns number
 {
     const d = planarDirection(a, b);
     return -(p[0] - a[0]) * d[1] + (p[1] - a[1]) * d[0];
 }
 
 /** Distance of p from a polyline (planar). */
-function polylineDistance(pts is array, p is array) returns number
+export function polylineDistance(pts is array, p is array) returns number
 {
     var best = 1e9;
     for (var k = 0; k + 1 < size(pts); k += 1)
@@ -795,36 +946,127 @@ export function distinctChains(chains is array, flatTolerance is number) returns
 }
 
 /** A chain point placed just outside the box: PROFILE (x, z) at y below the box, WALL (x, y) at z below it. */
-function toolPoint(p is array, profile is boolean, lo is array) returns Vector
+export function toolPoint(p is array, profile is boolean, lo is array) returns Vector
 {
     return (profile ? vector(p[0], lo[1] - 0.001, p[1]) : vector(p[0], p[1], lo[2] - 0.001)) * meter;
 }
 
 /**
- * The tool sheet of one chain, crossing the whole box. PROFILE: the (x, z) curve just outside the box's -Y face,
- * extruded along Y; WALL: the (x, y) curve under the box, extruded along Z; RULED: the bottom and top rows pushed
- * along their rulings to below and above the box, lofted. Then only the side edges (the rulings) are extended by
- * `reach`: extending every edge fails on curved chains, and a tool that does not cross the box does not split it.
- * @returns {map} : { "body" : Query, "counter" : report key }
+ * The unit tangent at a chain end in its plane: normal to the flat normal n (2D), pointing from `from` to `to`.
+ * Undefined when n has no length in the plane.
+ */
+export function endTangent(n, from is array, to is array)
+{
+    if (n == undefined)
+    {
+        return undefined;
+    }
+    const len = sqrt(n[0] * n[0] + n[1] * n[1]);
+    if (len < 0.5)
+    {
+        return undefined;
+    }
+    const t = [-n[1] / len, n[0] / len];
+    return (planarDot(t, [to[0] - from[0], to[1] - from[1]]) < 0) ? [-t[0], -t[1]] : t;
+}
+
+/** The fitter settings of a spline tool (curve_core's approximation map). */
+export function fitApproximation() returns map
+{
+    return { "approximationDegree" : 3, "approximationTolerance" : UNWRAP_PART_FIT_TOL,
+            "approximationMaxCPs" : UNWRAP_PART_FIT_MAX_CPS };
+}
+
+/**
+ * Indices of a family of equally long point lists (Vectors with units) to fit: the first, the last, and every
+ * point whose averaged chord fraction is UNWRAP_PART_FIT_SEPARATION past the previous kept one and short of the
+ * last (approximateSpline wants strictly increasing parameters).
+ */
+export function separatedIndices(members is array) returns array
+{
+    const n = size(members[0]);
+    var fractions = makeArray(n, 0);
+    for (var pts in members)
+    {
+        var chords = [0];
+        for (var i = 1; i < n; i += 1)
+        {
+            chords = append(chords, chords[i - 1] + norm(pts[i] - pts[i - 1]) / meter);
+        }
+        const total = chords[n - 1];
+        for (var i = 0; i < n; i += 1)
+        {
+            fractions[i] += ((total > 0) ? chords[i] / total : i / (n - 1)) / size(members);
+        }
+    }
+    var keep = [0];
+    for (var i = 1; i < n - 1; i += 1)
+    {
+        if (fractions[i] - fractions[keep[size(keep) - 1]] >= UNWRAP_PART_FIT_SEPARATION
+            && fractions[n - 1] - fractions[i] >= UNWRAP_PART_FIT_SEPARATION)
+        {
+            keep = append(keep, i);
+        }
+    }
+    return append(keep, n - 1);
+}
+
+/** The entries of an array at the given indices. */
+export function pickIndices(values is array, indices is array) returns array
+{
+    var out = [];
+    for (var i in indices)
+    {
+        out = append(out, values[i]);
+    }
+    return out;
+}
+
+/**
+ * The tool of one chain, crossing the whole box. A straight PROFILE or WALL chain is a Plane (opSplitPart takes
+ * one). Otherwise PROFILE: the (x, z) curve just outside the box's -Y face, extruded along Y; WALL: the (x, y)
+ * curve under the box, extruded along Z; RULED: the bottom and top rows pushed along their rulings to below and
+ * above the box, fitted as one family (shared parameterization) and lofted. Curves are exact arcs when the chain
+ * is one, else approximateSpline fits (UNWRAP_PART_FIT_TOL, exact end tangents for PROFILE and WALL). Then only the
+ * sheet's side edges (the rulings) are extended by `reach`: extending every edge fails on curved chains, and a tool
+ * that does not cross the box does not split it.
+ * @returns {map} : { "plane" : Plane (straight chains) or "body" : Query (a sheet), "counter" : report key }
  */
 export function chainTool(context is Context, id is Id, chain is map, lo is array, hi is array, reach is number) returns map
 {
     const sheet = id + "sheet";
     var counter = "splineTools";
     var extrusion = undefined;
+    const approximation = fitApproximation();
     if (chain.kind == "RULED")
     {
         var below = [];
         var above = [];
-        for (var p in chain.pts)
+        for (var p in concatenateArrays([chain.pts, [[0, 0, chain.e0.near[0], chain.e0.near[1]], [0, 0, chain.e1.near[0], chain.e1.near[1]]]]))
         {
             const B = p[2];
             const u = p[3] - B;
+            if (norm(u) < 1e-9 || abs(u[2]) < UNWRAP_PART_RULING_RISE * norm(u))
+            {
+                throw regenError("Unwrap part: a leaning wall has a degenerate ruling at flat x = "
+                        ~ roundToPrecision(B[0] * 1000, 3) ~ " mm (its bottom and top rows do not rise across it).",
+                    qUnion(chain.faces));
+            }
             below = append(below, (B + ((lo[2] - 0.001) - B[2]) / u[2] * u) * meter);
             above = append(above, (B + ((hi[2] + 0.001) - B[2]) / u[2] * u) * meter);
         }
-        opFitSpline(context, id + "below", { "points" : below });
-        opFitSpline(context, id + "above", { "points" : above });
+        // The last two entries are the near-end samples: they give the end tangents.
+        const n = size(chain.pts);
+        const keep = separatedIndices([subArray(below, 0, n), subArray(above, 0, n)]);
+        const pointsBelow = pickIndices(below, keep);
+        const pointsAbove = pickIndices(above, keep);
+        const curves = approximateFamily(context, [
+                    { "points" : pointsBelow, "startDerivative" : normalize(below[n] - below[0]),
+                        "endDerivative" : normalize(below[n - 1] - below[n + 1]) },
+                    { "points" : pointsAbove, "startDerivative" : normalize(above[n] - above[0]),
+                        "endDerivative" : normalize(above[n - 1] - above[n + 1]) }], approximation);
+        emitFittedCurve(context, id + "below", curves[0], pointsBelow, approximation);
+        emitFittedCurve(context, id + "above", curves[1], pointsAbove, approximation);
         opLoft(context, sheet, { "profileSubqueries" : [qCreatedBy(id + "below", EntityType.EDGE), qCreatedBy(id + "above", EntityType.EDGE)],
                     "bodyType" : ToolBodyType.SURFACE });
         counter = "ruledTools";
@@ -832,30 +1074,37 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
     else
     {
         const profile = chain.kind == "PROFILE";
-        const curve = id + "curve";
-        counter = "splineTools";
         if (chain.straight)
         {
-            emitLineCurve(context, curve, toolPoint(chain.lineStart, profile, lo), toolPoint(chain.lineEnd, profile, lo));
-            counter = "planeTools";
+            const d = planarDirection(chain.lineStart, chain.lineEnd);
+            const normal = profile ? vector(-d[1], 0, d[0]) : vector(-d[1], d[0], 0);
+            return { "plane" : plane(toolPoint(chain.lineStart, profile, lo), normal), "counter" : "planeTools" };
+        }
+        const curve = id + "curve";
+        var points = [];
+        for (var p in chain.pts)
+        {
+            points = append(points, toolPoint(p, profile, lo));
+        }
+        const shape = classifyPoints(points, UNWRAP_PART_ARC_TOL, true, false);
+        if (shape.kind == "arc")
+        {
+            emitArcCurve(context, curve, shape);
+            counter = "arcTools";
         }
         else
         {
-            var points = [];
-            for (var p in chain.pts)
+            const n = size(chain.pts);
+            const t0 = endTangent(chain.e0.n, chain.pts[0], chain.pts[1]);
+            const t1 = endTangent(chain.e1.n, chain.pts[n - 2], chain.pts[n - 1]);
+            var start = undefined;
+            var end = undefined;
+            if (t0 != undefined && t1 != undefined)
             {
-                points = append(points, toolPoint(p, profile, lo));
+                start = profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0);
+                end = profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0);
             }
-            const shape = classifyPoints(points, UNWRAP_PART_ARC_TOL, true, false);
-            if (shape.kind == "arc")
-            {
-                emitArcCurve(context, curve, shape);
-                counter = "arcTools";
-            }
-            else
-            {
-                opFitSpline(context, curve, { "points" : points });
-            }
+            emitSplineCurve(context, curve, pickIndices(points, separatedIndices([points])), start, end, approximation);
         }
         extrusion = profile ? vector(0, 1, 0) : vector(0, 0, 1);
         const depth = profile ? (hi[1] - lo[1] + 0.002) : (hi[2] - lo[2] + 0.002);
@@ -867,7 +1116,7 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
     var sides = [];
     for (var edge in evaluateQuery(context, qOwnedByBody(body, EntityType.EDGE)))
     {
-        const ends = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
+        const ends = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1], "arcLengthParameterization" : false });
         const along = ends[1].origin - ends[0].origin;
         const isSide = (extrusion == undefined)
             ? abs(along[2]) > 1e-3 * meter
