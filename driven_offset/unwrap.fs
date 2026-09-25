@@ -1099,11 +1099,24 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     var temporary = [];
     if (definition.targetFrom == UndrapeTargetSource.FACE)
     {
-        opExtractSurface(context, id + "mid", {
-                    "faces" : sides.side0,
-                    "offset" : -0.5 * thickness,
-                    "useFacesAroundToTrimOffset" : true
-                });
+        // The kernel refuses the trimmed offset of one side on some parts (4305: side 0 fails with
+        // DIRECT_EDIT_OFFSET_FACE_FAILED, side 1 works); either side gives the same mid-surface.
+        try silent
+        {
+            opExtractSurface(context, id + "mid", {
+                        "faces" : sides.side0,
+                        "offset" : -0.5 * thickness,
+                        "useFacesAroundToTrimOffset" : true
+                    });
+        }
+        catch
+        {
+            opExtractSurface(context, id + "mid", {
+                        "faces" : sides.side1,
+                        "offset" : -0.5 * thickness,
+                        "useFacesAroundToTrimOffset" : true
+                    });
+        }
         wire = profileFromFace(context, id + "profile", qCreatedBy(id + "mid", EntityType.BODY), definition.profileFace);
         temporary = [qCreatedBy(id + "mid", EntityType.BODY), wire];
     }

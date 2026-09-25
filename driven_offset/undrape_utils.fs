@@ -16,9 +16,12 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a
  * the normal|. The flat point is x = length along the target (W offset by d) and
  * y = chart.alignV - (signed mid arc from the centreline w = 0).
  *
- * Stations where the circle-per-piece model is not trusted (an edge crossed obliquely on a face that
- * the plane cuts lengthwise: the tail and tip U-turns of a pressed step, overhangs) are REFUSED and
- * measured by undrapeRefusedSection (the U-turn rule, kept in one place; see there).
+ * A section that is not single-valued across the width (a wall at or past vertical: the folded wings of
+ * a pressed channel) is ordered by the side's face adjacency instead of by width and unrolled by arc
+ * length whatever it turns through (undrapeSectionByFaces). Stations where the circle-per-piece model
+ * is not trusted (an edge crossed obliquely on a face that the plane cuts lengthwise: the tail and tip
+ * U-turns of a pressed step) are REFUSED and measured by undrapeRefusedSection (the U-turn rule, kept in
+ * one place; see there).
  *
  * All inner loops run on plain numbers (metres, radians): FeatureScript unit arithmetic is operator
  * overloading and costs ~40x plain arithmetic; a 3-Vector expression costs ~20 us.
@@ -60,14 +63,26 @@ export const UNDRAPE_EDGE_TURN = 0.5;
 export const UNDRAPE_MIN_CROSSING = 0.95;
 export const UNDRAPE_MIN_INPLANE = 0.995;
 
-/** A crossing tangent with less width component than this is (nearly) vertical: overhangs are refused. */
+/**
+ * A crossing tangent with less width component than this is (nearly) vertical: the section is then ordered by
+ * face adjacency, not by width (undrapeSectionByFaces).
+ */
 export const UNDRAPE_OVERHANG = 0.05;
 
 /** Crossings closer than this along a section are one point (a vertex met by several edges), metres. */
 export const UNDRAPE_SAME_POINT = 1e-8;
 
+/**
+ * The same for sections ordered by face adjacency, metres: there a vertex split in two by the model's
+ * tolerance (edge ends ~20 nm apart on 4305) would leave a face with three nodes.
+ */
+export const UNDRAPE_FACE_MERGE = 2e-6;
+
 /** An edge sample this close to a station plane lies in it (an edge running straight across), metres. */
 export const UNDRAPE_IN_PLANE = 5e-8;
+
+/** An edge that misses a station plane by less than this at one end meets it there (a vertex station), metres. */
+export const UNDRAPE_END_SNAP = 1e-6;
 
 /** Two side faces whose normals along their common edge agree to within this cosine (0.06 deg) meet tangentially. */
 export const UNDRAPE_CREASE_COS = 0.9999995;
@@ -89,6 +104,9 @@ export const UNDRAPE_TANGENT_STEP = 2e-4;
 
 /** A request point farther than this from every section node is interpolated rather than read, metres. */
 export const UNDRAPE_NODE_TOL = 1e-7;
+
+/** Kernel section pieces whose ends are closer than this join (steep sections are chained by end points), metres. */
+export const UNDRAPE_KERNEL_JOIN = 1e-5;
 
 /** Samples per kernel-section edge in the refused-station fallback (non-arc-length, circle-corrected). */
 export const UNDRAPE_KERNEL_SAMPLES = 9;
@@ -1043,6 +1061,12 @@ export function undrapeEdgeCrossings(tb is map, e is number, fr is map, hint is 
         }
         gPrev = gi;
     }
+    // An edge that just misses the plane at an end: a station through a vertex whose foot came out a
+    // fraction of a micron off (the tip of a pointed end, past the reference's end, sat 0.12 um off on 4305).
+    if (size(result) == 0 && min(abs(gFirst), abs(gLast)) < UNDRAPE_END_SNAP)
+    {
+        result = [(abs(gFirst) <= abs(gLast)) ? undrapeCrossingAt(tb, e, 0, 0, fr, 1) : undrapeCrossingAt(tb, e, count - 2, 1, fr, 1)];
+    }
     return result;
 }
 
@@ -1101,23 +1125,30 @@ export function undrapePieceToWidth(a is array, b is array, w0 is number) return
 /**
  * The section of the sampled side at one station, unrolled onto the MID-surface.
  *
- * Crossings are ordered by width (overhangs are refused), coincident ones merged, and the pieces between
- * them measured as circular arcs. The mid-surface is the side offset inward by half the in-plane
- * thickness t / inPlane, so each piece's mid length is its side length + sideSign * (t' / 2) * turn.
- * A gap (slot, notch) needs no special case: the piece between its two rim crossings is the circular
- * bridge with the gap's end tangents (the surface continued smoothly across).
+ * Crossings are ordered by width, coincident ones merged, and the pieces between them measured as circular
+ * arcs. The mid-surface is the side offset inward by half the in-plane thickness t / inPlane, so each
+ * piece's mid length is its side length + sideSign * (t' / 2) * turn; a crease (two side faces meeting at
+ * an angle across the section) adds the same for its own turn. A gap (slot, notch) needs no special case:
+ * the piece between its two rim crossings is the circular bridge with the gap's end tangents (the surface
+ * continued smoothly across).
  *
- * @returns {map} : { "ok", "why", "kernel" : false, "pts" (merged crossings by w), "mid" (signed
- *      mid-surface arc from the centreline w = 0 at each), "nodeOf" (the node each input crossing became),
- *      "thickness", "sideSign" }
+ * A section that is not single-valued in width -- a wall at or past vertical, such as the 90 deg wings of a
+ * pressed channel -- cannot be ordered by width: it is ordered by the side's face adjacency instead
+ * (undrapeSectionByFaces), which unrolls it by arc length whatever it turns through.
+ *
+ * @returns {map} : { "ok", "why", "kernel" : false, "pts" (merged crossings in section order), "mid"
+ *      (signed mid-surface arc from the centreline w = 0 at each), "crease" (half the mid correction of each
+ *      node's own turn), "nodeOf" (the node each input crossing became, -1: none), "byFaces", "thickness",
+ *      "sideSign" }
  */
 export function undrapeSection(crossings is array, thickness is number, sideSign is number) returns map
 {
     const count = size(crossings);
-    if (count < 2)
+    if (count < 1)
     {
-        return { "ok" : false, "why" : "fewer than two crossings" };
+        return { "ok" : false, "why" : "no crossings" };
     }
+    var steep = false;
     for (var c in crossings)
     {
         if (c[13] == 0)
@@ -1130,8 +1161,12 @@ export function undrapeSection(crossings is array, thickness is number, sideSign
         }
         if (c[2] < UNDRAPE_OVERHANG || c[4] < UNDRAPE_OVERHANG)
         {
-            return { "ok" : false, "why" : "overhang" };
+            steep = true;
         }
+    }
+    if (steep)
+    {
+        return undrapeSectionByFaces(crossings, thickness, sideSign);
     }
 
     // insertion sort of the crossing indices by width (a dozen or two crossings)
@@ -1173,37 +1208,76 @@ export function undrapeSection(crossings is array, thickness is number, sideSign
         }
         nodeOf[order[k]] = n - 1;
     }
-    if (n < 2)
-    {
-        return { "ok" : false, "why" : "fewer than two crossings" };
-    }
     pts = resize(pts, n);
+    return undrapeSectionMid(pts, nodeOf, thickness, sideSign, false);
+}
 
+/**
+ * Mid-surface arcs along ordered section nodes (tangents [2, 3] arriving and [4, 5] leaving, both along
+ * the section's direction), zeroed at the centreline: at the piece crossing w = 0 nearest the reference
+ * (smallest |h|). A plate that does not reach w = 0 is measured from its innermost node, which keeps its
+ * own width (open decision 9.4). One node alone (a station through the tip of a pointed end) is a section
+ * of zero extent.
+ */
+export function undrapeSectionMid(pts is array, nodeOf is array, thickness is number, sideSign is number, byFaces is boolean) returns map
+{
+    const n = size(pts);
     var mid = makeArray(n, 0);
+    var crease = makeArray(n, 0);
+    for (var i = 0; i < n; i += 1)
+    {
+        const p = pts[i];
+        const turn = atan2(p[2] * p[5] - p[3] * p[4], p[2] * p[4] + p[3] * p[5]) / radian;
+        if (abs(turn) < UNDRAPE_STRAIGHT)
+        {
+            continue;
+        }
+        const half = thickness / (2 * p[6]);
+        // A crease one short leg from the rim (a wall rising from nothing at a wing's root) takes its corner
+        // arc in over the first t'/2 of the leg, not all at once: the exact offset would jump by
+        // (t'/2) * turn -- 0.35 mm on 4305 -- within the first micron of wall.
+        var ramp = 1;
+        for (var j in [0, n - 1])
+        {
+            if (abs(i - j) == 1 && pts[j][8] == 1)
+            {
+                const dw = pts[j][0] - p[0];
+                const dh = pts[j][1] - p[1];
+                ramp = min(ramp, sqrt(dw * dw + dh * dh) / half);
+            }
+        }
+        crease[i] = 0.5 * sideSign * half * turn * ramp;
+    }
     var zeroIndex = -1;
+    var zeroH = 1e30;
     for (var i = 0; i + 1 < n; i += 1)
     {
         const piece = undrapePiece(pts[i], pts[i + 1]);
-        mid[i + 1] = mid[i] + piece[0] + sideSign * thickness / (pts[i][6] + pts[i + 1][6]) * piece[1];
-        if (pts[i][0] <= 0 && pts[i + 1][0] > 0)
+        mid[i + 1] = mid[i] + crease[i] + piece[0] + sideSign * thickness / (pts[i][6] + pts[i + 1][6]) * piece[1] + crease[i + 1];
+        const wa = pts[i][0];
+        const wb = pts[i + 1][0];
+        if ((wa <= 0 && wb > 0) || (wa > 0 && wb <= 0))
         {
-            zeroIndex = i;
+            const h = abs(pts[i][1] + (pts[i + 1][1] - pts[i][1]) * (0 - wa) / (wb - wa));
+            if (h < zeroH)
+            {
+                zeroH = h;
+                zeroIndex = i;
+            }
         }
     }
 
-    // Arc at the centreline. A plate that does not reach w = 0 is measured from its innermost crossing,
-    // which keeps its own width (open decision 9.4).
     var zero = 0;
     if (zeroIndex >= 0)
     {
         const a = pts[zeroIndex];
         const b = pts[zeroIndex + 1];
         const part = undrapePieceToWidth(a, b, 0);
-        zero = mid[zeroIndex] + part[0] + sideSign * thickness / (a[6] + b[6]) * part[1];
+        zero = mid[zeroIndex] + crease[zeroIndex] + part[0] + sideSign * thickness / (a[6] + b[6]) * part[1];
     }
     else if (pts[0][0] > 0)
     {
-        zero = -pts[0][0];
+        zero = mid[0] - pts[0][0];
     }
     else
     {
@@ -1213,14 +1287,312 @@ export function undrapeSection(crossings is array, thickness is number, sideSign
     {
         mid[i] = mid[i] - zero;
     }
-    return { "ok" : true, "kernel" : false, "pts" : pts, "mid" : mid, "nodeOf" : nodeOf, "thickness" : thickness, "sideSign" : sideSign };
+    return { "ok" : true, "kernel" : false, "byFaces" : byFaces, "pts" : pts, "mid" : mid, "crease" : crease, "nodeOf" : nodeOf,
+            "thickness" : thickness, "sideSign" : sideSign };
+}
+
+/**
+ * A section that is not single-valued in width (a wall at or past vertical: tangents with tw below
+ * UNDRAPE_OVERHANG), ordered by the side's face adjacency instead of by width.
+ *
+ * Coincident crossings merge into nodes; each node knows the side faces its edges bound and the section's
+ * tangent on each. The piece of the section inside a face joins the two nodes on that face's edges, so a
+ * face with exactly two nodes is a link; a face touching the plane at one node only (a face ending at a
+ * vertex on the plane) is none. The links form paths, walked from their ends; several paths (a slot) are
+ * joined in order of width by bridge pieces. Each tangent is then oriented along the walk, which is what
+ * lets the section turn past 90 deg: every piece is still the circular arc between its end tangents,
+ * measured by arc length across the plate (the unfold of a folded wing).
+ *
+ * Refused (left to the kernel) when a face holds three or more nodes, a node joins three or more faces'
+ * pieces, or the links close into a loop: the section is not a simple chain of face pieces there.
+ */
+export function undrapeSectionByFaces(crossings is array, thickness is number, sideSign is number) returns map
+{
+    const count = size(crossings);
+    // nodes: merged crossings
+    var nodes = [];
+    var nodeOf = makeArray(count, -1);
+    for (var i = 0; i < count; i += 1)
+    {
+        const c = crossings[i];
+        var found = -1;
+        for (var k = 0; k < size(nodes); k += 1)
+        {
+            const dw = nodes[k][0] - c[0];
+            const dh = nodes[k][1] - c[1];
+            if (dw * dw + dh * dh <= UNDRAPE_FACE_MERGE * UNDRAPE_FACE_MERGE)
+            {
+                found = k;
+                break;
+            }
+        }
+        if (found < 0)
+        {
+            found = size(nodes);
+            nodes = append(nodes, c);
+        }
+        else if (c[8] == 1 && nodes[found][8] == 0)
+        {
+            var merged = nodes[found];
+            merged[8] = 1;
+            nodes[found] = merged;
+        }
+        nodeOf[i] = found;
+    }
+    const m = size(nodes);
+
+    // faces -> nodes, and each node's section tangent on each face. A node reached on a face only by edges
+    // ENDING on the plane (samples) may be a vertex where the face merely touches the plane.
+    var faceNodes = {};
+    var tangentOn = makeArray(m, {});
+    var crossesOn = makeArray(m, {});
+    for (var i = 0; i < count; i += 1)
+    {
+        const c = crossings[i];
+        const k = nodeOf[i];
+        for (var side = 0; side < 2; side += 1)
+        {
+            const f = c[23 + side];
+            if (f < 0)
+            {
+                continue;
+            }
+            if (tangentOn[k][f] == undefined)
+            {
+                tangentOn[k][f] = [c[19 + 2 * side], c[20 + 2 * side]];
+                faceNodes[f] = (faceNodes[f] == undefined) ? [k] : append(faceNodes[f], k);
+            }
+            if (c[17] == 0)
+            {
+                crossesOn[k][f] = true;
+            }
+        }
+    }
+
+    // links: faces with exactly two nodes. A face with more keeps only the nodes where its edges run
+    // through the plane: the others are vertices where the face touches the plane and ends (a face end
+    // slanting away from a rim vertex on the plane).
+    var links = makeArray(m, []);
+    var linkFace = makeArray(m, []);
+    for (var f, all in faceNodes)
+    {
+        var list = all;
+        if (size(list) > 2)
+        {
+            list = [];
+            for (var k in all)
+            {
+                if (crossesOn[k][f] == true)
+                {
+                    list = append(list, k);
+                }
+            }
+        }
+        if (size(list) == 2)
+        {
+            links[list[0]] = append(links[list[0]], list[1]);
+            linkFace[list[0]] = append(linkFace[list[0]], f);
+            links[list[1]] = append(links[list[1]], list[0]);
+            linkFace[list[1]] = append(linkFace[list[1]], f);
+        }
+        else if (size(list) > 2)
+        {
+            return { "ok" : false, "why" : "a face is crossed more than once (steep section)" };
+        }
+    }
+    for (var k = 0; k < m; k += 1)
+    {
+        if (size(links[k]) > 2)
+        {
+            return { "ok" : false, "why" : "the section branches (steep section)" };
+        }
+    }
+
+    // walk the paths from their ends
+    var used = makeArray(m, false);
+    var paths = [];
+    for (var k = 0; k < m; k += 1)
+    {
+        if (used[k] || size(links[k]) != 1)
+        {
+            continue;
+        }
+        var path = [k];
+        used[k] = true;
+        var current = k;
+        var previous = -1;
+        while (true)
+        {
+            var next = -1;
+            for (var q in links[current])
+            {
+                if (q != previous && !used[q])
+                {
+                    next = q;
+                }
+            }
+            if (next < 0)
+            {
+                break;
+            }
+            used[next] = true;
+            path = append(path, next);
+            previous = current;
+            current = next;
+        }
+        if (nodes[path[size(path) - 1]][0] < nodes[path[0]][0])
+        {
+            path = reverse(path);
+        }
+        paths = append(paths, path);
+    }
+    for (var k = 0; k < m; k += 1)
+    {
+        if (!used[k] && size(links[k]) > 0)
+        {
+            return { "ok" : false, "why" : "the section closes on itself (steep section)" };
+        }
+    }
+    if (size(paths) == 0)
+    {
+        // no piece at all: a single point (the tip of a pointed end), else nothing usable
+        if (m != 1)
+        {
+            return { "ok" : false, "why" : "no section pieces (steep section)" };
+        }
+        paths = [[0]];
+    }
+    paths = sort(paths, function(p, q) { return nodes[p[0]][0] - nodes[q[0]][0]; });
+    var sequence = [];
+    for (var path in paths)
+    {
+        sequence = concatenateArrays([sequence, path]);
+    }
+
+    // ordered nodes with tangents oriented along the walk: arriving on the face shared with the previous
+    // node, leaving on the face shared with the next (a bridge between paths: the node's first tangent)
+    const n = size(sequence);
+    var position = makeArray(m, -1);
+    for (var j = 0; j < n; j += 1)
+    {
+        position[sequence[j]] = j;
+    }
+    var pts = makeArray(n);
+    for (var j = 0; j < n; j += 1)
+    {
+        const k = sequence[j];
+        var p = nodes[k];
+        var arrive = undefined;
+        var leave = undefined;
+        for (var side = 0; side < 2; side += 1)
+        {
+            const other = (side == 0) ? j - 1 : j + 1;
+            if (other < 0 || other >= n)
+            {
+                continue;
+            }
+            const q = nodes[sequence[other]];
+            var t = undefined;
+            for (var l = 0; l < size(links[k]); l += 1)
+            {
+                if (links[k][l] == sequence[other])
+                {
+                    t = tangentOn[k][linkFace[k][l]];
+                }
+            }
+            if (t == undefined)
+            {
+                t = [p[19], p[20]];
+            }
+            // along the walk: from the previous node to this one, or from this one to the next
+            const cw = (side == 0) ? p[0] - q[0] : q[0] - p[0];
+            const ch = (side == 0) ? p[1] - q[1] : q[1] - p[1];
+            if (t[0] * cw + t[1] * ch < 0)
+            {
+                t = [-t[0], -t[1]];
+            }
+            if (side == 0)
+            {
+                arrive = t;
+            }
+            else
+            {
+                leave = t;
+            }
+        }
+        if (arrive == undefined)
+        {
+            arrive = (leave == undefined) ? [p[19], p[20]] : leave;
+        }
+        if (leave == undefined)
+        {
+            leave = arrive;
+        }
+        p[2] = arrive[0];
+        p[3] = arrive[1];
+        p[4] = leave[0];
+        p[5] = leave[1];
+        pts[j] = p;
+    }
+    for (var i = 0; i < count; i += 1)
+    {
+        nodeOf[i] = position[nodeOf[i]];
+    }
+    return undrapeSectionMid(pts, nodeOf, thickness, sideSign, true);
+}
+
+/**
+ * Nearest point of the circular piece a -> b to (w0, h0): [squared distance, arc from a, turn from a,
+ * clamped: -1 before a, 1 past b, 0 inside]. The circle is a + R (sin(psi) ta + (1 - cos(psi)) na) about the
+ * centre a + R na, so psi is the signed angle from (a - centre) to (p - centre).
+ */
+export function undrapePieceNearest(a is array, b is array, w0 is number, h0 is number) returns array
+{
+    const piece = undrapePiece(a, b);
+    if (abs(piece[1]) < 1e-6 || piece[2] < 1e-15)
+    {
+        const dw = b[0] - a[0];
+        const dh = b[1] - a[1];
+        const l2 = dw * dw + dh * dh;
+        var f = (l2 < 1e-30) ? 0 : ((w0 - a[0]) * dw + (h0 - a[1]) * dh) / l2;
+        const clamped = (f < 0) ? -1 : ((f > 1) ? 1 : 0);
+        f = clamp(f, 0, 1);
+        const ew = a[0] + f * dw - w0;
+        const eh = a[1] + f * dh - h0;
+        return [ew * ew + eh * eh, f * piece[0], f * piece[1], clamped];
+    }
+    const radius = piece[2] / (2 * sin(0.5 * piece[1] * radian));
+    const cw = a[0] - radius * a[5];
+    const ch = a[1] + radius * a[4];
+    const uw = a[0] - cw;
+    const uh = a[1] - ch;
+    const vw = w0 - cw;
+    const vh = h0 - ch;
+    var psi = atan2(uw * vh - uh * vw, uw * vw + uh * vh) / radian;
+    var clamped = 0;
+    // outside the piece's angular range: the nearer end
+    const lo = min(0, piece[1]);
+    const hi = max(0, piece[1]);
+    if (psi < lo || psi > hi)
+    {
+        const dLo = (abs(psi - lo) < PI) ? abs(psi - lo) : 2 * PI - abs(psi - lo);
+        const dHi = (abs(psi - hi) < PI) ? abs(psi - hi) : 2 * PI - abs(psi - hi);
+        psi = (dLo <= dHi) ? lo : hi;
+        clamped = (psi == 0) ? -1 : 1;
+    }
+    const sp = sin(psi * radian);
+    const cp = cos(psi * radian);
+    const pw = a[0] + radius * (sp * a[4] - (1 - cp) * a[5]);
+    const ph = a[1] + radius * (sp * a[5] + (1 - cp) * a[4]);
+    return [(pw - w0) * (pw - w0) + (ph - h0) * (ph - h0), abs(radius * psi), psi, clamped];
 }
 
 /**
  * Signed mid-surface arc from the centreline to the section point at (w0, h0) of the sampled side: the
  * undraped transverse coordinate of that point and of everything on its normal through the plate.
  * A node within UNDRAPE_NODE_TOL is read directly; otherwise the circular piece holding w0 (edge
- * sections) or the nearest chord of the sampled chain (kernel sections) is used.
+ * sections ordered by width), the nearest circular piece (sections ordered by faces) or the nearest chord
+ * of the sampled chain (kernel sections) is used.
  */
 export function undrapeMidAt(section is map, w0 is number, h0 is number) returns number
 {
@@ -1229,6 +1601,10 @@ export function undrapeMidAt(section is map, w0 is number, h0 is number) returns
     if (section.kernel)
     {
         return undrapeChainMidAt(section, w0, h0);
+    }
+    if (section.byFaces || n == 1)
+    {
+        return undrapeMidNearest(section, w0, h0);
     }
     // last node with w <= w0
     var low = 0;
@@ -1264,7 +1640,48 @@ export function undrapeMidAt(section is map, w0 is number, h0 is number) returns
         return section.mid[n - 1] + (w0 - pts[n - 1][0]);
     }
     const part = undrapePieceToWidth(pts[j], pts[j + 1], w0);
-    return section.mid[j] + part[0] + section.sideSign * section.thickness / (pts[j][6] + pts[j + 1][6]) * part[1];
+    return section.mid[j] + section.crease[j] + part[0] + section.sideSign * section.thickness / (pts[j][6] + pts[j + 1][6]) * part[1];
+}
+
+/** undrapeMidAt on a section ordered by faces: the nearest node or circular piece; past an end, along its tangent. */
+export function undrapeMidNearest(section is map, w0 is number, h0 is number) returns number
+{
+    const pts = section.pts;
+    const n = size(pts);
+    for (var k = 0; k < n; k += 1)
+    {
+        const dw = pts[k][0] - w0;
+        const dh = pts[k][1] - h0;
+        if (dw * dw + dh * dh < UNDRAPE_NODE_TOL * UNDRAPE_NODE_TOL)
+        {
+            return section.mid[k];
+        }
+    }
+    if (n == 1)
+    {
+        return section.mid[0] + (w0 - pts[0][0]);
+    }
+    var best = undefined;
+    var bestIndex = 0;
+    for (var j = 0; j + 1 < n; j += 1)
+    {
+        const r = undrapePieceNearest(pts[j], pts[j + 1], w0, h0);
+        if (best == undefined || r[0] < best[0])
+        {
+            best = r;
+            bestIndex = j;
+        }
+    }
+    const j = bestIndex;
+    if (j == 0 && best[3] < 0)
+    {
+        return section.mid[0] + (w0 - pts[0][0]) * pts[0][4] + (h0 - pts[0][1]) * pts[0][5];
+    }
+    if (j == n - 2 && best[3] > 0)
+    {
+        return section.mid[n - 1] + (w0 - pts[n - 1][0]) * pts[n - 1][2] + (h0 - pts[n - 1][1]) * pts[n - 1][3];
+    }
+    return section.mid[j] + section.crease[j] + best[1] + section.sideSign * section.thickness / (pts[j][6] + pts[j + 1][6]) * best[2];
 }
 
 /**
@@ -1302,7 +1719,7 @@ export function undrapeChainNearest(chain is map, w0 is number, h0 is number) re
             const dw = ws[i + 1] - ws[i];
             const dh = hs[i + 1] - hs[i];
             const gap = (dir < 0) ? w0 - ws[i + 1] : ws[i] - w0;
-            if (gap > 0 && gap * gap > best)
+            if (chain.steep != true && gap > 0 && gap * gap > best)
             {
                 break;
             }
@@ -1426,6 +1843,17 @@ export function undrapeKernelChain(context is Context, ixId is Id, planeId is Id
         }
         pieces = append(pieces, [ws, hs, along]);
     }
+    // A wall at or past vertical: the pieces do not follow each other in width; chain them by end points.
+    for (var piece in pieces)
+    {
+        for (var j = 1; j < size(piece[0]); j += 1)
+        {
+            if (piece[0][j] - piece[0][j - 1] < UNDRAPE_OVERHANG * (piece[2][j] - piece[2][j - 1]))
+            {
+                return undrapeChainByEnds(pieces);
+            }
+        }
+    }
     pieces = sort(pieces, function(p, q) { return p[0][0] - q[0][0]; });
 
     // A plane along a face end cuts both faces there along their common boundary: the same piece comes
@@ -1466,19 +1894,171 @@ export function undrapeKernelChain(context is Context, ixId is Id, planeId is Id
     return { "ws" : ws, "hs" : hs, "arcs" : arcs };
 }
 
-/** Arc of a chain at its crossing of w = 0 (linear between samples); the innermost point keeps its w otherwise. */
+/**
+ * Arc of a chain at its crossing of w = 0 (linear between samples; of several, the one nearest the
+ * reference, smallest |h|); the innermost point keeps its w otherwise.
+ */
 export function undrapeChainZero(chain is map) returns number
 {
     const ws = chain.ws;
+    const hs = chain.hs;
     const n = size(ws);
+    var best = 1e30;
+    var result = undefined;
     for (var i = 0; i + 1 < n; i += 1)
     {
-        if (ws[i] <= 0 && ws[i + 1] > 0)
+        if ((ws[i] <= 0 && ws[i + 1] > 0) || (ws[i] > 0 && ws[i + 1] <= 0))
         {
-            return chain.arcs[i] + (chain.arcs[i + 1] - chain.arcs[i]) * (0 - ws[i]) / (ws[i + 1] - ws[i]);
+            const f = (0 - ws[i]) / (ws[i + 1] - ws[i]);
+            const h = abs(hs[i] + f * (hs[i + 1] - hs[i]));
+            if (h < best)
+            {
+                best = h;
+                result = chain.arcs[i] + (chain.arcs[i + 1] - chain.arcs[i]) * f;
+            }
         }
     }
+    if (result != undefined)
+    {
+        return result;
+    }
     return (ws[0] > 0) ? -ws[0] : chain.arcs[n - 1] - ws[n - 1];
+}
+
+/** Whether two (w, h) points are within UNDRAPE_KERNEL_JOIN: kernel section pieces meeting there join. */
+export function undrapeJoins(p is array, q is array) returns boolean
+{
+    return (p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) < UNDRAPE_KERNEL_JOIN * UNDRAPE_KERNEL_JOIN;
+}
+
+/**
+ * Kernel section pieces ([ws, hs, arc along]) of a steep section chained by their end points instead of by
+ * width: from the free end of least width, each next piece is the one starting where the last ended
+ * (within UNDRAPE_KERNEL_JOIN). A piece returned twice (a plane along a face end) is used once; pieces
+ * left over (a slot) start a new run from their own free end, bridged by the chord.
+ * @returns {map} : { "ws", "hs", "arcs", "steep" : true }
+ */
+export function undrapeChainByEnds(pieces is array) returns map
+{
+    const n = size(pieces);
+    var ends = makeArray(n);
+    for (var i = 0; i < n; i += 1)
+    {
+        const last = size(pieces[i][0]) - 1;
+        ends[i] = [[pieces[i][0][0], pieces[i][1][0]], [pieces[i][0][last], pieces[i][1][last]]];
+    }
+    var used = makeArray(n, false);
+    for (var i = 0; i < n; i += 1)
+    {
+        for (var j = i + 1; j < n; j += 1)
+        {
+            if (!used[j] && ((undrapeJoins(ends[i][0], ends[j][0]) && undrapeJoins(ends[i][1], ends[j][1]))
+                        || (undrapeJoins(ends[i][0], ends[j][1]) && undrapeJoins(ends[i][1], ends[j][0]))))
+            {
+                used[j] = true;
+            }
+        }
+    }
+
+    var ws = [];
+    var hs = [];
+    var arcs = [];
+    var arc = 0;
+    while (true)
+    {
+        // the free end (touching no other unused piece) of least width; any end if the rest is closed
+        var start = undefined;
+        var fallback = undefined;
+        for (var i = 0; i < n; i += 1)
+        {
+            if (used[i])
+            {
+                continue;
+            }
+            for (var e = 0; e < 2; e += 1)
+            {
+                var free = true;
+                for (var j = 0; j < n; j += 1)
+                {
+                    if (j != i && !used[j] && (undrapeJoins(ends[i][e], ends[j][0]) || undrapeJoins(ends[i][e], ends[j][1])))
+                    {
+                        free = false;
+                    }
+                }
+                if (free && (start == undefined || ends[i][e][0] < ends[start[0]][start[1]][0]))
+                {
+                    start = [i, e];
+                }
+                if (fallback == undefined || ends[i][e][0] < ends[fallback[0]][fallback[1]][0])
+                {
+                    fallback = [i, e];
+                }
+            }
+        }
+        if (start == undefined)
+        {
+            start = fallback;
+        }
+        if (start == undefined)
+        {
+            break;
+        }
+        var i = start[0];
+        var e = start[1];
+        while (true)
+        {
+            used[i] = true;
+            const piece = pieces[i];
+            const m = size(piece[0]);
+            const total = piece[2][m - 1];
+            for (var k = 0; k < m; k += 1)
+            {
+                const j = (e == 0) ? k : m - 1 - k;
+                const along = (e == 0) ? piece[2][j] : total - piece[2][j];
+                if (size(ws) > 0 && k == 0)
+                {
+                    // the joint (a repeated point) or a gap bridged by the chord
+                    const dw = piece[0][j] - ws[size(ws) - 1];
+                    const dh = piece[1][j] - hs[size(hs) - 1];
+                    arc += sqrt(dw * dw + dh * dh);
+                    if (dw * dw + dh * dh < UNDRAPE_KERNEL_JOIN * UNDRAPE_KERNEL_JOIN)
+                    {
+                        continue;
+                    }
+                }
+                else if (k > 0)
+                {
+                    arc += along - ((e == 0) ? piece[2][j - 1] : total - piece[2][j + 1]);
+                }
+                ws = append(ws, piece[0][j]);
+                hs = append(hs, piece[1][j]);
+                arcs = append(arcs, arc);
+            }
+            const tail = ends[i][1 - e];
+            var next = undefined;
+            for (var q = 0; q < n && next == undefined; q += 1)
+            {
+                if (!used[q])
+                {
+                    if (undrapeJoins(tail, ends[q][0]))
+                    {
+                        next = [q, 0];
+                    }
+                    else if (undrapeJoins(tail, ends[q][1]))
+                    {
+                        next = [q, 1];
+                    }
+                }
+            }
+            if (next == undefined)
+            {
+                break;
+            }
+            i = next[0];
+            e = next[1];
+        }
+    }
+    return { "ws" : ws, "hs" : hs, "arcs" : arcs, "steep" : true };
 }
 
 /**
@@ -2095,7 +2675,7 @@ export function undrapeResolve(request is map, section is map, crossings is arra
             const cr = crossings[i];
             if (cr[9] == request.edge)
             {
-                if (!section.kernel)
+                if (!section.kernel && section.nodeOf[i] >= 0)
                 {
                     return [fr.x - chart.alignX, chart.alignV - section.mid[section.nodeOf[i]],
                             cr[14] - 0.5 * tk * cr[10], cr[15] - 0.5 * tk * cr[11], cr[16] - 0.5 * tk * cr[12], fr.arc];
@@ -2280,10 +2860,14 @@ export function undrapeDeformation(sections is array, crossingsAt is array, fram
             {
                 continue;
             }
-            const mid = section.kernel ? undrapeMidAt(section, cr[0], cr[1]) : section.mid[section.nodeOf[i]];
+            const node = section.kernel ? -1 : section.nodeOf[i];
+            const mid = (node < 0) ? undrapeMidAt(section, cr[0], cr[1]) : section.mid[node];
+            // the section's tangent along increasing arc (a face-ordered section orients its nodes' own)
+            const tw = (node >= 0 && section.byFaces) ? section.pts[node][4] : cr[4];
+            const th = (node >= 0 && section.byFaces) ? section.pts[node][5] : cr[5];
             current[count] = [cr[9], fr.x - chart.alignX, chart.alignV - mid,
                     cr[14] - 0.5 * tk * cr[10], cr[15] - 0.5 * tk * cr[11], cr[16] - 0.5 * tk * cr[12],
-                    cr[4] * fr.w[0] + cr[5] * fr.h[0], cr[4] * fr.w[1] + cr[5] * fr.h[1], cr[4] * fr.w[2] + cr[5] * fr.h[2]];
+                    tw * fr.w[0] + th * fr.h[0], tw * fr.w[1] + th * fr.h[1], tw * fr.w[2] + th * fr.h[2]];
             count += 1;
         }
         current = resize(current, count);

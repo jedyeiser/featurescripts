@@ -962,3 +962,79 @@ compute. Neither was adopted.
 with `setup.fsx`, which holds the sides and a chart built like `buildAlongReference`. `t_run.fsx` dumps the
 outline. `truth_tmpl.fsx` + `mktruth.py` compute the kernel truth. `cmp.py` (rims) and `vcheck.py` (vertices and
 tangents) compare. `tev.py` times, and `mkstage.py` cuts the call at each stage for the breakdown.
+
+---
+
+## 13. Wing plate 4305 (2026-09-25): face-ordered sections, topological rim loops
+
+Not pushed. Test: Part Studio "Unwrap_Testing Copy 2" (element 681a5825e353d376c88224eb), part "RD 20ITL 28 178 4305_3D"
+= qTransient("RtjT"), W = mid-surface section by the Front plane, align StjLB, d = 0. Harness and dumps in the session
+scratchpad `p4305/` (`mk.py` builds eval lambdas from curve_core + edge_offset_utils + unwrap.fs + this file; `run.sh`,
+`cmp.py` truth comparison, `area.py` closure/area).
+
+**What 4305 is.** A flat base plate (t = 0.44 mm, z 1.64 top) whose sides, over world x 517..1099 (arc -368..+214),
+are bent UP 90 deg into vertical walls ~11-12 mm high at |y| = 46..48.7, each topped by a fillet and a horizontal
+flange running OUT to |y| = 71.5..73 (x 548..1065). The walls rise from nothing at the wing roots along curved rim
+edges in the wall plane (x 517 -> 547, 32 mm; and 1065 -> 1099). Wall exactly vertical (|tw| ~ 0), turning
++90 then -90 deg: a hat/channel section, NOT folded back past vertical. On side 0 (inner, 30 faces) the base-wall
+corner is a SHARP crease (side 1 has an r 0.40 fillet there, i.e. not an exact offset of t = 0.44); the wall-flange
+fillet is r 0.64 / 0.20 (exact offset). Both sides are complete (side0 220997, side1 221152 mm^2; every wall face
+touches both sides); the difference is real curvature, not a missing face. Also: two zero-area faces at x 677.95.
+
+**Why it failed (as found):**
+1. *7 open loops*: tolerant vertices. On the -y side two wing-root vertices have their rim edges' ends 0.4 and
+   0.6 um apart (UNDRAPE_VERTEX_TOL was 0.1 um), which cut the one outline into two chains, which the loop walk
+   (starting mid-chain) split into 7 fragments. No tiny-edge or classification problem (the 0.03/0.06 mm edges
+   chained fine).
+2. *Vertical walls refused as "overhang"* -> 182 kernel fallbacks (34 s), and the kernel chain, ordered by width,
+   SKIPPED the vertical wall (all its samples share one w) and bridged base-to-flange by a chord: the +2462 %
+   stretch and wrong widths.
+3. The tail tip (a single vertex at y = 0) went to the kernel with "fewer than two crossings": its foot lies past
+   W's end and came out 0.12 um off its own station plane.
+
+**Changes (undrape_utils.fs):**
+- Rim loops chain by TOPOLOGICAL vertex (`undrapeVertexKeys`: transient ids of the edge's vertices, matched to its
+  end samples), falling back to position only for tables without keys.
+- Edge tables carry their side faces (`faces`: indices, -1 on the rim); crossing records get fields 19-24 (per-face
+  section tangents and face indices).
+- `undrapeSection`: a section with any tangent below UNDRAPE_OVERHANG is no longer refused; it goes to
+  `undrapeSectionByFaces`: crossings merge into nodes (UNDRAPE_FACE_MERGE 2 um: vertex samples of neighbouring
+  edges were 20 nm apart), a face holding exactly two nodes links them (a face with more keeps only nodes where
+  its edges run THROUGH the plane: a face merely touching at a rim vertex drops out), paths are walked from their
+  ends, several paths join in width order by bridges, and every tangent is oriented along the walk. Pieces stay
+  the circular arcs of section 4, so the section unrolls by arc length however far it turns (past 90 deg too).
+  Refused (kernel) only if a face still has 3+ nodes, a node branches, or the links close. Width-ordered sections
+  (all earlier parts) take the old code path unchanged.
+- Crease turn at a node (arriving vs leaving tangent) now adds its mid-surface correction sideSign (t'/2) turn,
+  half each side of the node (`undrapeSectionMid`, `crease`). It was missing: 0.345 mm per 90-deg sharp corner.
+  Where the crease is one leg from the rim and that leg is shorter than t'/2 (a wall rising from nothing at a
+  wing root) the correction ramps in with the leg length; exact offset geometry would jump by the full
+  (t'/2) turn within the first micron of wall (was a 31 % stretch spike at the root).
+- Single-node sections (a station through the tip of a pointed end) are sections of zero extent; edges missing a
+  station plane by < UNDRAPE_END_SNAP (1 um) at an end meet it there.
+- Point lookups on face-ordered sections use the nearest circular piece (`undrapePieceNearest`,
+  `undrapeMidNearest`); the deformation tally uses the walk-oriented tangents.
+- Kernel fallback: a steep kernel section (width not increasing along a piece) is chained by end points
+  (`undrapeChainByEnds`, duplicates dropped, gaps bridged), nearest-point search scans it fully, and
+  `undrapeChainZero` takes the w = 0 crossing nearest the reference. Checked at 6 wing stations: widths equal
+  the truth to 1e-4 mm (106.1886, 165.6430, 166.1797, 168.5914, 125.1527, 121.3370 mm).
+
+**Results on 4305** (spacing 6 mm): side 0, 119 edges, 68 rim edges; 68 outline edges in ONE closed loop, all
+joints exact, no self-intersection; 541 stations, 0 kernel fallbacks; stretch -0.81 % .. +2.56 % (max at the wing
+root, x -366.8), shear up to 8.1 deg; rim 3D 3750.553 mm, flat 3751.442 mm. Flat area (polygon through the samples)
+221058.7 mm^2 = mid-surface 221084.4 -0.012 %, side1 221151.7 -0.04 %. Flat half-width in the wings 83-84 mm
+(46 base + ~12 wall + ~25 flange). Against kernel truth (both sides, chained by connectivity, mean arc):
+0.0000 mm outside the wings; +0.0086 mm per side inside, fully explained by the part (side 1's base fillet is
+r 0.40, not t: (t - r)(2 - pi/2)/2 = 0.0086); 0.26 mm at s = -372, 4 mm BEFORE the wing root vertex, where the
+rim wall is not normal to the plate (side 1 already rises; section 8.6). Time: ~1.3 s for undrapeOutline (eval
+2.3 s minus 1.0 s setup), was 34 s.
+
+**Regression** (same day, same server): RnRD topsheet identical to 0.8 nm (124 truth stations, max 0.0015 mm at
+edge stations, 0.0088 at s = 1818 as before), 11 fallbacks as before, ~5.8 s eval both old and new code (the
+earlier 2.8 s was measured under lighter load). Base RtjP: 1 loop, now 0 fallbacks (was 7 at the pointed ends,
+with a spurious -6.9 % stretch there), stretch +-0.01 %, flat area 188661.8 vs mid 188679.7 mm^2. 6005 Rtjf and
+4310 Rtjj: output identical (1 loop, 0 fallbacks, areas 264648.0 / 264702.1 = mid). Mats/shears not re-run.
+
+**For unwrap.fs (not changed here):** in the harness `opExtractSurface(side0, offset -t/2,
+useFacesAroundToTrimOffset)` fails on 4305 with DIRECT_EDIT_OFFSET_FACE_FAILED (side0 at +t/2, side1 at -t/2 and
+untrimmed variants all work). The mid-surface for "target from face" came from side1 here.
