@@ -132,6 +132,16 @@ case("M14 ", r'''
         return [size(q0) == 2 && at(wire, 14100, 40, 0) && name(wire) == "_S" && at(solid, 14100, 0, 0) && name(solid) == (cubeName ~ "_S") && at(cube, 14000, 0, 0),
             describe("wire", wire) ~ "; " ~ describe("solid", solid) ~ "; " ~ describe("source cube", cube)];''', CUBE="M14 cube")
 
+case("M15 ", r'''
+        const out = embedded(SELF);
+        const q0 = out.query.initial_copy.value;
+        const q1 = out.query.copy_1.value;
+        const q2 = out.query.copy_2.value;
+        return [at(q0, 15250, 0, 0) && at(q1, 15320, 0, 0) && at(q2, 15050, 0, 0) && at(created(@CUBE@), 15000, 0, 0),
+            describe("initial_copy", q0) ~ "; " ~ describe("copy_1", q1) ~ "; " ~ describe("copy_2", q2)];''', CUBE="M15 cube")
+
+moved_to("M16 ", "M16 cube", 16050, 13.3975, 0)
+
 EXPECTED_WARNINGS = ["M3b "]
 
 
@@ -159,7 +169,7 @@ def main():
             print("FAIL", name, "-- status", status, "expected", want)
 
     for prefix, body, names in CASES:
-        cases = [(n, i) for n, i in by_name if n.startswith(prefix) and "->" in n and not n.startswith(prefix + "path") and not n.startswith(prefix + "source")]
+        cases = [(n, i) for n, i in by_name if n.startswith(prefix) and "->" in n and not n.startswith(prefix + "path") and not n.startswith(prefix + "source") and not n.startswith(prefix + "target")]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

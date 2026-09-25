@@ -21,14 +21,29 @@ export enum MoveNameMode
 }
 
 /**
- * Which frame carries the body's roll about the tangent when the curve frame is kept.
+ * Which part of the motion along the path is applied.
  */
-export enum MoveFrameMode
+export enum MoveApplyMode
 {
-    annotation { "Name" : "Curve normal (Frenet)" }
-    FRENET,
+    annotation { "Name" : "Move and rotate" }
+    MOVE_AND_ROTATE,
+    annotation { "Name" : "Translate only" }
+    TRANSLATE,
+    annotation { "Name" : "Rotate only" }
+    ROTATE
+}
+
+/**
+ * How the rotation follows the path.
+ */
+export enum MoveOrientation
+{
+    annotation { "Name" : "Tangent only" }
+    TANGENT,
     annotation { "Name" : "Transported (no twist)" }
-    TRANSPORT
+    TRANSPORT,
+    annotation { "Name" : "Curve normal (Frenet)" }
+    FRENET
 }
 
 /**
@@ -88,13 +103,13 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         annotation { "Name" : "Flip direction", "Description" : "Move backwards along the path (Distance moves only)." }
         definition.flipDirection is boolean;
 
-        annotation { "Name" : "Maintain curve frame", "Description" : "Rotate the body about the tangent as well as aligning the tangent. When off, only the tangent direction is aligned." }
-        definition.useFrenet is boolean;
+        annotation { "Name" : "Apply", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Translate only keeps the orientation. Rotate only keeps the position: the entity turns about its reference point (reference vertex, else its centroid or mate connector origin).", "Default" : MoveApplyMode.MOVE_AND_ROTATE }
+        definition.applyMode is MoveApplyMode;
 
-        if (definition.useFrenet)
+        if (definition.applyMode != MoveApplyMode.TRANSLATE)
         {
-            annotation { "Name" : "Frame", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Curve normal: follows the curvature direction (arbitrary on straight edges, flips at inflections). Transported: carries the start frame along the path without twist.", "Default" : MoveFrameMode.FRENET }
-            definition.frameMode is MoveFrameMode;
+            annotation { "Name" : "Orientation", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Tangent only: turn with the tangent. Transported: also roll with the path, without twist. Curve normal: follow the curvature direction (arbitrary on straight edges, flips at inflections).", "Default" : MoveOrientation.TANGENT }
+            definition.orientation is MoveOrientation;
         }
 
         annotation { "Name" : "Copy Bodies?", "Default" : false }
@@ -174,6 +189,14 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             }
         }
 
+        // A point turned about itself stays where it is.
+        var points = qUnion([qEntityFilter(definition.moveBodies, EntityType.VERTEX),
+                    definition.mcAsPoints ? qBodyType(definition.moveBodies, BodyType.MATE_CONNECTOR) : qNothing()]);
+        if (definition.applyMode == MoveApplyMode.ROTATE && !definition.provideRef && !isQueryEmpty(context, points))
+        {
+            reportFeatureInfo(context, id, "Rotate only: points are created at their source locations (a point has no orientation).");
+        }
+
         if (namesMissing)
         {
             reportFeatureWarning(context, id, "Some source body names were not available for prefix/suffix; only the name text was used. Edit the feature to refresh the names.");
@@ -196,7 +219,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                     "inputs" : qUnion([definition.moveBodies, definition.moveEdge]),
                     "queries" : queries
                 });
-    }, { "moveMode" : MoveToMode.DISTANCE, "moveTarget" : qNothing(), "frameMode" : MoveFrameMode.FRENET, "nameMode" : MoveNameMode.NONE, "nameText" : "", "mcAsPoints" : false, "extraCopies" : [], "sourceNames" : "" });
+    }, { "moveMode" : MoveToMode.DISTANCE, "moveTarget" : qNothing(), "applyMode" : MoveApplyMode.MOVE_AND_ROTATE, "orientation" : MoveOrientation.TANGENT, "nameMode" : MoveNameMode.NONE, "nameText" : "", "mcAsPoints" : false, "extraCopies" : [], "sourceNames" : "" });
 
 /**
  * Reads the selected bodies' names into the hidden sourceNames parameter, in the order the
@@ -253,7 +276,8 @@ function buildMovePath(context is Context, selection is Query) returns map
 export function moveBodyOnCurve(context is Context, id is Id, body is Query, pathData is map, baseName, definition is map) returns map
 {
     var startQ = definition.provideRef ? definition.refVertex : body;
-    var startArcLength = locateStartArcLength(context, pathData, startQ);
+    var startPoint = referencePoint(context, startQ);
+    var startArcLength = arcLengthOf(pathData, nearestOnPath(context, pathData, startPoint));
 
     // The main move keeps the original ids so existing references to its copies survive.
     var moves = [{ "id" : id, "nameMode" : definition.nameMode, "nameText" : definition.nameText,
@@ -276,7 +300,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
     var results = [];
     for (var move in moves)
     {
-        var motion = motionAlongPath(context, pathData, startArcLength, move.end, definition);
+        var motion = motionAlongPath(context, pathData, startArcLength, move.end, startPoint, definition);
 
         var result = body;
         if (asPoint)
@@ -358,17 +382,38 @@ function endArcLength(context is Context, pathData is map, startArcLength is Val
 }
 
 /**
- * The rigid motion taking the path point at startArcLength to the path point at endArcLength.
+ * The motion the Apply mode asks for: the full path motion from startArcLength to endArcLength,
+ * its translation of the path point alone, or its rotation alone about `pivot`.
  */
 function motionAlongPath(context is Context, pathData is map, startArcLength is ValueWithUnits,
+    endArcLength is ValueWithUnits, pivot is Vector, definition is map) returns Transform
+{
+    if (definition.applyMode == MoveApplyMode.TRANSLATE)
+    {
+        // The start path point to the end path point, with no rotation.
+        return transform(evalPathAtArcLength(context, pathData, endArcLength).origin - evalPathAtArcLength(context, pathData, startArcLength).origin);
+    }
+    var full = pathMotion(context, pathData, startArcLength, endArcLength, definition);
+    if (definition.applyMode == MoveApplyMode.ROTATE)
+    {
+        // The same rotation, about the pivot: the pivot stays put.
+        return transform(full.linear, pivot - full.linear * pivot);
+    }
+    return full;
+}
+
+/**
+ * The full rigid motion (rotation and translation) from the path frame at startArcLength to the one at endArcLength.
+ */
+function pathMotion(context is Context, pathData is map, startArcLength is ValueWithUnits,
     endArcLength is ValueWithUnits, definition is map) returns Transform
 {
     var startEval = evalPathAtArcLength(context, pathData, startArcLength);
     var endEval = evalPathAtArcLength(context, pathData, endArcLength);
 
-    if (definition.useFrenet)
+    if (definition.orientation == MoveOrientation.TRANSPORT || definition.orientation == MoveOrientation.FRENET)
     {
-        if (definition.frameMode == MoveFrameMode.TRANSPORT)
+        if (definition.orientation == MoveOrientation.TRANSPORT)
         {
             var endNormal = transportNormal(context, pathData, startArcLength, endArcLength, startEval);
             var endFrame = coordSystem(endEval.origin, endNormal, endEval.tangent);
@@ -412,11 +457,11 @@ function transportNormal(context is Context, pathData is map, s0 is ValueWithUni
     return normalize(normal - dot(normal, tangent) * tangent);
 }
 
-// Project the start onto the path and return its position as an arc length measured
-// from the path start (parameter 0), in the path's travel direction. A body projects its
-// centroid (a mate connector its origin): the body's own closest point is ambiguous when it
-// touches the path or has a face parallel to it (evDistance returns any point of the tie).
-function locateStartArcLength(context is Context, pathData is map, startQ is Query) returns ValueWithUnits
+// The point that locates the start on the path (projected onto it) and that Rotate only turns
+// about: a vertex's point, a mate connector's origin, else the centroid. A body's own closest
+// point is not used: it is ambiguous when the body touches the path or has a face parallel to
+// it (evDistance returns any point of the tie).
+function referencePoint(context is Context, startQ is Query) returns Vector
 {
     var start;
     if (!isQueryEmpty(context, qEntityFilter(startQ, EntityType.VERTEX)))
@@ -431,7 +476,7 @@ function locateStartArcLength(context is Context, pathData is map, startQ is Que
     {
         start = evApproximateCentroid(context, { "entities" : startQ });
     }
-    return arcLengthOf(pathData, nearestOnPath(context, pathData, start));
+    return start;
 }
 
 // The arc length from the path start of a nearestOnPath result.

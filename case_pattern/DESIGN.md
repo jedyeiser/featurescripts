@@ -45,9 +45,9 @@ by clicking it. The Case template's inputs cover everything outside the list.
 |---|---|---|
 | Case 1 name | string | e.g. "A" |
 | Inputs | array { inputName, query "Case 1 selection" } | up to 8; a name may already exist (redefined) |
-| Case values | array { valueName } | existing # variables; case k uses #<name>_<case name> |
+| Case values | array { valueName, valueKind, typed case-1 field } | up to 4; kinds Length, Angle, Area (mm^2), Volume (mm^3), Number, Text; the template DEFINES #name with case 1's value |
 | Input slots | group of read-only strings "Input k: #name" | editing logic fills them, hides unused |
-| Further cases | array { rowCaseName, Input 1..8 } | slot k binds input k; unused slots hidden (use2..8) |
+| Further cases | array { rowCaseName, Input 1..8, Value 1..4 } | each slot = read-only label ("#top", "#bossH (length)") + selection / typed field; layout flags (useK, useValueM, vMKind) set by editing logic |
 | Print bindings | boolean | println slots + every case's selection counts and values |
 
 Normal run: binds case 1, validates names/values/case names, publishes
@@ -66,8 +66,9 @@ Parameter ids must be unique across the whole feature, array items included (Ons
 | Name separator | string | "_" |
 | Template names | hidden string | case 1 body names cached by editing logic |
 
-Values: before each case `#name = #name_<case>`; a missing one fails that case by name; case 1's
-values are restored afterwards with the query bindings.
+Values: before each case `#name` = that row's typed value; an unset slot (editing logic never ran)
+fails that case by name; case 1's values are restored afterwards with the query bindings.
+Area/volume are isReal in mm^2/mm^3 (isArea/isVolume are not dialog types, correction 30).
 
 ## 4. Outputs and naming
 - Case k outputs = bodies created under `id + caseKey` that still exist when the case ends,

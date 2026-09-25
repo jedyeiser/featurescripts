@@ -162,9 +162,12 @@ def connector(name, x, y):
 
 
 # ---- the feature under test ----
-def extra(distance, mode="NONE", text=""):
+def extra(distance, mode="NONE", text="", target=None):
+    """One additional copy: `distance` along the path, or (target given) to the path point nearest it."""
     return {"btType": "BTMArrayParameterItem-1843", "parameters": [
-        num("copyDistance", "%g mm" % distance), en("copyNameMode", "MoveNameMode", mode, NS), s("copyName", text)]}
+        en("copyMoveMode", "MoveToMode", "NEAREST" if target else "DISTANCE", NS),
+        q("copyTarget", *([target] if target else [])), num("copyDistance", "%g mm" % distance),
+        en("copyNameMode", "MoveNameMode", mode, NS), s("copyName", text)]}
 
 
 def move(name, bodies, path, dist, given=(), enums=None, extras=None):
@@ -280,6 +283,22 @@ c14 = cube("M14 cube at (14000, 0, 0)", 14000, 0)
 move("M14 sketch edge + cube, copy 100, suffix '_S' -> wire '_S' at (14100, 40), cube copy '<name>_S' at (14100, 0)",
      edges(s14), edges(l14), "100 mm", [q("moveBodies", edges(s14), body(c14)), b("copyBodies", True), s("nameText", "_S"), s("sourceNames", part_name(c14))],
      {"nameMode": "SUFFIX"})
+
+# M15 nearest point to a sketch point (main) and to another (copy), plus a distance copy
+l15 = sketch("M15 path: line x 15000..15400", TOP, polyline("l", [(15000, 0), (15400, 0)]))
+t15 = sketch("M15 targets: points (15250, 60) and (15320, -40)", TOP, [point("p", *mmv(15250, 60)), point("q", *mmv(15320, -40))])
+c15 = cube("M15 cube at (15000, 0, 0)", 15000, 0)
+target = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(%g, %g, 0) * millimeter)'
+move("M15 nearest to (15250, 60), copies nearest to (15320, -40) and 50 -> 15250, 15320, 15050",
+     body(c15), edges(l15), "100 mm", [q("moveTarget", target % (t15, 15250, 60)), b("copyBodies", True)], {"moveMode": "NEAREST"},
+     [extra(0, target=target % (t15, 15320, -40)), extra(50)])
+
+# M16 nearest point to a sketch line crossing an arc path: the crossing
+l16 = sketch("M16 path: R100 arc centre (16000, 100) from (16000, 0) to (16100, 100)", TOP, [arc("a", *mmv(16000, 100, 100), -math.pi / 2, 0)])
+t16 = sketch("M16 target: line x = 16050 crossing the arc", TOP, polyline("l", [(16050, -50), (16050, 150)]))
+c16 = cube("M16 cube at (16000, 0, 0)", 16000, 0)
+move("M16 nearest to a line crossing the arc -> the crossing (16050, 13.3975, 0)", body(c16), edges(l16), "0 mm",
+     [q("moveTarget", edges(t16))], {"moveMode": "NEAREST"})
 
 # M11 disconnected edges: temporary instance, must fail
 l11 = sketch("M11 path: two lines with a gap", TOP, polyline("l", [(11000, 0), (11100, 0)]) + polyline("m", [(11200, 0), (11300, 0)]))

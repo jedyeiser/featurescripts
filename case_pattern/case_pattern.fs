@@ -75,7 +75,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                     "Description" : "Case pattern swaps this suffix for each case's name when naming what the case creates." }
         definition.caseName is string;
 
-        annotation { "Name" : "Inputs", "Item name" : "Input", "Item label template" : "#inputName" }
+        annotation { "Name" : "Inputs", "Item name" : "Input", "Item label template" : "#inputName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.inputs is array;
         for (var input in definition.inputs)
         {
@@ -87,7 +87,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             input.query is Query;
         }
 
-        annotation { "Name" : "Case values", "Item name" : "Value", "Item label template" : "#valueName",
+        annotation { "Name" : "Case values", "Item name" : "Value", "Item label template" : "#valueName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
                     "Description" : "# variables that change per case. The template defines each with case 1's value; every further case gives its own." }
         definition.values is array;
         for (var value in definition.values)
@@ -146,7 +146,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
         annotation { "Name" : "Show slot 8", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
         definition.showSlot8 is boolean;
 
-        annotation { "Group Name" : "Input slots", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Input slots", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Slot 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
             definition.slot1 is string;
@@ -187,7 +187,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             }
         }
 
-        annotation { "Name" : "Further cases", "Item name" : "Case", "Item label template" : "#rowCaseName" }
+        annotation { "Name" : "Further cases", "Item name" : "Case", "Item label template" : "#rowCaseName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
         definition.cases is array;
         for (var row in definition.cases)
         {
@@ -421,9 +421,12 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             }
         }
 
-        annotation { "Name" : "Print bindings", "Default" : false,
-                    "Description" : "Print the input slots and every case's selections and values to the FeatureScript notices." }
-        definition.debug is boolean;
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print bindings", "Default" : false,
+                        "Description" : "Print the input slots and every case's selections and values to the FeatureScript notices." }
+            definition.debug is boolean;
+        }
     }
     {
         // Re-run inside a Case pattern: the pattern has already bound this case.
