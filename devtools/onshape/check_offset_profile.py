@@ -119,6 +119,19 @@ CHECKS = {
     "T5": r'''
         const b = out.variable.breakStations.value;
         return [pieces == 2 && size(b) == 1 && near(b[0], 5050, 1e-6), pieces ~ " pieces, breaks " ~ join(mapArray(b, fmt), " / ")];''',
+    "T6": r'''
+        const s0 = out.variable.startStation.value;
+        const s1 = out.variable.endStation.value;
+        const a = valueAt(wires, 6050);
+        const m = valueAt(wires, 6225);
+        const ok = pieces == 1 && near(s0, 6000, 1e-6) && near(s1, 6350, 1e-6) && near(a[0], 2, 1e-6) && near(a[1], 1, 1e-6)
+            && near(m[0], 3, 1e-6) && near(m[1], 1, 1e-6);
+        return [ok, pieces ~ " piece, " ~ fmt(s0) ~ " .. " ~ fmt(s1) ~ ", at 6050 w " ~ fmt(a[0]) ~ " h " ~ fmt(a[1])
+            ~ ", at 6225 w " ~ fmt(m[0]) ~ " h " ~ fmt(m[1])];''',
+    "T7": r'''
+        const s1 = out.variable.endStation.value;
+        const e = valueAt(wires, 7100);
+        return [pieces == 1 && near(s1, 7100, 1e-6) && near(e[0], 3, 1e-6), pieces ~ " piece, ends at " ~ fmt(s1) ~ ", width there " ~ fmt(e[0])];''',
 }
 
 

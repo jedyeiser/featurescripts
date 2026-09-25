@@ -531,6 +531,9 @@ function mateConnectorOf(context is Context, selection is Query)
  *
  * @param referenceKey {string} : the parameter to highlight for a bad reference ("reference", "profileFace").
  */
+/** How far two reference edges may overlap in X before the reference counts as doubling back. */
+const UNWRAP_REFERENCE_X_OVERLAP = 1e-5 * meter;
+
 function checkedChart(context is Context, reference is Query, referenceKey is string, alignPoint is Vector,
     offset is ValueWithUnits) returns map
 {
@@ -540,8 +543,11 @@ function checkedChart(context is Context, reference is Query, referenceKey is st
         throw regenError("The wrapped reference has no edges.", [referenceKey]);
     }
 
-    // Each edge monotonic in X, and the edges' X intervals end to end: then the chain is.
-    const tol = TOLERANCE.zeroLength;
+    // Each edge monotonic in X, and the edges' X intervals end to end: then the chain is. The overlap tolerance is
+    // UNWRAP_REFERENCE_X_OVERLAP, not kernel zero: a section of a real part carries sub-micron overlaps at its
+    // edge joins (the topsheet's Front-plane section: 0.5 um at X 1624.5), while a reference that doubles back
+    // overlaps by millimetres.
+    const tol = UNWRAP_REFERENCE_X_OVERLAP / meter;
     var spans = [];
     for (var edge in edges)
     {

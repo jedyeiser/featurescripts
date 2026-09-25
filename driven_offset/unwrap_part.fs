@@ -453,7 +453,9 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
             failed = append(failed, face);
             continue;
         }
-        rows = append(rows, faceRow(context, chart, face, kind, flatGrid, settings.part));
+        var row = faceRow(context, chart, face, kind, flatGrid, settings.part);
+        row.grid = flatGrid;
+        rows = append(rows, row);
     }
     if (size(failed) > 0)
     {
@@ -462,7 +464,32 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
                 ~ "to the reference; they cannot be unwrapped exactly.", qUnion(failed));
     }
 
-    // 2. Chain tangent rows of one kind, drop duplicates.
+    // 2. A vertical wall is a ruled surface too: WALL rows running on tangentially from a RULED row are re-read as
+    //    RULED rows, so the junction lies inside one tool (two tools meeting tangentially and extended past each other
+    //    cross at a grazing angle, and opSplitPart fails there). Chain tangent rows of one kind, drop duplicates.
+    var converting = true;
+    while (converting)
+    {
+        converting = false;
+        for (var i = 0; i < size(rows); i += 1)
+        {
+            if (rows[i].kind != "WALL")
+            {
+                continue;
+            }
+            for (var other in rows)
+            {
+                if (other.kind == "RULED" && joinRows(other, rows[i]) != undefined)
+                {
+                    var ruled = faceRow(context, chart, rows[i].faces[0], "RULED", rows[i].grid, settings.part);
+                    ruled.grid = rows[i].grid;
+                    rows[i] = ruled;
+                    converting = true;
+                    break;
+                }
+            }
+        }
+    }
     var chains = [];
     for (var kind in ["PROFILE", "WALL", "RULED"])
     {
@@ -812,37 +839,9 @@ export function chainRows(rows is array, kind is string) returns array
                 {
                     continue;
                 }
-                const q = pool[j].pts;
-                const n = size(q);
-                const pts = ch.pts;
-                const cn = size(pts);
-                const endDir = planarDirection(pts[cn - 2], pts[cn - 1]);
-                const startDir = planarDirection(pts[0], pts[1]);
-                var joined = undefined;
-                if (planarDistance(pts[cn - 1], q[0]) < UNWRAP_PART_JOIN
-                    && planarDot(endDir, planarDirection(q[0], q[1])) > UNWRAP_PART_TANGENT_DOT)
-                {
-                    joined = { "pts" : concatenateArrays([pts, subArray(q, 1, n)]), "e0" : ch.e0, "e1" : pool[j].e1 };
-                }
-                else if (planarDistance(pts[cn - 1], q[n - 1]) < UNWRAP_PART_JOIN
-                    && planarDot(endDir, planarDirection(q[n - 1], q[n - 2])) > UNWRAP_PART_TANGENT_DOT)
-                {
-                    joined = { "pts" : concatenateArrays([pts, reverse(subArray(q, 0, n - 1))]), "e0" : ch.e0, "e1" : pool[j].e0 };
-                }
-                else if (planarDistance(pts[0], q[n - 1]) < UNWRAP_PART_JOIN
-                    && planarDot(startDir, planarDirection(q[n - 2], q[n - 1])) > UNWRAP_PART_TANGENT_DOT)
-                {
-                    joined = { "pts" : concatenateArrays([subArray(q, 0, n - 1), pts]), "e0" : pool[j].e0, "e1" : ch.e1 };
-                }
-                else if (planarDistance(pts[0], q[0]) < UNWRAP_PART_JOIN
-                    && planarDot(startDir, planarDirection(q[1], q[0])) > UNWRAP_PART_TANGENT_DOT)
-                {
-                    joined = { "pts" : concatenateArrays([reverse(subArray(q, 1, n)), pts]), "e0" : pool[j].e1, "e1" : ch.e1 };
-                }
+                const joined = joinRows(ch, pool[j]);
                 if (joined != undefined)
                 {
-                    joined.kind = kind;
-                    joined.faces = concatenateArrays([ch.faces, pool[j].faces]);
                     ch = joined;
                     used[j] = true;
                     grew = true;
@@ -852,6 +851,70 @@ export function chainRows(rows is array, kind is string) returns array
         chains = append(chains, { "kind" : kind, "pts" : ch.pts, "e0" : ch.e0, "e1" : ch.e1, "faces" : ch.faces });
     }
     return chains;
+}
+
+/**
+ * Whether two meeting ends continue each other tangentially: their exact flat normals (e.n) parallel to
+ * UNWRAP_PART_TANGENT_DOT and their chords running on (not folding back). Without normals, the chords alone must
+ * agree to UNWRAP_PART_TANGENT_DOT (chords at a tight corner differ by spacing x curvature, so normals are preferred).
+ */
+export function endsTangent(a, b, dirA is array, dirB is array) returns boolean
+{
+    const na = (a == undefined) ? undefined : a.n;
+    const nb = (b == undefined) ? undefined : b.n;
+    if (na == undefined || nb == undefined)
+    {
+        return planarDot(dirA, dirB) > UNWRAP_PART_TANGENT_DOT;
+    }
+    const la = sqrt(na[0] * na[0] + na[1] * na[1]);
+    const lb = sqrt(nb[0] * nb[0] + nb[1] * nb[1]);
+    if (la < 0.5 || lb < 0.5)
+    {
+        return planarDot(dirA, dirB) > UNWRAP_PART_TANGENT_DOT;
+    }
+    return planarDot(dirA, dirB) > 0 && abs(planarDot(na, nb)) / (la * lb) > UNWRAP_PART_TANGENT_DOT;
+}
+
+/**
+ * Row or chain q appended to chain ch when an end of q meets an end of ch within UNWRAP_PART_JOIN with tangents
+ * agreeing to UNWRAP_PART_TANGENT_DOT (q reversed as needed; the result runs in ch's direction), else undefined.
+ * The result carries ch's kind, both rows' faces, and the ends (e0 / e1) that remain ends.
+ */
+export function joinRows(ch is map, row is map)
+{
+    const q = row.pts;
+    const n = size(q);
+    const pts = ch.pts;
+    const cn = size(pts);
+    const endDir = planarDirection(pts[cn - 2], pts[cn - 1]);
+    const startDir = planarDirection(pts[0], pts[1]);
+    var joined = undefined;
+    if (planarDistance(pts[cn - 1], q[0]) < UNWRAP_PART_JOIN
+        && endsTangent(ch.e1, row.e0, endDir, planarDirection(q[0], q[1])))
+    {
+        joined = { "pts" : concatenateArrays([pts, subArray(q, 1, n)]), "e0" : ch.e0, "e1" : row.e1 };
+    }
+    else if (planarDistance(pts[cn - 1], q[n - 1]) < UNWRAP_PART_JOIN
+        && endsTangent(ch.e1, row.e1, endDir, planarDirection(q[n - 1], q[n - 2])))
+    {
+        joined = { "pts" : concatenateArrays([pts, reverse(subArray(q, 0, n - 1))]), "e0" : ch.e0, "e1" : row.e0 };
+    }
+    else if (planarDistance(pts[0], q[n - 1]) < UNWRAP_PART_JOIN
+        && endsTangent(ch.e0, row.e1, startDir, planarDirection(q[n - 2], q[n - 1])))
+    {
+        joined = { "pts" : concatenateArrays([subArray(q, 0, n - 1), pts]), "e0" : row.e0, "e1" : ch.e1 };
+    }
+    else if (planarDistance(pts[0], q[0]) < UNWRAP_PART_JOIN
+        && endsTangent(ch.e0, row.e0, startDir, planarDirection(q[1], q[0])))
+    {
+        joined = { "pts" : concatenateArrays([reverse(subArray(q, 1, n)), pts]), "e0" : row.e1, "e1" : ch.e1 };
+    }
+    if (joined != undefined)
+    {
+        joined.kind = ch.kind;
+        joined.faces = concatenateArrays([ch.faces, row.faces]);
+    }
+    return joined;
 }
 
 /** Signed distance of p from the line through a and b (planar). */
@@ -1023,10 +1086,37 @@ export function pickIndices(values is array, indices is array) returns array
 }
 
 /**
+ * The ruled surface between two curves of one approximateSpline family (same degree, knots and control-point
+ * count, running the same way), written down: the control polygons side by side, degree 1 across. opLoft refuses
+ * some such pairs outright and gives unsplittable sheets for others (correction 22). The end control points are
+ * pinned to the exact end positions ([first, last] of each curve's points).
+ */
+export function ruledSurface(bottom is BSplineCurve, top is BSplineCurve, bottomEnds is array, topEnds is array) returns BSplineSurface
+{
+    const last = size(bottom.controlPoints) - 1;
+    var grid = [];
+    for (var i = 0; i <= last; i += 1)
+    {
+        grid = append(grid, [bottom.controlPoints[i], top.controlPoints[i]]);
+    }
+    grid[0] = [bottomEnds[0], topEnds[0]];
+    grid[last] = [bottomEnds[1], topEnds[1]];
+    return bSplineSurface({
+                "uDegree" : bottom.degree,
+                "vDegree" : 1,
+                "isUPeriodic" : false,
+                "isVPeriodic" : false,
+                "controlPoints" : controlPointMatrix(grid),
+                "uKnots" : bottom.knots,
+                "vKnots" : knotArray([0, 0, 1, 1])
+            });
+}
+
+/**
  * The tool of one chain, crossing the whole box. A straight PROFILE or WALL chain is a Plane (opSplitPart takes
  * one). Otherwise PROFILE: the (x, z) curve just outside the box's -Y face, extruded along Y; WALL: the (x, y)
  * curve under the box, extruded along Z; RULED: the bottom and top rows pushed along their rulings to below and
- * above the box, fitted as one family (shared parameterization) and lofted. Curves are exact arcs when the chain
+ * above the box, fitted as one family (shared parameterization) and written down as a ruled B-spline surface. Curves are exact arcs when the chain
  * is one, else approximateSpline fits (UNWRAP_PART_FIT_TOL, exact end tangents for PROFILE and WALL). Then only the
  * sheet's side edges (the rulings) are extended by `reach`: extending every edge fails on curved chains, and a tool
  * that does not cross the box does not split it.
@@ -1065,10 +1155,8 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
                         "endDerivative" : normalize(below[n - 1] - below[n + 1]) },
                     { "points" : pointsAbove, "startDerivative" : normalize(above[n] - above[0]),
                         "endDerivative" : normalize(above[n - 1] - above[n + 1]) }], approximation);
-        emitFittedCurve(context, id + "below", curves[0], pointsBelow, approximation);
-        emitFittedCurve(context, id + "above", curves[1], pointsAbove, approximation);
-        opLoft(context, sheet, { "profileSubqueries" : [qCreatedBy(id + "below", EntityType.EDGE), qCreatedBy(id + "above", EntityType.EDGE)],
-                    "bodyType" : ToolBodyType.SURFACE });
+        opCreateBSplineSurface(context, sheet, { "bSplineSurface" : ruledSurface(curves[0], curves[1],
+                            [pointsBelow[0], pointsBelow[size(keep) - 1]], [pointsAbove[0], pointsAbove[size(keep) - 1]]) });
         counter = "ruledTools";
     }
     else

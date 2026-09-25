@@ -103,7 +103,8 @@ curve_core (Curve_tools, by VERSION)
   profiles from Regions or Points; profile BREAKS instead of zero-length connectors; exact Beziers.
   Tests are REAL instances T1..T5 in Part Studio "Offset profile tests" (e18678532ec07b057b372dbd), named by
   case and expected result; check them with `PYTHONPATH=. python devtools/onshape/check_offset_profile.py`
-  (7/7 pass incl. 2 error cases via temporary instances). No test tabs (user preference). Not yet done: consumer-side break handling in DEO / DOS (None / Line per break).
+  (9/9 pass incl. 2 error cases via temporary instances; T6/T7 fixtures built by
+  `devtools/onshape/build_offset_profile_tests.py`). 2026-09-25: stations from points / mate connectors, CONSTANT shape. No test tabs (user preference). Not yet done: consumer-side break handling in DEO / DOS (None / Line per break).
   Design: `research_create_offset_profile.md`.
 
 - **evaluate_offset** (tab a2ebb5abc7ddda01f64ff8df, BUILT 2026-09-24): DEO run backwards -- reference + target

@@ -98,6 +98,20 @@ Harness like reference_side_tests (own fixtures, PASS/FAIL console lines):
 - Points jump (duplicate station) -> break.
 - Validation errors: overlapping regions, buffers too long, blend reaching past a region.
 
+## 2026-09-25 additions (built)
+
+- **Stations from points**: every station (region start / end, point station) has a Value / Point switch
+  (`OffsetStationSource`). Point = a vertex or mate connector pick (filter `EntityType.VERTEX ||
+  BodyType.MATE_CONNECTOR`, so a mate connector can be created in the pick field) + a signed distance along +X;
+  station = the point's WORLD X + distance (user decision: profiles are defined along X; mirroring DEO's
+  measure-along settings rejected). Resolved in the body (missing pick -> error on that field) and in the
+  editing logic (writes the resolved value into the hidden value field, so switching back keeps it and sorting /
+  intersections use it). Exact on the part only when the consumer measures along World X from x = 0.
+- **CONSTANT region shape**: one Width / Height (`constantWidth` / `constantHeight`), no end values, no buffers.
+  Default shape stays LINEAR (saved instances unchanged).
+- Tests T6 (constant + point + mate connector stations) and T7 (points mode, mate connector station) built by
+  `devtools/onshape/build_offset_profile_tests.py`; `check_offset_profile.py` 9/9.
+
 ## Open
 
 - One shape per region for width and height (v1). Separate per-channel shapes if needed later.

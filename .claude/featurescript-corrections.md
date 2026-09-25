@@ -1555,3 +1555,12 @@ The wire stays ONE body (verified by eval API on a real 3-edge profile); separat
 span + delete the source. After the split, re-read the path and re-orient it to the old start point
 (`reverse(path)`) before grouping edges, or piece order can flip. `TOLERANCE.zeroLength` is unitless -- compare
 distances against `TOLERANCE.zeroLength * meter`.
+
+## Correction 46: one parameter id may not appear in two branches of a precondition (2026-09-25)
+
+**Symptom**: `Duplicate feature parameter 'startWidth'` + "precondition analysis failed" -- the whole tab stops
+compiling. Declaring `region.startWidth` under `if (shape == CONSTANT)` (named "Width") AND under the `else`
+branch is refused, even though only one branch can be active.
+**Fix**: a distinct id per branch (`constantWidth`), and pick the right one in the body.
+**Process**: `python fscheck.py ... | tail -4 && push` pushes even when fscheck fails (the pipe's status is
+tail's). fscheck does not catch this one anyway -- push with `--check` and read the notices before moving on.
