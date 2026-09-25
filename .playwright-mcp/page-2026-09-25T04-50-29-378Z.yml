@@ -1,0 +1,523 @@
+- generic [active] [ref=f7e1]:
+  - generic [ref=f7e2]:
+    - generic [ref=f7e3]:
+      - banner [ref=f7e5]:
+        - generic [ref=f7e13]:
+          - generic [ref=f7e15]:
+            - link "Skip to content":
+              - /url: "#skip-nav-content"
+            - link "Onshape" [ref=f7e16] [cursor=pointer]:
+              - /url: https://forum.onshape.com/
+              - img "Home" [ref=f7e18]
+          - navigation "Community" [ref=f7e19]:
+            - list [ref=f7e20]:
+              - listitem [ref=f7e21]:
+                - link "Discussions" [ref=f7e22] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/discussions
+              - listitem [ref=f7e24]:
+                - link "Categories" [ref=f7e25] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/categories
+              - listitem [ref=f7e27]:
+                - link "Activity" [ref=f7e28] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/activity
+              - listitem [ref=f7e30]:
+                - link "Ask a Question" [ref=f7e31] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/post/question
+          - button "Search" [ref=f7e35] [cursor=pointer]
+      - generic [ref=f7e37]:
+        - main [ref=f7e39]:
+          - generic [ref=f7e44]:
+            - navigation "Breadcrumb" [ref=f7e46]:
+              - generic [ref=f7e47]:
+                - link "Home" [ref=f7e49] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/
+                - generic [ref=f7e50]:
+                  - text: ›
+                  - link "Community Support" [ref=f7e52] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/community-support
+            - generic [ref=f7e53]:
+              - generic [ref=f7e54]:
+                - generic [ref=f7e55]:
+                  - link "×" [ref=f7e56] [cursor=pointer]:
+                    - /url: /dashboard/message/dismiss/5/i2AGneC3igK3eBK1?Target=discussion/30132/sheet-metal-convert-error
+                  - paragraph [ref=f7e57]: Welcome to the Onshape forum! Ask questions and join in the discussions about everything Onshape.
+                  - strong [ref=f7e58]: "First time visiting? Here are some places to start:"
+                  - list [ref=f7e59]:
+                    - listitem [ref=f7e60]:
+                      - text: Looking for a certain topic? Check out the
+                      - link "categories filter" [ref=f7e61] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories
+                      - text: or use Search (upper right).
+                    - listitem [ref=f7e62]:
+                      - text: Need support?
+                      - link "Ask a question" [ref=f7e63] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/post/question/community-support
+                      - text: to our
+                      - link "Community Support" [ref=f7e64] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                      - text: category.
+                    - listitem [ref=f7e65]:
+                      - text: Please submit support tickets for bugs but you can request improvements in the
+                      - link "Product Feedback category" [ref=f7e66] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                      - text: .
+                    - listitem [ref=f7e67]: Be respectful, on topic and if you see a problem, Flag it.
+                  - paragraph [ref=f7e68]:
+                    - text: If you would like to contact our Community Manager personally, feel free to
+                    - link "send a private message" [ref=f7e69] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/profile/6/LouGallo
+                    - text: or
+                    - link "an email" [ref=f7e70] [cursor=pointer]:
+                      - /url: mailto:lgallo@onshape.com
+                    - text: .
+                - generic [ref=f7e71]:
+                  - heading "Sheet Metal Convert Error" [level=1] [ref=f7e72]
+                  - generic [ref=f7e73]:
+                    - 'link "Bookmark for discussion: &quot;Sheet Metal Convert Error&quot;" [ref=f7e74] [cursor=pointer]':
+                      - /url: /discussion/bookmark/30132/i2AGneC3igK3eBK1?Target=discussion%2F30132%2Fsheet-metal-convert-error
+                    - button "Options" [ref=f7e75]
+                - generic [ref=f7e79]:
+                  - generic [ref=f7e82]:
+                    - generic [ref=f7e83]:
+                      - 'link "User: \"kent_henderson\"" [ref=f7e84] [cursor=pointer]':
+                        - /url: https://forum.onshape.com/profile/kent_henderson
+                        - img "kent_henderson" [ref=f7e85]
+                      - generic [ref=f7e86]:
+                        - generic [ref=f7e87]:
+                          - link "kent_henderson" [ref=f7e89] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/profile/kent_henderson
+                          - generic [ref=f7e90]:
+                            - generic [ref=f7e91]: Member
+                            - generic [ref=f7e92]:
+                              - text: "Posts:"
+                              - generic [ref=f7e93]: "71"
+                            - generic "Knight" [ref=f7e94]: ✭✭✭
+                        - link [ref=f7e97] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussion/30132/sheet-metal-convert-error
+                          - time [ref=f7e98]: February 11
+                    - generic [ref=f7e100]:
+                      - generic [ref=f7e101]:
+                        - paragraph [ref=f7e102]: I have a solid that I've converted into a sheet metal part which I find to be a wonderful tool. But when there's a error it's often hard to figure out what the problem is. I'm wondering if ththere is are a way to better see where the problem lies. It looks like everything has been converted to sheet metal, but there are no unfolds. I can also see that ever part of the cylindrical body is part24. Does anyone see a good fix.
+                        - paragraph [ref=f7e103]
+                        - paragraph [ref=f7e104]: https://cad.onshape.com/documents/5fe549b482d40a1d0b18b092/w/c042d8d5c6911c6370c80f1b/e/a8d18e01599b410c9881af9d?renderMode=0&uiState=698d295f1bf03c03f032e531
+                      - generic [ref=f7e105]:
+                        - generic [ref=f7e106]:
+                          - button "Flag discussion" [ref=f7e107] [cursor=pointer]:
+                            - generic [ref=f7e108]: 
+                            - generic [ref=f7e109]: Flag
+                          - generic:  
+                        - button "Quote" [ref=f7e110] [cursor=pointer]:
+                          - generic [aria-hidden] [ref=f7e111]: 
+                          - text: Quote
+                        - button "Vote Down discussion" [ref=f7e112] [cursor=pointer]:
+                          - generic [ref=f7e113]: 
+                          - generic [ref=f7e114]: Vote Down
+                        - button "Vote Up discussion" [ref=f7e115] [cursor=pointer]:
+                          - generic [ref=f7e116]: 
+                          - generic [ref=f7e117]: Vote Up
+                  - generic [ref=f7e118]:
+                    - heading "Best Answer" [level=2] [ref=f7e120]
+                    - list [ref=f7e121]:
+                      - listitem [ref=f7e122]:
+                        - generic [ref=f7e123]:
+                          - generic [ref=f7e124]:
+                            - 'link "User: \"EvanReese\"" [ref=f7e125] [cursor=pointer]':
+                              - /url: https://forum.onshape.com/profile/EvanReese
+                              - img "EvanReese" [ref=f7e126]
+                            - generic [ref=f7e127]:
+                              - generic [ref=f7e128]:
+                                - link "EvanReese" [ref=f7e130] [cursor=pointer]:
+                                  - /url: https://forum.onshape.com/profile/EvanReese
+                                - generic [ref=f7e131]:
+                                  - generic [ref=f7e132]: Member, Mentor
+                                  - generic [ref=f7e133]:
+                                    - text: "Posts:"
+                                    - generic [ref=f7e134]: 3,059
+                                  - generic "Professional user" [ref=f7e135]: PRO
+                              - generic [ref=f7e136]:
+                                - link [ref=f7e138] [cursor=pointer]:
+                                  - /url: /discussion/comment/126823/#Comment_126823
+                                  - time [ref=f7e139]: February 12
+                                - generic "Accepted Answer" [ref=f7e140]
+                            - button "Options" [ref=f7e142]:
+                              - generic [aria-hidden] [ref=f7e143] [cursor=pointer]
+                          - generic [ref=f7e145]:
+                            - paragraph [ref=f7e147]: Interesting application. Hadn't thought of that use case
+                            - generic [ref=f7e148]:
+                              - text: Evan ReeseThe Onsherpa | Reach peak Onshape productivity
+                              - link "www.theonsherpa.com" [ref=f7e149] [cursor=pointer]:
+                                - /url: https://www.theonsherpa.com/
+                            - generic [ref=f7e150]:
+                              - generic [ref=f7e151]:
+                                - button "Flag comment" [ref=f7e152] [cursor=pointer]:
+                                  - generic [ref=f7e153]: 
+                                  - generic [ref=f7e154]: Flag
+                                - generic:  
+                              - button "Quote" [ref=f7e155] [cursor=pointer]:
+                                - generic [aria-hidden] [ref=f7e156]: 
+                                - text: Quote
+                              - button "Vote Down comment" [ref=f7e157] [cursor=pointer]:
+                                - generic [ref=f7e158]: 
+                                - generic [ref=f7e159]: Vote Down
+                              - button "Vote Up comment" [ref=f7e160] [cursor=pointer]:
+                                - generic [ref=f7e161]: 
+                                - generic [ref=f7e162]: Vote Up
+                  - heading "Answers" [level=2] [ref=f7e164]
+                  - list [ref=f7e165]:
+                    - listitem [ref=f7e166]:
+                      - generic [ref=f7e167]:
+                        - generic [ref=f7e168]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f7e169] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info" [ref=f7e170]
+                          - generic [ref=f7e171]:
+                            - generic [ref=f7e172]:
+                              - link "jelte_steur_info" [ref=f7e174] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f7e175]:
+                                - generic [ref=f7e176]: Member
+                                - generic [ref=f7e177]:
+                                  - text: "Posts:"
+                                  - generic [ref=f7e178]: "676"
+                                - generic "Professional user" [ref=f7e179]: PRO
+                            - link [ref=f7e182] [cursor=pointer]:
+                              - /url: /discussion/comment/126802/#Comment_126802
+                              - time [ref=f7e183]: February 12
+                          - button "Options" [ref=f7e185]:
+                            - generic [aria-hidden] [ref=f7e186] [cursor=pointer]
+                        - generic [ref=f7e188]:
+                          - generic [ref=f7e189]:
+                            - paragraph [ref=f7e190]: yeah it made the whole cylindrical body into one sheet metal body. without a defined rip line it won't be able to unfold. Are you going to weld the cylinder together from a bunch of plates? then use a sheet metal model for each face and convert/thicken them one by one.
+                            - paragraph [ref=f7e191]:
+                              - link "@EvanReese" [ref=f7e192] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/EvanReese
+                              - text: "'s Query pattern may help for that. it's a more advanced workflow, but i think it's ideal for this case:"
+                            - paragraph [ref=f7e193]: have all suitable faces in a query, use a sheet metal model feature on a single face and loop over the faces in the query.
+                            - group "External embed content - youtube" [ref=f7e196]:
+                              - button "Query Pattern Custom Feature" [ref=f7e198] [cursor=pointer]:
+                                - generic [ref=f7e199]:
+                                  - img "Play Video"
+                          - generic [ref=f7e200]:
+                            - generic [ref=f7e201]:
+                              - button "Flag comment" [ref=f7e202] [cursor=pointer]:
+                                - generic [ref=f7e203]: 
+                                - generic [ref=f7e204]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f7e205] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f7e206]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f7e207] [cursor=pointer]:
+                              - generic [ref=f7e208]: 
+                              - generic [ref=f7e209]: Vote Down
+                            - button "Vote Up comment" [ref=f7e210] [cursor=pointer]:
+                              - generic [ref=f7e211]: 
+                              - generic [ref=f7e212]: Vote Up
+                    - listitem [ref=f7e213]:
+                      - generic [ref=f7e214]:
+                        - generic [ref=f7e215]:
+                          - 'link "User: \"EvanReese\"" [ref=f7e216] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/EvanReese
+                            - img "EvanReese" [ref=f7e217]
+                          - generic [ref=f7e218]:
+                            - generic [ref=f7e219]:
+                              - link "EvanReese" [ref=f7e221] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/EvanReese
+                              - generic [ref=f7e222]:
+                                - generic [ref=f7e223]: Member, Mentor
+                                - generic [ref=f7e224]:
+                                  - text: "Posts:"
+                                  - generic [ref=f7e225]: 3,059
+                                - generic "Professional user" [ref=f7e226]: PRO
+                            - generic [ref=f7e227]:
+                              - link [ref=f7e229] [cursor=pointer]:
+                                - /url: /discussion/comment/126823/#Comment_126823
+                                - time [ref=f7e230]: February 12
+                              - generic "Accepted Answer" [ref=f7e231]
+                          - button "Options" [ref=f7e233]:
+                            - generic [aria-hidden] [ref=f7e234] [cursor=pointer]
+                        - generic [ref=f7e236]:
+                          - paragraph [ref=f7e238]: Interesting application. Hadn't thought of that use case
+                          - generic [ref=f7e239]:
+                            - text: Evan ReeseThe Onsherpa | Reach peak Onshape productivity
+                            - link "www.theonsherpa.com" [ref=f7e240] [cursor=pointer]:
+                              - /url: https://www.theonsherpa.com/
+                          - generic [ref=f7e241]:
+                            - generic [ref=f7e242]:
+                              - button "Flag comment" [ref=f7e243] [cursor=pointer]:
+                                - generic [ref=f7e244]: 
+                                - generic [ref=f7e245]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f7e246] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f7e247]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f7e248] [cursor=pointer]:
+                              - generic [ref=f7e249]: 
+                              - generic [ref=f7e250]: Vote Down
+                            - button "Vote Up comment" [ref=f7e251] [cursor=pointer]:
+                              - generic [ref=f7e252]: 
+                              - generic [ref=f7e253]: Vote Up
+                    - listitem [ref=f7e254]:
+                      - generic [ref=f7e255]:
+                        - generic [ref=f7e256]:
+                          - 'link "User: \"S1mon\"" [ref=f7e257] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/S1mon
+                            - img "S1mon" [ref=f7e258]
+                          - generic [ref=f7e259]:
+                            - generic [ref=f7e260]:
+                              - link "S1mon" [ref=f7e262] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/S1mon
+                              - generic [ref=f7e263]:
+                                - generic [ref=f7e264]: Member
+                                - generic [ref=f7e265]:
+                                  - text: "Posts:"
+                                  - generic [ref=f7e266]: 4,513
+                                - generic "Professional user" [ref=f7e267]: PRO
+                            - link [ref=f7e270] [cursor=pointer]:
+                              - /url: /discussion/comment/126830/#Comment_126830
+                              - time [ref=f7e271]: February 12
+                          - button "Options" [ref=f7e273]:
+                            - generic [aria-hidden] [ref=f7e274] [cursor=pointer]
+                        - generic [ref=f7e276]:
+                          - generic [ref=f7e277]:
+                            - paragraph [ref=f7e278]: "Somehow this is reminding me of this thing that I saw recently:"
+                            - paragraph [ref=f7e279]:
+                              - generic "External embed content - link" [ref=f7e281]:
+                                - link "PARAGAMI - TEMPLATES for PAPER FOLDING & 3D PRINTING - DIY WALL ART" [ref=f7e282] [cursor=pointer]:
+                                  - /url: https://www.paragami.com
+                                  - img "Site favicon" [ref=f7e283]
+                                  - text: PARAGAMI - TEMPLATES for PAPER FOLDING & 3D PRINTING - DIY WALL ART
+                            - link [ref=f7e286] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/KM6RJEPHPUG3/image.png
+                              - img "image.png" [ref=f7e287]
+                            - link [ref=f7e290] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/ENVDG8A5R4TH/image.png
+                              - img "image.png" [ref=f7e291]
+                            - paragraph [ref=f7e292]: From the illustrations on the site, I assume that they use Rhino/Grasshopper to automate these, but I could see doing something like this with Onshape, attractor patterns, query variables/patterns, and sheetmetal.
+                          - generic [ref=f7e293]:  ×  ×
+                          - paragraph [ref=f7e295]:
+                            - text: Simon Gatrall | Product Development, Engineering, Design, Onshape | Ex- IDEO, PCH, Unagi, Carbon |
+                            - link "LinkedIn" [ref=f7e296] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/gatrall/
+                          - generic [ref=f7e297]:
+                            - generic [ref=f7e298]:
+                              - button "Flag comment" [ref=f7e299] [cursor=pointer]:
+                                - generic [ref=f7e300]: 
+                                - generic [ref=f7e301]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f7e302] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f7e303]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f7e304] [cursor=pointer]:
+                              - generic [ref=f7e305]: 
+                              - generic [ref=f7e306]: Vote Down
+                            - button "Vote Up comment" [ref=f7e307] [cursor=pointer]:
+                              - generic [ref=f7e308]: 
+                              - generic [ref=f7e309]: Vote Up
+                  - heading "Leave a Comment" [level=2] [ref=f7e311]
+                  - generic [ref=f7e317]:
+                    - generic [ref=f7e320]:
+                      - generic [ref=f7e321]: To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu.
+                      - generic [ref=f7e322]:
+                        - generic [ref=f7e324]:
+                          - textbox "To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu." [ref=f7e325]:
+                            - paragraph [ref=f7e326]
+                          - generic: Type...
+                          - button "Element Toolbar" [ref=f7e329] [cursor=pointer]
+                        - menubar [ref=f7e333]:
+                          - menuitem "Emoji Picker" [ref=f7e334] [cursor=pointer]
+                          - menuitem "Upload Image" [ref=f7e335] [cursor=pointer]
+                          - menuitem "Insert Embed" [ref=f7e336] [cursor=pointer]
+                          - menuitem "Upload File" [ref=f7e337] [cursor=pointer]
+                          - menuitem "Insert Table" [ref=f7e338] [cursor=pointer]
+                    - generic [ref=f7e339]:
+                      - link "Save Draft" [ref=f7e340] [cursor=pointer]:
+                        - /url: /discussion/30132/sheet-metal-convert-error#
+                      - button "Post Comment" [ref=f7e341] [cursor=pointer]
+              - generic [ref=f7e342]:
+                - button "Ask a Question" [ref=f7e345] [cursor=pointer]
+                - generic [ref=f7e349]:
+                  - heading "Quick Links" [level=2] [ref=f7e354]
+                  - navigation "Quick Links" [ref=f7e356]:
+                    - list [ref=f7e357]:
+                      - listitem [ref=f7e358]:
+                        - link "All Categories" [ref=f7e359] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/categories
+                      - listitem [ref=f7e360]:
+                        - link "Recent Posts" [ref=f7e361] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions
+                      - listitem [ref=f7e362]:
+                        - link "Activity" [ref=f7e363] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/activity
+                      - listitem [ref=f7e364]:
+                        - link "My Bookmarks 0" [ref=f7e365] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/bookmarked
+                          - text: My Bookmarks
+                          - generic [ref=f7e366]: "0"
+                      - listitem [ref=f7e367]:
+                        - link "My Posts 7" [ref=f7e368] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/mine
+                          - text: My Posts
+                          - generic [ref=f7e369]: "7"
+                      - listitem [ref=f7e370]:
+                        - link "My Drafts 10" [ref=f7e371] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/drafts
+                          - text: My Drafts
+                          - generic [ref=f7e372]: "10"
+                      - listitem [ref=f7e373]:
+                        - link "Unanswered 99+" [ref=f7e374] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/unanswered
+                          - text: Unanswered
+                          - generic [ref=f7e375]: 99+
+                      - listitem [ref=f7e376]:
+                        - link "Groups" [ref=f7e377] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/groups
+                      - listitem [ref=f7e378]:
+                        - link "Best Of" [ref=f7e379] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/bestof
+                - generic [ref=f7e380]:
+                  - heading "Categories" [level=4] [ref=f7e382]
+                  - list [ref=f7e383]:
+                    - listitem [ref=f7e384]:
+                      - link "All Categories" [ref=f7e385] [cursor=pointer]:
+                        - /url: /categories
+                    - listitem [ref=f7e386]:
+                      - link "10.1K Community Support" [ref=f7e387] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                        - generic [ref=f7e388]: 10.1K
+                        - text: Community Support
+                    - listitem [ref=f7e390]:
+                      - link "3.6K Improvement requests" [ref=f7e391] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/improvement-voting
+                        - generic [ref=f7e392]: 3.6K
+                        - text: Improvement requests
+                    - listitem [ref=f7e394]:
+                      - link "4.5K General" [ref=f7e395] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/general
+                        - generic [ref=f7e396]: 4.5K
+                        - text: General
+                    - listitem [ref=f7e398]:
+                      - link "187 Account and subscriptions" [ref=f7e399] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/account-and-subscriptions
+                        - generic [ref=f7e400]: "187"
+                        - text: Account and subscriptions
+                    - listitem [ref=f7e402]:
+                      - link "350 Data management" [ref=f7e403] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/data-management
+                        - generic [ref=f7e404]: "350"
+                        - text: Data management
+                    - listitem [ref=f7e406]:
+                      - link "1.6K Product Feedback" [ref=f7e407] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                        - generic [ref=f7e408]: 1.6K
+                        - text: Product Feedback
+                    - listitem [ref=f7e410]:
+                      - link "212 New in Onshape" [ref=f7e411] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/recent-improvements
+                        - generic [ref=f7e412]: "212"
+                        - text: New in Onshape
+                    - listitem [ref=f7e414]:
+                      - link "10 Onshape Labs" [ref=f7e415] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-labs
+                        - generic [ref=f7e416]: "10"
+                        - text: Onshape Labs
+                    - listitem [ref=f7e418]:
+                      - link "73 CAM Studio" [ref=f7e419] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/cam-studio
+                        - generic [ref=f7e420]: "73"
+                        - text: CAM Studio
+                    - listitem [ref=f7e422]:
+                      - link "32 PCB Studio" [ref=f7e423] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/pcb-altium
+                        - generic [ref=f7e424]: "32"
+                        - text: PCB Studio
+                    - listitem [ref=f7e426]:
+                      - link "104 Simulation" [ref=f7e427] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/simulation
+                        - generic [ref=f7e428]: "104"
+                        - text: Simulation
+                    - listitem [ref=f7e430]:
+                      - link "207 Onshape Mobile" [ref=f7e431] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-mobile
+                        - generic [ref=f7e432]: "207"
+                        - text: Onshape Mobile
+                    - listitem [ref=f7e434]:
+                      - link "312 App Store & Partners Apps" [ref=f7e435] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/app-store-partners
+                        - generic [ref=f7e436]: "312"
+                        - text: App Store & Partners Apps
+                    - listitem [ref=f7e438]:
+                      - link "29 Public Model of the Week" [ref=f7e439] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/public-model-of-the-week
+                        - generic [ref=f7e440]: "29"
+                        - text: Public Model of the Week
+                    - listitem [ref=f7e442]:
+                      - link "8.1K Using Onshape" [ref=f7e443] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/using-onshape
+                        - generic [ref=f7e444]: 8.1K
+                        - text: Using Onshape
+                    - listitem [ref=f7e446]:
+                      - link "1.8K Drawings" [ref=f7e447] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/drawings
+                        - generic [ref=f7e448]: 1.8K
+                        - text: Drawings
+                    - listitem [ref=f7e450]:
+                      - link "2.3K FeatureScript" [ref=f7e451] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/featurescript
+                        - generic [ref=f7e452]: 2.3K
+                        - text: FeatureScript
+                    - listitem [ref=f7e454]:
+                      - link "304 Learning Center" [ref=f7e455] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/learning-center
+                        - generic [ref=f7e456]: "304"
+                        - text: Learning Center
+                    - listitem [ref=f7e458]:
+                      - link "249 Education Community" [ref=f7e459] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/education-community
+                        - generic [ref=f7e460]: "249"
+                        - text: Education Community
+                - generic [ref=f7e462]:
+                  - generic [ref=f7e463]:
+                    - heading "Who's Online in this Category" [level=4] [ref=f7e464]
+                    - generic "1" [ref=f7e466]
+                  - 'link "User: \"Jed_Yeiser\"" [ref=f7e469] [cursor=pointer]':
+                    - /url: https://forum.onshape.com/profile/Jed_Yeiser
+                    - img "Jed_Yeiser" [ref=f7e470]
+        - generic [ref=f7e471]:
+          - link "English" [ref=f7e473] [cursor=pointer]:
+            - /url: /profile/setlocale/en
+          - link "Deutsch" [ref=f7e475] [cursor=pointer]:
+            - /url: /profile/setlocale/de
+          - link "Español" [ref=f7e477] [cursor=pointer]:
+            - /url: /profile/setlocale/es
+          - link "Français" [ref=f7e479] [cursor=pointer]:
+            - /url: /profile/setlocale/fr
+          - link "Italiano" [ref=f7e481] [cursor=pointer]:
+            - /url: /profile/setlocale/it
+          - link "中文" [ref=f7e483] [cursor=pointer]:
+            - /url: /profile/setlocale/zh
+          - link "中文（台灣）" [ref=f7e485] [cursor=pointer]:
+            - /url: /profile/setlocale/zh_TW
+          - link "日本語" [ref=f7e487] [cursor=pointer]:
+            - /url: /profile/setlocale/ja
+          - link "한국어" [ref=f7e489] [cursor=pointer]:
+            - /url: /profile/setlocale/ko
+    - contentinfo [ref=f7e491]:
+      - generic [ref=f7e492]:
+        - link "Facebook" [ref=f7e493] [cursor=pointer]:
+          - /url: https://www.facebook.com/onshapeInc
+          - img "Facebook" [ref=f7e494]
+        - link "Twitter" [ref=f7e495] [cursor=pointer]:
+          - /url: https://twitter.com/Onshape
+          - img "Twitter" [ref=f7e496]
+        - link "LinkedIn" [ref=f7e497] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/onshape-inc
+          - img "LinkedIn" [ref=f7e498]
+  - region "Dialogs"
+  - generic:
+    - generic:
+      - generic:
+        - log [ref=f7e499]
+        - log [ref=f7e500]
+        - log [ref=f7e501]
+        - log [ref=f7e502]
+  - generic [aria-hidden] [ref=f7e503]: This is an embed external element. It can be deleted using the delete key or the backspace key. To view the full element, press the preview button below.

@@ -1309,6 +1309,63 @@ export function referenceSurfacePoint(alongRef is map, arc is ValueWithUnits, v 
     return referencePointAtArc(alongRef, arc) + v * alongRef.planeNormal + height * basis.normal;
 }
 
+// ============================================================================
+// Unwrapping through the chart
+// ============================================================================
+
+/**
+ * The chart an unwrap maps through: the reference surface of `selection` offset by `delta`,
+ * and where the alignment point sits on it.
+ *
+ * Length is preserved along the reference offset by delta (alongCoordinate): delta 0 keeps
+ * lengths along the reference itself, delta = half a plate's thickness keeps them along the
+ * plate's mid-surface, which is the surface a bent plate does not stretch.
+ *
+ * @param alignPoint {Vector} : the wrapped point that lands on the unwrapped origin. Its X also
+ *      seeds buildAlongReference's zero, so it must lie within the reference's X span.
+ * @returns {map} : { "alongRef", "align" (its surface coords), "alignCoord" }
+ */
+export function unwrapChart(context is Context, selection is Query, alignPoint is Vector, delta is ValueWithUnits) returns map
+{
+    const alongRef = buildAlongReference(context, selection, alignPoint, delta);
+    const align = referenceSurfaceCoords(alongRef, alignPoint);
+
+    return {
+        "alongRef" : alongRef,
+        "align" : align,
+        "alignCoord" : alongCoordinate(alongRef, align.arc)
+    };
+}
+
+/**
+ * Chart coordinates of a wrapped point relative to the alignment point: x along the preserved
+ * length, y across the reference plane, z off the offset reference.
+ *
+ * Right-handed with (tangent, -planeNormal, normal): the surface normal is planeNormal x
+ * tangent, so (tangent, planeNormal, normal) would be LEFT-handed and every unwrapped solid a
+ * mirror image. y is therefore measured along -planeNormal.
+ */
+export function unwrapCoords(chart is map, point is Vector) returns Vector
+{
+    const surf = referenceSurfaceCoords(chart.alongRef, point);
+
+    return vector(alongCoordinate(chart.alongRef, surf.arc) - chart.alignCoord,
+        chart.align.v - surf.v,
+        surf.height - chart.align.height);
+}
+
+/**
+ * A wrapped point, unwrapped into the frame `cs`: the alignment point lands on cs's origin, the
+ * reference tangent there on cs's X, the reference surface normal on cs's Z.
+ *
+ * @param zShift {ValueWithUnits} : added to the height, e.g. to lay a plate's bottom on the plane.
+ */
+export function unwrapPoint(chart is map, cs is CoordSystem, zShift is ValueWithUnits, point is Vector) returns Vector
+{
+    const c = unwrapCoords(chart, point);
+    return toWorld(cs, vector(c[0], c[1], c[2] + zShift));
+}
+
 /**
  * Sample position, tangent, curvature and curvature direction along a reference
  * chain. One kernel call per edge.

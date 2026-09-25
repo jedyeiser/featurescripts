@@ -44,12 +44,12 @@ Cavity_Depth | drivenOffsetSurface | bodies 2 | edges 33 len 6159.69029 | faces 
 SW_Rout_Surface | drivenOffsetSurface | bodies 1 | edges 16 len 1724.15162 | faces 8 area 14853.6932
 SW_Rout_Periphery_Trim | mutualTrimPlus | bodies 0 | edges 10 len 870.85053 | faces 0 area 0
 Clean_Pinch_Offset_Wire | cleanWire | bodies 1 | edges 12 len 1857.12101 | faces 0 area 0
-Cap_Wall_Surface | drivenOffsetSurface | bodies 5 | edges 71 len 11179.48741 | faces 10 area 22542.1585
+Cap_Wall_Surface | drivenOffsetSurface | bodies 5 | edges 71 len 11179.48948 | faces 10 area 22542.1628
 ###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
-CD_Wall_Mutual_+ | mutualTrimPlus | bodies 0 | edges 16 len 1851.12241 | faces 0 area 0
+CD_Wall_Mutual_+ | mutualTrimPlus | bodies 0 | edges 16 len 1851.12276 | faces 0 area 0
 Wall_Top_Mutal_+ | mutualTrimPlus | bodies 0 | edges 0 len 0 | faces 0 area 0
 Mutual Trim+ 1 | mutualTrimPlus | bodies 0 | edges 0 len 0 | faces 0 area 0
 Mutual Trim+ 2 | mutualTrimPlus | bodies 0 | edges 0 len 0 | faces 0 area 0
 Top_Periphery | mutualTrimPlus | bodies 0 | edges 17 len 1857.00867 | faces 0 area 0
 Periphery_Bottom | mutualTrimPlus | bodies 0 | edges 13 len 1858.23329 | faces 0 area 0
-ALL bodies 195 total edge length 185322.3939
+ALL bodies 195 total edge length 185322.4024
