@@ -331,6 +331,14 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
     var B = zeroMatrix3x3(0 * newton * meter);
     var D = zeroMatrix3x3(0 * newton * meter * meter);
 
+    // Beam-basis sums for EI and the neutral axis: each body's Young's modulus E_x (the
+    // laminate modulus with free lateral contraction), not the plate stiffness Q11 in A/B/D.
+    // A ski section bends as a narrow beam (b^2/(R t) << 1), where Q11 overstates EI by
+    // 1/(1 - nu12 nu21): ~12% for wood/Titanal, up to ~4x for +-45 fabrics.
+    var EA = 0 * newton;
+    var ES = 0 * newton * meter;
+    var EIref = 0 * newton * meter * meter;
+
     var bodyContributions = [];
 
     for (var bodyInfo in section.bodyData)
@@ -395,6 +403,11 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
         B = addMatrix3x3(B, scaleMatrix3x3(Q, S_k));
         D = addMatrix3x3(D, scaleMatrix3x3(Q, Ixx_ref_k));
 
+        var E_k = body.materialData.youngsModulus;
+        EA = EA + E_k * area_k;
+        ES = ES + E_k * S_k;
+        EIref = EIref + E_k * Ixx_ref_k;
+
         // Per-body linear mass density: mass per unit length along the ski
         var linearDensity = density * area_k;
 
@@ -413,21 +426,20 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
     var EI_eff = 0 * newton * meter * meter;
 
     // Guard against zero extensional stiffness (e.g. all bodies are IGNORE)
-    if (abs(A[0][0]) > MIN_EXTENSIONAL_STIFFNESS)
+    if (abs(EA) > MIN_EXTENSIONAL_STIFFNESS)
     {
         // Neutral axis: the Y location where axial strain is zero under
         // pure bending. Derived from the condition B_eff = 0 when the
         // reference is shifted to the neutral axis.
-        neutralAxisY = B[0][0] / A[0][0];
+        neutralAxisY = ES / EA;
 
         // Effective bending stiffness: accounts for extension-bending
         // coupling that "steals" some apparent stiffness when the layup
         // is asymmetric about the neutral axis.
         //
-        //   EI_eff = D11 - B11² / A11
-        //
-        // For a symmetric layup (B = 0), this reduces to D11.
-        EI_eff = D[0][0] - (B[0][0] * B[0][0]) / A[0][0];
+        //   EI_eff = sum(E I_ref) - sum(E S)^2 / sum(E A)   (beam basis; the D11 - B11^2/A11
+        //   form with E in place of Q11)
+        EI_eff = EIref - (ES * ES) / EA;
 
         // Warn if stiffness is suspiciously low
         if (abs(A[0][0]) < LOW_STIFFNESS_WARNING)

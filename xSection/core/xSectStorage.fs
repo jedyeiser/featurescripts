@@ -499,10 +499,10 @@ export function buildBodyTableData(crossSections is array, bodies is array) retu
 
             var I_k_NA = Iyy_centroid / (meter^4) + (area / (meter * meter)) * d_k * d_k;
 
-            // Q11 in Pa (strip units)
-            var Q11_k = body.materialData.qMatrix[0][0] / pascal;
+            // Young's modulus E_x in Pa (strip units): beam basis, as xSectCLT
+            var E_k = body.materialData.youngsModulus / pascal;
 
-            var EI_body_k = Q11_k * I_k_NA;   // N·m²
+            var EI_body_k = E_k * I_k_NA;   // N·m²
             EI_sum_val = EI_sum_val + EI_body_k;
 
             bodyResults = append(bodyResults, {

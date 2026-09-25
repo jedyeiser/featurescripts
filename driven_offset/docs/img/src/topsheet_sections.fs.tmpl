@@ -1,0 +1,111 @@
+// Mid-surface sections of the topsheet (RnRD) at stations normal to its own Front-plane mid section --
+// the same target unwrap uses in "Section by a face" mode. READ-ONLY: runs in the eval API's throwaway context.
+// Placeholders: __I0__, __I1__ (station index range), __STEP__ (station spacing, mm).
+function(context is Context, queries)
+{
+    const body = qTransient("RnRD");
+    const id = newId();
+    // The plate's two sides, as unwrap.fs plateSidesGeneral does it (offset pairs grown by tangency).
+    var best = undefined;
+    for (var g in evOffsetDetection(context, { "bodies" : body }))
+    {
+        const s0 = qUnion(evaluateQuery(context, qTangentConnectedFaces(qUnion(g.side0), 45 * degree)));
+        const s1 = qUnion(evaluateQuery(context, qTangentConnectedFaces(qUnion(g.side1), 45 * degree)));
+        if (!isQueryEmpty(context, qIntersection([s0, s1]))) { continue; }
+        const area = evArea(context, { "entities" : qUnion([s0, s1]) });
+        if (best == undefined || area > best.area)
+        {
+            best = { "s0" : s0, "s1" : s1, "t" : 0.5 * (g.offsetLow + g.offsetHigh), "area" : area };
+        }
+    }
+    try silent
+    {
+        opExtractSurface(context, id + "mid", { "faces" : best.s0, "offset" : -0.5 * best.t, "useFacesAroundToTrimOffset" : true });
+    }
+    catch
+    {
+        opExtractSurface(context, id + "midAlt", { "faces" : best.s1, "offset" : -0.5 * best.t, "useFacesAroundToTrimOffset" : true });
+    }
+    const mid = qUnion([qCreatedBy(id + "mid", EntityType.BODY), qCreatedBy(id + "midAlt", EntityType.BODY)]);
+    const midFaces = evaluateQuery(context, qOwnedByBody(mid, EntityType.FACE));
+    // Target W: the Front-plane (y = 0) section of the mid-surface.
+    opPlane(context, id + "front", { "plane" : plane(vector(900, 0, 0) * millimeter, vector(0, 1, 0), vector(1, 0, 0)), "width" : 4 * meter, "height" : 1 * meter });
+    opIntersectFaces(context, id + "w", { "tools" : qCreatedBy(id + "front", EntityType.FACE), "targets" : qUnion(midFaces) });
+    // The kernel returns a piece twice where the plane runs along a face boundary: keep one of each.
+    var unique = [];
+    var seen = {};
+    for (var e in evaluateQuery(context, qCreatedBy(id + "w", EntityType.EDGE)))
+    {
+        const ends = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 0.5, 1] });
+        const m = ends[1].origin / millimeter;
+        const key = toString(roundToPrecision(m[0], 3)) ~ "," ~ toString(roundToPrecision(m[2], 3));
+        if (seen[key] == true) { continue; }
+        seen[key] = true;
+        unique = append(unique, e);
+    }
+    const path = constructPath(context, qUnion(unique), { "tolerance" : 2e-5 * meter }).path;
+    const L = evPathLength(context, path);
+    var out = ["T " ~ (best.t / millimeter) ~ " L " ~ (L / millimeter) ~ " faces " ~ size(midFaces)];
+    var boxes = [];
+    for (var f in midFaces)
+    {
+        boxes = append(boxes, evBox3d(context, { "topology" : f, "tight" : false }));
+    }
+    var params = [];
+    var arcs = [];
+    for (var i = __I0__; i < __I1__; i += 1)
+    {
+        const a = 0.25 * millimeter + i * __STEP__ * millimeter;
+        if (a > L - 0.25 * millimeter) { break; }
+        arcs = append(arcs, a);
+        params = append(params, a / L);
+    }
+    if (size(params) == 0) { return out; }
+    const tls = evPathTangentLines(context, path, params).tangentLines;
+    for (var k = 0; k < size(params); k += 1)
+    {
+        const tl = tls[k];
+        var faces = [];
+        for (var j = 0; j < size(midFaces); j += 1)
+        {
+            var lo = false;
+            var hi = false;
+            for (var cx in [boxes[j].minCorner[0], boxes[j].maxCorner[0]])
+            {
+                for (var cz in [boxes[j].minCorner[2], boxes[j].maxCorner[2]])
+                {
+                    const d = dot(vector(cx, 0 * meter, cz) - tl.origin, tl.direction);
+                    if (d > -1e-5 * meter) { hi = true; }
+                    if (d < 1e-5 * meter) { lo = true; }
+                }
+            }
+            if (lo && hi) { faces = append(faces, midFaces[j]); }
+        }
+        const o = tl.origin / millimeter;
+        var s = "S " ~ (arcs[k] / millimeter) ~ " " ~ o[0] ~ " " ~ o[1] ~ " " ~ o[2] ~ " " ~ tl.direction[0] ~ " " ~ tl.direction[1] ~ " " ~ tl.direction[2];
+        const pid = id + ("pl" ~ k);
+        const iid = id + ("ix" ~ k);
+        try silent
+        {
+            opPlane(context, pid, { "plane" : plane(tl.origin, tl.direction, vector(0, 1, 0)), "width" : 400 * millimeter, "height" : 200 * millimeter });
+            opIntersectFaces(context, iid, { "tools" : qCreatedBy(pid, EntityType.FACE), "targets" : qUnion(faces) });
+        }
+        catch
+        {
+            out = append(out, s ~ " FAIL");
+            continue;
+        }
+        out = append(out, s);
+        for (var e in evaluateQuery(context, qCreatedBy(iid, EntityType.EDGE)))
+        {
+            var t = "E " ~ (evLength(context, { "entities" : e }) / millimeter) ~ " |";
+            for (var q in evEdgeTangentLines(context, { "edge" : e, "parameters" : range(0, 1, 13) }))
+            {
+                const p = q.origin / millimeter;
+                t = t ~ " " ~ p[0] ~ " " ~ p[1] ~ " " ~ p[2];
+            }
+            out = append(out, t);
+        }
+    }
+    return out;
+}

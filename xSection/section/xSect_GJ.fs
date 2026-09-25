@@ -223,17 +223,12 @@ function extractShearModuli(triangles is array, bodyIndices is array, bodies is 
                     body.materialData != undefined &&
                     body.materialData.qMatrix != undefined)
                 {
-                    // Use torsional shear modulus (not Q66 directly):
-                    //   Balanced laminates (±45°, woven, isotropic): G_torsion = (Q11 - Q12) / 2
-                    //   Unbalanced (0°-dominant UD): G_torsion = Q66
-                    // Q = [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
+                    // Torsion of a thin strip loads in-plane shear (tau_xy) in ski axes, so the
+                    // stiffness is Q66 for every material. (Q11 - Q12)/2 equals it only for in-plane
+                    // isotropic material; it made 0/90 fabrics 6-13x too stiff and +-45 fabrics 3-13x
+                    // too soft (tools review 2026-09-25, reviews/2026-09-25_tools_review).
                     var Pa = newton / (meter * meter);
-                    var Q11 = body.materialData.qMatrix[0][0] / Pa;
-                    var Q12 = body.materialData.qMatrix[0][1] / Pa;
-                    var Q22 = body.materialData.qMatrix[1][1] / Pa;
-                    var Q66 = body.materialData.qMatrix[2][2] / Pa;
-                    var ratio = (Q22 > 1e-6) ? (Q11 / Q22) : 1e9;
-                    G_val = (ratio < 3.0) ? ((Q11 - Q12) / 2.0) : Q66;
+                    G_val = body.materialData.qMatrix[2][2] / Pa;
                 }
                 break;
             }

@@ -240,7 +240,8 @@ function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT
             continue;
         }
 
-        var Q11 = body.materialData.qMatrix[0][0] / pascal;  // plain N/m²
+        // Beam basis, as xSectCLT: Young's modulus E_x, not the plate stiffness Q11.
+        var E_x = body.materialData.youngsModulus / pascal;  // plain N/m²
 
         // Sum triangle contributions for this body.
         // body_D accumulates Iyy_ref (about Y=0) directly — no body-level
@@ -277,9 +278,9 @@ function computeEIFromShiftedPoints(sectionPoints is array, originalNA_m, deltaT
         }
 
         var body_centroid_y = body_area_y / body_area;
-        A_sum += Q11 * body_area;
-        B_sum += Q11 * body_area * body_centroid_y;
-        D_sum += Q11 * body_D;
+        A_sum += E_x * body_area;
+        B_sum += E_x * body_area * body_centroid_y;
+        D_sum += E_x * body_D;
     }
 
     if (A_sum <= 0)
