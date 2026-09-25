@@ -1457,9 +1457,20 @@ with `GET /api/v10/featurestudios/d/{d}/w/{w}/e/{e}/featurespecs`. Queries by de
 
 ---
 
+## Correction 40: a custom feature with the std boolean step (2026-09-24)
+
+**Symptom**: `booleanDefinition.operationType: Enum used as parameter type must be exported` and
+"precondition analysis failed" after calling `booleanStepTypePredicate` / `booleanStepScopePredicate`.
+**Fix**: `export import(path : "onshape/std/tool.fs", ...)` in the feature's file (std Thicken does the same).
+Over REST the enum is then in the FEATURE tab's namespace (`NewBodyOperationType` with `e<eid>::m<mv>`).
+Also: `processNewBodyIfNeeded` takes every body created under `id` as a tool -- delete helper bodies made under
+`id` first. And opThicken (keep tools off) consumes its input faces: measure against a copy taken beforehand.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 39
+- **Total Corrections**: 40
 - **Last Updated**: 2026-09-24
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)

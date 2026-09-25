@@ -180,7 +180,8 @@ export enum ProfilePart
 // ============================================================================
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Evaluate profiles",
-        "Feature Type Description" : "Project a chain of edges onto a planar face, trim it where it doubles back, and emit it as a clean wire" }
+        "Feature Type Description" : "Project a chain of edges onto a planar face, trim it where it doubles back, and emit it as a clean wire; or outline a part or surface into top, bottom and middle profiles",
+        "Filter Selector" : "allparts" }
 export const evaluateProfiles = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -197,7 +198,10 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         }
         else
         {
-            annotation { "Name" : "Part to outline", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Part or surface to outline",
+                        "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET)) || (EntityType.FACE && BodyType.SHEET && ConstructionObject.NO && SketchObject.NO),
+                        "MaxNumberOfPicks" : 1,
+                        "Description" : "A part, or a surface (click any of its faces, or pick it from the Surfaces list): its silhouette on the projection face." }
             definition.profilePart is Query;
 
             annotation { "Name" : "Return", "Default" : ProfilePart.ALL, "UIHint" : UIHint.SHOW_LABEL }
@@ -419,9 +423,19 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
 
     traceStep(verbose, "outlining the part onto the face");
 
+    // A surface picked by one of its faces stands for its whole body.
+    const part = qUnion([qEntityFilter(definition.profilePart, EntityType.BODY),
+                qOwnerBody(qEntityFilter(definition.profilePart, EntityType.FACE))]);
+    if (!isQueryEmpty(context, qBodyType(part, BodyType.SHEET)) && surfaceIsEdgeOn(context, part, plane))
+    {
+        // The kernel's own failure here is a bare REGEN_ERROR.
+        throw regenError("The surface is edge-on to the projection face, so its outline has no area. Project its edges instead "
+            ~ "(Profile from Edges), or pick a face it is not edge-on to.", ["profilePart"], part);
+    }
+
     const outlineId = id + "outline";
     opCreateOutline(context, outlineId, {
-                "tools" : definition.profilePart,
+                "tools" : part,
                 "target" : definition.projectionFace
             });
 
@@ -431,7 +445,7 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
     const outlineFaces = qCreatedBy(outlineId, EntityType.FACE);
     if (isQueryEmpty(context, outlineFaces))
     {
-        throw regenError("The part produced no outline on that face.", definition.profilePart);
+        throw regenError("The part produced no outline on that face.", part);
     }
 
     if (verbose)
@@ -592,6 +606,34 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         "length" : peripheryLength,
         "profiles" : profiles
     };
+}
+
+/**
+ * True when every face of a surface is edge-on to the plane -- its normal perpendicular to the plane's normal at
+ * every sample -- so its outline there is a curve with no area. Sampled on a 5 x 5 grid per face; one sample
+ * that faces the plane is enough to say no.
+ */
+function surfaceIsEdgeOn(context is Context, sheet is Query, plane is Plane) returns boolean
+{
+    var parameters = [];
+    for (var i = 0; i < 5; i += 1)
+    {
+        for (var j = 0; j < 5; j += 1)
+        {
+            parameters = append(parameters, vector((i + 0.5) / 5, (j + 0.5) / 5));
+        }
+    }
+    for (var face in evaluateQuery(context, qOwnedByBody(sheet, EntityType.FACE)))
+    {
+        for (var tangentPlane in evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters }))
+        {
+            if (abs(dot(tangentPlane.normal, plane.normal)) > 1e-6)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 /**
