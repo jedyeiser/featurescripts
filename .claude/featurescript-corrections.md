@@ -1509,3 +1509,23 @@ Also: `processNewBodyIfNeeded` takes every body created under `id` as a tool -- 
 ---
 
 *This log helps the FeatureScript expert agent avoid repeating mistakes and generate more accurate code on the first attempt.*
+
+---
+
+## Correction 42: evDistance to a BODY is ambiguous when the closest distance ties (2026-09-24)
+
+**Symptom**: Move Along Edge started a cube from the wrong place: a 20 mm cube centred on a line's start
+got `distance 0, parameter 0.1` (the point where the line LEAVES the cube, 11010 not 11000); a cube hovering
+20 mm over an arc (bottom face parallel to it) started ~10 mm along. Results 0.5 mm off, silently.
+
+**Fix**: never take "the" closest point of a body to a curve when the body can touch the curve or has a
+face parallel to it -- evDistance returns ANY point of the tie. Project a defined point instead
+(evApproximateCentroid, a mate connector's origin, a vertex).
+
+---
+
+## Correction 43: enum parameters show no label without UIHint.SHOW_LABEL (2026-09-24)
+
+**Symptom**: a dropdown with no caption in the feature dialog (Move Along Edge "Name" / "Frame").
+**Fix**: `annotation { "Name" : "Naming", "UIHint" : [UIHint.SHOW_LABEL] }` on every enum parameter
+(std does the same). Booleans, lengths and queries show their names without it.

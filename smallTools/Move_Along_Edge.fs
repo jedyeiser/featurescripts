@@ -69,14 +69,14 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
 
         if (definition.useFrenet)
         {
-            annotation { "Name" : "Frame", "Description" : "Curve normal: follows the curvature direction (arbitrary on straight edges, flips at inflections). Transported: carries the start frame along the path without twist.", "Default" : MoveFrameMode.FRENET }
+            annotation { "Name" : "Frame", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Curve normal: follows the curvature direction (arbitrary on straight edges, flips at inflections). Transported: carries the start frame along the path without twist.", "Default" : MoveFrameMode.FRENET }
             definition.frameMode is MoveFrameMode;
         }
 
         annotation { "Name" : "Copy Bodies?", "Default" : false }
         definition.copyBodies is boolean;
 
-        annotation { "Name" : "Name", "Description" : "Name the moved body (or its copy). Prefix and suffix are added to the source body's name.", "Default" : MoveNameMode.NONE }
+        annotation { "Name" : "Naming", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Name the moved body (or its copy). Prefix and suffix are added to the source body's name.", "Default" : MoveNameMode.NONE }
         definition.nameMode is MoveNameMode;
 
         if (definition.nameMode != MoveNameMode.NONE)
@@ -97,7 +97,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                 annotation { "Name" : "Distance to move" }
                 isLength(copy.copyDistance, LENGTH_BOUNDS);
 
-                annotation { "Name" : "Name", "Default" : MoveNameMode.NONE }
+                annotation { "Name" : "Naming", "UIHint" : [UIHint.SHOW_LABEL], "Default" : MoveNameMode.NONE }
                 copy.copyNameMode is MoveNameMode;
 
                 if (copy.copyNameMode != MoveNameMode.NONE)

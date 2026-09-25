@@ -363,22 +363,34 @@ export function undrapeEdgeTable(lines is array, normals is array, others, intoS
 
     var mags = makeArray(max(count - 1, 0));
     var cum = makeArray(count, 0);
-    var lo = [px[0], py[0], pz[0]];
-    var hi = [px[0], py[0], pz[0]];
+    var lx = px[0];
+    var ly = py[0];
+    var lz = pz[0];
+    var hx = px[0];
+    var hy = py[0];
+    var hz = pz[0];
     var pad = 0;
     var turn = 0;
     for (var i = 0; i < count; i += 1)
     {
-        lo = [min(lo[0], px[i]), min(lo[1], py[i]), min(lo[2], pz[i])];
-        hi = [max(hi[0], px[i]), max(hi[1], py[i]), max(hi[2], pz[i])];
+        lx = min(lx, px[i]);
+        ly = min(ly, py[i]);
+        lz = min(lz, pz[i]);
+        hx = max(hx, px[i]);
+        hy = max(hy, py[i]);
+        hz = max(hz, pz[i]);
         if (i + 1 < count)
         {
             const dx = px[i + 1] - px[i];
             const dy = py[i + 1] - py[i];
             const dz = pz[i + 1] - pz[i];
             const chord = sqrt(dx * dx + dy * dy + dz * dz);
-            const phi = acos(clamp(ux[i] * ux[i + 1] + uy[i] * uy[i + 1] + uz[i] * uz[i + 1], -1, 1)) / radian;
-            mags[i] = chord * (1 + phi * phi / 24);
+            // turn between the end tangents: 2 (1 - cos) + (2 (1 - cos))^2 / 12 = phi^2 to O(phi^6)
+            const c = clamp(ux[i] * ux[i + 1] + uy[i] * uy[i + 1] + uz[i] * uz[i + 1], -1, 1);
+            var phi2 = 2 * (1 - c);
+            phi2 = (c > 0.9) ? phi2 + phi2 * phi2 / 12 : (acos(c) / radian) * (acos(c) / radian);
+            const phi = sqrt(phi2);
+            mags[i] = chord * (1 + phi2 / 24);
             cum[i + 1] = cum[i] + mags[i];
             // the span may bulge past its end samples by about its sagitta
             pad = max(pad, mags[i] * (phi / 4 + 0.02));
@@ -386,6 +398,8 @@ export function undrapeEdgeTable(lines is array, normals is array, others, intoS
         }
     }
     pad += 1e-7;
+    const lo = [lx, ly, lz];
+    const hi = [hx, hy, hz];
 
     return {
         "count" : count,
@@ -419,29 +433,32 @@ export function undrapeEdgeTable(lines is array, normals is array, others, intoS
 export function undrapeSampleSide(context is Context, side is Query, c is map) returns map
 {
     const faces = evaluateQuery(context, side);
-    var isSide = {};
+    // Edges and their side faces from the faces (fewer queries than asking every edge for its faces).
+    // Every edge of a solid bounds two faces: an edge with one side face bounds a wall, i.e. is on the rim.
+    var edges = [];
+    var facesOf = {};
     for (var f in faces)
     {
-        isSide[f.transientId] = true;
+        for (var edge in evaluateQuery(context, qAdjacent(f, AdjacencyType.EDGE, EntityType.EDGE)))
+        {
+            const key = edge.transientId;
+            if (facesOf[key] == undefined)
+            {
+                facesOf[key] = [f];
+                edges = append(edges, edge);
+            }
+            else
+            {
+                facesOf[key] = append(facesOf[key], f);
+            }
+        }
     }
-    const edges = evaluateQuery(context, qAdjacent(side, AdjacencyType.EDGE, EntityType.EDGE));
     var tables = makeArray(size(edges));
     for (var k = 0; k < size(edges); k += 1)
     {
         const edge = edges[k];
-        var sideFaces = [];
-        var onRim = false;
-        for (var f in evaluateQuery(context, qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE)))
-        {
-            if (isSide[f.transientId] == true)
-            {
-                sideFaces = append(sideFaces, f);
-            }
-            else
-            {
-                onRim = true;
-            }
-        }
+        const sideFaces = facesOf[edge.transientId];
+        const onRim = size(sideFaces) < 2;
 
         const rough3 = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.5, 1], "arcLengthParameterization" : false });
         const rough = undrapeRoughLength(rough3);
@@ -459,13 +476,14 @@ export function undrapeSampleSide(context is Context, side is Query, c is map) r
         }
 
         var creased = false;
-        if (size(sideFaces) > 1 && evEdgeConvexity(context, { "edge" : edge }) != EdgeConvexityType.SMOOTH)
+        if (size(sideFaces) > 1)
         {
             const o = rough3[1].origin;
             const a0 = undrapeSeedArc(c, o[0].value);
             const f = chartFoot(c, o[0].value, o[1].value, o[2].value, a0, undrapeSpanOf(c, a0));
             const u = rough3[1].direction;
-            creased = abs(u[0] * f[5] + u[1] * f[6] + u[2] * f[7]) >= UNDRAPE_LENGTHWISE;
+            creased = abs(u[0] * f[5] + u[1] * f[6] + u[2] * f[7]) >= UNDRAPE_LENGTHWISE
+                && evEdgeConvexity(context, { "edge" : edge }) != EdgeConvexityType.SMOOTH;
         }
 
         const normals = undrapeSideNormals(context, edge, sideFaces[0], params, arcLength, lines);
@@ -732,21 +750,43 @@ function undrapeTangent(fr is map, nx is number, ny is number, nz is number) ret
 export function undrapeCrossingAt(tb is map, e is number, i is number, f is number, fr is map, sample is number) returns array
 {
     const a = fr.a;
-    const t = fr.t;
+    const t0 = fr.t[0];
+    const t1 = fr.t[1];
+    const t2 = fr.t[2];
+    const w0 = fr.w[0];
+    const w1 = fr.w[1];
+    const w2 = fr.w[2];
+    const h0 = fr.h[0];
+    const h1 = fr.h[1];
+    const h2 = fr.h[2];
+    const px = tb.px;
+    const py = tb.py;
+    const pz = tb.pz;
+    const ux = tb.ux;
+    const uy = tb.uy;
+    const uz = tb.uz;
     var qx = 0;
     var qy = 0;
     var qz = 0;
+    // interpolation between samples j and k with weight g on k
+    var j = i;
+    var k = i + 1;
+    var g = f;
     if (f <= 0)
     {
-        qx = tb.px[i];
-        qy = tb.py[i];
-        qz = tb.pz[i];
+        qx = px[i];
+        qy = py[i];
+        qz = pz[i];
+        k = i;
+        g = 0;
     }
     else if (f >= 1)
     {
-        qx = tb.px[i + 1];
-        qy = tb.py[i + 1];
-        qz = tb.pz[i + 1];
+        qx = px[i + 1];
+        qy = py[i + 1];
+        qz = pz[i + 1];
+        j = i + 1;
+        g = 0;
     }
     else
     {
@@ -757,53 +797,71 @@ export function undrapeCrossingAt(tb is map, e is number, i is number, f is numb
         const b1 = (f3 - 2 * f2 + f) * m;
         const b2 = -2 * f3 + 3 * f2;
         const b3 = (f3 - f2) * m;
-        qx = b0 * tb.px[i] + b1 * tb.ux[i] + b2 * tb.px[i + 1] + b3 * tb.ux[i + 1];
-        qy = b0 * tb.py[i] + b1 * tb.uy[i] + b2 * tb.py[i + 1] + b3 * tb.uy[i + 1];
-        qz = b0 * tb.pz[i] + b1 * tb.uz[i] + b2 * tb.pz[i + 1] + b3 * tb.uz[i + 1];
+        qx = b0 * px[i] + b1 * ux[i] + b2 * px[i + 1] + b3 * ux[i + 1];
+        qy = b0 * py[i] + b1 * uy[i] + b2 * py[i + 1] + b3 * uy[i + 1];
+        qz = b0 * pz[i] + b1 * uz[i] + b2 * pz[i + 1] + b3 * uz[i + 1];
     }
     const dx = qx - a[0];
     const dy = qy - a[1];
     const dz = qz - a[2];
-    const j = (f >= 1) ? i + 1 : i;
-    const g = (f >= 1 || f <= 0) ? 0 : f;
-    const k = (f >= 1 || f <= 0) ? j : i + 1;
-    const cosCross = abs((1 - g) * (tb.ux[j] * t[0] + tb.uy[j] * t[1] + tb.uz[j] * t[2])
-            + g * (tb.ux[k] * t[0] + tb.uy[k] * t[1] + tb.uz[k] * t[2]));
+    const r = 1 - g;
+    const cosCross = abs(r * (ux[j] * t0 + uy[j] * t1 + uz[j] * t2) + g * (ux[k] * t0 + uy[k] * t1 + uz[k] * t2));
 
-    var nx = (1 - g) * tb.nx[j] + g * tb.nx[k];
-    var ny = (1 - g) * tb.ny[j] + g * tb.ny[k];
-    var nz = (1 - g) * tb.nz[j] + g * tb.nz[k];
+    var nx = r * tb.nx[j] + g * tb.nx[k];
+    var ny = r * tb.ny[j] + g * tb.ny[k];
+    var nz = r * tb.nz[j] + g * tb.nz[k];
     const nn = sqrt(nx * nx + ny * ny + nz * nz);
     nx = nx / nn;
     ny = ny / nn;
     nz = nz / nn;
-    const s1 = undrapeTangent(fr, nx, ny, nz);
-    var twA = s1[0];
-    var thA = s1[1];
-    var twB = s1[0];
-    var thB = s1[1];
-    var inPlane = s1[2];
-    var valid = s1[3];
+
+    // section tangent t x n in (w, h), oriented tw >= 0
+    const sx = t1 * nz - t2 * ny;
+    const sy = t2 * nx - t0 * nz;
+    const sz = t0 * ny - t1 * nx;
+    var tw = sx * w0 + sy * w1 + sz * w2;
+    var th = sx * h0 + sy * h1 + sz * h2;
+    var inPlane = sqrt(tw * tw + th * th);
+    var valid = 1;
+    if (inPlane < 1e-9)
+    {
+        tw = 1;
+        th = 0;
+        valid = 0;
+    }
+    else
+    {
+        tw = tw / inPlane;
+        th = th / inPlane;
+        if (tw < 0)
+        {
+            tw = -tw;
+            th = -th;
+        }
+    }
+    var twA = tw;
+    var thA = th;
+    var twB = tw;
+    var thB = th;
     if (tb.creased)
     {
-        var mx = (1 - g) * tb.mx[j] + g * tb.mx[k];
-        var my = (1 - g) * tb.my[j] + g * tb.my[k];
-        var mz = (1 - g) * tb.mz[j] + g * tb.mz[k];
+        var mx = r * tb.mx[j] + g * tb.mx[k];
+        var my = r * tb.my[j] + g * tb.my[k];
+        var mz = r * tb.mz[j] + g * tb.mz[k];
         const mn = sqrt(mx * mx + my * my + mz * mz);
         const s2 = undrapeTangent(fr, mx / mn, my / mn, mz / mn);
         // Face 1 lies on the +w side of the crossing when its inward direction runs with its section tangent.
-        const ix = (1 - g) * tb.ix[j] + g * tb.ix[k];
-        const iy = (1 - g) * tb.iy[j] + g * tb.iy[k];
-        const iz = (1 - g) * tb.iz[j] + g * tb.iz[k];
-        const into = ix * (s1[0] * fr.w[0] + s1[1] * fr.h[0]) + iy * (s1[0] * fr.w[1] + s1[1] * fr.h[1])
-            + iz * (s1[0] * fr.w[2] + s1[1] * fr.h[2]);
+        const ix = r * tb.ix[j] + g * tb.ix[k];
+        const iy = r * tb.iy[j] + g * tb.iy[k];
+        const iz = r * tb.iz[j] + g * tb.iz[k];
+        const into = ix * (tw * w0 + th * h0) + iy * (tw * w1 + th * h1) + iz * (tw * w2 + th * h2);
         const intoNorm = sqrt(ix * ix + iy * iy + iz * iz);
         if (abs(into) < 0.1 * intoNorm)
         {
             // The faces lie before and after the station plane, not either side of the crossing (a face end
             // running across, kinked lengthwise): both give nearly the section's own tangent. Average them.
-            const aw = s1[0] + s2[0];
-            const ah = s1[1] + s2[1];
+            const aw = tw + s2[0];
+            const ah = th + s2[1];
             const an = sqrt(aw * aw + ah * ah);
             twA = aw / an;
             thA = ah / an;
@@ -820,10 +878,10 @@ export function undrapeCrossingAt(tb is map, e is number, i is number, f is numb
             twB = s2[0];
             thB = s2[1];
         }
-        inPlane = 0.5 * (s1[2] + s2[2]);
-        valid = min(s1[3], s2[3]);
+        inPlane = 0.5 * (inPlane + s2[2]);
+        valid = min(valid, s2[3]);
     }
-    return [dx * fr.w[0] + dy * fr.w[1] + dz * fr.w[2], dx * fr.h[0] + dy * fr.h[1] + dz * fr.h[2],
+    return [dx * w0 + dy * w1 + dz * w2, dx * h0 + dy * h1 + dz * h2,
             twA, thA, twB, thB, inPlane, cosCross, tb.onRim ? 1 : 0, e, nx, ny, nz, valid, qx, qy, qz, sample];
 }
 
@@ -865,14 +923,17 @@ function undrapeSpanRoot(tb is map, i is number, g0 is number, g1 is number, t i
  */
 export function undrapeEdgeCrossings(tb is map, e is number, fr is map) returns array
 {
-    const a = fr.a;
     const t = fr.t;
+    const t0 = t[0];
+    const t1 = t[1];
+    const t2 = t[2];
+    const g0 = fr.a[0] * t0 + fr.a[1] * t1 + fr.a[2] * t2;
     const px = tb.px;
     const py = tb.py;
     const pz = tb.pz;
     const count = tb.count;
-    const gFirst = (px[0] - a[0]) * t[0] + (py[0] - a[1]) * t[1] + (pz[0] - a[2]) * t[2];
-    const gLast = (px[count - 1] - a[0]) * t[0] + (py[count - 1] - a[1]) * t[1] + (pz[count - 1] - a[2]) * t[2];
+    const gFirst = px[0] * t0 + py[0] * t1 + pz[0] * t2 - g0;
+    const gLast = px[count - 1] * t0 + py[count - 1] * t1 + pz[count - 1] * t2 - g0;
 
     if ((gFirst > 0) != (gLast > 0) && abs(gFirst) >= UNDRAPE_IN_PLANE && abs(gLast) >= UNDRAPE_IN_PLANE)
     {
@@ -883,7 +944,7 @@ export function undrapeEdgeCrossings(tb is map, e is number, fr is map) returns 
         while (high - low > 1)
         {
             const half = floor((low + high) / 2);
-            const gMid = (px[half] - a[0]) * t[0] + (py[half] - a[1]) * t[1] + (pz[half] - a[2]) * t[2];
+            const gMid = px[half] * t0 + py[half] * t1 + pz[half] * t2 - g0;
             if (abs(gMid) < UNDRAPE_IN_PLANE)
             {
                 return [undrapeCrossingAt(tb, e, half, 0, fr, 0)];
@@ -910,7 +971,7 @@ export function undrapeEdgeCrossings(tb is map, e is number, fr is map) returns 
     }
     for (var i = 1; i < count; i += 1)
     {
-        const gi = (px[i] - a[0]) * t[0] + (py[i] - a[1]) * t[1] + (pz[i] - a[2]) * t[2];
+        const gi = px[i] * t0 + py[i] * t1 + pz[i] * t2 - g0;
         if (abs(gi) < UNDRAPE_IN_PLANE)
         {
             result = append(result, undrapeCrossingAt(tb, e, i - 1, 1, fr, 1));
@@ -2096,16 +2157,16 @@ function undrapeUnit(x is number, y is number) returns array
 
 /**
  * Deformation of the map along the rim and every bend line (each edge crossing both of two consecutive
- * measured stations exactly once): the 3D mid-surface chord between the two crossings (side point
- * moved t/2 inward along its normal) against the flat chord, and the angle each chord makes with its
- * section (3D: the section tangent; flat: the section direction -y) -- the shear of the s- and w-lines.
+ * measured stations exactly once): the 3D mid-surface chord between the two crossings (side point moved
+ * t/2 inward along its normal) against the flat chord, and the change of the angle each chord makes with
+ * its section (3D: the section tangent; flat: the section direction -y) -- the shear of the s- and w-lines.
  */
 function undrapeDeformation(sections is array, crossingsAt is array, frames is array, chart is map, tk is number) returns map
 {
     var stretchMin = 1e9;
     var stretchMax = -1e9;
     var where = [0, 0];
-    var shearMax = 0;
+    var shearSin = 0;
     var previous = [];
     for (var s = 0; s < size(sections); s += 1)
     {
@@ -2123,12 +2184,8 @@ function undrapeDeformation(sections is array, crossingsAt is array, frames is a
         for (var i = 0; i < n; i += 1)
         {
             const cr = crossings[i];
-            if (cr[17] == 1)
-            {
-                continue;
-            }
-            // one edge's crossings are consecutive in the list: an edge met more than once is not tracked
-            if ((i > 0 && crossings[i - 1][9] == cr[9]) || (i + 1 < n && crossings[i + 1][9] == cr[9]))
+            // one edge's crossings are consecutive, in rising edge index: an edge met twice is not tracked
+            if (cr[17] == 1 || (i > 0 && crossings[i - 1][9] == cr[9]) || (i + 1 < n && crossings[i + 1][9] == cr[9]))
             {
                 continue;
             }
@@ -2139,36 +2196,41 @@ function undrapeDeformation(sections is array, crossingsAt is array, frames is a
             count += 1;
         }
         current = resize(current, count);
+        // merge join on the edge index (both lists rise in it)
+        var j = 0;
         for (var q in current)
         {
-            for (var p in previous)
+            while (j < size(previous) && previous[j][0] < q[0])
             {
-                if (p[0] != q[0])
-                {
-                    continue;
-                }
-                const dx = q[3] - p[3];
-                const dy = q[4] - p[4];
-                const dz = q[5] - p[5];
-                const l3 = sqrt(dx * dx + dy * dy + dz * dz);
-                const fx = q[1] - p[1];
-                const fy = q[2] - p[2];
-                const lf = sqrt(fx * fx + fy * fy);
-                if (l3 < 1e-5)
-                {
-                    continue;
-                }
-                const stretch = lf / l3 - 1;
-                if (stretch > stretchMax)
-                {
-                    stretchMax = stretch;
-                    where = [0.5 * (p[1] + q[1]), 0.5 * (p[2] + q[2])];
-                }
-                stretchMin = min(stretchMin, stretch);
-                const c3 = clamp((dx * p[6] + dy * p[7] + dz * p[8]) / l3, -1, 1);
-                const cf = clamp(-fy / lf, -1, 1);
-                shearMax = max(shearMax, abs(acos(c3) - acos(cf)) / radian);
+                j += 1;
             }
+            if (j >= size(previous) || previous[j][0] != q[0])
+            {
+                continue;
+            }
+            const p = previous[j];
+            const dx = q[3] - p[3];
+            const dy = q[4] - p[4];
+            const dz = q[5] - p[5];
+            const l3 = sqrt(dx * dx + dy * dy + dz * dz);
+            const fx = q[1] - p[1];
+            const fy = q[2] - p[2];
+            const lf = sqrt(fx * fx + fy * fy);
+            if (l3 < 1e-5)
+            {
+                continue;
+            }
+            const stretch = lf / l3 - 1;
+            if (stretch > stretchMax)
+            {
+                stretchMax = stretch;
+                where = [0.5 * (p[1] + q[1]), 0.5 * (p[2] + q[2])];
+            }
+            stretchMin = min(stretchMin, stretch);
+            // angle change: |sin(a3 - af)| = |sin a3 cos af - cos a3 sin af|, both angles in [0, pi]
+            const c3 = clamp((dx * p[6] + dy * p[7] + dz * p[8]) / l3, -1, 1);
+            const cf = clamp(-fy / lf, -1, 1);
+            shearSin = max(shearSin, abs(sqrt(1 - c3 * c3) * cf - c3 * sqrt(1 - cf * cf)));
         }
         previous = current;
     }
@@ -2177,5 +2239,5 @@ function undrapeDeformation(sections is array, crossingsAt is array, frames is a
         stretchMin = 0;
         stretchMax = 0;
     }
-    return { "stretchMin" : stretchMin, "stretchMax" : stretchMax, "where" : where, "shearMax" : shearMax };
+    return { "stretchMin" : stretchMin, "stretchMax" : stretchMax, "where" : where, "shearMax" : asin(shearSin) / radian };
 }
