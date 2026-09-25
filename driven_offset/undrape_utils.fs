@@ -1,7 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: edge_offset_utils.fs (same document)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a762b");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "70dcbbcd66e91d6405084776");
 
 /**
  * UNDRAPE MAP: the flat outline of a constant-thickness plate draped over the target.
