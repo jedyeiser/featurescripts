@@ -72,6 +72,11 @@ export const UNWRAP_PART_FIT_MAX_CPS = 500;
  * chord parameters strictly increasing by 1e-6). */
 export const UNWRAP_PART_FIT_SEPARATION = 2e-6;
 
+/** A chain end whose extension ray passes within this (m) of another chain's end (same plane) whose normal is parallel
+ * to UNWRAP_PART_GRAZE_DOT is fitted with a free end: an exact-tangent extension would graze the neighbour's tool. */
+export const UNWRAP_PART_GRAZE_LATERAL = 2e-4;
+export const UNWRAP_PART_GRAZE_DOT = 0.9994;
+
 /** A ruling of a RULED tool rising less than this share of its length is degenerate (the face is reported). */
 export const UNWRAP_PART_RULING_RISE = 0.5;
 
@@ -467,7 +472,7 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
     {
         chains = concatenateArrays([chains, chainRows(rows, kind)]);
     }
-    chains = distinctChains(chains, settings.flatTolerance.value);
+    chains = markGrazingEnds(distinctChains(chains, settings.flatTolerance.value));
 
     // 3. One tool per chain, across the box.
     for (var ax in [0, 1, 2])
@@ -974,6 +979,86 @@ export function distinctChains(chains is array, flatTolerance is number) returns
     return kept;
 }
 
+/**
+ * Marks free0 / free1 on each chain: true when the end's extension ray (from the end, along its outward tangent)
+ * passes within UNWRAP_PART_GRAZE_LATERAL of an end of another chain in the same plane (PROFILE with PROFILE; WALL
+ * with WALL and RULED, all (x, y)), or of an x = const plane of the other kind, whose flat normal is parallel to
+ * UNWRAP_PART_GRAZE_DOT. Such an end runs on
+ * near-tangent into a neighbour it was not chained with (a blend into a straight wall a face away, a squared wall
+ * beside a vertical one), and its tool extended along the exact tangent would cross the neighbour's at a grazing
+ * angle (measured: SPLIT_FAILED on 4802 with squareWalls). A free end lets the fit choose its tangent.
+ */
+export function markGrazingEnds(chains is array) returns array
+{
+    var out = chains;
+    for (var i = 0; i < size(chains); i += 1)
+    {
+        const pi = chains[i].pts;
+        const n = size(pi);
+        const ends = [{ "p" : pi[0], "e" : chains[i].e0, "t" : planarDirection(pi[1], pi[0]) },
+                { "p" : pi[n - 1], "e" : chains[i].e1, "t" : planarDirection(pi[n - 2], pi[n - 1]) }];
+        var free = [false, false];
+        for (var j = 0; j < size(chains); j += 1)
+        {
+            if (j == i)
+            {
+                continue;
+            }
+            const pj = chains[j].pts;
+            var others = [{ "p" : pj[0], "e" : chains[j].e0 }, { "p" : pj[size(pj) - 1], "e" : chains[j].e1 }];
+            if ((chains[i].kind == "PROFILE") != (chains[j].kind == "PROFILE"))
+            {
+                // A chain of the other plane reaches this one only as an x = const plane (a straight chain whose
+                // normal lies along x): its trace here is the line x = its mean x, normal along x.
+                const nj = chains[j].e0.n;
+                if (!chains[j].straight || nj == undefined || abs(nj[1]) > 0.05 * abs(nj[0]))
+                {
+                    continue;
+                }
+                const xj = 0.5 * (pj[0][0] + pj[size(pj) - 1][0]);
+                others = [];
+                for (var k in [0, 1])
+                {
+                    others = append(others, { "p" : [xj, ends[k].p[1]], "e" : { "n" : [nj[0], 0] } });
+                }
+            }
+            for (var other in others)
+            {
+                for (var k in [0, 1])
+                {
+                    const d = [other.p[0] - ends[k].p[0], other.p[1] - ends[k].p[1]];
+                    const ahead = planarDot(d, ends[k].t);
+                    const lateral = abs(d[0] * ends[k].t[1] - d[1] * ends[k].t[0]);
+                    if (ahead > -UNWRAP_PART_GRAZE_LATERAL && lateral < UNWRAP_PART_GRAZE_LATERAL
+                        && normalsParallel(ends[k].e, other.e, UNWRAP_PART_GRAZE_DOT))
+                    {
+                        free[k] = true;
+                    }
+                }
+            }
+        }
+        out[i].free0 = free[0];
+        out[i].free1 = free[1];
+    }
+    return out;
+}
+
+/** Whether two ends' flat normals (e.n, 2D) are parallel (either sense) to `limit`; false when either is missing. */
+export function normalsParallel(a, b, limit is number) returns boolean
+{
+    if (a == undefined || b == undefined || a.n == undefined || b.n == undefined)
+    {
+        return false;
+    }
+    const la = sqrt(a.n[0] * a.n[0] + a.n[1] * a.n[1]);
+    const lb = sqrt(b.n[0] * b.n[0] + b.n[1] * b.n[1]);
+    if (la < 0.5 || lb < 0.5)
+    {
+        return false;
+    }
+    return abs(planarDot(a.n, b.n)) / (la * lb) > limit;
+}
+
 /** A chain point placed just outside the box: PROFILE (x, z) at y below the box, WALL (x, y) at z below it. */
 export function toolPoint(p is array, profile is boolean, lo is array) returns Vector
 {
@@ -1117,15 +1202,10 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
         else
         {
             const n = size(chain.pts);
-            const t0 = endTangent(chain.e0.n, chain.pts[0], chain.pts[1]);
-            const t1 = endTangent(chain.e1.n, chain.pts[n - 2], chain.pts[n - 1]);
-            var start = undefined;
-            var end = undefined;
-            if (t0 != undefined && t1 != undefined)
-            {
-                start = profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0);
-                end = profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0);
-            }
+            const t0 = chain.free0 ? undefined : endTangent(chain.e0.n, chain.pts[0], chain.pts[1]);
+            const t1 = chain.free1 ? undefined : endTangent(chain.e1.n, chain.pts[n - 2], chain.pts[n - 1]);
+            const start = (t0 == undefined) ? undefined : (profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0));
+            const end = (t1 == undefined) ? undefined : (profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0));
             emitSplineCurve(context, curve, pickIndices(points, separatedIndices([points])), start, end, approximation);
         }
         extrusion = profile ? vector(0, 1, 0) : vector(0, 0, 1);

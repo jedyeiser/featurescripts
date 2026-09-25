@@ -336,3 +336,62 @@ Open items:
 - FAIL faces (fillets between walls and profile faces over a curved span) are reported, not handled.
 - The row of each face is taken at mid-parameter of the other direction. On a face with a badly non-rectangular
   trim, that row lies on the surface's extension. That is exact for extrusions, but it is untested on other faces.
+
+## 8b. As built: robustness and speed pass (2026-09-25, later)
+
+Interface unchanged (`unwrapSolid`, same report keys; `UNWRAP_PART_COUNT_KEYS` + `emptyPartReport()` now define
+them once). Local only, not pushed. Changes:
+
+- **M7 fuse check:** after the union, more result solids than the input part's solids -> `regenError` naming the
+  part ("the unwrapped pieces of "<name>" did not fuse (n solids from m)").
+- **L5 ruling guard:** a RULED ruling rising less than half its length (`UNWRAP_PART_RULING_RISE`) throws, naming
+  the flat x and highlighting the chain's faces (was a division by ~0).
+- **Inverse map:** `unflatPoint` (unit-based, alongRef tables) is gone; cell membership uses
+  `unwrapInverse(chart, x, y, z)` (plain numbers, same packed tables as `unwrapFast`).
+- **Feet are checked:** every `unwrapFast` goes through `chartFootAt` (warm start, cold retry) and
+  `chartFootConverged`. Unmapped grid points off the trim send the face to the on-face pass; an unmapped point on a
+  face, row or edge throws naming that face/edge; an unmapped interior point throws naming the part.
+  `rigidTransform` takes the foot it already has (one map call fewer).
+- **Plane tools:** a straight PROFILE/WALL chain is a `Plane` passed straight to `opSplitPart` (no line, extrude,
+  extend).
+- **On-face filter:** one `evFaceTangentPlanes(..., returnUndefinedOutsideFace : true)` per face replaces an
+  `evDistance` per grid point.
+- **Tangency by exact normals:** rows carry the flat normal at their ends (`e0`/`e1`). Chaining (`joinRows`,
+  `endsTangent`) compares normals, not end chords (chords at a tight corner differ by spacing x curvature, 0.9 deg
+  at R 10 mm / 0.3 mm). 4802 now chains to 12 tools / 108 cells (was 16 / 182).
+- **Spline tools:** PROFILE/WALL splines are `approximateSpline` fits (`emitSplineCurve`, 0.1 um, chord parameters,
+  exact unit end tangents from the flat normals); points thinned so chord fractions rise by 2e-6. PROFILE/WALL rows
+  are sampled every 1 mm (was 0.5). Measured: 1 mm leaves every body's worst error unchanged; 2 mm takes the base
+  from 0.037 to 0.305 um, 4 mm to 0.529 um.
+- **Grazing guard (`markGrazingEnds`):** an end whose extension ray passes within 0.2 mm of a parallel (2 deg) end of
+  another same-plane chain, or of an x = const plane of the other kind, gets a free end (the fit picks its tangent).
+  An exact tangent extended linearly grazes a G1 neighbour a face away, and `opSplitPart` fails there (4802 with
+  squareWalls: SPLIT_FAILED without the guard).
+- **RULED tools stay `opFitSpline` + `opLoft` at 0.5 mm rows.** Tried and rejected, all measured on 4802/4803:
+  - A family fit (`approximateFamily`) lofted gives sheets that fail `opSplitPart` (correction 22's loft fragility).
+  - Written down as a ruled `opCreateBSplineSurface`, the fit needs end tangents: without them the result is
+    CANNOT_MAKE_BSPLINESURFACE.
+  - With exact end tangents (near-end samples) the RULED extension grazes tangent neighbours. At the 4803 tip it
+    meets the x = const PROFILE plane G1, leaving a 1.7 um sliver and 3.2 um error; 4802 shows 5.8 um.
+  - Re-reading tangent WALL rows as RULED (one tool through the junction) fixes the wall junctions but chains the
+    whole outline into a >180 deg loop once the tip plane joins.
+
+Results (same setup as section 8; time = request time, no accuracy check, 3 interleaved runs; error = worst of the
+7x7 face + 5-per-edge samples):
+
+| Body | Time before -> after | Vol ratio | Worst error | Cells kept | Tools (plane/arc/spline/ruled) |
+|---|---|---|---|---|---|
+| CORE Rtjn | 1.80 -> 1.63 s | 1.000059 | 8.29 um (known vertex), rest < 0.1 um | 8/120 | 10/0/8/0 |
+| 4802 Rtj7 | 4.32 -> 2.67 s | 1.012562 | 0.794 um | 5/108 (was 5/182) | 5/0/3/4 (was 5/0/3/8) |
+| 4803 Rtj3 | 4.33 -> 3.93 s | 1.003707 | 0.821 um | 5/240 | 7/0/4/6 |
+| base RtjP | 2.76 -> 2.27 s | 1.000211 | 0.037 um | 12/120 | 10/0/6/0 |
+| 4103 L RtjH | 2.99 -> 2.83 s | 1.000346 | 0.048 um | 6/96 | 8/0/1/7 |
+| 4401 L Rtjv | 1.75 -> 1.74 s | 1.000041 | 0.25 um | 2/54 | 2/4/0/6 |
+
+Also: 4802 squareWalls 39.7 um (was 43.6); d = 3.8 mm: 4802 0.786 um, core 8.29 um; 4802 at flatTolerance
+0.01 mm: 5.15 um (same as before). The input is untouched and exactly one new solid is left in every run.
+evVolume moves at the 1e-5 relative level between tool representations with face areas equal to 0.001 mm^2, so it
+is representation noise, not geometry.
+
+Still open: the grazing hazard is guarded, not removed (a G1 junction with a neighbour farther than 0.2 mm off the
+ray, or a RULED end, is not covered); chains turning > 180 deg; FAIL faces.
