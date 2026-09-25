@@ -165,6 +165,14 @@ export const filletWire = defineFeature(function(context is Context, id is Id, d
                 filleted += 1;
             }
         }
+
+        // While the dialog is open: the fillets in magenta, and a point at every corner (the manipulator bases),
+        // magenta where it is filleted, blue where it is not.
+        if (size(filletEdges) > 0)
+        {
+            addDebugEntities(context, qUnion(filletEdges), DebugColor.MAGENTA);
+        }
+        showCornerPoints(context, id + "cornerPoints", all, solved);
         if (size(skipped) > 0)
         {
             reportFeatureWarning(context, id, size(skipped) ~ " corner(s) not filleted: " ~ join(skipped, "; "));
@@ -205,6 +213,45 @@ export const filletWire = defineFeature(function(context is Context, id is Id, d
         "cornerAngle" : 0.5 * degree,
         "debugPrint" : false
     });
+
+/**
+ * A debug point at every corner, all in one temporary scope (addDebugPoint is a sketch solve each): filleted
+ * corners magenta, the others blue.
+ */
+function showCornerPoints(context is Context, id is Id, corners is array, solved is array)
+{
+    if (size(corners) == 0)
+    {
+        return;
+    }
+    startFeature(context, id, {});
+    for (var i = 0; i < size(corners); i += 1)
+    {
+        opPoint(context, id + ("corner" ~ i), { "point" : corners[i].point });
+    }
+    var done = [];
+    var open = [];
+    for (var i = 0; i < size(corners); i += 1)
+    {
+        if (solved[i] != undefined)
+        {
+            done = append(done, qCreatedBy(id + ("corner" ~ i), EntityType.VERTEX));
+        }
+        else
+        {
+            open = append(open, qCreatedBy(id + ("corner" ~ i), EntityType.VERTEX));
+        }
+    }
+    if (size(done) > 0)
+    {
+        addDebugEntities(context, qUnion(done), DebugColor.MAGENTA);
+    }
+    if (size(open) > 0)
+    {
+        addDebugEntities(context, qUnion(open), DebugColor.BLUE);
+    }
+    abortFeature(context, id);
+}
 
 // ============================================================================
 // Manipulator: clicked corners -> the Corners list
