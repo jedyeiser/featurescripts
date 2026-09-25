@@ -20,8 +20,12 @@ IconNamespace::import(path : "5abec4cb3826cb3a41e6e340", version : "dff061882348
  * joined into one wire; continuity at each joint is what the inputs give (a buffer into a smooth ramp is
  * C2, a linear corner G0, a blend what was chosen).
  *
- * Regions: start / end station, start / end width and height, a shape (linear or smooth) and optional
- * buffers -- distances from each end toward the centre over which the end value is held. Consecutive
+ * Any station (region start / end, point station) is a typed value or a picked vertex / mate connector: its
+ * world X plus a signed distance along +X. The pick field allows creating a mate connector in place.
+ *
+ * Regions: start / end station, then either CONSTANT (one width, one height: a straight line) or start / end
+ * width and height with a shape (linear or smooth) and optional buffers -- distances from each end toward the
+ * centre over which the end value is held. Consecutive
  * regions join as they are when they touch with equal values; otherwise the profile breaks, unless their
  * intersection asks for a blend.
  *
@@ -42,6 +46,8 @@ export enum OffsetProfileMode
 /** How a region's offset changes between its buffers. */
 export enum OffsetProfileShape
 {
+    annotation { "Name" : "Constant" }
+    CONSTANT,
     annotation { "Name" : "Linear" }
     LINEAR,
     annotation { "Name" : "Smooth" }
@@ -57,6 +63,15 @@ export enum OffsetPointTransition
     LINEAR,
     annotation { "Name" : "Hold" }
     HOLD
+}
+
+/** Where a station comes from: a typed value, or a picked point's world X plus a signed distance along +X. */
+export enum OffsetStationSource
+{
+    annotation { "Name" : "Value" }
+    VALUE,
+    annotation { "Name" : "Point" }
+    POINT
 }
 
 /** Stations closer than this touch; offsets closer than this are equal. */
@@ -81,33 +96,74 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
                 annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64, "Description" : "Empty = Region n. Intersections are kept by region name." }
                 region.regionName is string;
 
-                annotation { "Name" : "Start station", "Description" : "World X in profile coordinates." }
-                isLength(region.startStation, ZERO_DEFAULT_LENGTH_BOUNDS);
+                annotation { "Name" : "Start from", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                region.startSource is OffsetStationSource;
 
-                annotation { "Name" : "End station" }
-                isLength(region.endStation, ZERO_DEFAULT_LENGTH_BOUNDS);
+                if (region.startSource == OffsetStationSource.POINT)
+                {
+                    annotation { "Name" : "Start point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                                "Description" : "Start station = this point's world X plus the distance below." }
+                    region.startPoint is Query;
 
-                annotation { "Name" : "Start width" }
-                isLength(region.startWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
+                    annotation { "Name" : "Start distance from point", "Description" : "Signed, along +X." }
+                    isLength(region.startPointOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
+                else
+                {
+                    annotation { "Name" : "Start station", "Description" : "World X in profile coordinates." }
+                    isLength(region.startStation, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
 
-                annotation { "Name" : "End width" }
-                isLength(region.endWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
+                annotation { "Name" : "End from", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                region.endSource is OffsetStationSource;
 
-                annotation { "Name" : "Start height" }
-                isLength(region.startHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
+                if (region.endSource == OffsetStationSource.POINT)
+                {
+                    annotation { "Name" : "End point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                                "Description" : "End station = this point's world X plus the distance below." }
+                    region.endPoint is Query;
 
-                annotation { "Name" : "End height" }
-                isLength(region.endHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
+                    annotation { "Name" : "End distance from point", "Description" : "Signed, along +X." }
+                    isLength(region.endPointOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
+                else
+                {
+                    annotation { "Name" : "End station" }
+                    isLength(region.endStation, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
 
                 annotation { "Name" : "Shape", "Default" : OffsetProfileShape.LINEAR, "UIHint" : UIHint.HORIZONTAL_ENUM,
-                            "Description" : "Linear, or smooth (smootherstep: flat, zero curvature at both ends of the change)." }
+                            "Description" : "Constant (one width and height), linear, or smooth (smootherstep: flat, zero curvature at both ends of the change)." }
                 region.shape is OffsetProfileShape;
 
-                annotation { "Name" : "Start buffer", "Description" : "Hold the start value for this distance from the start toward the centre." }
-                isLength(region.startBuffer, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                if (region.shape == OffsetProfileShape.CONSTANT)
+                {
+                    annotation { "Name" : "Width" }
+                    isLength(region.startWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
 
-                annotation { "Name" : "End buffer", "Description" : "Hold the end value for this distance from the end toward the centre." }
-                isLength(region.endBuffer, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                    annotation { "Name" : "Height" }
+                    isLength(region.startHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
+                else
+                {
+                    annotation { "Name" : "Start width" }
+                    isLength(region.startWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+                    annotation { "Name" : "End width" }
+                    isLength(region.endWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+                    annotation { "Name" : "Start height" }
+                    isLength(region.startHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+                    annotation { "Name" : "End height" }
+                    isLength(region.endHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+                    annotation { "Name" : "Start buffer", "Description" : "Hold the start value for this distance from the start toward the centre." }
+                    isLength(region.startBuffer, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+
+                    annotation { "Name" : "End buffer", "Description" : "Hold the end value for this distance from the end toward the centre." }
+                    isLength(region.endBuffer, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
             }
 
             annotation { "Name" : "Intersections", "Item name" : "Intersection", "Item label template" : "#region1 / #region2",
@@ -149,8 +205,23 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
             definition.points is array;
             for (var point in definition.points)
             {
-                annotation { "Name" : "Station", "Description" : "World X in profile coordinates." }
-                isLength(point.station, ZERO_DEFAULT_LENGTH_BOUNDS);
+                annotation { "Name" : "Station from", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                point.stationSource is OffsetStationSource;
+
+                if (point.stationSource == OffsetStationSource.POINT)
+                {
+                    annotation { "Name" : "Station point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                                "Description" : "Station = this point's world X plus the distance below." }
+                    point.stationPoint is Query;
+
+                    annotation { "Name" : "Distance from point", "Description" : "Signed, along +X." }
+                    isLength(point.stationPointOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
+                else
+                {
+                    annotation { "Name" : "Station", "Description" : "World X in profile coordinates." }
+                    isLength(point.station, ZERO_DEFAULT_LENGTH_BOUNDS);
+                }
 
                 annotation { "Name" : "Width" }
                 isLength(point.width, ZERO_DEFAULT_LENGTH_BOUNDS);
@@ -171,6 +242,7 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
         }
     }
     {
+        definition = resolveStations(context, definition, true);
         var built;
         if (definition.mode == OffsetProfileMode.REGIONS)
         {
@@ -214,17 +286,18 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
 // ============================================================================
 
 /**
- * Names unnamed regions "Region n" and rebuilds the intersection list: one entry per consecutive pair
- * (by start station), each keeping the settings of an existing entry for the same region-name pair.
+ * Copies stations picked from points into their value fields (so switching back to Value keeps the number, and
+ * item labels show it), names unnamed regions "Region n" and rebuilds the intersection list: one entry per
+ * consecutive pair (by start station), each keeping the settings of an existing entry for the same region-name pair.
  */
 export function createOffsetProfileEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
 {
+    var result = resolveStations(context, definition, false);
     if (definition.mode != OffsetProfileMode.REGIONS)
     {
-        return definition;
+        return result;
     }
-    var result = definition;
     for (var i = 0; i < size(result.regions); i += 1)
     {
         if (result.regions[i].regionName == "")
@@ -258,6 +331,73 @@ export function createOffsetProfileEditingLogic(context is Context, id is Id, ol
         intersections = append(intersections, entry);
     }
     result.intersections = intersections;
+    return result;
+}
+
+// ============================================================================
+// Stations from points
+// ============================================================================
+
+/** Parameter ids of the station entries: [source, point, distance, value] per station of an item. */
+const REGION_STATION_KEYS = [["startSource", "startPoint", "startPointOffset", "startStation"],
+        ["endSource", "endPoint", "endPointOffset", "endStation"]];
+const POINT_STATION_KEYS = [["stationSource", "stationPoint", "stationPointOffset", "station"]];
+
+/**
+ * World X of a vertex or mate connector pick, or undefined when nothing is picked. A connector pick can arrive
+ * as the connector's vertex (correction 44), so it is resolved through the owner body.
+ */
+function pickedX(context is Context, q)
+{
+    if (!(q is Query) || isQueryEmpty(context, q))
+    {
+        return undefined;
+    }
+    const connector = evaluateQuery(context, qBodyType(qOwnerBody(q), BodyType.MATE_CONNECTOR));
+    if (size(connector) > 0)
+    {
+        return evMateConnector(context, { "mateConnector" : connector[0] }).origin[0];
+    }
+    return evVertexPoint(context, { "vertex" : q })[0];
+}
+
+/**
+ * Writes every Point-sourced station into its value field (picked point's world X + distance), so the rest of
+ * the feature reads plain stations. `strict` (the feature body) throws on a missing pick; the editing logic
+ * passes false and leaves such a station as it was.
+ */
+function resolveStations(context is Context, definition is map, strict is boolean) returns map
+{
+    var result = definition;
+    const arrays = definition.mode == OffsetProfileMode.REGIONS ? [["regions", REGION_STATION_KEYS]] : [["points", POINT_STATION_KEYS]];
+    for (var entry in arrays)
+    {
+        const arrayId = entry[0];
+        for (var i = 0; i < size(result[arrayId]); i += 1)
+        {
+            for (var keys in entry[1])
+            {
+                const item = result[arrayId][i];
+                if (item[keys[0]] != OffsetStationSource.POINT)
+                {
+                    continue;
+                }
+                const x = pickedX(context, item[keys[1]]);
+                if (x == undefined)
+                {
+                    if (strict)
+                    {
+                        const label = arrayId == "regions" ? "Region '" ~ item.regionName ~ "'" : "Point " ~ (i + 1);
+                        throw regenError(label ~ ": pick a point (vertex or mate connector) for the station.",
+                            [faultyArrayParameterId(arrayId, i, keys[1])]);
+                    }
+                    continue;
+                }
+                const offset = item[keys[2]] is ValueWithUnits ? item[keys[2]] : 0 * meter;
+                result[arrayId][i][keys[3]] = x + offset;
+            }
+        }
+    }
     return result;
 }
 
@@ -319,13 +459,17 @@ function regionValue(region is map, channel is string, x is number) returns arra
     return [v0 + (v1 - v0) * s[0], (v1 - v0) * s[1] / len, (v1 - v0) * s[2] / (len * len)];
 }
 
-/** A region in metres, validated. `index` is its position in the dialog (for error highlighting). */
+/**
+ * A region in metres, validated. `index` is its position in the dialog (for error highlighting). Stations
+ * must already be resolved (resolveStations). A CONSTANT region has one width and height and no buffers.
+ */
 function regionData(region is map, index is number) returns map
 {
+    const constant = region.shape == OffsetProfileShape.CONSTANT;
     const xs = region.startStation / meter;
     const xe = region.endStation / meter;
-    const b0 = region.startBuffer / meter;
-    const b1 = region.endBuffer / meter;
+    const b0 = constant ? 0 : region.startBuffer / meter;
+    const b1 = constant ? 0 : region.endBuffer / meter;
     const tol = OFFSET_PROFILE_TOLERANCE / meter;
     if (xe - xs <= tol)
     {
@@ -341,8 +485,8 @@ function regionData(region is map, index is number) returns map
             "name" : region.regionName,
             "index" : index,
             "xs" : xs, "xe" : xe, "b0" : b0, "b1" : b1,
-            "w0" : region.startWidth / meter, "w1" : region.endWidth / meter,
-            "h0" : region.startHeight / meter, "h1" : region.endHeight / meter,
+            "w0" : region.startWidth / meter, "w1" : (constant ? region.startWidth : region.endWidth) / meter,
+            "h0" : region.startHeight / meter, "h1" : (constant ? region.startHeight : region.endHeight) / meter,
             "shape" : region.shape
         };
 }
