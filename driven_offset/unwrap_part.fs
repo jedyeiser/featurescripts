@@ -1,5 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
+import(path : "onshape/std/extendendtype.gen.fs", version : "3070.0");
+import(path : "onshape/std/extendsheetshapetype.gen.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; the chart: unwrapFast, packChart, referencePointAtArc; export-imports
 // curve_core: classifyPoints, emitArcCurve)
