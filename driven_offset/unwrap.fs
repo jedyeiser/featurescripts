@@ -631,7 +631,9 @@ function plateSidesGeneral(context is Context, part is Query) returns map
     var best = undefined;
     for (var g in evOffsetDetection(context, { "bodies" : part }))
     {
-        const candidate = grownSides(context, g.side0[0], g.side1[0], 0.5 * (g.offsetLow + g.offsetHigh));
+        // Grow from EVERY pair of the group: a side whose faces are not all tangent-connected is only
+        // reached in full from several seeds.
+        const candidate = grownSides(context, qUnion(g.side0), qUnion(g.side1), 0.5 * (g.offsetLow + g.offsetHigh));
         if (candidate != undefined && (best == undefined || candidate.area > best.area))
         {
             best = candidate;

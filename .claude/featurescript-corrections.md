@@ -1543,3 +1543,15 @@ body (a query through the vertex stops resolving after opTransform moves the con
 
 **Symptom 2**: `@setProperty: CANNOT_RESOLVE_ENTITIES` naming a mate connector (and getProperty NAME on
 one returns undefined). **Fix**: never name connectors; report info.
+
+## Correction 45: cut a wire with opSplitEdges at arc-length parameters, not with planes (2026-09-25)
+
+**Symptom**: Trim curve + refused every multi-edge wire ("Each curve must currently be a single-edge
+wire"), and its plane cutter (opSplitPart with a plane normal to the tangent) would also cut the curve
+anywhere else it crossed that plane (tip/tail rises of a ski profile).
+**Fix**: read the wire as one path (constructPath; per-edge lengths -> path fraction), map each cut to
+(edge, arc-length parameter) and call `opSplitEdges(context, id, { "edges" : edge, "parameters" : [[t1, t2]] })`.
+The wire stays ONE body (verified by eval API on a real 3-edge profile); separate pieces = opExtractWires per
+span + delete the source. After the split, re-read the path and re-orient it to the old start point
+(`reverse(path)`) before grouping edges, or piece order can flip. `TOLERANCE.zeroLength` is unitless -- compare
+distances against `TOLERANCE.zeroLength * meter`.

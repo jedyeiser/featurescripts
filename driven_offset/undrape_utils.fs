@@ -1637,9 +1637,14 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     const sp = max(spacing.value, 5e-4);
 
     // 1. Side: the one with fewer edges (either works); the other is only read by the kernel fallback.
+    // Unless the two sides' areas disagree by more than 1 %: then one of them was found incomplete (its faces
+    // are not all tangent-connected -- seen on a 0.44 mm laminate, 18380 of 221152 mm^2) and only the larger
+    // one carries the whole outline.
     const count0 = size(evaluateQuery(context, qAdjacent(side0, AdjacencyType.EDGE, EntityType.EDGE)));
     const count1 = size(evaluateQuery(context, qAdjacent(side1, AdjacencyType.EDGE, EntityType.EDGE)));
-    const useFirst = count0 <= count1;
+    const area0 = evArea(context, { "entities" : side0 });
+    const area1 = evArea(context, { "entities" : side1 });
+    const useFirst = (abs(area0 - area1) > 0.01 * max(area0, area1)) ? (area0 > area1) : (count0 <= count1);
     const sideA = useFirst ? side0 : side1;
     const sideB = useFirst ? side1 : side0;
 
