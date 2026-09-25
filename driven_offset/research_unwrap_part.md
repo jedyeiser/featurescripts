@@ -266,3 +266,73 @@ on X(s). Not prototyped; constant d was.
   roughly 1-1.5 s is classification sampling with a kernel foot per sample. With `unwrapFast` and
   the evDistance on-face filter replaced by the classification of face boundaries, expect about 3 s.
   The core is 2.35 s because only 20 of its 1500 mm are rebuilt.
+
+## 8. As built: `driven_offset/unwrap_part.fs` (2026-09-25)
+
+`unwrapSolid(context, id, chart, cs, part, options)` as called by `unwrap.fs`' `unwrapPart`. The interface is
+unchanged. Report keys: `pieces, rigidPieces, rebuiltPieces, cells, keptCells, tools, planeTools, arcTools,
+splineTools, ruledTools, snappedTools, squaredWalls, maxLean`. `lines[0]` is a one-line summary; after it comes
+one line per piece. The option `print` is accepted but nothing is printed here, because the caller prints `lines`.
+Nothing is pushed yet: the tab does not exist in Onshape, and `unwrap.fs` still imports `UNWRAP_PART_EID`.
+
+How it differs from the prototype:
+- **Chart:** the production chart (`unwrapFast`, packed Hermite) replaces the prototype's analytic or kernel foot.
+  Flat classification uses the chart's own frame `(t, -planeNormal, planeNormal x t)` and Jacobian
+  `diag(scale / (scale - kappa h), 1, 1)` (`flatNormal`), so it holds for any delta.
+- **Inverse map (`unflatPoint`):** Newton on `x = arc - delta theta(arc)`, then `referencePointAtArc` plus
+  `v`/`height` offsets. It is used only for the cell membership test.
+- **Work frame:** everything is built in the chart frame (identity). A single `opTransform(toWorld(cs))` at the
+  end places the result. A rigid piece's transform is `toWorld(frame at its chart coords) * fromWorld(coordSystem(P,
+  t, planeNormal x t))`, with `P` an interior point and `t` the exact line direction.
+- **Spans:** they come from `chart.alongRef.chain` (per-edge `curveType`). Arc ranges are the chart arcs of the edge
+  end points. A piece is classified by the foot of an interior point: the centroid, or a point inset 1 um from a
+  face.
+- **Classification:** it first runs on the whole 9x9 grid with no on-face filter. The `evDistance` trim filter runs
+  only for faces that do not pass as PROFILE/WALL on the whole grid. That saves about 0.35 s on 4803.
+- **Cell box:** it comes from the piece's EDGES, sampled every 2 mm and mapped, not from the classification grid.
+  With grid points outside the trim, the box grew, and 4802 failed with `SPLIT_FAILED` (a lofted nose-corner tool
+  pushed to a much larger z range). Keep the box tight.
+- **`flatTolerance`:** a PROFILE or WALL chain within the tolerance of its chord becomes a plane. The line is moved
+  to the middle of the band, so the error is at most tol/2. At 0.01 mm, 4802 has 5 snapped chains and a worst error
+  of 5.15 um.
+- **Arcs:** a curved chain within 0.1 um of a circle (`classifyPoints`, lines forbidden) is emitted through
+  `emitArcCurve` and extruded, giving a real CYLINDER. 4401 got 4 arc tools. On 4802, 4803 and the core, the curved
+  chains are not arcs in the chart (x is arc length, not world X), so they stay splines.
+- **Single-split test:** a single `opSplitPart` with all tools as `tool` uses only the first tool (tested: 2 cells,
+  wrong). Splitting one tool at a time is required.
+- **Ids:** each piece has its own id component (`id + ("piece" ~ k)`). A shared `id + "piece" + ...` prefix
+  interleaved with `deletePiece` fails with "Parent Id used at two non-contiguous points".
+- **Error handling:** errors are `regenError`s that highlight the input part: a FAIL face, no kept cell, or a union
+  failure (piece or whole). There is no try/catch around splits or extends.
+
+Measured through the eval API on the "Unwrap_Testing Copy 2" studio (681a5825). Setup: W = REF_WIRE, align StjLB,
+d = 0, cs = world, exact walls, flatTolerance 0.001 mm. Time is the request time without the accuracy check; the
+API plus the chart cost 0.27 s. Error is the worst of 7x7 on-face samples per face plus 5 points per edge, mapped
+with `unwrapFast` and measured with `evDistance` to the result faces:
+
+| Body | Pieces (rigid / rebuilt) | Cells kept | Tools (plane/arc/spline/ruled) | Faces out (in) | Vol flat / world | Worst error | Time |
+|---|---|---|---|---|---|---|---|
+| CORE Rtjn | 1 / 2 | 8/120 | 10/0/8/0 | 94 (90) | 1.000059 | 8.29 um (the known tolerant vertex); all other samples < 0.1 um | 1.6-1.8 s |
+| 4802 Rtj7 | 0 / 1 | 5/182 | 5/0/3/8 | 16 (17) | 1.012571 | 0.79 um | 4.3 s |
+| 4803 Rtj3 | 0 / 1 | 5/240 | 7/0/4/6 | 18 (18) | 1.003707 | 0.82 um | 4.2-4.5 s |
+| base RtjP | 1 / 2 | 12/120 | 10/0/6/0 | 30 (40) | 1.000206 | < 1 nm | 2.6-2.8 s |
+| 4103 L RtjH | 1 / 2 | 6/96 | 8/0/1/7 | 36 (41) | 1.000380 | 0.034 um | 2.8-3.0 s |
+| 4401 L Rtjv | 1 / 2 | 2/54 | 2/4/0/6 | 52 (46) | 1.000041 | 0.25 um | 1.7 s |
+
+Other runs:
+- 4802 with `squareWalls`: 8 walls squared, worst error 43.6 um (as predicted).
+- d = 3.8 mm: 4802 has a volume ratio of 1.000103 and 0.78 um; the core has 0.999998 and 8.29 um.
+- A rotated and translated `cs` on the base: < 1 nm.
+- The input part is untouched in every run. Exactly one new solid is left, and no new sheet or wire.
+
+Time split on 4803 (4.2 s): classification and rows about 0.6-1.0 s, tools 0.3 s, **17 sequential splits into 240
+cells about 2.2 s**, membership and union about 0.7 s. The splits are the cost that remains. It grows with tools x
+cells.
+
+Open items:
+- The junction split plane is infinite, and the "does it cut" test uses the part's box corners. A part that wraps
+  round a curve far enough for the plane to cut it twice would be split in the wrong place. Ski parts do not.
+- Chains turning more than 180 deg (their end extensions would cross) are not split yet.
+- FAIL faces (fillets between walls and profile faces over a curved span) are reported, not handled.
+- The row of each face is taken at mid-parameter of the other direction. On a face with a badly non-rectangular
+  trim, that row lies on the surface's extension. That is exact for extrusions, but it is untested on other faces.

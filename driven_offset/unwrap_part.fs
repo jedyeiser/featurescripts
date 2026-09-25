@@ -71,7 +71,8 @@ export const UNWRAP_PART_ON_FACE = 1e-8 * meter;
  * @param cs {CoordSystem} : the flat frame; a wrapped point P lands at toWorld(cs, vector(x, y, z) * meter) with
  *        [x, y, z] = unwrapFast(chart, P, undefined)[0..2] (plain metres) -- same convention as unwrap.fs.
  * @param options {map} : { "squareWalls" : boolean (default false = exact mapped walls), "flatTolerance" :
- *        ValueWithUnits (snap nearly flat mapped faces to planes; default 0.001 mm), "print" : boolean }
+ *        ValueWithUnits (snap nearly flat mapped faces to planes; default 0.001 mm), "print" : boolean (accepted;
+ *        nothing is printed here -- the caller prints "lines") }
  * @returns {map} : { "bodies" : Query (flat solid(s), created under id), "report" : { "pieces", "rigidPieces",
  *        "rebuiltPieces", "cells", "keptCells", "tools", "planeTools", "arcTools", "splineTools", "ruledTools",
  *        "snappedTools", "squaredWalls", "maxLean" }, "lines" : array of strings }
@@ -132,7 +133,7 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
         }
         else
         {
-            const rebuilt = rebuildPiece(context, id + "piece" + ("p" ~ k), chart, piece, settings);
+            const rebuilt = rebuildPiece(context, id + ("piece" ~ k), chart, piece, settings);
             opDeleteBodies(context, id + ("deletePiece" ~ k), { "entities" : piece });
             results = append(results, rebuilt.body);
             report.rebuiltPieces += 1;
@@ -343,46 +344,35 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
             grid = append(grid, vector(i / (G - 1), j / (G - 1)));
         }
     }
-    var lo = [1e9, 1e9, 1e9];
-    var hi = [-1e9, -1e9, -1e9];
+    const extent = chartExtent(context, chart, piece);
+    var lo = extent[0];
+    var hi = extent[1];
     var rows = [];
     var failed = [];
     const faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
     for (var face in faces)
     {
         const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : grid });
+        var feet = [];
         var flatGrid = [];
-        var maxB = 0;
-        var maxC = 0;
         var previous = undefined;
         for (var tp in planes)
         {
             const u = unwrapFast(chart, tp.origin, previous);
             previous = u;
+            feet = append(feet, u);
             flatGrid = append(flatGrid, [u[0], u[1], u[2]]);
-            if (evDistance(context, { "side0" : tp.origin, "side1" : face }).distance > UNWRAP_PART_ON_FACE)
-            {
-                continue;
-            }
-            for (var ax in [0, 1, 2])
-            {
-                lo[ax] = min(lo[ax], u[ax]);
-                hi[ax] = max(hi[ax], u[ax]);
-            }
-            const fn = flatNormal(chart, u, tp.normal);
-            maxB = max(maxB, abs(fn[1]));
-            maxC = max(maxC, abs(fn[2]));
         }
-        var kind = "FAIL";
-        if (maxB < UNWRAP_PART_PROFILE_TOL && maxC >= UNWRAP_PART_PROFILE_TOL)
+        // Grid points outside the face's trim lie on its surface's extension, which is at worst less of a profile
+        // or wall than the face; so only a face that does not pass on the whole grid is re-read on its trim alone.
+        var shares = normalShares(context, chart, face, planes, feet, false);
+        var kind = faceKind(shares);
+        if (kind != "PROFILE" && kind != "WALL")
         {
-            kind = "PROFILE";
+            shares = normalShares(context, chart, face, planes, feet, true);
+            kind = faceKind(shares);
         }
-        else if (maxC < UNWRAP_PART_WALL_TOL)
-        {
-            kind = "WALL";
-        }
-        else if (maxC < UNWRAP_PART_RULED_TOL)
+        if (kind == "LEANING")
         {
             kind = settings.squareWalls ? "WALL" : "RULED";
             if (settings.squareWalls)
@@ -390,14 +380,14 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
                 report.squaredWalls += 1;
             }
         }
+        if (kind != "PROFILE" && kind != "FAIL")
+        {
+            report.maxLean = max(report.maxLean, shares[1]);
+        }
         if (kind == "FAIL")
         {
             failed = append(failed, face);
             continue;
-        }
-        if (kind != "PROFILE")
-        {
-            report.maxLean = max(report.maxLean, maxC);
         }
         rows = append(rows, faceRow(context, chart, face, kind, flatGrid));
     }
@@ -486,6 +476,78 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
 
     const text = size(faces) ~ " faces, " ~ size(chains) ~ " tools, " ~ size(keep) ~ "/" ~ size(cells) ~ " cells kept";
     return { "body" : qBodyType(qUnion(keep), BodyType.SOLID), "report" : report, "text" : text };
+}
+
+/**
+ * The piece's extent in the chart frame, [lo, hi] (plain metres), from its edges sampled every 2 mm (at least 9
+ * points each). The faces here are extrusions, whose extremes lie on their boundary edges; the box grows by
+ * UNWRAP_PART_BOX_MARGIN anyway.
+ */
+export function chartExtent(context is Context, chart is map, piece is Query) returns array
+{
+    var lo = [1e9, 1e9, 1e9];
+    var hi = [-1e9, -1e9, -1e9];
+    for (var edge in evaluateQuery(context, qOwnedByBody(piece, EntityType.EDGE)))
+    {
+        const count = min(max(ceil(evLength(context, { "entities" : edge }) / (2 * millimeter)) + 1, 9), 200);
+        var parameters = [];
+        for (var k = 0; k < count; k += 1)
+        {
+            parameters = append(parameters, k / (count - 1));
+        }
+        var previous = undefined;
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }))
+        {
+            const u = unwrapFast(chart, tl.origin, previous);
+            previous = u;
+            for (var ax in [0, 1, 2])
+            {
+                lo[ax] = min(lo[ax], u[ax]);
+                hi[ax] = max(hi[ax], u[ax]);
+            }
+        }
+    }
+    return [lo, hi];
+}
+
+/**
+ * [max |b|, max |c|] of a face's flat normal over its classification grid; onFaceOnly skips grid points outside
+ * the face's trim (one evDistance each).
+ */
+export function normalShares(context is Context, chart is map, face is Query, planes is array, feet is array,
+    onFaceOnly is boolean) returns array
+{
+    var maxB = 0;
+    var maxC = 0;
+    for (var k = 0; k < size(planes); k += 1)
+    {
+        if (onFaceOnly && evDistance(context, { "side0" : planes[k].origin, "side1" : face }).distance > UNWRAP_PART_ON_FACE)
+        {
+            continue;
+        }
+        const fn = flatNormal(chart, feet[k], planes[k].normal);
+        maxB = max(maxB, abs(fn[1]));
+        maxC = max(maxC, abs(fn[2]));
+    }
+    return [maxB, maxC];
+}
+
+/** PROFILE (image extruded along flat Y), WALL (vertical), LEANING (a wall leaning < UNWRAP_PART_RULED_TOL), FAIL. */
+export function faceKind(shares is array) returns string
+{
+    if (shares[0] < UNWRAP_PART_PROFILE_TOL && shares[1] >= UNWRAP_PART_PROFILE_TOL)
+    {
+        return "PROFILE";
+    }
+    if (shares[1] < UNWRAP_PART_WALL_TOL)
+    {
+        return "WALL";
+    }
+    if (shares[1] < UNWRAP_PART_RULED_TOL)
+    {
+        return "LEANING";
+    }
+    return "FAIL";
 }
 
 /**
