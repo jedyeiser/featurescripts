@@ -130,6 +130,17 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             }
         }
 
+        // A copy of each group's faces to measure the result against: opThicken consumes the input surfaces
+        // (Keep tools off), and the copies must be gone before the boolean step, which takes every body created
+        // under id as a tool.
+        for (var i = 0; i < size(groups); i += 1)
+        {
+            opExtractSurface(context, id + ("measure" ~ i), { "faces" : groups[i].faces });
+            groups[i].copy = qCreatedBy(id + ("measure" ~ i), EntityType.FACE);
+            // which side of the copy is "toward": the reference's side of it (the copy's own normal need not match)
+            groups[i].towardSign = probe != undefined ? sideSign(context, probe, groups[i].copy) : 1;
+        }
+
         // std Thicken, per group, then its boolean step unchanged.
         const remainingTransform = getRemainderPatternTransform(context, { "references" : definition.entities });
         const thickenAll = function(opId is Id)
@@ -158,6 +169,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             towardFaces = append(towardFaces, named.toward);
             awayFaces = append(awayFaces, named.away);
             sideFaces = append(sideFaces, named.side);
+            opDeleteBodies(context, id + ("deleteMeasure" ~ i), { "entities" : qOwnerBody(groups[i].copy) });
         }
         const tracked = function(q is Query) returns Query
             {
@@ -196,7 +208,8 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
 /**
  * The faces one opThicken made, sorted by where they sit relative to the input surface: at the Toward thickness
  * on the reference side, at the Away thickness on the other, or neither (the side faces). Read at a point on each
- * face (the face's point nearest its centroid), as a signed distance from the input faces.
+ * face (the face's point nearest its centroid), as a signed distance from a copy of the input faces taken before
+ * the thicken consumed them.
  */
 function classifyFaces(context is Context, thickenId is Id, group is map, toward is ValueWithUnits, away is ValueWithUnits) returns map
 {
@@ -214,14 +227,14 @@ function classifyFaces(context is Context, thickenId is Id, group is map, toward
     {
         const centroid = evApproximateCentroid(context, { "entities" : face });
         const onFace = evDistance(context, { "side0" : face, "side1" : centroid }).sides[0].point;
-        const s = signedSideOf(context, onFace, group.faces);
+        const s = signedSideOf(context, onFace, group.copy);
         if (s == undefined)
         {
             result.side = append(result.side, face);
             continue;
         }
         // positive toward the reference
-        const d = s * group.alongNormal;
+        const d = s * group.towardSign;
         if (abs(d - toward) < tol)
         {
             result.toward = append(result.toward, face);
