@@ -176,7 +176,7 @@ export function projectToPath(context is Context, wp is map, worldPoint is Vecto
     for (var i = 0; i < size(wp.path.edges); i += 1)
     {
         var d = evDistance(context, { "side0" : worldPoint, "side1" : wp.path.edges[i] });
-        if (best == undefined || d.distance < best.distance - TOLERANCE.zeroLength)
+        if (best == undefined || d.distance < best.distance - TOLERANCE.zeroLength * meter)
         {
             best = { "fraction" : pathFractionOnEdge(wp, i, d.sides[1].parameter), "point" : d.sides[1].point, "distance" : d.distance };
         }
@@ -199,7 +199,7 @@ export function fractionNearestEntity(context is Context, wp is map, toolEntity 
     for (var i = 0; i < size(wp.path.edges); i += 1)
     {
         var d = evDistance(context, { "side0" : wp.path.edges[i], "side1" : toolEntity });
-        if (best == undefined || d.distance < best.distance - TOLERANCE.zeroLength)
+        if (best == undefined || d.distance < best.distance - TOLERANCE.zeroLength * meter)
         {
             best = { "fraction" : pathFractionOnEdge(wp, i, d.sides[0].parameter), "distance" : d.distance };
         }
