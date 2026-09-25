@@ -38,12 +38,14 @@ const NAME_SEPARATOR = "\n";
 const TRANSPORT_SAMPLES = 64;
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Move Along Edge",
-        "Feature Type Description" : "Takes a body and moves it a specified distance along an edge, a connected path of edges or a wire, keeping orientation.",
+        "Feature Type Description" : "Takes a body, mate connector or sketch entity and moves it a specified distance along an edge, a connected path of edges or a wire, keeping orientation. Sketch edges become wires and sketch vertices become points at the new location.",
         "Editing Logic Function" : "moveAlongEdgeEditLogic" }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Body to move", "Filter" : EntityType.BODY || BodyType.MATE_CONNECTOR }
+        // Whole sketch bodies are excluded (they cannot be transformed); pick their edges or vertices instead.
+        annotation { "Name" : "Entities to move", "Description" : "Bodies and mate connectors move (or copy). Sketch edges and vertices are left in place: each move creates a wire or point.",
+                     "Filter" : (EntityType.BODY && SketchObject.NO) || BodyType.MATE_CONNECTOR || ((EntityType.EDGE || EntityType.VERTEX) && SketchObject.YES) }
         definition.moveBodies is Query;
 
         annotation { "Name" : "Edges or wire to move along", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) }
@@ -116,14 +118,21 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         var pathData = buildMovePath(context, definition.moveEdge);
 
         var moveBodies = evaluateQuery(context, qUnion([definition.moveBodies]));
+        // Names are stored for bodies only, in selection order; sketch entities have no name to extend.
         var names = definition.sourceNames == "" ? [] : splitByRegexp(definition.sourceNames, NAME_SEPARATOR);
+        var bodyIndex = 0;
         var namesMissing = false;
         // results[j] = what move j produced, over all source bodies (0 = the main move).
         var extraCount = definition.copyBodies ? size(definition.extraCopies) : 0;
         var results = makeArray(1 + extraCount, []);
         for (var i = 0; i < size(moveBodies); i += 1)
         {
-            var baseName = i < size(names) ? names[i] : undefined;
+            var baseName = "";
+            if (!isQueryEmpty(context, qEntityFilter(moveBodies[i], EntityType.BODY)))
+            {
+                baseName = bodyIndex < size(names) ? names[bodyIndex] : undefined;
+                bodyIndex += 1;
+            }
             var moved = moveBodyOnCurve(context, id + ('moveBody' ~ i), moveBodies[i], pathData, baseName, definition);
             namesMissing = namesMissing || moved.namesMissing;
             for (var j = 0; j < size(moved.results); j += 1)
@@ -164,7 +173,7 @@ export function moveAlongEdgeEditLogic(context is Context, id is Id, oldDefiniti
     isCreating is boolean, specifiedParameters is map) returns map
 {
     var names = [];
-    for (var body in evaluateQuery(context, qUnion([definition.moveBodies])))
+    for (var body in evaluateQuery(context, qEntityFilter(qUnion([definition.moveBodies]), EntityType.BODY)))
     {
         names = append(names, getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME }));
     }
@@ -204,7 +213,8 @@ function buildMovePath(context is Context, selection is Query) returns map
 
 /**
  * Moves (or copies) one body along the path: the main move plus, when copying, each additional
- * copy. A mate connector in "as points" mode gets a point per move and is itself left in place.
+ * copy. A mate connector in "as points" mode, and a sketch vertex, get a point per move; a sketch
+ * edge gets a wire per move. Those sources stay in place.
  * Returns { results : one Query per move, namesMissing : a prefix/suffix name lacked the source name }.
  */
 export function moveBodyOnCurve(context is Context, id is Id, body is Query, pathData is map, baseName, definition is map) returns map
@@ -223,7 +233,9 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
         }
     }
 
-    var asPoint = definition.mcAsPoints && !isQueryEmpty(context, qBodyType(body, BodyType.MATE_CONNECTOR));
+    var isVertex = !isQueryEmpty(context, qEntityFilter(body, EntityType.VERTEX));
+    var isEdge = !isQueryEmpty(context, qEntityFilter(body, EntityType.EDGE));
+    var asPoint = isVertex || (definition.mcAsPoints && !isQueryEmpty(context, qBodyType(body, BodyType.MATE_CONNECTOR)));
     var namesMissing = false;
     var results = [];
     for (var move in moves)
@@ -233,9 +245,18 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
         var result = body;
         if (asPoint)
         {
-            var mcOrigin = evMateConnector(context, { "mateConnector" : body }).origin;
-            opPoint(context, move.id + "point", { "point" : motion * mcOrigin });
+            var source = isVertex ? evVertexPoint(context, { "vertex" : body }) : evMateConnector(context, { "mateConnector" : body }).origin;
+            opPoint(context, move.id + "point", { "point" : motion * source });
             result = qCreatedBy(move.id + "point", EntityType.BODY);
+        }
+        else if (isEdge)
+        {
+            opExtractWires(context, move.id + "wire", { "edges" : body });
+            result = qCreatedBy(move.id + "wire", EntityType.BODY);
+            opTransform(context, move.id + "shiftBodyOnEdge", {
+                    "bodies" : result,
+                    "transform" : motion
+            });
         }
         else
         {

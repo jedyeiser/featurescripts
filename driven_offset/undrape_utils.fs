@@ -108,6 +108,7 @@ export const UNDRAPE_KERNEL_RETRIES = [0, 1e-6, -1e-6, 5e-5, -5e-5];
 //   13 valid                   1 when the section tangent is defined
 //   14 px, 15 py, 16 pz        world point (metres)
 //   17 sample                  1 when emitted as an edge sample lying in the plane (not a transverse crossing)
+//   18 span                    the edge-table span it lies in (a warm start for the next station)
 
 // ============================================================================
 // Chart access (plain numbers)
@@ -254,7 +255,7 @@ export function undrapeFootArc(c is map, p is array, seed) returns number
 // ============================================================================
 
 /** Arc estimate of an edge from a few evEdgeTangentLines samples: circle-corrected chords. Also the total turn. */
-function undrapeRoughLength(lines is array) returns array
+export function undrapeRoughLength(lines is array) returns array
 {
     var length = 0;
     var turn = 0;
@@ -467,7 +468,7 @@ export function undrapeSampleSide(context is Context, side is Query, c is map) r
 
         // positions and tangents at every sample
         var arcLength = false;
-        var lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : params, "arcLengthParameterization" : false });
+        var lines = (n == 3) ? rough3 : evEdgeTangentLines(context, { "edge" : edge, "parameters" : params, "arcLengthParameterization" : false });
         if (undrapeUneven(lines))
         {
             // a very uneven parameterization leaves long spans between the samples: resample by arc length
@@ -514,8 +515,10 @@ export function undrapeSideNormals(context is Context, edge is Query, face is Qu
     lines is array) returns array
 {
     const n = size(params);
+    // a short edge is read whole: its few samples would be refined anyway
+    const step = (n <= UNDRAPE_NORMAL_STEP + 1) ? 1 : UNDRAPE_NORMAL_STEP;
     var read = [];
-    for (var i = 0; i < n - 1; i += UNDRAPE_NORMAL_STEP)
+    for (var i = 0; i < n - 1; i += step)
     {
         read = append(read, i);
     }
@@ -600,7 +603,7 @@ export function undrapeSideNormals(context is Context, edge is Query, face is Qu
 }
 
 /** Whether some span of the samples is much longer than their average (an uneven parameterization). */
-function undrapeUneven(planes is array) returns boolean
+export function undrapeUneven(planes is array) returns boolean
 {
     const count = size(planes);
     var chords = makeArray(count - 1);
@@ -656,7 +659,7 @@ export function undrapeEdgePoint(tb is map, s is number) returns array
 // ============================================================================
 
 /** Signed distance of an edge table's box centre from a station plane, minus / plus how far the box reaches. */
-function undrapeBoxRange(tb is map, fr is map) returns array
+export function undrapeBoxRange(tb is map, fr is map) returns array
 {
     const t = fr.t;
     const d = (tb.cx - fr.a[0]) * t[0] + (tb.cy - fr.a[1]) * t[1] + (tb.cz - fr.a[2]) * t[2];
@@ -720,7 +723,7 @@ export function undrapeCandidateEdges(tables is array, frames is array) returns 
 // ============================================================================
 
 /** Unit section tangent in (w, h) of a face with unit normal n: t x n, oriented tw >= 0. [tw, th, inPlane, valid] */
-function undrapeTangent(fr is map, nx is number, ny is number, nz is number) returns array
+export function undrapeTangent(fr is map, nx is number, ny is number, nz is number) returns array
 {
     const t = fr.t;
     const sx = t[1] * nz - t[2] * ny;
@@ -882,11 +885,11 @@ export function undrapeCrossingAt(tb is map, e is number, i is number, f is numb
         valid = min(valid, s2[3]);
     }
     return [dx * w0 + dy * w1 + dz * w2, dx * h0 + dy * h1 + dz * h2,
-            twA, thA, twB, thB, inPlane, cosCross, tb.onRim ? 1 : 0, e, nx, ny, nz, valid, qx, qy, qz, sample];
+            twA, thA, twB, thB, inPlane, cosCross, tb.onRim ? 1 : 0, e, nx, ny, nz, valid, qx, qy, qz, sample, i];
 }
 
 /** Newton on Hermite span i of `tb` for the plane crossing, bracketed by distances g0, g1. Returns f. */
-function undrapeSpanRoot(tb is map, i is number, g0 is number, g1 is number, t is array) returns number
+export function undrapeSpanRoot(tb is map, i is number, g0 is number, g1 is number, t is array) returns number
 {
     const m = tb.mags[i];
     const d0 = m * (tb.ux[i] * t[0] + tb.uy[i] * t[1] + tb.uz[i] * t[2]);
@@ -915,13 +918,16 @@ function undrapeSpanRoot(tb is map, i is number, g0 is number, g1 is number, t i
  * Every point where one sampled edge meets a station plane, as crossing records. The caller passes only
  * edges whose boxes the plane crosses (undrapeCandidateEdges).
  *
+ * @param hint {number} : the span the edge was crossed in at the previous station, or -1. Consecutive
+ *      stations cross an edge running along the reference in the same span or the next: tried first.
+ *
  * An edge running through the plane (end samples on opposite sides) is bisected on its samples and solved
  * by Newton on the Hermite span to 1e-12 m. Otherwise every sample is scanned: sign changes are solved the
  * same way, and samples lying IN the plane (|distance| < UNDRAPE_IN_PLANE: an edge running straight
  * across the part, such as a face end or the tail edge, whose station this is) are emitted as section
  * points themselves.
  */
-export function undrapeEdgeCrossings(tb is map, e is number, fr is map) returns array
+export function undrapeEdgeCrossings(tb is map, e is number, fr is map, hint is number) returns array
 {
     const t = fr.t;
     const t0 = t[0];
@@ -937,6 +943,15 @@ export function undrapeEdgeCrossings(tb is map, e is number, fr is map) returns 
 
     if ((gFirst > 0) != (gLast > 0) && abs(gFirst) >= UNDRAPE_IN_PLANE && abs(gLast) >= UNDRAPE_IN_PLANE)
     {
+        for (var j = max(hint, 0); hint >= 0 && j <= hint + 1 && j + 1 < count; j += 1)
+        {
+            const gj = px[j] * t0 + py[j] * t1 + pz[j] * t2 - g0;
+            const gk = px[j + 1] * t0 + py[j + 1] * t1 + pz[j + 1] * t2 - g0;
+            if ((gj > 0) != (gk > 0) && abs(gj) >= UNDRAPE_IN_PLANE && abs(gk) >= UNDRAPE_IN_PLANE)
+            {
+                return [undrapeCrossingAt(tb, e, j, undrapeSpanRoot(tb, j, gj, gk, t), fr, 0)];
+            }
+        }
         var low = 0;
         var high = count - 1;
         var gLow = gFirst;
@@ -1209,7 +1224,7 @@ export function undrapeMidAt(section is map, w0 is number, h0 is number) returns
 /**
  * Nearest point of a sampled chain to (w0, h0): [arc there, 1 when it is an end of the chain, else 0].
  */
-function undrapeChainNearest(chain is map, w0 is number, h0 is number) returns array
+export function undrapeChainNearest(chain is map, w0 is number, h0 is number) returns array
 {
     const ws = chain.ws;
     const hs = chain.hs;
@@ -1267,7 +1282,7 @@ function undrapeChainNearest(chain is map, w0 is number, h0 is number) returns a
  * at its nearest point, or at its matching end when (w0, h0) is an end of the chain (the rim: the rim
  * wall's section, whatever its angle to the plate). Each side's arc runs from its own centreline point.
  */
-function undrapeChainMidAt(section is map, w0 is number, h0 is number) returns number
+export function undrapeChainMidAt(section is map, w0 is number, h0 is number) returns number
 {
     const a = undrapeChainNearest(section.chainA, w0, h0);
     var arcB = 0;
@@ -1294,7 +1309,7 @@ function undrapeChainMidAt(section is map, w0 is number, h0 is number) returns n
  * whose boxes straddle it, read back as a chain ordered by width.
  * @returns {map} : { "ws", "hs", "arcs" } (side arc along the chain, from its first point)
  */
-function undrapeKernelChain(context is Context, ixId is Id, planeId is Id, faces is array, boxes is array, fr is map) returns map
+export function undrapeKernelChain(context is Context, ixId is Id, planeId is Id, faces is array, boxes is array, fr is map) returns map
 {
     var hits = [];
     for (var k = 0; k < size(faces); k += 1)
@@ -1406,7 +1421,7 @@ function undrapeKernelChain(context is Context, ixId is Id, planeId is Id, faces
 }
 
 /** Arc of a chain at its crossing of w = 0 (linear between samples); the innermost point keeps its w otherwise. */
-function undrapeChainZero(chain is map) returns number
+export function undrapeChainZero(chain is map) returns number
 {
     const ws = chain.ws;
     const n = size(ws);
@@ -1426,7 +1441,7 @@ function undrapeChainZero(chain is map) returns number
  * where the sides are offsets of the mid-surface (their arcs differ by +-(t'/2) * turn).
  * All geometry is created under `kid` and deleted by the caller.
  */
-function undrapeKernelSection(context is Context, kid is Id, kernel is map, fr is map, reach is number) returns map
+export function undrapeKernelSection(context is Context, kid is Id, kernel is map, fr is map, reach is number) returns map
 {
     const size2 = 2 * reach + 0.02;
     opPlane(context, kid + "plane", { "plane" : plane(vector(fr.a[0], fr.a[1], fr.a[2]) * meter, vector(fr.t[0], fr.t[1], fr.t[2]),
@@ -1461,7 +1476,7 @@ function undrapeKernelSection(context is Context, kid is Id, kernel is map, fr i
  *
  * @returns {map} : { "ok", "why", "section", "frame", "attempts" }
  */
-function undrapeRefusedSection(context is Context, id is Id, kernel is map, c is map, fr is map, reach is number, tag is string) returns map
+export function undrapeRefusedSection(context is Context, id is Id, kernel is map, c is map, fr is map, reach is number, tag is string) returns map
 {
     var why = "";
     for (var r = 0; r < size(UNDRAPE_KERNEL_RETRIES); r += 1)
@@ -1482,7 +1497,7 @@ function undrapeRefusedSection(context is Context, id is Id, kernel is map, c is
 }
 
 /** Faces and padded boxes of both sides for the kernel fallback (read once, on the first refusal). */
-function undrapeKernelFaces(context is Context, sideA is Query, sideB is Query) returns map
+export function undrapeKernelFaces(context is Context, sideA is Query, sideB is Query) returns map
 {
     var result = {};
     for (var pair in [["A", sideA], ["B", sideB]])
@@ -1687,6 +1702,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     var crossingsAt = makeArray(nSt);
     var candidateTotal = 0;
     var results = makeArray(nReq);
+    var lastSpan = makeArray(size(tables), -1);
     for (var s = 0; s < nSt; s += 1)
     {
         var fr = frames[s];
@@ -1694,7 +1710,16 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         candidateTotal += size(candidates[s]);
         for (var e in candidates[s])
         {
-            crossings = concatenateArrays([crossings, undrapeEdgeCrossings(tables[e], e, fr)]);
+            const found = undrapeEdgeCrossings(tables[e], e, fr, lastSpan[e]);
+            if (size(found) == 1)
+            {
+                lastSpan[e] = found[0][18];
+                crossings = append(crossings, found[0]);
+            }
+            else
+            {
+                crossings = concatenateArrays([crossings, found]);
+            }
         }
         var section = undrapeSection(crossings, tk, sideSign);
         if (!section.ok)
@@ -1724,7 +1749,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
                 crossings = [];
                 for (var e in candidates[s])
                 {
-                    crossings = concatenateArrays([crossings, undrapeEdgeCrossings(tables[e], e, fr)]);
+                    crossings = concatenateArrays([crossings, undrapeEdgeCrossings(tables[e], e, fr, -1)]);
                 }
             }
         }
@@ -1802,7 +1827,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
 }
 
 /** Strings joined with commas. */
-function undrapeJoin(items is array) returns string
+export function undrapeJoin(items is array) returns string
 {
     var text = "";
     for (var i = 0; i < size(items); i += 1)
@@ -1816,7 +1841,7 @@ function undrapeJoin(items is array) returns string
  * +1 when the sampled side's outward normal points along the chart's surface normal h, else -1: read at
  * the edge sample whose normal is most nearly along h.
  */
-function undrapeSideSign(c is map, tables is array) returns number
+export function undrapeSideSign(c is map, tables is array) returns number
 {
     var best = 0;
     for (var e = 0; e < min(size(tables), 60); e += 1)
@@ -1837,7 +1862,7 @@ function undrapeSideSign(c is map, tables is array) returns number
 }
 
 /** Half-size of a kernel section plane that holds every candidate edge of the station. */
-function undrapeReach(tables is array, candidates is array, fr is map) returns number
+export function undrapeReach(tables is array, candidates is array, fr is map) returns number
 {
     var reach = 0.05;
     for (var e in candidates)
@@ -2001,7 +2026,7 @@ export function undrapeRequests(c is map, tables is array, rim is array, loopDat
  * Map one request at its station: [x, y, mx, my, mz, arc] with (x, y) the flat point (plain metres) and
  * (mx, my, mz) the 3D mid-surface point it came from; undefined when the edge does not reach the station.
  */
-function undrapeResolve(request is map, section is map, crossings is array, fr is map, chart is map, tk is number)
+export function undrapeResolve(request is map, section is map, crossings is array, fr is map, chart is map, tk is number)
 {
     var p = undefined;
     if (request.kind == "edge")
@@ -2040,7 +2065,7 @@ function undrapeResolve(request is map, section is map, crossings is array, fr i
 }
 
 /** One-sided second-order derivative direction at an edge end from [end, step, 2 step] flat points. */
-function undrapeEndTangent(results is array, indices is array, atEnd is boolean)
+export function undrapeEndTangent(results is array, indices is array, atEnd is boolean)
 {
     const p0 = results[indices[0]];
     const p1 = results[indices[1]];
@@ -2068,7 +2093,7 @@ function undrapeEndTangent(results is array, indices is array, atEnd is boolean)
  * Flat edges from the resolved requests, loop by loop, oriented: the outer loop (largest area)
  * counter-clockwise, the others clockwise.
  */
-function undrapeAssemble(plan is map, results is array, loopData is map) returns map
+export function undrapeAssemble(plan is map, results is array, loopData is map) returns map
 {
     var loops = [];
     for (var loop in loopData.loops)
@@ -2149,7 +2174,7 @@ function undrapeAssemble(plan is map, results is array, loopData is map) returns
     return { "edges" : result, "loopCount" : size(loops) };
 }
 
-function undrapeUnit(x is number, y is number) returns array
+export function undrapeUnit(x is number, y is number) returns array
 {
     const n = sqrt(x * x + y * y);
     return (n < 1e-15) ? [1, 0] : [x / n, y / n];
@@ -2161,7 +2186,7 @@ function undrapeUnit(x is number, y is number) returns array
  * t/2 inward along its normal) against the flat chord, and the change of the angle each chord makes with
  * its section (3D: the section tangent; flat: the section direction -y) -- the shear of the s- and w-lines.
  */
-function undrapeDeformation(sections is array, crossingsAt is array, frames is array, chart is map, tk is number) returns map
+export function undrapeDeformation(sections is array, crossingsAt is array, frames is array, chart is map, tk is number) returns map
 {
     var stretchMin = 1e9;
     var stretchMax = -1e9;
