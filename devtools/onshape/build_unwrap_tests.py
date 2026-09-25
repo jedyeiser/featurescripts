@@ -3,8 +3,9 @@ Unwrap_Testing, so every derived body keeps its deterministic id). Upsert by nam
 
   U1 Wrapped_profile (3 splines) unwrapped over FULL_BASELINE, length along the reference
      -> one wire; the tip/tail stretches come out straight at constant height (the profile sits 5.95 above)
-  U2 Topsheet (0.4 mm, draped on the ski top surface) undraped about Wrapped_profile, length along the
-     mid-thickness, laid on the plane -> one flat plate 0.4 thick; thickness detected 0.4
+  U2 Topsheet (0.4 mm, top face on the ski top surface, draped down the sides) undraped: mid-surface onto
+     Wrapped_profile's extrusion offset -0.2 mm, laid on the plane -> one flat plate 0.4 thick
+  U3 the same with the target taken from the Front-plane section of the mid-surface
 
 Alignment point and unwrapped origin: the derived mate connector at (885, 0, 0), X = +X, Z = +Z.
 
@@ -25,6 +26,7 @@ WRAPPED_PROFILE = "RjRP"
 FULL_BASELINE = "RjRL"
 TOPSHEET = "RnRD"
 MATE_CONNECTOR = "StjLB"
+FRONT_PLANE = "JCC"
 
 
 def tab(name):
@@ -83,8 +85,17 @@ unwrap("U1 Wrapped_profile over FULL_BASELINE (edges, along reference) -> 1 wire
         b("debugPrintEdges", True)],
        {"unwrapType": "EDGES", "preserveLength": "REFERENCE"})
 
-unwrap("U2 Topsheet undraped about Wrapped_profile (mid-thickness, on plane) -> 1 flat plate 0.4 thick",
+def num(pid, expr):
+    return {"btType": "BTMParameterQuantity-147", "parameterId": pid, "expression": expr, "isInteger": False}
+
+
+unwrap("U2 Topsheet undrape onto Wrapped_profile extrusion offset -0.2 (wire) -> 1 flat plate 0.4 thick",
        [qd("parts", TOPSHEET), qd("reference", WRAPPED_PROFILE), qd("alignPoint", MATE_CONNECTOR), qd("origin", MATE_CONNECTOR),
+        num("targetOffset", "-0.2 mm"), b("debugPrintEdges", True)],
+       {"unwrapType": "THICKENED", "targetFrom": "WIRE"})
+
+unwrap("U3 Topsheet undrape, target = Front-plane section of the mid-surface -> 1 flat plate 0.4 thick",
+       [qd("parts", TOPSHEET), qd("profileFace", FRONT_PLANE), qd("alignPoint", MATE_CONNECTOR), qd("origin", MATE_CONNECTOR),
         b("debugPrintEdges", True)],
-       {"unwrapType": "THICKENED", "preserveLength": "MID_THICKNESS"})
+       {"unwrapType": "THICKENED", "targetFrom": "FACE"})
 print("studio", E)

@@ -1,25 +1,24 @@
 """Build the Case Pattern test cases as real features in the "Case pattern tests" Part Studio of the
-case_pattern document. The studio is ours alone: every run deletes its features and rebuilds them, so
-selections by deterministic id (what a click stores) are taken from a fresh tree.
+case_pattern document. The studio is ours alone: every run deletes its features and rebuilds them.
+
+Every selection is stored the way a click stores it (deterministic ids read from the tree at the
+moment the feature is added), so the UI shows "Face of Part 1", not "Unknown".
 
 Fixture: three blocks of different footprints, 20 mm tall on Top, far apart in X.
   A  rectangle 60 x 40 at x 0      B  rectangle 90 x 30 at x 200      C  pentagon r 35 at x 400
 
-T1  Case template (A: #top = top face, #rim = top face edges), then
-    Boss       extrude #top 15 mm, new body
-    Rim        fillet #rim 2 mm
-    #bossEdges  native Query Variable "created by" Boss (the in-list reference)
+T1  Case template: #top = top face, #rim = top face edges; value #bossH (A 15, B 25, C 8 mm)
+    Boss       extrude #top #bossH, new body
+    Rim        fillet #rim 2 mm (edits a block from outside the list: runs outside the frame)
+    #bossEdges native Query Variable "created by" Boss (the in-list reference)
     Boss edges fillet #bossEdges 3 mm
-    Case pattern B, C with template name cache "Boss_A" for the boss.
-    Expect: bosses Boss_B, Boss_C on blocks B, C, all edges filleted; rims filleted (rim fillet
-    edits a block from outside the list, so it runs outside the pattern frame).
-T3  In-list reference by click: expected ERROR (clicks are not remapped onto the case).
-T4  In-list reference by qCreatedBy(makeId(...)) query: expected ERROR (not remapped either).
+    Case pattern -> Boss_B 25 mm, Boss_C 8 mm tall, all edges filleted; rims filleted
+T2  Move face as the FIRST repeated feature (Query Pattern's open bug): #side offset 5 mm
+    -> B 5 mm longer in +X; C's 54 deg side face moved out 5 mm
+T3  In-list reference by click: expected ERROR (clicks are not remapped onto the case)
+T4  In-list reference by qCreatedBy(makeId(...)) query: expected ERROR (not remapped either)
 T5  In-list reference through a native Query Variable "created by": posts under B, C, all edges
-    filleted.
-T2  Move face as the FIRST repeated feature (Query Pattern's open bug):
-    Case template (A: #side = +X face of block A), Move face #side offset 5 mm, Case pattern B, C.
-    Expect: A and B 5 mm longer in +X; C's 54 deg side face moved out 5 mm.
+    filleted
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_case_pattern_tests.py
 """
@@ -51,8 +50,29 @@ NS = "e%s::m%s" % (TAB["id"], TAB["microversionId"])
 
 # ---- parameters ----
 def q(pid, *exprs):
+    """A selection given as FeatureScript query expressions (shows as "Unknown" in the UI)."""
     return {"btType": "BTMParameterQueryList-148", "parameterId": pid,
             "queries": [{"btType": "BTMIndividualQuery-138", "queryStatement": None, "queryString": "query=%s;" % e} for e in exprs]}
+
+
+def eval_ids(expr):
+    """Deterministic ids of what `expr` resolves to at the end of the current tree."""
+    script = ("function(context is Context, queries) { var out = []; for (var e in evaluateQuery(context, %s)) "
+              "{ out = append(out, e.transientId); } return out; }" % expr)
+    r = c.post(f"{BASE}/featurescript", json_data={"script": script})
+    found = re.findall(r'"value":\s*"([^"]+)"', json.dumps(r.get("result")))
+    return [x for x in found if x not in ("BTFSValueString", "BTFSValueArray")]
+
+
+def sel(pid, *exprs):
+    """A selection stored the way a click stores it: the ids `exprs` resolve to right now."""
+    ids = []
+    for e in exprs:
+        ids += eval_ids(e)
+    if not ids:
+        raise RuntimeError("selection for %s is empty: %s" % (pid, exprs))
+    return {"btType": "BTMParameterQueryList-148", "parameterId": pid,
+            "queries": [{"btType": "BTMIndividualQuery-138", "queryStatement": None, "queryString": "", "deterministicIds": ids}]}
 
 
 def qv(pid, name):
@@ -60,11 +80,6 @@ def qv(pid, name):
     return {"btType": "BTMParameterQueryList-148", "parameterId": pid,
             "queries": [{"btType": "BTMIndividualParametricQuery-3477", "queryVariableName": name, "queryStatement": None,
                          "queryString": "query = getQueryVariable(context, \"%s\");" % name}]}
-
-
-def qids(pid, ids):
-    return {"btType": "BTMParameterQueryList-148", "parameterId": pid,
-            "queries": [{"btType": "BTMIndividualQuery-138", "queryStatement": None, "queryString": "", "deterministicIds": list(ids)}]}
 
 
 def en(pid, enum, value, ns=""):
@@ -90,16 +105,6 @@ def arr(pid, items):
 
 def flist(pid, ids):
     return {"btType": "BTMParameterFeatureList-1749", "parameterId": pid, "featureIds": list(ids)}
-
-
-def case_row(name, *exprs):
-    """A Case pattern row with every parameter present: the name, the query slots, the hidden use flags."""
-    params = [s("caseName", name)]
-    for k in range(1, 9):
-        params.append(q("input%d" % k, *([exprs[k - 1]] if k <= len(exprs) else [])))
-    for k in range(2, 9):
-        params.append(b("use%d" % k, k <= len(exprs)))
-    return params
 
 
 # ---- tree ----
@@ -149,21 +154,16 @@ def top(fid):
     return 'qCapEntity(makeId("%s"), CapType.END, EntityType.FACE)' % fid
 
 
+def bottom(fid):
+    return 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % fid
+
+
 def rim(fid):
     return 'qAdjacent(%s, AdjacencyType.EDGE, EntityType.EDGE)' % top(fid)
 
 
 def side_at(fid, x, y):
     return 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.FACE), vector(%.9f, %.9f, 10) * millimeter)' % (fid, x, y)
-
-
-def eval_ids(expr):
-    """Deterministic ids of what `expr` resolves to at the end of the current tree."""
-    script = ("function(context is Context, queries) { var out = []; for (var e in evaluateQuery(context, %s)) "
-              "{ out = append(out, e.transientId); } return out; }" % expr)
-    r = c.post(f"{BASE}/featurescript", json_data={"script": script})
-    found = re.findall(r'"value":\s*"([^"]+)"', json.dumps(r.get("result")))
-    return [x for x in found if x not in ("BTFSValueString", "BTFSValueArray")]
 
 
 def native_qv(name, created_by, entity):
@@ -179,6 +179,42 @@ def native_qv(name, created_by, entity):
     return params
 
 
+def length_variable(name, expression):
+    """A native Variable feature (length), from a parameter set captured from a working one."""
+    params = json.load(open("devtools/onshape/case_pattern_variable_template.json"))
+    for p in params:
+        if p["parameterId"] == "name":
+            p["value"] = name
+        elif p["parameterId"] == "lengthValue":
+            p["expression"] = expression
+    return params
+
+
+def template(name, case1, inputs, cases, values=(), debug=False):
+    """A Case template. inputs: [(name, expr)]; cases: [(case name, [expr per input])]."""
+    rows = []
+    for case_name, exprs in cases:
+        params = [s("rowCaseName", case_name)]
+        for k in range(1, 9):
+            params.append(sel("input%d" % k, exprs[k - 1]) if k <= len(exprs) else q("input%d" % k))
+        for k in range(2, 9):
+            params.append(b("use%d" % k, k <= len(exprs)))
+        rows.append(params)
+    params = [s("caseName", case1),
+              arr("inputs", [[s("inputName", n), sel("query", e)] for n, e in inputs]),
+              arr("values", [[s("valueName", v)] for v in values]),
+              arr("cases", rows), b("debug", debug)]
+    for k in range(1, 9):
+        params.append(s("slot%d" % k, "Input %d: #%s" % (k, inputs[k - 1][0]) if k <= len(inputs) else ""))
+    for k in range(2, 9):
+        params.append(b("showSlot%d" % k, k <= len(inputs)))
+    return feature(name, "caseTemplate", params, NS)
+
+
+def pattern(name, tpl, features, names=""):
+    return feature(name, "casePattern", [flist("template", [tpl]), flist("features", features), s("templateNames", names)], NS)
+
+
 # ---- clean slate ----
 for f in reversed(c.get(f"{BASE}/features")["features"]):
     c._request("DELETE", f"{BASE}/features/featureid/{f['featureId']}")
@@ -190,71 +226,52 @@ B = block("Block B (90 x 30)", [(155, -15), (245, -15), (245, 15), (155, 15)])
 C = block("Block C (pentagon r 35)", pent)
 
 # ---- T1 ----
-tpl = feature("T1 Case template A: #top, #rim", "caseTemplate", [
-    s("caseName", "A"),
-    arr("inputs", [[s("name", "top"), q("query", top(A))], [s("name", "rim"), q("query", rim(A))]])], NS)
-boss = feature("T1 Boss: extrude #top 15 mm new", "extrude", [
+feature("T1 #bossH = 15 mm (case A)", "assignVariable", length_variable("bossH", "15 mm"))
+feature("T1 #bossH_B = 25 mm", "assignVariable", length_variable("bossH_B", "25 mm"))
+feature("T1 #bossH_C = 8 mm", "assignVariable", length_variable("bossH_C", "8 mm"))
+tpl = template("T1 Case template A: #top, #rim; value #bossH; cases B, C", "A",
+               [("top", top(A)), ("rim", rim(A))], [("B", [top(B), rim(B)]), ("C", [top(C), rim(C)])], values=["bossH"], debug=True)
+boss = feature("T1 Boss: extrude #top #bossH new", "extrude", [
     en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
-    qv("entities", "top"), en("endBound", "BoundingType", "BLIND"), num("depth", "15 mm")])
+    qv("entities", "top"), en("endBound", "BoundingType", "BLIND"), num("depth", "#bossH")])
 rimf = feature("T1 Rim: fillet #rim 2 mm", "fillet", [qv("entities", "rim"), num("radius", "2 mm")])
 qv1 = feature("T1 #bossEdges = edges created by Boss (native QV)", "queryVariable", native_qv("bossEdges", [boss], "EDGE"))
 bossf = feature("T1 Boss edges: fillet #bossEdges 3 mm", "fillet", [qv("entities", "bossEdges"), num("radius", "3 mm")])
-feature("T1 Case pattern B, C -> Boss_B, Boss_C all edges filleted; rims filleted", "casePattern", [
-    flist("features", [tpl, boss, rimf, qv1, bossf]),
-    arr("cases", [case_row("B", top(B), rim(B)), case_row("C", top(C), rim(C))]),
-    s("templateNames", "1\t0\tBoss_A")], NS)
+pattern("T1 Case pattern -> Boss_B 25 mm, Boss_C 8 mm tall, all edges filleted; rims filleted", tpl, [boss, rimf, qv1, bossf],
+        "0\t0\tBoss_A")
 
 # ---- T2 ----
-tpl2 = feature("T2 Case template A: #side", "caseTemplate", [
-    s("caseName", "A"), arr("inputs", [[s("name", "side"), q("query", side_at(A, 30, 0))]])], NS)
+tpl2 = template("T2 Case template A: #side; cases B, C", "A", [("side", side_at(A, 30, 0))],
+                [("B", [side_at(B, 245, 0)]), ("C", [side_at(C, 400 + AP * math.cos(math.radians(54)), AP * math.sin(math.radians(54)))])])
 move = feature("T2 Move face #side offset 5 mm (first repeated feature)", "moveFace", [
     qv("moveFaces", "side"), en("moveFaceType", "MoveFaceType", "OFFSET"), num("offsetDistance", "5 mm")])
-feature("T2 Case pattern B, C -> B +X face and C 54 deg face offset 5 mm", "casePattern", [
-    flist("features", [tpl2, move]),
-    arr("cases", [case_row("B", side_at(B, 245, 0)), case_row("C", side_at(C, 400 + AP * math.cos(math.radians(54)), AP * math.sin(math.radians(54))))])], NS)
+pattern("T2 Case pattern -> B +X face and C 54 deg face offset 5 mm", tpl2, [move])
 
 # ---- T3 ----
-# In-list reference alone: no feature edits outside geometry, so every feature runs in the frame.
-tpl3 = feature("T3 Case template A: #cap", "caseTemplate", [
-    s("caseName", "A"), arr("inputs", [[s("name", "cap"), q("query", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % A)]])], NS)
-post3 = feature("T3 Post: extrude #cap 10 mm down, new", "extrude", [
+tpl3 = template("T3 Case template A: #cap; cases B, C", "A", [("cap", bottom(A))], [("B", [bottom(B)]), ("C", [bottom(C)])])
+post3 = feature("T3 Post: extrude #cap 10 mm up, new", "extrude", [
     en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
     qv("entities", "cap"), en("endBound", "BoundingType", "BLIND"), num("depth", "10 mm"), b("oppositeDirection", True)])
-post_edges = eval_ids('qAdjacent(qCapEntity(makeId("%s"), CapType.END, EntityType.FACE), AdjacencyType.EDGE, EntityType.EDGE)' % post3)
-print("post end edge ids:", post_edges)
-postf = feature("T3 Post edges: fillet 2 mm, picked by id", "fillet", [qids("entities", post_edges), num("radius", "2 mm")])
-feature("T3 Case pattern B, C -> expect ERROR: a click-picked in-list edge stays on case 1", "casePattern", [
-    flist("features", [tpl3, post3, postf]),
-    arr("cases", [case_row("B", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % B),
-                  case_row("C", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % C)])], NS)
+post3f = feature("T3 Post edges: fillet 2 mm, clicked", "fillet", [
+    sel("entities", 'qAdjacent(qCapEntity(makeId("%s"), CapType.END, EntityType.FACE), AdjacencyType.EDGE, EntityType.EDGE)' % post3),
+    num("radius", "2 mm")])
+pattern("T3 Case pattern -> expect ERROR: a clicked in-list edge stays on case 1", tpl3, [post3, post3f])
 
 # ---- T4 ----
-# As T3, but the fillet selects the post's end edges by an id-based query (what a Query Variable
-# "created by" evaluates) instead of by click.
-tpl4 = feature("T4 Case template A: #cap4", "caseTemplate", [
-    s("caseName", "A"), arr("inputs", [[s("name", "cap4"), q("query", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % A)]])], NS)
-post4 = feature("T4 Post: extrude #cap4 10 mm down, new", "extrude", [
+tpl4 = template("T4 Case template A: #cap4; cases B, C", "A", [("cap4", bottom(A))], [("B", [bottom(B)]), ("C", [bottom(C)])])
+post4 = feature("T4 Post: extrude #cap4 10 mm up, new", "extrude", [
     en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
     qv("entities", "cap4"), en("endBound", "BoundingType", "BLIND"), num("depth", "10 mm"), b("oppositeDirection", True)])
 post4f = feature("T4 Post edges: fillet 1 mm, by qCreatedBy query", "fillet", [
     q("entities", 'qAdjacent(qCapEntity(makeId("%s"), CapType.END, EntityType.FACE), AdjacencyType.EDGE, EntityType.EDGE)' % post4),
     num("radius", "1 mm")])
-feature("T4 Case pattern B, C -> expect ERROR: a qCreatedBy(makeId) in-list query stays on case 1", "casePattern", [
-    flist("features", [tpl4, post4, post4f]),
-    arr("cases", [case_row("B", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % B),
-                  case_row("C", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % C)])], NS)
+pattern("T4 Case pattern -> expect ERROR: a qCreatedBy(makeId) in-list query stays on case 1", tpl4, [post4, post4f])
 
 # ---- T5 ----
-# As T4, but the in-list reference goes through a native Query Variable "created by" (a FeatureList
-# parameter), the way Query Pattern's examples do it.
-tpl5 = feature("T5 Case template A: #cap5", "caseTemplate", [
-    s("caseName", "A"), arr("inputs", [[s("name", "cap5"), q("query", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % A)]])], NS)
-post5 = feature("T5 Post: extrude #cap5 10 mm down, new", "extrude", [
+tpl5 = template("T5 Case template A: #cap5; cases B, C", "A", [("cap5", bottom(A))], [("B", [bottom(B)]), ("C", [bottom(C)])])
+post5 = feature("T5 Post: extrude #cap5 10 mm up, new", "extrude", [
     en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
     qv("entities", "cap5"), en("endBound", "BoundingType", "BLIND"), num("depth", "10 mm"), b("oppositeDirection", True)])
 qv5 = feature("T5 #postEdges = edges created by Post (native QV)", "queryVariable", native_qv("postEdges", [post5], "EDGE"))
 post5f = feature("T5 Post edges: fillet #postEdges 1 mm", "fillet", [qv("entities", "postEdges"), num("radius", "1 mm")])
-feature("T5 Case pattern B, C -> posts under B, C, all edges filleted", "casePattern", [
-    flist("features", [tpl5, post5, qv5, post5f]),
-    arr("cases", [case_row("B", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % B),
-                  case_row("C", 'qCapEntity(makeId("%s"), CapType.START, EntityType.FACE)' % C)])], NS)
+pattern("T5 Case pattern -> posts under B, C, all edges filleted", tpl5, [post5, qv5, post5f])

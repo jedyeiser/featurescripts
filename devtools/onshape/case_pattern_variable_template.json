@@ -1,0 +1,605 @@
+[
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTAndFilter-110",
+   "operand1": {
+    "btType": "BTOrFilter-167",
+    "operand1": {
+     "btType": "BTOrFilter-167",
+     "operand1": {
+      "btType": "BTOrFilter-167",
+      "operand1": {
+       "btType": "BTOrFilter-167",
+       "operand1": {
+        "btType": "BTEntityTypeFilter-124",
+        "entityType": "FACE"
+       },
+       "operand2": {
+        "btType": "BTEntityTypeFilter-124",
+        "entityType": "EDGE"
+       }
+      },
+      "operand2": {
+       "btType": "BTEntityTypeFilter-124",
+       "entityType": "VERTEX"
+      }
+     },
+     "operand2": {
+      "btType": "BTAndFilter-110",
+      "operand1": {
+       "btType": "BTEntityTypeFilter-124",
+       "entityType": "BODY"
+      },
+      "operand2": {
+       "btType": "BTSketchObjectFilter-184",
+       "isSketchObject": false,
+       "objectType": "NOT_SKETCH_OBJECT"
+      }
+     }
+    },
+    "operand2": {
+     "btType": "BTBodyTypeFilter-112",
+     "bodyType": "MATE_CONNECTOR"
+    }
+   },
+   "operand2": {
+    "btType": "BTFlatSheetMetalFilter-3018",
+    "allows": "MODEL_AND_FLATTENED"
+   }
+  },
+  "parameterId": "initEntities",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "VariableMode",
+  "value": "ASSIGNED",
+  "parameterId": "mode",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "VariableType",
+  "value": "LENGTH",
+  "parameterId": "variableType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "VariableMeasurementMode",
+  "value": "DISTANCE",
+  "parameterId": "measurementMode",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterString-149",
+  "libraryRelationType": "DEFAULT",
+  "value": "height",
+  "parameterId": "name",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "20 mm",
+  "parameterId": "lengthValue",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0 deg",
+  "parameterId": "angleValue",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "numberValue",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "anyValue",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "20 mm",
+  "parameterId": "value",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterReferenceTable-917",
+  "elementLibraryData": {
+   "btType": "BTElementLibraryReferenceData-3133",
+   "elementLibraryId": "",
+   "elementLibraryVersion": "",
+   "elementLibrarySelectionPath": []
+  },
+  "libraryRelationType": "DEFAULT",
+  "namespace": "",
+  "parameterId": "csv",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "AccessType",
+  "value": "INDEX",
+  "parameterId": "rowAccessType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "rowIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterString-149",
+  "libraryRelationType": "DEFAULT",
+  "value": "",
+  "parameterId": "rowValue",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "rowRegexp",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "rowMinIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "rowMaxIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "ResultType",
+  "value": "SINGLE",
+  "parameterId": "rowResult",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "rowLabelIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "AccessType",
+  "value": "INDEX",
+  "parameterId": "columnAccessType",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "columnIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterString-149",
+  "libraryRelationType": "DEFAULT",
+  "value": "",
+  "parameterId": "columnValue",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "columnRegexp",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "columnMinIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "columnMaxIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "ResultType",
+  "value": "SINGLE",
+  "parameterId": "columnResult",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": true,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "columnLabelIndex",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "useConversionFactor",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0",
+  "parameterId": "conversionFactor",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTAndFilter-110",
+   "operand1": {
+    "btType": "BTOrFilter-167",
+    "operand1": {
+     "btType": "BTOrFilter-167",
+     "operand1": {
+      "btType": "BTOrFilter-167",
+      "operand1": {
+       "btType": "BTOrFilter-167",
+       "operand1": {
+        "btType": "BTEntityTypeFilter-124",
+        "entityType": "FACE"
+       },
+       "operand2": {
+        "btType": "BTEntityTypeFilter-124",
+        "entityType": "EDGE"
+       }
+      },
+      "operand2": {
+       "btType": "BTEntityTypeFilter-124",
+       "entityType": "VERTEX"
+      }
+     },
+     "operand2": {
+      "btType": "BTAndFilter-110",
+      "operand1": {
+       "btType": "BTEntityTypeFilter-124",
+       "entityType": "BODY"
+      },
+      "operand2": {
+       "btType": "BTSketchObjectFilter-184",
+       "isSketchObject": false,
+       "objectType": "NOT_SKETCH_OBJECT"
+      }
+     }
+    },
+    "operand2": {
+     "btType": "BTBodyTypeFilter-112",
+     "bodyType": "MATE_CONNECTOR"
+    }
+   },
+   "operand2": {
+    "btType": "BTFlatSheetMetalFilter-3018",
+    "allows": "MODEL_AND_FLATTENED"
+   }
+  },
+  "parameterId": "entityCouple",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "VariableMinMaxSelection",
+  "value": "MINIMUM",
+  "parameterId": "minmax",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "extendEntities",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "measureFromAxis",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0 mm",
+  "parameterId": "distance",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0 mm",
+  "parameterId": "xOffset",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0 mm",
+  "parameterId": "yOffset",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0 mm",
+  "parameterId": "zOffset",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterEnum-145",
+  "namespace": "",
+  "libraryRelationType": "DEFAULT",
+  "enumName": "AxisWithCustom",
+  "value": "DISTANCE",
+  "parameterId": "componentSelector",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTOrFilter-167",
+   "operand1": {
+    "btType": "BTOrFilter-167",
+    "operand1": {
+     "btType": "BTOrFilter-167",
+     "operand1": {
+      "btType": "BTGeometryFilter-130",
+      "geometryType": "LINE"
+     },
+     "operand2": {
+      "btType": "BTOrFilter-167",
+      "operand1": {
+       "btType": "BTGeometryFilter-130",
+       "geometryType": "CIRCLE"
+      },
+      "operand2": {
+       "btType": "BTOrFilter-167",
+       "operand1": {
+        "btType": "BTGeometryFilter-130",
+        "geometryType": "ARC"
+       },
+       "operand2": {
+        "btType": "BTOrFilter-167",
+        "operand1": {
+         "btType": "BTGeometryFilter-130",
+         "geometryType": "CYLINDER"
+        },
+        "operand2": {
+         "btType": "BTOrFilter-167",
+         "operand1": {
+          "btType": "BTGeometryFilter-130",
+          "geometryType": "CONE"
+         },
+         "operand2": {
+          "btType": "BTGeometryFilter-130",
+          "geometryType": "REVOLVED"
+         }
+        }
+       }
+      }
+     }
+    },
+    "operand2": {
+     "btType": "BTMateConnectorFilter-163",
+     "requiresOccurrence": false,
+     "allowImplicitMateConnector": false,
+     "isMateConnectorInferenceEnabledByDefault": false
+    }
+   },
+   "operand2": {
+    "btType": "BTGeometryFilter-130",
+    "geometryType": "PLANE"
+   }
+  },
+  "parameterId": "customDirection",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQuantity-147",
+  "libraryRelationType": "DEFAULT",
+  "isInteger": false,
+  "value": 0.0,
+  "units": "",
+  "expression": "0 mm",
+  "parameterId": "customOffset",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTAndFilter-110",
+   "operand1": {
+    "btType": "BTOrFilter-167",
+    "operand1": {
+     "btType": "BTEntityTypeFilter-124",
+     "entityType": "EDGE"
+    },
+    "operand2": {
+     "btType": "BTAndFilter-110",
+     "operand1": {
+      "btType": "BTAndFilter-110",
+      "operand1": {
+       "btType": "BTEntityTypeFilter-124",
+       "entityType": "BODY"
+      },
+      "operand2": {
+       "btType": "BTBodyTypeFilter-112",
+       "bodyType": "WIRE"
+      }
+     },
+     "operand2": {
+      "btType": "BTSketchObjectFilter-184",
+      "isSketchObject": false,
+      "objectType": "NOT_SKETCH_OBJECT"
+     }
+    }
+   },
+   "operand2": {
+    "btType": "BTFlatSheetMetalFilter-3018",
+    "allows": "MODEL_AND_FLATTENED"
+   }
+  },
+  "parameterId": "lengthEntities",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterBoolean-144",
+  "libraryRelationType": "DEFAULT",
+  "value": false,
+  "parameterId": "radius",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterQueryList-148",
+  "libraryRelationType": "DEFAULT",
+  "queries": [],
+  "filter": {
+   "btType": "BTAndFilter-110",
+   "operand1": {
+    "btType": "BTOrFilter-167",
+    "operand1": {
+     "btType": "BTOrFilter-167",
+     "operand1": {
+      "btType": "BTOrFilter-167",
+      "operand1": {
+       "btType": "BTGeometryFilter-130",
+       "geometryType": "CIRCLE"
+      },
+      "operand2": {
+       "btType": "BTGeometryFilter-130",
+       "geometryType": "ARC"
+      }
+     },
+     "operand2": {
+      "btType": "BTGeometryFilter-130",
+      "geometryType": "CYLINDER"
+     }
+    },
+    "operand2": {
+     "btType": "BTGeometryFilter-130",
+     "geometryType": "SPHERE"
+    }
+   },
+   "operand2": {
+    "btType": "BTFlatSheetMetalFilter-3018",
+    "allows": "MODEL_AND_FLATTENED"
+   }
+  },
+  "parameterId": "diameterEntity",
+  "parameterName": ""
+ },
+ {
+  "btType": "BTMParameterString-149",
+  "libraryRelationType": "DEFAULT",
+  "value": "",
+  "parameterId": "description",
+  "parameterName": ""
+ }
+]

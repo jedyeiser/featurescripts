@@ -38,36 +38,36 @@ What the frame does, measured:
 User rule: **reference geometry made inside the list through a Query Variable "created by"**, never
 by clicking it. The Case template's inputs cover everything outside the list.
 
-## 3. Features
+## 3. Features (restructured 2026-09-24 per user: cases live in the template)
 
 ### 3.1 Case template
 | Parameter | Type | Notes |
 |---|---|---|
-| Case name | string | name of case 1, e.g. "Left" |
-| Inputs | array of { Name : string, Query : Query } | any entity type incl. mate connectors; a name may already exist (redefined) |
+| Case 1 name | string | e.g. "A" |
+| Inputs | array { inputName, query "Case 1 selection" } | up to 8; a name may already exist (redefined) |
+| Case values | array { valueName } | existing # variables; case k uses #<name>_<case name> |
+| Input slots | group of read-only strings "Input k: #name" | editing logic fills them, hides unused |
+| Further cases | array { rowCaseName, Input 1..8 } | slot k binds input k; unused slots hidden (use2..8) |
+| Print bindings | boolean | println slots + every case's selection counts and values |
 
-Behaviour:
-- Normal run: `setQueryVariable(name, query)` for each row. Publishes its signature (names, case
-  name) where Case pattern can read it, keyed by the template's feature id (the FeatureList
-  map is keyed by Id, so Case pattern can find it).
-- When re-run inside Case pattern (`isInFeaturePattern` + a pending-bindings variable set by
-  Case pattern): binds the CURRENT CASE's queries instead of its own. So the template is the
-  single binding point and is itself part of the replayed list.
-- Later (v1.5): optional proxy ("bridge") geometry per input -- mate connector / extracted
-  face or edges -- created inside the replay so sketches can constrain to it (section 5).
+Normal run: binds case 1, validates names/values/case names, publishes
+`{caseTemplate, caseName, names, queries, valueNames, cases[{caseName, queries}], debug}` under
+`toString(id)`. Re-run inside a pattern frame: does nothing.
+
+Parameter ids must be unique across the whole feature, array items included (Onshape:
+"Duplicate feature parameter"), hence inputName / valueName / rowCaseName.
 
 ### 3.2 Case pattern
 | Parameter | Type | Notes |
 |---|---|---|
-| Features to repeat | FeatureList | must contain exactly one Case template; body = the rest |
-| Cases | array of { Case name : string, Input 1..N : Query } | slot k binds the template's k-th name |
-| Keep outputs | booleans | Parts, Sheets, Wires, Mate connectors, Planes (construction) |
-| Separator | string | default "_" |
+| Case template | FeatureList | exactly one Case template |
+| Features to repeat | FeatureList | the body; in-list references via Query Variable "created by" |
+| Keep | booleans | Parts, Surfaces, Curves and points, Mate connectors, Planes, Sketches (off) |
+| Name separator | string | "_" |
+| Template names | hidden string | case 1 body names cached by editing logic |
 
-Case-row UI: FeatureScript arrays cannot nest and labels cannot be dynamic, so each row has a
-fixed number of query slots mapped by ORDER to the template names. Editing logic reads the
-template signature (the editing-logic context sits at the feature's position) to set a hidden
-input count (hide unused slots) and to fill the row label / a read-only "Inputs: a, b, c" hint.
+Values: before each case `#name = #name_<case>`; a missing one fails that case by name; case 1's
+values are restored afterwards with the query bindings.
 
 ## 4. Outputs and naming
 - Case k outputs = bodies created under `id + caseKey` that still exist when the case ends,

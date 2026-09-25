@@ -3,6 +3,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; export-imports curve_core: chains, classifyPoints, emitters)
 export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a762b");
+// IMPORT: undrape_utils.fs (same document; the undrape map)
+import(path : "UNDRAPE_EID", version : "");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
@@ -71,11 +73,14 @@ import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b982
  * points are one within tolerance AND the exactly-unwrapped end tangents agree with it (continuity is
  * kept), a fitted spline otherwise. One output per source body, named by the Names & properties table.
  *
- * CONSTANT-THICKNESS PART (undrape a plate such as a topsheet): the faces whose normal is the chart's
- * normal are the plate's two sides; their chart heights give the thickness and the constant-thickness
- * check. Length is preserved along the mid-thickness (a bent plate does not stretch there). The inner
- * side's outline is unwrapped onto the plane, a slab is split by walls through it and the waste cut away:
- * flat faces are exact planes, arcs in the outline become true cylinder walls.
+ * CONSTANT-THICKNESS PART (undrape a plate such as a topsheet; research_undrape_*.md): the two sides and
+ * t come from evOffsetDetection + tangent growth, no reference needed. The part's MID-SURFACE is mapped
+ * onto the TARGET = the wire's extrusion along its plane normal, offset by the target offset; the wire is
+ * picked, or is the section of the mid-surface by a picked face. Where the part is draped (curved across
+ * the wire's plane) this is a deformation: each station's section is unrolled flat (width = arc length
+ * across the section), measured and reported (undrape_utils.fs). The flat mid-surface outline is rebuilt
+ * as a plate t/2 each side: a plane split by the outline, material by loop parity -- exact planes, arcs
+ * stay arcs, holes and slots cut.
  *
  * Not in v1: surfaces, composite parts, mate connectors, general part deform, neutral axis, planes /
  * planar faces as the unwrap target, projection of a wire onto a plane normal to the unwrap plane.
@@ -90,15 +95,22 @@ export enum UnwrapType
     THICKENED
 }
 
-/** Which curve's length the unwrap preserves. */
+/** Which curve's length an edge unwrap preserves. */
 export enum UnwrapPreserveLength
 {
     annotation { "Name" : "Along the reference" }
     REFERENCE,
     annotation { "Name" : "Along an offset of the reference" }
-    OFFSET,
-    annotation { "Name" : "Along the part's mid-thickness" }
-    MID_THICKNESS
+    OFFSET
+}
+
+/** Where a plate's undrape target (the wire whose extrusion the mid-surface maps onto) comes from. */
+export enum UndrapeTargetSource
+{
+    annotation { "Name" : "Wire" }
+    WIRE,
+    annotation { "Name" : "Section by a face" }
+    FACE
 }
 
 /** Samples per unwrapped edge: at least this many, and one per UNWRAP_SAMPLE_SPACING of length. */
@@ -107,21 +119,15 @@ const UNWRAP_MAX_SAMPLES = 201;
 const UNWRAP_SAMPLE_SPACING = 5 * millimeter;
 
 
-/** Face samples (per direction) when looking for a plate's two sides. */
-const UNWRAP_FACE_GRID = 4;
 
-/** A face is one of a plate's sides when every sample's normal is within this of the chart normal. */
-const UNWRAP_CAP_ALIGNMENT = 0.95;
 
-/** Margin of the slab around the unwrapped outline. */
-const UNWRAP_SLAB_MARGIN = 10 * millimeter;
 
 /** Unwrap's own fit defaults: 0.005 mm leaves half the 0.01 mm budget to everything else. */
 const UNWRAP_FIT_TOLERANCE_BOUNDS = { (millimeter) : [1e-5, 0.005, 1] } as LengthBoundSpec;
 const UNWRAP_MAX_CP_BOUNDS = { (unitless) : [4, 60, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
 
 const UNWRAP_LENGTH_BOUNDS = { (millimeter) : [-1e4, 0, 1e4] } as LengthBoundSpec;
-const UNWRAP_THICKNESS_TOL_BOUNDS = { (millimeter) : [1e-6, 0.01, 10] } as LengthBoundSpec;
+const UNWRAP_SPACING_BOUNDS = { (millimeter) : [0.5, 6, 50] } as LengthBoundSpec;
 
 annotation { "Feature Type Name" : "Unwrap",
         "Feature Type Description" : "Unwrap edges or a constant-thickness part from along a planar reference chain onto a plane, preserving length.",
@@ -140,25 +146,49 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         else
         {
             annotation { "Name" : "Parts to unwrap", "Filter" : EntityType.BODY && BodyType.SOLID,
-                        "Description" : "Constant-thickness parts draped along the reference, e.g. a topsheet." }
+                        "Description" : "Constant-thickness parts, draped or not, e.g. a topsheet." }
             definition.parts is Query;
+
+            annotation { "Name" : "Undrape target from", "Default" : UndrapeTargetSource.WIRE, "UIHint" : UIHint.HORIZONTAL_ENUM,
+                        "Description" : "The part's mid-surface is mapped onto the extrusion of a wire along its plane normal: a wire you pick, or the section of the mid-surface by a face you pick." }
+            definition.targetFrom is UndrapeTargetSource;
         }
 
-        annotation { "Name" : "Wrapped reference", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO,
-                    "Description" : "A planar tangent chain the geometry is wrapped along, e.g. the ski's top-surface profile." }
-        definition.reference is Query;
-
-        annotation { "Name" : "Preserve length", "Default" : UnwrapPreserveLength.REFERENCE, "UIHint" : UIHint.SHOW_LABEL,
-                    "Description" : "Which curve keeps its length when unwrapped. A plate bent over the reference keeps it at its mid-thickness." }
-        definition.preserveLength is UnwrapPreserveLength;
-
-        if (definition.preserveLength == UnwrapPreserveLength.OFFSET)
+        if (definition.unwrapType == UnwrapType.EDGES || definition.targetFrom == UndrapeTargetSource.WIRE)
         {
-            annotation { "Name" : "Offset", "Description" : "Distance off the reference, along its surface normal." }
-            isLength(definition.lengthOffset, UNWRAP_LENGTH_BOUNDS);
+            annotation { "Name" : "Wrapped reference", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO,
+                        "Description" : "A planar tangent chain the geometry is wrapped along, e.g. the ski's top-surface profile." }
+            definition.reference is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Section face", "Filter" : EntityType.FACE && GeometryType.PLANE, "MaxNumberOfPicks" : 1,
+                        "Description" : "A planar face (e.g. the Front plane) that cuts the part's mid-surface along the profile to unwrap along." }
+            definition.profileFace is Query;
+        }
 
-            annotation { "Name" : "Flip offset", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
-            definition.flipLengthOffset is boolean;
+        if (definition.unwrapType == UnwrapType.EDGES)
+        {
+            annotation { "Name" : "Preserve length", "Default" : UnwrapPreserveLength.REFERENCE, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Which curve keeps its length when unwrapped." }
+            definition.preserveLength is UnwrapPreserveLength;
+
+            if (definition.preserveLength == UnwrapPreserveLength.OFFSET)
+            {
+                annotation { "Name" : "Offset", "Description" : "Distance off the reference, along its surface normal." }
+                isLength(definition.lengthOffset, UNWRAP_LENGTH_BOUNDS);
+
+                annotation { "Name" : "Flip offset", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+                definition.flipLengthOffset is boolean;
+            }
+        }
+        else
+        {
+            annotation { "Name" : "Target offset", "Description" : "The mid-surface maps onto the extruded wire offset by this along its surface normal; that offset's length is the one preserved. E.g. minus half the thickness for a topsheet whose top face lies on the wire's extrusion." }
+            isLength(definition.targetOffset, UNWRAP_LENGTH_BOUNDS);
+
+            annotation { "Name" : "Flip target offset", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            definition.flipTargetOffset is boolean;
         }
 
         annotation { "Name" : "Wrapped alignment point", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
@@ -171,12 +201,12 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
 
         if (definition.unwrapType == UnwrapType.THICKENED)
         {
-            annotation { "Name" : "Lay inner side on the origin plane", "Default" : true,
-                        "Description" : "Off, the part keeps its height above the alignment point." }
+            annotation { "Name" : "Lay the plate on the origin plane", "Default" : true,
+                        "Description" : "The flat plate's lower face on the origin's XY plane. Off, its mid-plane keeps its height relative to the alignment point." }
             definition.layOnPlane is boolean;
 
-            annotation { "Name" : "Thickness tolerance", "Description" : "How far the part may depart from constant thickness." }
-            isLength(definition.thicknessTolerance, UNWRAP_THICKNESS_TOL_BOUNDS);
+            annotation { "Name" : "Outline sample spacing", "Description" : "Spacing of the undraped outline samples. 6 mm holds the outline within 0.005 mm; wider is faster." }
+            isLength(definition.sampleSpacing, UNWRAP_SPACING_BOUNDS);
         }
 
         annotation { "Group Name" : "Lines, arcs & fitting", "Collapsed By Default" : true }
@@ -245,9 +275,15 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             throw regenError(definition.unwrapType == UnwrapType.EDGES ? "Select the edges to unwrap." : "Select the parts to unwrap.",
                 [definition.unwrapType == UnwrapType.EDGES ? "edges" : "parts"]);
         }
-        if (isQueryEmpty(context, definition.reference))
+        if ((definition.unwrapType == UnwrapType.EDGES || definition.targetFrom == UndrapeTargetSource.WIRE)
+            && isQueryEmpty(context, definition.reference))
         {
             throw regenError("Select the wrapped reference.", ["reference"]);
+        }
+        if (definition.unwrapType == UnwrapType.THICKENED && definition.targetFrom == UndrapeTargetSource.FACE
+            && isQueryEmpty(context, definition.profileFace))
+        {
+            throw regenError("Select the section face.", ["profileFace"]);
         }
         if (isQueryEmpty(context, definition.alignPoint) || isQueryEmpty(context, definition.origin))
         {
@@ -272,7 +308,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         var edgesOnPlane = [];
 
         const edgeChart = (definition.unwrapType == UnwrapType.EDGES)
-            ? unwrapChart(context, definition.reference, alignPoint, lengthOffset(definition, undefined))
+            ? unwrapChart(context, definition.reference, alignPoint, lengthOffset(definition))
             : undefined;
 
         for (var i = 0; i < size(sources); i += 1)
@@ -348,22 +384,13 @@ function pointOf(context is Context, selection is Query) returns Vector
 }
 
 /**
- * The offset of the reference whose length is preserved. `midThickness` is the plate's measured
- * mid-thickness height, undefined outside the plate path.
+ * The offset of the reference whose length an edge unwrap preserves.
  */
-function lengthOffset(definition is map, midThickness) returns ValueWithUnits
+function lengthOffset(definition is map) returns ValueWithUnits
 {
     if (definition.preserveLength == UnwrapPreserveLength.OFFSET)
     {
         return definition.flipLengthOffset ? -definition.lengthOffset : definition.lengthOffset;
-    }
-    if (definition.preserveLength == UnwrapPreserveLength.MID_THICKNESS)
-    {
-        if (midThickness == undefined)
-        {
-            throw regenError("Preserve length along the mid-thickness needs Unwrap = Constant-thickness part.", ["preserveLength"]);
-        }
-        return midThickness;
     }
     return 0 * meter;
 }
@@ -442,37 +469,9 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         const startTangent = flattened(cs, flatZ, unwrapDirection(chart, cs, feet[0], tangentLines[0].direction));
         const endTangent = flattened(cs, flatZ, unwrapDirection(chart, cs, feet[count - 1], tangentLines[count - 1].direction));
 
-        var shape = { "kind" : "freeform" };
-        var gate = "";
-        if (settings.recognise)
-        {
-            shape = classifyPoints(points, settings.approximation.approximationTolerance, true, true);
-            if (shape.kind != "freeform")
-            {
-                const tangents = shapeEndTangents(shape, startTangent, endTangent);
-                const miss = max(angleBetween(tangents[0], startTangent), angleBetween(tangents[1], endTangent));
-                if (miss > G1_JUNCTION_ANGLE * radian)
-                {
-                    gate = " (" ~ shape.kind ~ " rejected: end tangent off by " ~ toString(roundToPrecision(miss / degree, 4)) ~ " deg)";
-                    shape = { "kind" : "freeform" };
-                }
-            }
-        }
-
-        if (shape.kind == "line")
-        {
-            emitLineCurve(context, edgeId, points[0], points[count - 1]);
-        }
-        else if (shape.kind == "arc")
-        {
-            emitArcCurve(context, edgeId, shape);
-        }
-        else
-        {
-            // Unit tangents: approximateFamily scales them by the run's chord itself. Pre-scaling
-            // them here made the end speed a chord squared and no fit could reach tolerance.
-            emitSplineCurve(context, edgeId, points, startTangent, endTangent, settings.approximation);
-        }
+        const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
+        const shape = emitted.shape;
+        const gate = emitted.gate;
 
         tally[shape.kind] += 1;
         curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
@@ -496,6 +495,49 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         "points" : allPoints,
         "record" : { "edges" : size(edges), "worstFlat" : worstFlat }
     };
+}
+
+/**
+ * Emit one unwrapped edge: a line or an (exact, sketch) arc when the points are one within tolerance
+ * AND the exactly-unwrapped end tangents agree with it -- so continuity is kept -- a fit otherwise.
+ * @returns {map} : { "shape", "gate" (why a line / arc was refused, or "") }
+ */
+function emitFlatCurve(context is Context, id is Id, points is array, startTangent is Vector, endTangent is Vector,
+    settings is map) returns map
+{
+    const count = size(points);
+    var shape = { "kind" : "freeform" };
+    var gate = "";
+    if (settings.recognise)
+    {
+        shape = classifyPoints(points, settings.approximation.approximationTolerance, true, true);
+        if (shape.kind != "freeform")
+        {
+            const tangents = shapeEndTangents(shape, startTangent, endTangent);
+            const miss = max(angleBetween(tangents[0], startTangent), angleBetween(tangents[1], endTangent));
+            if (miss > G1_JUNCTION_ANGLE * radian)
+            {
+                gate = " (" ~ shape.kind ~ " rejected: end tangent off by " ~ toString(roundToPrecision(miss / degree, 4)) ~ " deg)";
+                shape = { "kind" : "freeform" };
+            }
+        }
+    }
+
+    if (shape.kind == "line")
+    {
+        emitLineCurve(context, id, points[0], points[count - 1]);
+    }
+    else if (shape.kind == "arc")
+    {
+        emitArcCurve(context, id, shape);
+    }
+    else
+    {
+        // Unit tangents: approximateFamily scales them by the run's chord itself. Pre-scaling
+        // them here made the end speed a chord squared and no fit could reach tolerance.
+        emitSplineCurve(context, id, points, startTangent, endTangent, settings.approximation);
+    }
+    return { "shape" : shape, "gate" : gate };
 }
 
 /**
@@ -544,250 +586,229 @@ function addTally(a is map, b is map) returns map
 // ============================================================================
 
 /**
- * The plate's two sides and its thickness, from chart heights.
- *
- * A side is a face whose normal is the chart normal at every sample; the sides fall at two
- * heights, and the thickness is the difference. The INNER side is the one nearer the reference
- * -- for a topsheet, the face lying on the ski's top surface.
+ * The two sides, walls and thickness of a constant-thickness solid, found without a reference
+ * (research_undrape_ops.md 1): evOffsetDetection gives exactly-offset seed pairs and t; each side is
+ * grown from its seed by tangency (45 deg: sides are G1 or gently creased, walls meet them at
+ * 72-90 deg). ~0.1 s on a 252-face topsheet.
  */
-function plateSides(context is Context, part is Query, chart is map, printCaps is boolean) returns map
+function plateSidesGeneral(context is Context, part is Query) returns map
 {
-    var params = [];
-    for (var a = 0; a < UNWRAP_FACE_GRID; a += 1)
+    const groups = evOffsetDetection(context, { "bodies" : part });
+    if (size(groups) == 0)
     {
-        for (var b = 0; b < UNWRAP_FACE_GRID; b += 1)
-        {
-            params = append(params, vector((a + 0.5) / UNWRAP_FACE_GRID, (b + 0.5) / UNWRAP_FACE_GRID));
-        }
+        throw regenError("Could not find two offset faces on the part: it does not look like a constant-thickness plate.", ["parts"]);
+    }
+    const g = groups[0];
+    const thickness = 0.5 * (g.offsetLow + g.offsetHigh);
+    const side0 = qUnion(evaluateQuery(context, qTangentConnectedFaces(g.side0[0], 45 * degree)));
+    const side1 = qUnion(evaluateQuery(context, qTangentConnectedFaces(g.side1[0], 45 * degree)));
+    if (!isQueryEmpty(context, qIntersection([side0, side1])))
+    {
+        throw regenError("The part's two sides are tangent-connected, so it is not a plate.", ["parts"]);
     }
 
-    var caps = [];
-    for (var face in evaluateQuery(context, qOwnedByBody(part, EntityType.FACE)))
+    var spread = g.offsetHigh - g.offsetLow;
+    for (var other in groups)
     {
-        const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : params, "returnUndefinedOutsideFace" : true });
-        var heights = [];
-        var xs = [];
-        var aligned = true;
-        for (var pl in planes)
-        {
-            if (pl == undefined)
-            {
-                continue;
-            }
-            const surf = referenceSurfaceCoords(chart.alongRef, pl.origin);
-            if (abs(dot(pl.normal, surf.normal)) < UNWRAP_CAP_ALIGNMENT)
-            {
-                aligned = false;
-                break;
-            }
-            heights = append(heights, surf.height);
-            xs = append(xs, pl.origin[0]);
-        }
-        if (aligned && size(heights) > 0)
-        {
-            caps = append(caps, { "face" : face, "heights" : heights, "xs" : xs });
-        }
+        spread = max(spread, max(abs(other.offsetHigh - thickness), abs(other.offsetLow - thickness)));
     }
-
-    if (printCaps)
-    {
-        println("[unwrap] side candidates (faces following the reference surface): " ~ size(caps));
-        for (var cap in caps)
-        {
-            var hlo = cap.heights[0];
-            var hhi = cap.heights[0];
-            for (var h in cap.heights)
-            {
-                hlo = min(hlo, h);
-                hhi = max(hhi, h);
-            }
-            var xlo = cap.xs[0];
-            var xhi = cap.xs[0];
-            for (var x in cap.xs)
-            {
-                xlo = min(xlo, x);
-                xhi = max(xhi, x);
-            }
-            println("    " ~ toString(cap.face.transientId) ~ ": height " ~ fmtMM(hlo, 4, 0) ~ " .. " ~ fmtMM(hhi, 4, 0)
-                ~ " mm, x " ~ fmtMM(xlo, 1, 0) ~ " .. " ~ fmtMM(xhi, 1, 0) ~ " mm, " ~ size(cap.heights) ~ " samples");
-        }
-    }
-
-    if (size(caps) < 2)
-    {
-        throw regenError("Could not find the two sides of the part along the reference: no pair of faces follows the reference surface.", ["parts"]);
-    }
-
-    var low = undefined;
-    var high = undefined;
-    for (var cap in caps)
-    {
-        for (var h in cap.heights)
-        {
-            low = (low == undefined) ? h : min(low, h);
-            high = (high == undefined) ? h : max(high, h);
-        }
-    }
-    const split = 0.5 * (low + high);
-
-    var lower = { "faces" : [], "heights" : [] };
-    var upper = { "faces" : [], "heights" : [] };
-    for (var cap in caps)
-    {
-        var mean = 0 * meter;
-        for (var h in cap.heights)
-        {
-            mean += h / size(cap.heights);
-        }
-        if (mean < split)
-        {
-            lower.faces = append(lower.faces, cap.face);
-            lower.heights = concatenateArrays([lower.heights, cap.heights]);
-        }
-        else
-        {
-            upper.faces = append(upper.faces, cap.face);
-            upper.heights = concatenateArrays([upper.heights, cap.heights]);
-        }
-    }
-
-    const lowLevel = meanOf(lower.heights);
-    const highLevel = meanOf(upper.heights);
-    const spread = max(spreadOf(lower.heights, lowLevel), spreadOf(upper.heights, highLevel));
-    const lowerIsInner = abs(lowLevel) <= abs(highLevel);
 
     return {
-        "inner" : lowerIsInner ? lower.faces : upper.faces,
-        "outer" : lowerIsInner ? upper.faces : lower.faces,
-        "innerLevel" : lowerIsInner ? lowLevel : highLevel,
-        "outerLevel" : lowerIsInner ? highLevel : lowLevel,
-        "thickness" : highLevel - lowLevel,
+        "side0" : side0,
+        "side1" : side1,
+        "walls" : qSubtraction(qOwnedByBody(part, EntityType.FACE), qUnion([side0, side1])),
+        "thickness" : thickness,
         "spread" : spread
     };
 }
 
-function meanOf(values is array) returns ValueWithUnits
+/**
+ * W = the section of the mid-surface by a face's plane, as ONE wire body (research_undrape_ops.md 3a).
+ * A big plane splits the mid-surface; the mid-surface edges lying within 1 um of the plane are the
+ * section (qCoincidesWithPlane is too strict: pre-existing edges the split merged into sit ~0.5 um off).
+ */
+function profileFromFace(context is Context, id is Id, mid is Query, userFace is Query) returns Query
 {
-    var sum = 0 * meter;
-    for (var v in values)
+    const pl = evPlane(context, { "face" : userFace });
+    if (!isQueryEmpty(context, qCoincidesWithPlane(qOwnedByBody(mid, EntityType.FACE), pl)))
     {
-        sum += v;
+        throw regenError("The section face lies in the part's mid-surface: the section is not a curve.", ["profileFace"]);
     }
-    return sum / size(values);
-}
+    opPlane(context, id + "sectionPlane", { "plane" : pl, "width" : 10 * meter, "height" : 10 * meter });
+    opSplitFace(context, id + "section", {
+                "faceTargets" : qOwnedByBody(mid, EntityType.FACE),
+                "faceTools" : qOwnedByBody(qCreatedBy(id + "sectionPlane", EntityType.BODY), EntityType.FACE)
+            });
+    opDeleteBodies(context, id + "deleteSectionPlane", { "entities" : qCreatedBy(id + "sectionPlane", EntityType.BODY) });
 
-function spreadOf(values is array, level is ValueWithUnits) returns ValueWithUnits
-{
-    var worst = 0 * meter;
-    for (var v in values)
+    var onPlane = [];
+    for (var e in evaluateQuery(context, qIntersectsPlane(qOwnedByBody(mid, EntityType.EDGE), pl)))
     {
-        worst = max(worst, abs(v - level));
+        var ok = true;
+        for (var tl in evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 0.25, 0.5, 0.75, 1] }))
+        {
+            if (abs(dot(tl.origin - pl.origin, pl.normal)) > 1e-6 * meter)
+            {
+                ok = false;
+                break;
+            }
+        }
+        if (ok)
+        {
+            onPlane = append(onPlane, e);
+        }
     }
-    return worst;
+    if (size(onPlane) == 0)
+    {
+        throw regenError("The section face does not cross the part's mid-surface.", ["profileFace"]);
+    }
+    opExtractWires(context, id + "profile", { "edges" : qUnion(onPlane) });
+    const chains = qCreatedBy(id + "profile", EntityType.BODY);
+    if (size(evaluateQuery(context, chains)) != 1)
+    {
+        throw regenError("The section crosses a hole, slot or notch and breaks into several pieces. Pick a face that misses them, or supply the wire.", ["profileFace"]);
+    }
+    return chains;
 }
 
 /**
- * Undrape one constant-thickness part.
+ * Flat plate from closed planar outline wires (outer + holes, any nesting), thickness/2 either side of
+ * flatPlane (research_undrape_ops.md 4, route e): a plane sheet split by the outline, material by
+ * parity of loops crossed from the sheet's border, extruded both ways. Arcs stay arcs (walls are
+ * cylinders), splines stay the same spline, caps are true planes.
+ */
+function plateFromOutline(context is Context, id is Id, wireEdges is Query, flatPlane is Plane, thickness is ValueWithUnits) returns Query
+{
+    const bb = evBox3d(context, { "topology" : wireEdges, "tight" : true, "cSys" : planeToCSys(flatPlane) });
+    const c = planeToWorld(flatPlane, vector(0.5 * (bb.minCorner[0] + bb.maxCorner[0]), 0.5 * (bb.minCorner[1] + bb.maxCorner[1])));
+    opPlane(context, id + "sheet", {
+                "plane" : plane(c, flatPlane.normal, flatPlane.x),
+                "width" : bb.maxCorner[0] - bb.minCorner[0] + 20 * millimeter,
+                "height" : bb.maxCorner[1] - bb.minCorner[1] + 20 * millimeter
+            });
+    const sheet = qCreatedBy(id + "sheet", EntityType.BODY);
+    opSplitFace(context, id + "cut", { "faceTargets" : qOwnedByBody(sheet, EntityType.FACE), "edgeTools" : wireEdges });
+
+    // Parity: faces on the sheet's own (laminar) border are depth 0; every loop crossed adds one.
+    // Each step's query is re-evaluated -- nesting queries across iterations blows up (13 s measured).
+    const faces = qOwnedByBody(sheet, EntityType.FACE);
+    var labelled = qUnion(evaluateQuery(context, qAdjacent(qEdgeTopologyFilter(qOwnedByBody(sheet, EntityType.EDGE), EdgeTopology.LAMINAR),
+                    AdjacencyType.EDGE, EntityType.FACE)));
+    var frontier = labelled;
+    var depth = 0;
+    var material = [];
+    while (true)
+    {
+        const next = evaluateQuery(context, qSubtraction(qIntersection([qAdjacent(frontier, AdjacencyType.EDGE, EntityType.FACE), faces]), labelled));
+        if (size(next) == 0)
+        {
+            break;
+        }
+        depth += 1;
+        if (depth % 2 == 1)
+        {
+            material = concatenateArrays([material, next]);
+        }
+        frontier = qUnion(next);
+        labelled = qUnion(evaluateQuery(context, qUnion([labelled, frontier])));
+    }
+    if (size(material) == 0)
+    {
+        throw regenError("The unwrapped outline does not close.", ["parts"]);
+    }
+    opExtrude(context, id + "plate", {
+                "entities" : qUnion(material),
+                "direction" : flatPlane.normal,
+                "endBound" : BoundingType.BLIND,
+                "endDepth" : 0.5 * thickness,
+                "startBound" : BoundingType.BLIND,
+                "startDepth" : 0.5 * thickness
+            });
+    opDeleteBodies(context, id + "deleteSheet", { "entities" : sheet });
+    return qCreatedBy(id + "plate", EntityType.BODY);
+}
+
+/**
+ * Undrape one constant-thickness part: its mid-surface onto the target (the wire's extrusion,
+ * offset by the target offset), unwrapped flat and re-thickened.
  */
 function unwrapPlate(context is Context, id is Id, definition is map, part is Query, alignPoint is Vector,
     cs is CoordSystem, settings is map) returns map
 {
-    // Heights are read about the reference itself; the chart that is unwrapped through is then built
-    // about the offset whose length is preserved.
-    const probe = unwrapChart(context, definition.reference, alignPoint, 0 * meter);
-    const sides = plateSides(context, part, probe, settings.print);
-    if (sides.spread > definition.thicknessTolerance)
+    const sides = plateSidesGeneral(context, part);
+    const thickness = sides.thickness;
+
+    var wire = definition.reference;
+    var temporary = [];
+    if (definition.targetFrom == UndrapeTargetSource.FACE)
     {
-        throw regenError("The part is not of constant thickness along the reference: its sides depart from "
-                ~ fmtMM(sides.thickness, 4, 0) ~ " mm by up to " ~ fmtMM(sides.spread, 4, 0) ~ " mm.", ["parts", "thicknessTolerance"]);
+        opExtractSurface(context, id + "mid", {
+                    "faces" : sides.side0,
+                    "offset" : -0.5 * thickness,
+                    "useFacesAroundToTrimOffset" : true
+                });
+        wire = profileFromFace(context, id + "profile", qCreatedBy(id + "mid", EntityType.BODY), definition.profileFace);
+        temporary = [qCreatedBy(id + "mid", EntityType.BODY), wire];
     }
 
-    const offset = lengthOffset(definition, 0.5 * (sides.innerLevel + sides.outerLevel));
-    const chart = unwrapChart(context, definition.reference, alignPoint, offset);
+    const offset = definition.flipTargetOffset ? -definition.targetOffset : definition.targetOffset;
+    const chart = unwrapChart(context, wire, alignPoint, offset);
+    const undraped = undrapeOutline(context, id + "undrape", chart, sides.side0, sides.side1, thickness, definition.sampleSpacing);
 
-    // Where the inner side lands, before any shift: its chart height relative to the alignment point.
-    const innerZ = sides.innerLevel - offset - chart.align.height;
-    const zShift = definition.layOnPlane ? -innerZ : 0 * meter;
-    const flatZ = innerZ + zShift;
-    const outward = (sides.outerLevel > sides.innerLevel) ? 1 : -1;
-    const thickness = abs(sides.thickness);
+    // The mid-surface lands on the target, chart height 0 on it: cs z = -alignHeight. Laid on the plane,
+    // the plate's lower face is on cs's XY plane instead.
+    const zMid = definition.layOnPlane ? 0.5 * thickness : -chart.alignHeight * meter;
+    const yAxis = cross(cs.zAxis, cs.xAxis);
+    const flatPlane = plane(cs.origin + zMid * cs.zAxis, cs.zAxis, cs.xAxis);
 
-    const outline = evaluateQuery(context, qLoopEdges(qUnion(sides.inner)));
-    const emitted = unwrapEdges(context, id + "outline", chart, cs, zShift, flatZ, outline, settings);
-
-    // Slab: a rectangle on the flat plane around the outline, extruded outward by the thickness.
-    const flatPlane = plane(cs.origin + flatZ * cs.zAxis, cs.zAxis, cs.xAxis);
-    var lo = undefined;
-    var hi = undefined;
-    for (var p in emitted.points)
+    var curves = [];
+    var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
+    var lines = [];
+    for (var k = 0; k < size(undraped.edges); k += 1)
     {
-        const q = worldToPlane(flatPlane, p);
-        lo = (lo == undefined) ? q : vector(min(lo[0], q[0]), min(lo[1], q[1]));
-        hi = (hi == undefined) ? q : vector(max(hi[0], q[0]), max(hi[1], q[1]));
+        const edge = undraped.edges[k];
+        var points = [];
+        for (var xy in edge.points)
+        {
+            points = append(points, flatPlane.origin + (xy[0] * meter) * cs.xAxis + (xy[1] * meter) * yAxis);
+        }
+        const startTangent = normalize(edge.startTangent[0] * cs.xAxis + edge.startTangent[1] * yAxis);
+        const endTangent = normalize(edge.endTangent[0] * cs.xAxis + edge.endTangent[1] * yAxis);
+        const edgeId = id + ("outline" ~ k);
+        const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
+        tally[emitted.shape.kind] += 1;
+        curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
+        lines = append(lines, "    loop " ~ edge.loop ~ " edge " ~ edge.index ~ ": " ~ emitted.shape.kind
+            ~ (emitted.shape.kind == "arc" ? " R " ~ fmtMM(emitted.shape.radius, 4, 0) : "") ~ emitted.gate);
     }
-    lo = lo - vector(UNWRAP_SLAB_MARGIN, UNWRAP_SLAB_MARGIN);
-    hi = hi + vector(UNWRAP_SLAB_MARGIN, UNWRAP_SLAB_MARGIN);
-
-    const sketchId = id + "slabSketch";
-    const sk = newSketchOnPlane(context, sketchId, { "sketchPlane" : flatPlane });
-    skRectangle(sk, "slab", { "firstCorner" : lo, "secondCorner" : hi });
-    skSolve(sk);
-
-    opExtrude(context, id + "slab", {
-                "entities" : qCreatedBy(sketchId, EntityType.FACE),
-                "direction" : outward * cs.zAxis,
-                "endBound" : BoundingType.BLIND,
-                "endDepth" : thickness
-            });
-
-    // Walls through the outline, a little past both faces of the slab, split it. The curves are
-    // joined into wires first so each closed outline extrudes to ONE sheet, and the split uses the
-    // sheet as trimmed -- an untrimmed spline wall would run on past the outline and cut the slab.
-    const curveBodies = qUnion(emitted.curves);
-    opExtractWires(context, id + "outlineWire", { "edges" : qOwnedByBody(curveBodies, EntityType.EDGE) });
-    opExtrude(context, id + "walls", {
-                "entities" : qOwnedByBody(qCreatedBy(id + "outlineWire", EntityType.BODY), EntityType.EDGE),
-                "direction" : outward * cs.zAxis,
-                "endBound" : BoundingType.BLIND,
-                "endDepth" : thickness + 1 * millimeter,
-                "startBound" : BoundingType.BLIND,
-                "startDepth" : 1 * millimeter
-            });
-    opSplitPart(context, id + "split", {
-                "targets" : qCreatedBy(id + "slab", EntityType.BODY),
-                "tool" : qCreatedBy(id + "walls", EntityType.BODY),
-                "keepTools" : false,
-                "useTrimmed" : true
-            });
-
-    // The piece holding the slab's corner is the waste around the outline.
-    const pieces = qUnion([qCreatedBy(id + "slab", EntityType.BODY), qCreatedBy(id + "split", EntityType.BODY)]);
-    const corner = planeToWorld(flatPlane, lo + vector(1 * millimeter, 1 * millimeter)) + 0.5 * thickness * outward * cs.zAxis;
-    opDeleteBodies(context, id + "deleteWaste", { "entities" : qContainsPoint(qBodyType(pieces, BodyType.SOLID), corner) });
-    opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion([curveBodies, qCreatedBy(sketchId, EntityType.BODY),
-                        qCreatedBy(id + "outlineWire", EntityType.BODY), qCreatedBy(id + "walls", EntityType.BODY)]) });
-
-    const plates = qBodyType(pieces, BodyType.SOLID);
-    const plateCount = size(evaluateQuery(context, plates));
-    if (plateCount == 0)
+    if (settings.print)
     {
-        throw regenError("Unwrapping the outline left nothing: the unwrapped outline does not close.", ["parts"]);
+        for (var text in concatenateArrays([undraped.lines, lines]))
+        {
+            println(text);
+        }
     }
 
-    const innerFace = qCoincidesWithPlane(qOwnedByBody(plates, EntityType.FACE), flatPlane);
+    const curveBodies = qUnion(curves);
+    opExtractWires(context, id + "outlineWires", { "edges" : qOwnedByBody(curveBodies, EntityType.EDGE) });
+    const outlineWires = qCreatedBy(id + "outlineWires", EntityType.BODY);
+    const plates = plateFromOutline(context, id + "plate", qOwnedByBody(outlineWires, EntityType.EDGE), flatPlane, thickness);
+    opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion(concatenateArrays([[curveBodies, outlineWires], temporary])) });
+
+    const lowerPlane = plane(flatPlane.origin - 0.5 * thickness * cs.zAxis, cs.zAxis, cs.xAxis);
+    const lowerFace = qCoincidesWithPlane(qOwnedByBody(plates, EntityType.FACE), lowerPlane);
 
     return {
         "bodies" : plates,
-        "edgesOnPlane" : qAdjacent(innerFace, AdjacencyType.EDGE, EntityType.EDGE),
-        "tally" : emitted.tally,
+        "edgesOnPlane" : qAdjacent(lowerFace, AdjacencyType.EDGE, EntityType.EDGE),
+        "tally" : tally,
         "record" : {
-            "edges" : size(outline),
-            "worstFlat" : emitted.record.worstFlat,
+            "edges" : size(undraped.edges),
             "thickness" : thickness,
             "spread" : sides.spread,
-            "innerLevel" : sides.innerLevel,
             "offset" : offset,
-            "pieces" : plateCount
+            "report" : undraped.report,
+            "pieces" : size(evaluateQuery(context, plates))
         }
     };
 }
@@ -904,10 +925,14 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
     {
         if (r.thickness != undefined)
         {
-            text = text ~ " Thickness " ~ fmtMM(r.thickness, 4, 0) ~ " mm (constant within " ~ fmtMM(r.spread, 4, 0)
-                ~ " mm), inner side " ~ fmtMM(r.innerLevel, 4, 0) ~ " mm off the reference, length kept "
-                ~ fmtMM(r.offset, 4, 0) ~ " mm off it; outline flat within " ~ fmtMM(r.worstFlat, 5, 0) ~ " mm"
-                ~ (r.pieces > 1 ? "; " ~ r.pieces ~ " pieces (holes in the outline?)" : "") ~ ".";
+            const u = r.report;
+            text = text ~ " Thickness " ~ fmtMM(r.thickness, 4, 0) ~ " mm (offset pairs within " ~ fmtMM(r.spread, 5, 0)
+                ~ " mm); mid-surface mapped to the target offset " ~ fmtMM(r.offset, 4, 0) ~ " mm; "
+                ~ u.stations ~ " stations, " ~ u.fallbacks ~ " kernel sections. Deformation: lengthwise stretch "
+                ~ toString(roundToPrecision((u.stretchMin - 1) * 100, 3)) ~ "% .. " ~ toString(roundToPrecision((u.stretchMax - 1) * 100, 3))
+                ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax / degree, 2)) ~ " deg; rim "
+                ~ fmtMM(u.rim3d, 3, 0) ~ " mm draped -> " ~ fmtMM(u.rimFlat, 3, 0) ~ " mm flat"
+                ~ (r.pieces > 1 ? "; " ~ r.pieces ~ " solids" : "") ~ ".";
         }
     }
     println("[unwrap] " ~ text);

@@ -3,19 +3,19 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 
 /**
- * Case Pattern: build a chain of features once against named query variables (the template,
- * case 1), then re-run that chain for further cases, each case rebinding every name to new
- * geometry and suffixing the bodies it creates with its case name.
+ * Case Pattern: build a chain of features once against named query variables (case 1), then
+ * re-run that chain for further cases, each case rebinding every name to new geometry and
+ * suffixing the bodies it creates with its case name.
  *
- * Case template   binds the names to case 1's queries and publishes its signature (names, case
- *                 name, case-1 queries) under its own feature id.
- * Case pattern    takes the template plus the features built on it as a FeatureList and, per
- *                 case, binds the names to that case's queries and re-runs the list the way a
- *                 feature Pattern with "Reapply features" runs an instance (identity transform:
- *                 nothing moves). Features inside the list that reference each other remap to
- *                 the current case's copies.
+ * Case template   declares the inputs (query variable names) and case values (# variables), binds
+ *                 case 1, and holds the further cases. Publishes all of it under its own feature id.
+ * Case pattern    takes a Case template and the features built on it and, per case, binds the
+ *                 inputs and values and re-runs the features the way a feature Pattern with
+ *                 "Reapply features" runs an instance (identity transform: nothing moves).
  *
- * Design: case_pattern/DESIGN.md.
+ * Referencing geometry made by the repeated features: only a FeatureList parameter follows each
+ * case (a Query Variable "created by"); clicks stay on case 1. Correction 41; design in
+ * case_pattern/DESIGN.md.
  */
 
 /** Most query variables one template may declare (the number of input slots in a case row). */
@@ -29,101 +29,102 @@ const MISSING = "__caseMissing__";
 // ---------------------------------------------------------------------------------------------
 
 annotation { "Feature Type Name" : "Case template",
-        "Feature Type Description" : "Declares the named query variables a Case pattern rebinds. Build the features for case 1 on these names, then list this feature and those features in a Case pattern." }
+        "Editing Logic Function" : "caseTemplateEditLogic",
+        "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) a Case pattern rebinds, binds case 1, and lists the further cases. Build case 1's features on these names, then repeat them with a Case pattern." }
 export const caseTemplate = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Case name", "Default" : "A", "MaxLength" : 64,
-                    "Description" : "Name of case 1. Case pattern swaps this suffix for each case's name when naming what the case creates." }
+        annotation { "Name" : "Case 1 name", "Default" : "A", "MaxLength" : 64,
+                    "Description" : "Case pattern swaps this suffix for each case's name when naming what the case creates." }
         definition.caseName is string;
 
-        annotation { "Name" : "Inputs", "Item name" : "Input", "Item label template" : "#name" }
+        annotation { "Name" : "Inputs", "Item name" : "Input", "Item label template" : "#inputName" }
         definition.inputs is array;
         for (var input in definition.inputs)
         {
             annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64,
                         "Description" : "Query variable name. It may already exist; it is redefined here." }
-            input.name is string;
+            input.inputName is string;
 
             annotation { "Name" : "Case 1 selection",
                         "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             input.query is Query;
         }
-    }
-    {
-        // Re-run inside a Case pattern: the pattern has already bound this case's queries.
-        if (isInFeaturePattern(context))
+
+        annotation { "Name" : "Case values", "Item name" : "Value", "Item label template" : "#valueName",
+                    "Description" : "Existing # variables that change per case. For each further case, #name is set from #name_<case name>." }
+        definition.values is array;
+        for (var value in definition.values)
         {
-            return;
+            annotation { "Name" : "Variable name", "Default" : "", "MaxLength" : 64 }
+            value.valueName is string;
         }
 
-        if (definition.caseName == "")
-        {
-            throw regenError("Name case 1.", ["caseName"]);
-        }
-        const count = size(definition.inputs);
-        if (count == 0)
-        {
-            throw regenError("Add at least one input.", ["inputs"]);
-        }
-        if (count > CASE_MAX_INPUTS)
-        {
-            throw regenError("A Case template takes at most " ~ CASE_MAX_INPUTS ~ " inputs.", ["inputs"]);
-        }
+        // Which slot labels show; set by the editing logic from the input count.
+        annotation { "Name" : "Show slot 2", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot2 is boolean;
+        annotation { "Name" : "Show slot 3", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot3 is boolean;
+        annotation { "Name" : "Show slot 4", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot4 is boolean;
+        annotation { "Name" : "Show slot 5", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot5 is boolean;
+        annotation { "Name" : "Show slot 6", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot6 is boolean;
+        annotation { "Name" : "Show slot 7", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot7 is boolean;
+        annotation { "Name" : "Show slot 8", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.showSlot8 is boolean;
 
-        var names = [];
-        var queries = [];
-        for (var n = 0; n < count; n += 1)
+        annotation { "Group Name" : "Input slots", "Collapsed By Default" : false }
         {
-            const input = definition.inputs[n];
-            verifyVariableNameIsValid(input.name, "inputs");
-            if (isIn(input.name, names))
+            annotation { "Name" : "Slot 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+            definition.slot1 is string;
+            if (definition.showSlot2)
             {
-                throw regenError("Input name #" ~ input.name ~ " is used twice.", ["inputs"]);
+                annotation { "Name" : "Slot 2", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot2 is string;
             }
-            if (isQueryEmpty(context, input.query))
+            if (definition.showSlot3)
             {
-                throw regenError("#" ~ input.name ~ " selects nothing.", ["inputs"]);
+                annotation { "Name" : "Slot 3", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot3 is string;
             }
-            setQueryVariable(context, input.name, input.query);
-            names = append(names, input.name);
-            queries = append(queries, input.query);
+            if (definition.showSlot4)
+            {
+                annotation { "Name" : "Slot 4", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot4 is string;
+            }
+            if (definition.showSlot5)
+            {
+                annotation { "Name" : "Slot 5", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot5 is string;
+            }
+            if (definition.showSlot6)
+            {
+                annotation { "Name" : "Slot 6", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot6 is string;
+            }
+            if (definition.showSlot7)
+            {
+                annotation { "Name" : "Slot 7", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot7 is string;
+            }
+            if (definition.showSlot8)
+            {
+                annotation { "Name" : "Slot 8", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                definition.slot8 is string;
+            }
         }
 
-        setVariable(context, toString(id), {
-                    "caseTemplate" : true,
-                    "caseName" : definition.caseName,
-                    "names" : names,
-                    "queries" : queries
-                }, "Case template signature");
-    }, { "caseName" : "A", "inputs" : [] });
-
-// ---------------------------------------------------------------------------------------------
-// Case pattern
-// ---------------------------------------------------------------------------------------------
-
-annotation { "Feature Type Name" : "Case pattern",
-        "Editing Logic Function" : "casePatternEditLogic",
-        "Feature Type Description" : "Re-runs a Case template and the features built on it once per case, binding the template's names to each case's selections. Bodies a case creates are named after the template's with the case name as suffix." }
-export const casePattern = defineFeature(function(context is Context, id is Id, definition is map)
-    precondition
-    {
-        annotation { "Name" : "Features to repeat",
-                    "Description" : "The Case template and the features built on its inputs." }
-        definition.features is FeatureList;
-
-        annotation { "Name" : "Inputs", "UIHint" : UIHint.READ_ONLY, "Default" : "",
-                    "Description" : "The template's names, in slot order." }
-        definition.inputSummary is string;
-
-        annotation { "Name" : "Cases", "Item name" : "Case", "Item label template" : "#caseName" }
+        annotation { "Name" : "Further cases", "Item name" : "Case", "Item label template" : "#rowCaseName" }
         definition.cases is array;
         for (var row in definition.cases)
         {
             annotation { "Name" : "Case name", "Default" : "", "MaxLength" : 64 }
-            row.caseName is string;
+            row.rowCaseName is string;
 
-            // Slot k shows when useK is set; the editing logic sets them from the template's size.
+            // Slot k shows when useK is set; the editing logic sets them from the input count.
             annotation { "Name" : "Use input 2", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use2 is boolean;
             annotation { "Name" : "Use input 3", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -186,6 +187,174 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             }
         }
 
+        annotation { "Name" : "Print bindings", "Default" : false,
+                    "Description" : "Print the input slots and every case's selections and values to the FeatureScript notices." }
+        definition.debug is boolean;
+    }
+    {
+        // Re-run inside a Case pattern: the pattern has already bound this case.
+        if (isInFeaturePattern(context))
+        {
+            return;
+        }
+
+        if (definition.caseName == "")
+        {
+            throw regenError("Name case 1.", ["caseName"]);
+        }
+        const count = size(definition.inputs);
+        if (count == 0)
+        {
+            throw regenError("Add at least one input.", ["inputs"]);
+        }
+        if (count > CASE_MAX_INPUTS)
+        {
+            throw regenError("A Case template takes at most " ~ CASE_MAX_INPUTS ~ " inputs.", ["inputs"]);
+        }
+
+        var names = [];
+        var queries = [];
+        for (var n = 0; n < count; n += 1)
+        {
+            const input = definition.inputs[n];
+            verifyVariableNameIsValid(input.inputName, "inputs");
+            if (isIn(input.inputName, names))
+            {
+                throw regenError("Input name #" ~ input.inputName ~ " is used twice.", ["inputs"]);
+            }
+            if (isQueryEmpty(context, input.query))
+            {
+                throw regenError("Case 1 selection for #" ~ input.inputName ~ " selects nothing.", ["inputs"]);
+            }
+            setQueryVariable(context, input.inputName, input.query);
+            names = append(names, input.inputName);
+            queries = append(queries, input.query);
+        }
+
+        var valueNames = [];
+        for (var value in definition.values)
+        {
+            verifyVariableNameIsValid(value.valueName, "values");
+            if (isIn(value.valueName, valueNames) || isIn(value.valueName, names))
+            {
+                throw regenError("Name #" ~ value.valueName ~ " is used twice.", ["values"]);
+            }
+            if (getVariable(context, value.valueName, MISSING) == MISSING)
+            {
+                throw regenError("#" ~ value.valueName ~ " is not defined. Define it (case 1's value) before this feature.", ["values"]);
+            }
+            valueNames = append(valueNames, value.valueName);
+        }
+
+        var caseNames = [definition.caseName];
+        var cases = [];
+        for (var row in definition.cases)
+        {
+            if (row.rowCaseName == "")
+            {
+                throw regenError("Name case " ~ (size(caseNames) + 1) ~ ".", ["cases"]);
+            }
+            if (isIn(row.rowCaseName, caseNames))
+            {
+                throw regenError("Case name \"" ~ row.rowCaseName ~ "\" is used twice.", ["cases"]);
+            }
+            caseNames = append(caseNames, row.rowCaseName);
+            var selections = [];
+            for (var n = 0; n < count; n += 1)
+            {
+                selections = append(selections, row["input" ~ (n + 1)]);
+            }
+            cases = append(cases, { "caseName" : row.rowCaseName, "queries" : selections });
+        }
+
+        setVariable(context, toString(id), {
+                    "caseTemplate" : true,
+                    "caseName" : definition.caseName,
+                    "names" : names,
+                    "queries" : queries,
+                    "valueNames" : valueNames,
+                    "cases" : cases,
+                    "debug" : definition.debug
+                }, "Case template");
+
+        if (definition.debug)
+        {
+            println("Case template " ~ toString(id) ~ ", case " ~ definition.caseName ~ ":");
+            for (var n = 0; n < count; n += 1)
+            {
+                println("  Input " ~ (n + 1) ~ ": #" ~ names[n] ~ " = " ~ size(evaluateQuery(context, queries[n])) ~ " entities");
+            }
+            for (var name in valueNames)
+            {
+                println("  #" ~ name ~ " = " ~ toString(getVariable(context, name)));
+            }
+        }
+    }, {
+        "caseName" : "A",
+        "inputs" : [],
+        "values" : [],
+        "cases" : [],
+        "debug" : false,
+        "slot1" : "",
+        "slot2" : "",
+        "slot3" : "",
+        "slot4" : "",
+        "slot5" : "",
+        "slot6" : "",
+        "slot7" : "",
+        "slot8" : "",
+        "showSlot2" : false,
+        "showSlot3" : false,
+        "showSlot4" : false,
+        "showSlot5" : false,
+        "showSlot6" : false,
+        "showSlot7" : false,
+        "showSlot8" : false
+    });
+
+/**
+ * Case template editing logic: labels the input slots with the input names and shows as many
+ * slots in each case row as there are inputs.
+ */
+export function caseTemplateEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map) returns map
+{
+    const count = size(definition.inputs);
+    for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
+    {
+        definition["slot" ~ k] = k <= count ? "Input " ~ k ~ ": #" ~ definition.inputs[k - 1].inputName : "";
+        if (k > 1)
+        {
+            definition["showSlot" ~ k] = k <= count;
+        }
+    }
+    for (var r = 0; r < size(definition.cases); r += 1)
+    {
+        for (var k = 2; k <= CASE_MAX_INPUTS; k += 1)
+        {
+            definition.cases[r]["use" ~ k] = k <= count;
+        }
+    }
+    return definition;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Case pattern
+// ---------------------------------------------------------------------------------------------
+
+annotation { "Feature Type Name" : "Case pattern",
+        "Editing Logic Function" : "casePatternEditLogic",
+        "Feature Type Description" : "Re-runs the features built on a Case template once per further case, binding the template's inputs and values to each case's. Bodies a case creates are named after case 1's with the case name as suffix." }
+export const casePattern = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Case template", "Description" : "The Case template holding the inputs and cases." }
+        definition.template is FeatureList;
+
+        annotation { "Name" : "Features to repeat",
+                    "Description" : "The features built on the template's inputs. Reference geometry they create through a Query Variable 'created by', not by clicking it." }
+        definition.features is FeatureList;
+
         annotation { "Group Name" : "Keep", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Parts", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
@@ -205,50 +374,40 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         annotation { "Name" : "Name separator", "Default" : "_", "MaxLength" : 8 }
         definition.separator is string;
 
-        // Template body names, cached by the editing logic (getProperty throws during regen,
+        // Case 1 body names, cached by the editing logic (getProperty throws during regen,
         // correction 36). One line per body: "<feature index>\t<body index>\t<name>".
         annotation { "Name" : "Template names", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
         definition.templateNames is string;
     }
     {
-        const featureIds = sortedFeatureIds(context, definition.features);
-        const functions = valuesSortedById(context, definition.features);
-        if (size(functions) == 0)
-        {
-            throw regenError("Select the Case template and the features built on it.", ["features"]);
-        }
-        const template = findTemplate(context, featureIds);
+        const template = findTemplate(context, sortedFeatureIds(context, definition.template));
         if (template == undefined)
         {
-            throw regenError("Features to repeat must include a Case template.", ["features"]);
+            throw regenError("Select a Case template.", ["template"]);
         }
         if (template.count > 1)
         {
-            throw regenError("Features to repeat includes " ~ template.count ~ " Case templates; list one.", ["features"]);
+            throw regenError("Select one Case template.", ["template"]);
         }
         const signature = template.signature;
-        const nameCount = size(signature.names);
-
-        const caseCount = size(definition.cases);
+        const functions = valuesSortedById(context, definition.features);
+        if (size(functions) == 0)
+        {
+            throw regenError("Select the features built on the template's inputs.", ["features"]);
+        }
+        const cases = signature.cases;
+        const caseCount = size(cases);
         if (caseCount == 0)
         {
-            reportFeatureInfo(context, id, "Add a case to repeat the features for.");
+            reportFeatureInfo(context, id, "The Case template has no further cases.");
             return;
         }
-        var seen = [signature.caseName];
-        for (var k = 0; k < caseCount; k += 1)
+        const nameCount = size(signature.names);
+        const valueNames = signature.valueNames;
+        var caseOneValues = {};
+        for (var name in valueNames)
         {
-            const caseName = definition.cases[k].caseName;
-            if (caseName == "")
-            {
-                throw regenError("Name case " ~ (k + 2) ~ ".", ["cases"]);
-            }
-            if (isIn(caseName, seen))
-            {
-                throw regenError("Case name \"" ~ caseName ~ "\" is used twice (case 1 is \"" ~ signature.caseName ~ "\").",
-                    ["cases"]);
-            }
-            seen = append(seen, caseName);
+            caseOneValues[name] = getVariable(context, name);
         }
 
         const templateNames = parseTemplateNames(definition.templateNames);
@@ -257,14 +416,14 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
 
         for (var k = 0; k < caseCount; k += 1)
         {
-            const row = definition.cases[k];
+            const thisCase = cases[k];
             const caseId = id + ("case" ~ k);
 
-            // Bind every template name to this case's selection, slot by slot.
+            // Bind every input and value to this case's.
             var bindFailure = undefined;
             for (var n = 0; n < nameCount; n += 1)
             {
-                const selection = row["input" ~ (n + 1)];
+                const selection = thisCase.queries[n];
                 if (selection == undefined || isQueryEmpty(context, selection))
                 {
                     bindFailure = "input " ~ (n + 1) ~ " (#" ~ signature.names[n] ~ ") selects nothing";
@@ -272,15 +431,41 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 }
                 setQueryVariable(context, signature.names[n], selection);
             }
+            if (bindFailure == undefined)
+            {
+                for (var name in valueNames)
+                {
+                    const source = name ~ "_" ~ thisCase.caseName;
+                    const value = getVariable(context, source, MISSING);
+                    if (value == MISSING)
+                    {
+                        bindFailure = "#" ~ source ~ " is not defined";
+                        break;
+                    }
+                    setVariable(context, name, value);
+                }
+            }
             if (bindFailure != undefined)
             {
-                failures = append(failures, row.caseName ~ ": " ~ bindFailure);
+                failures = append(failures, thisCase.caseName ~ ": " ~ bindFailure);
                 continue;
             }
+            if (signature.debug)
+            {
+                println("Case " ~ thisCase.caseName ~ ":");
+                for (var n = 0; n < nameCount; n += 1)
+                {
+                    println("  Input " ~ (n + 1) ~ ": #" ~ signature.names[n] ~ " = "
+                            ~ size(evaluateQuery(context, thisCase.queries[n])) ~ " entities");
+                }
+                for (var name in valueNames)
+                {
+                    println("  #" ~ name ~ " = " ~ toString(getVariable(context, name)));
+                }
+            }
 
-            // Run the list as a Pattern runs one instance (correction 31: never inside startFeature).
-            // Bodies each listed feature creates are recorded so they can be named after the
-            // template's bodies from the same feature.
+            // Run the features as a Pattern runs one instance (correction 31: never inside
+            // startFeature), recording the bodies each creates so they can be named after case 1's.
             setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
             var origins = [];
             var before = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
@@ -293,9 +478,9 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                     failure = "feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")";
                     break;
                 }
-                if (!outcome.inFrame)
+                if (signature.debug && !outcome.inFrame)
                 {
-                    println(toString(caseId) ~ ": feature " ~ (i + 1) ~ " ran outside the pattern frame");
+                    println("  feature " ~ (i + 1) ~ " edits geometry from outside the list: ran outside the pattern frame");
                 }
                 const after = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
                 var j = 0;
@@ -318,7 +503,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 {
                     opDeleteBodies(context, id + ("discard" ~ k), { "entities" : caseBodies });
                 }
-                failures = append(failures, row.caseName ~ ": " ~ failure);
+                failures = append(failures, thisCase.caseName ~ ": " ~ failure);
                 continue;
             }
 
@@ -343,7 +528,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 setProperty(context, {
                             "entities" : origin.body,
                             "propertyType" : PropertyType.NAME,
-                            "value" : caseBodyName(templateName, signature.caseName, row.caseName, definition.separator)
+                            "value" : caseBodyName(templateName, signature.caseName, thisCase.caseName, definition.separator)
                         });
             }
         }
@@ -353,10 +538,14 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         {
             setQueryVariable(context, signature.names[n], signature.queries[n]);
         }
+        for (var name in valueNames)
+        {
+            setVariable(context, name, caseOneValues[name]);
+        }
 
         if (size(failures) == caseCount)
         {
-            throw regenError("No case was built. " ~ join(failures, "; "), ["cases"]);
+            throw regenError("No case was built. " ~ join(failures, "; "), ["template"]);
         }
         if (size(failures) > 0)
         {
@@ -367,20 +556,18 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         if (containsSketch(context, definition.features))
         {
             notes = append(notes, "Sketches are re-solved per case. Dimensions and constraints to the origin or the default planes are not"
-                    ~ " reapplied, so those entities keep the template's position; constrain sketches to geometry derived from the inputs.");
+                    ~ " reapplied, so those entities keep case 1's position; constrain sketches to geometry derived from the inputs.");
         }
         if (unnamed > 0)
         {
             notes = append(notes, unnamed ~ " bod" ~ (unnamed == 1 ? "y" : "ies") ~ " kept Onshape's default name: edit this feature to"
-                    ~ " refresh the template names.");
+                    ~ " refresh case 1's names.");
         }
         if (size(notes) > 0)
         {
             reportFeatureInfo(context, id, join(notes, " "));
         }
     }, {
-        "inputSummary" : "",
-        "cases" : [],
         "keepParts" : true,
         "keepSurfaces" : true,
         "keepCurves" : true,
@@ -392,37 +579,13 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
     });
 
 /**
- * Case pattern editing logic: sizes each case row to the template's input count, shows the
- * template's names, and caches the names of the bodies the listed features created (the feature
- * body cannot read names during regen).
+ * Case pattern editing logic: caches the names of the bodies the repeated features created for
+ * case 1 (the feature body cannot read names during regen).
  */
 export function casePatternEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map) returns map
 {
     const featureIds = sortedFeatureIds(context, definition.features);
-    const template = findTemplate(context, featureIds);
-    if (template == undefined)
-    {
-        definition.inputSummary = "";
-        return definition;
-    }
-    const names = template.signature.names;
-
-    var summary = [];
-    for (var n = 0; n < size(names); n += 1)
-    {
-        summary = append(summary, (n + 1) ~ ": #" ~ names[n]);
-    }
-    definition.inputSummary = join(summary, ", ");
-
-    for (var k = 0; k < size(definition.cases); k += 1)
-    {
-        for (var slot = 2; slot <= CASE_MAX_INPUTS; slot += 1)
-        {
-            definition.cases[k]["use" ~ slot] = slot <= size(names);
-        }
-    }
-
     var lines = [];
     for (var i = 0; i < size(featureIds); i += 1)
     {
@@ -480,7 +643,7 @@ function findTemplate(context is Context, featureIds is array)
     return found;
 }
 
-/** Parses the cached template names into a map from "<feature index>.<body index>" to name. */
+/** Parses the cached case 1 names into a map from "<feature index>.<body index>" to name. */
 function parseTemplateNames(text is string) returns map
 {
     var result = {};
