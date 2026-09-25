@@ -14,6 +14,7 @@ Path arc length s: 0..200 line 1, 200..357.080 arc, 357.080..557.080 line 3.
   T6  split, 50 from (x0+100, 0), opposite direction                        -> 2 wires 50 / 507.080
   T7  split at a mate connector at (x0+100, 0)                              -> 2 wires 100 / 457.080
   T8  split, 600 from (x0+100, 0)                                           -> ERROR (runs past the end)
+  T9  split, 50 + additional 150 and -80 from (x0+100, 0)                   -> 4 wires 20 / 130 / 100 / 307.080
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_trim_curve_plus_tests.py
 """
@@ -142,6 +143,11 @@ def connector(name, x, y):
         en("entityInferenceType", "EntityInferenceType", "POINT"), b("allowOwnerEntity", True), b("requireOwnerPart", False)])
 
 
+def extra_distances(pid, *mm):
+    return {"btType": "BTMParameterArray-2025", "parameterId": pid, "items": [
+        {"btType": "BTMArrayParameterItem-1843", "parameters": [num("extraDistance", "%g mm" % d)]} for d in mm]}
+
+
 def trim(name, curves, given=(), enums=None):
     """An instance of Trim curve +; parameters not given take the spec defaults (correction 38)."""
     given = {p["parameterId"]: p for p in [q("curves", curves)] + list(given)}
@@ -150,8 +156,9 @@ def trim(name, curves, given=(), enums=None):
     for p in SPEC["parameters"]:
         pid = p["parameterId"]
         d = p.get("defaultValue")
-        if pid == "inflectionIndices":
-            params.append({"btType": "BTMParameterArray-2025", "parameterId": pid, "items": []})
+        if pid in ("inflectionIndices", "extraDistances"):
+            items = given[pid]["items"] if pid in given else []
+            params.append({"btType": "BTMParameterArray-2025", "parameterId": pid, "items": items})
         elif pid in given:
             params.append(given[pid])
         elif pid in enums:
@@ -205,6 +212,13 @@ x0 = 6000
 w = wire("T7", x0)
 mc = connector("T7 mate connector at (%d, 0)" % (x0 + 100), x0 + 100, 0)
 trim("T7 split at a mate connector -> 2 wires 100 / 457.080", body(w), [q("atPoints", body(mc))], dict(SPLIT, cutBy="AT_POINTS"))
+
+x0 = 8000
+w = wire("T9", x0)
+p = points("T9", [(x0 + 100, 0)])
+trim("T9 split 50, extra 150 and -80 from point -> 4 wires 20 / 130 / 100 / 307.080", body(w),
+     [q("fromPoint", vertices(p)), num("distance", "50 mm"), extra_distances("extraDistances", 150, -80)],
+     dict(SPLIT, cutBy="ARC_LENGTH_FROM_POINT"))
 
 x0 = 7000
 w = wire("T8", x0)

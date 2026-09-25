@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a762b");
 // IMPORT: undrape_utils.fs (same document; the undrape map)
 import(path : "283b8f7562a16e9c9ccc01b7", version : "");
+// IMPORT: unwrap_part.fs (same document; solid unwrap)
+import(path : "UNWRAP_PART_EID", version : "");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
@@ -92,7 +94,9 @@ export enum UnwrapType
     annotation { "Name" : "Edges / wires" }
     EDGES,
     annotation { "Name" : "Constant-thickness part" }
-    THICKENED
+    THICKENED,
+    annotation { "Name" : "Part (solid)" }
+    PART
 }
 
 /** Which curve's length an edge unwrap preserves. */
@@ -146,15 +150,18 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         else
         {
             annotation { "Name" : "Parts to unwrap", "Filter" : EntityType.BODY && BodyType.SOLID,
-                        "Description" : "Constant-thickness parts, draped or not, e.g. a topsheet." }
+                        "Description" : "Constant-thickness: plates, draped or not, e.g. a topsheet. Part: any solid along the reference, e.g. a core." }
             definition.parts is Query;
+        }
 
+        if (definition.unwrapType == UnwrapType.THICKENED)
+        {
             annotation { "Name" : "Undrape target from", "Default" : UndrapeTargetSource.WIRE, "UIHint" : UIHint.HORIZONTAL_ENUM,
                         "Description" : "The part's mid-surface is mapped onto the extrusion of a wire along its plane normal: a wire you pick, or the section of the mid-surface by a face you pick." }
             definition.targetFrom is UndrapeTargetSource;
         }
 
-        if (definition.unwrapType == UnwrapType.EDGES || definition.targetFrom == UndrapeTargetSource.WIRE)
+        if (definition.unwrapType != UnwrapType.THICKENED || definition.targetFrom == UndrapeTargetSource.WIRE)
         {
             annotation { "Name" : "Wrapped reference", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO,
                         "Description" : "A planar tangent chain the geometry is wrapped along, e.g. the ski's top-surface profile." }
@@ -167,7 +174,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             definition.profileFace is Query;
         }
 
-        if (definition.unwrapType == UnwrapType.EDGES)
+        if (definition.unwrapType != UnwrapType.THICKENED)
         {
             annotation { "Name" : "Preserve length", "Default" : UnwrapPreserveLength.REFERENCE, "UIHint" : UIHint.SHOW_LABEL,
                         "Description" : "Which curve keeps its length when unwrapped." }
@@ -199,12 +206,22 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                     "Description" : "Frame of the flat result: X along the reference, Z along its surface normal. A mate connector (implicit ones included) or a plane / planar face (its own axes)." }
         definition.origin is Query;
 
+        if (definition.unwrapType != UnwrapType.EDGES)
+        {
+            annotation { "Name" : "Lay the part on the origin plane", "Default" : true,
+                        "Description" : "The flat part's lowest face on the origin's XY plane. Off, it keeps its height relative to the alignment point." }
+            definition.layOnPlane is boolean;
+        }
+
+        if (definition.unwrapType == UnwrapType.PART)
+        {
+            annotation { "Name" : "Square walls", "Default" : false,
+                        "Description" : "Make walls normal to the flat plane (a machined blank). Off, walls keep the exact mapped lean (e.g. 1.2 deg at a core extension's nose)." }
+            definition.squareWalls is boolean;
+        }
+
         if (definition.unwrapType == UnwrapType.THICKENED)
         {
-            annotation { "Name" : "Lay the plate on the origin plane", "Default" : true,
-                        "Description" : "The flat plate's lower face on the origin's XY plane. Off, its mid-plane keeps its height relative to the alignment point." }
-            definition.layOnPlane is boolean;
-
             annotation { "Name" : "Outline sample spacing", "Description" : "Spacing of the undraped outline samples. 6 mm holds the outline within 0.005 mm; wider is faster." }
             isLength(definition.sampleSpacing, UNWRAP_SPACING_BOUNDS);
         }
@@ -275,7 +292,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             throw regenError(definition.unwrapType == UnwrapType.EDGES ? "Select the edges to unwrap." : "Select the parts to unwrap.",
                 [definition.unwrapType == UnwrapType.EDGES ? "edges" : "parts"]);
         }
-        if ((definition.unwrapType == UnwrapType.EDGES || definition.targetFrom == UndrapeTargetSource.WIRE)
+        if ((definition.unwrapType != UnwrapType.THICKENED || definition.targetFrom == UndrapeTargetSource.WIRE)
             && isQueryEmpty(context, definition.reference))
         {
             throw regenError("Select the wrapped reference.", ["reference"]);
@@ -307,7 +324,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         var records = [];
         var edgesOnPlane = [];
 
-        const edgeChart = (definition.unwrapType == UnwrapType.EDGES)
+        const edgeChart = (definition.unwrapType != UnwrapType.THICKENED)
             ? unwrapChart(context, definition.reference, alignPoint, lengthOffset(definition))
             : undefined;
 
@@ -319,6 +336,10 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             {
                 const edges = evaluateQuery(context, qIntersection([qOwnedByBody(sources[i], EntityType.EDGE), expandEdgeQuery(definition.edges)]));
                 result = unwrapEdgesToWires(context, bodyId, edgeChart, cs, edges, settings);
+            }
+            else if (definition.unwrapType == UnwrapType.PART)
+            {
+                result = unwrapPart(context, bodyId, definition, edgeChart, cs, sources[i], settings);
             }
             else
             {
@@ -506,6 +527,42 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         "tally" : tally,
         "points" : allPoints,
         "record" : { "edges" : size(edges), "worstFlat" : worstFlat }
+    };
+}
+
+/**
+ * Unwrap a solid (unwrap_part.fs, research_unwrap_part.md): split where the reference changes between straight and
+ * curved, straight pieces moved rigidly, curved pieces rebuilt. Laid on the origin plane by a translation.
+ */
+function unwrapPart(context is Context, id is Id, definition is map, chart is map, cs is CoordSystem, part is Query,
+    settings is map) returns map
+{
+    const result = unwrapSolid(context, id, chart, cs, part, {
+                "squareWalls" : definition.squareWalls,
+                "flatTolerance" : 0.001 * millimeter,
+                "print" : settings.print
+            });
+    if (settings.print)
+    {
+        for (var text in result.lines)
+        {
+            println(text);
+        }
+    }
+
+    if (definition.layOnPlane)
+    {
+        const bb = evBox3d(context, { "topology" : result.bodies, "tight" : true, "cSys" : cs });
+        opTransform(context, id + "layOnPlane", {
+                    "bodies" : result.bodies,
+                    "transform" : transform(-bb.minCorner[2] * cs.zAxis)
+                });
+    }
+
+    return {
+        "bodies" : result.bodies,
+        "tally" : { "line" : 0, "arc" : 0, "freeform" : 0 },
+        "record" : { "part" : result.report }
     };
 }
 
@@ -1079,6 +1136,14 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
                 ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax * 180 / PI, 2)) ~ " deg; rim "
                 ~ fmtMM(u.rim3d, 3, 0) ~ " mm draped -> " ~ fmtMM(u.rimFlat, 3, 0) ~ " mm flat"
                 ~ (r.pieces > 1 ? "; " ~ r.pieces ~ " solids" : "") ~ ".";
+        }
+    }
+    for (var r in records)
+    {
+        if (r.part != undefined)
+        {
+            text = text ~ " Part: " ~ r.part.pieces ~ " piece(s), " ~ r.part.rigidPieces ~ " moved rigidly, "
+                ~ r.part.rebuiltPieces ~ " rebuilt.";
         }
     }
     println("[unwrap] " ~ text);

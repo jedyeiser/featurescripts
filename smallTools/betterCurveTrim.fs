@@ -17,8 +17,8 @@ IconNamespace::import(path : "a4ceb2cfcdb959208b76a85c", version : "e1d6923ac935
  * Capabilities:
  *   - Trim OR split (split keeps all geometry; optionally return one wire).     [done]
  *   - Cut at points, evenly between two points, or every X from a point.        [done]
- *   - Cut a signed arc-length distance from a reference point (blue arrow =     [done]
- *     positive direction), optionally also at the reference point itself.
+ *   - Cut at one or more signed arc-length distances from a reference point     [done]
+ *     (blue arrow = positive direction), optionally also at the reference point.
  *   - Cut at solved inflection points: pick any (toggle), or nearest each end.  [done]
  *   - EXTEND (pass-through to opMoveCurveBoundary) to fully supersede OS_Trim.   [pending]
  *
@@ -129,6 +129,14 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 
             if (definition.operation == OPERATION.SPLIT)
             {
+                annotation { "Name" : "Additional distances", "Item name" : "distance", "Item label template" : "#extraDistance", "Description" : "More cuts from the same reference point, each a signed distance like the first." }
+                definition.extraDistances is array;
+                for (var item in definition.extraDistances)
+                {
+                    annotation { "Name" : "Distance" }
+                    isLength(item.extraDistance, LENGTH_BOUNDS);
+                }
+
                 annotation { "Name" : "Also split at reference point", "Default" : false }
                 definition.splitAtReference is boolean;
             }
@@ -241,6 +249,7 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
     {
         "inflectionIndices" : [],
         "distanceFlip" : false,
+        "extraDistances" : [],
         "splitAtReference" : false
     });
 
@@ -480,12 +489,26 @@ function cutFractionsFor(context is Context, definition is map, wp is map) retur
         var dir = definition.distanceFlip ? -1 : 1;
         markPositiveDirection(context, wp, f0, dir);
 
-        var f = fractionAtSignedDistance(wp, f0, definition.distance, dir);
-        if (f <= 0 || f >= 1)
+        var distances = [definition.distance];
+        if (definition.operation == OPERATION.SPLIT)
         {
-            throw regenError("The distance runs past the end of the curve (" ~ roundToPrecision(f0 * wp.total / millimeter, 3) ~ " mm from its start, " ~ roundToPrecision(wp.total / millimeter, 3) ~ " mm long)", ["distance"]);
+            for (var item in definition.extraDistances)
+            {
+                distances = append(distances, item.extraDistance);
+            }
         }
-        var fractions = [f];
+
+        var fractions = [];
+        for (var i = 0; i < size(distances); i += 1)
+        {
+            var f = fractionAtSignedDistance(wp, f0, distances[i], dir);
+            if (f <= 0 || f >= 1)
+            {
+                var which = (i == 0) ? "The distance" : ("Additional distance " ~ i);
+                throw regenError(which ~ " (" ~ roundToPrecision(distances[i] / millimeter, 3) ~ " mm) runs past the end of the curve (reference " ~ roundToPrecision(f0 * wp.total / millimeter, 3) ~ " mm from its start, curve " ~ roundToPrecision(wp.total / millimeter, 3) ~ " mm long)", [(i == 0) ? "distance" : "extraDistances"]);
+            }
+            fractions = append(fractions, f);
+        }
         if (definition.operation == OPERATION.SPLIT && definition.splitAtReference)
         {
             fractions = append(fractions, f0);
