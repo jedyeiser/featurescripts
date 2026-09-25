@@ -930,7 +930,7 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
                 ~ " mm); mid-surface mapped to the target offset " ~ fmtMM(r.offset, 4, 0) ~ " mm; "
                 ~ u.stations ~ " stations, " ~ u.fallbacks ~ " kernel sections. Deformation: lengthwise stretch "
                 ~ toString(roundToPrecision((u.stretchMin - 1) * 100, 3)) ~ "% .. " ~ toString(roundToPrecision((u.stretchMax - 1) * 100, 3))
-                ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax / degree, 2)) ~ " deg; rim "
+                ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax * 180 / PI, 2)) ~ " deg; rim "
                 ~ fmtMM(u.rim3d, 3, 0) ~ " mm draped -> " ~ fmtMM(u.rimFlat, 3, 0) ~ " mm flat"
                 ~ (r.pieces > 1 ? "; " ~ r.pieces ~ " solids" : "") ~ ".";
         }
