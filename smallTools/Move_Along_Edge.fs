@@ -269,8 +269,9 @@ function selectedEntities(context is Context, selection is Query) returns array
     var entities = [];
     for (var entity in evaluateQuery(context, qUnion([selection])))
     {
-        var connector = qBodyType(qOwnerBody(entity), BodyType.MATE_CONNECTOR);
-        entities = append(entities, isQueryEmpty(context, connector) ? entity : connector);
+        // The connector body's own id (a query through its vertex stops resolving once the connector moves).
+        var connector = evaluateQuery(context, qBodyType(qOwnerBody(entity), BodyType.MATE_CONNECTOR));
+        entities = append(entities, connector == [] ? entity : connector[0]);
     }
     return entities;
 }
@@ -354,8 +355,9 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
     }
 
     var isVertex = !isQueryEmpty(context, qEntityFilter(body, EntityType.VERTEX));
+    var isConnector = !isQueryEmpty(context, qBodyType(body, BodyType.MATE_CONNECTOR));
     var isEdge = !isQueryEmpty(context, qEntityFilter(body, EntityType.EDGE));
-    var asPoint = isVertex || (definition.mcAsPoints && !isQueryEmpty(context, qBodyType(body, BodyType.MATE_CONNECTOR)));
+    var asPoint = isVertex || (definition.mcAsPoints && isConnector);
     var namesMissing = false;
     var connectorNotNamed = false;
     var results = [];
@@ -396,7 +398,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
             });
         }
 
-        if (move.nameMode != MoveNameMode.NONE && !isQueryEmpty(context, qBodyType(result, BodyType.MATE_CONNECTOR)))
+        if (move.nameMode != MoveNameMode.NONE && isConnector && !asPoint)
         {
             // setProperty refuses a mate connector (CANNOT_RESOLVE_ENTITIES).
             connectorNotNamed = true;
