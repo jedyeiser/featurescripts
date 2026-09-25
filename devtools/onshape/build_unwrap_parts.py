@@ -88,7 +88,7 @@ for name, body in [("4101 base", "RtjP"), ("4305", "RtjT"), ("6005", "Rtjf"), ("
     if ONLY and ONLY != body:
         continue
     unwrap("Unwrap %s (plate, own section)" % name,
-           [qd("parts", body), qd("profileFace", "JCC"), qd("alignPoint", MC), qd("origin", TOP_PLANE), b("debugPrintEdges", body == "RtjP")],
+           [qd("parts", body), qd("profileFace", "JCC"), qd("alignPoint", MC), qd("origin", TOP_PLANE)],
            {"unwrapType": "THICKENED", "targetFrom": "FACE"})
 
 # Tip / tail pieces that do not reach the alignment station: REF_WIRE, offset to their mid-height.
