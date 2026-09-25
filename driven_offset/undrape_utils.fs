@@ -65,23 +65,23 @@ export const UNDRAPE_EDGE_TURN = 0.5;
  * Outline sampling (undrapeSeeds, undrapeOutline): seeds from each rim edge's structure (as above) plus the
  * chart's curvature breaks on lengthwise edges, gaps capped by options.spacing (default UNDRAPE_MAX_GAP); then
  * up to UNDRAPE_REFINE_PASSES passes map the midpoint of every unsettled span (one batched station pass each)
- * and split the spans whose midpoint misses the cubic predicted from its neighbours by more than
- * options.tolerance (default UNDRAPE_TOLERANCE). Spans shorter than UNDRAPE_MIN_SPAN are not split further.
- * Lengthwise edges share stations: every station is read on every lengthwise rim edge that spans it by more
- * than UNDRAPE_SHARE_MARGIN at both ends (a crossing already computed costs nothing).
+ * and split the spans whose midpoint misses the curve a fit through the samples would draw (undrapeMiss) by more
+ * than options.tolerance (default UNDRAPE_TOLERANCE). Spans shorter than 2 * UNDRAPE_MIN_SPAN are not checked.
+ * Lengthwise edges ask for stations by arc; the two long sides of a symmetric part ask for the same arcs and
+ * share them. (Reading every station on every lengthwise edge that spans it was tried: it saved no stations on
+ * the topsheet, and a foreign sample changes an edge's curve where nothing checked it.)
  */
 export const UNDRAPE_TOLERANCE = 1.25e-6;
 export const UNDRAPE_MAX_GAP = 0.05;
 export const UNDRAPE_REFINE_PASSES = 10;
 export const UNDRAPE_MIN_SPAN = 5e-4;
-export const UNDRAPE_SHARE_MARGIN = 1e-3;
 
 /**
- * An edge's first and last spans are checked until narrower than 2 * UNDRAPE_END_SPAN whether or not they pass,
- * metres: next to an outline vertex the outline bends within a few millimetres (research_undrape_map.md 12, finding
- * c: face ends slanted against the rim's), a feature a single midpoint check of a long end span can miss.
+ * An edge's first and last spans (when wider than 4 * UNDRAPE_END_CHECK) are also checked UNDRAPE_END_CHECK from
+ * the vertex, metres: next to an outline vertex the outline can bend within a millimetre or so (research_undrape_map.md
+ * 12, finding c: face ends slanted against the rim's; the wing roots of 4305), which the span's midpoint misses.
  */
-export const UNDRAPE_END_SPAN = 1e-3;
+export const UNDRAPE_END_CHECK = 1e-3;
 
 /**
  * Spans touching a station measured by the kernel fallback (the U-turns) are refined only to UNDRAPE_KERNEL_TOL,
@@ -2572,7 +2572,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     var unsettled = 0;
     for (var pass = 0; pass <= UNDRAPE_REFINE_PASSES; pass += 1)
     {
-        const shared = undrapeShare(shareArcs, seeds.lengthwise, eps, requests);
+        const shared = undrapeArcRequests(shareArcs, eps, requests);
         requests = shared.requests;
         eps = shared.edges;
         if (size(requests) == size(results))
@@ -2999,15 +2999,15 @@ export function undrapeFillGaps(us is array, extent is number, cap is number) re
  *
  * Every loop vertex is one request (computed once, shared by both its edges). A rim edge running along the
  * reference (|t . u| >= UNDRAPE_LENGTHWISE everywhere, arcs monotone) is sampled by station arc: its seeds (its
- * structural spans, undrapeSeedSpans, the chart's curvature breaks inside it, gaps capped at `cap`) become
- * shared arcs (undrapeShare: every lengthwise edge reads every such station it spans). Any other rim edge (ends,
+ * structural spans, undrapeSeedSpans, the chart's curvature breaks inside it, gaps capped at `cap`) become station
+ * arcs (undrapeArcRequests; symmetric sides share them). Any other rim edge (ends,
  * notches, holes) is sampled by arc length s along its table, each sample at its own station ("point"
  * requests). Each edge end also gets three requests at one, two and three UNDRAPE_TANGENT_STEP inside it, for its
  * end tangent (undrapeEndTangent).
  *
  * @returns {map} : { "requests" : array of { "arc", "kind" ("edge" | "point"), "edge", "p" ([x, y, z, nx, ny, nz]) },
- *      "edges" : map table -> edge state (see undrapeRefine), "lengthwise" : the lengthwise rim tables,
- *      "shareArcs" : array of [arc, table, -1] seed arcs of the lengthwise edges }
+ *      "edges" : map table -> edge state (see undrapeRefine), "shareArcs" : array of [arc, table, -1] seed arcs of
+ *      the lengthwise edges }
  */
 export function undrapeSeeds(c is map, tables is array, rim is array, loopData is map, cap is number, breaks is array) returns map
 {
@@ -3022,7 +3022,6 @@ export function undrapeSeeds(c is map, tables is array, rim is array, loopData i
     }
 
     var edges = {};
-    var lengthwiseEdges = [];
     var shareArcs = [];
     for (var r in rim)
     {
@@ -3091,7 +3090,7 @@ export function undrapeSeeds(c is map, tables is array, rim is array, loopData i
             {
                 // a break next to a vertex is that vertex
                 const u = dir * (b - s0);
-                if (u > UNDRAPE_SHARE_MARGIN && u < extent - UNDRAPE_SHARE_MARGIN)
+                if (u > UNDRAPE_END_CHECK && u < extent - UNDRAPE_END_CHECK)
                 {
                     us = append(us, u);
                 }
@@ -3112,7 +3111,6 @@ export function undrapeSeeds(c is map, tables is array, rim is array, loopData i
             ep.a0 = s0;
             ep.extent = extent;
             ep.step = step;
-            lengthwiseEdges = append(lengthwiseEdges, r);
         }
         else
         {
@@ -3145,85 +3143,46 @@ export function undrapeSeeds(c is map, tables is array, rim is array, loopData i
         ep.tanEnd = concatenateArrays([[ep.v1], tanEnd]);
         edges[r] = ep;
     }
-    return { "requests" : requests, "edges" : edges, "lengthwise" : lengthwiseEdges, "shareArcs" : shareArcs };
+    return { "requests" : requests, "edges" : edges, "shareArcs" : shareArcs };
 }
 
 /**
- * "edge" requests at shared station arcs: every lengthwise rim edge reads every arc it spans by more than
- * UNDRAPE_SHARE_MARGIN at both ends (its crossing is computed at that station anyway), and always the arcs it
- * asked for itself (its seeds and its checks: [arc, table, check index or -1]). Arcs closer than
- * UNDRAPE_STATION_MERGE are one. The new samples wait in each edge's "fresh" list ([u, request]).
+ * "edge" requests of lengthwise rim edges at the station arcs they asked for (their seeds and their check points:
+ * [arc, table, check index or -1]). Requests of different edges at one arc (the two long sides of a symmetric
+ * part) share their station. The new samples wait in each edge's "fresh" list ([u, request]).
  */
-export function undrapeShare(shareArcs is array, lengthwise is array, edges is map, requests is array) returns map
+export function undrapeArcRequests(arcs is array, edges is map, requests is array) returns map
 {
-    if (size(shareArcs) == 0)
-    {
-        return { "requests" : requests, "edges" : edges };
-    }
-    const sorted = sort(shareArcs, function(p, q) { return p[0] - q[0]; });
-    // groups of equal arcs: their arc and who asked (table -> check index)
-    var groupArcs = [];
-    var groupOwners = [];
-    for (var entry in sorted)
-    {
-        const g = size(groupArcs) - 1;
-        if (g < 0 || entry[0] - groupArcs[g] > UNDRAPE_STATION_MERGE)
-        {
-            groupArcs = append(groupArcs, entry[0]);
-            var owners = {};
-            owners[entry[1]] = entry[2];
-            groupOwners = append(groupOwners, owners);
-        }
-        else
-        {
-            var owners = groupOwners[g];
-            if (owners[entry[1]] == undefined || owners[entry[1]] < 0)
-            {
-                owners[entry[1]] = entry[2];
-            }
-            groupOwners[g] = owners;
-        }
-    }
     var result = requests;
     var out = edges;
-    for (var r in lengthwise)
+    for (var entry in arcs)
     {
+        const r = entry[1];
         var ep = out[r];
-        var fresh = ep.fresh;
-        var checkReq = ep.checkReq;
-        for (var g = 0; g < size(groupArcs); g += 1)
+        ep.fresh = append(ep.fresh, [ep.dir * (entry[0] - ep.a0), size(result)]);
+        if (entry[2] >= 0)
         {
-            const a = groupArcs[g];
-            const u = ep.dir * (a - ep.a0);
-            const mine = groupOwners[g][r];
-            if (mine != undefined || (u > UNDRAPE_SHARE_MARGIN && u < ep.extent - UNDRAPE_SHARE_MARGIN))
-            {
-                fresh = append(fresh, [u, size(result)]);
-                if (mine != undefined && mine >= 0)
-                {
-                    checkReq[mine] = size(result);
-                }
-                result = append(result, { "arc" : a, "kind" : "edge", "edge" : r });
-            }
+            ep.checkReq[entry[2]] = size(result);
         }
-        ep.fresh = fresh;
-        ep.checkReq = checkReq;
+        result = append(result, { "arc" : entry[0], "kind" : "edge", "edge" : r });
         out[r] = ep;
     }
     return { "requests" : result, "edges" : out };
 }
 
 /**
- * One rim edge after a pass: each checked span's midpoint against the cubic predicted from the edge's samples
- * before this pass (undrapePredict), then the pass's samples join, then the next checks: every span after the
- * seed pass, afterwards only the spans inside a span that failed; spans narrower than 2 * UNDRAPE_MIN_SPAN are
- * not checked. A lengthwise edge asks for its midpoints as shared arcs, any other edge as its own "point"
- * requests (appended after `requests`).
+ * One rim edge after a pass: each check point against the curve a fit through the edge's samples before this
+ * pass would draw (undrapeMiss); the midpoints join the samples, passed or not, end checks only when they failed;
+ * then the next checks: every span after the seed pass, afterwards the spans inside a failed span and the span
+ * either side of it (the new samples changed their curve too); spans narrower than 2 * UNDRAPE_MIN_SPAN
+ * (2 * UNDRAPE_KERNEL_MIN_SPAN next to a kernel-measured station) are not checked. A span is checked at its
+ * midpoint, an end span also UNDRAPE_END_CHECK from its vertex. A lengthwise edge asks for its check points as
+ * shared arcs, any other edge as its own "point" requests (appended after `requests`).
  *
  * Edge state: { lengthwise, v0, v1 (vertex requests), tanStart, tanEnd ([vertex, 1, 2, 3 steps] requests), step,
  *      extent (u at the far end), dir, a0 (lengthwise: u = dir * (arc - a0); else u = arc length along the table),
- *      samples ([u, request], ascending), fresh (this pass's, not yet joined), checks ([u0, u1] spans checked this
- *      pass: [u0, u1, request0, request1]), checkReq (their midpoint requests) }
+ *      samples ([u, request], ascending), fresh (this pass's, not yet joined), checks (this pass's: [u0, u1, request0,
+ *      request1, u of the check point, 1 for an end check]), checkReq (the check points' requests) }
  * @returns {map} : { "edge", "requests" (new point requests), "arcs" (new shared arcs), "unsettled" (failed spans
  *      that get no further check) }
  */
@@ -3237,6 +3196,7 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
         return { "edge" : ep, "requests" : [], "arcs" : [], "unsettled" : 0 };
     }
     var failedSpans = [];
+    var drop = {};
     if (size(ep.checks) > 0)
     {
         const known = undrapeKnown(ep, results);
@@ -3249,11 +3209,7 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
                 continue;
             }
             const span = ep.checks[k];
-            const p = undrapePredict(known, 0.5 * (span[0] + span[1]));
-            if (p == undefined)
-            {
-                continue;
-            }
+            const miss = undrapeMiss(known, span[4], q);
             // a span touching a kernel-measured station is held to that measurement's own accuracy
             var limit = tol;
             for (var idx2 in [idx, span[2], span[3]])
@@ -3264,13 +3220,28 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
                     limit = max(tol, UNDRAPE_KERNEL_TOL);
                 }
             }
-            if ((q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]) > limit * limit)
+            if (miss <= limit && span[5] == 1)
+            {
+                // a passed end check leaves: a sample a millimetre from the vertex would bend the fit where
+                // nothing checked it (a passed midpoint stays: halving a span only tightens its curve)
+                drop[idx] = true;
+            }
+            const last = size(failedSpans) - 1;
+            if (miss > limit && (last < 0 || failedSpans[last][0] != span[0] || failedSpans[last][1] != span[1]))
             {
                 failedSpans = append(failedSpans, span);
             }
         }
     }
-    ep.samples = sort(concatenateArrays([ep.samples, ep.fresh]), function(p, q) { return p[0] - q[0]; });
+    var fresh = [];
+    for (var entry in ep.fresh)
+    {
+        if (drop[entry[1]] != true)
+        {
+            fresh = append(fresh, entry);
+        }
+    }
+    ep.samples = sort(concatenateArrays([ep.samples, fresh]), function(p, q) { return p[0] - q[0]; });
     ep.fresh = [];
     ep.checks = [];
     ep.checkReq = [];
@@ -3286,22 +3257,22 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
     }
     us[size(us) - 1] = ep.extent;
     var reqs = concatenateArrays([[ep.v0], mapArray(ep.samples, function(x) { return x[1]; }), [ep.v1]]);
-    var f = 0;
+    // spans to check: all after the seed pass; afterwards every span inside a failed span and the span either side
+    // of it (the new samples changed their curve too)
+    var dirty = makeArray(size(us) - 1, firstPass);
+    for (var span in failedSpans)
+    {
+        for (var i = 0; i + 1 < size(us); i += 1)
+        {
+            if (us[i + 1] >= span[0] - 1e-12 && us[i] <= span[1] + 1e-12)
+            {
+                dirty[i] = true;
+            }
+        }
+    }
     for (var i = 0; i + 1 < size(us); i += 1)
     {
-        var wanted = firstPass;
-        if (!firstPass)
-        {
-            // inside a failed span?
-            while (f < size(failedSpans) && failedSpans[f][1] < us[i + 1] - 1e-12)
-            {
-                f += 1;
-            }
-            wanted = f < size(failedSpans) && failedSpans[f][0] <= us[i] + 1e-12 && us[i + 1] <= failedSpans[f][1] + 1e-12;
-        }
-        // an edge's first and last spans are checked until narrower than 2 * UNDRAPE_END_SPAN, passed or not
-        const endSpan = (i == 0 || i + 2 == size(us)) && us[i + 1] - us[i] >= 2 * UNDRAPE_END_SPAN;
-        if (!(wanted || (endSpan && !firstPass)) || !more)
+        if (!dirty[i] || !more)
         {
             continue;
         }
@@ -3313,21 +3284,36 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
         {
             continue;
         }
-        const m = 0.5 * (us[i] + us[i + 1]);
-        ep.checks = append(ep.checks, [us[i], us[i + 1], reqs[i], reqs[i + 1]]);
-        if (ep.lengthwise)
+        // the midpoint; an edge's first and last spans also UNDRAPE_END_CHECK from the vertex
+        var at = [0.5 * (us[i] + us[i + 1])];
+        if (us[i + 1] - us[i] > 4 * UNDRAPE_END_CHECK)
         {
-            ep.checkReq = append(ep.checkReq, undefined);
-            arcs = append(arcs, [ep.a0 + ep.dir * m, r, size(ep.checks) - 1]);
+            if (i == 0)
+            {
+                at = append(at, us[0] + UNDRAPE_END_CHECK);
+            }
+            if (i + 2 == size(us))
+            {
+                at = append(at, us[i + 1] - UNDRAPE_END_CHECK);
+            }
         }
-        else
+        for (var m in at)
         {
-            const p = undrapeEdgePoint(tb, m);
-            const near = results[reqs[i]];
-            const a = undrapeFootArc(c, p, (near == undefined) ? undefined : near[5]);
-            ep.checkReq = append(ep.checkReq, size(requests) + size(newRequests));
-            ep.fresh = append(ep.fresh, [m, size(requests) + size(newRequests)]);
-            newRequests = append(newRequests, { "arc" : a, "kind" : "point", "p" : p });
+            ep.checks = append(ep.checks, [us[i], us[i + 1], reqs[i], reqs[i + 1], m, (size(ep.checks) > 0 && ep.checks[size(ep.checks) - 1][0] == us[i]) ? 1 : 0]);
+            if (ep.lengthwise)
+            {
+                ep.checkReq = append(ep.checkReq, undefined);
+                arcs = append(arcs, [ep.a0 + ep.dir * m, r, size(ep.checks) - 1]);
+            }
+            else
+            {
+                const p = undrapeEdgePoint(tb, m);
+                const near = results[reqs[i]];
+                const a = undrapeFootArc(c, p, (near == undefined) ? undefined : near[5]);
+                ep.checkReq = append(ep.checkReq, size(requests) + size(newRequests));
+                ep.fresh = append(ep.fresh, [m, size(requests) + size(newRequests)]);
+                newRequests = append(newRequests, { "arc" : a, "kind" : "point", "p" : p });
+            }
         }
     }
     // failed spans that got no check (too narrow, or the last pass)
@@ -3351,15 +3337,16 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
 }
 
 /**
- * What a fit of the edge sees, for prediction: its output samples in order along it (vertices included; unmeasured
- * ones and repeats left out) as { "us", "xs", "ys" } (plain metres), and the end slopes d(x, y)/du from the flat end
- * tangents (undrapeEndTangent, from the points one, two and three UNDRAPE_TANGENT_STEP inside each end) scaled by
- * the speed between those points: "slope0", "slope1" (undefined where not measured).
+ * What a fit of the edge sees, for the checks: its output samples in order along it (vertices included; unmeasured
+ * ones and repeats left out) as { "us" (edge coordinate u), "ts" (cumulative chord in the flat), "xs", "ys" (plain
+ * metres) }, and the unit flat end tangents "tangent0", "tangent1" (undrapeEndTangent, from the points one, two and
+ * three UNDRAPE_TANGENT_STEP inside each end, along the edge; undefined where not measured).
  */
 export function undrapeKnown(ep is map, results is array) returns map
 {
     const entries = concatenateArrays([[[0, ep.v0]], ep.samples, [[ep.extent, ep.v1]]]);
     var us = [];
+    var ts = [];
     var xs = [];
     var ys = [];
     for (var entry in entries)
@@ -3369,41 +3356,35 @@ export function undrapeKnown(ep is map, results is array) returns map
         {
             continue;
         }
+        const n = size(us);
+        const t = (n == 0) ? 0 : ts[n - 1] + sqrt((q[0] - xs[n - 1]) * (q[0] - xs[n - 1]) + (q[1] - ys[n - 1]) * (q[1] - ys[n - 1]));
+        if (n > 0 && t - ts[n - 1] < 1e-12)
+        {
+            continue;
+        }
         us = append(us, entry[0]);
+        ts = append(ts, t);
         xs = append(xs, q[0]);
         ys = append(ys, q[1]);
     }
-    return { "us" : us, "xs" : xs, "ys" : ys, "slope0" : undrapeEndSlope(results, ep.tanStart, false, ep.step),
-            "slope1" : undrapeEndSlope(results, ep.tanEnd, true, ep.step) };
-}
-
-/** d(x, y)/du at an edge end, along u (undefined where not measured): the end tangent times the speed there. */
-export function undrapeEndSlope(results is array, indices is array, atEnd is boolean, step is number)
-{
-    const tangent = undrapeEndTangent(results, indices, atEnd);
-    const p1 = results[indices[1]];
-    const p3 = results[indices[3]];
-    if (tangent == undefined || step < 1e-12)
-    {
-        return undefined;
-    }
-    const speed = sqrt((p3[0] - p1[0]) * (p3[0] - p1[0]) + (p3[1] - p1[1]) * (p3[1] - p1[1])) / (2 * step);
-    return [tangent[0] * speed, tangent[1] * speed];
+    return { "us" : us, "ts" : ts, "xs" : xs, "ys" : ys, "tangent0" : undrapeEndTangent(results, ep.tanStart, false),
+            "tangent1" : undrapeEndTangent(results, ep.tanEnd, true) };
 }
 
 /**
- * The flat point at u predicted from the known samples: the cubic Hermite across the bracketing span with slopes
- * from the quadratic through each end and its neighbours (Catmull-Rom on uneven spacing), the end slopes at the
- * edge's ends: what a fit through the samples with those end tangents sees. [x, y], or undefined when fewer than
- * two samples are known.
+ * How far the flat point q ([x, y, ...]) of the check point at u misses the curve a fit through the known samples
+ * would draw there: the cubic Hermite on chord length (slopes from the quadratic through each sample and its
+ * neighbours, Catmull-Rom on uneven spacing; the unit end tangents at the edge's ends), nearest point on the span
+ * bracketing u (Newton from u's fraction of it), or on a neighbouring span when the nearest point is an end of it.
+ * Metres; 0 when fewer than two samples are known.
  */
-export function undrapePredict(known is map, u is number)
+export function undrapeMiss(known is map, u is number, q is array) returns number
 {
     const us = known.us;
     const n = size(us);
     if (n < 2)
     {
-        return undefined;
+        return 0;
     }
     var low = 0;
     var high = n - 2;
@@ -3419,29 +3400,78 @@ export function undrapePredict(known is map, u is number)
             low = half + 1;
         }
     }
-    const i = low;
-    const h = us[i + 1] - us[i];
-    const f = clamp((u - us[i]) / h, 0, 1);
-    const d0 = (i == 0 && known.slope0 != undefined) ? known.slope0 : undrapeSlope(known, i, 1);
-    const d1 = (i + 2 == n && known.slope1 != undefined) ? known.slope1 : undrapeSlope(known, i + 1, -1);
+    const f0 = clamp((u - us[low]) / (us[low + 1] - us[low]), 0, 1);
+    const hit = undrapeSpanDistance(known, low, q, f0);
+    var best = hit[0];
+    if (hit[1] <= 0 && low > 0)
+    {
+        best = min(best, undrapeSpanDistance(known, low - 1, q, 1)[0]);
+    }
+    if (hit[1] >= 1 && low + 2 < n)
+    {
+        best = min(best, undrapeSpanDistance(known, low + 1, q, 0)[0]);
+    }
+    return best;
+}
+
+/**
+ * Distance from the flat point q to the fit's cubic span i of `known` (see undrapeMiss): Newton on the nearest point
+ * from fraction f0. @returns {array} : [distance, fraction of the nearest point]
+ */
+export function undrapeSpanDistance(known is map, i is number, q is array, f0 is number) returns array
+{
+    const n = size(known.ts);
+    const h = known.ts[i + 1] - known.ts[i];
+    const d0 = (i == 0 && known.tangent0 != undefined) ? known.tangent0 : undrapeSlope(known, i, 1);
+    const d1 = (i + 2 == n && known.tangent1 != undefined) ? known.tangent1 : undrapeSlope(known, i + 1, -1);
+    const x0 = known.xs[i];
+    const y0 = known.ys[i];
+    const x1 = known.xs[i + 1];
+    const y1 = known.ys[i + 1];
+    var f = f0;
+    var e = undrapeHermite2(x0, y0, x1, y1, d0, d1, h, f);
+    for (var step = 0; step < 4; step += 1)
+    {
+        const tt = e[2] * e[2] + e[3] * e[3];
+        if (tt < 1e-30)
+        {
+            break;
+        }
+        const df = ((e[0] - q[0]) * e[2] + (e[1] - q[1]) * e[3]) / tt;
+        f = clamp(f - df, 0, 1);
+        e = undrapeHermite2(x0, y0, x1, y1, d0, d1, h, f);
+        if (abs(df) < 1e-9)
+        {
+            break;
+        }
+    }
+    return [sqrt((e[0] - q[0]) * (e[0] - q[0]) + (e[1] - q[1]) * (e[1] - q[1])), f];
+}
+
+/** The cubic Hermite from (x0, y0) to (x1, y1), slopes d0, d1 per unit of a parameter spanning h, at fraction f: [x, y, dx/df, dy/df]. */
+export function undrapeHermite2(x0 is number, y0 is number, x1 is number, y1 is number, d0 is array, d1 is array, h is number, f is number) returns array
+{
     const f2 = f * f;
     const f3 = f2 * f;
     const b0 = 2 * f3 - 3 * f2 + 1;
     const b1 = (f3 - 2 * f2 + f) * h;
     const b2 = -2 * f3 + 3 * f2;
     const b3 = (f3 - f2) * h;
-    return [b0 * known.xs[i] + b1 * d0[0] + b2 * known.xs[i + 1] + b3 * d1[0],
-            b0 * known.ys[i] + b1 * d0[1] + b2 * known.ys[i + 1] + b3 * d1[1]];
+    const g0 = 6 * f2 - 6 * f;
+    const g1 = (3 * f2 - 4 * f + 1) * h;
+    const g3 = (3 * f2 - 2 * f) * h;
+    return [b0 * x0 + b1 * d0[0] + b2 * x1 + b3 * d1[0], b0 * y0 + b1 * d0[1] + b2 * y1 + b3 * d1[1],
+            g0 * (x0 - x1) + g1 * d0[0] + g3 * d1[0], g0 * (y0 - y1) + g1 * d0[1] + g3 * d1[1]];
 }
 
 /**
- * Slope [dx/du, dy/du] at known sample i: the derivative of the quadratic through it and its two neighbours, or
- * through it and the next two towards `side` (+1 / -1) at an end; a chord with only two samples.
+ * Slope [dx/dt, dy/dt] (t = chord length) at known sample i: the derivative of the quadratic through it and its two
+ * neighbours, or through it and the next two towards `side` (+1 / -1) at an end; a chord with only two samples.
  */
 export function undrapeSlope(known is map, i is number, side is number) returns array
 {
-    const us = known.us;
-    const n = size(us);
+    const ts = known.ts;
+    const n = size(ts);
     var j = -1;
     var k = -1;
     if (i > 0 && i + 1 < n)
@@ -3462,12 +3492,12 @@ export function undrapeSlope(known is map, i is number, side is number) returns 
     if (j < 0)
     {
         const o = (i + side >= 0 && i + side < n) ? i + side : i - side;
-        const du = us[o] - us[i];
-        return [(known.xs[o] - known.xs[i]) / du, (known.ys[o] - known.ys[i]) / du];
+        const dt = ts[o] - ts[i];
+        return [(known.xs[o] - known.xs[i]) / dt, (known.ys[o] - known.ys[i]) / dt];
     }
-    const t0 = us[i];
-    const t1 = us[j];
-    const t2 = us[k];
+    const t0 = ts[i];
+    const t1 = ts[j];
+    const t2 = ts[k];
     const w0 = (2 * t0 - t1 - t2) / ((t0 - t1) * (t0 - t2));
     const w1 = (t0 - t2) / ((t1 - t0) * (t1 - t2));
     const w2 = (t0 - t1) / ((t2 - t0) * (t2 - t1));

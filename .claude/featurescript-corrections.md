@@ -1564,3 +1564,17 @@ branch is refused, even though only one branch can be active.
 **Fix**: a distinct id per branch (`constantWidth`), and pick the right one in the body.
 **Process**: `python fscheck.py ... | tail -4 && push` pushes even when fscheck fails (the pipe's status is
 tail's). fscheck does not catch this one anyway -- push with `--check` and read the notices before moving on.
+
+---
+
+## Correction 45: pushproject can DUPLICATE edited blocks after Onshape re-pins a tab remotely (2026-09-25)
+
+**Symptom**: after pushing a callee (xSect_GJ), Onshape re-pinned the caller's import itself (xSectCLT
+now pinned ae5d... remotely). The next `pushproject` of the edited caller reported "1 pushed", then a
+re-push "skipped" -- but the Onshape tab contained the new code block TWICE (duplicate `var EA`), which
+does not compile. Push timeouts (30 s client read timeout; the server often still applies the write)
+make it worse.
+**Fix**: for pin chains, write the tab with `OnshapeClient().update_featurestudio_contents(...)` and
+VERIFY by GETting the contents and comparing to the local file; re-pin callers with
+`devtools/onshape/repin.py <project> <callee...>` (reads element microversions). Never trust
+"pushed"/"skipped" alone on a chain.

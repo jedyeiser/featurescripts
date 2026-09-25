@@ -40,13 +40,13 @@ def fig01():
     ax.plot(x[:k + 1], 0 * x[:k + 1], z[:k + 1], color=AQUA, lw=4, alpha=0.8)
     ax.scatter(*P, color=RED, s=30)
     ax.text(*(P + [0, 0, 6]), "P", color=RED)
-    ax.text(*(A + [-40, 0, -18]), "foot A(s)", color=INK2, fontsize=8)
-    ax.text(*(0.5 * (A + B) + [0, 0, -14]), "v", color=ORANGE)
+    ax.text(*(A + [-30, 0, -22]), "A(s)", color=INK2, fontsize=8)
+    ax.text(*(0.5 * (A + B) + [0, 0, -16]), "v", color=ORANGE)
     ax.text(*(0.5 * (B + P) + [4, 0, 0]), "h", color=VIOLET)
-    ax.text(60, 0, -20, "s (arc along the reference)", color=AQUA, fontsize=8)
+    
     ax.set_title("Wrapped: reference W swept along its plane normal")
     ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
-    ax.set_box_aspect((300, 120, 110)); ax.view_init(22, -62)
+    ax.set_box_aspect((300, 120, 110)); ax.view_init(24, -42)
     ax.set_xticks([]); ax.set_yticks([]); ax.set_zticks([])
     ax2 = fig.add_subplot(1, 2, 2, projection="3d")
     xf = s
@@ -56,16 +56,22 @@ def fig01():
         ax2.plot([xf[kk], xf[kk]], [-60, 60], [0, 0], color=GRID, lw=0.8)
     ax2.plot(xf, 0 * xf, 0 * xf, color=BLUE, lw=2.5)
     ax2.plot(xf[:k + 1], 0 * xf[:k + 1], 0 * xf[:k + 1], color=AQUA, lw=4, alpha=0.8)
-    Af = np.array([s[k], 0, 0]); Bf = Af + [0, -v, 0]; Pf = Bf + [0, 0, h]
+    Af = np.array([s[k], 0, 0]); Bf = Af + [0, v, 0]; Pf = Bf + [0, 0, h]
     ax2.plot(*zip(Af, Bf), color=ORANGE, lw=2); ax2.plot(*zip(Bf, Pf), color=VIOLET, lw=2)
     ax2.scatter(*Pf, color=RED, s=30); ax2.text(*(Pf + [0, 0, 6]), "P'", color=RED)
-    ax2.text(*(0.5 * (Af + Bf) + [0, 0, -14]), "y = -v", color=ORANGE)
-    ax2.text(*(0.5 * (Bf + Pf) + [4, 0, 0]), "z = h", color=VIOLET)
-    ax2.text(40, 0, -22, "x = s  (same length)", color=AQUA, fontsize=8)
+    ax2.text(*(0.5 * (Af + Bf) + [0, 0, -14]), "y", color=ORANGE)
+    ax2.text(*(0.5 * (Bf + Pf) + [4, 0, 0]), "z", color=VIOLET)
+    
     ax2.set_title("Flat: the same (s, v, h), written out as (x, y, z)")
-    ax2.set_box_aspect((300, 120, 110)); ax2.view_init(22, -62)
+    ax2.set_box_aspect((300, 120, 110)); ax2.view_init(24, -42)
     ax2.set_xticks([]); ax2.set_yticks([]); ax2.set_zticks([])
     ax2.set_zlim(-20, 90)
+    fig.text(0.05, 0.08, "LEFT - Green: arc s from the alignment to the foot A(s).  Orange: v = (P - A) . pn across W's plane.\n"
+             "Violet: height h along N = pn x t.  (s, v) is a FLAT chart of the swept surface (zero Gaussian curvature).",
+             color=INK2, fontsize=8.5)
+    fig.text(0.05, -0.01, "RIGHT - x = s - d*theta (= s for d = 0),  y = -v,  z = h, in the unwrapped origin's frame.\n"
+             "Same green length; the point keeps its side (y = -v undoes pn = -Y, see fig04).",
+             color=INK2, fontsize=8.5)
     save(fig, "fig01_chart.png")
 
 
@@ -83,7 +89,7 @@ def fig02():
         za = c[1] - (R - d) * np.cos(ph)
         ax.plot(np.r_[xs, xa], np.r_[zs, za], color=col, lw=2.4, label=lab)
         Lline, Larc = lead, (R - d) * turn
-        ax.text(xa[-1] + 6, za[-1], "length %.1f\n= s - d*theta = %.1f - %g*%.3f" % (Lline + Larc, lead + R * turn, d, turn),
+        ax.text(215, {25: 95, 0: 70, -25: 45}[d], "length %.1f = s - d*theta = %.1f - (%g)(%.3f)" % (Lline + Larc, lead + R * turn, d, turn),
                 color=col, fontsize=8, va="center")
     ax.plot(*c, "+", color=INK2, ms=10)
     ax.text(c[0] + 3, c[1] + 3, "centre", color=INK2, fontsize=8)
@@ -95,14 +101,14 @@ def fig02():
             "The chart stores ONE table theta(s), so any offset's length is known without building the offset curve.",
             color=INK2, fontsize=8.5)
     ax.legend(loc="upper left", fontsize=8.5)
-    ax.set_xlim(-5, 290); ax.set_ylim(-55, 130)
+    ax.set_xlim(-5, 400); ax.set_ylim(-55, 130)
     ax.set_title("An offset curve's length differs from W's by d x (turning angle)")
     save(fig, "fig02_offset_length.png")
 
 
 # ------------------------------------------------------------------ fig03: neutral surface
 def fig03():
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(9, 5.8), gridspec_kw={"height_ratios": [1.5, 1]})
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(9, 4.6), gridspec_kw={"height_ratios": [1.3, 0.6]})
     for a in (a1, a2):
         bare(a); a.set_aspect("equal")
     R, t, th = 60.0, 14.0, np.radians(80)
@@ -119,7 +125,7 @@ def fig03():
     a1.set_title("Bent plate (pure bending, symmetric section): only the neutral surface keeps its length")
     L = R * th
     a2.fill([-L / 2, L / 2, L / 2, -L / 2], [-t / 2, -t / 2, t / 2, t / 2], color="#dfe9f7")
-    a2.plot([-L / 2, L / 2], [t / 2, t / 2], color=ORANGE, lw=2); a2.plot([-L / 2, L / 2], [-t / 2, -t / 2], color=RED, lw=2)
+    a2.plot([-L / 2, L / 2], [t / 2, t / 2], color=RED, lw=2); a2.plot([-L / 2, L / 2], [-t / 2, -t / 2], color=ORANGE, lw=2)
     a2.plot([-L / 2, L / 2], [0, 0], color=BLUE, lw=2.4, ls="--")
     a2.text(L / 2 + 3, -2, "flat blank: every fibre R theta long.\nUnwrap preserves length along ONE chosen curve\n(the reference offset by d): pick d = the neutral line.",
             color=INK2, fontsize=8.5, va="center")
@@ -131,8 +137,8 @@ def fig03():
 def fig04():
     fig = plt.figure(figsize=(9, 3.8))
     for i, (title, axes_def) in enumerate([
-            ("Wrapped frame at the foot", [((1, 0, 0), "t (along W)", AQUA), ((0, 1, 0), "pn (W's plane normal)", ORANGE), ((0, 0, 1), "N = pn x t (height)", VIOLET)]),
-            ("Flat frame (the origin's X, Y, Z)", [((1, 0, 0), "X = t", AQUA), ((0, -1, 0), "Y = -pn", ORANGE), ((0, 0, 1), "Z = N", VIOLET)])]):
+            ("Wrapped frame at the foot", [((1, 0, 0), "t (along W)", AQUA), ((0, -1, 0), "pn (W's plane normal)", ORANGE), ((0, 0, 1), "N = pn x t (height)", VIOLET)]),
+            ("Flat frame (the origin's X, Y, Z)", [((1, 0, 0), "X = t", AQUA), ((0, 1, 0), "Y = -pn", ORANGE), ((0, 0, 1), "Z = N", VIOLET)])]):
         ax = fig.add_subplot(1, 2, i + 1, projection="3d")
         for d, lab, col in axes_def:
             ax.quiver(0, 0, 0, *d, color=col, lw=2.5, arrow_length_ratio=0.15)
@@ -189,7 +195,7 @@ def fig05():
         a1.text(v[len(v) // 2, 0], v[len(v) // 2, 2] - 9, lab, color=KIND_COL[k], fontsize=8, ha="center")
     for name, xy in [("CORE", (900, 9)), ("base 4101", (900, -4.5)), ("Topsheet", (900, 20.5))]:
         a1.text(*xy, name, color=PART_COL[name], fontsize=8)
-    for name, xy in [("4802 (core tip extension)", (1690, 24)), ("CORE", (1580, 16)), ("base", (1760, 26)), ("topsheet / 6005 / 4310 / mats / shear", (1600, 48))]:
+    for name, xy in [("4802 (core tip extension)", (1690, 24)), ("CORE", (1580, 9)), ("base", (1765, 20)), ("topsheet / 6005 / 4310 / mats / shear", (1600, 48))]:
         a2.text(*xy, name, color=PART_COL.get(name.split()[0], INK2) if name.split()[0] in PART_COL else INK2, fontsize=8)
     save(fig, "fig05_test_ski.png")
 
@@ -197,7 +203,7 @@ def fig05():
 # ------------------------------------------------------------------ fig10: Part mode
 def fig10():
     wires, parts = read_layup()
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(11, 7.2), gridspec_kw={"height_ratios": [1, 1.2]})
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(11, 7.6), gridspec_kw={"height_ratios": [1, 1.2], "hspace": 0.45})
     for kind, length, v in wires["REF_WIRE"]:
         a1.plot(v[:, 0], v[:, 2], color=KIND_COL[kind.split()[0]], lw=2.4)
     for name in ["CORE", "4802", "4803"]:
@@ -213,10 +219,10 @@ def fig10():
         a1.text(xj + 8, 30, "junction plane\n(normal to W)", fontsize=8, color=INK2)
     a1.set_aspect(8); a1.set_xlim(-100, 1830); a1.set_ylim(-5, 60)
     a1.set_xlabel("world X (mm)"); a1.set_ylabel("Z (mm)")
-    a1.set_title("Part mode: split where W changes line <-> curve.  Blue = over the line: ONE rigid opTransform.  Orange = over arcs/spline: rebuilt (x8 heights)")
-    a1.text(700, 20, "CORE middle piece: 84 native faces moved rigidly", color=BLUE, fontsize=8.5)
-    a1.text(-90, 45, "4803 + CORE tail 10 mm:\nrebuilt", color=ORANGE, fontsize=8.5)
-    a1.text(1500, 52, "CORE tip 10 mm + 4802:\nrebuilt", color=ORANGE, fontsize=8.5)
+    a1.set_title("Part mode: split where W changes line <-> curve (heights x8)")
+    a1.text(560, 20, "blue: CORE middle piece over the line, 84 native faces moved by ONE rigid opTransform", color=BLUE, fontsize=8.5)
+    a1.text(-90, 45, "4803 + CORE tail 10 mm: rebuilt", color=ORANGE, fontsize=8.5)
+    a1.text(1330, 45, "CORE tip 10 mm + 4802: rebuilt", color=ORANGE, fontsize=8.5)
     # panel b: the cell rebuild in the chart frame (schematic of a 4802-like piece)
     ax = a2
     bare(ax)
@@ -245,7 +251,7 @@ def fig10():
     ax.text(endx, 8.35, "plane tool (end plane)", color=VIOLET, fontsize=8, ha="center")
     ax.text(X0, -0.9, "box = the piece's flat extent + 2 mm, split by every tool one at a time;  x = dropped cells", color=INK2, fontsize=8)
     ax.set_xlim(-5, 240); ax.set_ylim(-1.5, 9.2)
-    ax.set_title("Cell rebuild of a curved piece, in the chart frame (schematic side view; walls work the same way in plan)")
+    ax.set_title("Cell rebuild of a curved piece, in the chart frame (schematic side view)")
     save(fig, "fig10_part_mode.png")
 
 
@@ -303,12 +309,12 @@ def box(ax, x, y, w, h, title, lines, col):
 
 
 def fig13():
-    fig, ax = plt.subplots(figsize=(13, 9.5))
-    bare(ax); ax.set_xlim(0, 130); ax.set_ylim(0, 100)
-    box(ax, 2, 62, 58, 36, "unwrap.fs  (the feature, tab a84cdaa8...)", [
+    fig, ax = plt.subplots(figsize=(13, 10))
+    bare(ax); ax.set_xlim(0, 130); ax.set_ylim(0, 102)
+    box(ax, 2, 62, 58, 38, "unwrap.fs  (the feature; tab a84cdaa8...)", [
         "unwrap (defineFeature)              body, 3 modes",
         "  sourceBodies / frameOf / pointOf",
-        "  checkedChart -> unwrapChart           [X rises, align in span]",
+        "  checkedChart -> unwrapChart   [X rises, align in span]",
         "  EDGES: unwrapEdgesToWires -> unwrapEdges",
         "         adaptiveEdgeSamples, checkedFoot, spanMidMiss",
         "         emitFlatCurve (classifyPoints + tangent gate)",
@@ -319,49 +325,49 @@ def fig13():
         "  applyNamesAndProperties, reportSummary",
         "  embedStandardOutputs (lengthWrapped/Flat, volumeRatio)",
         "unwrapEditLogic   (button 'Read names and properties')"], BLUE)
-    box(ax, 66, 72, 60, 26, "undrape_utils.fs  (tab 283b8f75..., import version \"\")", [
+    box(ax, 68, 76, 58, 24, "undrape_utils.fs  (tab 283b8f75...; imported version \"\")", [
         "undrapeOutline(context,id,chart,side0,side1,t,options)",
-        "  undrapeSampleSide -> undrapeEdgeTable  (adaptive)",
+        "  undrapeSampleSide -> undrapeEdgeTable (adaptive)",
         "  undrapeRimLoops, undrapeSeeds, undrapeShare",
         "  undrapeResolveBatch: undrapeCandidateEdges,",
         "     undrapeEdgeCrossings, undrapeSection / ...ByFaces,",
         "     undrapeRefusedSection (U-TURN RULE, kernel)",
         "  undrapeRefine, undrapeAssemble, undrapeDeformation"], VIOLET)
-    box(ax, 66, 40, 60, 27, "unwrap_part.fs  (tab fc976128..., import version \"\")", [
+    box(ax, 68, 46, 58, 24, "unwrap_part.fs  (tab fc976128...; imported version \"\")", [
         "unwrapSolid(context,id,chart,cs,part,options)",
         "  referenceSpans (edge curveType == LINE -> straight)",
         "  opSplitPart at junctions, rigidTransform",
         "  rebuildPiece: faceKind (PROFILE/WALL/RULED/FAIL),",
         "     faceRow, chainRows, distinctChains, chainTool,",
         "     box split, unwrapInverse membership, union"], ORANGE)
-    box(ax, 2, 16, 58, 40, "edge_offset_utils.fs  (tab a2665e22..., pinned mv 70dcbbcd)", [
+    box(ax, 2, 14, 58, 40, "edge_offset_utils.fs  (tab a2665e22; mv 70dcbbcd)", [
         "buildAlongReference  arcs, thetas, curvatures, points,",
         "                     tangents, planeNormal (25 / edge)",
         "referencePlaneNormal (handedness rule)",
-        "unwrapChart -> unwrapReferenceProblem, chartFromReference",
-        "packChart            plain-number tables",
+        "unwrapChart -> unwrapReferenceProblem,",
+        "               chartFromReference -> packChart",
         "chartEval / chartSpan / chartSpanOf / chartSeedArc",
-        "chartFoot            Newton foot, residual",
+        "chartFoot            Newton foot + residual",
         "unwrapFast           [x,y,z, arc,span, t, kappa,",
         "                      scale, h, residual]",
         "chartFootConverged, unwrapDirection, unwrapInverse",
-        "(older unit-based: referenceSurfaceCoords/Point)"], AQUA)
-    box(ax, 66, 16, 60, 19, "curve_core.fs  (Curve_tools doc, version 9d6f0887)", [
+        "(older unit-based: referenceSurfaceCoords / Point)"], AQUA)
+    box(ax, 68, 20, 58, 18, "curve_core.fs  (Curve_tools doc; version 9d6f0887)", [
         "buildChain, expandEdgeQuery (chains)",
         "classifyPoints  line / arc / freeform",
         "emitLineCurve, emitArcCurve, emitSplineCurve",
         "approximateFamily, G1_JUNCTION_ANGLE"], GREEN)
-    box(ax, 66, 2, 60, 10, "extract_outputs.fs  (Variable_tools, version b8c80ac0)", [
+    box(ax, 68, 3, 58, 11, "extract_outputs.fs  (Variable_tools; version b8c80ac0)", [
         "embedStandardOutputs, extractableVariable / Query"], MUTED)
-    arrow(ax, (60, 88), (66, 88), BLUE); ax.text(60.5, 89.5, "undrapeOutline", fontsize=7, color=INK2)
-    arrow(ax, (60, 70), (66, 58), BLUE); ax.text(60.5, 66.5, "unwrapSolid", fontsize=7, color=INK2)
-    arrow(ax, (30, 62), (30, 56.5), BLUE); ax.text(31, 58.8, "unwrapChart, unwrapFast, unwrapDirection, chart*", fontsize=7, color=INK2)
-    arrow(ax, (72, 72), (60, 50), VIOLET); ax.text(62, 63, "chartEval, chartFoot,...", fontsize=7, color=INK2, rotation=0)
-    arrow(ax, (66, 45), (60, 40), ORANGE); ax.text(56, 43.5, "unwrapFast, unwrapInverse", fontsize=7, color=INK2)
-    arrow(ax, (60, 25), (66, 25), AQUA); ax.text(60.3, 26.2, "export import", fontsize=7, color=INK2)
-    arrow(ax, (20, 62), (66, 8), BLUE, lw=0.9)
-    ax.text(3, 7, "Arrows = 'calls into / imports'. edge_offset_utils EXPORT-imports curve_core, so unwrap.fs and\n"
-            "unwrap_part.fs see classifyPoints and the emitters through it.", fontsize=8, color=INK2)
+    arrow(ax, (60.8, 92), (67.3, 92), BLUE); ax.text(61, 93, "undrapeOutline", fontsize=7, color=INK2)
+    arrow(ax, (60.8, 66), (67.3, 60), BLUE); ax.text(61, 66.5, "unwrapSolid", fontsize=7, color=INK2)
+    arrow(ax, (30, 61.3), (30, 54.8), BLUE); ax.text(31, 57.5, "unwrapChart, unwrapFast, unwrapDirection, chartEval ...", fontsize=7, color=INK2)
+    arrow(ax, (67.3, 78), (60.8, 50), VIOLET); ax.text(62.5, 72, "chart*", fontsize=7, color=VIOLET)
+    arrow(ax, (67.3, 48), (60.8, 40), ORANGE); ax.text(61.2, 45.5, "unwrapFast,\nunwrapInverse", fontsize=7, color=ORANGE)
+    arrow(ax, (60.8, 29), (67.3, 29), AQUA); ax.text(61, 30, "export\nimport", fontsize=7, color=INK2)
+    arrow(ax, (60.8, 63), (67.3, 9), BLUE, lw=0.9); ax.text(63.5, 15, "outputs", fontsize=7, color=BLUE)
+    ax.text(2, 6, "Arrows: calls into / imports. edge_offset_utils EXPORT-imports curve_core, so\n"
+            "unwrap.fs and unwrap_part.fs see classifyPoints and the emitters through it.", fontsize=8, color=INK2)
     save(fig, "fig13_call_graph.png")
 
 
@@ -369,23 +375,23 @@ def fig13():
 def fig14():
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(11.5, 4.4), gridspec_kw={"width_ratios": [1.3, 1]})
     bare(a1); a1.set_aspect("equal")
-    R, th = 60.0, np.radians(55)
+    R, th = 110.0, np.radians(45)
     ph = np.linspace(0, th, 60)
     layers = [(0, 1.2, RED, "base"), (1.8, 5.8, YELLOW, "core ext. (4802)"), (5.8, 6.4, VIOLET, "top laminate")]
     lead = 40
     for lo, hi, col, lab in layers:
-        s0 = 8 * lo  # exaggerate thickness for the picture
-        s1 = 8 * hi
+        s0 = 5 * lo  # exaggerate thickness for the picture
+        s1 = 5 * hi
         xo = np.r_[0, lead, lead + (R - s1) * np.sin(ph)]; zo = np.r_[s1, s1, R - (R - s1) * np.cos(ph)]
         xi = np.r_[0, lead, lead + (R - s0) * np.sin(ph)]; zi = np.r_[s0, s0, R - (R - s0) * np.cos(ph)]
         a1.fill(np.r_[xo, xi[::-1]], np.r_[zo, zi[::-1]], color=col, alpha=0.35, lw=0)
-        sm = 4 * (lo + hi)
+        sm = 2.5 * (lo + hi)
         a1.plot(np.r_[0, lead, lead + (R - sm) * np.sin(ph)], np.r_[sm, sm, R - (R - sm) * np.cos(ph)], color=col, lw=1.6, ls="--")
         a1.text(-3, sm, lab + "  (mid at d = %.1f)" % (0.5 * (lo + hi)), ha="right", va="center", fontsize=8, color=INK)
     a1.plot(np.r_[0, lead, lead + R * np.sin(ph)], np.r_[0, 0, R - R * np.cos(ph)], color=BLUE, lw=2.2)
-    a1.text(lead + R * np.sin(th) + 2, R - R * np.cos(th) - 4, "REF_WIRE (d = 0)", color=BLUE, fontsize=8)
-    a1.set_xlim(-75, 110)
-    a1.set_title("Each layer's own neutral line = W offset by its own d\n(thicknesses x8)")
+    a1.text(lead + R * np.sin(th) + 6, R - R * np.cos(th) - 10, "REF_WIRE (d = 0)", color=BLUE, fontsize=8)
+    a1.set_xlim(-80, 130)
+    a1.set_title("Each layer's own neutral line = W offset by its own d\n(thicknesses x5)")
     d = np.array([0.0, 1.8, 3.8, 5.8])
     L = np.array([180.62, 179.57, 178.40, 177.22])
     a2.plot(d, L, "o-", color=YELLOW, lw=2, ms=8)

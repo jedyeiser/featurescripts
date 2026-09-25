@@ -414,7 +414,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             }
 
             const check = lengthAndVolume(context, bodyId + "lengthCurves", result.chart, cs, sources[i], extent, result.bodies,
-                result.lengthZ, definition.debugKeepLengthCurves);
+                result.lengthZ, definition.debugKeepLengthCurves, result.arcRange);
             checks = append(checks, check);
 
             tally = addTally(tally, result.tally);
@@ -894,11 +894,19 @@ function unwrapPart(context is Context, id is Id, definition is map, chart is ma
  * the height the preserved curve lands at. They are not part of the feature's "output".
  */
 function lengthAndVolume(context is Context, id is Id, chart is map, cs is CoordSystem, source is Query, extent is Query,
-    bodies is Query, lengthZ is ValueWithUnits, keep is boolean) returns map
+    bodies is Query, lengthZ is ValueWithUnits, keep is boolean, arcRange) returns map
 {
     if (isQueryEmpty(context, bodies))
     {
         return { "wrapped" : 0 * meter, "flat" : 0 * meter, "volumeRatio" : 0 };
+    }
+
+    // A plate's undrape already knows the station of every outline sample: its extent is exact, no vertex search.
+    // (The vertex search came out 1.12 mm short on the topsheet: its tip and tail U-turns reach furthest part way
+    // along edges whose feet do not converge from a cold seed.)
+    if (arcRange != undefined)
+    {
+        return lengthFromArcs(context, id, chart, cs, source, bodies, lengthZ, keep, arcRange[0], arcRange[1]);
     }
 
     // Extent in the chart: the extreme stations over the extent's vertices (at most UNWRAP_CHECK_VERTICES of them),
@@ -961,6 +969,37 @@ function lengthAndVolume(context is Context, id is Id, chart is map, cs is Coord
         return { "wrapped" : 0 * meter, "flat" : 0 * meter, "volumeRatio" : 0 };
     }
 
+    return lengthFromArcs(context, id, chart, cs, source, bodies, lengthZ, keep, arcLo, arcHi);
+}
+
+/**
+ * The chart arcs (plain metres) the undraped outline spans: the stations of its first and last samples.
+ */
+function outlineArcRange(edges is array)
+{
+    var lo = undefined;
+    var hi = undefined;
+    for (var edge in edges)
+    {
+        if (edge.arcs == undefined)
+        {
+            return undefined;
+        }
+        for (var a in edge.arcs)
+        {
+            lo = (lo == undefined) ? a : min(lo, a);
+            hi = (hi == undefined) ? a : max(hi, a);
+        }
+    }
+    return (lo == undefined) ? undefined : [lo, hi];
+}
+
+/**
+ * The length / volume check between two chart arcs (plain metres): see lengthAndVolume.
+ */
+function lengthFromArcs(context is Context, id is Id, chart is map, cs is CoordSystem, source is Query, bodies is Query,
+    lengthZ is ValueWithUnits, keep is boolean, arcLo is number, arcHi is number) returns map
+{
     // The preserved curve on the packed tables (plain metres; the same Hermite as referencePointAtArc).
     const c = chart.packed;
     var span = chartSpanOf(c, arcLo);
@@ -1500,6 +1539,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         "edgesOnPlane" : qAdjacent(lowerFace, AdjacencyType.EDGE, EntityType.EDGE),
         "chart" : chart,
         "lengthZ" : zMid,
+        "arcRange" : outlineArcRange(undraped.edges),
         "tally" : tally,
         "record" : {
             "edges" : size(undraped.edges),

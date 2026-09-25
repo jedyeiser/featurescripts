@@ -11,10 +11,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e235
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
 //import fpt_geometry
-import(path : "67c190b80e8b74dcee72e7ff", version : "9830d227df8552519d3f8f88");
+import(path : "67c190b80e8b74dcee72e7ff", version : "d1e9dfde21eebf5ac5808256");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "b63cf9586f99a882b7ddbc92");
+import(path : "d3ad341f5b87924b36b5aba8", version : "59e6d83710d6eec8d5cf3843");
 
 
 
@@ -74,9 +74,12 @@ export function edgesToBSplines(context is Context, edges is Query, tolerance is
     
     for (var edge in edgeArray)
     {
+        // forceNonRational: evaluateSpline ignores weights, so an exact (rational) arc would be
+        // evaluated off the circle (correction 39).
         var bspline = evApproximateBSplineCurve(context, {
             "edge" : edge,
-            "tolerance" : tolerance / meter  // tolerance param is unitless (meters)
+            "tolerance" : tolerance / meter,  // tolerance param is unitless (meters)
+            "forceNonRational" : true
         });
         bsplines = append(bsplines, bspline);
     }
@@ -836,42 +839,91 @@ export function arcThroughThreePoints(p1 is Vector, p2 is Vector, p3 is Vector) 
     return { "valid" : true, "center" : vector(xC, yC, 0 * meter), "R" : R };
 }
 
+// Stations for the average radius: fixed so the result is reproducible and independent of how the
+// sidecut is split into edges.
+const AVG_RADIUS_STATIONS = 200;
+// Dense per-curve samples used to locate each station's parameter from its x.
+const AVG_RADIUS_LOOKUP_SAMPLES = 400;
+
 /**
- * Compute average radius in the sidecut region.
- * Only averages positive curvature (concave) sections.
+ * Average radius of curvature of the sidecut between x = xMin and x = xMax (the inflection points):
+ * the mean of R = 1/|k| at AVG_RADIUS_STATIONS stations evenly spaced in x, at the midpoints of equal
+ * intervals (so no station sits exactly on an inflection, where R is infinite). Each station is placed
+ * on whichever curve spans its x, so the value does not depend on the edge split.
  */
 export function computeAverageRadius(curveDataArray is array, xMin is ValueWithUnits,
     xMax is ValueWithUnits, config is map) returns map
 {
-    var numSamples = config.paramBracketSamples;
-    var xTol = config.xTolerance;
+    if (xMax <= xMin)
+    {
+        return { "valid" : false, "avgRadius" : 0 * meter };
+    }
+
+    // One dense x(u) table per curve that overlaps [xMin, xMax].
+    var tables = [];
+    for (var cd in curveDataArray)
+    {
+        if (cd.xMax < xMin || cd.xMin > xMax)
+        {
+            continue;
+        }
+        var range = getBSplineParamRange(cd.bspline);
+        var params = [];
+        for (var i = 0; i < AVG_RADIUS_LOOKUP_SAMPLES; i += 1)
+        {
+            params = append(params, range.uMin + (range.uMax - range.uMin) * i / (AVG_RADIUS_LOOKUP_SAMPLES - 1));
+        }
+        var points = evaluateSpline({ "spline" : cd.bspline, "parameters" : params })[0];
+        var xs = [];
+        for (var pt in points)
+        {
+            xs = append(xs, pt[0]);
+        }
+        tables = append(tables, { "bspline" : cd.bspline, "params" : params, "xs" : xs });
+    }
 
     var radiusSum = 0 * meter;
     var count = 0;
-
-    for (var cd in curveDataArray)
+    for (var s = 0; s < AVG_RADIUS_STATIONS; s += 1)
     {
-        if (cd.xMax < xMin - xTol || cd.xMin > xMax + xTol)
-            continue;
-
-        var samples = sampleBSplineWithCurvature(cd.bspline, numSamples);
-
-        for (var s in samples)
+        var x = xMin + (xMax - xMin) * (s + 0.5) / AVG_RADIUS_STATIONS;
+        var u = undefined;
+        var station = undefined;
+        for (var tbl in tables)
         {
-            if (s.x < xMin - xTol || s.x > xMax + xTol)
-                continue;
-
-            if (s.curvatureMag > 1e-9 / meter)
+            for (var i = 0; i < size(tbl.xs) - 1; i += 1)
             {
-                radiusSum += 1 / s.curvatureMag;
-                count += 1;
+                var x0 = tbl.xs[i];
+                var x1 = tbl.xs[i + 1];
+                if ((x0 - x) * (x1 - x) <= 0 * meter * meter && x0 != x1)
+                {
+                    // Linear in u between dense samples; curvature is then evaluated exactly at u.
+                    u = tbl.params[i] + (tbl.params[i + 1] - tbl.params[i]) * (x - x0) / (x1 - x0);
+                    station = tbl;
+                    break;
+                }
             }
+            if (station != undefined)
+            {
+                break;
+            }
+        }
+        if (station == undefined)
+        {
+            continue;
+        }
+        var curv = getBSplineCurvatureAtParam(station.bspline, u);
+        if (curv.curvatureMag > 1e-9 / meter)
+        {
+            radiusSum += 1 / curv.curvatureMag;
+            count += 1;
         }
     }
 
     if (count == 0)
+    {
         return { "valid" : false, "avgRadius" : 0 * meter };
-
+    }
     return { "valid" : true, "avgRadius" : radiusSum / count };
 }
 

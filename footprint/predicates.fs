@@ -28,7 +28,7 @@ export predicate footprintDataPredicate(definition is map)
         
         annotation { "Group Name" : "Radius calculations", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Average radius:", "Description" : "Average radius of sidecut, ignoring tapered sections (only averages where curvature is positive)", "UIHint" : UIHint.READ_ONLY }
+            annotation { "Name" : "Average radius:", "Description" : "Mean radius of curvature at 200 stations evenly spaced in x between the inflection points", "UIHint" : UIHint.READ_ONLY }
             definition.avgRadiusStr is string;
             
             annotation { "Name" : "Natural radius - widest:", "Description" : "Radius of arc connecting widest FB and AB points at the specified waist width. NOTE: If a FB or AB inflection point is not found, this value may change once tip/tail shapes are drawn.", "UIHint" : UIHint.READ_ONLY }

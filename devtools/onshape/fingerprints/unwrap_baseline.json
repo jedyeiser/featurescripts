@@ -1,0 +1,97 @@
+[
+ [
+  "Unwrap 4101 base (plate, own section)",
+  "INFO",
+  "lengthWrapped: 1789.5872 | lengthFlat: 1789.5894 | volumeRatio: 0.999992"
+ ],
+ [
+  "Unwrap 4305 (plate, own section)",
+  "INFO",
+  "lengthWrapped: 1788.8478 | lengthFlat: 1788.85 | volumeRatio: 0.999863"
+ ],
+ [
+  "Unwrap 6005 (plate, own section)",
+  "INFO",
+  "lengthWrapped: 1825.164 | lengthFlat: 1825.1588 | volumeRatio: 0.999992"
+ ],
+ [
+  "Unwrap 4310 (plate, own section)",
+  "INFO",
+  "lengthWrapped: 1825.5375 | lengthFlat: 1825.5319 | volumeRatio: 0.999991"
+ ],
+ [
+  "Unwrap Topsheet (plate, own section)",
+  "INFO",
+  "lengthWrapped: 1826.5738 | lengthFlat: 1827.693 | volumeRatio: 1.000199"
+ ],
+ [
+  "Unwrap Tip-Mat (plate, REF_WIRE offset 1.88 mm)",
+  "INFO",
+  "lengthWrapped: 153.6889 | lengthFlat: 153.6889 | volumeRatio: 0.999551"
+ ],
+ [
+  "Unwrap Tail-Mat (plate, REF_WIRE offset 1.8 mm)",
+  "INFO",
+  "lengthWrapped: 133.9236 | lengthFlat: 133.9245 | volumeRatio: 0.999929"
+ ],
+ [
+  "Unwrap Tip-Shear (plate, REF_WIRE offset 1.96 mm)",
+  "INFO",
+  "lengthWrapped: 173.8664 | lengthFlat: 173.8664 | volumeRatio: 0.999605"
+ ],
+ [
+  "Unwrap Tail-Shear (plate, REF_WIRE offset 1.9 mm)",
+  "INFO",
+  "lengthWrapped: 154.6728 | lengthFlat: 154.6728 | volumeRatio: 0.999933"
+ ],
+ [
+  "Unwrap CORE (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 1500 | lengthFlat: 1500 | volumeRatio: 1.000059"
+ ],
+ [
+  "Unwrap 4802 tip extension (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 180.7101 | lengthFlat: 180.7092 | volumeRatio: 1.012466"
+ ],
+ [
+  "Unwrap 4803 tail extension (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 160.1202 | lengthFlat: 160.1202 | volumeRatio: 1.00368"
+ ],
+ [
+  "Unwrap 4103 L sidewall (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 1699.9997 | lengthFlat: 1700.0006 | volumeRatio: 1.000313"
+ ],
+ [
+  "Unwrap 4103 R sidewall (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 1699.9997 | lengthFlat: 1700.0006 | volumeRatio: 1.000312"
+ ],
+ [
+  "Unwrap 4401 L (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 1500.196 | lengthFlat: 1500.196 | volumeRatio: 1.000041"
+ ],
+ [
+  "Unwrap 4401 R (part, along REF_WIRE)",
+  "INFO",
+  "lengthWrapped: 1500.196 | lengthFlat: 1500.196 | volumeRatio: 1.000041"
+ ],
+ [
+  "U1 Wrapped_profile over FULL_BASELINE (edges, along reference) -> 1 wire, tip/tail at constant height",
+  "INFO",
+  "lengthWrapped: 1829.9982 | lengthFlat: 1830 | volumeRatio: 0"
+ ],
+ [
+  "U2 Topsheet undrape onto Wrapped_profile extrusion offset -0.2 (wire) -> 1 flat plate 0.4 thick",
+  "INFO",
+  "lengthWrapped: 1825.5137 | lengthFlat: 1825.4983 | volumeRatio: 0.998971"
+ ],
+ [
+  "U3 Topsheet undrape, target = Front-plane section of the mid-surface -> 1 flat plate 0.4 thick",
+  "INFO",
+  "lengthWrapped: 1826.5738 | lengthFlat: 1827.693 | volumeRatio: 1.000199"
+ ]
+]

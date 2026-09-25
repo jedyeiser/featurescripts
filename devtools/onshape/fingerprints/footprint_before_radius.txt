@@ -1,0 +1,8 @@
+###name = #value | assignVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+Integrate footprint 1 | integrateFootprint | bodies 0 | edges 0 len 0 | faces 0 area 0
+Analyze footprint 1 | analyzeFootprint | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 1 | joinWires | bodies 0 | edges 0 len 0 | faces 0 area 0
+Join wires 2 | joinWires | bodies 1 | edges 24 len 3736.97346 | faces 0 area 0
+Scale Footprint 1 | scaleFootprint | bodies 2 | edges 24 len 3682.98309 | faces 0 area 0
+Arc fit 1 | arcFit | bodies 1 | edges 62 len 381.81662 | faces 0 area 0
+ALL bodies 39 total edge length 20174.2821

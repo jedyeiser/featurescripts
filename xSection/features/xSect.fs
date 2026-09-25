@@ -8,7 +8,7 @@ export import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf4
 import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
 
 // xSectCLT (CLT computations)
-import(path : "74231d1d53f5a117d47d17a9", version : "b720b4aad9776846e4774be7");
+import(path : "74231d1d53f5a117d47d17a9", version : "6fa10b1b28cfb0ed4e80268e");
 
 // xSectBeamAnalysis (beam stiffness computations)
 import(path : "ebac109589e3bf405d3f3ae7", version : "995918706a03f1f08e8720c3");
@@ -16,11 +16,11 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "995918706a03f1f08e8720c3");
 //import xSectMatrials
 import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
 //import xSectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "968f6dd954be3648d564cb94");
+import(path : "3cb3cff6974529bf6bed096b", version : "ad17647c21787b89ad2434ab");
 //import xSectVisualization
 import(path : "19991d0446ad0551339572d9", version : "230a0a74bf793a956adf7736");
 //import xSectStorage
-import(path : "a2f2ae10eb446d33ccd47bb9", version : "9ec104d77376b1aff9ee63a4");
+import(path : "a2f2ae10eb446d33ccd47bb9", version : "3b0fbb29c862779cad270251");
 //import xSectComposites
 import(path : "8c01f1526e7b93cc89fe9811", version : "bb55903e08c2566261af685f");
 //import xSectDebug
@@ -28,7 +28,7 @@ import(path : "4973f90e73d48ab3578831f0", version : "f53a35d9be24a701e1a16c6c");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "6e68ed6cb07a952caa490205");
 // xSect_GJ (torsional stiffness)
-import(path : "9df6ba3db06d479fabe63c1d", version : "89b4cc8e90bbf5e1f5232333");
+import(path : "9df6ba3db06d479fabe63c1d", version : "ae5d0150c1f0be15fc446cce");
 
 // =============================================================================
 // FEATURE DEFINITION

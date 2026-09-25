@@ -11,19 +11,19 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // IMPORT: fpt_geometry.fs (prepareFootprintCurves, filterAndTrimBSplines, etc.)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "9830d227df8552519d3f8f88");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "d1e9dfde21eebf5ac5808256");
 
 // IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "8bb2b675b43a28c46b88b124");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d12f388a0ca371393307e39f");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "b515690a8544770b606c345a");
+import(path : "66f4f03cf728e94b8f823585", version : "2e255abd0bd910b9d14de958");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "6b16cd8eba5d492555908d81");
+import(path : "5d198387b3966ae60a549555", version : "3139e04c4896f95fba376908");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "b63cf9586f99a882b7ddbc92");
+import(path : "d3ad341f5b87924b36b5aba8", version : "59e6d83710d6eec8d5cf3843");
 
 IconNamespace::import(path : "e81c3eb0b5c51be678eebf9c", version : "ca36ec3d0a7592b4305a1f84");
 
@@ -1641,8 +1641,8 @@ function findInflectionInTempCurve(curve is BSplineCurve, xStart is ValueWithUni
 }
 
 /**
- * Evaluate average radius between two X positions on a BSpline curve.
- * Uses the same method as analyzeFootprint's computeAverageRadius().
+ * Evaluate average radius between two X positions on a BSpline curve: the same definition as
+ * analyzeFootprint (fpt_analyze computeAverageRadius -- mean R at evenly spaced x stations).
  *
  * @param curve : BSplineCurve - The curve to evaluate
  * @param xMin, xMax : ValueWithUnits - X bounds for evaluation
@@ -1651,35 +1651,8 @@ function findInflectionInTempCurve(curve is BSplineCurve, xStart is ValueWithUni
 function evaluateRadiusBetweenInflections(curve is BSplineCurve,
     xMin is ValueWithUnits, xMax is ValueWithUnits) returns ValueWithUnits
 {
-    var numSamples = 50;
-    var range = getBSplineParamRange(curve);
-    var uMin = range.uMin;
-    var uMax = range.uMax;
-
-    var radiusSum = 0 * meter;
-    var count = 0;
-
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var u = uMin + (uMax - uMin) * i / (numSamples - 1);
-        var curv = getBSplineCurvatureAtParam(curve, u);
-
-        // Check if point is within X bounds
-        if (curv.point[0] < xMin || curv.point[0] > xMax)
-            continue;
-
-        // Only accumulate non-zero curvature
-        if (curv.curvatureMag > 1e-9 / meter)
-        {
-            radiusSum += 1 / curv.curvatureMag;
-            count += 1;
-        }
-    }
-
-    if (count == 0)
-        return inf * meter;  // No curvature found
-
-    return radiusSum / count;
+    var result = computeAverageRadius(buildCurveDataArray([curve]), xMin, xMax, {});
+    return result.valid ? result.avgRadius : inf * meter;
 }
 
 /**
