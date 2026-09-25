@@ -357,7 +357,7 @@ function regionPoint(region is map, x is number) returns Vector
 }
 
 /**
- * Two drag arrows per blended intersection: on the first region's end, dragging back along -X (distance into the
+ * Two drag arrows per blended intersection, each with a magenta debug point at its base: on the first region's end, dragging back along -X (distance into the
  * first region), and on the second region's start, dragging along +X (distance into the second region). Each is
  * limited to its region's length.
  */
@@ -379,6 +379,9 @@ function addBlendManipulators(context is Context, id is Id, definition is map)
         {
             continue;
         }
+        // Debug points mark the arrow bases (shown while editing only; no geometry is made).
+        addDebugPoint(context, regionPoint(a, a.xe), DebugColor.MAGENTA);
+        addDebugPoint(context, regionPoint(b, b.xs), DebugColor.MAGENTA);
         manipulators[BLEND_START_KEY ~ i] = linearManipulator({
                     "base" : regionPoint(a, a.xe), "direction" : vector(-1, 0, 0), "offset" : entry.startDistance,
                     "minValue" : 0 * meter, "maxValue" : (a.xe - a.xs) * meter });
@@ -670,7 +673,9 @@ function blendSegment(regionA is map, regionB is map, xa is number, xb is number
     }
     const w = function(x is number) returns number { return polynomialAt(coefficients.w, (x - xa) / len); };
     const h = function(x is number) returns number { return polynomialAt(coefficients.h, (x - xa) / len); };
-    return segment(xa, xb, max(1, n0 + n1 + 1), w, h, "blend " ~ regionA.name ~ " / " ~ regionB.name);
+    var blend = segment(xa, xb, max(1, n0 + n1 + 1), w, h, "blend " ~ regionA.name ~ " / " ~ regionB.name);
+    blend.isBlend = true;
+    return blend;
 }
 
 function polynomialAt(c is array, s is number) returns number
@@ -1030,6 +1035,17 @@ function buildPiece(context is Context, id is Id, segments is array) returns map
     }
     const pieceBodies = qUnion(bodies);
     opExtractWires(context, id + "wire", { "edges" : qOwnedByBody(pieceBodies, EntityType.EDGE) });
+
+    // Show each blend's edge of the finished wire in magenta while editing (found by its midpoint).
+    for (var seg in segments)
+    {
+        if (seg.isBlend == true)
+        {
+            const xm = (seg.xa + seg.xb) / 2;
+            addDebugEntities(context, qContainsPoint(qOwnedByBody(qCreatedBy(id + "wire", EntityType.BODY), EntityType.EDGE),
+                        vector(xm, seg.w(xm), seg.h(xm)) * meter), DebugColor.MAGENTA);
+        }
+    }
     opDeleteBodies(context, id + "deleteSegments", { "entities" : pieceBodies });
     return { "wire" : qCreatedBy(id + "wire", EntityType.BODY), "start" : start, "end" : previousEnd };
 }
