@@ -14,7 +14,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e235
 export import(path : "67c190b80e8b74dcee72e7ff", version : "d1e9dfde21eebf5ac5808256");
 
 // IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d12f388a0ca371393307e39f");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "59e4ccedb1f226864c1d4996");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
 import(path : "66f4f03cf728e94b8f823585", version : "2e255abd0bd910b9d14de958");

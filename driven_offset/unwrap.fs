@@ -160,7 +160,7 @@ const UNWRAP_FIT_TOLERANCE_BOUNDS = { (millimeter) : [1e-5, 0.005, 1] } as Lengt
 const UNWRAP_MAX_CP_BOUNDS = { (unitless) : [4, 60, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
 
 const UNWRAP_LENGTH_BOUNDS = { (millimeter) : [-1e4, 0, 1e4] } as LengthBoundSpec;
-const UNWRAP_SPACING_BOUNDS = { (millimeter) : [0.5, 6, 50] } as LengthBoundSpec;
+const UNWRAP_SPACING_BOUNDS = { (millimeter) : [0.5, 50, 1000] } as LengthBoundSpec;
 
 /** How far a supplied end tangent may disagree with the edge's own three end points. */
 const UNWRAP_TANGENT_AGREE = 2 * degree;
@@ -271,7 +271,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
 
         if (definition.unwrapType == UnwrapType.THICKENED)
         {
-            annotation { "Name" : "Outline sample spacing", "Description" : "Spacing of the undraped outline samples. 6 mm holds the outline within 0.005 mm; wider is faster." }
+            annotation { "Name" : "Maximum sample gap", "Description" : "Outline samples are placed adaptively (per edge from its structure, refined until the outline is within a quarter of the fit tolerance); this only caps the largest gap." }
             isLength(definition.sampleSpacing, UNWRAP_SPACING_BOUNDS);
         }
 
@@ -458,7 +458,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             "squareWalls" : false,
             "debugKeepLengthCurves" : false,
             "targetFrom" : UndrapeTargetSource.WIRE,
-            "sampleSpacing" : 6 * millimeter,
+            "sampleSpacing" : 50 * millimeter,
             "recogniseShapes" : true,
             "approximationDegree" : 3,
             "approximationTolerance" : 0.005 * millimeter,
@@ -1185,11 +1185,12 @@ function addTally(a is map, b is map) returns map
 function plateSidesGeneral(context is Context, part is Query) returns map
 {
     const allFaces = qOwnedByBody(part, EntityType.FACE);
-    const totalArea = evArea(context, { "entities" : allFaces });
 
-    // Every offset pair evOffsetDetection finds, grown by tangency; keep the one covering the most
-    // area. The first pair is not always the plate's sides: on a narrow strip it pairs the two edge
-    // walls (145 mm apart) and misses the procedural top / bottom faces altogether.
+    // Every offset pair evOffsetDetection finds, grown by tangency; keep the one covering the most faces (areas
+    // are measured once, for the winner only: evArea on a draped plate's ~250 spline faces costs ~1.5 s a call,
+    // and this used to run it once per group plus once for the whole part). The first pair is not always the
+    // plate's sides: on a narrow strip it pairs the two edge walls (145 mm apart) and misses the procedural
+    // top / bottom faces altogether.
     var best = undefined;
     for (var g in evOffsetDetection(context, { "bodies" : part }))
     {
@@ -1197,27 +1198,54 @@ function plateSidesGeneral(context is Context, part is Query) returns map
         // reached in full from several seeds.
         const candidate = grownSides(context, qUnion(g.side0), qUnion(g.side1), 0.5 * (g.offsetLow + g.offsetHigh),
             g.offsetHigh - g.offsetLow);
-        if (candidate != undefined && (best == undefined || candidate.area > best.area))
+        if (candidate != undefined && (best == undefined || candidate.faceCount > best.faceCount))
         {
             best = candidate;
         }
     }
+    if (best != undefined)
+    {
+        best = withSideAreas(context, allFaces, best);
+    }
 
     // No pair covering most of the part: seed from an inward raycast on the largest faces instead.
-    if (best == undefined || best.area < UNWRAP_SIDE_AREA_FRACTION * totalArea)
+    if (best == undefined || best.coverage < UNWRAP_SIDE_AREA_FRACTION)
     {
-        const raycast = raycastSides(context, part);
-        if (raycast != undefined && (best == undefined || raycast.area > best.area))
+        var raycast = raycastSides(context, part);
+        if (raycast != undefined)
         {
-            best = raycast;
+            raycast = withSideAreas(context, allFaces, raycast);
+            if (best == undefined || raycast.coverage > best.coverage)
+            {
+                best = raycast;
+            }
         }
     }
-    if (best == undefined || best.area < UNWRAP_SIDE_AREA_FRACTION * totalArea)
+    if (best == undefined || best.coverage < UNWRAP_SIDE_AREA_FRACTION)
     {
         throw regenError("Could not find the two sides of a constant-thickness plate on this part: it looks like a solid block. Use Unwrap = Part (solid) for it.", ["parts"]);
     }
 
-    return mergeMaps(best, { "walls" : qSubtraction(allFaces, qUnion([best.side0, best.side1])) });
+    return best;
+}
+
+/**
+ * A side candidate with its areas: each side's, and the fraction of the part's area the two cover (the part's area
+ * as sides + walls, the walls being the few faces left over -- cheaper than the whole part again).
+ */
+function withSideAreas(context is Context, allFaces is Query, candidate is map) returns map
+{
+    const walls = qSubtraction(allFaces, qUnion([candidate.side0, candidate.side1]));
+    const area0 = evArea(context, { "entities" : candidate.side0 });
+    const area1 = evArea(context, { "entities" : candidate.side1 });
+    const wallArea = isQueryEmpty(context, walls) ? 0 * meter ^ 2 : evArea(context, { "entities" : walls });
+    return mergeMaps(candidate, {
+                "walls" : walls,
+                "area0" : area0,
+                "area1" : area1,
+                "area" : area0 + area1,
+                "coverage" : (area0 + area1) / (area0 + area1 + wallArea)
+            });
 }
 
 /**
@@ -1227,8 +1255,10 @@ function plateSidesGeneral(context is Context, part is Query) returns map
  */
 function grownSides(context is Context, seed0 is Query, seed1 is Query, thickness is ValueWithUnits, spread is ValueWithUnits)
 {
-    const side0 = qUnion(evaluateQuery(context, qTangentConnectedFaces(seed0, 45 * degree)));
-    const side1 = qUnion(evaluateQuery(context, qTangentConnectedFaces(seed1, 45 * degree)));
+    const faces0 = evaluateQuery(context, qTangentConnectedFaces(seed0, 45 * degree));
+    const faces1 = evaluateQuery(context, qTangentConnectedFaces(seed1, 45 * degree));
+    const side0 = qUnion(faces0);
+    const side1 = qUnion(faces1);
     if (!isQueryEmpty(context, qIntersection([side0, side1])))
     {
         return undefined;
@@ -1238,7 +1268,7 @@ function grownSides(context is Context, seed0 is Query, seed1 is Query, thicknes
         "side1" : side1,
         "thickness" : thickness,
         "spread" : spread,
-        "area" : evArea(context, { "entities" : qUnion([side0, side1])})
+        "faceCount" : size(faces0) + size(faces1)
     };
 }
 
@@ -1469,8 +1499,10 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     const chart = checkedChart(context, wire, (definition.targetFrom == UndrapeTargetSource.FACE) ? "profileFace" : "reference",
         alignPoint, offset);
     const undraped = undrapeOutline(context, id + "undrape", chart, sides.side0, sides.side1, thickness, {
+                "tolerance" : definition.approximationTolerance / 4,
                 "spacing" : definition.sampleSpacing,
-                "deformation" : definition.measureDeformation
+                "deformation" : definition.measureDeformation,
+                "sideAreas" : [sides.area0, sides.area1]
             });
 
     // The mid-surface lands on the target, chart height 0 on it: cs z = -alignHeight. Laid on the plane,

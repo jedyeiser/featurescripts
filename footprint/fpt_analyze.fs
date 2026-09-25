@@ -859,8 +859,11 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
         return { "valid" : false, "avgRadius" : 0 * meter };
     }
 
-    // One dense x(u) table per curve that overlaps [xMin, xMax].
-    var tables = [];
+    // Station s sits at x = xMin + (s + 0.5) * dx. Walk each overlapping curve's dense samples once and
+    // hand every sample segment the stations whose x it spans (O(samples + stations), not their product).
+    var dx = (xMax - xMin) / AVG_RADIUS_STATIONS;
+    var stationU = makeArray(AVG_RADIUS_STATIONS);
+    var stationCurve = makeArray(AVG_RADIUS_STATIONS);
     for (var cd in curveDataArray)
     {
         if (cd.xMax < xMin || cd.xMin > xMax)
@@ -874,45 +877,39 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
             params = append(params, range.uMin + (range.uMax - range.uMin) * i / (AVG_RADIUS_LOOKUP_SAMPLES - 1));
         }
         var points = evaluateSpline({ "spline" : cd.bspline, "parameters" : params })[0];
-        var xs = [];
-        for (var pt in points)
+        for (var i = 0; i < size(points) - 1; i += 1)
         {
-            xs = append(xs, pt[0]);
+            var x0 = points[i][0];
+            var x1 = points[i + 1][0];
+            if (x0 == x1)
+            {
+                continue;
+            }
+            // Station indices with x in [min(x0, x1), max(x0, x1)].
+            var sLo = max(0, ceil((min(x0, x1) - xMin) / dx - 0.5));
+            var sHi = min(AVG_RADIUS_STATIONS - 1, floor((max(x0, x1) - xMin) / dx - 0.5));
+            for (var st = sLo; st <= sHi; st += 1)
+            {
+                if (stationU[st] == undefined)
+                {
+                    // Linear in u between dense samples; curvature is then evaluated exactly at u.
+                    var x = xMin + (st + 0.5) * dx;
+                    stationU[st] = params[i] + (params[i + 1] - params[i]) * (x - x0) / (x1 - x0);
+                    stationCurve[st] = cd.bspline;
+                }
+            }
         }
-        tables = append(tables, { "bspline" : cd.bspline, "params" : params, "xs" : xs });
     }
 
     var radiusSum = 0 * meter;
     var count = 0;
-    for (var s = 0; s < AVG_RADIUS_STATIONS; s += 1)
+    for (var st = 0; st < AVG_RADIUS_STATIONS; st += 1)
     {
-        var x = xMin + (xMax - xMin) * (s + 0.5) / AVG_RADIUS_STATIONS;
-        var u = undefined;
-        var station = undefined;
-        for (var tbl in tables)
-        {
-            for (var i = 0; i < size(tbl.xs) - 1; i += 1)
-            {
-                var x0 = tbl.xs[i];
-                var x1 = tbl.xs[i + 1];
-                if ((x0 - x) * (x1 - x) <= 0 * meter * meter && x0 != x1)
-                {
-                    // Linear in u between dense samples; curvature is then evaluated exactly at u.
-                    u = tbl.params[i] + (tbl.params[i + 1] - tbl.params[i]) * (x - x0) / (x1 - x0);
-                    station = tbl;
-                    break;
-                }
-            }
-            if (station != undefined)
-            {
-                break;
-            }
-        }
-        if (station == undefined)
+        if (stationU[st] == undefined)
         {
             continue;
         }
-        var curv = getBSplineCurvatureAtParam(station.bspline, u);
+        var curv = getBSplineCurvatureAtParam(stationCurve[st], stationU[st]);
         if (curv.curvatureMag > 1e-9 / meter)
         {
             radiusSum += 1 / curv.curvatureMag;

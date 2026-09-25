@@ -9,12 +9,13 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "70dcbbcd66e91d640508
  * Design and measurements: research_undrape_map.md. In one paragraph: at every outline sample's own
  * station (the plane normal to the reference wire W through it), the plate's mid-surface section is
  * measured from the EDGES of one side of the plate. The station plane is intersected with every edge
- * of that side (each edge sampled once: positions, edge tangents, side-face normals), the crossings
+ * of that side (each edge sampled once, adaptively: positions, edge tangents, side-face normals), the crossings
  * are ordered across the section, and each piece between consecutive crossings is taken as the circular
  * arc with the two end tangents (tangent = station normal x face normal). The side's arc becomes the
  * mid-surface arc with the turning correction sideSign * (t' / 2) * turn, t' = t / |in-plane part of
  * the normal|. The flat point is x = length along the target (W offset by d) and
- * y = chart.alignV - (signed mid arc from the centreline w = 0).
+ * y = chart.alignV - (signed mid arc from the centreline w = 0). The outline is sampled adaptively to
+ * options.tolerance (undrapeOutline, UNDRAPE_TOLERANCE); the edge tables likewise (UNDRAPE_SEED_TURN).
  *
  * A section that is not single-valued across the width (a wall at or past vertical: the folded wings of
  * a pressed channel) is ordered by the side's face adjacency instead of by width and unrolled by arc
@@ -133,7 +134,7 @@ export const UNDRAPE_CREASE_COS = 0.9999995;
 /** Below this turning (radians) a piece is a straight chord. */
 export const UNDRAPE_STRAIGHT = 1e-9;
 
-/** A rim edge whose tangent keeps |t . u| >= this is sampled at the shared station grid ("lengthwise"). */
+/** A rim edge whose tangent keeps |t . u| >= this is sampled by station arc ("lengthwise", undrapeSeeds). */
 export const UNDRAPE_LENGTHWISE = 0.5;
 
 /** Station arcs closer than this share one station, metres. */
@@ -2519,8 +2520,9 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     // one carries the whole outline.
     const count0 = size(evaluateQuery(context, qAdjacent(side0, AdjacencyType.EDGE, EntityType.EDGE)));
     const count1 = size(evaluateQuery(context, qAdjacent(side1, AdjacencyType.EDGE, EntityType.EDGE)));
-    const area0 = evArea(context, { "entities" : side0 });
-    const area1 = evArea(context, { "entities" : side1 });
+    // Areas from the caller when it has them (evArea on a draped side is ~1.5 s): options.sideAreas = [side0, side1].
+    const area0 = (options.sideAreas != undefined) ? options.sideAreas[0] : evArea(context, { "entities" : side0 });
+    const area1 = (options.sideAreas != undefined) ? options.sideAreas[1] : evArea(context, { "entities" : side1 });
     const useFirst = (abs(area0 - area1) > 0.01 * max(area0, area1)) ? (area0 > area1) : (count0 <= count1);
     const sideA = useFirst ? side0 : side1;
     const sideB = useFirst ? side1 : side0;
@@ -3192,7 +3194,7 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
     var ep = edge;
     if (!firstPass && size(ep.checks) == 0 && size(ep.fresh) == 0)
     {
-        // settled: only shared samples of later passes can still join (through "fresh")
+        // settled
         return { "edge" : ep, "requests" : [], "arcs" : [], "unsettled" : 0 };
     }
     var failedSpans = [];
@@ -3297,9 +3299,10 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
                 at = append(at, us[i + 1] - UNDRAPE_END_CHECK);
             }
         }
-        for (var m in at)
+        for (var j = 0; j < size(at); j += 1)
         {
-            ep.checks = append(ep.checks, [us[i], us[i + 1], reqs[i], reqs[i + 1], m, (size(ep.checks) > 0 && ep.checks[size(ep.checks) - 1][0] == us[i]) ? 1 : 0]);
+            const m = at[j];
+            ep.checks = append(ep.checks, [us[i], us[i + 1], reqs[i], reqs[i + 1], m, (j > 0) ? 1 : 0]);
             if (ep.lengthwise)
             {
                 ep.checkReq = append(ep.checkReq, undefined);

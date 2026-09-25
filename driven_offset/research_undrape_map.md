@@ -1070,3 +1070,108 @@ Timing (eval API, min of 5, setup-only subtracted; server load varies +-0.05 s):
 old 5.67 s, new 5.71 s, new without deformation 5.47 s; 4305 old 1.30 s, new 1.33 s, without deformation 1.20 s.
 Outputs identical (<= 9e-16 m points, <= 4e-12 tangents, same station/fallback counts) on RnRD, 4305 RtjT, base
 RtjP, 6005 Rtjf, 4310 Rtjj, mats RtjX and Rtjb. Harness: scratchpad agentB/run.py (sources snapshotted in agentB/src).
+
+## 15. As built (2026-09-25): adaptive sampling (outline and edge tables)
+
+Not pushed. `options` is now `{ "tolerance", "spacing", "deformation" }`. `tolerance` defaults to 0.00125 mm
+(`UNDRAPE_TOLERANCE`), which is a quarter of a 0.005 mm fit tolerance. `spacing` is now only the MAXIMUM gap between
+outline samples and defaults to 50 mm (`UNDRAPE_MAX_GAP`). unwrap.fs still passes `spacing = sampleSpacing` (6 mm),
+which caps every gap at 6 mm. It should pass `tolerance` (a quarter of its fit tolerance) and drop `spacing` or pass
+a large value. The report gains `samples`, `passes`, `tableSamples` and `unsettled`. The lines report stations,
+passes, samples, tolerance, max gap and unsettled spans.
+
+**Edge tables** (`undrapeSampleSide` -> `undrapeAdaptiveEdge`).
+- Seeds come from the edge's structure (`undrapeSeedSpans`: evCurveDefinition). A line gets 1 span. A B-spline gets
+  one span per control-point interval. Anything else gets one span per 15 deg of turn. No span may turn more than
+  0.5 rad, and seeds are never closer than 2 mm.
+- Positions and tangents come from `evEdgeTangentLines` with `arcLengthParameterization : false`. That costs
+  ~15 us per point, and calls are nearly free. With the default arc-length parameterization, EVERY call costs
+  ~1.5 ms. The first call reads the seeds and every span midpoint. A span is split where its midpoint misses the
+  Hermite span by more than 4 * 0.1 * tolerance; checked midpoints stay, so the refined table is ~1/16 of that off.
+- Side normals come from `evFaceTangentPlanesAtEdge` (~0.19 ms per point) on their own knots: the seeds and their
+  midpoints, refined where the midpoint misses the linear interpolation by more than 4 * `UNDRAPE_NORMAL_TOL`
+  (5e-4 rad).
+- Normal accuracy matters at the micron level. At identical stations, a normal tolerance of 2e-3 moved outline
+  points by up to 1.7 um; 5e-4 moves them by <= 0.3 um compared with a table 5x tighter everywhere.
+- **The old 10 mm tables were off by up to 4.8 um.** The comparison ran the old outline code with the old tables
+  vs tight new tables, at the same 1 mm stations, on RnRD. The errors sit at the transition edges (arc 1326-1331
+  and 512-516). The new default tables agree with the tight ones to 0.3 um.
+- RnRD has 3226 table samples (old: 2773). 4305 has 895 (old: 993).
+
+**Outline** (`undrapeSeeds`, `undrapeArcRequests`, `undrapeResolveBatch`, `undrapeRefine`, `undrapeMiss`).
+- Seeds come from each rim edge's own structure, plus the chart's curvature breaks inside lengthwise edges
+  (`undrapeChartBreaks`: zero-length joins where kappa jumps > 1e-3 /m; a break within 1 mm of a vertex is that
+  vertex). Gaps are capped at `spacing`.
+- Each pass then resolves ALL new requests through the old station machinery, now in `undrapeResolveBatch`: sort,
+  merge, candidates, crossings, sections and kernel fallback.
+- Each rim edge then checks its spans. A span's midpoint is compared with the curve a fit through the edge's samples
+  would draw: the cubic Hermite on chord length, with Catmull-Rom slopes from the quadratic through neighbours and
+  the reported unit end tangents at the ends. The miss is the geometric distance to the nearest point, so it does
+  not depend on the parameterization. The Python check uses the same curve.
+- Spans missing by more than `tolerance` are split. Checked midpoints stay. The next pass checks the spans inside
+  each failed span and the span on each side of it, because the new sample changes the neighbours' slopes.
+- End spans are also checked 1 mm from the vertex (`UNDRAPE_END_CHECK`). A passed end check is dropped, since a
+  sample 1 mm from a vertex bends the fit where nothing checked it.
+- Spans narrower than 2 * 0.5 mm are not checked (`UNDRAPE_MIN_SPAN`). Up to 10 passes.
+- Spans touching a kernel-fallback station are held to 0.01 mm (the fallback's own accuracy) and 3 mm
+  (`UNDRAPE_KERNEL_TOL`, `UNDRAPE_KERNEL_MIN_SPAN`): each fallback station costs ~0.1 s.
+- Vertices are still one exact request each, shared by both edges. The end tangents still use the three stations
+  0.2/0.4/0.6 mm inside each end.
+- Lengthwise edges ask for stations by arc, so the two long sides of a symmetric part ask for the same arcs and
+  share them. A first version also read every station on every lengthwise edge spanning it. That saved no stations
+  on RnRD (362 either way), and a foreign sample bends another edge's fit where nothing checked it, so it was dropped.
+
+**What the checks taught (each found on the test parts):**
+- (a) A cubic with Catmull-Rom slopes parameterized by station arc differs from the chord-length curve a fit draws
+  by ~2 um on 17 mm spans of 4305. The check must use the fit's curve.
+- (b) Keeping passed check points is needed. Dropping them (keeping only failed ones) left 35-149 truth points over
+  tolerance per part, because a single midpoint does not bound a sparse Catmull-Rom curve.
+- (c) Next to outline vertices the outline bends within ~1-3 mm (finding c of section 12). This is a 9 um dent at
+  RnRD arc 1331.4 against the end tangent from the 0.2-0.6 mm points. A long end span's midpoint can pass anyway,
+  hence the end check.
+- (d) Under the literal U-turn rule, the tail and tip U-turns have sub-millimetre features: a 0.5 mm bump within
+  4 mm at arc 44-47 on RnRD, which the old 6 mm grid missed completely (786 um off).
+
+**Accuracy.** "Truth" is the old outline code with tight new tables at a 1 mm station grid. Each truth point is
+measured to the new chord-length cubic through the new samples, using the new end tangents. The old 6 mm results are
+measured the same way; they also carry the old tables' errors.
+
+| part | old 6 mm: max / pts > 1.25 um | new: max / pts > 1.25 um | new unsettled | area rel / rim rel (new vs truth, curves) |
+|---|---|---|---|---|
+| RnRD (outside U-turns: arc 38-64, 1780-1828 excluded) | 12.7 um / 75 | 1.24 um / 0 | 2 | 3e-6 / -1.2e-4 (U-turns) |
+| 4305 RtjT | 114 um / 182 | 6.6 um / 14 | 8 | 2e-7 / 5e-7 |
+| base RtjP | 13.7 um / 169 | 0.62 um / 0 | 0 | -2e-8 / -3e-8 |
+| 6005 Rtjf, 4310 Rtjj | 0 / 0 | 0 / 0 | 0 | 3e-13 / -8e-13 |
+| mat RtjX | 5.9 um / 75 | 0.22 um / 0 | 0 | -3e-8 / -5e-8 |
+| mat Rtjb | 9.9 um / 77 | 0.61 um / 0 | 0 | 4e-7 / -9e-8 |
+
+- The 14 points on 4305 lie in the 8 unsettled spans, which are already below 1 mm: real slope kinks at the wing
+  roots (arc -366, -337, 180, 212) and at the diagonal wing ends. MIN_SPAN 0.2 mm only took them from 6.6 to 5.3 um.
+- The RnRD U-turn zones stay under-resolved by design: up to 0.45 mm vs the 1 mm truth, against 0.79 mm for the old
+  6 mm grid. Their rim length is -1.2e-4 relative.
+- RnRD: 17 kernel fallbacks (old 11), 0 failed. Deformation report: -9.6 % .. +10.9 % (old -6.5 % .. +7.5 %), because
+  the U-turns are now sampled denser. 4305: 1 loop, 0 fallbacks.
+
+**Counts and time.** Eval API, min of 3; undrapeOutline = total minus setup-only; deformation on.
+
+| part | stations old -> new | outline samples old -> new | time old -> new |
+|---|---|---|---|
+| RnRD | 358 -> 362 | 689 -> 601 | 5.65 -> 7.48 s |
+| 4305 RtjT | 541 -> 705 | 732 -> 719 | 1.27 -> 2.03 s |
+| RtjP | 423 -> 457 | 680 -> 487 | 0.58 -> 0.80 s |
+| Rtjf | 326 -> 133 | 672 -> 232 | 0.43 -> 0.32 s |
+| Rtjj | 326 -> 107 | 672 -> 180 | 0.53 -> 0.32 s |
+| RtjX | 65 -> 125 | 96 -> 157 | 0.06 -> 0.22 s |
+| Rtjb | 57 -> 130 | 83 -> 142 | 0.04 -> 0.20 s |
+
+- At 1.25 um the old 6 mm grid was NOT overkill on most parts: it was 6-114 um short in places. Station counts
+  therefore stay similar. The per-edge fixed cost of 1 vertex + 6 tangent stations dominates parts with many rim
+  edges (4305: 476 of 705 stations).
+- RnRD's extra time is the sharper edge tables (+0.8 s: normals 0.7 s) and 6 more kernel stations (~0.6 s).
+- **Biggest remaining cost, unchanged by this work:** the side choice's two `evArea` calls take 2.9 s of RnRD's 7.5 s
+  (5.3 s without them). A cheaper completeness test would pay most: for example, check that the face across every
+  rim edge of the chosen side touches the other side.
+
+**Harness:** session scratchpad `agentB2/`. It has `run.py` / `mk.py` (as agentB), `mkhybrid.py` (old outline code
+with new tables), `cmp3.py` (truth vs new: cubic distance, curve area and length, exclusion zones), `runall.sh`,
+`mkstop.py` (stage timing), truths in `tmp/dense_*.txt` and `tmp/hybt_dense_rnrd.txt`.
