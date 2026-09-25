@@ -2,7 +2,7 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; export-imports curve_core: chains, classifyPoints, emitters)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "94bdc9f41a52d2b6f3665595");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a762b");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
