@@ -1243,21 +1243,6 @@ function plateFromOutline(context is Context, id is Id, wireEdges is Query, flat
     return qCreatedBy(id + "plate", EntityType.BODY);
 }
 
-/**
- * The faces of a plate side the section plane crosses, plus their neighbours on that side (so every crossed face
- * is offset with the faces around it, as useFacesAroundToTrimOffset expects). The whole side when the plane
- * crosses none of it -- profileFromFace then reports that the section misses the part.
- */
-function facesNearPlane(context is Context, side is Query, pl is Plane) returns Query
-{
-    const crossed = evaluateQuery(context, qIntersectsPlane(side, pl));
-    if (size(crossed) == 0)
-    {
-        return side;
-    }
-    return qUnion(evaluateQuery(context, qUnion([qUnion(crossed),
-                        qIntersection([qAdjacent(qUnion(crossed), AdjacencyType.EDGE, EntityType.FACE), side])])));
-}
 
 /**
  * Undrape one constant-thickness part: its mid-surface onto the target (the wire's extrusion,
@@ -1277,11 +1262,10 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         // their neighbours (~1 s per plate for all of them). The kernel refuses the trimmed offset of one side on
         // some parts (4305: side 0 fails with DIRECT_EDIT_OFFSET_FACE_FAILED, side 1 works); either side gives the
         // same mid-surface.
-        const sectionPlane = evPlane(context, { "face" : definition.profileFace });
         try silent
         {
             opExtractSurface(context, id + "mid", {
-                        "faces" : facesNearPlane(context, sides.side0, sectionPlane),
+                        "faces" : sides.side0,
                         "offset" : -0.5 * thickness,
                         "useFacesAroundToTrimOffset" : true
                     });
@@ -1290,7 +1274,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         {
             // Its own id: a failed operation can still hold the first one ("Duplicate id").
             opExtractSurface(context, id + "midAlt", {
-                        "faces" : facesNearPlane(context, sides.side1, sectionPlane),
+                        "faces" : sides.side1,
                         "offset" : -0.5 * thickness,
                         "useFacesAroundToTrimOffset" : true
                     });

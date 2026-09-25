@@ -139,10 +139,10 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
                 if (region.shape == OffsetProfileShape.CONSTANT)
                 {
                     annotation { "Name" : "Width" }
-                    isLength(region.startWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
+                    isLength(region.constantWidth, ZERO_DEFAULT_LENGTH_BOUNDS);
 
                     annotation { "Name" : "Height" }
-                    isLength(region.startHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
+                    isLength(region.constantHeight, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
                 else
                 {
@@ -485,8 +485,10 @@ function regionData(region is map, index is number) returns map
             "name" : region.regionName,
             "index" : index,
             "xs" : xs, "xe" : xe, "b0" : b0, "b1" : b1,
-            "w0" : region.startWidth / meter, "w1" : (constant ? region.startWidth : region.endWidth) / meter,
-            "h0" : region.startHeight / meter, "h1" : (constant ? region.startHeight : region.endHeight) / meter,
+            "w0" : (constant ? region.constantWidth : region.startWidth) / meter,
+            "w1" : (constant ? region.constantWidth : region.endWidth) / meter,
+            "h0" : (constant ? region.constantHeight : region.startHeight) / meter,
+            "h1" : (constant ? region.constantHeight : region.endHeight) / meter,
             "shape" : region.shape
         };
 }
