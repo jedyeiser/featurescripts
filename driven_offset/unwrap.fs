@@ -63,8 +63,10 @@ import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b982
  */
 
 /*
- * AS BUILT (2026-09-25). Design records: driven_offset/research_unwrap.md (section 0), research_unwrap_part.md,
- * research_undrape_*.md.
+ * AS BUILT (2026-09-25). Explained end to end (theory, use, code map): driven_offset/docs/unwrap_explained.md.
+ * Design records: research_unwrap_perf.md (chart accuracy, packed evaluator, fitting), research_unwrap_part.md
+ * (Part mode, as built 8 / 8b), research_undrape_map.md (undrape, as built 12-15), research_undrape_ops.md;
+ * research_unwrap.md is the 09-10 pre-build plan, partly superseded.
  *
  * The map (edge_offset_utils.fs: unwrapChart / unwrapFast). The reference is ONE planar tangent chain (joints
  * within 1 deg) whose X rises steadily; swept along its plane's normal it is a surface that flattens without
@@ -1627,12 +1629,15 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
 // ============================================================================
 
 /**
- * Keep the Outputs table in step with the source bodies (getProperty works in editing logic, never in the
- * feature body; correction 36). Rebuilt when "Read names and properties" is pressed or the source bodies
- * (by name, in order) differ from the rows; a name-suffix change renames the rows that still carry the
- * automatic name. A rebuilt row whose source name matches an existing row keeps that row's edited output
- * name and its "Copy material and appearance" choice; without the button press it also keeps the material
- * and appearance it read before (properties are re-read only on the button).
+ * Fill the Outputs table from the source bodies (getProperty works in editing logic, never in the feature
+ * body; correction 36). The table changes ONLY when "Read names and properties" is pressed; any other edit
+ * (a selection, the name suffix, an upstream change) leaves it as it is, and the feature body warns when
+ * the row count no longer matches the bodies.
+ *
+ * On a press every row is rebuilt from its source body (name, material, appearance re-read). A rebuilt row
+ * whose source name matches an existing row keeps that row's "Copy material and appearance" choice, and its
+ * edited output name; an output name that was still automatic (empty, or source name + the old or new
+ * suffix) becomes source name + the current suffix.
  */
 export function unwrapEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
@@ -1669,7 +1674,7 @@ export function unwrapEditLogic(context is Context, id is Id, oldDefinition is m
             }
         }
 
-        var row = (pressed || previous == undefined) ? readRow(context, sources[i], names[i], definition.nameSuffix) : previous;
+        var row = readRow(context, sources[i], names[i], definition.nameSuffix);
         if (previous != undefined)
         {
             row.copyProperties = previous.copyProperties;

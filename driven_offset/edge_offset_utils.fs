@@ -345,7 +345,7 @@ export function paramsAtX(curve is BSplineCurve, targets is array) returns array
  * Linear-interpolation seed for paramsAtX, from the bracketing seed samples.
  * Targets beyond either end clamp to the nearer end of the curve.
  */
-function seedParam(seedParams is array, seedPoints is array, target, uMin is number, uMax is number) returns number
+export function seedParam(seedParams is array, seedPoints is array, target, uMin is number, uMax is number) returns number
 {
     for (var i = 0; i < size(seedPoints) - 1; i += 1)
     {
@@ -1172,7 +1172,7 @@ export function hermiteAt(xs is array, ys is array, slopes is array, x)
  * the wire offset by delta, and a parallel curve runs (1 - delta * kappa) times as
  * fast as its parent. So this is not the unit tangent unless delta is zero.
  */
-function referenceRate(alongRef is map, index is number) returns Vector
+export function referenceRate(alongRef is map, index is number) returns Vector
 {
     return (1 - alongRef.delta * alongRef.curvatures[index]) * alongRef.tangents[index];
 }
@@ -1323,7 +1323,9 @@ export function referenceSurfacePoint(alongRef is map, arc is ValueWithUnits, v 
  *
  * @param alignPoint {Vector} : the wrapped point that lands on the unwrapped origin. Its X also
  *      seeds buildAlongReference's zero, so it must lie within the reference's X span.
- * @returns {map} : { "alongRef", "align" (its surface coords), "alignCoord" }
+ * @returns {map} : { "alongRef" (unit-based tables), "packed" (packChart), "alignX" (the alignment point's
+ *      preserved-length coordinate, arc - delta * theta), "alignV", "alignHeight" (its chart v and height);
+ *      plain metres }
  */
 export function unwrapChart(context is Context, selection is Query, alignPoint is Vector, delta is ValueWithUnits) returns map
 {
@@ -1344,8 +1346,6 @@ export function chartFromReference(alongRef is map, alignPoint is Vector) return
     return {
         "alongRef" : alongRef,
         "packed" : packed,
-        "align" : { "arc" : f[0] * meter, "v" : f[2] * meter, "height" : f[3] * meter },
-        "alignCoord" : (f[0] - packed.delta * f[4]) * meter,
         "alignX" : f[0] - packed.delta * f[4],
         "alignV" : f[2],
         "alignHeight" : f[3]
@@ -1353,9 +1353,17 @@ export function chartFromReference(alongRef is map, alignPoint is Vector) return
 }
 
 /**
- * Chart coordinates of a wrapped point in plain metres, plus its foot for the next call.
+ * Chart coordinates of a wrapped point in plain metres, relative to the alignment point, plus its
+ * foot for the next call: x along the preserved length, y across the reference plane, z off the
+ * offset reference.
+ *
+ * Right-handed with (tangent, -planeNormal, normal): the surface normal is planeNormal x
+ * tangent, so (tangent, planeNormal, normal) would be LEFT-handed and every unwrapped solid a
+ * mirror image. y is therefore measured along -planeNormal.
+ *
  * @param previous : undefined (seed from X), or the previous result along the same edge (warm start).
- * @returns {array} : [x, y, z, arc, span, tx, ty, tz, kappa, scale, height]
+ * @returns {array} : [x, y, z, arc, span, tx, ty, tz, kappa, scale, height, residual]
+ *      (residual = the foot's tangential residual, metres; see chartFootConverged)
  */
 export function unwrapFast(chart is map, point is Vector, previous) returns array
 {
@@ -1515,32 +1523,6 @@ export function unwrapDirection(chart is map, cs is CoordSystem, u is array, d i
     return normalize(along * cs.xAxis + across * cross(cs.zAxis, cs.xAxis) + up * cs.zAxis);
 }
 
-/**
- * Chart coordinates of a wrapped point relative to the alignment point: x along the preserved
- * length, y across the reference plane, z off the offset reference.
- *
- * Right-handed with (tangent, -planeNormal, normal): the surface normal is planeNormal x
- * tangent, so (tangent, planeNormal, normal) would be LEFT-handed and every unwrapped solid a
- * mirror image. y is therefore measured along -planeNormal.
- */
-export function unwrapCoords(chart is map, point is Vector) returns Vector
-{
-    const u = unwrapFast(chart, point, undefined);
-    return vector(u[0], u[1], u[2]) * meter;
-}
-
-/**
- * A wrapped point, unwrapped into the frame `cs`: the alignment point lands on cs's origin, the
- * reference tangent there on cs's X, the reference surface normal on cs's Z.
- *
- * @param zShift {ValueWithUnits} : added to the height, e.g. to lay a plate's bottom on the plane.
- */
-export function unwrapPoint(chart is map, cs is CoordSystem, zShift is ValueWithUnits, point is Vector) returns Vector
-{
-    const c = unwrapCoords(chart, point);
-    return toWorld(cs, vector(c[0], c[1], c[2] + zShift));
-}
-
 // ----------------------------------------------------------------------------
 // Packed chart: the same map in plain numbers (metres, radians, 1/m). Unit arithmetic is
 // operator overloading in FeatureScript and costs ~40x plain arithmetic; the per-point map ran
@@ -1550,7 +1532,7 @@ export function unwrapPoint(chart is map, cs is CoordSystem, zShift is ValueWith
 // ----------------------------------------------------------------------------
 
 /** Newton on the foot stops below this residual, metres (REFERENCE_FOOT_TOL as a number). */
-const CHART_FOOT_TOL = 1e-10;
+const CHART_FOOT_TOL = REFERENCE_FOOT_TOL / meter;
 
 /**
  * The chart's tables as plain numbers (metres, radians, 1/m): unit arithmetic is FS-level operator
@@ -1685,7 +1667,7 @@ export function chartFoot(c is map, qx is number, qy is number, qz is number, a0
  * Sample position, tangent, curvature and curvature direction along a reference
  * chain. One kernel call per edge.
  */
-function sampleTurning(context is Context, chain is map) returns array
+export function sampleTurning(context is Context, chain is map) returns array
 {
     var samples = [];
 
@@ -1733,7 +1715,7 @@ export const REFERENCE_HANDEDNESS_Z = 0.1;
  * A per-sample choice would be unstable: for an XZ-planar chain the binormal is
  * almost entirely Y, so its Z component carries no usable sign.
  */
-function referencePlaneNormal(samples is array) returns Vector
+export function referencePlaneNormal(samples is array) returns Vector
 {
     var best = undefined;
     var bestCurvature = 0 / meter;

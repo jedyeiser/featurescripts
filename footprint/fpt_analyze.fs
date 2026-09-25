@@ -843,7 +843,7 @@ export function arcThroughThreePoints(p1 is Vector, p2 is Vector, p3 is Vector) 
 // sidecut is split into edges.
 const AVG_RADIUS_STATIONS = 200;
 // Dense per-curve samples used to locate each station's parameter from its x.
-const AVG_RADIUS_LOOKUP_SAMPLES = 400;
+const AVG_RADIUS_LOOKUP_SAMPLES = 100;
 
 /**
  * Average radius of curvature of the sidecut between x = xMin and x = xMax (the inflection points):
@@ -862,8 +862,9 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
     // Station s sits at x = xMin + (s + 0.5) * dx. Walk each overlapping curve's dense samples once and
     // hand every sample segment the stations whose x it spans (O(samples + stations), not their product).
     var dx = (xMax - xMin) / AVG_RADIUS_STATIONS;
-    var stationU = makeArray(AVG_RADIUS_STATIONS);
-    var stationCurve = makeArray(AVG_RADIUS_STATIONS);
+    var filled = makeArray(AVG_RADIUS_STATIONS, false);
+    var radiusSum = 0 * meter;
+    var count = 0;
     for (var cd in curveDataArray)
     {
         if (cd.xMax < xMin || cd.xMin > xMax)
@@ -877,6 +878,9 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
             params = append(params, range.uMin + (range.uMax - range.uMin) * i / (AVG_RADIUS_LOOKUP_SAMPLES - 1));
         }
         var points = evaluateSpline({ "spline" : cd.bspline, "parameters" : params })[0];
+
+        // Parameters of the stations this curve spans (linear in u between the dense samples).
+        var stationParams = [];
         for (var i = 0; i < size(points) - 1; i += 1)
         {
             var x0 = points[i][0];
@@ -885,35 +889,43 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
             {
                 continue;
             }
-            // Station indices with x in [min(x0, x1), max(x0, x1)].
             var sLo = max(0, ceil((min(x0, x1) - xMin) / dx - 0.5));
             var sHi = min(AVG_RADIUS_STATIONS - 1, floor((max(x0, x1) - xMin) / dx - 0.5));
             for (var st = sLo; st <= sHi; st += 1)
             {
-                if (stationU[st] == undefined)
+                if (!filled[st])
                 {
-                    // Linear in u between dense samples; curvature is then evaluated exactly at u.
+                    filled[st] = true;
                     var x = xMin + (st + 0.5) * dx;
-                    stationU[st] = params[i] + (params[i + 1] - params[i]) * (x - x0) / (x1 - x0);
-                    stationCurve[st] = cd.bspline;
+                    stationParams = append(stationParams, params[i] + (params[i + 1] - params[i]) * (x - x0) / (x1 - x0));
                 }
             }
         }
-    }
-
-    var radiusSum = 0 * meter;
-    var count = 0;
-    for (var st = 0; st < AVG_RADIUS_STATIONS; st += 1)
-    {
-        if (stationU[st] == undefined)
+        if (size(stationParams) == 0)
         {
             continue;
         }
-        var curv = getBSplineCurvatureAtParam(stationCurve[st], stationU[st]);
-        if (curv.curvatureMag > 1e-9 / meter)
+
+        // One evaluation for all of this curve's stations; planar curvature as getBSplineCurvatureAtParam.
+        var derivs = evaluateSpline({ "spline" : cd.bspline, "parameters" : stationParams, "nDerivatives" : 2 });
+        for (var j = 0; j < size(stationParams); j += 1)
         {
-            radiusSum += 1 / curv.curvatureMag;
-            count += 1;
+            var xP = derivs[1][j][0] / meter;
+            var yP = derivs[1][j][1] / meter;
+            var xPP = derivs[2][j][0] / meter;
+            var yPP = derivs[2][j][1] / meter;
+            var speedSquared = xP * xP + yP * yP;
+            var denom = speedSquared * sqrt(speedSquared);
+            if (denom < 1e-15)
+            {
+                continue;
+            }
+            var kMag = abs(xP * yPP - yP * xPP) / denom;
+            if (kMag > 1e-9)
+            {
+                radiusSum += meter / kMag;
+                count += 1;
+            }
         }
     }
 
