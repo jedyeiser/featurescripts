@@ -577,6 +577,24 @@ function unwrapPart(context is Context, id is Id, definition is map, chart is ma
     };
 }
 
+/** How far a supplied end tangent may disagree with the edge's own three end points. */
+const UNWRAP_TANGENT_AGREE = 2 * degree;
+
+/**
+ * Unit tangent at p0 of the parabola through p0, p1, p2 (chord spacing), pointing from p0 towards p1.
+ */
+function threePointTangent(p0 is Vector, p1 is Vector, p2 is Vector) returns Vector
+{
+    const d1 = norm(p1 - p0) / meter;
+    const d2 = norm(p2 - p1) / meter;
+    if (d1 < 1e-12 || d2 < 1e-12)
+    {
+        return normalize(p2 - p0);
+    }
+    const derivative = -(2 * d1 + d2) / (d1 * (d1 + d2)) * p0 + (d1 + d2) / (d1 * d2) * p1 - d1 / (d2 * (d1 + d2)) * p2;
+    return normalize(derivative);
+}
+
 /**
  * Emit one unwrapped edge: a line or an (exact, sketch) arc when the points are one within tolerance
  * AND the exactly-unwrapped end tangents agree with it -- so continuity is kept -- a fit otherwise.
@@ -591,19 +609,24 @@ function emitFlatCurve(context is Context, id is Id, points is array, startTange
     var shape = { "kind" : "freeform" };
     var gate = "";
 
-    // A supplied end tangent more than 60 deg off the edge's own first / last span is wrong (seen at a
-    // pointed tail tip, where the section shrinks to a point and the map's tangent flips): use the span.
-    const startSpan = normalize(points[1] - points[0]);
-    const endSpan = normalize(points[count - 1] - points[count - 2]);
-    if (dot(startTangent, startSpan) < 0.5)
+    // A supplied end tangent must agree with the edge's own end: checked against the tangent of the parabola
+    // through the last three points (non-uniform spacing). More than UNWRAP_TANGENT_AGREE off and it is
+    // replaced -- the undrape map's tangent at a pointed tip (section shrinking to a point) came out 58 deg
+    // wrong on a base's tail and the fit, held to it, wobbled (curvature sign flipping seven times).
+    if (count >= 3)
     {
-        startTangent = startSpan;
-        gate = gate ~ " (start tangent replaced)";
-    }
-    if (dot(endTangent, endSpan) < 0.5)
-    {
-        endTangent = endSpan;
-        gate = gate ~ " (end tangent replaced)";
+        const startEstimate = threePointTangent(points[0], points[1], points[2]);
+        const endEstimate = -threePointTangent(points[count - 1], points[count - 2], points[count - 3]);
+        if (angleBetween(startTangent, startEstimate) > UNWRAP_TANGENT_AGREE)
+        {
+            gate = gate ~ " (start tangent off by " ~ toString(roundToPrecision(angleBetween(startTangent, startEstimate) / degree, 2)) ~ " deg: replaced)";
+            startTangent = startEstimate;
+        }
+        if (angleBetween(endTangent, endEstimate) > UNWRAP_TANGENT_AGREE)
+        {
+            gate = gate ~ " (end tangent off by " ~ toString(roundToPrecision(angleBetween(endTangent, endEstimate) / degree, 2)) ~ " deg: replaced)";
+            endTangent = endEstimate;
+        }
     }
     if (settings.recognise)
     {
