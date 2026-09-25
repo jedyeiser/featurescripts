@@ -1327,7 +1327,13 @@ export function referenceSurfacePoint(alongRef is map, arc is ValueWithUnits, v 
  */
 export function unwrapChart(context is Context, selection is Query, alignPoint is Vector, delta is ValueWithUnits) returns map
 {
-    return chartFromReference(buildAlongReference(context, selection, alignPoint, delta), alignPoint);
+    const alongRef = buildAlongReference(context, selection, alignPoint, delta);
+    const problem = unwrapReferenceProblem(alongRef);
+    if (problem != undefined)
+    {
+        throw regenError(problem, ["reference"], selection);
+    }
+    return chartFromReference(alongRef, alignPoint);
 }
 
 export function chartFromReference(alongRef is map, alignPoint is Vector) returns map
@@ -1354,12 +1360,143 @@ export function chartFromReference(alongRef is map, alignPoint is Vector) return
 export function unwrapFast(chart is map, point is Vector, previous) returns array
 {
     const c = chart.packed;
-    const a0 = (previous == undefined) ? referenceArcAtX(chart.alongRef, point[0]).value : previous[3];
-    const i0 = (previous == undefined) ? 0 : previous[4];
+    const a0 = (previous == undefined) ? chartSeedArc(c, point[0].value) : previous[3];
+    const i0 = (previous == undefined) ? chartSpanOf(c, a0) : previous[4];
     const f = chartFoot(c, point[0].value, point[1].value, point[2].value, a0, i0);
     return [f[0] - c.delta * f[4] - chart.alignX, chart.alignV - f[2], f[3] - chart.alignHeight,
-            f[0], f[1], f[5], f[6], f[7], f[8], f[9], f[3]];
+            f[0], f[1], f[5], f[6], f[7], f[8], f[9], f[3], f[10]];
 }
+
+/** A foot whose tangential residual is above this (metres) was not found. */
+export const CHART_FOOT_FAIL = 1e-7;
+
+/**
+ * Whether an unwrapFast result (residual at index 11) or a chartFoot result (index 10) found its foot.
+ */
+export function chartFootConverged(result is array) returns boolean
+{
+    return abs(result[size(result) - 1]) <= CHART_FOOT_FAIL;
+}
+
+/**
+ * Arc (plain metres) whose sample X is nearest qx: the cold seed for chartFoot, by binary search on the
+ * packed X samples (no units). The tables are keyed by arc; px rises with it wherever the chart is usable.
+ */
+export function chartSeedArc(c is map, qx is number) returns number
+{
+    const last = c.count - 1;
+    if (qx <= c.px[0])
+    {
+        return c.arcs[0] + (qx - c.px[0]);
+    }
+    if (qx >= c.px[last])
+    {
+        return c.arcs[last] + (qx - c.px[last]);
+    }
+    var low = 0;
+    var high = last - 1;
+    while (low < high)
+    {
+        const half = floor((low + high) / 2);
+        if (qx <= c.px[half + 1])
+        {
+            high = half;
+        }
+        else
+        {
+            low = half + 1;
+        }
+    }
+    const span = c.px[low + 1] - c.px[low];
+    if (span < 1e-15)
+    {
+        return c.arcs[low];
+    }
+    return c.arcs[low] + (c.arcs[low + 1] - c.arcs[low]) * (qx - c.px[low]) / span;
+}
+
+/**
+ * The span holding arc a, by binary search (chartSpan walks from a hint instead).
+ */
+export function chartSpanOf(c is map, a is number) returns number
+{
+    var low = 0;
+    var high = c.count - 2;
+    while (low < high)
+    {
+        const half = floor((low + high) / 2);
+        if (a <= c.arcs[half + 1])
+        {
+            high = half;
+        }
+        else
+        {
+            low = half + 1;
+        }
+    }
+    return low;
+}
+
+/**
+ * Inverse of unwrapFast: the wrapped point (plain metres [x, y, z]) whose flat chart coordinates are
+ * (fx, fy, fz). Newton on x(a) = a - delta * theta(a) - alignX (slope = scale), then
+ * P = A(a) + v * planeNormal + h * N(a) with v = alignV - fy, h = fz + alignHeight, N = planeNormal x t.
+ * Same packed tables as the forward map, so the round trip is exact to the Newton tolerance.
+ */
+export function unwrapInverse(chart is map, fx is number, fy is number, fz is number) returns array
+{
+    const c = chart.packed;
+    var a = fx + chart.alignX;
+    var i = chartSpanOf(c, a);
+    var e = chartEval(c, a, i);
+    for (var step = 0; step < REFERENCE_FOOT_STEPS; step += 1)
+    {
+        const g = a - c.delta * e[6] - chart.alignX - fx;
+        if (abs(g) < CHART_FOOT_TOL)
+        {
+            break;
+        }
+        a = a - g / ((abs(e[8]) > 1e-9) ? e[8] : 1);
+        i = chartSpan(c, a, i);
+        e = chartEval(c, a, i);
+    }
+    const v = chart.alignV - fy;
+    const h = fz + chart.alignHeight;
+    const nx = c.ny * e[5] - c.nz * e[4];
+    const ny = c.nz * e[3] - c.nx * e[5];
+    const nz = c.nx * e[4] - c.ny * e[3];
+    return [e[0] + v * c.nx + h * nx, e[1] + v * c.ny + h * ny, e[2] + v * c.nz + h * nz];
+}
+
+/**
+ * Why a reference cannot be unwrapped along, or undefined when it can: it must be ONE planar chain whose
+ * joints are tangent within UNWRAP_REFERENCE_JOINT (a corner's turn never enters theta, so lengths past it
+ * would be wrong, and points in its wedge have two feet or none). 1 deg, not less: real references carry
+ * small modelling creases (Wrapped_profile: 0.403 deg).
+ */
+export function unwrapReferenceProblem(alongRef is map)
+{
+    if (size(alongRef.chain.links) != 1)
+    {
+        return "The reference is not one connected chain (" ~ size(alongRef.chain.links) ~ " pieces).";
+    }
+    for (var i = 0; i + 1 < size(alongRef.arcs); i += 1)
+    {
+        if (abs((alongRef.arcs[i + 1] - alongRef.arcs[i]) / meter) < 1e-12)
+        {
+            const turn = angleBetween(alongRef.tangents[i], alongRef.tangents[i + 1]);
+            if (turn > UNWRAP_REFERENCE_JOINT)
+            {
+                return "The reference has a corner of " ~ roundToPrecision(turn / degree, 2) ~ " deg at arc "
+                    ~ roundToPrecision(alongRef.arcs[i] / millimeter, 1) ~ " mm; it must be a tangent chain.";
+            }
+        }
+    }
+    return undefined;
+}
+
+/** Largest joint angle a reference may carry (see unwrapReferenceProblem). */
+export const UNWRAP_REFERENCE_JOINT = 1 * degree;
 
 /**
  * Unwrapped direction of a wrapped unit direction d at a point whose unwrapFast result is u.
@@ -1450,7 +1587,7 @@ export function packChart(alongRef is map) returns map
 }
 
 /** The span holding arc a, walked from the previous span. Never lands on a zero-length join span. */
-function chartSpan(c is map, a is number, hint is number) returns number
+export function chartSpan(c is map, a is number, hint is number) returns number
 {
     var i = min(max(hint, 0), c.count - 2);
     while (i < c.count - 2 && a > c.arcs[i + 1])
@@ -1469,7 +1606,7 @@ function chartSpan(c is map, a is number, hint is number) returns number
  * derivative of the same Hermite cubic as the position, so the foot is the foot of THIS curve.
  * Past either end the reference runs on straight (position linear, theta and tangent held).
  */
-function chartEval(c is map, a is number, i is number) returns array
+export function chartEval(c is map, a is number, i is number) returns array
 {
     const last = c.count - 1;
     if (a <= c.arcs[0] || a >= c.arcs[last])
@@ -1508,7 +1645,9 @@ function chartEval(c is map, a is number, i is number) returns array
 /**
  * Foot of point (qx, qy, qz) on the packed chart, Newton on dot(Q - A(a), t(a)) = 0 with slope
  * scale - kappa * height (referenceSurfaceCoords' walk, plain numbers).
- * @returns {array} : [arc, span, v, height, theta, tx, ty, tz, kappa, scale]
+ * @returns {array} : [arc, span, v, height, theta, tx, ty, tz, kappa, scale, residual]. A residual above
+ *      CHART_FOOT_FAIL means the walk did not find a foot: the point lies past the reference's centre of
+ *      curvature, or was seeded from a far-away one (chartFootConverged).
  */
 export function chartFoot(c is map, qx is number, qy is number, qz is number, a0 is number, hint is number) returns array
 {
@@ -1529,7 +1668,7 @@ export function chartFoot(c is map, qx is number, qy is number, qz is number, a0
         const height = dx * nx + dy * ny + dz * nz;
         if (abs(residual) < CHART_FOOT_TOL || step == REFERENCE_FOOT_STEPS)
         {
-            result = [a, i, dx * c.nx + dy * c.ny + dz * c.nz, height, e[6], e[3], e[4], e[5], e[7], e[8]];
+            result = [a, i, dx * c.nx + dy * c.ny + dz * c.nz, height, e[6], e[3], e[4], e[5], e[7], e[8], residual];
             break;
         }
         var slope = e[8] - e[7] * height;
@@ -1582,6 +1721,9 @@ function sampleTurning(context is Context, chain is map) returns array
     return samples;
 }
 
+/** Below this |z| of the height direction the "height up" rule is ambiguous (see referencePlaneNormal). */
+export const REFERENCE_HANDEDNESS_Z = 0.1;
+
 /**
  * Plane normal of a reference chain, fixed once for the whole chain.
  *
@@ -1624,9 +1766,31 @@ function referencePlaneNormal(samples is array) returns Vector
     }
 
     var planeNormal = normalize(cross(best.tangent, best.towardCentre));
-    if (cross(planeNormal, best.tangent)[2] < 0)
+    if (abs(cross(planeNormal, best.tangent)[2]) > REFERENCE_HANDEDNESS_Z)
     {
-        planeNormal = -1 * planeNormal;
+        // The usual case (a profile in a vertical plane): height up.
+        if (cross(planeNormal, best.tangent)[2] < 0)
+        {
+            planeNormal = -1 * planeNormal;
+        }
+    }
+    else
+    {
+        // A reference in (or near) a horizontal plane: "height up" is undefined and the old rule followed the
+        // way the most curved sample bent -- an S-curve edit could flip height, width and every unwrapped
+        // solid. Orient the plane normal itself instead: its largest world component positive.
+        var k = 0;
+        for (var j = 1; j < 3; j += 1)
+        {
+            if (abs(planeNormal[j]) > abs(planeNormal[k]))
+            {
+                k = j;
+            }
+        }
+        if (planeNormal[k] < 0)
+        {
+            planeNormal = -1 * planeNormal;
+        }
     }
 
     return planeNormal;

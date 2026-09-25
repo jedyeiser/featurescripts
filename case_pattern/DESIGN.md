@@ -99,6 +99,36 @@ contains a sketch (`containsSketch`).
 - All failed -> `regenError`.
 - Sketches present -> `reportFeatureInfo` (section 5).
 
+## 6b. Limitations (user-facing; carry into the tool's documentation)
+
+Rules
+- Reference geometry the repeated features create through a Query Variable ("created by", or
+  "tangent connected" / "bounded faces" after a Split, which creates no faces). Clicks and
+  qCreatedBy(makeId(...)) queries stay on case 1 (tests T3, T4).
+- Sketches are re-solved per case, but dimensions/constraints to the origin or Top/Front/Right
+  are not reapplied (entities keep case 1's position), and references picked directly on input
+  geometry stay on case 1. Build sketches on geometry derived from the inputs. (Untested live.)
+
+Behaviour to expect
+- Cases run in order and see earlier cases' results. If case B merges or consumes geometry case C
+  selects, C can fail or resolve differently.
+- A failed case deletes the bodies it created but cannot undo edits it already made to existing
+  geometry (e.g. a fillet on an existing block that succeeded before a later feature failed).
+- Edits to geometry that existed before the repeated features are refused inside the pattern
+  frame (SELF_INTERSECTING_CURVE_SELECTED) and retried outside it. Verified for fillet and move
+  face; delete face, chamfer, shell, draft, booleans into existing parts are untested -- a
+  different refusal code is not retried and fails that case with its message.
+- Sheet metal and derived features are refused by Onshape's feature-pattern machinery; some
+  features (thin extrude, cut list) behave differently in a pattern. Expect per-case failures.
+- Mate connectors owned by a body made in the repeated features: whether they follow each case's
+  copy is untested (likely needs the owner through a Query Variable).
+- Cost: every rebuild runs the repeated features (cases + 1) times.
+- Part names: case 1's names are cached when the Case pattern dialog is edited; rename case 1's
+  parts, then edit the Case pattern, for the case names to follow. Only new bodies are renamed.
+- Case rows are laid out by the Case template's editing logic: after adding an input or value,
+  or changing a value's type, edit the template so every row gets the slot.
+- Nested Case patterns: not supported yet (section 9).
+
 ## 7. Risks
 1. DONE: Move face first (T2) works via the outside-frame retry.
 2. DONE: template re-run inside the replay skips (isInFeaturePattern) -- T1-T5.
