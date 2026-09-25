@@ -227,9 +227,11 @@ function sectionDistance(station is map, point is Vector) returns ValueWithUnits
  */
 function nearestStation(stations is array, point is Vector, start is number) returns number
 {
+    // Forward with <=, so the walk steps over the two halves of a crossing pair or a vertex,
+    // which share one origin; stopping on the first half pinned every later sample there.
     var k = start;
     var best = norm(point - stations[k].origin);
-    while (k + 1 < size(stations) && norm(point - stations[k + 1].origin) < best)
+    while (k + 1 < size(stations) && norm(point - stations[k + 1].origin) <= best)
     {
         k += 1;
         best = norm(point - stations[k].origin);
