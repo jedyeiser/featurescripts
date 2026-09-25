@@ -141,10 +141,19 @@ export enum UndrapeTargetSource
 // Constants
 // ============================================================================
 
-/** Samples per unwrapped edge: at least this many, and one per UNWRAP_SAMPLE_SPACING of length. */
-const UNWRAP_MIN_SAMPLES = 17;
-const UNWRAP_MAX_SAMPLES = 201;
-const UNWRAP_SAMPLE_SPACING = 5 * millimeter;
+/**
+ * Edges mode samples adaptively (the user's rule: density from each edge's own structure, not a fixed spacing).
+ * Seed: a line 3 samples, an arc one per UNWRAP_SEED_ARC_STEP of sweep, a B-spline UNWRAP_SEED_PER_CP per control
+ * point, anything else UNWRAP_SEED_OTHER; and never a gap wider than UNWRAP_MAX_GAP. Then up to
+ * UNWRAP_REFINE_PASSES passes map every unsettled span's midpoint (one batched kernel call per pass) and split the
+ * spans whose midpoint misses the cubic predicted from its neighbours by more than a quarter of the fit tolerance.
+ */
+const UNWRAP_SEED_ARC_STEP = 15 * degree;
+const UNWRAP_SEED_PER_CP = 3;
+const UNWRAP_SEED_OTHER = 9;
+const UNWRAP_MAX_GAP = 50 * millimeter;
+const UNWRAP_REFINE_PASSES = 6;
+const UNWRAP_MAX_SAMPLES = 401;
 
 /** Unwrap's own fit defaults: 0.005 mm leaves half the 0.01 mm budget to everything else. */
 const UNWRAP_FIT_TOLERANCE_BOUNDS = { (millimeter) : [1e-5, 0.005, 1] } as LengthBoundSpec;
@@ -650,35 +659,20 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
     {
         const edgeId = id + ("edge" ~ e);
         const length = evLength(context, { "entities" : edges[e] });
-        const count = min(UNWRAP_MAX_SAMPLES, max(UNWRAP_MIN_SAMPLES, ceil(length / UNWRAP_SAMPLE_SPACING) + 1));
-        const tangentLines = evEdgeTangentLines(context, { "edge" : edges[e], "parameters" : range(0, 1, count) });
-
-        // Fast map, warm-started from the previous sample's foot; exact end tangents from the map's
-        // derivative (research_unwrap_perf.md 2.3).
+        const sampled = adaptiveEdgeSamples(context, chart, edges[e], length, settings.approximation.approximationTolerance / 4);
+        const count = size(sampled.params);
+        const feet = sampled.feet;
+        const tangentLines = [sampled.first, sampled.last];
         var points = makeArray(count);
-        var feet = makeArray(count);
-        var previous = undefined;
         for (var j = 0; j < count; j += 1)
         {
-            var u = unwrapFast(chart, tangentLines[j].origin, previous);
-            if (!chartFootConverged(u) && previous != undefined)
-            {
-                // A warm start can overshoot where the reference turns sharply: retry from X.
-                u = unwrapFast(chart, tangentLines[j].origin, undefined);
-            }
-            if (!chartFootConverged(u))
-            {
-                throw regenError("An edge cannot be unwrapped (highlighted): a point on it lies past the reference's centre of curvature, so it has no foot on the reference.",
-                    ["edges"], edges[e]);
-            }
-            previous = u;
+            const u = feet[j];
             points[j] = vector(o[0] + u[0] * xa[0] + u[1] * ya[0] + u[2] * za[0],
                         o[1] + u[0] * xa[1] + u[1] * ya[1] + u[2] * za[1],
                         o[2] + u[0] * xa[2] + u[1] * ya[2] + u[2] * za[2]) * meter;
-            feet[j] = u;
         }
         const startTangent = unwrapDirection(chart, cs, feet[0], tangentLines[0].direction);
-        const endTangent = unwrapDirection(chart, cs, feet[count - 1], tangentLines[count - 1].direction);
+        const endTangent = unwrapDirection(chart, cs, feet[count - 1], tangentLines[1].direction);
 
         const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
         const shape = emitted.shape;
@@ -688,7 +682,8 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
         lines = append(lines, "    edge " ~ e ~ ": " ~ shape.kind
             ~ (shape.kind == "arc" ? " R " ~ fmtMM(shape.radius, 4, 0) : "")
-            ~ ", length " ~ fmtMM(length, 3, 0) ~ " -> chord " ~ fmtMM(norm(points[count - 1] - points[0]), 3, 0) ~ gate);
+            ~ ", length " ~ fmtMM(length, 3, 0) ~ " -> chord " ~ fmtMM(norm(points[count - 1] - points[0]), 3, 0)
+            ~ ", " ~ count ~ " samples (seed " ~ sampled.seed ~ ")" ~ gate);
     }
 
     if (settings.print)
@@ -704,6 +699,147 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         "tally" : tally,
         "record" : { "edges" : size(edges) }
     };
+}
+
+/**
+ * One edge's samples, mapped through the chart, as dense as the flat curve needs (see UNWRAP_REFINE_PASSES).
+ * @returns {map} : { "params" (edge parameters, ascending), "feet" (unwrapFast results), "first", "last" (the end
+ *      tangent lines), "seed" (seed sample count) }
+ */
+function adaptiveEdgeSamples(context is Context, chart is map, edge is Query, length is ValueWithUnits, tolerance is ValueWithUnits) returns map
+{
+    // Seed from the edge's own structure.
+    const def = evCurveDefinition(context, { "edge" : edge });
+    var n = UNWRAP_SEED_OTHER;
+    if (def is Line)
+    {
+        n = 3;
+    }
+    else if (def is Circle)
+    {
+        n = max(3, ceil((length / def.radius) * radian / UNWRAP_SEED_ARC_STEP) + 1);
+    }
+    else if (def is BSplineCurve)
+    {
+        n = max(5, UNWRAP_SEED_PER_CP * (size(def.controlPoints) - 1) + 1);
+    }
+    n = min(UNWRAP_MAX_SAMPLES, max(n, ceil(length / UNWRAP_MAX_GAP) + 1));
+    const seedCount = n;
+
+    var params = range(0, 1, n);
+    const lines0 = evEdgeTangentLines(context, { "edge" : edge, "parameters" : params });
+    var feet = makeArray(n);
+    var previous = undefined;
+    for (var j = 0; j < n; j += 1)
+    {
+        feet[j] = checkedFoot(chart, lines0[j].origin, previous, edge);
+        previous = feet[j];
+    }
+    const first = lines0[0];
+    const last = lines0[n - 1];
+
+    // Refine: a span is settled once its midpoint agrees with the cubic through its neighbours.
+    const tol = tolerance / meter;
+    var open = makeArray(n - 1, true);
+    for (var pass = 0; pass < UNWRAP_REFINE_PASSES; pass += 1)
+    {
+        var spans = [];
+        for (var j = 0; j + 1 < size(params); j += 1)
+        {
+            if (open[j])
+            {
+                spans = append(spans, j);
+            }
+        }
+        if (size(spans) == 0 || size(params) + size(spans) > UNWRAP_MAX_SAMPLES)
+        {
+            break;
+        }
+        var mids = makeArray(size(spans));
+        for (var k = 0; k < size(spans); k += 1)
+        {
+            mids[k] = 0.5 * (params[spans[k]] + params[spans[k] + 1]);
+        }
+        const midLines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : mids });
+
+        var newParams = [];
+        var newFeet = [];
+        var newOpen = [];
+        var k = 0;
+        for (var j = 0; j < size(params); j += 1)
+        {
+            newParams = append(newParams, params[j]);
+            newFeet = append(newFeet, feet[j]);
+            if (j + 1 == size(params))
+            {
+                break;
+            }
+            if (k < size(spans) && spans[k] == j)
+            {
+                const mid = checkedFoot(chart, midLines[k].origin, feet[j], edge);
+                const miss = spanMidMiss(params, feet, j, mid);
+                k += 1;
+                if (miss > tol)
+                {
+                    newOpen = append(newOpen, true);
+                    newParams = append(newParams, mids[k - 1]);
+                    newFeet = append(newFeet, mid);
+                    newOpen = append(newOpen, true);
+                    continue;
+                }
+            }
+            newOpen = append(newOpen, false);
+        }
+        params = newParams;
+        feet = newFeet;
+        open = newOpen;
+    }
+
+    return { "params" : params, "feet" : feet, "first" : first, "last" : last, "seed" : seedCount };
+}
+
+/**
+ * The chart foot of one edge sample, warm-started, retried cold, and refused with the edge highlighted.
+ */
+function checkedFoot(chart is map, point is Vector, previous, edge is Query) returns array
+{
+    var u = unwrapFast(chart, point, previous);
+    if (!chartFootConverged(u) && previous != undefined)
+    {
+        // A warm start can overshoot where the reference turns sharply: retry from X.
+        u = unwrapFast(chart, point, undefined);
+    }
+    if (!chartFootConverged(u))
+    {
+        throw regenError("An edge cannot be unwrapped (highlighted): a point on it lies past the reference's centre of curvature, so it has no foot on the reference.",
+            ["edges"], edge);
+    }
+    return u;
+}
+
+/**
+ * How far the mapped midpoint of span j misses the cubic Hermite through the span's ends, with slopes estimated from
+ * the neighbouring samples (one-sided at the edge ends). Plain metres, flat chart coordinates u[0..2].
+ */
+function spanMidMiss(params is array, feet is array, j is number, mid is array) returns number
+{
+    const n = size(params);
+    const h = params[j + 1] - params[j];
+    var miss = 0;
+    for (var c = 0; c < 3; c += 1)
+    {
+        const p0 = feet[j][c];
+        const p1 = feet[j + 1][c];
+        const m0 = (j > 0)
+            ? (feet[j + 1][c] - feet[j - 1][c]) / (params[j + 1] - params[j - 1])
+            : (p1 - p0) / h;
+        const m1 = (j + 2 < n)
+            ? (feet[j + 2][c] - feet[j][c]) / (params[j + 2] - params[j])
+            : (p1 - p0) / h;
+        const predicted = 0.5 * (p0 + p1) + h / 8 * (m0 - m1);
+        miss = max(miss, abs(mid[c] - predicted));
+    }
+    return miss;
 }
 
 /**
