@@ -48,6 +48,9 @@ const EVAL_END_TOL = 1e-5 * meter;
 /** Two stations at one coordinate whose offsets differ by more than this are a step. */
 const EVAL_STEP_TOL = 1e-5 * meter;
 
+/** Penalty on a cut from the wrong side of a crossing pair: larger than any real offset. */
+const EVAL_WRONG_SIDE = 1000 * meter;
+
 /** Tolerance of the non-rational B-spline each target edge is evaluated through. */
 const EVAL_TARGET_FIT = 1e-7;
 
@@ -218,6 +221,15 @@ function describeTargets(context is Context, selection is Query) returns array
 function sectionDistance(station is map, point is Vector) returns ValueWithUnits
 {
     return dot(point - station.origin, station.tangent);
+}
+
+/**
+ * +1 where the chain runs the way the section normal points, -1 where it runs against it (a
+ * World frame on a chain heading -X).
+ */
+function chainSense(station is map) returns number
+{
+    return (dot(frameVelocity(station), station.tangent) < 0) ? -1 : 1;
 }
 
 /**
@@ -431,10 +443,16 @@ function cutTargets(stations is array, targets is array) returns array
             {
                 if (abs(sectionDistance(stations[k], target.points[endIndex])) < EVAL_END_TOL)
                 {
+                    // Which way the edge runs from this end, in the chain's sense: +1 ahead of
+                    // the plane, -1 behind. Where two target edges meet the plane at one
+                    // coordinate -- a jump -- this is what tells the halves of the crossing pair
+                    // which of the two each belongs to.
+                    const inward = sectionDistance(stations[k], target.points[(endIndex == 0) ? 1 : count - 2]);
                     candidates = append(candidates, {
                                 "station" : k,
                                 "fixed" : true,
-                                "u" : target.params[endIndex]
+                                "u" : target.params[endIndex],
+                                "side" : ((inward > 0 * meter) ? 1 : -1) * chainSense(stations[k])
                             });
                 }
             }
@@ -445,7 +463,14 @@ function cutTargets(stations is array, targets is array) returns array
         for (var c = 0; c < size(candidates); c += 1)
         {
             const k = candidates[c].station;
-            const distance = norm(solved[c] - stations[k].origin);
+
+            // The first half of a crossing pair ends the run behind it and wants target that
+            // runs back; the second half (the head) wants target that runs on. A cut on the
+            // wrong side only wins when there is nothing else.
+            const want = (stations[k].crossing == undefined) ? 0 : ((stations[k].crossingHead == true) ? 1 : -1);
+            const side = (candidates[c].side == undefined) ? 0 : candidates[c].side;
+            const distance = norm(solved[c] - stations[k].origin)
+                + ((want != 0 && side != 0 && side != want) ? EVAL_WRONG_SIDE : 0 * meter);
             if (best[k] == undefined || distance < bestDistance[k])
             {
                 best[k] = { "point" : solved[c], "targetIndex" : t };
