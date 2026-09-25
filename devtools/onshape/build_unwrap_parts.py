@@ -100,3 +100,12 @@ for name, body, offset in [("Tip-Mat", "RtjX", "1.88 mm"), ("Tail-Mat", "Rtjb", 
            [qd("parts", body), qd("reference", REF_WIRE), num("targetOffset", offset), qd("alignPoint", MC), qd("origin", TOP_PLANE)],
            {"unwrapType": "THICKENED", "targetFrom": "WIRE"})
 print("studio", E)
+
+# Solids (Part mode): split at the reference's line / curve changes, straight pieces moved rigidly, curved ends rebuilt.
+for name, body in [("CORE", "Rtjn"), ("4802 tip extension", "Rtj7"), ("4803 tail extension", "Rtj3"),
+                   ("4103 L sidewall", "RtjH"), ("4103 R sidewall", "RtjL"), ("4401 L", "Rtjv"), ("4401 R", "Rtjz")]:
+    if ONLY and ONLY != body:
+        continue
+    unwrap("Unwrap %s (part, along REF_WIRE)" % name,
+           [qd("parts", body), qd("reference", REF_WIRE), qd("alignPoint", MC), qd("origin", TOP_PLANE)],
+           {"unwrapType": "PART", "preserveLength": "REFERENCE"})

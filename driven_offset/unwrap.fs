@@ -283,6 +283,10 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         {
             annotation { "Name" : "Print edge table", "Default" : false }
             definition.debugPrintEdges is boolean;
+
+            annotation { "Name" : "Keep length curves", "Default" : false,
+                        "Description" : "Keep the two curves the unwrap preserves length along: the wrapped one (the reference offset by the preserve-length offset, over the part's extent) and its flat image. A good unwrap leaves their lengths equal." }
+            definition.debugKeepLengthCurves is boolean;
         }
     }
     {
@@ -323,6 +327,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
         var records = [];
         var edgesOnPlane = [];
+        var checks = [];
 
         const edgeChart = (definition.unwrapType != UnwrapType.THICKENED)
             ? unwrapChart(context, definition.reference, alignPoint, lengthOffset(definition))
@@ -347,8 +352,12 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                 edgesOnPlane = append(edgesOnPlane, result.edgesOnPlane);
             }
 
+            const check = lengthAndVolume(context, bodyId + "lengthCurves", result.chart, cs, sources[i], result.bodies,
+                result.lengthZ, definition.debugKeepLengthCurves);
+            checks = append(checks, check);
+
             tally = addTally(tally, result.tally);
-            records = append(records, result.record);
+            records = append(records, mergeMaps(result.record, { "check" : check }));
             outputs = append(outputs, { "source" : sources[i], "bodies" : result.bodies });
         }
 
@@ -362,7 +371,10 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                     "variables" : {
                         "lineCount" : extractableVariable(tally.line, "Unwrapped edges emitted as lines."),
                         "arcCount" : extractableVariable(tally.arc, "Unwrapped edges emitted as arcs."),
-                        "splineCount" : extractableVariable(tally.freeform, "Unwrapped edges emitted as fitted splines.")
+                        "splineCount" : extractableVariable(tally.freeform, "Unwrapped edges emitted as fitted splines."),
+                        "lengthWrapped" : extractableVariable(checkValues(checks, "wrapped"), "Per body: length of the preserved curve over the source part's extent, measured on the wrapped curve."),
+                        "lengthFlat" : extractableVariable(checkValues(checks, "flat"), "Per body: the flat result's extent along the unwrapped X. Equal to lengthWrapped for a good unwrap."),
+                        "volumeRatio" : extractableVariable(checkValues(checks, "volumeRatio"), "Per body: flat volume / source volume (solids only; 0 otherwise).")
                     },
                     "queries" : {
                         "edgesOnPlane" : extractableQuery(qUnion(edgesOnPlane), "Edges of the part sides laid on the unwrap plane.", DebugColor.MAGENTA)
@@ -444,14 +456,16 @@ function unwrapEdgesToWires(context is Context, id is Id, chart is map, cs is Co
     const emitted = unwrapEdges(context, id, chart, cs, 0 * meter, undefined, edges, settings);
     if (size(emitted.curves) == 0)
     {
-        return { "bodies" : qNothing(), "tally" : emitted.tally, "record" : emitted.record };
+        return { "bodies" : qNothing(), "tally" : emitted.tally, "record" : emitted.record,
+                "chart" : chart, "lengthZ" : -chart.alignHeight * meter };
     }
 
     const curveBodies = qUnion(emitted.curves);
     opExtractWires(context, id + "wires", { "edges" : qOwnedByBody(curveBodies, EntityType.EDGE) });
     opDeleteBodies(context, id + "deleteCurves", { "entities" : curveBodies });
 
-    return { "bodies" : qCreatedBy(id + "wires", EntityType.BODY), "tally" : emitted.tally, "record" : emitted.record };
+    return { "bodies" : qCreatedBy(id + "wires", EntityType.BODY), "tally" : emitted.tally, "record" : emitted.record,
+            "chart" : chart, "lengthZ" : -chart.alignHeight * meter };
 }
 
 /**
@@ -550,20 +564,114 @@ function unwrapPart(context is Context, id is Id, definition is map, chart is ma
         }
     }
 
+    var dz = 0 * meter;
     if (definition.layOnPlane)
     {
         const bb = evBox3d(context, { "topology" : result.bodies, "tight" : true, "cSys" : cs });
+        dz = -bb.minCorner[2];
         opTransform(context, id + "layOnPlane", {
                     "bodies" : result.bodies,
-                    "transform" : transform(-bb.minCorner[2] * cs.zAxis)
+                    "transform" : transform(dz * cs.zAxis)
                 });
     }
 
     return {
         "bodies" : result.bodies,
         "tally" : { "line" : 0, "arc" : 0, "freeform" : 0 },
-        "record" : { "part" : result.report }
+        "record" : { "part" : result.report },
+        "chart" : chart,
+        "lengthZ" : -chart.alignHeight * meter + dz
     };
+}
+
+/**
+ * Length and volume check for one unwrapped body.
+ *
+ * Wrapped: the preserved curve -- the reference offset by the preserve-length offset -- measured in 3D (a dense
+ * polyline on the chart's position tables) between the stations of the source part's extreme vertices. Flat: the flat
+ * result's extent along the unwrapped X. The unwrap maps length along exactly that curve to X, so the two agree for a
+ * good unwrap; a difference means the ends moved (a leaning wall, undrape stretch at the ends, a rebuild error).
+ * Volume: flat / source, solids only.
+ *
+ * With `keep`, both curves are left in the model as wires: the wrapped one in the reference plane, the flat one at
+ * the height the preserved curve lands at.
+ */
+function lengthAndVolume(context is Context, id is Id, chart is map, cs is CoordSystem, source is Query, bodies is Query,
+    lengthZ is ValueWithUnits, keep is boolean) returns map
+{
+    if (isQueryEmpty(context, bodies))
+    {
+        return { "wrapped" : 0 * meter, "flat" : 0 * meter, "volumeRatio" : 0 };
+    }
+
+    // Source extent in the chart: the extreme stations over its vertices (at most UNWRAP_CHECK_VERTICES of them).
+    const vertices = evaluateQuery(context, qOwnedByBody(source, EntityType.VERTEX));
+    const stride = max(1, ceil(size(vertices) / UNWRAP_CHECK_VERTICES));
+    var arcLo = undefined;
+    var arcHi = undefined;
+    var previous = undefined;
+    for (var k = 0; k < size(vertices); k += stride)
+    {
+        const u = unwrapFast(chart, evVertexPoint(context, { "vertex" : vertices[k] }), previous);
+        previous = u;
+        arcLo = (arcLo == undefined) ? u[3] : min(arcLo, u[3]);
+        arcHi = (arcHi == undefined) ? u[3] : max(arcHi, u[3]);
+    }
+
+    var points = [];
+    var wrapped = 0 * meter;
+    for (var j = 0; j <= UNWRAP_CHECK_SAMPLES; j += 1)
+    {
+        const p = referencePointAtArc(chart.alongRef, (arcLo + (arcHi - arcLo) * j / UNWRAP_CHECK_SAMPLES) * meter);
+        if (j > 0)
+        {
+            wrapped += norm(p - points[j - 1]);
+        }
+        points = append(points, p);
+    }
+
+    const bb = evBox3d(context, { "topology" : bodies, "tight" : true, "cSys" : cs });
+    const flat = bb.maxCorner[0] - bb.minCorner[0];
+
+    var volumeRatio = 0;
+    if (!isQueryEmpty(context, qBodyType(bodies, BodyType.SOLID)))
+    {
+        volumeRatio = evVolume(context, { "entities" : bodies }) / evVolume(context, { "entities" : source });
+    }
+
+    if (keep)
+    {
+        emitSplineCurve(context, id + "wrapped", points, undefined, undefined, {
+                    "approximationDegree" : 3,
+                    "approximationTolerance" : 1e-7 * meter,
+                    "approximationMaxCPs" : MAX_CONTROL_POINTS
+                });
+        const yAxis = cross(cs.zAxis, cs.xAxis);
+        const y = chart.alignV * meter;
+        emitLineCurve(context, id + "flat",
+            cs.origin + bb.minCorner[0] * cs.xAxis + y * yAxis + lengthZ * cs.zAxis,
+            cs.origin + bb.maxCorner[0] * cs.xAxis + y * yAxis + lengthZ * cs.zAxis);
+        setProperty(context, { "entities" : qCreatedBy(id + "wrapped", EntityType.BODY), "propertyType" : PropertyType.NAME,
+                    "value" : "Length curve (wrapped)" });
+        setProperty(context, { "entities" : qCreatedBy(id + "flat", EntityType.BODY), "propertyType" : PropertyType.NAME,
+                    "value" : "Length curve (flat)" });
+    }
+
+    return { "wrapped" : wrapped, "flat" : flat, "volumeRatio" : volumeRatio };
+}
+
+/** Vertices read for a body's extent in the length check, and samples on the wrapped length curve. */
+const UNWRAP_CHECK_VERTICES = 400;
+const UNWRAP_CHECK_SAMPLES = 400;
+
+function checkValues(checks is array, key is string) returns array
+{
+    var values = [];
+    for (var k in checks)
+    {
+        values = append(values, k[key]);
+    }
+    return values;
 }
 
 /** How far a supplied end tangent may disagree with the edge's own three end points. */
@@ -1037,6 +1145,8 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     return {
         "bodies" : plates,
         "edgesOnPlane" : qAdjacent(lowerFace, AdjacencyType.EDGE, EntityType.EDGE),
+        "chart" : chart,
+        "lengthZ" : zMid,
         "tally" : tally,
         "record" : {
             "edges" : size(undraped.edges),
@@ -1177,6 +1287,16 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
         {
             text = text ~ " Part: " ~ r.part.pieces ~ " piece(s), " ~ r.part.rigidPieces ~ " moved rigidly, "
                 ~ r.part.rebuiltPieces ~ " rebuilt.";
+        }
+    }
+    for (var r in records)
+    {
+        if (r.check != undefined)
+        {
+            const k = r.check;
+            text = text ~ " Length along the preserved curve: " ~ fmtMM(k.wrapped, 3, 0) ~ " mm wrapped -> " ~ fmtMM(k.flat, 3, 0)
+                ~ " mm flat (" ~ fmtMM(k.flat - k.wrapped, 4, 0) ~ " mm)"
+                ~ ((k.volumeRatio > 0) ? "; volume x" ~ toString(roundToPrecision(k.volumeRatio, 6)) : "") ~ ".";
         }
     }
     println("[unwrap] " ~ text);
