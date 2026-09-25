@@ -31,6 +31,17 @@ export enum MoveFrameMode
     TRANSPORT
 }
 
+/**
+ * Where a move ends: a distance along the path, or the path point nearest a selection.
+ */
+export enum MoveToMode
+{
+    annotation { "Name" : "Distance" }
+    DISTANCE,
+    annotation { "Name" : "Nearest point to" }
+    NEAREST
+}
+
 // Separates the source body names stored in definition.sourceNames (part names cannot hold a newline).
 const NAME_SEPARATOR = "\n";
 
@@ -60,10 +71,21 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             definition.refVertex is Query;
         }
 
-        annotation { "Name" : "Distance to move" }
-        isLength(definition.moveDist, LENGTH_BOUNDS);
+        annotation { "Name" : "Move to", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Distance: move a distance along the path. Nearest point to: move to the path point nearest a selection (where a curve or face crosses the path, that crossing).", "Default" : MoveToMode.DISTANCE }
+        definition.moveMode is MoveToMode;
 
-        annotation { "Name" : "Flip direction" }
+        if (definition.moveMode == MoveToMode.NEAREST)
+        {
+            annotation { "Name" : "Target", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            definition.moveTarget is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Distance to move" }
+            isLength(definition.moveDist, LENGTH_BOUNDS);
+        }
+
+        annotation { "Name" : "Flip direction", "Description" : "Move backwards along the path (Distance moves only)." }
         definition.flipDirection is boolean;
 
         annotation { "Name" : "Maintain curve frame", "Description" : "Rotate the body about the tangent as well as aligning the tangent. When off, only the tangent direction is aligned." }
@@ -96,8 +118,19 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             definition.extraCopies is array;
             for (var copy in definition.extraCopies)
             {
-                annotation { "Name" : "Distance to move" }
-                isLength(copy.copyDistance, LENGTH_BOUNDS);
+                annotation { "Name" : "Move to", "UIHint" : [UIHint.SHOW_LABEL], "Default" : MoveToMode.DISTANCE }
+                copy.copyMoveMode is MoveToMode;
+
+                if (copy.copyMoveMode == MoveToMode.NEAREST)
+                {
+                    annotation { "Name" : "Target", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                    copy.copyTarget is Query;
+                }
+                else
+                {
+                    annotation { "Name" : "Distance to move" }
+                    isLength(copy.copyDistance, LENGTH_BOUNDS);
+                }
 
                 annotation { "Name" : "Naming", "UIHint" : [UIHint.SHOW_LABEL], "Default" : MoveNameMode.NONE }
                 copy.copyNameMode is MoveNameMode;
@@ -163,7 +196,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                     "inputs" : qUnion([definition.moveBodies, definition.moveEdge]),
                     "queries" : queries
                 });
-    }, { "frameMode" : MoveFrameMode.FRENET, "nameMode" : MoveNameMode.NONE, "nameText" : "", "mcAsPoints" : false, "extraCopies" : [], "sourceNames" : "" });
+    }, { "moveMode" : MoveToMode.DISTANCE, "moveTarget" : qNothing(), "frameMode" : MoveFrameMode.FRENET, "nameMode" : MoveNameMode.NONE, "nameText" : "", "mcAsPoints" : false, "extraCopies" : [], "sourceNames" : "" });
 
 /**
  * Reads the selected bodies' names into the hidden sourceNames parameter, in the order the
@@ -223,13 +256,16 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
     var startArcLength = locateStartArcLength(context, pathData, startQ);
 
     // The main move keeps the original ids so existing references to its copies survive.
-    var moves = [{ "id" : id, "distance" : definition.moveDist, "nameMode" : definition.nameMode, "nameText" : definition.nameText }];
+    var moves = [{ "id" : id, "nameMode" : definition.nameMode, "nameText" : definition.nameText,
+                "end" : endArcLength(context, pathData, startArcLength, definition.moveMode, definition.moveDist, definition.moveTarget, ["moveTarget"], definition) }];
     if (definition.copyBodies)
     {
         for (var j = 0; j < size(definition.extraCopies); j += 1)
         {
             var copy = definition.extraCopies[j];
-            moves = append(moves, { "id" : id + ("extra" ~ j), "distance" : copy.copyDistance, "nameMode" : copy.copyNameMode, "nameText" : copy.copyName });
+            var mode = copy.copyMoveMode == undefined ? MoveToMode.DISTANCE : copy.copyMoveMode;
+            moves = append(moves, { "id" : id + ("extra" ~ j), "nameMode" : copy.copyNameMode, "nameText" : copy.copyName,
+                        "end" : endArcLength(context, pathData, startArcLength, mode, copy.copyDistance, copy.copyTarget, ["extraCopies", j, "copyTarget"], definition) });
         }
     }
 
@@ -240,7 +276,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
     var results = [];
     for (var move in moves)
     {
-        var motion = motionAlongPath(context, pathData, startArcLength, move.distance, definition);
+        var motion = motionAlongPath(context, pathData, startArcLength, move.end, definition);
 
         var result = body;
         if (asPoint)
@@ -303,14 +339,30 @@ function composeName(mode is MoveNameMode, text is string, baseName) returns str
 }
 
 /**
- * The rigid motion taking the path point at startArcLength to the point `distance` further on
- * (backwards when flipDirection is set).
+ * Where a move ends, as an arc length: `distance` on from the start (backwards when flipDirection
+ * is set), or the path point nearest `target`.
+ */
+function endArcLength(context is Context, pathData is map, startArcLength is ValueWithUnits, mode is MoveToMode,
+    distance, target, targetParameter is array, definition is map) returns ValueWithUnits
+{
+    if (mode == MoveToMode.NEAREST)
+    {
+        if (target == undefined || isQueryEmpty(context, target))
+        {
+            throw regenError("Select a target for the move.", [targetParameter]);
+        }
+        // The target's own nearest point: a curve or face crossing the path gives the crossing.
+        return arcLengthOf(pathData, nearestOnPath(context, pathData, target));
+    }
+    return definition.flipDirection ? (startArcLength - distance) : (startArcLength + distance);
+}
+
+/**
+ * The rigid motion taking the path point at startArcLength to the path point at endArcLength.
  */
 function motionAlongPath(context is Context, pathData is map, startArcLength is ValueWithUnits,
-    distance is ValueWithUnits, definition is map) returns Transform
+    endArcLength is ValueWithUnits, definition is map) returns Transform
 {
-    var endArcLength = definition.flipDirection ? (startArcLength - distance) : (startArcLength + distance);
-
     var startEval = evalPathAtArcLength(context, pathData, startArcLength);
     var endEval = evalPathAtArcLength(context, pathData, endArcLength);
 
@@ -379,8 +431,12 @@ function locateStartArcLength(context is Context, pathData is map, startQ is Que
     {
         start = evApproximateCentroid(context, { "entities" : startQ });
     }
-    var nearest = nearestOnPath(context, pathData, start);
+    return arcLengthOf(pathData, nearestOnPath(context, pathData, start));
+}
 
+// The arc length from the path start of a nearestOnPath result.
+function arcLengthOf(pathData is map, nearest is map) returns ValueWithUnits
+{
     var path = pathData.path;
     var cumulative = 0 * meter;
     for (var i = 0; i < nearest.edgeIndex; i += 1)
@@ -393,9 +449,9 @@ function locateStartArcLength(context is Context, pathData is map, startQ is Que
     return cumulative + fractionInPathDir * pathData.lengths[nearest.edgeIndex];
 }
 
-// The path edge closest to the point `target` and the arc-length fraction on it,
+// The path edge closest to `target` (a point or a Query) and the arc-length fraction on it,
 // in the edge's own direction: { distance, edgeIndex, edgeParam }.
-function nearestOnPath(context is Context, pathData is map, target is Vector) returns map
+function nearestOnPath(context is Context, pathData is map, target) returns map
 {
     var best = { "distance" : inf * meter, "edgeIndex" : 0, "edgeParam" : 0 };
     for (var i = 0; i < size(pathData.path.edges); i += 1)

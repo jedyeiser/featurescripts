@@ -7,11 +7,12 @@ moment the feature is added), so the UI shows "Face of Part 1", not "Unknown".
 Fixture: three blocks of different footprints, 20 mm tall on Top, far apart in X.
   A  rectangle 60 x 40 at x 0      B  rectangle 90 x 30 at x 200      C  pentagon r 35 at x 400
 
-T1  Case template: #top = top face, #rim = top face edges; value #bossH (A 15, B 25, C 8 mm)
+T1  Case template: #top = top face, #rim = top face edges; values #bossH (A 15, B 25, C 8 mm) and
+    #edgeR, a number (A 3, B 3, C 2) typed into the case rows
     Boss       extrude #top #bossH, new body
     Rim        fillet #rim 2 mm (edits a block from outside the list: runs outside the frame)
     #bossEdges native Query Variable "created by" Boss (the in-list reference)
-    Boss edges fillet #bossEdges 3 mm
+    Boss edges fillet #bossEdges #edgeR mm
     Case pattern -> Boss_B 25 mm, Boss_C 8 mm tall, all edges filleted; rims filleted
 T2  Move face as the FIRST repeated feature (Query Pattern's open bug): #side offset 5 mm
     -> B 5 mm longer in +X; C's 54 deg side face moved out 5 mm
@@ -190,19 +191,49 @@ def length_variable(name, expression):
     return params
 
 
+KIND_FIELDS = {"LENGTH": "Length", "ANGLE": "Angle", "AREA": "Area", "VOLUME": "Volume", "NUMBER": "Number", "TEXT": "Text"}
+
+
+def typed(prefix, kind, value):
+    """All six typed fields of a value slot (the API wants every parameter), `value` in the one of `kind`."""
+    out = []
+    for k, word in KIND_FIELDS.items():
+        pid = prefix + word
+        if word == "Text":
+            out.append(s(pid, value if (k == kind and value is not None) else ""))
+        elif word in ("Length", "Angle"):
+            out.append(num(pid, value if (k == kind and value is not None) else ("0 mm" if word == "Length" else "0 deg")))
+        else:
+            out.append({"btType": "BTMParameterQuantity-147", "parameterId": pid, "isInteger": False,
+                        "expression": str(value) if (k == kind and value is not None) else "0"})
+    return out
+
+
 def template(name, case1, inputs, cases, values=(), debug=False):
-    """A Case template. inputs: [(name, expr)]; cases: [(case name, [expr per input])]."""
+    """A Case template. inputs: [(name, expr)]; values: [(name, KIND, case-1 expression)];
+    cases: [(case name, [expr per input], [value expression per value])]."""
     rows = []
-    for case_name, exprs in cases:
+    for case in cases:
+        case_name, exprs = case[0], case[1]
+        vals = case[2] if len(case) > 2 else []
         params = [s("rowCaseName", case_name)]
         for k in range(1, 9):
+            params.append(s("in%dName" % k, "#" + inputs[k - 1][0] if k <= len(inputs) else ""))
             params.append(sel("input%d" % k, exprs[k - 1]) if k <= len(exprs) else q("input%d" % k))
         for k in range(2, 9):
             params.append(b("use%d" % k, k <= len(exprs)))
+        for m in range(1, 5):
+            used = m <= len(values)
+            kind = values[m - 1][1] if used else "NONE"
+            params.append(b("useValue%d" % m, used))
+            params.append(en("v%dKind" % m, "CaseSlotKind", kind, NS))
+            params.append(s("v%dName" % m, "#%s (%s)" % (values[m - 1][0], kind.lower()) if used else ""))
+            params += typed("v%d" % m, kind, vals[m - 1] if used else None)
         rows.append(params)
     params = [s("caseName", case1),
               arr("inputs", [[s("inputName", n), sel("query", e)] for n, e in inputs]),
-              arr("values", [[s("valueName", v)] for v in values]),
+              arr("values", [[s("valueName", n), en("valueKind", "CaseValueKind", kind, NS)] + typed("value", kind, v)
+                             for n, kind, v in values]),
               arr("cases", rows), b("debug", debug)]
     for k in range(1, 9):
         params.append(s("slot%d" % k, "Input %d: #%s" % (k, inputs[k - 1][0]) if k <= len(inputs) else ""))
@@ -226,18 +257,17 @@ B = block("Block B (90 x 30)", [(155, -15), (245, -15), (245, 15), (155, 15)])
 C = block("Block C (pentagon r 35)", pent)
 
 # ---- T1 ----
-feature("T1 #bossH = 15 mm (case A)", "assignVariable", length_variable("bossH", "15 mm"))
-feature("T1 #bossH_B = 25 mm", "assignVariable", length_variable("bossH_B", "25 mm"))
-feature("T1 #bossH_C = 8 mm", "assignVariable", length_variable("bossH_C", "8 mm"))
-tpl = template("T1 Case template A: #top, #rim; value #bossH; cases B, C", "A",
-               [("top", top(A)), ("rim", rim(A))], [("B", [top(B), rim(B)]), ("C", [top(C), rim(C)])], values=["bossH"], debug=True)
+tpl = template("T1 Case template A: #top, #rim; values #bossH (length), #edgeR (number); cases B, C", "A",
+               [("top", top(A)), ("rim", rim(A))],
+               [("B", [top(B), rim(B)], ["25 mm", "3"]), ("C", [top(C), rim(C)], ["8 mm", "2"])],
+               values=[("bossH", "LENGTH", "15 mm"), ("edgeR", "NUMBER", "3")], debug=True)
 boss = feature("T1 Boss: extrude #top #bossH new", "extrude", [
     en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
     qv("entities", "top"), en("endBound", "BoundingType", "BLIND"), num("depth", "#bossH")])
 rimf = feature("T1 Rim: fillet #rim 2 mm", "fillet", [qv("entities", "rim"), num("radius", "2 mm")])
 qv1 = feature("T1 #bossEdges = edges created by Boss (native QV)", "queryVariable", native_qv("bossEdges", [boss], "EDGE"))
-bossf = feature("T1 Boss edges: fillet #bossEdges 3 mm", "fillet", [qv("entities", "bossEdges"), num("radius", "3 mm")])
-pattern("T1 Case pattern -> Boss_B 25 mm, Boss_C 8 mm tall, all edges filleted; rims filleted", tpl, [boss, rimf, qv1, bossf],
+bossf = feature("T1 Boss edges: fillet #bossEdges #edgeR mm", "fillet", [qv("entities", "bossEdges"), num("radius", "#edgeR * 1 mm")])
+pattern("T1 Case pattern -> Boss_B 25 mm tall R3, Boss_C 8 mm tall R2; rims filleted", tpl, [boss, rimf, qv1, bossf],
         "0\t0\tBoss_A")
 
 # ---- T2 ----

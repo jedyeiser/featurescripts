@@ -21,8 +21,45 @@ import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 /** Most query variables one template may declare (the number of input slots in a case row). */
 export const CASE_MAX_INPUTS = 8;
 
+/** Most case values one template may declare (the number of value slots in a case row). */
+export const CASE_MAX_VALUES = 4;
+
 /** Returned by getVariable when a name is not set (an undefined default still throws). */
 const MISSING = "__caseMissing__";
+
+const CASE_LENGTH_BOUNDS = { (millimeter) : [-1e7, 0, 1e7] } as LengthBoundSpec;
+const CASE_ANGLE_BOUNDS = { (degree) : [-1e6, 0, 1e6] } as AngleBoundSpec;
+// Area and volume are not dialog parameter types (correction 30): entered in mm^2 / mm^3.
+const CASE_REAL_BOUNDS = { (unitless) : [-1e12, 0, 1e12] } as RealBoundSpec;
+
+/** The type of a case value. */
+export enum CaseValueKind
+{
+    annotation { "Name" : "Length" }
+    LENGTH,
+    annotation { "Name" : "Angle" }
+    ANGLE,
+    annotation { "Name" : "Area" }
+    AREA,
+    annotation { "Name" : "Volume" }
+    VOLUME,
+    annotation { "Name" : "Number" }
+    NUMBER,
+    annotation { "Name" : "Text" }
+    TEXT
+}
+
+/** A case row's value slot type, set by the editing logic (NONE: slot unused). */
+export enum CaseSlotKind
+{
+    NONE,
+    LENGTH,
+    ANGLE,
+    AREA,
+    VOLUME,
+    NUMBER,
+    TEXT
+}
 
 // ---------------------------------------------------------------------------------------------
 // Case template
@@ -30,7 +67,7 @@ const MISSING = "__caseMissing__";
 
 annotation { "Feature Type Name" : "Case template",
         "Editing Logic Function" : "caseTemplateEditLogic",
-        "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) a Case pattern rebinds, binds case 1, and lists the further cases. Build case 1's features on these names, then repeat them with a Case pattern." }
+        "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) a Case pattern rebinds, binds case 1, and lists the further cases with their own selections and values. Build case 1's features on these names, then repeat them with a Case pattern." }
 export const caseTemplate = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -46,18 +83,51 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                         "Description" : "Query variable name. It may already exist; it is redefined here." }
             input.inputName is string;
 
-            annotation { "Name" : "Case 1 selection",
-                        "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Case 1 selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             input.query is Query;
         }
 
         annotation { "Name" : "Case values", "Item name" : "Value", "Item label template" : "#valueName",
-                    "Description" : "Existing # variables that change per case. For each further case, #name is set from #name_<case name>." }
+                    "Description" : "# variables that change per case. The template defines each with case 1's value; every further case gives its own." }
         definition.values is array;
         for (var value in definition.values)
         {
-            annotation { "Name" : "Variable name", "Default" : "", "MaxLength" : 64 }
+            annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64 }
             value.valueName is string;
+
+            annotation { "Name" : "Type" }
+            value.valueKind is CaseValueKind;
+
+            if (value.valueKind == CaseValueKind.LENGTH)
+            {
+                annotation { "Name" : "Case 1 value" }
+                isLength(value.valueLength, CASE_LENGTH_BOUNDS);
+            }
+            if (value.valueKind == CaseValueKind.ANGLE)
+            {
+                annotation { "Name" : "Case 1 value" }
+                isAngle(value.valueAngle, CASE_ANGLE_BOUNDS);
+            }
+            if (value.valueKind == CaseValueKind.AREA)
+            {
+                annotation { "Name" : "Case 1 value (mm^2)" }
+                isReal(value.valueArea, CASE_REAL_BOUNDS);
+            }
+            if (value.valueKind == CaseValueKind.VOLUME)
+            {
+                annotation { "Name" : "Case 1 value (mm^3)" }
+                isReal(value.valueVolume, CASE_REAL_BOUNDS);
+            }
+            if (value.valueKind == CaseValueKind.NUMBER)
+            {
+                annotation { "Name" : "Case 1 value" }
+                isReal(value.valueNumber, CASE_REAL_BOUNDS);
+            }
+            if (value.valueKind == CaseValueKind.TEXT)
+            {
+                annotation { "Name" : "Case 1 value", "Default" : "" }
+                value.valueText is string;
+            }
         }
 
         // Which slot labels show; set by the editing logic from the input count.
@@ -124,7 +194,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             annotation { "Name" : "Case name", "Default" : "", "MaxLength" : 64 }
             row.rowCaseName is string;
 
-            // Slot k shows when useK is set; the editing logic sets them from the input count.
+            // Hidden layout flags, set by the editing logic from the inputs and values above.
             annotation { "Name" : "Use input 2", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use2 is boolean;
             annotation { "Name" : "Use input 3", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -139,51 +209,215 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             row.use7 is boolean;
             annotation { "Name" : "Use input 8", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use8 is boolean;
+            annotation { "Name" : "Use value 1", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.useValue1 is boolean;
+            annotation { "Name" : "Value 1 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v1Kind is CaseSlotKind;
+            annotation { "Name" : "Use value 2", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.useValue2 is boolean;
+            annotation { "Name" : "Value 2 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v2Kind is CaseSlotKind;
+            annotation { "Name" : "Use value 3", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.useValue3 is boolean;
+            annotation { "Name" : "Value 3 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v3Kind is CaseSlotKind;
+            annotation { "Name" : "Use value 4", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.useValue4 is boolean;
+            annotation { "Name" : "Value 4 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v4Kind is CaseSlotKind;
 
-            annotation { "Name" : "Input 1",
-                        "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Input 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+            row.in1Name is string;
+            annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             row.input1 is Query;
             if (row.use2)
             {
-                annotation { "Name" : "Input 2",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 2", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in2Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input2 is Query;
             }
             if (row.use3)
             {
-                annotation { "Name" : "Input 3",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 3", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in3Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input3 is Query;
             }
             if (row.use4)
             {
-                annotation { "Name" : "Input 4",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 4", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in4Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input4 is Query;
             }
             if (row.use5)
             {
-                annotation { "Name" : "Input 5",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 5", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in5Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input5 is Query;
             }
             if (row.use6)
             {
-                annotation { "Name" : "Input 6",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 6", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in6Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input6 is Query;
             }
             if (row.use7)
             {
-                annotation { "Name" : "Input 7",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 7", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in7Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input7 is Query;
             }
             if (row.use8)
             {
-                annotation { "Name" : "Input 8",
-                            "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Input 8", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in8Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input8 is Query;
+            }
+            if (row.useValue1)
+            {
+                annotation { "Name" : "Value 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.v1Name is string;
+                if (row.v1Kind == CaseSlotKind.LENGTH)
+                {
+                    annotation { "Name" : "Value" }
+                    isLength(row.v1Length, CASE_LENGTH_BOUNDS);
+                }
+                if (row.v1Kind == CaseSlotKind.ANGLE)
+                {
+                    annotation { "Name" : "Value" }
+                    isAngle(row.v1Angle, CASE_ANGLE_BOUNDS);
+                }
+                if (row.v1Kind == CaseSlotKind.AREA)
+                {
+                    annotation { "Name" : "Value (mm^2)" }
+                    isReal(row.v1Area, CASE_REAL_BOUNDS);
+                }
+                if (row.v1Kind == CaseSlotKind.VOLUME)
+                {
+                    annotation { "Name" : "Value (mm^3)" }
+                    isReal(row.v1Volume, CASE_REAL_BOUNDS);
+                }
+                if (row.v1Kind == CaseSlotKind.NUMBER)
+                {
+                    annotation { "Name" : "Value" }
+                    isReal(row.v1Number, CASE_REAL_BOUNDS);
+                }
+                if (row.v1Kind == CaseSlotKind.TEXT)
+                {
+                    annotation { "Name" : "Value", "Default" : "" }
+                    row.v1Text is string;
+                }
+            }
+            if (row.useValue2)
+            {
+                annotation { "Name" : "Value 2", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.v2Name is string;
+                if (row.v2Kind == CaseSlotKind.LENGTH)
+                {
+                    annotation { "Name" : "Value" }
+                    isLength(row.v2Length, CASE_LENGTH_BOUNDS);
+                }
+                if (row.v2Kind == CaseSlotKind.ANGLE)
+                {
+                    annotation { "Name" : "Value" }
+                    isAngle(row.v2Angle, CASE_ANGLE_BOUNDS);
+                }
+                if (row.v2Kind == CaseSlotKind.AREA)
+                {
+                    annotation { "Name" : "Value (mm^2)" }
+                    isReal(row.v2Area, CASE_REAL_BOUNDS);
+                }
+                if (row.v2Kind == CaseSlotKind.VOLUME)
+                {
+                    annotation { "Name" : "Value (mm^3)" }
+                    isReal(row.v2Volume, CASE_REAL_BOUNDS);
+                }
+                if (row.v2Kind == CaseSlotKind.NUMBER)
+                {
+                    annotation { "Name" : "Value" }
+                    isReal(row.v2Number, CASE_REAL_BOUNDS);
+                }
+                if (row.v2Kind == CaseSlotKind.TEXT)
+                {
+                    annotation { "Name" : "Value", "Default" : "" }
+                    row.v2Text is string;
+                }
+            }
+            if (row.useValue3)
+            {
+                annotation { "Name" : "Value 3", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.v3Name is string;
+                if (row.v3Kind == CaseSlotKind.LENGTH)
+                {
+                    annotation { "Name" : "Value" }
+                    isLength(row.v3Length, CASE_LENGTH_BOUNDS);
+                }
+                if (row.v3Kind == CaseSlotKind.ANGLE)
+                {
+                    annotation { "Name" : "Value" }
+                    isAngle(row.v3Angle, CASE_ANGLE_BOUNDS);
+                }
+                if (row.v3Kind == CaseSlotKind.AREA)
+                {
+                    annotation { "Name" : "Value (mm^2)" }
+                    isReal(row.v3Area, CASE_REAL_BOUNDS);
+                }
+                if (row.v3Kind == CaseSlotKind.VOLUME)
+                {
+                    annotation { "Name" : "Value (mm^3)" }
+                    isReal(row.v3Volume, CASE_REAL_BOUNDS);
+                }
+                if (row.v3Kind == CaseSlotKind.NUMBER)
+                {
+                    annotation { "Name" : "Value" }
+                    isReal(row.v3Number, CASE_REAL_BOUNDS);
+                }
+                if (row.v3Kind == CaseSlotKind.TEXT)
+                {
+                    annotation { "Name" : "Value", "Default" : "" }
+                    row.v3Text is string;
+                }
+            }
+            if (row.useValue4)
+            {
+                annotation { "Name" : "Value 4", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.v4Name is string;
+                if (row.v4Kind == CaseSlotKind.LENGTH)
+                {
+                    annotation { "Name" : "Value" }
+                    isLength(row.v4Length, CASE_LENGTH_BOUNDS);
+                }
+                if (row.v4Kind == CaseSlotKind.ANGLE)
+                {
+                    annotation { "Name" : "Value" }
+                    isAngle(row.v4Angle, CASE_ANGLE_BOUNDS);
+                }
+                if (row.v4Kind == CaseSlotKind.AREA)
+                {
+                    annotation { "Name" : "Value (mm^2)" }
+                    isReal(row.v4Area, CASE_REAL_BOUNDS);
+                }
+                if (row.v4Kind == CaseSlotKind.VOLUME)
+                {
+                    annotation { "Name" : "Value (mm^3)" }
+                    isReal(row.v4Volume, CASE_REAL_BOUNDS);
+                }
+                if (row.v4Kind == CaseSlotKind.NUMBER)
+                {
+                    annotation { "Name" : "Value" }
+                    isReal(row.v4Number, CASE_REAL_BOUNDS);
+                }
+                if (row.v4Kind == CaseSlotKind.TEXT)
+                {
+                    annotation { "Name" : "Value", "Default" : "" }
+                    row.v4Text is string;
+                }
             }
         }
 
@@ -231,7 +465,14 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             queries = append(queries, input.query);
         }
 
+        const valueCount = size(definition.values);
+        if (valueCount > CASE_MAX_VALUES)
+        {
+            throw regenError("A Case template takes at most " ~ CASE_MAX_VALUES ~ " values.", ["values"]);
+        }
         var valueNames = [];
+        var valueKinds = [];
+        var caseOneValues = [];
         for (var value in definition.values)
         {
             verifyVariableNameIsValid(value.valueName, "values");
@@ -239,11 +480,11 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             {
                 throw regenError("Name #" ~ value.valueName ~ " is used twice.", ["values"]);
             }
-            if (getVariable(context, value.valueName, MISSING) == MISSING)
-            {
-                throw regenError("#" ~ value.valueName ~ " is not defined. Define it (case 1's value) before this feature.", ["values"]);
-            }
+            const caseOne = typedValue(value, "value", value.valueKind);
+            setVariable(context, value.valueName, caseOne);
             valueNames = append(valueNames, value.valueName);
+            valueKinds = append(valueKinds, value.valueKind);
+            caseOneValues = append(caseOneValues, caseOne);
         }
 
         var caseNames = [definition.caseName];
@@ -264,7 +505,13 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             {
                 selections = append(selections, row["input" ~ (n + 1)]);
             }
-            cases = append(cases, { "caseName" : row.rowCaseName, "queries" : selections });
+            // A slot the editing logic has not typed yet reads as undefined; Case pattern reports it.
+            var values = [];
+            for (var m = 0; m < valueCount; m += 1)
+            {
+                values = append(values, typedValue(row, "v" ~ (m + 1), valueKinds[m]));
+            }
+            cases = append(cases, { "caseName" : row.rowCaseName, "queries" : selections, "values" : values });
         }
 
         setVariable(context, toString(id), {
@@ -273,6 +520,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                     "names" : names,
                     "queries" : queries,
                     "valueNames" : valueNames,
+                    "values" : caseOneValues,
                     "cases" : cases,
                     "debug" : definition.debug
                 }, "Case template");
@@ -284,9 +532,9 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             {
                 println("  Input " ~ (n + 1) ~ ": #" ~ names[n] ~ " = " ~ size(evaluateQuery(context, queries[n])) ~ " entities");
             }
-            for (var name in valueNames)
+            for (var m = 0; m < valueCount; m += 1)
             {
-                println("  #" ~ name ~ " = " ~ toString(getVariable(context, name)));
+                println("  Value " ~ (m + 1) ~ ": #" ~ valueNames[m] ~ " = " ~ toString(caseOneValues[m]));
             }
         }
     }, {
@@ -313,13 +561,14 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
     });
 
 /**
- * Case template editing logic: labels the input slots with the input names and shows as many
- * slots in each case row as there are inputs.
+ * Case template editing logic: labels the input slots with the input names, and lays out every
+ * case row -- one labelled selection per input, one labelled field of the right type per value.
  */
 export function caseTemplateEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map) returns map
 {
     const count = size(definition.inputs);
+    const valueCount = size(definition.values);
     for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
     {
         definition["slot" ~ k] = k <= count ? "Input " ~ k ~ ": #" ~ definition.inputs[k - 1].inputName : "";
@@ -330,12 +579,103 @@ export function caseTemplateEditLogic(context is Context, id is Id, oldDefinitio
     }
     for (var r = 0; r < size(definition.cases); r += 1)
     {
-        for (var k = 2; k <= CASE_MAX_INPUTS; k += 1)
+        for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
         {
-            definition.cases[r]["use" ~ k] = k <= count;
+            if (k > 1)
+            {
+                definition.cases[r]["use" ~ k] = k <= count;
+            }
+            definition.cases[r]["in" ~ k ~ "Name"] = k <= count ? "#" ~ definition.inputs[k - 1].inputName : "";
+        }
+        for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
+        {
+            const used = m <= valueCount;
+            definition.cases[r]["useValue" ~ m] = used;
+            definition.cases[r]["v" ~ m ~ "Kind"] = used ? slotKind(definition.values[m - 1].valueKind) : CaseSlotKind.NONE;
+            definition.cases[r]["v" ~ m ~ "Name"] = used ? "#" ~ definition.values[m - 1].valueName ~ " (" ~ kindText(definition.values[m - 1].valueKind) ~ ")" : "";
         }
     }
     return definition;
+}
+
+/** The value a typed field holds: `source[prefix ~ "Length"]` etc., with units for area/volume. */
+function typedValue(source is map, prefix is string, kind is CaseValueKind)
+{
+    if (kind == CaseValueKind.LENGTH)
+    {
+        return source[prefix ~ "Length"];
+    }
+    if (kind == CaseValueKind.ANGLE)
+    {
+        return source[prefix ~ "Angle"];
+    }
+    if (kind == CaseValueKind.AREA)
+    {
+        const x = source[prefix ~ "Area"];
+        return x == undefined ? undefined : x * squareMillimeter;
+    }
+    if (kind == CaseValueKind.VOLUME)
+    {
+        const x = source[prefix ~ "Volume"];
+        return x == undefined ? undefined : x * cubicMillimeter;
+    }
+    if (kind == CaseValueKind.NUMBER)
+    {
+        return source[prefix ~ "Number"];
+    }
+    return source[prefix ~ "Text"];
+}
+
+/** A case row slot's type for a template value's type. */
+function slotKind(kind is CaseValueKind) returns CaseSlotKind
+{
+    if (kind == CaseValueKind.LENGTH)
+    {
+        return CaseSlotKind.LENGTH;
+    }
+    if (kind == CaseValueKind.ANGLE)
+    {
+        return CaseSlotKind.ANGLE;
+    }
+    if (kind == CaseValueKind.AREA)
+    {
+        return CaseSlotKind.AREA;
+    }
+    if (kind == CaseValueKind.VOLUME)
+    {
+        return CaseSlotKind.VOLUME;
+    }
+    if (kind == CaseValueKind.NUMBER)
+    {
+        return CaseSlotKind.NUMBER;
+    }
+    return CaseSlotKind.TEXT;
+}
+
+/** "length", "area in mm^2", ... for a slot label. */
+function kindText(kind is CaseValueKind) returns string
+{
+    if (kind == CaseValueKind.LENGTH)
+    {
+        return "length";
+    }
+    if (kind == CaseValueKind.ANGLE)
+    {
+        return "angle";
+    }
+    if (kind == CaseValueKind.AREA)
+    {
+        return "area, mm^2";
+    }
+    if (kind == CaseValueKind.VOLUME)
+    {
+        return "volume, mm^3";
+    }
+    if (kind == CaseValueKind.NUMBER)
+    {
+        return "number";
+    }
+    return "text";
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -404,11 +744,6 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         }
         const nameCount = size(signature.names);
         const valueNames = signature.valueNames;
-        var caseOneValues = {};
-        for (var name in valueNames)
-        {
-            caseOneValues[name] = getVariable(context, name);
-        }
 
         const templateNames = parseTemplateNames(definition.templateNames);
         var failures = [];
@@ -433,16 +768,15 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             }
             if (bindFailure == undefined)
             {
-                for (var name in valueNames)
+                for (var m = 0; m < size(valueNames); m += 1)
                 {
-                    const source = name ~ "_" ~ thisCase.caseName;
-                    const value = getVariable(context, source, MISSING);
-                    if (value == MISSING)
+                    const value = thisCase.values[m];
+                    if (value == undefined)
                     {
-                        bindFailure = "#" ~ source ~ " is not defined";
+                        bindFailure = "value " ~ (m + 1) ~ " (#" ~ valueNames[m] ~ ") is not set; edit the Case template";
                         break;
                     }
-                    setVariable(context, name, value);
+                    setVariable(context, valueNames[m], value);
                 }
             }
             if (bindFailure != undefined)
@@ -538,9 +872,9 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         {
             setQueryVariable(context, signature.names[n], signature.queries[n]);
         }
-        for (var name in valueNames)
+        for (var m = 0; m < size(valueNames); m += 1)
         {
-            setVariable(context, name, caseOneValues[name]);
+            setVariable(context, valueNames[m], signature.values[m]);
         }
 
         if (size(failures) == caseCount)

@@ -112,6 +112,15 @@ curve_core (Curve_tools, by VERSION)
   `devtools/onshape/build_evaluate_offset_tests.py`, checked by `PYTHONPATH=. python devtools/onshape/check_evaluate_offset.py`
   (11/11). Reference-wire measure not supported yet. As-built notes: section 0 of `research_evaluate_offset.md`.
 
+- **unwrap** (tab a84cdaa8963f2a55db1c016b) + **undrape_utils** (tab 283b8f7562a16e9c9ccc01b7), 2026-09-24: Edges mode
+  and Constant-thickness part (undrape: mid-surface onto a wire's extrusion, section-wise unroll, deformation
+  reported). Chart map in edge_offset_utils (unwrapChart / unwrapFast, packed plain-number tables). Tests: Part Studio
+  "Unwrap_Testing Copy 1" (80c1e329f99a05e224058526, a copyelement of the user's Unwrap_Testing), built by
+  `devtools/onshape/build_unwrap_tests.py`. Design notes: research_unwrap.md (09-10), research_unwrap_perf.md,
+  research_undrape_ops.md, research_undrape_map.md (section 12 = as built). The user's docstring heads unwrap.fs.
+  Pins: unwrap and undrape_utils import edge_offset_utils at mv 941e620c...; DEO / DOS / ORT / debug still at
+  904e3070... (the later utils changes only ADD functions) -- re-pin together next time the chain is walked.
+
 ## Known open items touching this document
 
 - Design_Master's Clean wire is on Curve_tools V2; when Curve_tools V3 exists, bump its namespace
