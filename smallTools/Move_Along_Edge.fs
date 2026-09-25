@@ -57,6 +57,9 @@ export enum MoveToMode
     NEAREST
 }
 
+// Id of the flip arrow manipulator.
+const FLIP_MANIPULATOR = "flipArrow";
+
 // Separates the source body names stored in definition.sourceNames (part names cannot hold a newline).
 const NAME_SEPARATOR = "\n";
 
@@ -65,7 +68,7 @@ const TRANSPORT_SAMPLES = 64;
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Move Along Edge",
         "Feature Type Description" : "Takes a body, mate connector or sketch entity and moves it a specified distance along an edge, a connected path of edges or a wire, keeping orientation. Sketch edges become wires and sketch vertices become points at the new location.",
-        "Editing Logic Function" : "moveAlongEdgeEditLogic" }
+        "Editing Logic Function" : "moveAlongEdgeEditLogic", "Manipulator Change Function" : "moveAlongEdgeManipulatorChange" }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -170,6 +173,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         var names = definition.sourceNames == "" ? [] : splitByRegexp(definition.sourceNames, NAME_SEPARATOR);
         var bodyIndex = 0;
         var namesMissing = false;
+        var connectorNotNamed = false;
         // results[j] = what move j produced, over all source bodies (0 = the main move).
         var extraCount = definition.copyBodies ? size(definition.extraCopies) : 0;
         var results = makeArray(1 + extraCount, []);
@@ -183,6 +187,13 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             }
             var moved = moveBodyOnCurve(context, id + ('moveBody' ~ i), moveBodies[i], pathData, baseName, definition);
             namesMissing = namesMissing || moved.namesMissing;
+            connectorNotNamed = connectorNotNamed || moved.connectorNotNamed;
+            if (i == 0 && definition.moveMode != MoveToMode.NEAREST)
+            {
+                // The positive move direction at the first entity's reference point; clicking it flips.
+                addManipulators(context, id, { (FLIP_MANIPULATOR) : flipManipulator({
+                                    "base" : moved.startPoint, "direction" : moved.startTangent, "flipped" : definition.flipDirection }) });
+            }
             for (var j = 0; j < size(moved.results); j += 1)
             {
                 results[j] = append(results[j], moved.results[j]);
@@ -196,6 +207,11 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         if (definition.applyMode == MoveApplyMode.ROTATE && !definition.provideRef && !isQueryEmpty(context, points))
         {
             reportFeatureInfo(context, id, "Rotate only: points are created at their source locations (a point has no orientation).");
+        }
+
+        if (connectorNotNamed)
+        {
+            reportFeatureInfo(context, id, "Mate connectors cannot be named by a feature; they were moved unnamed. Use 'Mate connectors as points' for named points.");
         }
 
         if (namesMissing)
@@ -260,6 +276,18 @@ function selectedEntities(context is Context, selection is Query) returns array
 }
 
 /**
+ * Clicking the direction arrow toggles Flip direction.
+ */
+export function moveAlongEdgeManipulatorChange(context is Context, definition is map, newManipulators is map) returns map
+{
+    if (newManipulators[FLIP_MANIPULATOR] != undefined)
+    {
+        definition.flipDirection = newManipulators[FLIP_MANIPULATOR].flipped;
+    }
+    return definition;
+}
+
+/**
  * Whether a selected entity has a part name to prefix or suffix: bodies do; sketch entities and
  * mate connectors (getProperty NAME gives undefined) do not.
  */
@@ -302,7 +330,8 @@ function buildMovePath(context is Context, selection is Query) returns map
  * Moves (or copies) one body along the path: the main move plus, when copying, each additional
  * copy. A mate connector in "as points" mode, and a sketch vertex, get a point per move; a sketch
  * edge gets a wire per move. Those sources stay in place.
- * Returns { results : one Query per move, namesMissing : a prefix/suffix name lacked the source name }.
+ * Returns { results : one Query per move, namesMissing : a prefix/suffix name lacked the source name,
+ * connectorNotNamed : a name was asked for a mate connector, startPoint, startTangent : the positive direction there }.
  */
 export function moveBodyOnCurve(context is Context, id is Id, body is Query, pathData is map, baseName, definition is map) returns map
 {
@@ -328,6 +357,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
     var isEdge = !isQueryEmpty(context, qEntityFilter(body, EntityType.EDGE));
     var asPoint = isVertex || (definition.mcAsPoints && !isQueryEmpty(context, qBodyType(body, BodyType.MATE_CONNECTOR)));
     var namesMissing = false;
+    var connectorNotNamed = false;
     var results = [];
     for (var move in moves)
     {
@@ -366,7 +396,12 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
             });
         }
 
-        if (move.nameMode != MoveNameMode.NONE)
+        if (move.nameMode != MoveNameMode.NONE && !isQueryEmpty(context, qBodyType(result, BodyType.MATE_CONNECTOR)))
+        {
+            // setProperty refuses a mate connector (CANNOT_RESOLVE_ENTITIES).
+            connectorNotNamed = true;
+        }
+        else if (move.nameMode != MoveNameMode.NONE)
         {
             if (move.nameMode != MoveNameMode.NEW_NAME && baseName == undefined)
             {
@@ -377,7 +412,8 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
         }
         results = append(results, result);
     }
-    return { "results" : results, "namesMissing" : namesMissing };
+    return { "results" : results, "namesMissing" : namesMissing, "connectorNotNamed" : connectorNotNamed,
+            "startPoint" : startPoint, "startTangent" : evalPathAtArcLength(context, pathData, startArcLength).tangent };
 }
 
 function composeName(mode is MoveNameMode, text is string, baseName) returns string
