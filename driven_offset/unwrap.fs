@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a762b");
 // IMPORT: undrape_utils.fs (same document; the undrape map)
 import(path : "283b8f7562a16e9c9ccc01b7", version : "");
+// IMPORT: unwrap_part.fs (same document; solid unwrap)
+import(path : "fc976128871c5b4b2d33a91c", version : "");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 
@@ -528,14 +530,6 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
     };
 }
 
-const UNWRAP_PART_READY = false;
-
-/** Placeholder until unwrap_part.fs is imported (then this call becomes unwrapSolid). */
-function unwrapSolidPending(context is Context, id is Id, chart is map, cs is CoordSystem, part is Query, options is map) returns map
-{
-    throw regenError("Part (solid) unwrap is not available yet.", ["unwrapType"]);
-}
-
 /**
  * Unwrap a solid (unwrap_part.fs, research_unwrap_part.md): split where the reference changes between straight and
  * curved, straight pieces moved rigidly, curved pieces rebuilt. Laid on the origin plane by a translation.
@@ -543,12 +537,7 @@ function unwrapSolidPending(context is Context, id is Id, chart is map, cs is Co
 function unwrapPart(context is Context, id is Id, definition is map, chart is map, cs is CoordSystem, part is Query,
     settings is map) returns map
 {
-    // unwrap_part.fs (unwrapSolid) is being built; until its import is added here Part mode says so.
-    if (UNWRAP_PART_READY == false)
-    {
-        throw regenError("Part (solid) unwrap is not available yet.", ["unwrapType"]);
-    }
-    const result = unwrapSolidPending(context, id, chart, cs, part, {
+    const result = unwrapSolid(context, id, chart, cs, part, {
                 "squareWalls" : definition.squareWalls,
                 "flatTolerance" : 0.001 * millimeter,
                 "print" : settings.print
