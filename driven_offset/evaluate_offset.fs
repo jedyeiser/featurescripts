@@ -233,25 +233,24 @@ function chainSense(station is map) returns number
 }
 
 /**
- * The station nearest a point, walking from a start index. The nearest station is the one whose
- * section plane passes through the point (d|P - O(s)|^2 / ds = -2 * sectionDistance), so the cut
- * for this point is within a station or two of it.
+ * The station whose section plane the point lies at or ahead of, with the next plane ahead of the
+ * point: the pair whose planes bracket it. Walked from a start index, in the chain's sense.
+ *
+ * By PLANES rather than by distance: under the World frame the planes are x = const and the
+ * station nearest a point in space can be several stations from the one whose plane passes
+ * through it. The two halves of a crossing pair share a plane, and the forward test (>=) steps
+ * over them.
  */
-function nearestStation(stations is array, point is Vector, start is number) returns number
+function bracketStation(stations is array, point is Vector, start is number) returns number
 {
-    // Forward with <=, so the walk steps over the two halves of a crossing pair or a vertex,
-    // which share one origin; stopping on the first half pinned every later sample there.
     var k = start;
-    var best = norm(point - stations[k].origin);
-    while (k + 1 < size(stations) && norm(point - stations[k + 1].origin) <= best)
+    while (k + 1 < size(stations) && sectionDistance(stations[k + 1], point) * chainSense(stations[k + 1]) >= 0 * meter)
     {
         k += 1;
-        best = norm(point - stations[k].origin);
     }
-    while (k > 0 && norm(point - stations[k - 1].origin) < best)
+    while (k > 0 && sectionDistance(stations[k], point) * chainSense(stations[k]) < 0 * meter)
     {
         k -= 1;
-        best = norm(point - stations[k].origin);
     }
     return k;
 }
@@ -321,7 +320,13 @@ function targetVertexCoords(framed is array, base is map, definition is map, tar
     var coords = [];
     for (var vertex in vertices)
     {
-        const k = nearestStationGlobal(framed, vertex);
+        // Solve from whichever of the two bracketing stations the vertex's plane is nearer.
+        var k = bracketStation(framed, vertex, nearestStationGlobal(framed, vertex));
+        if (k + 1 < size(framed)
+            && abs(sectionDistance(framed[k + 1], vertex)) < abs(sectionDistance(framed[k], vertex)))
+        {
+            k += 1;
+        }
         const station = framed[k];
         const velocity = frameVelocity(station);
         const curvature = curvatureVector(station);
@@ -403,11 +408,11 @@ function cutTargets(stations is array, targets is array) returns array
         const target = targets[t];
         const count = size(target.points);
 
-        // Nearest station per sample, by continuation along the edge.
-        var nearest = [nearestStationGlobal(stations, target.points[0])];
+        // Bracketing station per sample, by continuation along the edge.
+        var nearest = [bracketStation(stations, target.points[0], nearestStationGlobal(stations, target.points[0]))];
         for (var j = 1; j < count; j += 1)
         {
-            nearest = append(nearest, nearestStation(stations, target.points[j], nearest[j - 1]));
+            nearest = append(nearest, bracketStation(stations, target.points[j], nearest[j - 1]));
         }
 
         // Brackets: a sample pair whose ends lie on opposite sides of a station's plane.
