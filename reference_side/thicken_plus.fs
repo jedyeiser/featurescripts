@@ -1,5 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
+// The boolean step's enums (NewBodyOperationType) are parameter types here, so they must be exported (as std Thicken does).
+export import(path : "onshape/std/tool.fs", version : "3070.0");
 
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "");
