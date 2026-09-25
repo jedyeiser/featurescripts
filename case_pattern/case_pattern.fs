@@ -1,6 +1,10 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
+// IMPORT: case_template_icon.svg (feature icon)
+TemplateIconNamespace::import(path : "9351cbcfff2de180accfa3c3", version : "592bf744e05dc472b1a5301a");
+// IMPORT: case_pattern_icon.svg (feature icon)
+PatternIconNamespace::import(path : "43ecc8444d55ee8be1ecba57", version : "7de38dec2759e6efe06cf4e7");
 
 /**
  * Case Pattern: build a chain of features once against named query variables (case 1), then
@@ -65,7 +69,7 @@ export enum CaseSlotKind
 // Case template
 // ---------------------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Case template",
+annotation { "Feature Type Name" : "Case template", "Icon" : TemplateIconNamespace::BLOB_DATA,
         "Editing Logic Function" : "caseTemplateEditLogic",
         "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) a Case pattern rebinds, binds case 1, and lists the further cases with their own selections and values. Build case 1's features on these names, then repeat them with a Case pattern." }
 export const caseTemplate = defineFeature(function(context is Context, id is Id, definition is map)
@@ -685,7 +689,7 @@ function kindText(kind is CaseValueKind) returns string
 // Case pattern
 // ---------------------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Case pattern",
+annotation { "Feature Type Name" : "Case pattern", "Icon" : PatternIconNamespace::BLOB_DATA,
         "Editing Logic Function" : "casePatternEditLogic",
         "Feature Type Description" : "Re-runs the features built on a Case template once per further case, binding the template's inputs and values to each case's. Bodies a case creates are named after case 1's with the case name as suffix." }
 export const casePattern = defineFeature(function(context is Context, id is Id, definition is map)

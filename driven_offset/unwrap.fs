@@ -195,8 +195,8 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                     "Description" : "The wrapped point that lands on the unwrapped origin. Must lie within the reference's X span." }
         definition.alignPoint is Query;
 
-        annotation { "Name" : "Unwrapped origin", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                    "Description" : "Frame of the flat result: X along the reference, Z along its surface normal." }
+        annotation { "Name" : "Unwrapped origin", "Filter" : BodyType.MATE_CONNECTOR || (EntityType.FACE && GeometryType.PLANE), "MaxNumberOfPicks" : 1,
+                    "Description" : "Frame of the flat result: X along the reference, Z along its surface normal. A mate connector (implicit ones included) or a plane / planar face (its own axes)." }
         definition.origin is Query;
 
         if (definition.unwrapType == UnwrapType.THICKENED)
@@ -291,7 +291,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         }
 
         const alignPoint = pointOf(context, definition.alignPoint);
-        const cs = evMateConnector(context, { "mateConnector" : definition.origin });
+        const cs = frameOf(context, definition.origin);
         const settings = {
                 "recognise" : definition.recogniseShapes,
                 "approximation" : {
@@ -372,6 +372,18 @@ function sourceBodies(context is Context, definition is map) returns array
         return [];
     }
     return evaluateQuery(context, qBodyType(definition.parts, BodyType.SOLID));
+}
+
+/**
+ * The unwrapped frame: a mate connector's, or a plane's (origin, normal as Z, its X).
+ */
+function frameOf(context is Context, selection is Query) returns CoordSystem
+{
+    if (!isQueryEmpty(context, qBodyType(selection, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : selection });
+    }
+    return planeToCSys(evPlane(context, { "face" : selection }));
 }
 
 function pointOf(context is Context, selection is Query) returns Vector
@@ -593,33 +605,123 @@ function addTally(a is map, b is map) returns map
  */
 function plateSidesGeneral(context is Context, part is Query) returns map
 {
-    const groups = evOffsetDetection(context, { "bodies" : part });
-    if (size(groups) == 0)
+    const allFaces = qOwnedByBody(part, EntityType.FACE);
+    const totalArea = evArea(context, { "entities" : allFaces });
+
+    // Every offset pair evOffsetDetection finds, grown by tangency; keep the one covering the most
+    // area. The first pair is not always the plate's sides: on a narrow strip it pairs the two edge
+    // walls (145 mm apart) and misses the procedural top / bottom faces altogether.
+    var best = undefined;
+    for (var g in evOffsetDetection(context, { "bodies" : part }))
     {
-        throw regenError("Could not find two offset faces on the part: it does not look like a constant-thickness plate.", ["parts"]);
+        const candidate = grownSides(context, g.side0[0], g.side1[0], 0.5 * (g.offsetLow + g.offsetHigh));
+        if (candidate != undefined && (best == undefined || candidate.area > best.area))
+        {
+            best = candidate;
+        }
     }
-    const g = groups[0];
-    const thickness = 0.5 * (g.offsetLow + g.offsetHigh);
-    const side0 = qUnion(evaluateQuery(context, qTangentConnectedFaces(g.side0[0], 45 * degree)));
-    const side1 = qUnion(evaluateQuery(context, qTangentConnectedFaces(g.side1[0], 45 * degree)));
+
+    // No pair covering most of the part: seed from an inward raycast on the largest faces instead.
+    if (best == undefined || best.area < UNWRAP_SIDE_AREA_FRACTION * totalArea)
+    {
+        const raycast = raycastSides(context, part);
+        if (raycast != undefined && (best == undefined || raycast.area > best.area))
+        {
+            best = raycast;
+        }
+    }
+    if (best == undefined || best.area < UNWRAP_SIDE_AREA_FRACTION * totalArea)
+    {
+        throw regenError("Could not find the two sides of a constant-thickness plate on this part: it looks like a solid block. Part unwrapping is not built yet.", ["parts"]);
+    }
+
+    return mergeMaps(best, { "walls" : qSubtraction(allFaces, qUnion([best.side0, best.side1])) });
+}
+
+/** The two sides and their plate area must cover this fraction of the part's area. */
+const UNWRAP_SIDE_AREA_FRACTION = 0.6;
+
+/**
+ * Two seed faces grown by tangency into the plate's sides (45 deg: sides are G1 or gently creased,
+ * walls meet them at 72-90 deg). undefined when the two grow into each other.
+ */
+function grownSides(context is Context, seed0 is Query, seed1 is Query, thickness is ValueWithUnits)
+{
+    const side0 = qUnion(evaluateQuery(context, qTangentConnectedFaces(seed0, 45 * degree)));
+    const side1 = qUnion(evaluateQuery(context, qTangentConnectedFaces(seed1, 45 * degree)));
     if (!isQueryEmpty(context, qIntersection([side0, side1])))
     {
-        throw regenError("The part's two sides are tangent-connected, so it is not a plate.", ["parts"]);
+        return undefined;
     }
-
-    var spread = g.offsetHigh - g.offsetLow;
-    for (var other in groups)
-    {
-        spread = max(spread, max(abs(other.offsetHigh - thickness), abs(other.offsetLow - thickness)));
-    }
-
     return {
         "side0" : side0,
         "side1" : side1,
-        "walls" : qSubtraction(qOwnedByBody(part, EntityType.FACE), qUnion([side0, side1])),
         "thickness" : thickness,
-        "spread" : spread
+        "spread" : 0 * meter,
+        "area" : evArea(context, { "entities" : qUnion([side0, side1])})
     };
+}
+
+/**
+ * Fallback seed (research_undrape_ops.md 1): from an interior point of each of the largest faces, cast
+ * a ray inward through the BODY (a face query is ~50 ms per ray); a hit on an antiparallel face is the
+ * opposite side, the hit distance the thickness. Stops at the first face that yields a plate.
+ */
+function raycastSides(context is Context, part is Query)
+{
+    var grid = [];
+    for (var a = 0; a < 3; a += 1)
+    {
+        for (var b = 0; b < 3; b += 1)
+        {
+            grid = append(grid, vector((a + 0.5) / 3, (b + 0.5) / 3));
+        }
+    }
+
+    // Largest faces first: a plate's sides are its biggest faces.
+    var faces = [];
+    for (var f in evaluateQuery(context, qOwnedByBody(part, EntityType.FACE)))
+    {
+        faces = append(faces, { "face" : f, "area" : evArea(context, { "entities" : f }) });
+    }
+    faces = sort(faces, function(x, y)
+        {
+            return (y.area - x.area) / (meter * meter);
+        });
+
+    for (var k = 0; k < min(size(faces), 6); k += 1)
+    {
+        const f = faces[k].face;
+        var tp = undefined;
+        for (var q in evFaceTangentPlanes(context, { "face" : f, "parameters" : grid, "returnUndefinedOutsideFace" : true }))
+        {
+            if (q != undefined)
+            {
+                tp = q;
+                break;
+            }
+        }
+        if (tp == undefined)
+        {
+            continue;
+        }
+        const hits = evRaycast(context, { "entities" : part, "ray" : line(tp.origin - 1e-6 * meter * tp.normal, -tp.normal) });
+        if (size(hits) == 0 || hits[0].entityType != EntityType.FACE)
+        {
+            continue;
+        }
+        const hn = evFaceTangentPlane(context, { "face" : hits[0].entity, "parameter" : hits[0].parameter }).normal;
+        if (dot(hn, tp.normal) > -0.999)
+        {
+            continue;
+        }
+        const candidate = grownSides(context, f, hits[0].entity, hits[0].distance + 1e-6 * meter);
+        if (candidate != undefined)
+        {
+            return candidate;
+        }
+    }
+    return undefined;
 }
 
 /**

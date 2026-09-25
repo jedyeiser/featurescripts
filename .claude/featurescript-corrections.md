@@ -1529,3 +1529,17 @@ face parallel to it -- evDistance returns ANY point of the tie. Project a define
 **Symptom**: a dropdown with no caption in the feature dialog (Move Along Edge "Name" / "Frame").
 **Fix**: `annotation { "Name" : "Naming", "UIHint" : [UIHint.SHOW_LABEL] }` on every enum parameter
 (std does the same). Booleans, lengths and queries show their names without it.
+
+---
+
+## Correction 44: a mate connector selection can arrive as its VERTEX; connectors cannot be named (2026-09-25)
+
+**Symptom 1**: Move Along Edge turned every mate connector into a point. A filter term
+`BodyType.MATE_CONNECTOR` admits ANY entity of the connector, and the dialog hands over its (non-sketch)
+vertex, which then matched "vertex -> point".
+**Fix**: resolve anything owned by a connector to the connector body up front:
+`evaluateQuery(context, qBodyType(qOwnerBody(entity), BodyType.MATE_CONNECTOR))` -- take the EVALUATED
+body (a query through the vertex stops resolving after opTransform moves the connector).
+
+**Symptom 2**: `@setProperty: CANNOT_RESOLVE_ENTITIES` naming a mate connector (and getProperty NAME on
+one returns undefined). **Fix**: never name connectors; report info.

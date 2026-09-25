@@ -164,7 +164,8 @@ case("M20 ", r'''
         return [norm(o - pt(20100, 0, 0)) < 0.001 * millimeter && points == 0, "connector at " ~ fmtV(o) ~ " (20100, 0, 0), " ~ points ~ " points (0)"];''',
      MC="M20 mate connector")
 
-EXPECTED_WARNINGS = ["M3b "]
+# M3b: names missing -> warning; M20: a connector cannot be named -> info.
+EXPECTED_STATUS = {"M3b ": "WARNING", "M20 ": "INFO"}
 
 
 def strings(result):
@@ -185,7 +186,9 @@ def main():
 
     for name, i in by_name:
         status = states.get(i, {}).get("featureStatus")
-        want = "WARNING" if any(name.startswith(p) for p in EXPECTED_WARNINGS) and "->" in name and not name.startswith("M3b path") else "OK"
+        want = "OK"
+        if "->" in name and not any(name.startswith(p + w) for p in ["M3b ", "M20 "] for w in ["path", "mate"]):
+            want = EXPECTED_STATUS.get(name.split(" ")[0] + " ", "OK")
         if status != want:
             failed += 1
             print("FAIL", name, "-- status", status, "expected", want)
