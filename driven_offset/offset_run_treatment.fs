@@ -1,7 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-import(path : "a2665e22c07b7a6929ce4e80", version : "eb23f15e06a23d0fd2e2197e");
+import(path : "a2665e22c07b7a6929ce4e80", version : "904e307030d69a3967e84103");
 
 /**
  * Treatment of the ends and joints of an offset run.
