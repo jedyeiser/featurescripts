@@ -101,6 +101,9 @@ export const PROFILE_MERGE_COS = 0.9999999;
 /** Fewest points a detected line or arc must span before it is worth emitting as one. */
 export const PROFILE_MIN_SEGMENT = 3;
 
+/** Outline edges shorter than this are merged away (0 = keep every edge). */
+export const ProfileMergeBounds = { (millimeter) : [0, 0.01, 10] } as LengthBoundSpec;
+
 export const ProfilePointsBounds = { (unitless) : [8, 60, 400] } as IntegerBoundSpec;
 export const ProfileDegreeBounds = { (unitless) : [2, 3, 7] } as IntegerBoundSpec;
 export const ProfileMaxCPBounds = { (unitless) : [4, 24, 100] } as IntegerBoundSpec;
@@ -206,6 +209,10 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
 
             annotation { "Name" : "Return", "Default" : ProfilePart.ALL, "UIHint" : UIHint.SHOW_LABEL }
             definition.profileParts is ProfilePart;
+
+            annotation { "Name" : "Merge edges shorter than",
+                        "Description" : "Outline edges shorter than this (slivers the part carries, which Fill and other surface features refuse) are collapsed to their midpoint, their neighbours rebuilt to meet there: lines stay lines, arcs stay arcs. Each merge is reported. 0 = keep every edge." }
+            isLength(definition.mergeShorter, ProfileMergeBounds);
         }
 
         annotation { "Name" : "Project onto", "Filter" : EntityType.FACE && GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
@@ -467,7 +474,20 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
             ~ " wire body(s); picking the longest");
     }
 
-    const loop = longestWire(context, qCreatedBy(scratchId, EntityType.BODY));
+    const merged = mergeShortEdges(context, id + "merge", longestWire(context, qCreatedBy(scratchId, EntityType.BODY)),
+            definition.mergeShorter, plane);
+    if (size(merged.merged) > 0)
+    {
+        var where = [];
+        for (var m in merged.merged)
+        {
+            where = append(where, toString(roundToPrecision(m.length / millimeter, 5)) ~ " mm at (" ~ toString(roundToPrecision(m.at[0] / millimeter, 3))
+                ~ ", " ~ toString(roundToPrecision(m.at[1] / millimeter, 3)) ~ ", " ~ toString(roundToPrecision(m.at[2] / millimeter, 3)) ~ ")");
+        }
+        reportFeatureInfo(context, id, "Merged " ~ size(merged.merged) ~ " outline edge(s) shorter than "
+            ~ toString(roundToPrecision(definition.mergeShorter / millimeter, 5)) ~ " mm: " ~ join(where, "; ") ~ ".");
+    }
+    const loop = merged.loop;
     const loopEdges = qOwnedByBody(loop, EntityType.EDGE);
 
     if (verbose)
@@ -595,7 +615,7 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
     // Last, because path and loopEdges both point into the scratch wire.
     opDeleteBodies(context, id + "outlineCleanup", {
                 "entities" : qUnion([qCreatedBy(outlineId, EntityType.BODY),
-                            qCreatedBy(scratchId, EntityType.BODY)])
+                            qCreatedBy(scratchId, EntityType.BODY), qCreatedBy(id + "merge", EntityType.BODY)])
             });
 
     return {
@@ -606,6 +626,164 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
         "length" : peripheryLength,
         "profiles" : profiles
     };
+}
+
+/**
+ * The outline loop with every edge shorter than `limit` merged away. A run of consecutive short edges collapses to
+ * the midpoint between its two ends; the edge before it now ends there and the edge after it starts there. Lines
+ * are rebuilt as lines and arcs as arcs (through their old middle) in a sketch on the projection plane; anything
+ * else as a B-spline with its end control point moved (a clamped spline ends on its end control point).
+ * The loop is unchanged when nothing is short, or when fewer than two edges would remain.
+ *
+ * @returns {map} : { loop (Query: the wire body to use), merged (array of { length, at }) }
+ */
+function mergeShortEdges(context is Context, id is Id, loop is Query, limit is ValueWithUnits, plane is Plane) returns map
+{
+    const unchanged = { "loop" : loop, "merged" : [] };
+    if (limit <= 0 * meter)
+    {
+        return unchanged;
+    }
+    const path = constructPath(context, qOwnedByBody(loop, EntityType.EDGE));
+    const n = size(path.edges);
+    var isShort = makeArray(n, false);
+    var lengths = makeArray(n);
+    var starts = makeArray(n);
+    var ends = makeArray(n);
+    var shortCount = 0;
+    var firstLong = -1;
+    for (var i = 0; i < n; i += 1)
+    {
+        lengths[i] = evLength(context, { "entities" : path.edges[i] });
+        isShort[i] = lengths[i] < limit;
+        const lines = evEdgeTangentLines(context, { "edge" : path.edges[i], "parameters" : path.flipped[i] ? [1, 0] : [0, 1] });
+        starts[i] = lines[0].origin;
+        ends[i] = lines[1].origin;
+        if (isShort[i])
+        {
+            shortCount += 1;
+        }
+        else if (firstLong < 0)
+        {
+            firstLong = i;
+        }
+    }
+    if (shortCount == 0 || n - shortCount < 2)
+    {
+        return unchanged;
+    }
+
+    // Runs of short edges, scanned from just after a long edge so that on a closed loop no run wraps the scan.
+    var newStart = starts;
+    var newEnd = ends;
+    var changed = makeArray(n, false);
+    var merged = [];
+    const offset = path.closed ? firstLong + 1 : 0;
+    var p = 0;
+    while (p < n)
+    {
+        if (!isShort[(offset + p) % n])
+        {
+            p += 1;
+            continue;
+        }
+        var run = [];
+        var runLength = 0 * meter;
+        while (p < n && isShort[(offset + p) % n])
+        {
+            run = append(run, (offset + p) % n);
+            runLength += lengths[(offset + p) % n];
+            p += 1;
+        }
+        const first = run[0];
+        const last = run[size(run) - 1];
+        const before = (path.closed || first > 0) ? (first - 1 + n) % n : -1;
+        const after = (path.closed || last < n - 1) ? (last + 1) % n : -1;
+        const at = before < 0 ? starts[first] : (after < 0 ? ends[last] : (starts[first] + ends[last]) / 2);
+        if (before >= 0)
+        {
+            newEnd[before] = at;
+            changed[before] = true;
+        }
+        if (after >= 0)
+        {
+            newStart[after] = at;
+            changed[after] = true;
+        }
+        merged = append(merged, { "length" : runLength, "at" : at });
+    }
+
+    // Rebuild the changed edges; keep the rest as they are.
+    var kept = [];
+    var sketch = undefined;
+    const sketchId = id + "sketch";
+    const at2d = function(pnt is Vector) returns Vector
+        {
+            const local = worldToPlane(plane, pnt);
+            return vector(local[0], local[1]);
+        };
+    for (var i = 0; i < n; i += 1)
+    {
+        if (isShort[i])
+        {
+            continue;
+        }
+        if (!changed[i])
+        {
+            kept = append(kept, path.edges[i]);
+            continue;
+        }
+        const def = evCurveDefinition(context, { "edge" : path.edges[i] });
+        if (def is Line || def is Circle)
+        {
+            if (sketch == undefined)
+            {
+                sketch = newSketchOnPlane(context, sketchId, { "sketchPlane" : plane });
+            }
+            if (def is Line)
+            {
+                skLineSegment(sketch, "line" ~ i, { "start" : at2d(newStart[i]), "end" : at2d(newEnd[i]) });
+            }
+            else
+            {
+                skArc(sketch, "arc" ~ i, { "start" : at2d(newStart[i]),
+                            "mid" : at2d(evEdgeTangentLine(context, { "edge" : path.edges[i], "parameter" : 0.5 }).origin),
+                            "end" : at2d(newEnd[i]) });
+            }
+            continue;
+        }
+        var curve = evApproximateBSplineCurve(context, { "edge" : path.edges[i] });
+        var cps = curve.controlPoints;
+        const lastCp = size(cps) - 1;
+        // which end of the spline is the edge's start in travel order
+        const startIsFirst = norm(cps[0] - starts[i]) <= norm(cps[lastCp] - starts[i]);
+        const iStart = startIsFirst ? 0 : lastCp;
+        const iEnd = startIsFirst ? lastCp : 0;
+        if (norm(cps[iStart] - starts[i]) > TOLERANCE.zeroLength * meter || norm(cps[iEnd] - ends[i]) > TOLERANCE.zeroLength * meter)
+        {
+            throw regenError("Merging a short outline edge: its neighbouring spline does not end on its control points. Set Merge edges shorter than to 0.",
+                ["mergeShorter"]);
+        }
+        cps[iStart] = newStart[i];
+        cps[iEnd] = newEnd[i];
+        curve.controlPoints = cps;
+        opCreateBSplineCurve(context, id + ("spline" ~ i), { "bSplineCurve" : curve });
+    }
+    if (sketch != undefined)
+    {
+        skSolve(sketch);
+    }
+    const rebuilt = qUnion([qOwnedByBody(qBodyType(qCreatedBy(sketchId, EntityType.BODY), BodyType.WIRE), EntityType.EDGE),
+                qCreatedBy(id, EntityType.EDGE)]);
+    opExtractWires(context, id + "wire", { "edges" : qUnion([qUnion(kept), qConstructionFilter(rebuilt, ConstructionObject.NO)]) });
+    const wire = qCreatedBy(id + "wire", EntityType.BODY);
+    opDeleteBodies(context, id + "scaffold", { "entities" : qSubtraction(qCreatedBy(id, EntityType.BODY), wire) });
+    if (size(evaluateQuery(context, wire)) != 1)
+    {
+        throw regenError("Merging short outline edges left the loop in " ~ size(evaluateQuery(context, wire)) ~ " pieces. Set Merge edges shorter than to 0.",
+            ["mergeShorter"]);
+    }
+    return { "loop" : wire, "merged" : merged };
 }
 
 /**
