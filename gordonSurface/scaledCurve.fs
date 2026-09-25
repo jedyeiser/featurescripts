@@ -22,7 +22,7 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
         annotation { "Name" : "Group 0", "Filter" : EntityType.EDGE}
         definition.group0 is Query;
         
-        annotation { "Name" : "Flip?", "Defualt" : false, "UIHint": UIHint.OPPOSITE_DIRECTION, "Description": "Flip evaluation order of Group0" }
+        annotation { "Name" : "Flip?", "Default" : false, "UIHint": UIHint.OPPOSITE_DIRECTION, "Description": "Flip evaluation order of Group0" }
         definition.flip is boolean;
         
         annotation { "Name" : "Group 1", "Filter" : EntityType.EDGE}
@@ -38,15 +38,9 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
         annotation { "Name" : "Transition Type", "Default": TransitionType.LINEAR, "Description" : "How to transition from one scalefactor to another along our scaled curve" }
         definition.transitionType is TransitionType;
         
-        annotation { "Name" : "Create curve?", "Default": false, "Description": "When true, creates a curve. Otherwise, just solves for the BSplineCurve" }
-        definition.createCurve is boolean;
-        
-        if (definition.createCurve)
-        {
-            annotation { "Name" : "Curve name", "Description": "When not blank, the output wire body will get this name." }
-            definition.curveName is string;
-            
-        }
+        // (The "Create curve?" toggle is gone: it defaulted to off, so a new instance built nothing.)
+        annotation { "Name" : "Curve name", "Description": "When not blank, the output wire body will get this name." }
+        definition.curveName is string;
         
         annotation { "Name" : "Project onto surface?" }
         definition.curveOnSurface is boolean;
@@ -117,11 +111,13 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
         var group0_arr = evaluateQuery(context, qUnion([definition.group0]));
         var group1_arr = evaluateQuery(context, qUnion([definition.group1]));
         
-        var bSpline0_arr = mapArray(group0_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x } ); });
-        var bSpline1_arr = mapArray(group1_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x } ); });
-        
+        // forceNonRational: evaluateSpline ignores weights, so an exact (rational) arc is otherwise sampled
+        // off the circle (correction 39).
+        var bSpline0_arr = mapArray(group0_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true } ); });
+        var bSpline1_arr = mapArray(group1_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true } ); });
+
         const curve0 = joinCurveSegments(context, bSpline0_arr, definition.group0SampleCount, definition.group0Tol);
-        const curve1 = joinCurveSegments(context, bSpline1_arr, definition.group0SampleCount, definition.group0Tol);
+        const curve1 = joinCurveSegments(context, bSpline1_arr, definition.group1SampleCount, definition.group1Tol);
         
         if (definition.showEndpoints)
         {
@@ -164,7 +160,6 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
         
         var retMap = {"bspline": retCurve};
         
-        if (definition.createCurve)
         {
             opCreateBSplineCurve(context, id + "createScaledBsplineCurve", {
                     "bSplineCurve" : retCurve
@@ -284,7 +279,7 @@ export function scaledCurve(context is Context, curve0 is BSplineCurve, curve1 i
     }
     
     var result = approximateSpline(context, {
-        "degree" : 3,
+        "degree" : degree,
         "tolerance" : tolerance,
         "isPeriodic" : false,
         "targets" : [approximationTarget({ "positions" : blendedPoints })],
