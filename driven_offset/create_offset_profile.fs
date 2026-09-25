@@ -68,9 +68,9 @@ export enum OffsetPointTransition
 /** Where a station comes from: a typed value, or a picked point's world X plus a signed distance along +X. */
 export enum OffsetStationSource
 {
-    annotation { "Name" : "Value" }
+    annotation { "Name" : "Enter X" }
     VALUE,
-    annotation { "Name" : "Point" }
+    annotation { "Name" : "At point" }
     POINT
 }
 
@@ -96,7 +96,8 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
                 annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64, "Description" : "Empty = Region n. Intersections are kept by region name." }
                 region.regionName is string;
 
-                annotation { "Name" : "Start from", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                annotation { "Name" : "Start station", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                            "Description" : "Enter X: type the station (world X). At point: pick a vertex or mate connector (or create one here); the station is its world X plus a signed offset along +X." }
                 region.startSource is OffsetStationSource;
 
                 if (region.startSource == OffsetStationSource.POINT)
@@ -105,16 +106,17 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
                                 "Description" : "Start station = this point's world X plus the distance below." }
                     region.startPoint is Query;
 
-                    annotation { "Name" : "Start distance from point", "Description" : "Signed, along +X." }
+                    annotation { "Name" : "Start offset along X", "Description" : "Signed: positive moves the station toward +X." }
                     isLength(region.startPointOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
                 else
                 {
-                    annotation { "Name" : "Start station", "Description" : "World X in profile coordinates." }
+                    annotation { "Name" : "Start X", "Description" : "World X in profile coordinates." }
                     isLength(region.startStation, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
 
-                annotation { "Name" : "End from", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                annotation { "Name" : "End station", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                            "Description" : "Enter X: type the station (world X). At point: pick a vertex or mate connector (or create one here); the station is its world X plus a signed offset along +X." }
                 region.endSource is OffsetStationSource;
 
                 if (region.endSource == OffsetStationSource.POINT)
@@ -123,12 +125,12 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
                                 "Description" : "End station = this point's world X plus the distance below." }
                     region.endPoint is Query;
 
-                    annotation { "Name" : "End distance from point", "Description" : "Signed, along +X." }
+                    annotation { "Name" : "End offset along X", "Description" : "Signed: positive moves the station toward +X." }
                     isLength(region.endPointOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
                 else
                 {
-                    annotation { "Name" : "End station" }
+                    annotation { "Name" : "End X", "Description" : "World X in profile coordinates." }
                     isLength(region.endStation, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
 
@@ -184,16 +186,16 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
 
                 if (intersection.blend)
                 {
-                    annotation { "Name" : "Start continuity", "Default" : GeometricContinuity.G1, "UIHint" : UIHint.SHOW_LABEL }
+                    annotation { "Name" : "Continuity with first region", "Default" : GeometricContinuity.G1, "UIHint" : UIHint.SHOW_LABEL }
                     intersection.startContinuity is GeometricContinuity;
 
-                    annotation { "Name" : "Start distance", "Description" : "How far the blend reaches back into the first region from its end." }
+                    annotation { "Name" : "Distance into first region", "Description" : "The blend starts this far back from the first region's end (toward its start). Both distances 0 only works where the regions leave a gap in X." }
                     isLength(intersection.startDistance, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
 
-                    annotation { "Name" : "End continuity", "Default" : GeometricContinuity.G1, "UIHint" : UIHint.SHOW_LABEL }
+                    annotation { "Name" : "Continuity with second region", "Default" : GeometricContinuity.G1, "UIHint" : UIHint.SHOW_LABEL }
                     intersection.endContinuity is GeometricContinuity;
 
-                    annotation { "Name" : "End distance", "Description" : "How far the blend reaches into the second region from its start." }
+                    annotation { "Name" : "Distance into second region", "Description" : "The blend ends this far past the second region's start (toward its end)." }
                     isLength(intersection.endDistance, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
             }
@@ -205,7 +207,8 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
             definition.points is array;
             for (var point in definition.points)
             {
-                annotation { "Name" : "Station from", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                annotation { "Name" : "Station", "Default" : OffsetStationSource.VALUE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                            "Description" : "Enter X: type the station (world X). At point: pick a vertex or mate connector (or create one here); the station is its world X plus a signed offset along +X." }
                 point.stationSource is OffsetStationSource;
 
                 if (point.stationSource == OffsetStationSource.POINT)
@@ -214,12 +217,12 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
                                 "Description" : "Station = this point's world X plus the distance below." }
                     point.stationPoint is Query;
 
-                    annotation { "Name" : "Distance from point", "Description" : "Signed, along +X." }
+                    annotation { "Name" : "Offset along X", "Description" : "Signed: positive moves the station toward +X." }
                     isLength(point.stationPointOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
                 else
                 {
-                    annotation { "Name" : "Station", "Description" : "World X in profile coordinates." }
+                    annotation { "Name" : "X", "Description" : "World X in profile coordinates." }
                     isLength(point.station, ZERO_DEFAULT_LENGTH_BOUNDS);
                 }
 
@@ -749,13 +752,20 @@ function regionPieces(definition is map) returns map
             if (junctions[k].xb - junctions[k].xa > tol)
             {
                 current = append(current, blendSegment(a, b, junctions[k].xa, junctions[k].xb, junctions[k].n0, junctions[k].n1));
+                continue;
+            }
+            // A blend with no length: nothing to bridge over. Fine where the values already meet; a jump is an error.
+            if (!sameValues(a, b))
+            {
+                const entry = junctions[k].entry;
+                throw regenError("The blend between '" ~ a.name ~ "' and '" ~ b.name ~ "' has no length but the offset jumps at "
+                    ~ fmtStation(a.xe) ~ " mm; give it a distance into either region.",
+                    [faultyArrayParameterId("intersections", entry, "startDistance"), faultyArrayParameterId("intersections", entry, "endDistance")]);
             }
             continue;
         }
         const touching = b.xs - a.xe <= tol;
-        const same = abs(regionValue(a, "w", a.xe)[0] - regionValue(b, "w", b.xs)[0]) <= tol
-            && abs(regionValue(a, "h", a.xe)[0] - regionValue(b, "h", b.xs)[0]) <= tol;
-        if (!(touching && same))
+        if (!(touching && sameValues(a, b)))
         {
             pieces = append(pieces, current);
             breaks = append(breaks, touching ? a.xe : (a.xe + b.xs) / 2);
@@ -764,6 +774,14 @@ function regionPieces(definition is map) returns map
     }
     pieces = append(pieces, current);
     return { "pieces" : pieces, "breaks" : breaks };
+}
+
+/** Whether region a's end value equals region b's start value in both channels. */
+function sameValues(a is map, b is map) returns boolean
+{
+    const tol = OFFSET_PROFILE_TOLERANCE / meter;
+    return abs(regionValue(a, "w", a.xe)[0] - regionValue(b, "w", b.xs)[0]) <= tol
+        && abs(regionValue(a, "h", a.xe)[0] - regionValue(b, "h", b.xs)[0]) <= tol;
 }
 
 // ============================================================================
@@ -918,6 +936,13 @@ function buildPiece(context is Context, id is Id, segments is array) returns map
         }
         if (previousEnd != undefined)
         {
+            // Consecutive segments of a piece meet by construction; snapping only removes rounding. A real gap
+            // here is a bug (it used to drag the next segment onto the previous end), so refuse it.
+            if (norm(controlPoints[0] - previousEnd) > OFFSET_PROFILE_TOLERANCE)
+            {
+                throw regenError("Internal: segments '" ~ segments[j - 1].label ~ "' and '" ~ seg.label ~ "' do not meet at "
+                    ~ fmtStation(seg.xa) ~ " mm.");
+            }
             controlPoints[0] = previousEnd;
         }
         else

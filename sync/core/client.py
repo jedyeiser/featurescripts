@@ -1,3 +1,4 @@
+import os
 """HTTP client wrapper for Onshape API."""
 
 from typing import Any
@@ -69,7 +70,8 @@ class OnshapeClient:
                 url=url,
                 headers=headers,
                 json=json_data if method in ("POST", "PUT", "PATCH") else None,
-                timeout=30,
+                # FS_SYNC_TIMEOUT: long regenerations (an eval on a heavy Part Studio) need more than 30 s.
+                timeout=float(os.environ.get("FS_SYNC_TIMEOUT", "30")),
             )
 
             if response.status_code >= 400:

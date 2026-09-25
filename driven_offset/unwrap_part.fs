@@ -38,8 +38,11 @@ export const UNWRAP_PART_RULED_TOL = 0.05;
 /** Classification grid per face (G x G parameters). */
 export const UNWRAP_PART_GRID = 9;
 
-/** Row sampling along a face's curve direction: spacing (m), minimum and maximum count. Tight corners need 17+. */
+/** Row sampling along a face's curve direction: spacing (m), minimum and maximum count. Tight corners need 17+.
+ * PROFILE and WALL rows feed approximateSpline with exact end tangents; RULED rows are interpolated (opFitSpline)
+ * and need the finer spacing. */
 export const UNWRAP_PART_ROW_SPACING = 5e-4;
+export const UNWRAP_PART_RULED_ROW_SPACING = 5e-4;
 export const UNWRAP_PART_ROW_MIN = 17;
 export const UNWRAP_PART_ROW_MAX = 200;
 
@@ -68,10 +71,6 @@ export const UNWRAP_PART_FIT_MAX_CPS = 500;
 /** Consecutive fit points closer than this share of the chain's chord are thinned (approximateSpline wants
  * chord parameters strictly increasing by 1e-6). */
 export const UNWRAP_PART_FIT_SEPARATION = 2e-6;
-
-/** RULED rows also sample their bottom and top rows this far (face parameter) inside each end, for the tool's end
- * tangents. */
-export const UNWRAP_PART_END_STEP = 1e-4;
 
 /** A ruling of a RULED tool rising less than this share of its length is degenerate (the face is reported). */
 export const UNWRAP_PART_RULING_RISE = 0.5;
@@ -453,9 +452,7 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
             failed = append(failed, face);
             continue;
         }
-        var row = faceRow(context, chart, face, kind, flatGrid, settings.part);
-        row.grid = flatGrid;
-        rows = append(rows, row);
+        rows = append(rows, faceRow(context, chart, face, kind, flatGrid, settings.part));
     }
     if (size(failed) > 0)
     {
@@ -464,32 +461,7 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
                 ~ "to the reference; they cannot be unwrapped exactly.", qUnion(failed));
     }
 
-    // 2. A vertical wall is a ruled surface too: WALL rows running on tangentially from a RULED row are re-read as
-    //    RULED rows, so the junction lies inside one tool (two tools meeting tangentially and extended past each other
-    //    cross at a grazing angle, and opSplitPart fails there). Chain tangent rows of one kind, drop duplicates.
-    var converting = true;
-    while (converting)
-    {
-        converting = false;
-        for (var i = 0; i < size(rows); i += 1)
-        {
-            if (rows[i].kind != "WALL")
-            {
-                continue;
-            }
-            for (var other in rows)
-            {
-                if (other.kind == "RULED" && joinRows(other, rows[i]) != undefined)
-                {
-                    var ruled = faceRow(context, chart, rows[i].faces[0], "RULED", rows[i].grid, settings.part);
-                    ruled.grid = rows[i].grid;
-                    rows[i] = ruled;
-                    converting = true;
-                    break;
-                }
-            }
-        }
-    }
+    // 2. Chain tangent rows of one kind, drop duplicates.
     var chains = [];
     for (var kind in ["PROFILE", "WALL", "RULED"])
     {
@@ -689,8 +661,8 @@ export function faceKind(shares is array) returns string
  * (x, y); a RULED row also carries the face's bottom and top rows in 3D, packed as [x, y, bottom, top].
  * @param flatGrid : chart points of the classification grid (index i * G + j for parameter (i, j) / (G - 1));
  *      undefined where the chart found no foot.
- * @returns {map} : { "kind", "pts", "e0", "e1", "faces" }: e0 / e1 describe the row's first / last end: "n" the flat
- *      normal there in the kind's plane; for RULED, "near" = [bottom, top] UNWRAP_PART_END_STEP inside that end.
+ * @returns {map} : { "kind", "pts", "e0", "e1", "faces" }: e0 / e1 describe the row's first / last end ("n": the flat
+ *      normal there, in the kind's plane).
  */
 export function faceRow(context is Context, chart is map, face is Query, kind is string, flatGrid is array, part is Query) returns map
 {
@@ -705,7 +677,8 @@ export function faceRow(context is Context, chart is map, face is Query, kind is
                 ~ " reaches past the reference's centre of curvature (the chart has no foot there).", face);
     }
     const alongU = spreadU >= spreadV;
-    const count = min(max(ceil(max(spreadU, spreadV) / UNWRAP_PART_ROW_SPACING), UNWRAP_PART_ROW_MIN), UNWRAP_PART_ROW_MAX);
+    const spacing = (kind == "RULED") ? UNWRAP_PART_RULED_ROW_SPACING : UNWRAP_PART_ROW_SPACING;
+    const count = min(max(ceil(max(spreadU, spreadV) / spacing), UNWRAP_PART_ROW_MIN), UNWRAP_PART_ROW_MAX);
 
     var middle = [];
     var bottom = [];
@@ -717,19 +690,14 @@ export function faceRow(context is Context, chart is map, face is Query, kind is
         bottom = append(bottom, alongU ? vector(f, 0) : vector(0, f));
         top = append(top, alongU ? vector(f, 1) : vector(1, f));
     }
-    for (var f in [UNWRAP_PART_END_STEP, 1 - UNWRAP_PART_END_STEP])
-    {
-        bottom = append(bottom, alongU ? vector(f, 0) : vector(0, f));
-        top = append(top, alongU ? vector(f, 1) : vector(1, f));
-    }
     const mapped = chartRow(context, chart, face, middle, part);
     var row = [];
     for (var p in mapped.pts)
     {
         row = append(row, [p[0], p[ib]]);
     }
-    var e0 = { "n" : [mapped.n0[0], mapped.n0[ib]] };
-    var e1 = { "n" : [mapped.n1[0], mapped.n1[ib]] };
+    const e0 = { "n" : [mapped.n0[0], mapped.n0[ib]] };
+    const e1 = { "n" : [mapped.n1[0], mapped.n1[ib]] };
     if (kind == "RULED")
     {
         const b = chartRow(context, chart, face, bottom, part).pts;
@@ -738,8 +706,6 @@ export function faceRow(context is Context, chart is map, face is Query, kind is
         {
             row[k] = [row[k][0], row[k][1], vector(b[k][0], b[k][1], b[k][2]), vector(t[k][0], t[k][1], t[k][2])];
         }
-        e0.near = [vector(b[count][0], b[count][1], b[count][2]), vector(t[count][0], t[count][1], t[count][2])];
-        e1.near = [vector(b[count + 1][0], b[count + 1][1], b[count + 1][2]), vector(t[count + 1][0], t[count + 1][1], t[count + 1][2])];
     }
     return { "kind" : kind, "pts" : row, "e0" : e0, "e1" : e1, "faces" : [face] };
 }
@@ -1086,38 +1052,11 @@ export function pickIndices(values is array, indices is array) returns array
 }
 
 /**
- * The ruled surface between two curves of one approximateSpline family (same degree, knots and control-point
- * count, running the same way), written down: the control polygons side by side, degree 1 across. opLoft refuses
- * some such pairs outright and gives unsplittable sheets for others (correction 22). The end control points are
- * pinned to the exact end positions ([first, last] of each curve's points).
- */
-export function ruledSurface(bottom is BSplineCurve, top is BSplineCurve, bottomEnds is array, topEnds is array) returns BSplineSurface
-{
-    const last = size(bottom.controlPoints) - 1;
-    var grid = [];
-    for (var i = 0; i <= last; i += 1)
-    {
-        grid = append(grid, [bottom.controlPoints[i], top.controlPoints[i]]);
-    }
-    grid[0] = [bottomEnds[0], topEnds[0]];
-    grid[last] = [bottomEnds[1], topEnds[1]];
-    return bSplineSurface({
-                "uDegree" : bottom.degree,
-                "vDegree" : 1,
-                "isUPeriodic" : false,
-                "isVPeriodic" : false,
-                "controlPoints" : controlPointMatrix(grid),
-                "uKnots" : bottom.knots,
-                "vKnots" : knotArray([0, 0, 1, 1])
-            });
-}
-
-/**
  * The tool of one chain, crossing the whole box. A straight PROFILE or WALL chain is a Plane (opSplitPart takes
  * one). Otherwise PROFILE: the (x, z) curve just outside the box's -Y face, extruded along Y; WALL: the (x, y)
  * curve under the box, extruded along Z; RULED: the bottom and top rows pushed along their rulings to below and
- * above the box, fitted as one family (shared parameterization) and written down as a ruled B-spline surface. Curves are exact arcs when the chain
- * is one, else approximateSpline fits (UNWRAP_PART_FIT_TOL, exact end tangents for PROFILE and WALL). Then only the
+ * above the box, interpolated and lofted. PROFILE and WALL curves are exact arcs when the chain is one, else
+ * approximateSpline fits (UNWRAP_PART_FIT_TOL, exact end tangents from the flat normals). Then only the
  * sheet's side edges (the rulings) are extended by `reach`: extending every edge fails on curved chains, and a tool
  * that does not cross the box does not split it.
  * @returns {map} : { "plane" : Plane (straight chains) or "body" : Query (a sheet), "counter" : report key }
@@ -1132,7 +1071,7 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
     {
         var below = [];
         var above = [];
-        for (var p in concatenateArrays([chain.pts, [[0, 0, chain.e0.near[0], chain.e0.near[1]], [0, 0, chain.e1.near[0], chain.e1.near[1]]]]))
+        for (var p in chain.pts)
         {
             const B = p[2];
             const u = p[3] - B;
@@ -1145,18 +1084,13 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
             below = append(below, (B + ((lo[2] - 0.001) - B[2]) / u[2] * u) * meter);
             above = append(above, (B + ((hi[2] + 0.001) - B[2]) / u[2] * u) * meter);
         }
-        // The last two entries are the near-end samples: they give the end tangents.
-        const n = size(chain.pts);
-        const keep = separatedIndices([subArray(below, 0, n), subArray(above, 0, n)]);
-        const pointsBelow = pickIndices(below, keep);
-        const pointsAbove = pickIndices(above, keep);
-        const curves = approximateFamily(context, [
-                    { "points" : pointsBelow, "startDerivative" : normalize(below[n] - below[0]),
-                        "endDerivative" : normalize(below[n - 1] - below[n + 1]) },
-                    { "points" : pointsAbove, "startDerivative" : normalize(above[n] - above[0]),
-                        "endDerivative" : normalize(above[n - 1] - above[n + 1]) }], approximation);
-        opCreateBSplineSurface(context, sheet, { "bSplineSurface" : ruledSurface(curves[0], curves[1],
-                            [pointsBelow[0], pointsBelow[size(keep) - 1]], [pointsAbove[0], pointsAbove[size(keep) - 1]]) });
+        // Interpolated, not approximateSpline: a family fit lofts unreliably (correction 22), and written down as a
+        // ruled B-spline surface it needs exact end tangents, whose linear extensions graze a tangent neighbour
+        // tool (measured: SPLIT_FAILED on 4802 / 4803, 3-6 um slivers at the 4803 tip). See research note 8b.
+        opFitSpline(context, id + "below", { "points" : below });
+        opFitSpline(context, id + "above", { "points" : above });
+        opLoft(context, sheet, { "profileSubqueries" : [qCreatedBy(id + "below", EntityType.EDGE), qCreatedBy(id + "above", EntityType.EDGE)],
+                    "bodyType" : ToolBodyType.SURFACE });
         counter = "ruledTools";
     }
     else
