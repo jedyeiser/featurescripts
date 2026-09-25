@@ -35,8 +35,17 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "941e620c8511448a358a
 // Constants
 // ============================================================================
 
-/** Target spacing of the kernel samples along each side edge, metres (research 4.2: 15 mm gives 0.015 mm). */
+/**
+ * Spacing of the samples along each side edge, metres. Positions and edge tangents (evEdgeTangentLines,
+ * cheap) are taken every UNDRAPE_EDGE_SAMPLE: the Hermite spans must follow the edge to ~0.1 um where W's
+ * curvature changes (40 mm spans were 5 um off in height on the test part; research 4.2: 15 mm gave
+ * 0.015 mm). The side normals (evFaceTangentPlanesAtEdge, ~7x dearer per point) are read at every
+ * UNDRAPE_NORMAL_STEP-th sample, and at every sample of a stretch over which they turn more than
+ * UNDRAPE_NORMAL_REFINE (radians); in between they are interpolated.
+ */
 export const UNDRAPE_EDGE_SAMPLE = 0.010;
+export const UNDRAPE_NORMAL_STEP = 4;
+export const UNDRAPE_NORMAL_REFINE = 0.035;
 
 /** Largest turn of the edge tangent between two edge samples, radians (keeps closed/curled edges resolved). */
 export const UNDRAPE_EDGE_TURN = 0.5;
@@ -213,11 +222,31 @@ export function undrapeSeedArc(c is map, qx is number) returns number
     return c.arcs[low] + (c.arcs[low + 1] - c.arcs[low]) * (qx - c.px[low]) / span;
 }
 
+/** Span of the packed chart holding arc a (binary search): the hint chartFoot walks from. */
+export function undrapeSpanOf(c is map, a is number) returns number
+{
+    var low = 0;
+    var high = c.count - 2;
+    while (low < high)
+    {
+        const half = floor((low + high) / 2);
+        if (a <= c.arcs[half + 1])
+        {
+            high = half;
+        }
+        else
+        {
+            low = half + 1;
+        }
+    }
+    return low;
+}
+
 /** Chart arc of a world point (plain metres): the station whose plane holds it. */
 export function undrapeFootArc(c is map, p is array, seed) returns number
 {
     const a0 = (seed == undefined) ? undrapeSeedArc(c, p[0]) : seed;
-    return chartFoot(c, p[0], p[1], p[2], a0, 0)[0];
+    return chartFoot(c, p[0], p[1], p[2], a0, undrapeSpanOf(c, a0))[0];
 }
 
 // ============================================================================
@@ -243,42 +272,19 @@ function undrapeRoughLength(lines is array) returns array
 /**
  * One edge of a plate side as plain-number tables for the per-station plane-crossing search.
  *
- * `planes` is what evFaceTangentPlanesAtEdge returns: origin, x (edge tangent), normal (the side face's
- * outward normal). The tangents are re-signed to run with the samples. Each span's Hermite tangent length
- * is its chord corrected for the turn between its end tangents, chord * (1 + phi^2 / 24): the arc of the
- * circle through both ends with those tangents, so non-arc-length sampling is harmless.
- *
- * @param other : undefined, or the second face's planes for a crease edge (both calls made with
- *      usingFaceOrientation, so cross(normal, x) points into each face).
+ * @param lines {array} : evEdgeTangentLines at the samples (origin, direction); the tangents are re-signed
+ *      to run with the samples. Each span's Hermite tangent length is its chord corrected for the turn
+ *      between its end tangents, chord * (1 + phi^2 / 24): the arc of the circle through both ends with
+ *      those tangents, so non-arc-length sampling is harmless.
+ * @param normals {array} : unit outward side-face normal [x, y, z] at each sample.
+ * @param others : undefined, or the second face's normals at each sample for a crease edge.
+ * @param intoSign {number} : for a crease, +1 when cross(normal, tangent) points into the first face.
  * @returns {map} : { count, px py pz, ux uy uz, nx ny nz, [mx my mz, ix iy iz], mags, cum (arc at each
  *      sample), length, turn, cx cy cz / hx hy hz (padded box centre / half-extents), onRim, creased }
  */
-export function undrapeEdgeTable(planes is array, other, onRim is boolean) returns map
+export function undrapeEdgeTable(lines is array, normals is array, others, intoSign is number, onRim is boolean) returns map
 {
-    const count = size(planes);
-    // With usingFaceOrientation the second face runs the edge its own way: match its samples by position.
-    // Faces meeting tangentially (evEdgeConvexity reports CONVEX / CONCAVE within its tolerance) are no crease.
-    var faceB = other;
-    if (faceB != undefined)
-    {
-        if (norm(faceB[0].origin - planes[0].origin) > norm(faceB[0].origin - planes[count - 1].origin))
-        {
-            faceB = reverse(faceB);
-        }
-        var smooth = true;
-        for (var i = 0; i < count; i += 1)
-        {
-            if (dot(faceB[i].normal, planes[i].normal) < UNDRAPE_CREASE_COS)
-            {
-                smooth = false;
-            }
-        }
-        if (smooth)
-        {
-            faceB = undefined;
-        }
-    }
-    const creased = faceB != undefined;
+    const count = size(lines);
     var px = makeArray(count);
     var py = makeArray(count);
     var pz = makeArray(count);
@@ -288,34 +294,19 @@ export function undrapeEdgeTable(planes is array, other, onRim is boolean) retur
     var nx = makeArray(count);
     var ny = makeArray(count);
     var nz = makeArray(count);
-    var mx = creased ? makeArray(count) : [];
-    var my = creased ? makeArray(count) : [];
-    var mz = creased ? makeArray(count) : [];
-    var ix = creased ? makeArray(count) : [];
-    var iy = creased ? makeArray(count) : [];
-    var iz = creased ? makeArray(count) : [];
     for (var i = 0; i < count; i += 1)
     {
-        const pl = planes[i];
-        px[i] = pl.origin[0].value;
-        py[i] = pl.origin[1].value;
-        pz[i] = pl.origin[2].value;
-        ux[i] = pl.x[0];
-        uy[i] = pl.x[1];
-        uz[i] = pl.x[2];
-        nx[i] = pl.normal[0];
-        ny[i] = pl.normal[1];
-        nz[i] = pl.normal[2];
-        if (creased)
-        {
-            mx[i] = faceB[i].normal[0];
-            my[i] = faceB[i].normal[1];
-            mz[i] = faceB[i].normal[2];
-            // into face 1: its normal x its loop direction
-            ix[i] = pl.normal[1] * pl.x[2] - pl.normal[2] * pl.x[1];
-            iy[i] = pl.normal[2] * pl.x[0] - pl.normal[0] * pl.x[2];
-            iz[i] = pl.normal[0] * pl.x[1] - pl.normal[1] * pl.x[0];
-        }
+        const o = lines[i].origin;
+        const u = lines[i].direction;
+        px[i] = o[0].value;
+        py[i] = o[1].value;
+        pz[i] = o[2].value;
+        ux[i] = u[0];
+        uy[i] = u[1];
+        uz[i] = u[2];
+        nx[i] = normals[i][0];
+        ny[i] = normals[i][1];
+        nz[i] = normals[i][2];
     }
 
     // Tangents must run with the samples for the Hermite spans.
@@ -325,13 +316,48 @@ export function undrapeEdgeTable(planes is array, other, onRim is boolean) retur
         along += (ux[i] + ux[i + 1]) * (px[i + 1] - px[i]) + (uy[i] + uy[i + 1]) * (py[i + 1] - py[i])
             + (uz[i] + uz[i + 1]) * (pz[i + 1] - pz[i]);
     }
-    if (along < 0)
+    const flip = (along < 0) ? -1 : 1;
+    if (flip < 0)
     {
         for (var i = 0; i < count; i += 1)
         {
             ux[i] = -ux[i];
             uy[i] = -uy[i];
             uz[i] = -uz[i];
+        }
+    }
+
+    // A crease: faces meeting tangentially (evEdgeConvexity reports CONVEX / CONCAVE within its tolerance)
+    // are none.
+    var creased = false;
+    if (others != undefined)
+    {
+        for (var i = 0; i < count; i += 1)
+        {
+            if (nx[i] * others[i][0] + ny[i] * others[i][1] + nz[i] * others[i][2] < UNDRAPE_CREASE_COS)
+            {
+                creased = true;
+            }
+        }
+    }
+    var mx = creased ? makeArray(count) : [];
+    var my = creased ? makeArray(count) : [];
+    var mz = creased ? makeArray(count) : [];
+    var ix = creased ? makeArray(count) : [];
+    var iy = creased ? makeArray(count) : [];
+    var iz = creased ? makeArray(count) : [];
+    if (creased)
+    {
+        // into the first face: sign * (normal x the edge's own direction); ux.. now carry `flip`
+        const sg = intoSign * flip;
+        for (var i = 0; i < count; i += 1)
+        {
+            mx[i] = others[i][0];
+            my[i] = others[i][1];
+            mz[i] = others[i][2];
+            ix[i] = sg * (ny[i] * uz[i] - nz[i] * uy[i]);
+            iy[i] = sg * (nz[i] * ux[i] - nx[i] * uz[i]);
+            iz[i] = sg * (nx[i] * uy[i] - ny[i] * ux[i]);
         }
     }
 
@@ -378,12 +404,19 @@ export function undrapeEdgeTable(planes is array, other, onRim is boolean) retur
 
 /**
  * Sample every edge of one plate side (kernel, once). onRim: the edge also bounds a face that is not on
- * this side (a wall), so it is part of the side's outline. Crease edges between two side faces (not
- * tangent-continuous) are sampled on both faces.
+ * this side (a wall), so it is part of the side's outline.
  *
+ * Crease edges between two side faces (not tangent-continuous) are sampled on both faces when they run
+ * along the reference (|edge tangent . t| >= UNDRAPE_LENGTHWISE at their middle): there the two faces give
+ * the section different tangents either side of the crossing. A crease running across the reference (a
+ * face end kinked lengthwise, common on pressed parts) turns the surface about a line lying nearly in the
+ * station plane, which leaves the section's tangent almost unchanged; the first face serves, and the
+ * piece turns telescope in the mid-surface correction anyway.
+ *
+ * @param c {map} : the packed chart (chart.packed).
  * @returns {map} : { "tables" (undrapeEdgeTable maps, plus "edge" : the edge Query), "faceCount" }
  */
-export function undrapeSampleSide(context is Context, side is Query) returns map
+export function undrapeSampleSide(context is Context, side is Query, c is map) returns map
 {
     const faces = evaluateQuery(context, side);
     var isSide = {};
@@ -410,41 +443,142 @@ export function undrapeSampleSide(context is Context, side is Query) returns map
             }
         }
 
-        const rough = undrapeRoughLength(evEdgeTangentLines(context, {
-                        "edge" : edge, "parameters" : [0, 0.5, 1], "arcLengthParameterization" : false }));
+        const rough3 = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.5, 1], "arcLengthParameterization" : false });
+        const rough = undrapeRoughLength(rough3);
         const n = max([3, ceil(rough[0] / UNDRAPE_EDGE_SAMPLE) + 1, ceil(rough[1] / UNDRAPE_EDGE_TURN) + 1]);
+        const params = range(0, 1, n);
+
+        // positions and tangents at every sample
+        var arcLength = false;
+        var lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : params, "arcLengthParameterization" : false });
+        if (undrapeUneven(lines))
+        {
+            // a very uneven parameterization leaves long spans between the samples: resample by arc length
+            arcLength = true;
+            lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : params, "arcLengthParameterization" : true });
+        }
 
         var creased = false;
-        if (size(sideFaces) > 1)
+        if (size(sideFaces) > 1 && evEdgeConvexity(context, { "edge" : edge }) != EdgeConvexityType.SMOOTH)
         {
-            creased = evEdgeConvexity(context, { "edge" : edge }) != EdgeConvexityType.SMOOTH;
+            const o = rough3[1].origin;
+            const a0 = undrapeSeedArc(c, o[0].value);
+            const f = chartFoot(c, o[0].value, o[1].value, o[2].value, a0, undrapeSpanOf(c, a0));
+            const u = rough3[1].direction;
+            creased = abs(u[0] * f[5] + u[1] * f[6] + u[2] * f[7]) >= UNDRAPE_LENGTHWISE;
         }
-        var arcLength = false;
-        var planes = [];
-        var other = undefined;
-        for (var attempt = 0; attempt < 2; attempt += 1)
-        {
-            planes = evFaceTangentPlanesAtEdge(context, { "edge" : edge, "face" : sideFaces[0],
-                        "parameters" : range(0, 1, n), "arcLengthParameterization" : arcLength,
-                        "usingFaceOrientation" : creased });
-            // A very uneven parameterization leaves long spans between the samples: resample by arc length.
-            if (arcLength || !undrapeUneven(planes))
-            {
-                break;
-            }
-            arcLength = true;
-        }
+
+        const normals = undrapeSideNormals(context, edge, sideFaces[0], params, arcLength, lines);
+        var others = undefined;
+        var intoSign = 1;
         if (creased)
         {
-            other = evFaceTangentPlanesAtEdge(context, { "edge" : edge, "face" : sideFaces[1],
-                        "parameters" : range(0, 1, n), "arcLengthParameterization" : arcLength,
-                        "usingFaceOrientation" : true });
+            others = undrapeSideNormals(context, edge, sideFaces[1], params, arcLength, lines);
+            // which way the first face lies: its loop direction at the edge's middle (the same point either way)
+            const oriented = evFaceTangentPlanesAtEdge(context, { "edge" : edge, "face" : sideFaces[0], "parameters" : [0.5],
+                        "arcLengthParameterization" : false, "usingFaceOrientation" : true });
+            intoSign = (dot(oriented[0].x, rough3[1].direction) >= 0) ? 1 : -1;
         }
-        var table = undrapeEdgeTable(planes, other, onRim);
+        var table = undrapeEdgeTable(lines, normals, others, intoSign, onRim);
         table.edge = edge;
         tables[k] = table;
     }
     return { "tables" : tables, "faceCount" : size(faces) };
+}
+
+/**
+ * A face's unit outward normals at every sample of an edge: read at every UNDRAPE_NORMAL_STEP-th sample,
+ * then at every sample between two reads that differ by more than UNDRAPE_NORMAL_REFINE; the rest
+ * interpolated linearly in the parameter and made normal to the edge tangent there.
+ * @returns {array} : [x, y, z] per sample
+ */
+export function undrapeSideNormals(context is Context, edge is Query, face is Query, params is array, arcLength is boolean,
+    lines is array) returns array
+{
+    const n = size(params);
+    var read = [];
+    for (var i = 0; i < n - 1; i += UNDRAPE_NORMAL_STEP)
+    {
+        read = append(read, i);
+    }
+    read = append(read, n - 1);
+    var normals = makeArray(n);
+    var known = makeArray(n, false);
+    var ask = makeArray(size(read));
+    for (var j = 0; j < size(read); j += 1)
+    {
+        ask[j] = params[read[j]];
+    }
+    const planes = evFaceTangentPlanesAtEdge(context, { "edge" : edge, "face" : face, "parameters" : ask,
+                "arcLengthParameterization" : arcLength });
+    for (var j = 0; j < size(read); j += 1)
+    {
+        const nn = planes[j].normal;
+        normals[read[j]] = [nn[0], nn[1], nn[2]];
+        known[read[j]] = true;
+    }
+
+    // refine where the normal turns
+    const limit = cos(UNDRAPE_NORMAL_REFINE * radian);
+    var more = [];
+    for (var j = 0; j + 1 < size(read); j += 1)
+    {
+        const a = normals[read[j]];
+        const b = normals[read[j + 1]];
+        if (read[j + 1] - read[j] > 1 && a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < limit)
+        {
+            for (var i = read[j] + 1; i < read[j + 1]; i += 1)
+            {
+                more = append(more, i);
+            }
+        }
+    }
+    if (size(more) > 0)
+    {
+        var askMore = makeArray(size(more));
+        for (var j = 0; j < size(more); j += 1)
+        {
+            askMore[j] = params[more[j]];
+        }
+        const extra = evFaceTangentPlanesAtEdge(context, { "edge" : edge, "face" : face, "parameters" : askMore,
+                    "arcLengthParameterization" : arcLength });
+        for (var j = 0; j < size(more); j += 1)
+        {
+            const nn = extra[j].normal;
+            normals[more[j]] = [nn[0], nn[1], nn[2]];
+            known[more[j]] = true;
+        }
+    }
+
+    // interpolate the rest
+    var lo = 0;
+    for (var i = 1; i < n; i += 1)
+    {
+        if (known[i])
+        {
+            lo = i;
+            continue;
+        }
+        var hi = i + 1;
+        while (!known[hi])
+        {
+            hi += 1;
+        }
+        const f = (params[i] - params[lo]) / (params[hi] - params[lo]);
+        const a = normals[lo];
+        const b = normals[hi];
+        var x = a[0] + f * (b[0] - a[0]);
+        var y = a[1] + f * (b[1] - a[1]);
+        var z = a[2] + f * (b[2] - a[2]);
+        const u = lines[i].direction;
+        const d = x * u[0] + y * u[1] + z * u[2];
+        x = x - d * u[0];
+        y = y - d * u[1];
+        z = z - d * u[2];
+        const len = sqrt(x * x + y * y + z * z);
+        normals[i] = [x / len, y / len, z / len];
+    }
+    return normals;
 }
 
 /** Whether some span of the samples is much longer than their average (an uneven parameterization). */
@@ -720,7 +854,8 @@ function undrapeSpanRoot(tb is map, i is number, g0 is number, g1 is number, t i
 }
 
 /**
- * Every point where one sampled edge meets a station plane, as crossing records.
+ * Every point where one sampled edge meets a station plane, as crossing records. The caller passes only
+ * edges whose boxes the plane crosses (undrapeCandidateEdges).
  *
  * An edge running through the plane (end samples on opposite sides) is bisected on its samples and solved
  * by Newton on the Hermite span to 1e-12 m. Otherwise every sample is scanned: sign changes are solved the
@@ -732,11 +867,6 @@ export function undrapeEdgeCrossings(tb is map, e is number, fr is map) returns 
 {
     const a = fr.a;
     const t = fr.t;
-    const range2 = undrapeBoxRange(tb, fr);
-    if (range2[0] > 0 || range2[1] < 0)
-    {
-        return [];
-    }
     const px = tb.px;
     const py = tb.py;
     const pz = tb.pz;
@@ -856,7 +986,8 @@ export function undrapePieceToWidth(a is array, b is array, w0 is number) return
  * bridge with the gap's end tangents (the surface continued smoothly across).
  *
  * @returns {map} : { "ok", "why", "kernel" : false, "pts" (merged crossings by w), "mid" (signed
- *      mid-surface arc from the centreline w = 0 at each), "thickness", "sideSign" }
+ *      mid-surface arc from the centreline w = 0 at each), "nodeOf" (the node each input crossing became),
+ *      "thickness", "sideSign" }
  */
 export function undrapeSection(crossings is array, thickness is number, sideSign is number) returns map
 {
@@ -881,39 +1012,44 @@ export function undrapeSection(crossings is array, thickness is number, sideSign
         }
     }
 
-    // insertion sort by width (a dozen or two crossings)
-    var sorted = makeArray(count);
+    // insertion sort of the crossing indices by width (a dozen or two crossings)
+    var order = makeArray(count);
     for (var i = 0; i < count; i += 1)
     {
-        const c = crossings[i];
+        const w = crossings[i][0];
         var j = i;
-        while (j > 0 && sorted[j - 1][0] > c[0])
+        while (j > 0 && crossings[order[j - 1]][0] > w)
         {
-            sorted[j] = sorted[j - 1];
+            order[j] = order[j - 1];
             j -= 1;
         }
-        sorted[j] = c;
+        order[j] = i;
     }
 
+    // merge coincident crossings; nodeOf[i] = the node crossing i became
     var pts = makeArray(count);
-    pts[0] = sorted[0];
+    var nodeOf = makeArray(count);
+    pts[0] = crossings[order[0]];
+    nodeOf[order[0]] = 0;
     var n = 1;
-    for (var i = 1; i < count; i += 1)
+    for (var k = 1; k < count; k += 1)
     {
+        const c = crossings[order[k]];
         const last = pts[n - 1];
-        const dw = sorted[i][0] - last[0];
-        const dh = sorted[i][1] - last[1];
+        const dw = c[0] - last[0];
+        const dh = c[1] - last[1];
         if (dw * dw + dh * dh > UNDRAPE_SAME_POINT * UNDRAPE_SAME_POINT)
         {
-            pts[n] = sorted[i];
+            pts[n] = c;
             n += 1;
         }
-        else if (sorted[i][8] == 1 && last[8] == 0)
+        else if (c[8] == 1 && last[8] == 0)
         {
             var merged = last;
             merged[8] = 1;
             pts[n - 1] = merged;
         }
+        nodeOf[order[k]] = n - 1;
     }
     if (n < 2)
     {
@@ -955,7 +1091,7 @@ export function undrapeSection(crossings is array, thickness is number, sideSign
     {
         mid[i] = mid[i] - zero;
     }
-    return { "ok" : true, "kernel" : false, "pts" : pts, "mid" : mid, "thickness" : thickness, "sideSign" : sideSign };
+    return { "ok" : true, "kernel" : false, "pts" : pts, "mid" : mid, "nodeOf" : nodeOf, "thickness" : thickness, "sideSign" : sideSign };
 }
 
 /**
@@ -1009,30 +1145,83 @@ export function undrapeMidAt(section is map, w0 is number, h0 is number) returns
     return section.mid[j] + part[0] + section.sideSign * section.thickness / (pts[j][6] + pts[j + 1][6]) * part[1];
 }
 
-/** Kernel-section lookup: the mid arc at the point of the sampled chain nearest (w0, h0). */
-function undrapeChainMidAt(section is map, w0 is number, h0 is number) returns number
+/**
+ * Nearest point of a sampled chain to (w0, h0): [arc there, 1 when it is an end of the chain, else 0].
+ */
+function undrapeChainNearest(chain is map, w0 is number, h0 is number) returns array
 {
-    const ws = section.ws;
-    const hs = section.hs;
-    const mids = section.mids;
-    var best = 1e30;
-    var result = mids[0];
-    for (var i = 0; i + 1 < size(ws); i += 1)
+    const ws = chain.ws;
+    const hs = chain.hs;
+    const arcs = chain.arcs;
+    const n = size(ws);
+    // Chains increase strictly in w: start at the segment holding w0 and walk out both ways while the
+    // width gap alone can still beat the best distance found.
+    var low = 0;
+    var high = n - 2;
+    while (low < high)
     {
-        const dw = ws[i + 1] - ws[i];
-        const dh = hs[i + 1] - hs[i];
-        const l2 = dw * dw + dh * dh;
-        const f = (l2 < 1e-30) ? 0 : clamp(((w0 - ws[i]) * dw + (h0 - hs[i]) * dh) / l2, 0, 1);
-        const ew = ws[i] + f * dw - w0;
-        const eh = hs[i] + f * dh - h0;
-        const d2 = ew * ew + eh * eh;
-        if (d2 < best)
+        const half = floor((low + high + 1) / 2);
+        if (ws[half] <= w0)
         {
-            best = d2;
-            result = mids[i] + f * (mids[i + 1] - mids[i]);
+            low = half;
+        }
+        else
+        {
+            high = half - 1;
+        }
+    }
+    var best = 1e30;
+    var result = [arcs[0], 1];
+    for (var dir = -1; dir <= 1; dir += 2)
+    {
+        var i = (dir < 0) ? low : low + 1;
+        while (i >= 0 && i + 1 < n)
+        {
+            const dw = ws[i + 1] - ws[i];
+            const dh = hs[i + 1] - hs[i];
+            const gap = (dir < 0) ? w0 - ws[i + 1] : ws[i] - w0;
+            if (gap > 0 && gap * gap > best)
+            {
+                break;
+            }
+            const l2 = dw * dw + dh * dh;
+            const f = (l2 < 1e-30) ? 0 : clamp(((w0 - ws[i]) * dw + (h0 - hs[i]) * dh) / l2, 0, 1);
+            const ew = ws[i] + f * dw - w0;
+            const eh = hs[i] + f * dh - h0;
+            const d2 = ew * ew + eh * eh;
+            if (d2 < best)
+            {
+                best = d2;
+                const atEnd = (i == 0 && f == 0) || (i == n - 2 && f == 1);
+                result = [arcs[i] + f * (arcs[i + 1] - arcs[i]), atEnd ? 1 : 0];
+            }
+            i += dir;
         }
     }
     return result;
+}
+
+/**
+ * Kernel-section lookup: the mid arc at (w0, h0) on the sampled side's chain. The other side's arc is read
+ * at its nearest point, or at its matching end when (w0, h0) is an end of the chain (the rim: the rim
+ * wall's section, whatever its angle to the plate). Each side's arc runs from its own centreline point.
+ */
+function undrapeChainMidAt(section is map, w0 is number, h0 is number) returns number
+{
+    const a = undrapeChainNearest(section.chainA, w0, h0);
+    var arcB = 0;
+    const nA = size(section.chainA.ws);
+    const nB = size(section.chainB.ws);
+    if (a[1] == 1)
+    {
+        const first = abs(a[0] - section.chainA.arcs[0]) < abs(a[0] - section.chainA.arcs[nA - 1]);
+        arcB = first ? section.chainB.arcs[0] : section.chainB.arcs[nB - 1];
+    }
+    else
+    {
+        arcB = undrapeChainNearest(section.chainB, w0, h0)[0];
+    }
+    return 0.5 * ((a[0] - section.zeroA) + (arcB - section.zeroB));
 }
 
 // ============================================================================
@@ -1187,32 +1376,8 @@ function undrapeKernelSection(context is Context, kid is Id, kernel is map, fr i
     {
         return { "ok" : false, "why" : "empty kernel section" };
     }
-    const zeroA = undrapeChainZero(chainA);
-    const zeroB = undrapeChainZero(chainB);
-    const lookupB = { "kernel" : true, "ws" : chainB.ws, "hs" : chainB.hs, "mids" : chainB.arcs };
-    // Interior points pair with the other side's nearest point; the chain ends (the rim) with its ends,
-    // which is the rim wall's section whatever its angle to the plate.
-    const nA = size(chainA.ws);
-    const nB = size(chainB.ws);
-    var mids = makeArray(nA);
-    for (var i = 0; i < nA; i += 1)
-    {
-        var arcB = 0;
-        if (i == 0)
-        {
-            arcB = chainB.arcs[0];
-        }
-        else if (i == nA - 1)
-        {
-            arcB = chainB.arcs[nB - 1];
-        }
-        else
-        {
-            arcB = undrapeChainMidAt(lookupB, chainA.ws[i], chainA.hs[i]);
-        }
-        mids[i] = 0.5 * ((chainA.arcs[i] - zeroA) + (arcB - zeroB));
-    }
-    return { "ok" : true, "kernel" : true, "ws" : chainA.ws, "hs" : chainA.hs, "mids" : mids, "pts" : [] };
+    return { "ok" : true, "kernel" : true, "pts" : [], "chainA" : chainA, "chainB" : chainB,
+            "zeroA" : undrapeChainZero(chainA), "zeroB" : undrapeChainZero(chainB) };
 }
 
 // ----------------------------------------------------------------------------
@@ -1403,7 +1568,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     const sideB = useFirst ? side1 : side0;
 
     // 2-3. Edge sampling and tables.
-    const sampled = undrapeSampleSide(context, sideA);
+    const sampled = undrapeSampleSide(context, sideA, c);
     const tables = sampled.tables;
     const sideSign = undrapeSideSign(c, tables);
 
@@ -1596,7 +1761,8 @@ function undrapeSideSign(c is map, tables is array) returns number
     for (var e = 0; e < min(size(tables), 60); e += 1)
     {
         const tb = tables[e];
-        const f = chartFoot(c, tb.px[0], tb.py[0], tb.pz[0], undrapeSeedArc(c, tb.px[0]), 0);
+        const a0 = undrapeSeedArc(c, tb.px[0]);
+        const f = chartFoot(c, tb.px[0], tb.py[0], tb.pz[0], a0, undrapeSpanOf(c, a0));
         const hx = c.ny * f[7] - c.nz * f[6];
         const hy = c.nz * f[5] - c.nx * f[7];
         const hz = c.nx * f[6] - c.ny * f[5];
@@ -1672,12 +1838,13 @@ export function undrapeRequests(c is map, tables is array, rim is array, loopDat
         // feet of the samples: lengthwise or not
         var sampleArcs = makeArray(tb.count);
         var lengthwise = true;
-        seed = undefined;
+        var hint = -1;
         for (var i = 0; i < tb.count; i += 1)
         {
-            const f = chartFoot(c, tb.px[i], tb.py[i], tb.pz[i], (seed == undefined) ? undrapeSeedArc(c, tb.px[i]) : seed, 0);
+            const a0 = (hint < 0) ? undrapeSeedArc(c, tb.px[i]) : sampleArcs[i - 1];
+            const f = chartFoot(c, tb.px[i], tb.py[i], tb.pz[i], a0, (hint < 0) ? undrapeSpanOf(c, a0) : hint);
             sampleArcs[i] = f[0];
-            seed = f[0];
+            hint = f[1];
             if (abs(tb.ux[i] * f[5] + tb.uy[i] * f[6] + tb.uz[i] * f[7]) < UNDRAPE_LENGTHWISE)
             {
                 lengthwise = false;
@@ -1778,10 +1945,16 @@ function undrapeResolve(request is map, section is map, crossings is array, fr i
     var p = undefined;
     if (request.kind == "edge")
     {
-        for (var cr in crossings)
+        for (var i = 0; i < size(crossings); i += 1)
         {
+            const cr = crossings[i];
             if (cr[9] == request.edge)
             {
+                if (!section.kernel)
+                {
+                    return [fr.x - chart.alignX, chart.alignV - section.mid[section.nodeOf[i]],
+                            cr[14] - 0.5 * tk * cr[10], cr[15] - 0.5 * tk * cr[11], cr[16] - 0.5 * tk * cr[12], fr.arc];
+                }
                 p = [cr[14], cr[15], cr[16], cr[10], cr[11], cr[12]];
                 break;
             }
@@ -1933,49 +2106,53 @@ function undrapeDeformation(sections is array, crossingsAt is array, frames is a
     var stretchMax = -1e9;
     var where = [0, 0];
     var shearMax = 0;
-    var previous = undefined;
+    var previous = [];
     for (var s = 0; s < size(sections); s += 1)
     {
         const section = sections[s];
         if (!section.ok)
         {
-            previous = undefined;
+            previous = [];
             continue;
         }
         const fr = frames[s];
-        var counts = {};
-        for (var cr in crossingsAt[s])
+        const crossings = crossingsAt[s];
+        const n = size(crossings);
+        var current = makeArray(n);
+        var count = 0;
+        for (var i = 0; i < n; i += 1)
         {
-            counts[cr[9]] = (counts[cr[9]] == undefined) ? 1 : counts[cr[9]] + 1;
-        }
-        var current = {};
-        for (var cr in crossingsAt[s])
-        {
-            if (counts[cr[9]] != 1 || cr[17] == 1)
+            const cr = crossings[i];
+            if (cr[17] == 1)
             {
                 continue;
             }
-            const mid = undrapeMidAt(section, cr[0], cr[1]);
-            current[cr[9]] = [fr.x - chart.alignX, chart.alignV - mid,
+            // one edge's crossings are consecutive in the list: an edge met more than once is not tracked
+            if ((i > 0 && crossings[i - 1][9] == cr[9]) || (i + 1 < n && crossings[i + 1][9] == cr[9]))
+            {
+                continue;
+            }
+            const mid = section.kernel ? undrapeMidAt(section, cr[0], cr[1]) : section.mid[section.nodeOf[i]];
+            current[count] = [cr[9], fr.x - chart.alignX, chart.alignV - mid,
                     cr[14] - 0.5 * tk * cr[10], cr[15] - 0.5 * tk * cr[11], cr[16] - 0.5 * tk * cr[12],
                     cr[4] * fr.w[0] + cr[5] * fr.h[0], cr[4] * fr.w[1] + cr[5] * fr.h[1], cr[4] * fr.w[2] + cr[5] * fr.h[2]];
+            count += 1;
         }
-        if (previous != undefined)
+        current = resize(current, count);
+        for (var q in current)
         {
-            for (var entry in current)
+            for (var p in previous)
             {
-                const q = entry.value;
-                const p = previous[entry.key];
-                if (p == undefined)
+                if (p[0] != q[0])
                 {
                     continue;
                 }
-                const dx = q[2] - p[2];
-                const dy = q[3] - p[3];
-                const dz = q[4] - p[4];
+                const dx = q[3] - p[3];
+                const dy = q[4] - p[4];
+                const dz = q[5] - p[5];
                 const l3 = sqrt(dx * dx + dy * dy + dz * dz);
-                const fx = q[0] - p[0];
-                const fy = q[1] - p[1];
+                const fx = q[1] - p[1];
+                const fy = q[2] - p[2];
                 const lf = sqrt(fx * fx + fy * fy);
                 if (l3 < 1e-5)
                 {
@@ -1985,10 +2162,10 @@ function undrapeDeformation(sections is array, crossingsAt is array, frames is a
                 if (stretch > stretchMax)
                 {
                     stretchMax = stretch;
-                    where = [0.5 * (p[0] + q[0]), 0.5 * (p[1] + q[1])];
+                    where = [0.5 * (p[1] + q[1]), 0.5 * (p[2] + q[2])];
                 }
                 stretchMin = min(stretchMin, stretch);
-                const c3 = clamp((dx * p[5] + dy * p[6] + dz * p[7]) / l3, -1, 1);
+                const c3 = clamp((dx * p[6] + dy * p[7] + dz * p[8]) / l3, -1, 1);
                 const cf = clamp(-fy / lf, -1, 1);
                 shearMax = max(shearMax, abs(acos(c3) - acos(cf)) / radian);
             }

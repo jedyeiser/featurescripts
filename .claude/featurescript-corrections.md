@@ -11,6 +11,9 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 **File**: `driven_offset/design_map_query_utils.fs` -- `designMapEntryPredicate`
 **Issue**: Declaring the same parameter (`entry.e_key is string;`) in two different `if`/`else` branches of a precondition (or array-item predicate) fails at compile time with `Duplicate feature parameter e_key` and `Nonconforming feature function ... precondition failed`. The feature silently disappears from the custom-feature list. `fscheck.py` does not catch this (no type/precondition checking).
 **Fix**: Declare each parameter exactly once, with a combined visibility condition.
+**Also (2026-09-24, Move_Along_Edge)**: parameter ids are one namespace for the WHOLE feature,
+array items included -- `copy.nameMode` inside an array clashes with a top-level
+`definition.nameMode`. Prefix item parameters (`copy.copyNameMode`).
 ```featurescript
 // WRONG
 if (entry.e_kind == Kind.A) { if (entry.rename) { entry.e_key is string; } }
