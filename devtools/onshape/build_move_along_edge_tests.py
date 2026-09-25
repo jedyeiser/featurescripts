@@ -318,6 +318,12 @@ b19 = cube("M19 block 40 x 20 at (19000, 0, 0)", 19000, 0, hx=20)
 move("M19 rotate only, nearest to (19150, 100) = arc end -> centroid stays (19000, 0, 0), 40 along Y", body(b19), edges(l19), "0 mm",
      [q("moveTarget", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % t19)], {"applyMode": "ROTATE", "moveMode": "NEAREST"})
 
+# M20 mate connector picked through its vertex (as the dialog hands it over), points OFF -> the connector moves
+l20 = sketch("M20 path: line x 20000..20400", TOP, polyline("l", [(20000, 0), (20400, 0)]))
+mc20 = connector("M20 mate connector at (20000, 0, 0)", 20000, 0)
+move("M20 connector picked by its vertex, points off, named 'M20 MC' -> connector moves to (20100, 0, 0), no points",
+     'qOwnedByBody(%s, EntityType.VERTEX)' % body(mc20), edges(l20), "100 mm", [s("nameText", "M20 MC")], {"nameMode": "NEW_NAME"})
+
 # M11 disconnected edges: temporary instance, must fail
 l11 = sketch("M11 path: two lines with a gap", TOP, polyline("l", [(11000, 0), (11100, 0)]) + polyline("m", [(11200, 0), (11300, 0)]))
 c11 = cube("M11 cube at (11000, 0, 0)", 11000, 0)

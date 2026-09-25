@@ -158,6 +158,12 @@ block("M17 ", "M17 block", 17100, 100, True)
 block("M18 ", "M18 block", 18000, 0, False)
 block("M19 ", "M19 block", 19000, 0, False)
 
+case("M20 ", r'''
+        const o = mcOrigin(created(@MC@));
+        const points = count(qBodyType(qCreatedBy(makeId(SELF), EntityType.BODY), BodyType.POINT));
+        return [norm(o - pt(20100, 0, 0)) < 0.001 * millimeter && points == 0, "connector at " ~ fmtV(o) ~ " (20100, 0, 0), " ~ points ~ " points (0)"];''',
+     MC="M20 mate connector")
+
 EXPECTED_WARNINGS = ["M3b "]
 
 

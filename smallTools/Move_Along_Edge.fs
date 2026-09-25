@@ -166,7 +166,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         var pathData = buildMovePath(context, definition.moveEdge);
 
         var moveBodies = selectedEntities(context, definition.moveBodies);
-        // Names are stored for bodies only, in selection order; sketch entities have no name to extend.
+        // Names are stored for named bodies only, in selection order; sketch entities and mate connectors have none.
         var names = definition.sourceNames == "" ? [] : splitByRegexp(definition.sourceNames, NAME_SEPARATOR);
         var bodyIndex = 0;
         var namesMissing = false;
@@ -176,7 +176,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         for (var i = 0; i < size(moveBodies); i += 1)
         {
             var baseName = "";
-            if (!isQueryEmpty(context, qEntityFilter(moveBodies[i], EntityType.BODY)))
+            if (hasPartName(context, moveBodies[i]))
             {
                 baseName = bodyIndex < size(names) ? names[bodyIndex] : undefined;
                 bodyIndex += 1;
@@ -232,7 +232,7 @@ export function moveAlongEdgeEditLogic(context is Context, id is Id, oldDefiniti
     var names = [];
     for (var body in selectedEntities(context, definition.moveBodies))
     {
-        if (isQueryEmpty(context, qEntityFilter(body, EntityType.BODY)))
+        if (!hasPartName(context, body))
         {
             continue;
         }
@@ -257,6 +257,15 @@ function selectedEntities(context is Context, selection is Query) returns array
         entities = append(entities, isQueryEmpty(context, connector) ? entity : connector);
     }
     return entities;
+}
+
+/**
+ * Whether a selected entity has a part name to prefix or suffix: bodies do; sketch entities and
+ * mate connectors (getProperty NAME gives undefined) do not.
+ */
+function hasPartName(context is Context, entity is Query) returns boolean
+{
+    return !isQueryEmpty(context, qEntityFilter(entity, EntityType.BODY)) && isQueryEmpty(context, qBodyType(entity, BodyType.MATE_CONNECTOR));
 }
 
 /**
