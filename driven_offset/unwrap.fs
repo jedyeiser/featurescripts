@@ -680,12 +680,26 @@ function profileFromFace(context is Context, id is Id, mid is Query, userFace is
 function plateFromOutline(context is Context, id is Id, wireEdges is Query, flatPlane is Plane, thickness is ValueWithUnits) returns Query
 {
     const bb = evBox3d(context, { "topology" : wireEdges, "tight" : true, "cSys" : planeToCSys(flatPlane) });
-    const c = planeToWorld(flatPlane, vector(0.5 * (bb.minCorner[0] + bb.maxCorner[0]), 0.5 * (bb.minCorner[1] + bb.maxCorner[1])));
-    opPlane(context, id + "sheet", {
-                "plane" : plane(c, flatPlane.normal, flatPlane.x),
-                "width" : bb.maxCorner[0] - bb.minCorner[0] + 20 * millimeter,
-                "height" : bb.maxCorner[1] - bb.minCorner[1] + 20 * millimeter
+    // The sheet is a line extruded across, NOT an opPlane: opPlane makes a construction body, and a
+    // solid extruded from a construction body's faces is itself construction -- translucent, and not
+    // a part.
+    const margin = 10 * millimeter;
+    const across = cross(flatPlane.normal, flatPlane.x);
+    opCreateBSplineCurve(context, id + "sheetEdge", {
+                "bSplineCurve" : bSplineCurve({
+                            "degree" : 1,
+                            "isPeriodic" : false,
+                            "controlPoints" : [planeToWorld(flatPlane, vector(bb.minCorner[0] - margin, bb.minCorner[1] - margin)),
+                                    planeToWorld(flatPlane, vector(bb.maxCorner[0] + margin, bb.minCorner[1] - margin))]
+                        })
             });
+    opExtrude(context, id + "sheet", {
+                "entities" : qCreatedBy(id + "sheetEdge", EntityType.EDGE),
+                "direction" : across,
+                "endBound" : BoundingType.BLIND,
+                "endDepth" : bb.maxCorner[1] - bb.minCorner[1] + 2 * margin
+            });
+    opDeleteBodies(context, id + "deleteSheetEdge", { "entities" : qCreatedBy(id + "sheetEdge", EntityType.BODY) });
     const sheet = qCreatedBy(id + "sheet", EntityType.BODY);
     opSplitFace(context, id + "cut", { "faceTargets" : qOwnedByBody(sheet, EntityType.FACE), "edgeTools" : wireEdges });
 
@@ -724,10 +738,7 @@ function plateFromOutline(context is Context, id is Id, wireEdges is Query, flat
                 "startBound" : BoundingType.BLIND,
                 "startDepth" : 0.5 * thickness
             });
-    // The split leaves the plane sheet under a different id than opPlane gave it, so qCreatedBy(sheet) no
-    // longer finds it: delete every construction body this step made (the sheet is the only one).
-    opDeleteBodies(context, id + "deleteSheet", { "entities" : qUnion([sheet,
-                    qConstructionFilter(qCreatedBy(id, EntityType.BODY), ConstructionObject.YES)]) });
+    opDeleteBodies(context, id + "deleteSheet", { "entities" : sheet });
     return qCreatedBy(id + "plate", EntityType.BODY);
 }
 
@@ -796,8 +807,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     opExtractWires(context, id + "outlineWires", { "edges" : qOwnedByBody(curveBodies, EntityType.EDGE) });
     const outlineWires = qCreatedBy(id + "outlineWires", EntityType.BODY);
     const plates = plateFromOutline(context, id + "plate", qOwnedByBody(outlineWires, EntityType.EDGE), flatPlane, thickness);
-    opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion(concatenateArrays([[curveBodies, outlineWires,
-                        qConstructionFilter(qCreatedBy(id, EntityType.BODY), ConstructionObject.YES)], temporary])) });
+    opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion(concatenateArrays([[curveBodies, outlineWires], temporary])) });
 
     const lowerPlane = plane(flatPlane.origin - 0.5 * thickness * cs.zAxis, cs.zAxis, cs.xAxis);
     const lowerFace = qCoincidesWithPlane(qOwnedByBody(plates, EntityType.FACE), lowerPlane);
