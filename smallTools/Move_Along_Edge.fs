@@ -95,12 +95,12 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             for (var copy in definition.extraCopies)
             {
                 annotation { "Name" : "Distance to move" }
-                isLength(copy.distance, LENGTH_BOUNDS);
+                isLength(copy.copyDistance, LENGTH_BOUNDS);
 
                 annotation { "Name" : "Name", "Default" : MoveNameMode.NONE }
-                copy.nameMode is MoveNameMode;
+                copy.copyNameMode is MoveNameMode;
 
-                if (copy.nameMode != MoveNameMode.NONE)
+                if (copy.copyNameMode != MoveNameMode.NONE)
                 {
                     annotation { "Name" : "Name text" }
                     copy.copyName is string;
@@ -219,7 +219,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
         for (var j = 0; j < size(definition.extraCopies); j += 1)
         {
             var copy = definition.extraCopies[j];
-            moves = append(moves, { "id" : id + ("extra" ~ j), "distance" : copy.distance, "nameMode" : copy.nameMode, "nameText" : copy.copyName });
+            moves = append(moves, { "id" : id + ("extra" ~ j), "distance" : copy.copyDistance, "nameMode" : copy.copyNameMode, "nameText" : copy.copyName });
         }
     }
 
