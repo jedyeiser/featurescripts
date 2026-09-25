@@ -1442,9 +1442,24 @@ with `GET /api/v10/featurestudios/d/{d}/w/{w}/e/{e}/featurespecs`. Queries by de
 
 ---
 
+## Correction 39: rational B-splines -- Onshape calls them splines, and evaluateSpline drops the weights (2026-09-24)
+
+**Symptom 1**: an exact circular arc built as a rational quadratic (`opCreateBSplineCurve`, weights
+[1, cos(sweep/2), 1]) is geometrically a circle, but Onshape shows and measures it as a SPLINE (no radius).
+**Fix**: build arcs that must be known as arcs as sketch arcs -- `newSketchOnPlane` in the arc's plane,
+`skArc` start / mid / end, `skSolve` -- and use that edge (fillet_wire tangent mode feeds it to
+`opEditCurve`, which keeps it a circle; `evCurveDefinition` returns a `Circle`).
+
+**Symptom 2**: `evaluateSpline` on that rational B-spline returned the NON-rational point: the "middle" of a
+90 deg r10 arc was off the circle, and a circle through start / that point / end has r = 8.839.
+**Fix**: never evaluate a rational BSplineCurve with evaluateSpline; compute arc points from the centre
+(midpoint = centre + r * normalize(toA + toB)), or evaluate the created edge with ev* functions.
+
+---
+
 ## Statistics
 
-- **Total Corrections**: 35
+- **Total Corrections**: 39
 - **Last Updated**: 2026-09-24
 - **Most Common Category**: FeatureScript Syntax (8), Units Handling (3), Import Issues (1), Type System (1), Matrix/Array Indexing (1)
 - **Critical Bugs Found**: 2 (Missing braces in control flow, Q matrix indexing)

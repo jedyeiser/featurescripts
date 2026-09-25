@@ -207,11 +207,15 @@ export const evaluateProfiles = defineFeature(function(context is Context, id is
         annotation { "Name" : "Project onto", "Filter" : EntityType.FACE && GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
         definition.projectionFace is Query;
 
-        annotation { "Name" : "Prevailing direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
-        definition.prevailingDirection is Query;
+        // Not needed for the periphery: it is emitted as outlined, never split into profiles.
+        if (definition.profileSource == ProfileSource.EDGES || definition.profileParts != ProfilePart.PERIPHERY)
+        {
+            annotation { "Name" : "Prevailing direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            definition.prevailingDirection is Query;
 
-        annotation { "Name" : "Flip prevailing direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
-        definition.flipPrevailing is boolean;
+            annotation { "Name" : "Flip prevailing direction", "Default" : false, "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            definition.flipPrevailing is boolean;
+        }
 
         annotation { "Name" : "Output", "Default" : ProfileGrouping.SINGLE, "UIHint" : UIHint.SHOW_LABEL }
         definition.grouping is ProfileGrouping;
