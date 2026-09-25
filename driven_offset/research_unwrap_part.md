@@ -222,6 +222,14 @@ Volumes: flat volume is larger than world volume by the (1 - kappa h) Jacobian f
    layer no longer mates at the tip/tail joints: the offset between layers is delta_d * theta, for
    example 2 mm between base (d = 0.6) and 4802 (d = 3.8). Options: one d for the whole ski (joints
    consistent, default), or each part's own mid/neutral line (each blank correct in length).
+   (Note 2026-09-25: the live Part-mode check on Unwrap_Testing Copy 2 reports 4802 at d = 0 as
+   lengthWrapped 180.710 / lengthFlat 180.709, 0.09 mm more than the 180.62 above. Not resolved. The
+   180.62 is the prototype's figure from the scratch runner; the live one is `lengthAndVolume`, which
+   measures W between the extreme STATIONS of the part (vertices plus dense samples of the edges near
+   either end, so a nose that reaches furthest part way along an edge counts) and compares it with the
+   flat body's X extent. Both use RtjD and d = 0, and the flat X extent matches the wrapped length to
+   1 um, so the difference is most likely in how the prototype took the extent (vertices only), not in
+   the flat part. Confirm by printing arcLo / arcHi against the prototype's end stations.)
    Composite-part unwrap should force one choice for all constituents.
 3. **Snap near-constant profiles to planes?** 4802's top is 13 um off a constant offset, so exact
    output is a slightly curved top. A "planar tolerance" (e.g. 0.01 mm) would emit planes, as the

@@ -66,13 +66,14 @@ export function analyzeEditingLogic(context is Context, id is Id, oldDefinition 
         "mrsPoint" : contacts.mrs
     });
     
-    // Add tip/tail from preparation
+    // Add tip/tail from preparation (hasTipTail shows the tip/tail length rows)
+    footprintData.hasTipTail = prepared.hasTipTail;
     if (prepared.hasTipTail)
     {
         footprintData.tipLength = prepared.tipLength;
         footprintData.tailLength = prepared.tailLength;
     }
-        
+
     var footprintDataKeys = keys(footprintData);
     var definitionKeys = keys(definition);
     
@@ -107,7 +108,7 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
         annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || (EntityType.VERTEX) || (BodyType.MATE_CONNECTOR), "MaxNumberOfPicks" : 1 }
         definition.acpQuery is Query;
         
-        annotation { "Name" : "Sketch key points", "Default" : false, "Decription": "When true, outputs a sketch that includes key point data" }
+        annotation { "Name" : "Sketch key points", "Default" : false, "Description": "When true, outputs a sketch that includes key point data" }
         definition.outputSketch is boolean;
         
         footprintDataPredicate(definition);
@@ -131,18 +132,17 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
         });
         
         // Add tip/tail from preparation
+        footprintData.hasTipTail = prepared.hasTipTail;
         if (prepared.hasTipTail)
         {
             footprintData.tipLength = prepared.tipLength;
             footprintData.tailLength = prepared.tailLength;
         }
-                // Add tip/tail data to results
-                footprintData.hasTipTail = prepared.hasTipTail;
-                if (prepared.hasTipTail)
-                {
-                    footprintData.tipLength = prepared.tipLength;
-                    footprintData.tailLength = prepared.tailLength;
-                }
+
+        // The dialog fields are written by the editing logic and go stale when upstream geometry changes;
+        // this summary is recomputed on every regeneration.
+        reportFeatureInfo(context, id, "Tip-waist-tail " ~ footprintData.dimensionStr ~ " mm | average radius " ~ footprintData.avgRadiusStr
+                    ~ " | natural radius (inflection) " ~ footprintData.natRadiusInflectionStr);
 
         if (definition.outputSketch)
         {

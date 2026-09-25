@@ -86,10 +86,10 @@ export function resolveReferencePointX(context is Context, refQuery is Query, ed
         {
             var facePlane = evPlane(context, { "face" : faceEntities[0] });
 
-            // Validate: plane normal must be parallel to world X (no Y component)
-            if (abs(facePlane.normal[1]) > PLANE_NORMAL_Y_TOLERANCE)
+            // Validate: plane normal must be parallel to world X (no Y or Z component)
+            if (sqrt(facePlane.normal[1] * facePlane.normal[1] + facePlane.normal[2] * facePlane.normal[2]) > PLANE_NORMAL_Y_TOLERANCE)
             {
-                throw regenError("FCP/ACP plane must be normal to the ski axis (world X). This plane has a Y component in its normal.");
+                throw regenError("FCP/ACP plane must be normal to the ski axis (world X). This plane's normal is tilted away from X.");
             }
 
             return facePlane.origin[0];

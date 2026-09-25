@@ -2,7 +2,8 @@
 
 Local development environment for Onshape FeatureScript CAD geometry code. Code is written here and tested by copying to Onshape FeatureStudio.
 
-**Target**: FeatureScript 2878 standard
+**Target**: FeatureScript 2878 standard (the local `std/` mirror and `tools/`). The active documents
+(driven_offset, curve_tools, variable_tools, reference_side, publish_tools) are on FeatureScript 3070 (curve_tools/fillet_wire.fs: 3083).
 
 ## Critical Rules
 
@@ -99,6 +100,7 @@ Clean means "worth pushing", not "correct".
 - `.claude/agents/featurescript-expert.md` - Full FeatureScript expertise (auto-invoked on .fs files)
 - `.claude/featurescript-corrections.md` - Living log of known issues and fixes
 - `tools/README.md` - Tools library status and usage
+- `driven_offset/docs/unwrap_explained.md` - Unwrap / undrape explained end to end (theory, use, code map, tests)
 
 ## Quick Reference
 

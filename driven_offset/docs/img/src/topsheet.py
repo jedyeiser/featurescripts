@@ -118,7 +118,7 @@ def load(path=os.path.join(DATA, "topsheet_sections.txt")):
     a0 = np.interp(ALIGN_X, xs, arcs)
     for st in stations:
         st.x = st.arc - a0
-        st.y = -st.L                                # y = -v (unwrapCoords convention)
+        st.y = -st.L                                # y = -v (unwrapFast convention)
     return stations, L
 
 

@@ -8,9 +8,9 @@ import(path : "onshape/std/surfaceGeometry.fs", version : "2892.0");
 import(path : "onshape/std/containers.fs", version : "2892.0");
 export import(path : "onshape/std/nurbsUtils.fs", version : "2892.0");
 
-export const PositionTolBounds = {(millimeter) : [0.00001, 0.0001, 1]} as LengthBoundSpec;
-export const PlaneTolBounds = {(millimeter) : [0.00001, 0.00001, 1]} as LengthBoundSpec;
-export const MinLengthBounds = {(millimeter) : [1, 10, 100]} as LengthBoundSpec;
+export const PositionTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
+export const PlaneTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
+export const MinLengthBounds = {(millimeter) : [0.1, 1, 100]} as LengthBoundSpec;
 export const TanTolBounds = {(degree) : [0.00001, 0.1, 1]} as AngleBoundSpec;
 export const NumSamplesBounds = {(unitless) : [10, 16, 200]} as IntegerBoundSpec;
 export const MaxDepthBounds = {(unitless) : [3, 8, 12]} as IntegerBoundSpec;
@@ -33,7 +33,7 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
         annotation { "Name" : "Edges to fit", "Filter" : EntityType.EDGE }
         definition.selEdges is Query;
 
-        annotation { "Name" : "Position tolerance", "Description" : "Max allowable point-to-arc/line deviation (also the join tolerance for G0 continuity)", "Default" : 0.00001 * millimeter }
+        annotation { "Name" : "Position tolerance", "Description" : "Max allowable point-to-arc/line deviation (also the join tolerance for G0 continuity)", "Default" : 0.01 * millimeter }
         isLength(definition.posTol, PositionTolBounds);
 
         annotation { "Name" : "Plane tolerance", "Description" : "Allowable out-of-plane error for input edges (coplanarity gate)", "Default" : 0.01 * millimeter }
@@ -940,25 +940,39 @@ export function buildInitialSegmentsFromKnotSpans(
         const spans = getUniqueKnotSpans(c);
 
         var blockStart = 0;
+        var blockU0 = undefined;  // start of a short block carried into the next one
         while (blockStart < size(spans))
         {
             var blockEnd = min(blockStart + spansPerSeg - 1, size(spans) - 1);
 
             const u0 = spans[blockStart].u0;
             const u1 = spans[blockEnd].u1;
-
-            const p0 = evalBSplineAtParam(c, u0);
+            if (blockU0 == undefined)
+            {
+                // Otherwise a short previous block is still open and carries into this one.
+                blockU0 = u0;
+            }
+            const p0 = evalBSplineAtParam(c, blockU0);
             const p1 = evalBSplineAtParam(c, u1);
 
-            if (norm(p1 - p0) >= minLength)
+            if (norm(p1 - p0) >= minLength || (blockEnd == size(spans) - 1 && !lastIsThisCurve(segments, curveIndex)))
             {
+                // Long enough, or the whole curve is shorter than minLength (never drop geometry).
                 segments = append(segments, {
                             "type" : "unfit",
                             "p0" : p0,
                             "p1" : p1,
-                            "curveIndex0" : curveIndex, "u0" : u0,
+                            "curveIndex0" : curveIndex, "u0" : blockU0,
                             "curveIndex1" : curveIndex, "u1" : u1
                         });
+                blockU0 = undefined;
+            }
+            else if (blockEnd == size(spans) - 1)
+            {
+                // A short last block extends this curve's previous segment (dropping it left a gap).
+                var last = size(segments) - 1;
+                segments[last].p1 = p1;
+                segments[last].u1 = u1;
             }
 
             blockStart = blockEnd + 1;
@@ -966,6 +980,12 @@ export function buildInitialSegmentsFromKnotSpans(
     }
 
     return segments;
+}
+
+// Whether the last segment so far belongs to curve curveIndex.
+function lastIsThisCurve(segments is array, curveIndex is number) returns boolean
+{
+    return size(segments) > 0 && segments[size(segments) - 1].curveIndex1 == curveIndex;
 }
 
 function getSplineDomain(c is map) returns map

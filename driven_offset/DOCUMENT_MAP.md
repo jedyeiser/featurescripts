@@ -1,14 +1,14 @@
 # driven_offset: document map and working rules (read first)
 
-Last updated 2026-09-23, after generic features were split out of this document into their
-own Onshape documents. Anyone (human or agent) working in `driven_offset/` should read this
+Last updated 2026-09-25 (import pins re-read from the code, unwrap family added); split of generic
+features into their own Onshape documents 2026-09-23. Anyone (human or agent) working in `driven_offset/` should read this
 before editing or pushing.
 
 ## The document family
 
 | Onshape document | sync project / local dir | Owns | Doc id |
 |---|---|---|---|
-| driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, Create offset profile, Evaluate offset, unwrap stub | `f61d2c000ab2d1240776342e` |
+| driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, Create offset profile, Evaluate offset, Unwrap (+ `undrape_utils`, `unwrap_part`) | `f61d2c000ab2d1240776342e` |
 | Curve_tools | `curve_tools` | `curve_core` (shared curve machinery), Clean wire, Map curve, Merge curve, Evaluate profiles | `2143812a99089658c704f0bc` |
 | Variable_tools | `variable_tools` | `extract_outputs` (producer library), Extract variables feature + consumer library | `a47f90bfa6b17a59e20cebd0` |
 | Reference_Side_Features | `reference_side` | Mutual Trim+, Split+, Offset+ (keep side named by a reference) | `22764764a00a7f607dbc1c4d` |
@@ -40,14 +40,36 @@ Design_Master: element `643b702dc551feb3cc001826` in workspace `5b11f323ab31b04c
 
 ## Import chain (who pins whom) -- re-pin in this order after changing a callee
 
+Pins as they stand in the code on 2026-09-25 (the `version` of each `import`; `""` = same-workspace tab,
+always current). Two generations of `edge_offset_utils` are pinned at once: the unwrap family is on the
+newer one; DEO / DOS / ORT / debug are still on the older one (the later utils changes only ADD functions
+or remove unused ones) -- re-pin them together the next time the chain is walked.
+
 ```
-curve_core (Curve_tools, by VERSION)
-  <- edge_offset_utils (a2665e22..., export import)          current mv eb23f15e06a23d0fd2e2197e
-       <- offset_run_treatment (d009ddf4...)                  current mv bd81293ec01682880717eb76
-       <- offset_debug (6479d7fb...)                          current mv 3d13f8cddcd8668502860216
-       <- driven_edge_offset (786f62f4..., export import eou; imports ORT + debug)
-       <- driven_offset_surface (c47cbd04..., export import eou; imports ORT, debug, DEO, bspline_compat)
+curve_core (Curve_tools V2, by VERSION: path 2143812a.../9e831639.../02d77844..., mv 9d6f0887be37c851829c40c3)
+  <- edge_offset_utils (a2665e22c07b7a6929ce4e80, export import curve_core)
+       <- offset_run_treatment (d009ddf4a8dd9534fc4dc4b5)   pins eou at 904e307030d69a3967e84103
+       <- offset_debug (6479d7fbd0ec7d11e0ae6c69)           pins eou at 904e307030d69a3967e84103
+       <- driven_edge_offset (786f62f4d67ed8d9c7d56d16)     export import eou at 904e3070...;
+                                                            ORT at ad1ed59d8c433738fa84f84b, debug at 930a52efd58501c3c7614c76
+       <- driven_offset_surface (c47cbd0497baf3011c60ecf8)  export import eou at 904e3070...; ORT ad1ed59d..., debug 930a52ef...,
+                                                            DEO "" and bspline_compat (6b635e74c92bd23387e850c1) ""
+            evaluate_offset (a2ebb5abc7ddda01f64ff8df)      export import DEO ""
+       <- undrape_utils (283b8f7562a16e9c9ccc01b7)          export import eou at 70dcbbcd66e91d6405084776
+       <- unwrap_part (fc976128871c5b4b2d33a91c)            export import eou at 70dcbbcd66e91d6405084776
+       <- unwrap (a84cdaa8963f2a55db1c016b)                 export import eou at 70dcbbcd66e91d6405084776;
+                                                            undrape_utils "" and unwrap_part ""
+create_offset_profile (3fccdcb24013c744bd0fd8a2)            no driven_offset imports
 ```
+
+Variable_tools `extract_outputs` (by VERSION, mv `b8c80ac05dcfd9f3cc172ffc`): DEO and DOS use version path
+`a47f90bf.../78504463aa9ea7fa3cce2789/3cac74f0...`; unwrap, evaluate_offset and create_offset_profile use
+`a47f90bf.../f4f872fe20d1498201fed64d/3cac74f0...` (same element microversion in both versions).
+
+**Keep unwrap, undrape_utils and unwrap_part on the SAME edge_offset_utils microversion**, or two chart
+versions meet in one feature. undrape_utils / unwrap_part are imported at `""`, so their edits are live in
+unwrap at once; a change to edge_offset_utils reaches unwrap only after a re-pin. Never push a placeholder
+import path (the whole unwrap tab failed to compile).
 
 - Same-document imports pin an ELEMENT microversion (`GET documents/d/{did}/w/{wid}/elements`,
   field `microversionId`). Procedure: push the callee, read its new microversion, re-pin the
@@ -73,8 +95,8 @@ curve_core (Curve_tools, by VERSION)
   the end, so two pushes at the same moment can lose one side's entries (e.g. a newly created
   tab's element id). Don't push concurrently with another session; if one did, check
   `python -m sync.main project status <project>`.
-- Before pushing: `python fscheck.py driven_offset/*.fs curve_tools/curve_core.fs` (pass
-  curve_core so names resolve); push with `--check`.
+- Before pushing: `python fscheck.py driven_offset/*.fs curve_tools/curve_core.fs variable_tools/extract_outputs.fs`
+  (pass curve_core and extract_outputs so names resolve); push with `--check`.
 - **Regression check for any change that can move geometry:**
   ```
   PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/fingerprint.py compare design_master_default
@@ -96,6 +118,7 @@ curve_core (Curve_tools, by VERSION)
   follow mode), `.claude/featurescript-corrections.md` (read before coding).
 - Research / design notes in this folder: `research_*.md`, `extract_variables_schema.md`
   (the producer / Extract variables contract -- a copy lives in `variable_tools/`).
+- Unwrap explained end to end (theory, use, code map, test studios, open items): `docs/unwrap_explained.md`.
 
 ## In design
 
@@ -113,14 +136,32 @@ curve_core (Curve_tools, by VERSION)
   `devtools/onshape/build_evaluate_offset_tests.py`, checked by `PYTHONPATH=. python devtools/onshape/check_evaluate_offset.py`
   (11/11). Reference-wire measure not supported yet. As-built notes: section 0 of `research_evaluate_offset.md`.
 
-- **unwrap** (tab a84cdaa8963f2a55db1c016b) + **undrape_utils** (tab 283b8f7562a16e9c9ccc01b7), 2026-09-24: Edges mode
-  and Constant-thickness part (undrape: mid-surface onto a wire's extrusion, section-wise unroll, deformation
-  reported). Chart map in edge_offset_utils (unwrapChart / unwrapFast, packed plain-number tables). Tests: Part Studio
-  "Unwrap_Testing Copy 1" (80c1e329f99a05e224058526, a copyelement of the user's Unwrap_Testing), built by
-  `devtools/onshape/build_unwrap_tests.py`. Design notes: research_unwrap.md (09-10), research_unwrap_perf.md,
-  research_undrape_ops.md, research_undrape_map.md (section 12 = as built). The user's docstring heads unwrap.fs.
-  Pins: unwrap and undrape_utils import edge_offset_utils at mv 941e620c...; DEO / DOS / ORT / debug still at
-  904e3070... (the later utils changes only ADD functions) -- re-pin together next time the chain is walked.
+- **unwrap** family, BUILT 2026-09-24/25 (explained: `docs/unwrap_explained.md`):
+
+  | Tab | Element | Role |
+  |---|---|---|
+  | unwrap | a84cdaa8963f2a55db1c016b | the feature: Edges / Constant-thickness part / Part (solid); the user's docstring heads the file, the AS BUILT block follows |
+  | undrape_utils | 283b8f7562a16e9c9ccc01b7 | the undrape map (constant-thickness plates) |
+  | unwrap_part | fc976128871c5b4b2d33a91c | solid unwrap (`unwrapSolid`) |
+  | edge_offset_utils | a2665e22c07b7a6929ce4e80 | the chart (`unwrapChart` / `unwrapFast`, packed plain-number tables), shared with DEO / DOS |
+  | evaluate_offset | a2ebb5abc7ddda01f64ff8df | DEO run backwards (above) |
+  | create_offset_profile | 3fccdcb24013c744bd0fd8a2 | offset profiles (above) |
+
+  Test studios (tests are real instances in the feature tree, named by case and expected result):
+  "Unwrap_Testing Copy 1" (80c1e329f99a05e224058526; U1-U3, built by `devtools/onshape/build_unwrap_tests.py`),
+  "Unwrap_Testing Copy 2" (681a5825e353d376c88224eb; production plates and parts, built by
+  `devtools/onshape/build_unwrap_parts.py`), "Evaluate offset tests" (0ce4ac09e693f8ecd18e8a7f),
+  "Offset profile tests" (e18678532ec07b057b372dbd).
+
+  Regression (repo root, Git Bash):
+  ```
+  FS_SYNC_TIMEOUT=300 PYTHONPATH=. python devtools/onshape/check_unwrap_regression.py [--save]   # both Unwrap studios vs fingerprints/unwrap_baseline.json
+  PYTHONPATH=. python devtools/onshape/check_evaluate_offset.py
+  PYTHONPATH=. python devtools/onshape/check_offset_profile.py
+  PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/fingerprint.py compare design_master_default   # whenever edge_offset_utils changes
+  ```
+  Design notes: research_unwrap.md (09-10 pre-build plan, partly superseded), research_unwrap_perf.md,
+  research_unwrap_part.md (as built 8 / 8b), research_undrape_ops.md, research_undrape_map.md (as built 12-15).
 
 ## Known open items touching this document
 

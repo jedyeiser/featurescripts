@@ -1,5 +1,12 @@
 # unwrap -- research
 
+> **Superseded in part -- this is the 2026-09-10 PRE-BUILD plan.** The build differs: it seeds the foot by
+> X and requires X to rise along the reference (no vertical-tip references), samples edges adaptively
+> (no Greville abscissae), and maps through a packed plain-number chart. As built:
+> `docs/unwrap_explained.md` (start here), the AS BUILT block in `unwrap.fs`, `research_unwrap_perf.md`
+> (chart accuracy, packed evaluator, fitting), `research_unwrap_part.md` 8 / 8b (Part mode),
+> `research_undrape_map.md` 12-15 (undrape). Kept for the reasoning (sections 2-4) and the circularity test.
+
 Abbreviations: utils = driven_offset/edge_offset_utils.fs, DEO = driven_offset/driven_edge_offset.fs,
 CM = curveMapping/curveMappingCore.fs. Shared enums and predicates: research_shared_vocabulary.md.
 

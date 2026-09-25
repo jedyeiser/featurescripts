@@ -370,17 +370,12 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // -----------------------------------------------------------------
         // Step 3b: Compute torsional stiffness (GJ) inline
         // -----------------------------------------------------------------
-        try
+        // (No try/catch: a GJ failure used to be swallowed, leaving GJ at 0 on a green feature.)
+        for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
         {
-            for (var i = 0; i < size(crossSectionData.crossSections); i += 1)
-            {
-                var section = crossSectionData.crossSections[i];
-                var gjValue = computeTorsionalStiffness(section, crossSectionData.bodies);
-                crossSectionData.crossSections[i].mechanicalProperties.GJ_eff = gjValue;
-            }
-        }
-        catch (e)
-        {
+            var section = crossSectionData.crossSections[i];
+            var gjValue = computeTorsionalStiffness(section, crossSectionData.bodies);
+            crossSectionData.crossSections[i].mechanicalProperties.GJ_eff = gjValue;
         }
 
         // -----------------------------------------------------------------
@@ -454,17 +449,9 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
         // -----------------------------------------------------------------
         // Step 8: Store analysis data as attribute on origin
         // -----------------------------------------------------------------
-        try
-        {
-            storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData, massData);
-
-            if (definition.debug)
-            {
-            }
-        }
-        catch (e)
-        {
-        }
+        // (No try/catch: a failed store used to be swallowed, silently starving Solve GJ, Estimate
+        // deflection and Update profile of data.)
+        storeAnalysisData(context, id, definition, crossSectionData.bodies, crossSectionData, beamAnalysisResults, tableData, massData);
 
         // -----------------------------------------------------------------
         // Step 9: Optionally create composite wires

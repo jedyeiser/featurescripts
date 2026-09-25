@@ -137,7 +137,7 @@ plate's own *mid*-surface. A variable "neutral line" for solids is not built yet
 
 The chart's frame at a foot is (t, pn, N), with N = pn x t. Writing that directly as the flat (x, y, z) would
 be a left-handed frame, so every unwrapped solid would come out **mirrored**. The code avoids that by
-measuring y along -pn (`unwrapCoords`, `unwrapFast`).
+measuring y along -pn (`unwrapFast`).
 
 The plane normal pn is fixed **once per reference**, from the most curved sample, and oriented so that
 height (N) points up (+Z). For a reference lying in a nearly horizontal plane, "up" is undefined, so pn itself
@@ -324,7 +324,7 @@ the "neutral axis" length curve, and projection of a wire onto a plane normal to
 | **Unwrapped origin** | all | The flat frame: a mate connector (implicit ones included), or a plane / planar face using its own axes. X = along W, Z = W's surface normal. |
 | **Lay the part on the origin plane** | T, P | On: the flat part's lowest face sits on the origin's XY plane. Off: it keeps its height relative to the alignment point (z = h - h_align). |
 | **Square walls** | P | Off: walls keep the exact mapped lean (e.g. 1.2 deg at 4802's nose, rebuilt as ruled surfaces). On: walls stand normal to the flat plane, as for a CNC blank. That costs up to 43.6 um at 4802's nose corners. |
-| **Outline sample spacing** | T | Now the *largest gap* between outline samples; the tolerance sets the density. See appendix item 5: its dialog text is out of date. |
+| **Maximum sample gap** | T | The *largest gap* between outline samples; the density comes from the fit **Tolerance** / 4 (as in Edges mode). |
 | **Recognise lines and arcs**, **Target degree**, **Tolerance**, **Maximum control points** | all (not the Part rebuild) | Section 1.8 and 1.10. Defaults: degree 3, 0.005 mm, 60 control points. |
 | **Name suffix**, **Read names and properties** (button), **Outputs** table, **Copy attributes** | all | Names, material and appearance are copied ONLY when you press the button (getProperty cannot run in the feature body, correction 36). Rows pair with source bodies by index. If the row count no longer matches the body count, the table is skipped and a warning says so. |
 | **Print edge table** | debug | Prints per-edge kind, radius, samples and gate reasons (plus undrape and part lines). |
@@ -338,12 +338,13 @@ the "neutral axis" length curve, and projection of a wire onto a plane normal to
     Length along the preserved curve: <wrapped> mm wrapped -> <flat> mm flat (<diff> mm); volume x<ratio>.
 
 - **wrapped**: the preserved curve (W offset by d), measured in 3D between the stations of the source's
-  extreme points. The extremes come from vertices, plus edges sampled within 30 mm of either end.
+  extreme points. For a plate the undrape's own outline stations give the extremes; otherwise they come from
+  vertices, plus edges sampled within 30 mm of either end.
 - **flat**: the flat result's bounding-box extent along the unwrapped X.
 
 The unwrap maps length along exactly that curve to X, so **the two agree for a good unwrap**. A difference
-means the ends moved: a leaning end wall, undrape stretch at the ends, a rebuild error, or (see appendix item 6)
-a measurement miss.
+means the ends moved: a leaning end wall, undrape stretch at the ends, a rebuild error, or a measurement miss
+(appendix item 6, now fixed).
 
 **volume x** is flat volume / source volume, for solids only. It is **not** expected to be 1. It measures the
 average of (1 - kappa*d)/(1 - kappa*h) over the part: how far the part sits from the preserved height where W
@@ -378,15 +379,15 @@ the MC StjLB at (885, 0, 0). Latest measured, wrapped -> flat:
 | 4305 (RtjT), wings bent up 90 deg | plate, own section | 1788.848 -> 1788.850 | 0.999863 | face-ordered sections unfold the wings (half-width 83-84 mm) |
 | 6005 (Rtjf) | plate, own section | 1825.164 -> 1825.159 | 0.999992 | top laminate kept along ITS OWN mid line |
 | 4310 (Rtjj) | plate, own section | 1825.538 -> 1825.532 | 0.999991 | same |
-| Topsheet (RnRD) | plate, own section | 1826.574 -> **1827.693** | 1.000199 | +1.12 mm: open. The flat is probably right and the check is short (appendix item 6). |
+| Topsheet (RnRD) | plate, own section | 1827.693 -> 1827.693 | 1.000218 | was 1826.574 -> 1827.693: the check was short, not the flat (appendix item 6, fixed) |
 | Tip-Mat / Tail-Mat / Tip-Shear / Tail-Shear | plate, REF_WIRE + 1.88 / 1.8 / 1.96 / 1.9 mm | within 0.001 | 0.9996-0.9999 | These don't reach X = 885, so they cannot use their own section (2.5). A fixed offset at their mid height is used instead. |
 | CORE (Rtjn) | part, d = 0 | 1500.000 -> 1500.000 | 1.000059 | 1 rigid + 2 rebuilt pieces |
 | 4802 tip extension (Rtj7) | part, d = 0 | 180.710 -> 180.709 | **1.0125** | length kept along REF_WIRE, but the part sits 1.8-5.8 mm above it on the tip curve |
 | 4803 tail extension (Rtj3) | part, d = 0 | 160.120 -> 160.120 | 1.0037 | same effect, flatter tail |
 | 4103 L/R sidewalls, 4401 L/R | part, d = 0 | 1700.000 -> 1700.001, 1500.196 -> 1500.196 | 1.0003, 1.00004 | mostly over the line |
 
-The regression check (`scratchpad/regress2.py` + baseline JSON) compares exactly these three numbers per
-feature and the Copy 1 statuses. See 3.6.
+The regression check (`devtools/onshape/check_unwrap_regression.py` + `devtools/onshape/fingerprints/unwrap_baseline.json`)
+compares exactly these three numbers per feature and the Copy 1 statuses. See 3.5.
 
 ## 2.5 Known limits and open decisions
 
@@ -422,7 +423,6 @@ Part mode limits (research_unwrap_part.md 7, 8b):
 Also open:
 
 - The **preserve-length curve for parts** is one constant d.
-- The **topsheet length check** (appendix item 6).
 - **Split-and-join fitting** (research_unwrap_perf.md 3.3).
 - A tighter continuity gate than 0.57 deg (perf note 3.4 recommends 1e-3 rad).
 
@@ -531,24 +531,23 @@ Mostly yes for plates, not yet for solids.
 | `driven_offset/unwrap.fs` (a84cdaa8963f2a55db1c016b) | The feature: dialog, three modes, edge sampling and emission, plate side finding / section face / plate rebuild, length check, names, report, editing logic. The user's docstring spec is at the top; the AS BUILT block follows it. |
 | `driven_offset/undrape_utils.fs` (283b8f7562a16e9c9ccc01b7) | The undrape map: `undrapeOutline` and everything under it. Plain-number inner loops. |
 | `driven_offset/unwrap_part.fs` (fc976128871c5b4b2d33a91c) | Solid unwrap: `unwrapSolid`. Needs `extendendtype.gen.fs` and `extendsheetshapetype.gen.fs` imported explicitly (correction 17). |
-| `driven_offset/edge_offset_utils.fs` (a2665e22c07b7a6929ce4e80) | The chart ("The reference surface as a chart", "Unwrapping through the chart", "Packed chart" sections, lines ~931-1680), shared with Driven edge offset / surface. |
+| `driven_offset/edge_offset_utils.fs` (a2665e22c07b7a6929ce4e80) | The chart ("The reference surface as a chart", "Unwrapping through the chart", "Packed chart" sections, lines ~931-1760), shared with Driven edge offset / surface. |
 | `curve_tools/curve_core.fs` (Curve_tools document) | Chains, `classifyPoints`, `emitLineCurve` / `emitArcCurve` / `emitSplineCurve`, `approximateFamily`, `G1_JUNCTION_ANGLE`. |
 | Variable_tools `extract_outputs.fs` | `embedStandardOutputs`, `extractableVariable`, `extractableQuery`. |
 
 Key entry points (line numbers as of 2026-09-25; they drift):
 
-- unwrap.fs: `unwrap` :188, `checkedChart` :546, `unwrapEdges` :646, `adaptiveEdgeSamples` :709,
-  `spanMidMiss` :824, `unwrapPart` :849, `lengthAndVolume` :896, `emitFlatCurve` :1047,
-  `plateSidesGeneral` :1146, `profileFromFace` :1273, `plateFromOutline` :1323, `unwrapPlate` :1393,
-  `unwrapEditLogic` :1527, `applyNamesAndProperties` :1660, `reportSummary` :1714.
+- unwrap.fs: `unwrap` :199, `checkedChart` :557, `unwrapEdges` :657, `adaptiveEdgeSamples` :720,
+  `spanMidMiss` :835, `unwrapPart` :860, `lengthAndVolume` :907, `emitFlatCurve` :1126,
+  `plateSidesGeneral` :1225, `profileFromFace` :1382, `plateFromOutline` :1432, `unwrapPlate` :1502,
+  `unwrapEditLogic` :1642, `applyNamesAndProperties` :1775, `reportSummary` :1829.
 - edge_offset_utils.fs: `buildAlongReference` :953, `referenceSurfaceCoords` :1265 (unit-based, older),
-  `unwrapChart` :1328, `chartFromReference` :1339, `unwrapFast` :1360, `chartFootConverged` :1376,
-  `unwrapInverse` :1446, `unwrapReferenceProblem` :1477, `unwrapDirection` :1506, `packChart` :1559,
-  `chartEval` :1609, `chartFoot` :1652, `referencePlaneNormal` :1736.
-- undrape_utils.fs: `undrapeOutline` ~:2507, `undrapeResolveBatch` ~:2752, `undrapeSection` ~:1328,
-  `undrapeSectionMid` ~:1406, `undrapeSectionByFaces` ~:1493, `undrapeRefusedSection` ~:2319 (THE U-TURN RULE),
-  `undrapeRefine` ~:3231, `undrapeAssemble` ~:3609, `undrapeDeformation` ~:3705. This file has uncommitted
-  edits in progress today, hence the "~".
+  `unwrapChart` :1330, `chartFromReference` :1341, `unwrapFast` :1368, `chartFootConverged` :1384,
+  `unwrapInverse` :1454, `unwrapReferenceProblem` :1485, `unwrapDirection` :1514, `packChart` :1541,
+  `chartEval` :1591, `chartFoot` :1634, `referencePlaneNormal` :1718.
+- undrape_utils.fs: `undrapeOutline` :2508, `undrapeResolveBatch` :2754, `undrapeSection` :1329,
+  `undrapeSectionMid` :1407, `undrapeSectionByFaces` :1494, `undrapeRefusedSection` :2320 (THE U-TURN RULE),
+  `undrapeRefine` :3191, `undrapeAssemble` :3588, `undrapeDeformation` :3684.
 - unwrap_part.fs: `unwrapSolid` :116, `referenceSpans` :231, `rigidTransform` :274, `flatNormal` :361,
   `rebuildPiece` :384, `faceKind` :646, `chainRows` :783, `chainTool` :1149.
 
@@ -558,7 +557,7 @@ Key entry points (line numbers as of 2026-09-25; they drift):
 
     chart = { alongRef,                       // unit-based tables (buildAlongReference)
               packed,                         // the same, plain numbers (packChart)
-              align {arc, v, height}, alignCoord, alignX, alignV, alignHeight }
+              alignX, alignV, alignHeight }       // the alignment point's x (arc - delta*theta), v, height; metres
 
     alongRef = { chain, arcs[], thetas[], curvatures[], xs[], arcSlopes[], points[], tangents[], delta, planeNormal }
       25 samples per reference edge (TURNING_SAMPLES); duplicate samples at joins, each carrying its own edge's
@@ -578,6 +577,7 @@ plain arithmetic. The per-point map went from 5.4 ms to 0.117 ms.
 
     0 x (flat, = arc - delta*theta - alignX)   1 y (= alignV - v)   2 z (= height - alignHeight)
     3 arc (on the wire)   4 span   5-7 tangent t   8 kappa   9 scale   10 height   11 residual
+    y is measured along -pn so (x, y, z) is right-handed (1.5; the note is on unwrapFast's docstring).
     chartFootConverged(u): |residual| <= 1e-7 m.  Pass `previous` to warm-start along an edge.
 
 `unwrapDirection(chart, cs, u, d)` maps a unit direction exactly: the along-component is scaled by
@@ -631,7 +631,7 @@ Rules learned the hard way:
 - **Never push a placeholder import path.** The whole unwrap tab failed to compile for minutes.
 - A change to edge_offset_utils.fs reaches unwrap only after a re-pin. Re-run the Design_Master fingerprint
   (`devtools/onshape/fingerprint.py`) whenever the shared chart changes.
-- Procedure: `driven_offset/DOCUMENT_MAP.md` (but see appendix item 3).
+- Procedure and the full pin table: `driven_offset/DOCUMENT_MAP.md` ("Import chain").
 
 ## 3.5 How to test
 
@@ -642,11 +642,12 @@ Rules learned the hard way:
    - `devtools/onshape/build_unwrap_parts.py` (Copy 2: 9 plates + 7 parts; `ONLY=<bodyId>` and
      `DEBUG=<bodyId>` env vars)
    These upsert features by name.
-4. **Regression:** `regress2.py` reads each Copy 2 unwrap feature's status and its published `lengthWrapped` /
-   `lengthFlat` / `volumeRatio` through the eval API (`getVariable` on the feature id), and compares them with
-   `regress2_baseline.json`. `regress.py` did the same by scraping `notices --monitor` output
-   (`baseline_copy2.txt`, `regress_copy1.txt`). **These live only in the session scratchpad** (appendix
-   item 12): move them to `devtools/onshape/` to keep them.
+4. **Regression:** `FS_SYNC_TIMEOUT=300 PYTHONPATH=. python devtools/onshape/check_unwrap_regression.py [--save]`
+   reads every Unwrap feature's status in Copy 1 and Copy 2 and its published `lengthWrapped` / `lengthFlat` /
+   `volumeRatio` through the eval API (`getVariable` on the feature id), and compares them with
+   `devtools/onshape/fingerprints/unwrap_baseline.json` (`--save` rewrites the baseline). Evaluate offset:
+   `PYTHONPATH=. python devtools/onshape/check_evaluate_offset.py`; the Design_Master fingerprint
+   (`devtools/onshape/fingerprint.py`) whenever edge_offset_utils changes.
 5. **Runtime notices:** `python -m sync.main notices driven_offset --monitor "Unwrap_Testing Copy 2"`.
 6. **Read-only geometry probes:** the FS eval API (one anonymous function, std only, `qTransient("<id>")`).
    The scripts in `img/src/*.fs` are examples. They run ops in a throwaway context and never change the
@@ -657,7 +658,7 @@ Rules learned the hard way:
 | Note | What is in it |
 |---|---|
 | unwrap.fs header | The user's spec (docstring), then the AS BUILT summary. |
-| `driven_offset/research_unwrap.md` | The 09-10 pre-build plan (chart reuse, circularity test). **Partly superseded** (appendix item 1). |
+| `driven_offset/research_unwrap.md` | The 09-10 pre-build plan (chart reuse, circularity test). **Partly superseded**; a note at its top says where the as-built record is. |
 | `driven_offset/research_unwrap_perf.md` | Chart accuracy (weak links, fixes), the packed evaluator (46x), fitting: the chord-squared tangent bug, CP counts, split-and-join, defaults 0.005 mm / 60. |
 | `driven_offset/research_undrape_ops.md` | Which Onshape ops: finding sides and t, mid-surface, W from a face, rebuilding the plate (sheet split + parity). |
 | `driven_offset/research_undrape_map.md` | THE undrape design: map, measured part, costs, algorithm, accuracy, deformation, edge cases, open decisions (9), as built (12), 4305 wings (13), robustness pass (14). |
@@ -698,25 +699,33 @@ The data files are in `img/src/data/`. fig05, fig08 and fig10 read the Copy 2 bo
 
 # Appendix: unclear or contradictory items found while writing this
 
-1. **research_unwrap.md "section 0" does not exist.** unwrap.fs' AS BUILT block points to it. The file is the
+Status after the 2026-09-25 cleanup pass: **RESOLVED** items say what changed; the rest are still open.
+
+1. **RESOLVED** (unwrap.fs' AS BUILT block now points to this document and the perf / part / undrape notes;
+   research_unwrap.md carries a "superseded in part" note at its top). **research_unwrap.md "section 0" does not exist.** unwrap.fs' AS BUILT block points to it. The file is the
    09-10 pre-build plan and differs from the build. It proposed arc-keyed tables so a *vertical tip* could be a
    reference, seeding by projection, and Greville-abscissa sampling. The build seeds by X, **requires X to
    rise**, and samples adaptively.
-2. **undrape_utils.fs cites "research_undrape_map.md 15"** for adaptive edge sampling. The note ends at
+2. **RESOLVED** (section 15, "As built: adaptive sampling", now exists). **undrape_utils.fs cites "research_undrape_map.md 15"** for adaptive edge sampling. The note ends at
    section 14.
-3. **DOCUMENT_MAP.md is stale for unwrap.** It says unwrap / undrape_utils pin edge_offset_utils at mv
+3. **RESOLVED** (DOCUMENT_MAP.md now has the pins read from the code, the unwrap family with tab ids, the four
+   test studios and the regression scripts). **DOCUMENT_MAP.md is stale for unwrap.** It says unwrap / undrape_utils pin edge_offset_utils at mv
    `941e620c`, while the code pins `70dcbbcd`. It does not list unwrap_part.fs or Copy 2. Its table still calls
    unwrap a "stub".
-4. **`unwrapEditLogic`'s docstring disagrees with its code.** The docstring says the table is also rebuilt when
+4. **RESOLVED** (docstring rewritten to what the code does; the dead branch removed, no behaviour change).
+   **`unwrapEditLogic`'s docstring disagrees with its code.** The docstring says the table is also rebuilt when
    the source bodies change and that a name-suffix change renames automatic rows. The code returns at once
    unless the button was pressed, so neither happens (the feature header's "only this button" rule is what the
    code does). Also, `(pressed || previous == undefined)` is always true after that early return, so the
    "keep the material read before" branch is dead code.
-5. **"Outline sample spacing" dialog text is stale.** It says "6 mm holds the outline within 0.005 mm; wider is
+5. **RESOLVED** before this pass (the parameter is now "Maximum sample gap" with accurate text, and unwrap.fs
+   passes `tolerance : approximationTolerance / 4` to the undrape). **"Outline sample spacing" dialog text is stale.** It says "6 mm holds the outline within 0.005 mm; wider is
    faster". The undrape now sets density by its own tolerance (1.25 um) and uses spacing only as a max-gap cap.
    Also, unwrap.fs passes no `tolerance` option, so in plate mode the user's **Tolerance** parameter does not
    affect undrape sampling, unlike Edges mode (tolerance / 4).
-6. **Topsheet +1.12 mm is probably a check artifact, not a wrong flat.** I checked this independently:
+6. **RESOLVED** (confirmed a check artifact: `lengthAndVolume` now takes a plate's extent from the undrape's
+   own outline stations, `outlineArcRange`; the baseline reads 1827.693 -> 1827.693).
+   **Topsheet +1.12 mm is probably a check artifact, not a wrong flat.** I checked this independently:
    - W (the topsheet's own mid-surface Front section) is 1827.695 mm long.
    - All 428 topsheet vertices have station arcs spanning **1827.696 mm**, even with every other vertex dropped
      (the check strides at 400 vertices).
@@ -732,18 +741,21 @@ The data files are in `img/src/data/`. fig05, fig08 and fig10 read the Copy 2 bo
 8. **Straightness by edge type** (`referenceSpans`: `curveType == LINE`). A spline reference that is
    geometrically straight is rebuilt everywhere, and Clean-wire outputs are usually splines. This is not
    documented as a limit in the as-built notes.
-9. **4802's flat length**: research_unwrap_part.md 6 gives 180.62 mm at d = 0, while the live check reports
+9. **NOTED, not determined** (a dated note under research_unwrap_part.md 6, item 2, records both numbers and
+   the most likely cause: how the prototype took the extent). **4802's flat length**: research_unwrap_part.md 6 gives 180.62 mm at d = 0, while the live check reports
    180.709 flat. That is 0.09 mm, possibly a different measure (the prototype vs the bbox extent of the
    production result) or the square/exact-wall difference. Worth one line of clarification in the note.
-10. **Header version**: the .fs files are `FeatureScript 3070` while CLAUDE.md says the target is 2878.
+10. **RESOLVED** (not every file is 3070: `std/` and `tools/` are 2878, xSection 2892, fillet_wire 3083; CLAUDE.md
+    now says the 2878 target is the std mirror and the active documents are on 3070). **Header version**: the .fs files are `FeatureScript 3070` while CLAUDE.md says the target is 2878.
     CLAUDE.md is likely stale.
 11. **The continuity gate** `G1_JUNCTION_ANGLE` (0.57 deg) is looser than the perf note's recommendation
     (1e-3 rad) for Unwrap. Split-and-join fitting (3.3) is also deferred. Both are fine but undocumented
     trade-offs.
-12. **The regression harness (`regress.py`, `regress2.py`, baselines) lives only in a session scratchpad.** It
+12. **RESOLVED** (`devtools/onshape/check_unwrap_regression.py` + `devtools/onshape/fingerprints/unwrap_baseline.json`).
+    **The regression harness (`regress.py`, `regress2.py`, baselines) lives only in a session scratchpad.** It
     will disappear with the session. The in-tree test rule suggests `devtools/onshape/check_unwrap.py` plus a
     committed baseline.
-13. **undrape_utils.fs has uncommitted edits** today (`UNDRAPE_END_SPAN` -> `UNDRAPE_END_CHECK`, `undrapeMiss`
+13. **RESOLVED** (committed; the line numbers in 3.1 are exact again as of this pass). **undrape_utils.fs has uncommitted edits** today (`UNDRAPE_END_SPAN` -> `UNDRAPE_END_CHECK`, `undrapeMiss`
     replacing `undrapePredict` in `undrapeRefine`). Line numbers above for that file are approximate.
 14. The Copy 2 outputs are named "Part 17".."Part 32" because the names button has not been pressed there.
     That is harmless, but it makes the studio harder to read.

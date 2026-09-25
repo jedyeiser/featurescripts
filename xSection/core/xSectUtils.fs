@@ -370,10 +370,17 @@ export function getCrossSectionFramesAdaptive(context is Context, alongQuery is 
 
     // Tip region: [xMin, fcpXOrdered) -- includes the low edge endpoint, excludes the band.
     // Stations are negative (below reference station 0).
+    // The outermost tip/tail stations are inset from the ends: a plane exactly at the end only grazes
+    // the geometry and gives a zero-area section (tools review 2026-09-25).
     for (var i = 0; i < numTipSections; i += 1)
     {
         var t = i / numTipSections;  // t in [0, 1): includes xMin, excludes the band boundary
-        xPositions = append(xPositions, xMin + t * (fcpXOrdered - xMin));
+        var tipX = xMin + t * (fcpXOrdered - xMin);
+        if (i == 0)
+        {
+            tipX = xMin + max(0.5 * millimeter, 0.02 * (fcpXOrdered - xMin) / numTipSections);
+        }
+        xPositions = append(xPositions, tipX);
         stationNumbers = append(stationNumbers, -numTipSections + i);
     }
 
@@ -390,7 +397,12 @@ export function getCrossSectionFramesAdaptive(context is Context, alongQuery is 
     for (var i = 0; i < numTailSections; i += 1)
     {
         var t = (i + 1) / numTailSections;  // t in (0, 1]: excludes the band boundary, includes xMax
-        xPositions = append(xPositions, acpXOrdered + t * (xMax - acpXOrdered));
+        var tailX = acpXOrdered + t * (xMax - acpXOrdered);
+        if (i == numTailSections - 1)
+        {
+            tailX = xMax - max(0.5 * millimeter, 0.02 * (xMax - acpXOrdered) / numTailSections);
+        }
+        xPositions = append(xPositions, tailX);
         stationNumbers = append(stationNumbers, numRefSections + i);
     }
 

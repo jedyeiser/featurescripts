@@ -148,7 +148,7 @@ def fig04():
         ax.view_init(20, -55)
         ax.set_title(title, fontsize=10)
     fig.text(0.5, 0.02, "(t, pn, N) with N = pn x t is LEFT-handed. Writing y = +v would mirror every solid, so the chart uses y = -v\n"
-             "(edge_offset_utils.fs unwrapCoords). Plane normal pn is fixed ONCE per reference (height up; horizontal references: largest component +).",
+             "(edge_offset_utils.fs unwrapFast). Plane normal pn is fixed ONCE per reference (height up; horizontal references: largest component +).",
              ha="center", color=INK2, fontsize=8.5)
     save(fig, "fig04_handedness.png")
 

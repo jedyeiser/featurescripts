@@ -140,32 +140,22 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
         "tableData" : tableData
     };
 
-    try
+    // Retrieve existing attribute (if any) and merge this feature's entry into it.
+    var existingData = getAttribute(context, {
+        "entity" : qOrigin(EntityType.BODY),
+        "name" : "CrossSectionAnalysis"
+    });
+    if (existingData == undefined)
     {
-        // Retrieve existing attribute (if any)
-        var existingData = getAttribute(context, {
-            "entity" : qOrigin(EntityType.BODY),
-            "name" : "CrossSectionAnalysis"
-        });
-
-        // Merge with existing data
-        if (existingData == undefined)
-        {
-            existingData = {};
-        }
-        existingData[featureKey] = analysisData;
-
-        // Store updated attribute
-        setAttribute(context, {
-            "entities" : qOrigin(EntityType.BODY),
-            "name" : "CrossSectionAnalysis",
-            "attribute" : existingData
-        });
-
+        existingData = {};
     }
-    catch (e)
-    {
-    }
+    existingData[featureKey] = analysisData;
+
+    setAttribute(context, {
+        "entities" : qOrigin(EntityType.BODY),
+        "name" : "CrossSectionAnalysis",
+        "attribute" : existingData
+    });
 }
 
 /**

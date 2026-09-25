@@ -1,8 +1,6 @@
 FeatureScript 2892;
 import(path : "onshape/std/common.fs", version : "2892.0");
 
-import(path : "1f26cb8c04ffde6fda7a1a15", version : "ef2c074c60cff2daf1738c41");
-
 
 const tipTailBounds =
 {

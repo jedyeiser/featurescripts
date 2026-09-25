@@ -1253,21 +1253,7 @@ function scaleAccordion(context is Context, id is Id, sidecutCurves is array, re
         }
         
         // Build BSpline without knots (let them be computed automatically)
-        var params = {
-            "degree" : bspline.degree,
-            "controlPoints" : newControlPoints
-        };
-
-        if (bspline.weights != undefined)
-            params.weights = bspline.weights;
-
-        if (bspline.isRational != undefined)
-            params.isRational = bspline.isRational;
-
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        scaledCurves = append(scaledCurves, bSplineCurve(params));
+        scaledCurves = append(scaledCurves, withControlPoints(bspline, newControlPoints));
     }
     
     // Compute resulting widths
@@ -1345,21 +1331,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
             newControlPoints = append(newControlPoints, newPt);
         }
         
-        var params = {
-            "degree" : bspline.degree,
-            "controlPoints" : newControlPoints
-        };
-
-        if (bspline.weights != undefined)
-            params.weights = bspline.weights;
-
-        if (bspline.isRational != undefined)
-            params.isRational = bspline.isRational;
-
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        accordionedCurves = append(accordionedCurves, bSplineCurve(params));
+        accordionedCurves = append(accordionedCurves, withControlPoints(bspline, newControlPoints));
     }
     
     // Step 2: Analyze accordioned curves — find widest points for taper
@@ -1445,21 +1417,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
             newControlPoints = append(newControlPoints, newPt);
         }
         
-        var params = {
-            "degree" : bspline.degree,
-            "controlPoints" : newControlPoints
-        };
-
-        if (bspline.weights != undefined)
-            params.weights = bspline.weights;
-
-        if (bspline.isRational != undefined)
-            params.isRational = bspline.isRational;
-
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        rotatedCurves = append(rotatedCurves, bSplineCurve(params));
+        rotatedCurves = append(rotatedCurves, withControlPoints(bspline, newControlPoints));
     }
     
     // Step 5: Optionally shift Y to hit target waist width
@@ -1484,21 +1442,7 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
                 newControlPoints = append(newControlPoints, newPt);
             }
             
-            var params = {
-                "degree" : bspline.degree,
-                "controlPoints" : newControlPoints
-            };
-
-            if (bspline.weights != undefined)
-                params.weights = bspline.weights;
-
-            if (bspline.isRational != undefined)
-                params.isRational = bspline.isRational;
-
-            if (bspline.isPeriodic != undefined)
-                params.isPeriodic = bspline.isPeriodic;
-
-            finalCurves = append(finalCurves, bSplineCurve(params));
+            finalCurves = append(finalCurves, withControlPoints(bspline, newControlPoints));
         }
     }
     
@@ -1638,6 +1582,27 @@ function findInflectionInTempCurve(curve is BSplineCurve, xStart is ValueWithUni
     }
 
     return { "found" : false };
+}
+
+/**
+ * The same B-spline with new control points: degree, knots, weights and periodicity are kept, so only the
+ * shape moves. (Rebuilding without the knots silently re-spaced them uniformly and distorted every scaled,
+ * accordioned, rotated, transformed and mirrored curve -- tools review 2026-09-25.)
+ */
+function withControlPoints(bspline is BSplineCurve, controlPoints is array) returns BSplineCurve
+{
+    var params = {
+        "degree" : bspline.degree,
+        "controlPoints" : controlPoints,
+        "knots" : bspline.knots,
+        "isPeriodic" : bspline.isPeriodic
+    };
+    if (bspline.isRational == true)
+    {
+        params.isRational = true;
+        params.weights = bspline.weights;
+    }
+    return bSplineCurve(params);
 }
 
 /**
@@ -2041,23 +2006,7 @@ function transformTipTail(curves is array, refContactX is ValueWithUnits, newCon
         }
 
         // Build parameter map - let bSplineCurve compute knots automatically
-        var params = {
-            "degree" : bspline.degree,
-            "controlPoints" : newControlPoints
-        };
-
-        if (bspline.weights != undefined)
-            params.weights = bspline.weights;
-
-        if (bspline.isRational != undefined)
-            params.isRational = bspline.isRational;
-
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        // NOTE: Not passing knots - let bSplineCurve compute them
-
-        transformedCurves = append(transformedCurves, bSplineCurve(params));
+        transformedCurves = append(transformedCurves, withControlPoints(bspline, newControlPoints));
     }
     
     return transformedCurves;
@@ -2088,25 +2037,7 @@ function mirrorCurvesY(curves is array) returns array
 
         // Build parameter map - let bSplineCurve compute knots automatically
         // (Passing knots directly can fail if they're not in KnotArray format)
-        var params = {
-            "degree" : bspline.degree,
-            "controlPoints" : newControlPoints
-        };
-
-        // Only add weights and isRational for rational curves (like arcs)
-        if (bspline.weights != undefined)
-            params.weights = bspline.weights;
-
-        if (bspline.isRational != undefined)
-            params.isRational = bspline.isRational;
-
-        if (bspline.isPeriodic != undefined)
-            params.isPeriodic = bspline.isPeriodic;
-
-        // NOTE: Deliberately NOT passing knots - let bSplineCurve compute them
-        // This avoids KnotArray format issues with arc-converted curves
-
-        mirrored = append(mirrored, bSplineCurve(params));
+        mirrored = append(mirrored, withControlPoints(bspline, newControlPoints));
     }
 
     return mirrored;
