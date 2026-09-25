@@ -172,6 +172,9 @@ const UNWRAP_REFERENCE_X_SAMPLES = 9;
 const UNWRAP_GAUSS_X = [-0.9061798459386640, -0.5384693101056831, 0, 0.5384693101056831, 0.9061798459386640];
 const UNWRAP_GAUSS_W = [0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891];
 
+/** Closest two points on a kept wrapped length curve may be. */
+const UNWRAP_CHECK_MIN_STEP = 1e-5 * meter;
+
 /** Points per table span on a kept wrapped length curve. */
 const UNWRAP_CHECK_PER_SPAN = 6;
 
@@ -1067,7 +1070,9 @@ function lengthFromArcs(context is Context, id is Id, chart is map, cs is CoordS
 
     if (keep)
     {
-        emitSplineCurve(context, id + "wrapped", points, undefined, undefined, {
+        // Per-span points crowd together on the tiny edges of a section (0.12 mm on the topsheet); the fitter
+        // refuses points closer than 1e-6 of the chord, so drop those within UNWRAP_CHECK_MIN_STEP.
+        emitSplineCurve(context, id + "wrapped", withoutRepeats(points, UNWRAP_CHECK_MIN_STEP), undefined, undefined, {
                     "approximationDegree" : 3,
                     "approximationTolerance" : 1e-7 * meter,
                     "approximationMaxCPs" : MAX_CONTROL_POINTS
