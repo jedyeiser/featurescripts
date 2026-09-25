@@ -41,7 +41,7 @@ export const UNWRAP_PART_GRID = 9;
 /** Row sampling along a face's curve direction: spacing (m), minimum and maximum count. Tight corners need 17+.
  * PROFILE and WALL rows feed approximateSpline with exact end tangents; RULED rows are interpolated (opFitSpline)
  * and need the finer spacing. */
-export const UNWRAP_PART_ROW_SPACING = 5e-4;
+export const UNWRAP_PART_ROW_SPACING = 1e-3;
 export const UNWRAP_PART_RULED_ROW_SPACING = 5e-4;
 export const UNWRAP_PART_ROW_MIN = 17;
 export const UNWRAP_PART_ROW_MAX = 200;

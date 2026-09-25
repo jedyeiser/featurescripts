@@ -74,12 +74,16 @@ export enum OffsetStationSource
     POINT
 }
 
+/** Manipulator keys for the blend distances of intersection i: BLEND_START_KEY ~ i, BLEND_END_KEY ~ i. */
+const BLEND_START_KEY = "blendIntoFirst";
+const BLEND_END_KEY = "blendIntoSecond";
+
 /** Stations closer than this touch; offsets closer than this are equal. */
 export const OFFSET_PROFILE_TOLERANCE = 1e-6 * meter;
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Create offset profile",
         "Feature Type Description" : "Build an offset profile (X station, Y width, Z height) for Driven edge offset / Driven offset surface from regions or points.",
-        "Editing Logic Function" : "createOffsetProfileEditingLogic" }
+        "Editing Logic Function" : "createOffsetProfileEditingLogic", "Manipulator Change Function" : "createOffsetProfileManipulatorChange" }
 export const createOffsetProfile = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -246,6 +250,11 @@ export const createOffsetProfile = defineFeature(function(context is Context, id
     }
     {
         definition = resolveStations(context, definition, true);
+        if (definition.mode == OffsetProfileMode.REGIONS)
+        {
+            // Before building, so the arrows still show when the blend itself is refused.
+            addBlendManipulators(context, id, definition);
+        }
         var built;
         if (definition.mode == OffsetProfileMode.REGIONS)
         {
@@ -335,6 +344,69 @@ export function createOffsetProfileEditingLogic(context is Context, id is Id, ol
     }
     result.intersections = intersections;
     return result;
+}
+
+// ============================================================================
+// Blend distance arrows
+// ============================================================================
+
+/** A region's profile point at station x (metres): (x, width, height). */
+function regionPoint(region is map, x is number) returns Vector
+{
+    return vector(x, regionValue(region, "w", x)[0], regionValue(region, "h", x)[0]) * meter;
+}
+
+/**
+ * Two drag arrows per blended intersection: on the first region's end, dragging back along -X (distance into the
+ * first region), and on the second region's start, dragging along +X (distance into the second region). Each is
+ * limited to its region's length.
+ */
+function addBlendManipulators(context is Context, id is Id, definition is map)
+{
+    var byName = {};
+    for (var i = 0; i < size(definition.regions); i += 1)
+    {
+        const r = regionData(definition.regions[i], i);
+        byName[r.name] = r;
+    }
+    var manipulators = {};
+    for (var i = 0; i < size(definition.intersections); i += 1)
+    {
+        const entry = definition.intersections[i];
+        const a = byName[entry.region1];
+        const b = byName[entry.region2];
+        if (entry.blend != true || a == undefined || b == undefined)
+        {
+            continue;
+        }
+        manipulators[BLEND_START_KEY ~ i] = linearManipulator({
+                    "base" : regionPoint(a, a.xe), "direction" : vector(-1, 0, 0), "offset" : entry.startDistance,
+                    "minValue" : 0 * meter, "maxValue" : (a.xe - a.xs) * meter });
+        manipulators[BLEND_END_KEY ~ i] = linearManipulator({
+                    "base" : regionPoint(b, b.xs), "direction" : vector(1, 0, 0), "offset" : entry.endDistance,
+                    "minValue" : 0 * meter, "maxValue" : (b.xe - b.xs) * meter });
+    }
+    if (size(manipulators) > 0)
+    {
+        addManipulators(context, id, manipulators);
+    }
+}
+
+/** Writes a dragged blend arrow back into its intersection's distance. */
+export function createOffsetProfileManipulatorChange(context is Context, definition is map, newManipulators is map) returns map
+{
+    for (var i = 0; i < size(definition.intersections); i += 1)
+    {
+        if (newManipulators[BLEND_START_KEY ~ i] is map)
+        {
+            definition.intersections[i].startDistance = max(0 * meter, newManipulators[BLEND_START_KEY ~ i].offset);
+        }
+        if (newManipulators[BLEND_END_KEY ~ i] is map)
+        {
+            definition.intersections[i].endDistance = max(0 * meter, newManipulators[BLEND_END_KEY ~ i].offset);
+        }
+    }
+    return definition;
 }
 
 // ============================================================================

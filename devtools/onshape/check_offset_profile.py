@@ -180,18 +180,33 @@ def main():
 
     # error cases: clone T1's instance and break it
     t1 = [x for x in feats if x["name"].startswith("T1 ")][0]
-    for name, mutate in (("overlapping regions", lambda regions: set_len(regions[1], "startStation", "-50 mm")),
-                         ("buffers longer than the region", lambda regions: (set_len(regions[1], "startBuffer", "600 mm"), set_len(regions[1], "endBuffer", "600 mm")))):
+    for name, mutate in (("overlapping regions", lambda f, regions: set_len(regions[1], "startStation", "-50 mm")),
+                         ("buffers longer than the region", lambda f, regions: (set_len(regions[1], "startBuffer", "600 mm"), set_len(regions[1], "endBuffer", "600 mm"))),
+                         ("G1 blend with 0 / 0 distances over the jump at 0", zero_blend)):
         feature = json.loads(json.dumps(t1))
         feature.pop("featureId", None)
         feature["name"] = "zz temporary error case"
         regions = [p for p in feature["parameters"] if p["parameterId"] == "regions"][0]["items"]
-        mutate(regions)
+        mutate(feature, regions)
         verdict, detail = error_case(name, feature)
         failed += verdict != "PASS"
         print(verdict, "Error case:", detail)
     print("%d failed" % failed if failed else "all passed")
     return 1 if failed else 0
+
+
+def zero_blend(feature, regions):
+    """Blend on, both distances 0, between T1's first two regions (they touch at 0 with a jump)."""
+    name = lambda r: [p["value"] for p in r["parameters"] if p["parameterId"] == "regionName"][0]
+    ns = [p for p in feature["parameters"] if p["parameterId"] == "mode"][0]["namespace"]
+    enum = lambda pid, v: {"btType": "BTMParameterEnum-145", "parameterId": pid, "enumName": "GeometricContinuity", "value": v, "namespace": ns}
+    quantity = lambda pid: {"btType": "BTMParameterQuantity-147", "parameterId": pid, "expression": "0 mm", "isInteger": False}
+    item = {"btType": "BTMArrayParameterItem-1843", "parameters": [
+        {"btType": "BTMParameterString-149", "parameterId": "region1", "value": name(regions[0])},
+        {"btType": "BTMParameterString-149", "parameterId": "region2", "value": name(regions[1])},
+        {"btType": "BTMParameterBoolean-144", "parameterId": "blend", "value": True},
+        enum("startContinuity", "G1"), quantity("startDistance"), enum("endContinuity", "G1"), quantity("endDistance")]}
+    [p for p in feature["parameters"] if p["parameterId"] == "intersections"][0]["items"] = [item]
 
 
 def set_len(item, pid, expression):
