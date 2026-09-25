@@ -1,0 +1,574 @@
+- generic [active] [ref=f17e1]:
+  - generic [ref=f17e2]:
+    - generic [ref=f17e3]:
+      - banner [ref=f17e5]:
+        - generic [ref=f17e13]:
+          - generic [ref=f17e15]:
+            - link "Skip to content":
+              - /url: "#skip-nav-content"
+            - link "Onshape" [ref=f17e16] [cursor=pointer]:
+              - /url: https://forum.onshape.com/
+              - img "Home" [ref=f17e18]
+          - navigation "Community" [ref=f17e19]:
+            - list [ref=f17e20]:
+              - listitem [ref=f17e21]:
+                - link "Discussions" [ref=f17e22] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/discussions
+              - listitem [ref=f17e24]:
+                - link "Categories" [ref=f17e25] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/categories
+              - listitem [ref=f17e27]:
+                - link "Activity" [ref=f17e28] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/activity
+              - listitem [ref=f17e30]:
+                - link "Ask a Question" [ref=f17e31] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/post/question
+          - button "Search" [ref=f17e35] [cursor=pointer]
+      - generic [ref=f17e37]:
+        - main [ref=f17e39]:
+          - generic [ref=f17e44]:
+            - navigation "Breadcrumb" [ref=f17e46]:
+              - generic [ref=f17e47]:
+                - link "Home" [ref=f17e49] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/
+                - generic [ref=f17e50]:
+                  - text: ›
+                  - link "Community Support" [ref=f17e52] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/community-support
+            - generic [ref=f17e53]:
+              - generic [ref=f17e54]:
+                - generic [ref=f17e55]:
+                  - link "×" [ref=f17e56] [cursor=pointer]:
+                    - /url: /dashboard/message/dismiss/5/i2AGneC3igK3eBK1?Target=discussion/28990/featurescript-to-automate-creation-of-entities-with-varying-settings
+                  - paragraph [ref=f17e57]: Welcome to the Onshape forum! Ask questions and join in the discussions about everything Onshape.
+                  - strong [ref=f17e58]: "First time visiting? Here are some places to start:"
+                  - list [ref=f17e59]:
+                    - listitem [ref=f17e60]:
+                      - text: Looking for a certain topic? Check out the
+                      - link "categories filter" [ref=f17e61] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories
+                      - text: or use Search (upper right).
+                    - listitem [ref=f17e62]:
+                      - text: Need support?
+                      - link "Ask a question" [ref=f17e63] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/post/question/community-support
+                      - text: to our
+                      - link "Community Support" [ref=f17e64] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                      - text: category.
+                    - listitem [ref=f17e65]:
+                      - text: Please submit support tickets for bugs but you can request improvements in the
+                      - link "Product Feedback category" [ref=f17e66] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                      - text: .
+                    - listitem [ref=f17e67]: Be respectful, on topic and if you see a problem, Flag it.
+                  - paragraph [ref=f17e68]:
+                    - text: If you would like to contact our Community Manager personally, feel free to
+                    - link "send a private message" [ref=f17e69] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/profile/6/LouGallo
+                    - text: or
+                    - link "an email" [ref=f17e70] [cursor=pointer]:
+                      - /url: mailto:lgallo@onshape.com
+                    - text: .
+                - generic [ref=f17e71]:
+                  - heading "Featurescript to automate creation of entities with varying settings" [level=1] [ref=f17e72]
+                  - generic [ref=f17e73]:
+                    - 'link "Bookmark for discussion: &quot;Featurescript to automate creation of entities with varying settings&quot;" [ref=f17e74] [cursor=pointer]':
+                      - /url: /discussion/bookmark/28990/i2AGneC3igK3eBK1?Target=discussion%2F28990%2Ffeaturescript-to-automate-creation-of-entities-with-varying-settings
+                    - button "Options" [ref=f17e75]
+                - generic [ref=f17e79]:
+                  - generic [ref=f17e82]:
+                    - generic [ref=f17e83]:
+                      - 'link "User: \"paul_mumby\"" [ref=f17e84] [cursor=pointer]':
+                        - /url: https://forum.onshape.com/profile/paul_mumby
+                        - img "paul_mumby" [ref=f17e85]
+                      - generic [ref=f17e86]:
+                        - generic [ref=f17e87]:
+                          - link "paul_mumby" [ref=f17e89] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/profile/paul_mumby
+                          - generic [ref=f17e90]:
+                            - generic [ref=f17e91]: Member
+                            - generic [ref=f17e92]:
+                              - text: "Posts:"
+                              - generic [ref=f17e93]: "2"
+                            - generic "Initiate" [ref=f17e94]: ✭
+                        - generic [ref=f17e95]:
+                          - link [ref=f17e97] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/discussion/28990/featurescript-to-automate-creation-of-entities-with-varying-settings
+                            - time [ref=f17e98]: October 2025
+                          - generic "Edited Wed Oct 08 02:03:21 2025 by paul_mumby." [ref=f17e100]: edited October 2025
+                    - generic [ref=f17e102]:
+                      - generic [ref=f17e103]:
+                        - paragraph [ref=f17e104]: Hello, I've been fighting with how to do this for some time, I know in the time I've spent I could have just hand modelled the solution, but I keep thinking there MUST be a way to do this…
+                        - paragraph [ref=f17e105]: I have a reasonably complex profile, in a sketch (artistic, hand drawn). Aspects of the profile (some lengths, and offsets via constraints) are driven by an external "index" value, so index 1 results in one shape, index 2 another shape, and so forth. The total number of objects is also a variable (in a variable studio). Currently it's 36, but it could be anywhere from 20 to 100 or more…
+                        - paragraph [ref=f17e106]: I have a script together that creates a customized circular pattern, which uses the sketch, and a center axis, to extrude the profile to a thickness, then move around, extruding separate parts, while doing a setVariable() inside the for loop… Unfortunately while this works in that it creates 38 copies of the profile extruded in a circle, it does not work in that they are alll identical, they don't honor/reference the updated "index" value.
+                        - paragraph [ref=f17e107]: Is there a way to do this that I'm missing?
+                        - paragraph [ref=f17e108]: "Here is the feature script so far:"
+                        - generic [ref=f17e109]:
+                          - generic [ref=f17e110]: FeatureScript 2770;
+                          - generic [ref=f17e111]:
+                            - text: "import(path :"
+                            - generic [ref=f17e112]: "\"onshape/std/common.fs\""
+                            - text: ", version :"
+                            - generic [ref=f17e113]: "\"2770.0\""
+                            - text: );
+                          - generic [ref=f17e115]:
+                            - text: "annotation {"
+                            - generic [ref=f17e116]: "\"Feature Type Name\""
+                            - text: ":"
+                            - generic [ref=f17e117]: "\"Indexed Parametric Circular Pattern\""
+                            - text: ","
+                            - generic [ref=f17e118]: "\"Creates a circular pattern of extrusions from a sketch, while adjusting an index variable within the sketch\""
+                            - text: ":"
+                            - generic [ref=f17e119]: "\"\""
+                            - text: "}"
+                          - generic [ref=f17e120]: export const parametricCircularPattern = defineFeature(function(context is Context, id is Id, definition is map)
+                          - generic [ref=f17e121]: precondition
+                          - generic [ref=f17e122]: "{"
+                          - generic [ref=f17e123]: // Define the parameters of the feature type
+                          - generic [ref=f17e124]:
+                            - text: "annotation {"
+                            - generic [ref=f17e125]: "\"Name\""
+                            - text: ":"
+                            - generic [ref=f17e126]: "\"Sketch to Pattern\""
+                            - text: ","
+                            - generic [ref=f17e127]: "\"Filter\""
+                            - text: ": EntityType.FACE && SketchObject.YES,"
+                            - generic [ref=f17e128]: "\"MaxNumberOfPicks\""
+                            - text: ": 1 }"
+                          - generic [ref=f17e129]: definition.faceToPattern is Query;
+                          - generic [ref=f17e131]:
+                            - text: "annotation {"
+                            - generic [ref=f17e132]: "\"Name\""
+                            - text: ":"
+                            - generic [ref=f17e133]: "\"Axis of Pattern\""
+                            - text: ","
+                            - generic [ref=f17e134]: "\"Filter\""
+                            - text: ": EntityType.EDGE,"
+                            - generic [ref=f17e135]: "\"MaxNumberOfPicks\""
+                            - text: ": 1 }"
+                          - generic [ref=f17e136]: definition.axisOfPattern is Query;
+                          - generic [ref=f17e138]:
+                            - text: "annotation {"
+                            - generic [ref=f17e139]: "\"Name\""
+                            - text: ":"
+                            - generic [ref=f17e140]: "\"Entity Count\""
+                            - text: "}"
+                          - generic [ref=f17e141]: isInteger(definition.instanceCount, POSITIVE_COUNT_BOUNDS);
+                          - generic [ref=f17e143]:
+                            - text: "annotation {"
+                            - generic [ref=f17e144]: "\"Name\""
+                            - text: ":"
+                            - generic [ref=f17e145]: "\"Total Angle for Pattern\""
+                            - text: "}"
+                          - generic [ref=f17e146]: isAngle(definition.totalAngle, ANGLE_360_BOUNDS);
+                          - generic [ref=f17e148]:
+                            - text: "annotation {"
+                            - generic [ref=f17e149]: "\"Name\""
+                            - text: ":"
+                            - generic [ref=f17e150]: "\"Face Extrusion Depth per Instance\""
+                            - text: "}"
+                          - generic [ref=f17e151]: isLength(definition.depth, LENGTH_BOUNDS);
+                          - generic [ref=f17e153]: "}"
+                          - generic [ref=f17e154]: //Action Block
+                          - generic [ref=f17e156]:
+                            - text: "const axisLine = evLine(context, {"
+                            - generic [ref=f17e157]: "\"edge\""
+                            - text: ": definition.axisOfPattern });"
+                          - generic [ref=f17e159]: // Calculate the angle step between each instance.
+                          - generic [ref=f17e160]: const angleStep = definition.totalAngle / definition.instanceCount;
+                          - generic [ref=f17e162]: // The core 'for' loop.
+                          - generic [ref=f17e163]: for (var i = 0; i < definition.instanceCount; i += 1)
+                          - generic [ref=f17e164]: "{"
+                          - generic [ref=f17e165]: // Create a unique ID for each operation inside the loop.
+                          - generic [ref=f17e166]: const localId = id + i;
+                          - generic [ref=f17e168]: "// 2. THIS IS THE KEY STEP: Set the variable for the context of the next operation."
+                          - generic [ref=f17e169]: // When opExtrude evaluates the sketch, it will use this new value.
+                          - generic [ref=f17e170]:
+                            - text: setVariable(context,
+                            - generic [ref=f17e171]: "\"index\""
+                            - text: ", i+1);"
+                          - generic [ref=f17e173]: // Somehow need to apply this to the sketch.... ????
+                          - generic [ref=f17e175]: // 3. Generate the geometry using the user-provided sketch profile.
+                          - generic [ref=f17e176]:
+                            - text: opExtrude(context, localId +
+                            - generic [ref=f17e177]: "\"extrude\""
+                            - text: ", {"
+                          - generic [ref=f17e178]:
+                            - generic [ref=f17e179]: "\"entities\""
+                            - text: ": definition.faceToPattern, // Reference the selected sketch face"
+                          - generic [ref=f17e180]:
+                            - generic [ref=f17e181]: "\"direction\""
+                            - text: ": evOwnerSketchPlane(context, {"
+                            - generic [ref=f17e182]: "\"entity\""
+                            - text: ": definition.faceToPattern}).normal,"
+                          - generic [ref=f17e183]:
+                            - generic [ref=f17e184]: "\"startBound\""
+                            - text: ": BoundingType.BLIND,"
+                          - generic [ref=f17e185]:
+                            - generic [ref=f17e186]: "\"startDepth\""
+                            - text: ": definition.depth/2,"
+                          - generic [ref=f17e187]:
+                            - generic [ref=f17e188]: "\"endBound\""
+                            - text: ": BoundingType.BLIND,"
+                          - generic [ref=f17e189]:
+                            - generic [ref=f17e190]: "\"endDepth\""
+                            - text: ": definition.depth/2,"
+                          - generic [ref=f17e191]: "});"
+                          - generic [ref=f17e193]: // 4. Transform the newly created body into its correct rotational position.
+                          - generic [ref=f17e194]: const currentAngle = i * angleStep;
+                          - generic [ref=f17e196]:
+                            - text: const bodyToTransform = qCreatedBy(localId +
+                            - generic [ref=f17e197]: "\"extrude\""
+                            - text: ", EntityType.BODY);"
+                          - generic [ref=f17e199]:
+                            - text: opTransform(context, localId +
+                            - generic [ref=f17e200]: "\"transform\""
+                            - text: ", {"
+                          - generic [ref=f17e201]:
+                            - generic [ref=f17e202]: "\"bodies\""
+                            - text: ": bodyToTransform,"
+                          - generic [ref=f17e203]:
+                            - generic [ref=f17e204]: "\"transform\""
+                            - text: ": rotationAround(axisLine, currentAngle)"
+                          - generic [ref=f17e205]: "});"
+                          - generic [ref=f17e206]: "}"
+                          - generic [ref=f17e208]:
+                            - text: setVariable(context,
+                            - generic [ref=f17e209]: "\"index\""
+                            - text: ", 1);"
+                          - generic [ref=f17e211]: "});"
+                      - generic [ref=f17e212]:
+                        - text: "Tagged:"
+                        - list [ref=f17e213]:
+                          - listitem [ref=f17e214]:
+                            - link "featurescipt" [ref=f17e215] [cursor=pointer]:
+                              - /url: /discussions/tagged/featurescipt
+                      - generic [ref=f17e216]:
+                        - generic [ref=f17e217]:
+                          - button "Flag discussion" [ref=f17e218] [cursor=pointer]:
+                            - generic [ref=f17e219]: 
+                            - generic [ref=f17e220]: Flag
+                          - generic:  
+                        - button "Quote" [ref=f17e221] [cursor=pointer]:
+                          - generic [aria-hidden] [ref=f17e222]: 
+                          - text: Quote
+                        - button "Vote Down discussion" [ref=f17e223] [cursor=pointer]:
+                          - generic [ref=f17e224]: 
+                          - generic [ref=f17e225]: Vote Down
+                        - button "Vote Up discussion" [ref=f17e226] [cursor=pointer]:
+                          - generic [ref=f17e227]: 
+                          - generic [ref=f17e228]: Vote Up
+                  - heading "Answers" [level=2] [ref=f17e230]
+                  - list [ref=f17e231]:
+                    - listitem [ref=f17e232]:
+                      - generic [ref=f17e233]:
+                        - generic [ref=f17e234]:
+                          - 'link "User: \"Caden_Armstrong\"" [ref=f17e235] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Caden_Armstrong
+                            - img "Caden_Armstrong"
+                          - generic [ref=f17e236]:
+                            - generic [ref=f17e237]:
+                              - link "Caden_Armstrong" [ref=f17e239] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Caden_Armstrong
+                              - generic [ref=f17e240]:
+                                - generic [ref=f17e241]: Member
+                                - generic [ref=f17e242]:
+                                  - text: "Posts:"
+                                  - generic [ref=f17e243]: "463"
+                                - generic "Professional user" [ref=f17e244]: PRO
+                            - link [ref=f17e247] [cursor=pointer]:
+                              - /url: /discussion/comment/121942/#Comment_121942
+                              - time [ref=f17e248]: October 2025
+                          - button "Options" [ref=f17e250]:
+                            - generic [aria-hidden] [ref=f17e251] [cursor=pointer]
+                        - generic [ref=f17e253]:
+                          - paragraph [ref=f17e255]: If I understand correctly, the sketch feature exists in the same feature tree as your custom feature, and it reads the index variable to determine the shape. The issue is that features later in a feature tree can't update past features. Once the sketch has been resolved, setting the variable index later on does not effect the already resolved sketch. Think of the feature tree like time travel - future events do not effect past events. I think to achieve what you are looking for, your source shape sketch will need to be in a configured part studio (with index as a configuration parameter), and then you will have to instantiate (https://cad.onshape.com/FsDoc/library.html#module-instantiator.fs) the configured sketch into your destination part studio.
+                          - generic [ref=f17e256]:
+                            - link "www.smartbenchsoftware.com" [ref=f17e257] [cursor=pointer]:
+                              - /url: https://www.smartbenchsoftware.com
+                            - text: "---"
+                            - link "Renaissance" [ref=f17e258] [cursor=pointer]:
+                              - /url: https://cad.onshape.com/appstore/apps/Utilities/65cea8597fcbf752f335595b
+                            - text: "---"
+                            - link "Kestrel" [ref=f17e259] [cursor=pointer]:
+                              - /url: https://kestrel.sbs
+                            - text: "--"
+                            - link "SmartLink" [ref=f17e260] [cursor=pointer]:
+                              - /url: https://www.smartbenchsoftware.com/smartlink
+                            - text: Experts in Onshape Automation - Custom Features and Integrated Applications
+                          - generic [ref=f17e261]:
+                            - generic [ref=f17e262]:
+                              - button "Flag comment" [ref=f17e263] [cursor=pointer]:
+                                - generic [ref=f17e264]: 
+                                - generic [ref=f17e265]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f17e266] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f17e267]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f17e268] [cursor=pointer]:
+                              - generic [ref=f17e269]: 
+                              - generic [ref=f17e270]: Vote Down
+                            - button "Vote Up comment" [ref=f17e271] [cursor=pointer]:
+                              - generic [ref=f17e272]: 
+                              - generic [ref=f17e273]: Vote Up
+                    - listitem [ref=f17e274]:
+                      - generic [ref=f17e275]:
+                        - generic [ref=f17e276]:
+                          - 'link "User: \"EvanReese\"" [ref=f17e277] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/EvanReese
+                            - img "EvanReese"
+                          - generic [ref=f17e278]:
+                            - generic [ref=f17e279]:
+                              - link "EvanReese" [ref=f17e281] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/EvanReese
+                              - generic [ref=f17e282]:
+                                - generic [ref=f17e283]: Member, Mentor
+                                - generic [ref=f17e284]:
+                                  - text: "Posts:"
+                                  - generic [ref=f17e285]: 3,059
+                                - generic "Professional user" [ref=f17e286]: PRO
+                            - link [ref=f17e289] [cursor=pointer]:
+                              - /url: /discussion/comment/121983/#Comment_121983
+                              - time [ref=f17e290]: October 2025
+                          - button "Options" [ref=f17e292]:
+                            - generic [aria-hidden] [ref=f17e293] [cursor=pointer]
+                        - generic [ref=f17e295]:
+                          - generic [ref=f17e296]:
+                            - paragraph [ref=f17e297]:
+                              - text: Caden's solution will probably do it because he knows his stuff, but I also think you may be looking for the feature pattern behavior, like in the Circular Pattern feature with "Apply per instance" checked, where the sketch feature actually regenerates each time. That's done with
+                              - link [ref=f17e298] [cursor=pointer]:
+                                - /url: https://cad.onshape.com/FsDoc/library.html#applyPattern-Context-Id-map-Transform
+                                - strong [ref=f17e299]: applyPattern()
+                              - text: . You'd need to change your "Sketch to pattern" parameter to a FeatureList parameter too. You can check the
+                              - link [ref=f17e300] [cursor=pointer]:
+                                - /url: https://cad.onshape.com/documents/12312312345abcabcabcdeff/w/a855e4161c814f2e9ab3698a/e/5e639eb1b1834188ae46203a
+                                - strong [ref=f17e301]: Circular Pattern feature code
+                              - text: for an example.
+                            - paragraph [ref=f17e302]: Without knowing your application I'm actually not sure which of these approaches I'd recommend.
+                          - generic [ref=f17e303]:
+                            - text: Evan ReeseThe Onsherpa | Reach peak Onshape productivity
+                            - link "www.theonsherpa.com" [ref=f17e304] [cursor=pointer]:
+                              - /url: https://www.theonsherpa.com/
+                          - generic [ref=f17e305]:
+                            - generic [ref=f17e306]:
+                              - button "Flag comment" [ref=f17e307] [cursor=pointer]:
+                                - generic [ref=f17e308]: 
+                                - generic [ref=f17e309]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f17e310] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f17e311]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f17e312] [cursor=pointer]:
+                              - generic [ref=f17e313]: 
+                              - generic [ref=f17e314]: Vote Down
+                            - button "Vote Up comment" [ref=f17e315] [cursor=pointer]:
+                              - generic [ref=f17e316]: 
+                              - generic [ref=f17e317]: Vote Up
+                  - heading "Leave a Comment" [level=2] [ref=f17e319]
+                  - generic [ref=f17e325]:
+                    - generic [ref=f17e328]:
+                      - generic [ref=f17e329]: To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu.
+                      - generic [ref=f17e330]:
+                        - generic [ref=f17e332]:
+                          - textbox "To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu." [ref=f17e333]:
+                            - paragraph [ref=f17e334]
+                          - generic: Type...
+                          - button "Element Toolbar" [ref=f17e337] [cursor=pointer]
+                        - menubar [ref=f17e341]:
+                          - menuitem "Emoji Picker" [ref=f17e342] [cursor=pointer]
+                          - menuitem "Upload Image" [ref=f17e343] [cursor=pointer]
+                          - menuitem "Insert Embed" [ref=f17e344] [cursor=pointer]
+                          - menuitem "Upload File" [ref=f17e345] [cursor=pointer]
+                          - menuitem "Insert Table" [ref=f17e346] [cursor=pointer]
+                    - generic [ref=f17e347]:
+                      - link "Save Draft" [ref=f17e348] [cursor=pointer]:
+                        - /url: /discussion/28990/featurescript-to-automate-creation-of-entities-with-varying-settings#
+                      - button "Post Comment" [ref=f17e349] [cursor=pointer]
+              - generic [ref=f17e350]:
+                - button "Ask a Question" [ref=f17e353] [cursor=pointer]
+                - generic [ref=f17e357]:
+                  - heading "Quick Links" [level=2] [ref=f17e362]
+                  - navigation "Quick Links" [ref=f17e364]:
+                    - list [ref=f17e365]:
+                      - listitem [ref=f17e366]:
+                        - link "All Categories" [ref=f17e367] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/categories
+                      - listitem [ref=f17e368]:
+                        - link "Recent Posts" [ref=f17e369] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions
+                      - listitem [ref=f17e370]:
+                        - link "Activity" [ref=f17e371] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/activity
+                      - listitem [ref=f17e372]:
+                        - link "My Bookmarks 0" [ref=f17e373] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/bookmarked
+                          - text: My Bookmarks
+                          - generic [ref=f17e374]: "0"
+                      - listitem [ref=f17e375]:
+                        - link "My Posts 7" [ref=f17e376] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/mine
+                          - text: My Posts
+                          - generic [ref=f17e377]: "7"
+                      - listitem [ref=f17e378]:
+                        - link "My Drafts 10" [ref=f17e379] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/drafts
+                          - text: My Drafts
+                          - generic [ref=f17e380]: "10"
+                      - listitem [ref=f17e381]:
+                        - link "Unanswered 99+" [ref=f17e382] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/unanswered
+                          - text: Unanswered
+                          - generic [ref=f17e383]: 99+
+                      - listitem [ref=f17e384]:
+                        - link "Groups" [ref=f17e385] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/groups
+                      - listitem [ref=f17e386]:
+                        - link "Best Of" [ref=f17e387] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/bestof
+                - generic [ref=f17e388]:
+                  - heading "Categories" [level=4] [ref=f17e390]
+                  - list [ref=f17e391]:
+                    - listitem [ref=f17e392]:
+                      - link "All Categories" [ref=f17e393] [cursor=pointer]:
+                        - /url: /categories
+                    - listitem [ref=f17e394]:
+                      - link "10.1K Community Support" [ref=f17e395] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                        - generic [ref=f17e396]: 10.1K
+                        - text: Community Support
+                    - listitem [ref=f17e398]:
+                      - link "3.6K Improvement requests" [ref=f17e399] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/improvement-voting
+                        - generic [ref=f17e400]: 3.6K
+                        - text: Improvement requests
+                    - listitem [ref=f17e402]:
+                      - link "4.5K General" [ref=f17e403] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/general
+                        - generic [ref=f17e404]: 4.5K
+                        - text: General
+                    - listitem [ref=f17e406]:
+                      - link "187 Account and subscriptions" [ref=f17e407] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/account-and-subscriptions
+                        - generic [ref=f17e408]: "187"
+                        - text: Account and subscriptions
+                    - listitem [ref=f17e410]:
+                      - link "350 Data management" [ref=f17e411] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/data-management
+                        - generic [ref=f17e412]: "350"
+                        - text: Data management
+                    - listitem [ref=f17e414]:
+                      - link "1.6K Product Feedback" [ref=f17e415] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                        - generic [ref=f17e416]: 1.6K
+                        - text: Product Feedback
+                    - listitem [ref=f17e418]:
+                      - link "212 New in Onshape" [ref=f17e419] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/recent-improvements
+                        - generic [ref=f17e420]: "212"
+                        - text: New in Onshape
+                    - listitem [ref=f17e422]:
+                      - link "10 Onshape Labs" [ref=f17e423] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-labs
+                        - generic [ref=f17e424]: "10"
+                        - text: Onshape Labs
+                    - listitem [ref=f17e426]:
+                      - link "73 CAM Studio" [ref=f17e427] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/cam-studio
+                        - generic [ref=f17e428]: "73"
+                        - text: CAM Studio
+                    - listitem [ref=f17e430]:
+                      - link "32 PCB Studio" [ref=f17e431] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/pcb-altium
+                        - generic [ref=f17e432]: "32"
+                        - text: PCB Studio
+                    - listitem [ref=f17e434]:
+                      - link "104 Simulation" [ref=f17e435] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/simulation
+                        - generic [ref=f17e436]: "104"
+                        - text: Simulation
+                    - listitem [ref=f17e438]:
+                      - link "207 Onshape Mobile" [ref=f17e439] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-mobile
+                        - generic [ref=f17e440]: "207"
+                        - text: Onshape Mobile
+                    - listitem [ref=f17e442]:
+                      - link "312 App Store & Partners Apps" [ref=f17e443] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/app-store-partners
+                        - generic [ref=f17e444]: "312"
+                        - text: App Store & Partners Apps
+                    - listitem [ref=f17e446]:
+                      - link "29 Public Model of the Week" [ref=f17e447] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/public-model-of-the-week
+                        - generic [ref=f17e448]: "29"
+                        - text: Public Model of the Week
+                    - listitem [ref=f17e450]:
+                      - link "8.1K Using Onshape" [ref=f17e451] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/using-onshape
+                        - generic [ref=f17e452]: 8.1K
+                        - text: Using Onshape
+                    - listitem [ref=f17e454]:
+                      - link "1.8K Drawings" [ref=f17e455] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/drawings
+                        - generic [ref=f17e456]: 1.8K
+                        - text: Drawings
+                    - listitem [ref=f17e458]:
+                      - link "2.3K FeatureScript" [ref=f17e459] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/featurescript
+                        - generic [ref=f17e460]: 2.3K
+                        - text: FeatureScript
+                    - listitem [ref=f17e462]:
+                      - link "304 Learning Center" [ref=f17e463] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/learning-center
+                        - generic [ref=f17e464]: "304"
+                        - text: Learning Center
+                    - listitem [ref=f17e466]:
+                      - link "249 Education Community" [ref=f17e467] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/education-community
+                        - generic [ref=f17e468]: "249"
+                        - text: Education Community
+                - generic [ref=f17e470]:
+                  - generic [ref=f17e471]:
+                    - heading "Who's Online in this Category" [level=4] [ref=f17e472]
+                    - generic "1" [ref=f17e474]
+                  - 'link "User: \"Jed_Yeiser\"" [ref=f17e477] [cursor=pointer]':
+                    - /url: https://forum.onshape.com/profile/Jed_Yeiser
+                    - img "Jed_Yeiser" [ref=f17e478]
+        - generic [ref=f17e479]:
+          - link "English" [ref=f17e481] [cursor=pointer]:
+            - /url: /profile/setlocale/en
+          - link "Deutsch" [ref=f17e483] [cursor=pointer]:
+            - /url: /profile/setlocale/de
+          - link "Español" [ref=f17e485] [cursor=pointer]:
+            - /url: /profile/setlocale/es
+          - link "Français" [ref=f17e487] [cursor=pointer]:
+            - /url: /profile/setlocale/fr
+          - link "Italiano" [ref=f17e489] [cursor=pointer]:
+            - /url: /profile/setlocale/it
+          - link "中文" [ref=f17e491] [cursor=pointer]:
+            - /url: /profile/setlocale/zh
+          - link "中文（台灣）" [ref=f17e493] [cursor=pointer]:
+            - /url: /profile/setlocale/zh_TW
+          - link "日本語" [ref=f17e495] [cursor=pointer]:
+            - /url: /profile/setlocale/ja
+          - link "한국어" [ref=f17e497] [cursor=pointer]:
+            - /url: /profile/setlocale/ko
+    - contentinfo [ref=f17e499]:
+      - generic [ref=f17e500]:
+        - link "Facebook" [ref=f17e501] [cursor=pointer]:
+          - /url: https://www.facebook.com/onshapeInc
+          - img "Facebook" [ref=f17e502]
+        - link "Twitter" [ref=f17e503] [cursor=pointer]:
+          - /url: https://twitter.com/Onshape
+          - img "Twitter" [ref=f17e504]
+        - link "LinkedIn" [ref=f17e505] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/onshape-inc
+          - img "LinkedIn" [ref=f17e506]
+  - region "Dialogs"
+  - generic:
+    - generic:
+      - generic:
+        - log [ref=f17e507]
+        - log [ref=f17e508]
+        - log [ref=f17e509]
+        - log [ref=f17e510]

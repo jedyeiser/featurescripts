@@ -1,0 +1,622 @@
+- generic [active] [ref=f13e1]:
+  - generic [ref=f13e2]:
+    - generic [ref=f13e3]:
+      - banner [ref=f13e5]:
+        - generic [ref=f13e13]:
+          - generic [ref=f13e15]:
+            - link "Skip to content":
+              - /url: "#skip-nav-content"
+            - link "Onshape" [ref=f13e16] [cursor=pointer]:
+              - /url: https://forum.onshape.com/
+              - img "Home" [ref=f13e18]
+          - navigation "Community" [ref=f13e19]:
+            - list [ref=f13e20]:
+              - listitem [ref=f13e21]:
+                - link "Discussions" [ref=f13e22] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/discussions
+              - listitem [ref=f13e24]:
+                - link "Categories" [ref=f13e25] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/categories
+              - listitem [ref=f13e27]:
+                - link "Activity" [ref=f13e28] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/activity
+              - listitem [ref=f13e30]:
+                - link "Ask a Question" [ref=f13e31] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/post/question
+          - button "Search" [ref=f13e35] [cursor=pointer]
+      - generic [ref=f13e37]:
+        - main [ref=f13e39]:
+          - generic [ref=f13e44]:
+            - navigation "Breadcrumb" [ref=f13e46]:
+              - generic [ref=f13e47]:
+                - link "Home" [ref=f13e49] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/
+                - generic [ref=f13e50]:
+                  - text: ›
+                  - link "General" [ref=f13e52] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/general
+            - generic [ref=f13e53]:
+              - generic [ref=f13e54]:
+                - generic [ref=f13e55]:
+                  - link "×" [ref=f13e56] [cursor=pointer]:
+                    - /url: /dashboard/message/dismiss/5/i2AGneC3igK3eBK1?Target=discussion/16538/how-to-reuse-a-sketch-or-pattern-of-features-across-multiple-projects-and-designs
+                  - paragraph [ref=f13e57]: Welcome to the Onshape forum! Ask questions and join in the discussions about everything Onshape.
+                  - strong [ref=f13e58]: "First time visiting? Here are some places to start:"
+                  - list [ref=f13e59]:
+                    - listitem [ref=f13e60]:
+                      - text: Looking for a certain topic? Check out the
+                      - link "categories filter" [ref=f13e61] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories
+                      - text: or use Search (upper right).
+                    - listitem [ref=f13e62]:
+                      - text: Need support?
+                      - link "Ask a question" [ref=f13e63] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/post/question/community-support
+                      - text: to our
+                      - link "Community Support" [ref=f13e64] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                      - text: category.
+                    - listitem [ref=f13e65]:
+                      - text: Please submit support tickets for bugs but you can request improvements in the
+                      - link "Product Feedback category" [ref=f13e66] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                      - text: .
+                    - listitem [ref=f13e67]: Be respectful, on topic and if you see a problem, Flag it.
+                  - paragraph [ref=f13e68]:
+                    - text: If you would like to contact our Community Manager personally, feel free to
+                    - link "send a private message" [ref=f13e69] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/profile/6/LouGallo
+                    - text: or
+                    - link "an email" [ref=f13e70] [cursor=pointer]:
+                      - /url: mailto:lgallo@onshape.com
+                    - text: .
+                - generic [ref=f13e71]:
+                  - heading "How to reuse a sketch or pattern of features across multiple projects and designs" [level=1] [ref=f13e72]
+                  - generic [ref=f13e73]:
+                    - 'link "Bookmark for discussion: &quot;How to reuse a sketch or pattern of features across multiple projects and designs&quot;" [ref=f13e74] [cursor=pointer]':
+                      - /url: /discussion/bookmark/16538/i2AGneC3igK3eBK1?Target=discussion%2F16538%2Fhow-to-reuse-a-sketch-or-pattern-of-features-across-multiple-projects-and-designs
+                    - button "Options" [ref=f13e75]
+                - generic [ref=f13e79]:
+                  - generic [ref=f13e82]:
+                    - generic [ref=f13e83]:
+                      - 'link "User: \"zain_saidin877\"" [ref=f13e84] [cursor=pointer]':
+                        - /url: https://forum.onshape.com/profile/zain_saidin877
+                        - img "zain_saidin877" [ref=f13e85]
+                      - generic [ref=f13e86]:
+                        - generic [ref=f13e87]:
+                          - link "zain_saidin877" [ref=f13e89] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/profile/zain_saidin877
+                          - generic [ref=f13e90]:
+                            - generic [ref=f13e91]: Member
+                            - generic [ref=f13e92]:
+                              - text: "Posts:"
+                              - generic [ref=f13e93]: "4"
+                            - generic "Professional user" [ref=f13e94]: PRO
+                        - link [ref=f13e97] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussion/16538/how-to-reuse-a-sketch-or-pattern-of-features-across-multiple-projects-and-designs
+                          - time [ref=f13e98]: July 2021
+                    - generic [ref=f13e100]:
+                      - generic [ref=f13e101]:
+                        - text: Suppose I have a set of holes and features, removing material in a part, up-to-next-surface.Suppose this set is a standard feature for mating some assembly that will be used in many designs across many projects. And they need to be standardized.Suppose I want one master version of this set to be managed by one engineer, and for all other engineers to just be able to use it. With versioning working.Suppose I would like the aforementioned 'other engineers' to be able to place sketch point on their part, and be able to import/copy/reuse/derive everything from the master.How can this be done?- Onshape doesn't let multiple users cut and paste sketches easily. And even if it did, it would be a klunky and error prone way to do this.- What I'm describing isn't really a part, since it's actually a set of multiple instructions for making various holes of various shapes and sizes. So importing or making a derived part doesn't do the job.- I could make a "negative" of the set of holes and features, lets other engineers use derive and then a boolean. But that is klunky in a few ways, including loss of up-to-next, and inability to drop the set of features in specific locations at will.Being able to take a set of *instructions* referencing the origin in *one* project, and then being able to apply those instructions, in *another* project, relative to a *point* in that project really seems like something Onshape could do. And it would really leverage the group collaboration nature of the product.I have not explored Feature Script. Is that the way to do this? Or, more likely, what feature am I missing that accomplishes something like the above?I've attached a link to a simple example of the above. Contrived, for simplicity, from some parts used on a kids robot ream I coach.I'd like multiple users to be able to re-use the features in the Xpattern, any place, in any design.
+                        - link "https://cad.onshape.com/documents/7e7ffc23b46d46930ca7a21e/w/64a29a550dc021ab97a658da/e/6d5bdfd1a119a7e15863ff12" [ref=f13e102] [cursor=pointer]:
+                          - /url: https://cad.onshape.com/documents/7e7ffc23b46d46930ca7a21e/w/64a29a550dc021ab97a658da/e/6d5bdfd1a119a7e15863ff12
+                      - generic [ref=f13e103]:
+                        - generic [ref=f13e104]:
+                          - button "Flag discussion" [ref=f13e105] [cursor=pointer]:
+                            - generic [ref=f13e106]: 
+                            - generic [ref=f13e107]: Flag
+                          - generic:  
+                        - button "Quote" [ref=f13e108] [cursor=pointer]:
+                          - generic [aria-hidden] [ref=f13e109]: 
+                          - text: Quote
+                        - button "Vote Down discussion" [ref=f13e110] [cursor=pointer]:
+                          - generic [ref=f13e111]: 
+                          - generic [ref=f13e112]: Vote Down
+                        - button "Vote Up discussion" [ref=f13e113] [cursor=pointer]:
+                          - generic [ref=f13e114]: 
+                          - generic [ref=f13e115]: "2"
+                          - generic [ref=f13e116]: Vote Up
+                  - generic [ref=f13e117]:
+                    - heading "Best Answers" [level=2] [ref=f13e119]
+                    - list [ref=f13e120]:
+                      - listitem [ref=f13e121]:
+                        - generic [ref=f13e122]:
+                          - generic [ref=f13e123]:
+                            - 'link "User: \"nick_papageorge_dayjob\"" [ref=f13e124] [cursor=pointer]':
+                              - /url: https://forum.onshape.com/profile/nick_papageorge_dayjob
+                              - img "nick_papageorge_dayjob" [ref=f13e125]
+                            - generic [ref=f13e126]:
+                              - generic [ref=f13e127]:
+                                - link "nick_papageorge_dayjob" [ref=f13e129] [cursor=pointer]:
+                                  - /url: https://forum.onshape.com/profile/nick_papageorge_dayjob
+                                - generic [ref=f13e130]:
+                                  - generic [ref=f13e131]: Member, csevp
+                                  - generic [ref=f13e132]:
+                                    - text: "Posts:"
+                                    - generic [ref=f13e133]: 1,257
+                                  - generic "Professional user" [ref=f13e134]: PRO
+                              - generic [ref=f13e135]:
+                                - link [ref=f13e137] [cursor=pointer]:
+                                  - /url: /discussion/comment/74255/#Comment_74255
+                                  - time [ref=f13e138]: July 2021
+                                - generic "Accepted Answer" [ref=f13e139]
+                            - button "Options" [ref=f13e141]:
+                              - generic [aria-hidden] [ref=f13e142] [cursor=pointer]
+                          - generic [ref=f13e144]:
+                            - generic [ref=f13e145]: I ran into the same thing trying to use a "skeleton sketch" downstream. The built in Derive does not allow you to locate it at all. I'd suggest making a help request to allow positioning of derived features. You are a paid user and Onshape tallies requests from paid users highest.In the meantime, there is a featruescript that allows placement to a mate connector. It is called "SuperDerive". Look it up it might be what you are after. I used it on my project. It allows placing in the target document by a mate connector. But I think from the source document it limits its positioning point to the origin of the source document. So make your sketch on the origin.
+                            - generic [ref=f13e146]:
+                              - generic [ref=f13e147]:
+                                - button "Flag comment" [ref=f13e148] [cursor=pointer]:
+                                  - generic [ref=f13e149]: 
+                                  - generic [ref=f13e150]: Flag
+                                - generic:  
+                              - button "Quote" [ref=f13e151] [cursor=pointer]:
+                                - generic [aria-hidden] [ref=f13e152]: 
+                                - text: Quote
+                              - button "Vote Down comment" [ref=f13e153] [cursor=pointer]:
+                                - generic [ref=f13e154]: 
+                                - generic [ref=f13e155]: Vote Down
+                              - button "Vote Up comment" [ref=f13e156] [cursor=pointer]:
+                                - generic [ref=f13e157]: 
+                                - generic [ref=f13e158]: Vote Up
+                      - listitem [ref=f13e159]:
+                        - generic [ref=f13e160]:
+                          - generic [ref=f13e161]:
+                            - 'link "User: \"NeilCooke\"" [ref=f13e162] [cursor=pointer]':
+                              - /url: https://forum.onshape.com/profile/NeilCooke
+                              - img "NeilCooke" [ref=f13e163]
+                            - generic [ref=f13e164]:
+                              - generic [ref=f13e165]:
+                                - link "NeilCooke" [ref=f13e167] [cursor=pointer]:
+                                  - /url: https://forum.onshape.com/profile/NeilCooke
+                                - generic [ref=f13e168]:
+                                  - generic [ref=f13e169]: Moderator, Onshape Employees
+                                  - generic [ref=f13e170]:
+                                    - text: "Posts:"
+                                    - generic [ref=f13e171]: 6,099
+                                  - generic "Onshape Employee" [ref=f13e172]:
+                                    - img "image" [ref=f13e173]
+                              - generic [ref=f13e174]:
+                                - link [ref=f13e176] [cursor=pointer]:
+                                  - /url: /discussion/comment/74256/#Comment_74256
+                                  - time [ref=f13e177]: July 2021
+                                - generic "Accepted Answer" [ref=f13e178]
+                            - button "Options" [ref=f13e180]:
+                              - generic [aria-hidden] [ref=f13e181] [cursor=pointer]
+                          - generic [ref=f13e183]:
+                            - generic [ref=f13e184]: There are no library feature capabilities in Onshape. A custom feature (FeatureScript) may take more time to set up but they are much more powerful.
+                            - generic [ref=f13e185]: Senior Director, Technical Services, EMEA
+                            - generic [ref=f13e186]:
+                              - generic [ref=f13e187]:
+                                - button "Flag comment" [ref=f13e188] [cursor=pointer]:
+                                  - generic [ref=f13e189]: 
+                                  - generic [ref=f13e190]: Flag
+                                - generic:  
+                              - button "Quote" [ref=f13e191] [cursor=pointer]:
+                                - generic [aria-hidden] [ref=f13e192]: 
+                                - text: Quote
+                              - button "Vote Down comment" [ref=f13e193] [cursor=pointer]:
+                                - generic [ref=f13e194]: 
+                                - generic [ref=f13e195]: Vote Down
+                              - button "Vote Up comment" [ref=f13e196] [cursor=pointer]:
+                                - generic [ref=f13e197]: 
+                                - generic [ref=f13e198]: Vote Up
+                      - listitem [ref=f13e199]:
+                        - generic [ref=f13e200]:
+                          - generic [ref=f13e201]:
+                            - 'link "User: \"NeilCooke\"" [ref=f13e202] [cursor=pointer]':
+                              - /url: https://forum.onshape.com/profile/NeilCooke
+                              - img "NeilCooke" [ref=f13e203]
+                            - generic [ref=f13e204]:
+                              - generic [ref=f13e205]:
+                                - link "NeilCooke" [ref=f13e207] [cursor=pointer]:
+                                  - /url: https://forum.onshape.com/profile/NeilCooke
+                                - generic [ref=f13e208]:
+                                  - generic [ref=f13e209]: Moderator, Onshape Employees
+                                  - generic [ref=f13e210]:
+                                    - text: "Posts:"
+                                    - generic [ref=f13e211]: 6,099
+                                  - generic "Onshape Employee" [ref=f13e212]:
+                                    - img "image" [ref=f13e213]
+                              - generic [ref=f13e214]:
+                                - link [ref=f13e216] [cursor=pointer]:
+                                  - /url: /discussion/comment/74258/#Comment_74258
+                                  - time [ref=f13e217]: July 2021
+                                - generic "Accepted Answer" [ref=f13e218]
+                            - button "Options" [ref=f13e220]:
+                              - generic [aria-hidden] [ref=f13e221] [cursor=pointer]
+                          - generic [ref=f13e223]:
+                            - generic [ref=f13e224]:
+                              - text: "No, they are not. But you can vote on this improvement request:"
+                              - link "https://forum.onshape.com/discussion/6933/user-defined-feature-lists-with-gui-interface" [ref=f13e225] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/discussion/6933/user-defined-feature-lists-with-gui-interface
+                            - generic [ref=f13e226]: Senior Director, Technical Services, EMEA
+                            - generic [ref=f13e227]:
+                              - generic [ref=f13e228]:
+                                - button "Flag comment" [ref=f13e229] [cursor=pointer]:
+                                  - generic [ref=f13e230]: 
+                                  - generic [ref=f13e231]: Flag
+                                - generic:  
+                              - button "Quote" [ref=f13e232] [cursor=pointer]:
+                                - generic [aria-hidden] [ref=f13e233]: 
+                                - text: Quote
+                              - button "Vote Down comment" [ref=f13e234] [cursor=pointer]:
+                                - generic [ref=f13e235]: 
+                                - generic [ref=f13e236]: Vote Down
+                              - button "Vote Up comment" [ref=f13e237] [cursor=pointer]:
+                                - generic [ref=f13e238]: 
+                                - generic [ref=f13e239]: Vote Up
+                  - heading "Answers" [level=2] [ref=f13e241]
+                  - list [ref=f13e242]:
+                    - listitem [ref=f13e243]:
+                      - generic [ref=f13e244]:
+                        - generic [ref=f13e245]:
+                          - 'link "User: \"nick_papageorge_dayjob\"" [ref=f13e246] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/nick_papageorge_dayjob
+                            - img "nick_papageorge_dayjob" [ref=f13e247]
+                          - generic [ref=f13e248]:
+                            - generic [ref=f13e249]:
+                              - link "nick_papageorge_dayjob" [ref=f13e251] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/nick_papageorge_dayjob
+                              - generic [ref=f13e252]:
+                                - generic [ref=f13e253]: Member, csevp
+                                - generic [ref=f13e254]:
+                                  - text: "Posts:"
+                                  - generic [ref=f13e255]: 1,257
+                                - generic "Professional user" [ref=f13e256]: PRO
+                            - generic [ref=f13e257]:
+                              - link [ref=f13e259] [cursor=pointer]:
+                                - /url: /discussion/comment/74255/#Comment_74255
+                                - time [ref=f13e260]: July 2021
+                              - generic "Accepted Answer" [ref=f13e261]
+                          - button "Options" [ref=f13e263]:
+                            - generic [aria-hidden] [ref=f13e264] [cursor=pointer]
+                        - generic [ref=f13e266]:
+                          - generic [ref=f13e267]: I ran into the same thing trying to use a "skeleton sketch" downstream. The built in Derive does not allow you to locate it at all. I'd suggest making a help request to allow positioning of derived features. You are a paid user and Onshape tallies requests from paid users highest.In the meantime, there is a featruescript that allows placement to a mate connector. It is called "SuperDerive". Look it up it might be what you are after. I used it on my project. It allows placing in the target document by a mate connector. But I think from the source document it limits its positioning point to the origin of the source document. So make your sketch on the origin.
+                          - generic [ref=f13e268]:
+                            - generic [ref=f13e269]:
+                              - button "Flag comment" [ref=f13e270] [cursor=pointer]:
+                                - generic [ref=f13e271]: 
+                                - generic [ref=f13e272]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f13e273] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f13e274]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f13e275] [cursor=pointer]:
+                              - generic [ref=f13e276]: 
+                              - generic [ref=f13e277]: Vote Down
+                            - button "Vote Up comment" [ref=f13e278] [cursor=pointer]:
+                              - generic [ref=f13e279]: 
+                              - generic [ref=f13e280]: Vote Up
+                    - listitem [ref=f13e281]:
+                      - generic [ref=f13e282]:
+                        - generic [ref=f13e283]:
+                          - 'link "User: \"NeilCooke\"" [ref=f13e284] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/NeilCooke
+                            - img "NeilCooke" [ref=f13e285]
+                          - generic [ref=f13e286]:
+                            - generic [ref=f13e287]:
+                              - link "NeilCooke" [ref=f13e289] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/NeilCooke
+                              - generic [ref=f13e290]:
+                                - generic [ref=f13e291]: Moderator, Onshape Employees
+                                - generic [ref=f13e292]:
+                                  - text: "Posts:"
+                                  - generic [ref=f13e293]: 6,099
+                                - generic "Onshape Employee" [ref=f13e294]:
+                                  - img "image" [ref=f13e295]
+                            - generic [ref=f13e296]:
+                              - link [ref=f13e298] [cursor=pointer]:
+                                - /url: /discussion/comment/74256/#Comment_74256
+                                - time [ref=f13e299]: July 2021
+                              - generic "Accepted Answer" [ref=f13e300]
+                          - button "Options" [ref=f13e302]:
+                            - generic [aria-hidden] [ref=f13e303] [cursor=pointer]
+                        - generic [ref=f13e305]:
+                          - generic [ref=f13e306]: There are no library feature capabilities in Onshape. A custom feature (FeatureScript) may take more time to set up but they are much more powerful.
+                          - generic [ref=f13e307]: Senior Director, Technical Services, EMEA
+                          - generic [ref=f13e308]:
+                            - generic [ref=f13e309]:
+                              - button "Flag comment" [ref=f13e310] [cursor=pointer]:
+                                - generic [ref=f13e311]: 
+                                - generic [ref=f13e312]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f13e313] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f13e314]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f13e315] [cursor=pointer]:
+                              - generic [ref=f13e316]: 
+                              - generic [ref=f13e317]: Vote Down
+                            - button "Vote Up comment" [ref=f13e318] [cursor=pointer]:
+                              - generic [ref=f13e319]: 
+                              - generic [ref=f13e320]: Vote Up
+                    - listitem [ref=f13e321]:
+                      - generic [ref=f13e322]:
+                        - generic [ref=f13e323]:
+                          - 'link "User: \"zain_saidin877\"" [ref=f13e324] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/zain_saidin877
+                            - img "zain_saidin877" [ref=f13e325]
+                          - generic [ref=f13e326]:
+                            - generic [ref=f13e327]:
+                              - link "zain_saidin877" [ref=f13e329] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/zain_saidin877
+                              - generic [ref=f13e330]:
+                                - generic [ref=f13e331]: Member
+                                - generic [ref=f13e332]:
+                                  - text: "Posts:"
+                                  - generic [ref=f13e333]: "4"
+                                - generic "Professional user" [ref=f13e334]: PRO
+                            - link [ref=f13e337] [cursor=pointer]:
+                              - /url: /discussion/comment/74257/#Comment_74257
+                              - time [ref=f13e338]: July 2021
+                          - button "Options" [ref=f13e340]:
+                            - generic [aria-hidden] [ref=f13e341] [cursor=pointer]
+                        - generic [ref=f13e343]:
+                          - generic [ref=f13e344]: Are library feature capabilities in the OnShape roadmap?
+                          - generic [ref=f13e345]:
+                            - generic [ref=f13e346]:
+                              - button "Flag comment" [ref=f13e347] [cursor=pointer]:
+                                - generic [ref=f13e348]: 
+                                - generic [ref=f13e349]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f13e350] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f13e351]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f13e352] [cursor=pointer]:
+                              - generic [ref=f13e353]: 
+                              - generic [ref=f13e354]: Vote Down
+                            - button "Vote Up comment" [ref=f13e355] [cursor=pointer]:
+                              - generic [ref=f13e356]: 
+                              - generic [ref=f13e357]: Vote Up
+                    - listitem [ref=f13e358]:
+                      - generic [ref=f13e359]:
+                        - generic [ref=f13e360]:
+                          - 'link "User: \"NeilCooke\"" [ref=f13e361] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/NeilCooke
+                            - img "NeilCooke" [ref=f13e362]
+                          - generic [ref=f13e363]:
+                            - generic [ref=f13e364]:
+                              - link "NeilCooke" [ref=f13e366] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/NeilCooke
+                              - generic [ref=f13e367]:
+                                - generic [ref=f13e368]: Moderator, Onshape Employees
+                                - generic [ref=f13e369]:
+                                  - text: "Posts:"
+                                  - generic [ref=f13e370]: 6,099
+                                - generic "Onshape Employee" [ref=f13e371]:
+                                  - img "image" [ref=f13e372]
+                            - generic [ref=f13e373]:
+                              - link [ref=f13e375] [cursor=pointer]:
+                                - /url: /discussion/comment/74258/#Comment_74258
+                                - time [ref=f13e376]: July 2021
+                              - generic "Accepted Answer" [ref=f13e377]
+                          - button "Options" [ref=f13e379]:
+                            - generic [aria-hidden] [ref=f13e380] [cursor=pointer]
+                        - generic [ref=f13e382]:
+                          - generic [ref=f13e383]:
+                            - text: "No, they are not. But you can vote on this improvement request:"
+                            - link "https://forum.onshape.com/discussion/6933/user-defined-feature-lists-with-gui-interface" [ref=f13e384] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/discussion/6933/user-defined-feature-lists-with-gui-interface
+                          - generic [ref=f13e385]: Senior Director, Technical Services, EMEA
+                          - generic [ref=f13e386]:
+                            - generic [ref=f13e387]:
+                              - button "Flag comment" [ref=f13e388] [cursor=pointer]:
+                                - generic [ref=f13e389]: 
+                                - generic [ref=f13e390]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f13e391] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f13e392]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f13e393] [cursor=pointer]:
+                              - generic [ref=f13e394]: 
+                              - generic [ref=f13e395]: Vote Down
+                            - button "Vote Up comment" [ref=f13e396] [cursor=pointer]:
+                              - generic [ref=f13e397]: 
+                              - generic [ref=f13e398]: Vote Up
+                  - heading "Leave a Comment" [level=2] [ref=f13e400]
+                  - generic [ref=f13e406]:
+                    - generic [ref=f13e409]:
+                      - generic [ref=f13e410]: To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu.
+                      - generic [ref=f13e411]:
+                        - generic [ref=f13e413]:
+                          - textbox "To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu." [ref=f13e414]:
+                            - paragraph [ref=f13e415]
+                          - generic: Type...
+                          - button "Element Toolbar" [ref=f13e418] [cursor=pointer]
+                        - menubar [ref=f13e422]:
+                          - menuitem "Emoji Picker" [ref=f13e423] [cursor=pointer]
+                          - menuitem "Upload Image" [ref=f13e424] [cursor=pointer]
+                          - menuitem "Insert Embed" [ref=f13e425] [cursor=pointer]
+                          - menuitem "Upload File" [ref=f13e426] [cursor=pointer]
+                          - menuitem "Insert Table" [ref=f13e427] [cursor=pointer]
+                    - generic [ref=f13e428]:
+                      - link "Save Draft" [ref=f13e429] [cursor=pointer]:
+                        - /url: /discussion/16538/how-to-reuse-a-sketch-or-pattern-of-features-across-multiple-projects-and-designs#
+                      - button "Post Comment" [ref=f13e430] [cursor=pointer]
+              - generic [ref=f13e431]:
+                - button "New Post" [ref=f13e434] [cursor=pointer]
+                - generic [ref=f13e439]:
+                  - heading "Quick Links" [level=2] [ref=f13e444]
+                  - navigation "Quick Links" [ref=f13e446]:
+                    - list [ref=f13e447]:
+                      - listitem [ref=f13e448]:
+                        - link "All Categories" [ref=f13e449] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/categories
+                      - listitem [ref=f13e450]:
+                        - link "Recent Posts" [ref=f13e451] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions
+                      - listitem [ref=f13e452]:
+                        - link "Activity" [ref=f13e453] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/activity
+                      - listitem [ref=f13e454]:
+                        - link "My Bookmarks 0" [ref=f13e455] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/bookmarked
+                          - text: My Bookmarks
+                          - generic [ref=f13e456]: "0"
+                      - listitem [ref=f13e457]:
+                        - link "My Posts 7" [ref=f13e458] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/mine
+                          - text: My Posts
+                          - generic [ref=f13e459]: "7"
+                      - listitem [ref=f13e460]:
+                        - link "My Drafts 10" [ref=f13e461] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/drafts
+                          - text: My Drafts
+                          - generic [ref=f13e462]: "10"
+                      - listitem [ref=f13e463]:
+                        - link "Unanswered 99+" [ref=f13e464] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/unanswered
+                          - text: Unanswered
+                          - generic [ref=f13e465]: 99+
+                      - listitem [ref=f13e466]:
+                        - link "Groups" [ref=f13e467] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/groups
+                      - listitem [ref=f13e468]:
+                        - link "Best Of" [ref=f13e469] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/bestof
+                - generic [ref=f13e470]:
+                  - heading "Categories" [level=4] [ref=f13e472]
+                  - list [ref=f13e473]:
+                    - listitem [ref=f13e474]:
+                      - link "All Categories" [ref=f13e475] [cursor=pointer]:
+                        - /url: /categories
+                    - listitem [ref=f13e476]:
+                      - link "10.1K Community Support" [ref=f13e477] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                        - generic [ref=f13e478]: 10.1K
+                        - text: Community Support
+                    - listitem [ref=f13e480]:
+                      - link "3.6K Improvement requests" [ref=f13e481] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/improvement-voting
+                        - generic [ref=f13e482]: 3.6K
+                        - text: Improvement requests
+                    - listitem [ref=f13e484]:
+                      - link "4.5K General" [ref=f13e485] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/general
+                        - generic [ref=f13e486]: 4.5K
+                        - text: General
+                    - listitem [ref=f13e488]:
+                      - link "187 Account and subscriptions" [ref=f13e489] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/account-and-subscriptions
+                        - generic [ref=f13e490]: "187"
+                        - text: Account and subscriptions
+                    - listitem [ref=f13e492]:
+                      - link "350 Data management" [ref=f13e493] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/data-management
+                        - generic [ref=f13e494]: "350"
+                        - text: Data management
+                    - listitem [ref=f13e496]:
+                      - link "1.6K Product Feedback" [ref=f13e497] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                        - generic [ref=f13e498]: 1.6K
+                        - text: Product Feedback
+                    - listitem [ref=f13e500]:
+                      - link "212 New in Onshape" [ref=f13e501] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/recent-improvements
+                        - generic [ref=f13e502]: "212"
+                        - text: New in Onshape
+                    - listitem [ref=f13e504]:
+                      - link "10 Onshape Labs" [ref=f13e505] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-labs
+                        - generic [ref=f13e506]: "10"
+                        - text: Onshape Labs
+                    - listitem [ref=f13e508]:
+                      - link "73 CAM Studio" [ref=f13e509] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/cam-studio
+                        - generic [ref=f13e510]: "73"
+                        - text: CAM Studio
+                    - listitem [ref=f13e512]:
+                      - link "32 PCB Studio" [ref=f13e513] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/pcb-altium
+                        - generic [ref=f13e514]: "32"
+                        - text: PCB Studio
+                    - listitem [ref=f13e516]:
+                      - link "104 Simulation" [ref=f13e517] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/simulation
+                        - generic [ref=f13e518]: "104"
+                        - text: Simulation
+                    - listitem [ref=f13e520]:
+                      - link "207 Onshape Mobile" [ref=f13e521] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-mobile
+                        - generic [ref=f13e522]: "207"
+                        - text: Onshape Mobile
+                    - listitem [ref=f13e524]:
+                      - link "312 App Store & Partners Apps" [ref=f13e525] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/app-store-partners
+                        - generic [ref=f13e526]: "312"
+                        - text: App Store & Partners Apps
+                    - listitem [ref=f13e528]:
+                      - link "29 Public Model of the Week" [ref=f13e529] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/public-model-of-the-week
+                        - generic [ref=f13e530]: "29"
+                        - text: Public Model of the Week
+                    - listitem [ref=f13e532]:
+                      - link "8.1K Using Onshape" [ref=f13e533] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/using-onshape
+                        - generic [ref=f13e534]: 8.1K
+                        - text: Using Onshape
+                    - listitem [ref=f13e536]:
+                      - link "1.8K Drawings" [ref=f13e537] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/drawings
+                        - generic [ref=f13e538]: 1.8K
+                        - text: Drawings
+                    - listitem [ref=f13e540]:
+                      - link "2.3K FeatureScript" [ref=f13e541] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/featurescript
+                        - generic [ref=f13e542]: 2.3K
+                        - text: FeatureScript
+                    - listitem [ref=f13e544]:
+                      - link "304 Learning Center" [ref=f13e545] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/learning-center
+                        - generic [ref=f13e546]: "304"
+                        - text: Learning Center
+                    - listitem [ref=f13e548]:
+                      - link "249 Education Community" [ref=f13e549] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/education-community
+                        - generic [ref=f13e550]: "249"
+                        - text: Education Community
+                - generic [ref=f13e552]:
+                  - generic [ref=f13e553]:
+                    - heading "Who's Online in this Category" [level=4] [ref=f13e554]
+                    - generic "1" [ref=f13e556]
+                  - 'link "User: \"Jed_Yeiser\"" [ref=f13e559] [cursor=pointer]':
+                    - /url: https://forum.onshape.com/profile/Jed_Yeiser
+                    - img "Jed_Yeiser" [ref=f13e560]
+        - generic [ref=f13e561]:
+          - link "English" [ref=f13e563] [cursor=pointer]:
+            - /url: /profile/setlocale/en
+          - link "Deutsch" [ref=f13e565] [cursor=pointer]:
+            - /url: /profile/setlocale/de
+          - link "Español" [ref=f13e567] [cursor=pointer]:
+            - /url: /profile/setlocale/es
+          - link "Français" [ref=f13e569] [cursor=pointer]:
+            - /url: /profile/setlocale/fr
+          - link "Italiano" [ref=f13e571] [cursor=pointer]:
+            - /url: /profile/setlocale/it
+          - link "中文" [ref=f13e573] [cursor=pointer]:
+            - /url: /profile/setlocale/zh
+          - link "中文（台灣）" [ref=f13e575] [cursor=pointer]:
+            - /url: /profile/setlocale/zh_TW
+          - link "日本語" [ref=f13e577] [cursor=pointer]:
+            - /url: /profile/setlocale/ja
+          - link "한국어" [ref=f13e579] [cursor=pointer]:
+            - /url: /profile/setlocale/ko
+    - contentinfo [ref=f13e581]:
+      - generic [ref=f13e582]:
+        - link "Facebook" [ref=f13e583] [cursor=pointer]:
+          - /url: https://www.facebook.com/onshapeInc
+          - img "Facebook" [ref=f13e584]
+        - link "Twitter" [ref=f13e585] [cursor=pointer]:
+          - /url: https://twitter.com/Onshape
+          - img "Twitter" [ref=f13e586]
+        - link "LinkedIn" [ref=f13e587] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/onshape-inc
+          - img "LinkedIn" [ref=f13e588]
+  - region "Dialogs"
+  - generic:
+    - generic:
+      - generic:
+        - log [ref=f13e589]
+        - log [ref=f13e590]
+        - log [ref=f13e591]
+        - log [ref=f13e592]

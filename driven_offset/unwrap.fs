@@ -537,7 +537,7 @@ function addTally(a is map, b is map) returns map
  * heights, and the thickness is the difference. The INNER side is the one nearer the reference
  * -- for a topsheet, the face lying on the ski's top surface.
  */
-function plateSides(context is Context, part is Query, chart is map) returns map
+function plateSides(context is Context, part is Query, chart is map, printCaps is boolean) returns map
 {
     var params = [];
     for (var a = 0; a < UNWRAP_FACE_GRID; a += 1)
@@ -553,6 +553,7 @@ function plateSides(context is Context, part is Query, chart is map) returns map
     {
         const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : params, "returnUndefinedOutsideFace" : true });
         var heights = [];
+        var xs = [];
         var aligned = true;
         for (var pl in planes)
         {
@@ -567,10 +568,35 @@ function plateSides(context is Context, part is Query, chart is map) returns map
                 break;
             }
             heights = append(heights, surf.height);
+            xs = append(xs, pl.origin[0]);
         }
         if (aligned && size(heights) > 0)
         {
-            caps = append(caps, { "face" : face, "heights" : heights });
+            caps = append(caps, { "face" : face, "heights" : heights, "xs" : xs });
+        }
+    }
+
+    if (printCaps)
+    {
+        println("[unwrap] side candidates (faces following the reference surface): " ~ size(caps));
+        for (var cap in caps)
+        {
+            var hlo = cap.heights[0];
+            var hhi = cap.heights[0];
+            for (var h in cap.heights)
+            {
+                hlo = min(hlo, h);
+                hhi = max(hhi, h);
+            }
+            var xlo = cap.xs[0];
+            var xhi = cap.xs[0];
+            for (var x in cap.xs)
+            {
+                xlo = min(xlo, x);
+                xhi = max(xhi, x);
+            }
+            println("    " ~ toString(cap.face.transientId) ~ ": height " ~ fmtMM(hlo, 4, 0) ~ " .. " ~ fmtMM(hhi, 4, 0)
+                ~ " mm, x " ~ fmtMM(xlo, 1, 0) ~ " .. " ~ fmtMM(xhi, 1, 0) ~ " mm, " ~ size(cap.heights) ~ " samples");
         }
     }
 
@@ -656,7 +682,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     // Heights are read about the reference itself; the chart that is unwrapped through is then built
     // about the offset whose length is preserved.
     const probe = unwrapChart(context, definition.reference, alignPoint, 0 * meter);
-    const sides = plateSides(context, part, probe);
+    const sides = plateSides(context, part, probe, settings.print);
     if (sides.spread > definition.thicknessTolerance)
     {
         throw regenError("The part is not of constant thickness along the reference: its sides depart from "

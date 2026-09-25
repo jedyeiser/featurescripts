@@ -1,0 +1,1881 @@
+- generic [active] [ref=f16e1]:
+  - generic [ref=f16e2]:
+    - generic [ref=f16e3]:
+      - banner [ref=f16e5]:
+        - generic [ref=f16e13]:
+          - generic [ref=f16e15]:
+            - link "Skip to content":
+              - /url: "#skip-nav-content"
+            - link "Onshape" [ref=f16e16] [cursor=pointer]:
+              - /url: https://forum.onshape.com/
+              - img "Home" [ref=f16e18]
+          - navigation "Community" [ref=f16e19]:
+            - list [ref=f16e20]:
+              - listitem [ref=f16e21]:
+                - link "Discussions" [ref=f16e22] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/discussions
+              - listitem [ref=f16e24]:
+                - link "Categories" [ref=f16e25] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/categories
+              - listitem [ref=f16e27]:
+                - link "Activity" [ref=f16e28] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/activity
+              - listitem [ref=f16e30]:
+                - link "Ask a Question" [ref=f16e31] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/post/question
+          - button "Search" [ref=f16e35] [cursor=pointer]
+      - generic [ref=f16e37]:
+        - main [ref=f16e39]:
+          - generic [ref=f16e44]:
+            - navigation "Breadcrumb" [ref=f16e46]:
+              - generic [ref=f16e47]:
+                - link "Home" [ref=f16e49] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/
+                - generic [ref=f16e50]:
+                  - text: ›
+                  - link "Using Onshape" [ref=f16e52] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/using-onshape
+                - generic [ref=f16e53]:
+                  - text: ›
+                  - link "FeatureScript" [ref=f16e55] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/featurescript
+            - generic [ref=f16e56]:
+              - generic [ref=f16e57]:
+                - generic [ref=f16e58]:
+                  - link "×" [ref=f16e59] [cursor=pointer]:
+                    - /url: /dashboard/message/dismiss/5/i2AGneC3igK3eBK1?Target=discussion/29012/custom-feature-query-variable/p1
+                  - paragraph [ref=f16e60]: Welcome to the Onshape forum! Ask questions and join in the discussions about everything Onshape.
+                  - strong [ref=f16e61]: "First time visiting? Here are some places to start:"
+                  - list [ref=f16e62]:
+                    - listitem [ref=f16e63]:
+                      - text: Looking for a certain topic? Check out the
+                      - link "categories filter" [ref=f16e64] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories
+                      - text: or use Search (upper right).
+                    - listitem [ref=f16e65]:
+                      - text: Need support?
+                      - link "Ask a question" [ref=f16e66] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/post/question/community-support
+                      - text: to our
+                      - link "Community Support" [ref=f16e67] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                      - text: category.
+                    - listitem [ref=f16e68]:
+                      - text: Please submit support tickets for bugs but you can request improvements in the
+                      - link "Product Feedback category" [ref=f16e69] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                      - text: .
+                    - listitem [ref=f16e70]: Be respectful, on topic and if you see a problem, Flag it.
+                  - paragraph [ref=f16e71]:
+                    - text: If you would like to contact our Community Manager personally, feel free to
+                    - link "send a private message" [ref=f16e72] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/profile/6/LouGallo
+                    - text: or
+                    - link "an email" [ref=f16e73] [cursor=pointer]:
+                      - /url: mailto:lgallo@onshape.com
+                    - text: .
+                - generic [ref=f16e74]:
+                  - 'heading "Custom Feature: Query Variable+" [level=1] [ref=f16e75]'
+                  - generic [ref=f16e76]:
+                    - 'link "Bookmark for discussion: &quot;Custom Feature: Query Variable+&quot;" [ref=f16e77] [cursor=pointer]':
+                      - /url: /discussion/bookmark/29012/i2AGneC3igK3eBK1?Target=discussion%2F29012%2Fcustom-feature-query-variable%2Fp1
+                    - button "Options" [ref=f16e78]
+                - generic [ref=f16e82]:
+                  - generic [ref=f16e85]:
+                    - generic [ref=f16e86]:
+                      - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e87] [cursor=pointer]':
+                        - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                        - img "Derek_Van_Allen_BD" [ref=f16e88]
+                      - generic [ref=f16e89]:
+                        - generic [ref=f16e90]:
+                          - link "Derek_Van_Allen_BD" [ref=f16e92] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                          - generic [ref=f16e93]:
+                            - generic [ref=f16e94]: Member
+                            - generic [ref=f16e95]:
+                              - text: "Posts:"
+                              - generic [ref=f16e96]: 1,108
+                            - generic "Professional user" [ref=f16e97]: PRO
+                        - generic [ref=f16e98]:
+                          - link [ref=f16e100] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable
+                            - time [ref=f16e101]: October 2025
+                          - generic "Edited Tue Oct 28 07:40:43 2025 by Derek_Van_Allen_BD." [ref=f16e103]: edited October 2025
+                    - generic [ref=f16e105]:
+                      - generic [ref=f16e106]:
+                        - paragraph [ref=f16e107]:
+                          - link [ref=f16e108] [cursor=pointer]:
+                            - /url: https://cad.onshape.com/documents/128231ad02069b995b5dfc8d/w/40c217484879fb976782600a/e/c5254f4fcd1b28319819ce30
+                            - strong [ref=f16e109]: "-Link to feature up front-"
+                          - text: "Query Variable has been a game changer for more programmatic workflows that save me from needing to develop custom scripts when I can instead pass other existing features through a QV and get results that way. That being said, there are some more powerful querying techniques which haven't yet been added to the default Query Variable implementation that I'm taking some time to write into an extended toolset. For example: just about everything in"
+                          - link "the old Query Explorer feature" [ref=f16e110] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/discussion/14777/query-explorer-feature
+                          - text: "could be used as a QV to enable more parametric workflows involving spatial, geometric, or directional filtering of your queries. My long term goal is to implement all of these Query Explorer features into the new Query Variable feature but I'm starting out small with a few easier lift features and will add more over time. The first two features in my Query Variable+ implementation are the following:"
+                          - link [ref=f16e111] [cursor=pointer]:
+                            - /url: https://cad.onshape.com/documents/128231ad02069b995b5dfc8d/w/40c217484879fb976782600a/e/4702022d8b6f26ca6f1d2558
+                            - strong [ref=f16e112]: Tangent(ish) Faces
+                        - paragraph [ref=f16e113]: This one is simple, the qTangentConnectedFaces() function in the standard library already has an overload which allows you to specify an angle tolerance for some flexibility in the definition of the word "tangent" so I just replaced the version in Query Variable with this angular tolerance version. This lets me flood select face groups from cursed not-mesh import geometry and use the selections to create patch faces and create new clean parametric surfaces without having a feature tree to work with.
+                        - link [ref=f16e116] [cursor=pointer]:
+                          - /url: https://us.v-cdn.net/5022071/uploads/GG3YWCEBPSIG/image.png
+                          - img "image.png" [ref=f16e117]
+                        - paragraph [ref=f16e118]: This is not a mesh.
+                        - link [ref=f16e121] [cursor=pointer]:
+                          - /url: https://us.v-cdn.net/5022071/uploads/1TF5V4GAZ9RJ/image.png
+                          - img "image.png" [ref=f16e122]
+                        - paragraph [ref=f16e123]:
+                          - text: But with a little bit of curve approximation and resurfacing later it can become usable geometry again. Selecting groups of nearly tangent faces made this much easier to execute.
+                          - link [ref=f16e124] [cursor=pointer]:
+                            - /url: https://cad.onshape.com/documents/128231ad02069b995b5dfc8d/w/40c217484879fb976782600a/e/9834053f593e30426e79ab58
+                            - strong [ref=f16e125]: Matching Bodies
+                          - text: Query Variable comes with the ability to select matching edges or matching faces, why not matching bodies? Well the qMatching feature doesn't allow this selection type so that's why it's not allowed here, but there's a similar function called clusterBodies that does something close to this for cut list purposes. I leveraged this into a qMatchingBodies function that allows you to select a part and the function will return all parts in the studio that clusterBodies identifies as a geometric match for the input. (With some tolerance)
+                        - link [ref=f16e128] [cursor=pointer]:
+                          - /url: https://us.v-cdn.net/5022071/uploads/VQYN8WYUMSHY/image.png
+                          - img "image.png" [ref=f16e129]
+                        - paragraph [ref=f16e130]:
+                          - text: Useful for workflows where you're working with repetitive geometry that's not necessarily the result of a pattern, or if you've willfully ignored the "best practices" instructions of assembly modeling workflows and need to check that your parts actually are still copies of each other at the end of the tree.
+                          - strong [ref=f16e131]: "Other features I'd like to implement into the list from Query Explorer:"
+                          - text: "- Geometry filters for face types - Distance filters - Direction filters - Attribute filters for sheet metal and frames - Cap entity filters - …And more things I'm sure will be useful to someone at some point that I have yet to discover"
+                      - paragraph [ref=f16e133]:
+                        - link [ref=f16e134] [cursor=pointer]:
+                          - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                          - code [ref=f16e135]: Derek Van Allen | Engineering Consultant | Meddler
+                      - generic [ref=f16e136]:  ×  ×  ×
+                      - generic [ref=f16e137]:
+                        - text: "Tagged:"
+                        - list [ref=f16e138]:
+                          - listitem [ref=f16e139]:
+                            - link "featurescript" [ref=f16e140] [cursor=pointer]:
+                              - /url: /discussions/tagged/featurescript
+                            - text: ","
+                          - listitem [ref=f16e141]:
+                            - link "query variables" [ref=f16e142] [cursor=pointer]:
+                              - /url: /discussions/tagged/query-variables
+                      - generic [ref=f16e143]:
+                        - generic [ref=f16e144]:
+                          - button "Flag discussion" [ref=f16e145] [cursor=pointer]:
+                            - generic [ref=f16e146]: 
+                            - generic [ref=f16e147]: Flag
+                          - generic:  
+                        - button "Quote" [ref=f16e148] [cursor=pointer]:
+                          - generic [aria-hidden] [ref=f16e149]: 
+                          - text: Quote
+                        - button "Vote Down discussion" [ref=f16e150] [cursor=pointer]:
+                          - generic [ref=f16e151]: 
+                          - generic [ref=f16e152]: Vote Down
+                        - button "Vote Up discussion" [ref=f16e153] [cursor=pointer]:
+                          - generic [ref=f16e154]: 
+                          - generic [ref=f16e155]: "11"
+                          - generic [ref=f16e156]: Vote Up
+                  - navigation "Pagination - Top" [ref=f16e158]:
+                    - generic [ref=f16e159]: «
+                    - link "Page 1":
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p1
+                      - text: "1"
+                    - link "Page 2" [ref=f16e160] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p2
+                      - text: "2"
+                    - link "Page 3" [ref=f16e161] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p3
+                      - text: "3"
+                    - link "Next Page" [ref=f16e162] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p2
+                      - text: »
+                  - heading "Comments" [level=2] [ref=f16e164]
+                  - list [ref=f16e165]:
+                    - listitem [ref=f16e166]:
+                      - generic [ref=f16e167]:
+                        - generic [ref=f16e168]:
+                          - 'link "User: \"EvanReese\"" [ref=f16e169] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/EvanReese
+                            - img "EvanReese"
+                          - generic [ref=f16e170]:
+                            - generic [ref=f16e171]:
+                              - link "EvanReese" [ref=f16e173] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/EvanReese
+                              - generic [ref=f16e174]:
+                                - generic [ref=f16e175]: Member, Mentor
+                                - generic [ref=f16e176]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e177]: 3,059
+                                - generic "Professional user" [ref=f16e178]: PRO
+                            - link [ref=f16e181] [cursor=pointer]:
+                              - /url: /discussion/comment/122008/#Comment_122008
+                              - time [ref=f16e182]: October 2025
+                          - button "Options" [ref=f16e184]:
+                            - generic [aria-hidden] [ref=f16e185] [cursor=pointer]
+                        - generic [ref=f16e187]:
+                          - paragraph [ref=f16e189]: YES! I'm glad you're taking this on. It needs to be a thing.
+                          - generic [ref=f16e190]:
+                            - text: Evan ReeseThe Onsherpa | Reach peak Onshape productivity
+                            - link "www.theonsherpa.com" [ref=f16e191] [cursor=pointer]:
+                              - /url: https://www.theonsherpa.com/
+                          - generic [ref=f16e192]:
+                            - generic [ref=f16e193]:
+                              - button "Flag comment" [ref=f16e194] [cursor=pointer]:
+                                - generic [ref=f16e195]: 
+                                - generic [ref=f16e196]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e197] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e198]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e199] [cursor=pointer]:
+                              - generic [ref=f16e200]: 
+                              - generic [ref=f16e201]: Vote Down
+                            - button "Vote Up comment" [ref=f16e202] [cursor=pointer]:
+                              - generic [ref=f16e203]: 
+                              - generic [ref=f16e204]: "1"
+                              - generic [ref=f16e205]: Vote Up
+                    - listitem [ref=f16e206]:
+                      - generic [ref=f16e207]:
+                        - generic [ref=f16e208]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e209] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e210]
+                          - generic [ref=f16e211]:
+                            - generic [ref=f16e212]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e214] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e215]:
+                                - generic [ref=f16e216]: Member
+                                - generic [ref=f16e217]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e218]: 1,108
+                                - generic "Professional user" [ref=f16e219]: PRO
+                            - generic [ref=f16e220]:
+                              - link [ref=f16e222] [cursor=pointer]:
+                                - /url: /discussion/comment/122442/#Comment_122442
+                                - time [ref=f16e223]: October 2025
+                              - generic "Edited Thu Oct 23 08:39:14 2025 by Derek_Van_Allen_BD." [ref=f16e225]: edited October 2025
+                          - button "Options" [ref=f16e227]:
+                            - generic [aria-hidden] [ref=f16e228] [cursor=pointer]
+                        - generic [ref=f16e230]:
+                          - generic [ref=f16e231]:
+                            - paragraph [ref=f16e232]:
+                              - link [ref=f16e233] [cursor=pointer]:
+                                - /url: https://cad.onshape.com/documents/128231ad02069b995b5dfc8d/w/40c217484879fb976782600a/e/2eec4715bdd3c3455d20f2fa
+                                - strong [ref=f16e234]: qAdjacent
+                              - text: functionality added. Kinda wild that this one wasn't in the original Query Variable implementation actually.
+                            - link [ref=f16e237] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/KMJYGX9O5EVJ/image.png
+                              - img "image.png" [ref=f16e238]
+                            - paragraph [ref=f16e239]: If you look closely there's the seeds of another useful featurescript in here too.
+                          - generic [ref=f16e240]:  ×
+                          - paragraph [ref=f16e242]:
+                            - link [ref=f16e243] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e244]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e245]:
+                            - generic [ref=f16e246]:
+                              - button "Flag comment" [ref=f16e247] [cursor=pointer]:
+                                - generic [ref=f16e248]: 
+                                - generic [ref=f16e249]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e250] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e251]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e252] [cursor=pointer]:
+                              - generic [ref=f16e253]: 
+                              - generic [ref=f16e254]: Vote Down
+                            - button "Vote Up comment" [ref=f16e255] [cursor=pointer]:
+                              - generic [ref=f16e256]: 
+                              - generic [ref=f16e257]: "1"
+                              - generic [ref=f16e258]: Vote Up
+                    - listitem [ref=f16e259]:
+                      - generic [ref=f16e260]:
+                        - generic [ref=f16e261]:
+                          - 'link "User: \"S1mon\"" [ref=f16e262] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/S1mon
+                            - img "S1mon"
+                          - generic [ref=f16e263]:
+                            - generic [ref=f16e264]:
+                              - link "S1mon" [ref=f16e266] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/S1mon
+                              - generic [ref=f16e267]:
+                                - generic [ref=f16e268]: Member
+                                - generic [ref=f16e269]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e270]: 4,513
+                                - generic "Professional user" [ref=f16e271]: PRO
+                            - link [ref=f16e274] [cursor=pointer]:
+                              - /url: /discussion/comment/122443/#Comment_122443
+                              - time [ref=f16e275]: October 2025
+                          - button "Options" [ref=f16e277]:
+                            - generic [aria-hidden] [ref=f16e278] [cursor=pointer]
+                        - generic [ref=f16e280]:
+                          - generic [ref=f16e281]:
+                            - paragraph [ref=f16e282]:
+                              - code [ref=f16e283]: If you look closely there's the seeds of another useful featurescript in here too.
+                            - paragraph [ref=f16e284]: Hmm. The Median curves? I had no idea there was functionality for that in Parasolid.
+                          - paragraph [ref=f16e286]:
+                            - text: Simon Gatrall | Product Development, Engineering, Design, Onshape | Ex- IDEO, PCH, Unagi, Carbon |
+                            - link "LinkedIn" [ref=f16e287] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/gatrall/
+                          - generic [ref=f16e288]:
+                            - generic [ref=f16e289]:
+                              - button "Flag comment" [ref=f16e290] [cursor=pointer]:
+                                - generic [ref=f16e291]: 
+                                - generic [ref=f16e292]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e293] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e294]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e295] [cursor=pointer]:
+                              - generic [ref=f16e296]: 
+                              - generic [ref=f16e297]: Vote Down
+                            - button "Vote Up comment" [ref=f16e298] [cursor=pointer]:
+                              - generic [ref=f16e299]: 
+                              - generic [ref=f16e300]: Vote Up
+                    - listitem [ref=f16e301]:
+                      - generic [ref=f16e302]:
+                        - generic [ref=f16e303]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e304] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e305]
+                          - generic [ref=f16e306]:
+                            - generic [ref=f16e307]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e309] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e310]:
+                                - generic [ref=f16e311]: Member
+                                - generic [ref=f16e312]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e313]: 1,108
+                                - generic "Professional user" [ref=f16e314]: PRO
+                            - generic [ref=f16e315]:
+                              - link [ref=f16e317] [cursor=pointer]:
+                                - /url: /discussion/comment/122444/#Comment_122444
+                                - time [ref=f16e318]: October 2025
+                              - generic "Edited Wed Oct 22 17:16:00 2025 by Derek_Van_Allen_BD." [ref=f16e320]: edited October 2025
+                          - button "Options" [ref=f16e322]:
+                            - generic [aria-hidden] [ref=f16e323] [cursor=pointer]
+                        - generic [ref=f16e325]:
+                          - paragraph [ref=f16e327]: There isn't, as far as I know. That tab is an extrude with an 89 degree draft, a query variable to grab all the edges of that operation and another one to subtract all edges adjacent to the first input face, and a projection of the remainder onto the input face. It's one of a few methods of medial axis approach and is somehow way more performant than the delaunay method I was working on before. Could use some size comparison threshold filtering though, which will be one of the things I add to QV+. Could turn into its own script when the concept is proven, and actually a lot of use cases for QV+ could be turned into dedicated scripts based on concept studios like this one.
+                          - paragraph [ref=f16e329]:
+                            - link [ref=f16e330] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e331]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e332]:
+                            - generic [ref=f16e333]:
+                              - button "Flag comment" [ref=f16e334] [cursor=pointer]:
+                                - generic [ref=f16e335]: 
+                                - generic [ref=f16e336]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e337] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e338]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e339] [cursor=pointer]:
+                              - generic [ref=f16e340]: 
+                              - generic [ref=f16e341]: Vote Down
+                            - button "Vote Up comment" [ref=f16e342] [cursor=pointer]:
+                              - generic [ref=f16e343]: 
+                              - generic [ref=f16e344]: Vote Up
+                    - listitem [ref=f16e345]:
+                      - generic [ref=f16e346]:
+                        - generic [ref=f16e347]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e348] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e349]
+                          - generic [ref=f16e350]:
+                            - generic [ref=f16e351]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e353] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e354]:
+                                - generic [ref=f16e355]: Member
+                                - generic [ref=f16e356]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e357]: 1,108
+                                - generic "Professional user" [ref=f16e358]: PRO
+                            - link [ref=f16e361] [cursor=pointer]:
+                              - /url: /discussion/comment/122499/#Comment_122499
+                              - time [ref=f16e362]: October 2025
+                          - button "Options" [ref=f16e364]:
+                            - generic [aria-hidden] [ref=f16e365] [cursor=pointer]
+                        - generic [ref=f16e367]:
+                          - generic [ref=f16e368]:
+                            - paragraph [ref=f16e369]:
+                              - link [ref=f16e370] [cursor=pointer]:
+                                - /url: https://cad.onshape.com/documents/128231ad02069b995b5dfc8d/w/40c217484879fb976782600a/e/a2ea7227b72b9e36cebd8dc1
+                                - strong [ref=f16e371]: qGeometry
+                              - text: support added. Now you can filter by all the things that qGeometry lets you filter by and use them as an input in future operations. Edge filtering for straight lines vs arcs vs other curves could have some utility for frames features. Face filters have some less obvious use cases but I could see them being handy for working with stubborn import geometry.
+                            - link [ref=f16e374] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/8Q1LICUL16AO/image.png
+                              - img "image.png" [ref=f16e375]
+                            - paragraph [ref=f16e376]: If you're following along with these additions and have suggestions on which query functions to tackle next let me know and I'll slot them into a future update. Probably next is gonna be fillets and direction queries.
+                          - generic [ref=f16e377]:  ×
+                          - paragraph [ref=f16e379]:
+                            - link [ref=f16e380] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e381]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e382]:
+                            - generic [ref=f16e383]:
+                              - button "Flag comment" [ref=f16e384] [cursor=pointer]:
+                                - generic [ref=f16e385]: 
+                                - generic [ref=f16e386]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e387] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e388]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e389] [cursor=pointer]:
+                              - generic [ref=f16e390]: 
+                              - generic [ref=f16e391]: Vote Down
+                            - button "Vote Up comment" [ref=f16e392] [cursor=pointer]:
+                              - generic [ref=f16e393]: 
+                              - generic [ref=f16e394]: "2"
+                              - generic [ref=f16e395]: Vote Up
+                    - listitem [ref=f16e396]:
+                      - generic [ref=f16e397]:
+                        - generic [ref=f16e398]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e399] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e400]:
+                            - generic [ref=f16e401]:
+                              - link "jelte_steur_info" [ref=f16e403] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e404]:
+                                - generic [ref=f16e405]: Member
+                                - generic [ref=f16e406]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e407]: "676"
+                                - generic "Professional user" [ref=f16e408]: PRO
+                            - link [ref=f16e411] [cursor=pointer]:
+                              - /url: /discussion/comment/122509/#Comment_122509
+                              - time [ref=f16e412]: October 2025
+                          - button "Options" [ref=f16e414]:
+                            - generic [aria-hidden] [ref=f16e415] [cursor=pointer]
+                        - generic [ref=f16e417]:
+                          - generic [ref=f16e418]:
+                            - paragraph [ref=f16e419]: Hi Derek,
+                            - paragraph [ref=f16e420]: I've had needs for qCapEntities before, so that'll be very useful!
+                            - paragraph [ref=f16e421]: Jelte
+                          - generic [ref=f16e422]:
+                            - generic [ref=f16e423]:
+                              - button "Flag comment" [ref=f16e424] [cursor=pointer]:
+                                - generic [ref=f16e425]: 
+                                - generic [ref=f16e426]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e427] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e428]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e429] [cursor=pointer]:
+                              - generic [ref=f16e430]: 
+                              - generic [ref=f16e431]: Vote Down
+                            - button "Vote Up comment" [ref=f16e432] [cursor=pointer]:
+                              - generic [ref=f16e433]: 
+                              - generic [ref=f16e434]: Vote Up
+                    - listitem [ref=f16e435]:
+                      - generic [ref=f16e436]:
+                        - generic [ref=f16e437]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e438] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e439]:
+                            - generic [ref=f16e440]:
+                              - link "jelte_steur_info" [ref=f16e442] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e443]:
+                                - generic [ref=f16e444]: Member
+                                - generic [ref=f16e445]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e446]: "676"
+                                - generic "Professional user" [ref=f16e447]: PRO
+                            - generic [ref=f16e448]:
+                              - link [ref=f16e450] [cursor=pointer]:
+                                - /url: /discussion/comment/122993/#Comment_122993
+                                - time [ref=f16e451]: November 2025
+                              - generic "Edited Fri Nov 07 04:50:45 2025 by jelte_steur_info." [ref=f16e453]: edited November 2025
+                          - button "Options" [ref=f16e455]:
+                            - generic [aria-hidden] [ref=f16e456] [cursor=pointer]
+                        - generic [ref=f16e458]:
+                          - generic [ref=f16e459]:
+                            - paragraph [ref=f16e460]:
+                              - text: Hi
+                              - link "@Derek_Van_Allen_BD" [ref=f16e461] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - text: ": I was in need of the qCapEntities Filter and created it myself as an additional option filter to \"Is Created By\" feel free to add it to your query variable+ to prevent clutter. I'd rather contribute to your good query variable + version, then create a whole bunch of new ones… Just ctrl-F for: \"//added by for Cap Filter by Jelte\" … \"//end added by Jelte\" and copy paste those bits. (after a bit of review and checking perhaps):"
+                            - paragraph [ref=f16e462]: https://cad.onshape.com/documents/d235b229e9002129febbb90e/w/4681d88c2fa02968068670d3/e/4243c76ef0022c2f4089c1f7?renderMode=0&uiState=690ddcf38ff2a03fae52d925
+                            - paragraph [ref=f16e463]:
+                              - link "There was an error displaying this embed." [ref=f16e464] [cursor=pointer]:
+                                - /url: "unsafe:"
+                                - img "There was an error displaying this embed."
+                          - generic [ref=f16e465]:
+                            - generic [ref=f16e466]:
+                              - button "Flag comment" [ref=f16e467] [cursor=pointer]:
+                                - generic [ref=f16e468]: 
+                                - generic [ref=f16e469]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e470] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e471]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e472] [cursor=pointer]:
+                              - generic [ref=f16e473]: 
+                              - generic [ref=f16e474]: Vote Down
+                            - button "Vote Up comment" [ref=f16e475] [cursor=pointer]:
+                              - generic [ref=f16e476]: 
+                              - generic [ref=f16e477]: Vote Up
+                    - listitem [ref=f16e478]:
+                      - generic [ref=f16e479]:
+                        - generic [ref=f16e480]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e481] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e482]:
+                            - generic [ref=f16e483]:
+                              - link "jelte_steur_info" [ref=f16e485] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e486]:
+                                - generic [ref=f16e487]: Member
+                                - generic [ref=f16e488]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e489]: "676"
+                                - generic "Professional user" [ref=f16e490]: PRO
+                            - generic [ref=f16e491]:
+                              - link [ref=f16e493] [cursor=pointer]:
+                                - /url: /discussion/comment/122996/#Comment_122996
+                                - time [ref=f16e494]: November 2025
+                              - generic "Edited Mon Nov 10 02:41:09 2025 by jelte_steur_info." [ref=f16e496]: edited November 2025
+                          - button "Options" [ref=f16e498]:
+                            - generic [aria-hidden] [ref=f16e499] [cursor=pointer]
+                        - generic [ref=f16e501]:
+                          - paragraph [ref=f16e503]: AND then I went for a walk and realised a better way to implement it that's more compliant to the original Query Variables UI. So please disregard v1 and use V4 wich requires 11 small code changes/additions…
+                          - generic [ref=f16e504]:
+                            - generic [ref=f16e505]:
+                              - button "Flag comment" [ref=f16e506] [cursor=pointer]:
+                                - generic [ref=f16e507]: 
+                                - generic [ref=f16e508]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e509] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e510]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e511] [cursor=pointer]:
+                              - generic [ref=f16e512]: 
+                              - generic [ref=f16e513]: Vote Down
+                            - button "Vote Up comment" [ref=f16e514] [cursor=pointer]:
+                              - generic [ref=f16e515]: 
+                              - generic [ref=f16e516]: "1"
+                              - generic [ref=f16e517]: Vote Up
+                    - listitem [ref=f16e518]:
+                      - generic [ref=f16e519]:
+                        - generic [ref=f16e520]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e521] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e522]:
+                            - generic [ref=f16e523]:
+                              - link "jelte_steur_info" [ref=f16e525] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e526]:
+                                - generic [ref=f16e527]: Member
+                                - generic [ref=f16e528]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e529]: "676"
+                                - generic "Professional user" [ref=f16e530]: PRO
+                            - link [ref=f16e533] [cursor=pointer]:
+                              - /url: /discussion/comment/123058/#Comment_123058
+                              - time [ref=f16e534]: November 2025
+                          - button "Options" [ref=f16e536]:
+                            - generic [aria-hidden] [ref=f16e537] [cursor=pointer]
+                        - generic [ref=f16e539]:
+                          - paragraph [ref=f16e541]: I've also added a "Parallelish" query in my new version V6. It's a tolerant parallel query that allows a set angle tolerance. Comes in handy to filter for edges with some draft on them.
+                          - generic [ref=f16e542]:
+                            - generic [ref=f16e543]:
+                              - button "Flag comment" [ref=f16e544] [cursor=pointer]:
+                                - generic [ref=f16e545]: 
+                                - generic [ref=f16e546]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e547] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e548]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e549] [cursor=pointer]:
+                              - generic [ref=f16e550]: 
+                              - generic [ref=f16e551]: Vote Down
+                            - button "Vote Up comment" [ref=f16e552] [cursor=pointer]:
+                              - generic [ref=f16e553]: 
+                              - generic [ref=f16e554]: Vote Up
+                    - listitem [ref=f16e555]:
+                      - generic [ref=f16e556]:
+                        - generic [ref=f16e557]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e558] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e559]:
+                            - generic [ref=f16e560]:
+                              - link "jelte_steur_info" [ref=f16e562] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e563]:
+                                - generic [ref=f16e564]: Member
+                                - generic [ref=f16e565]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e566]: "676"
+                                - generic "Professional user" [ref=f16e567]: PRO
+                            - link [ref=f16e570] [cursor=pointer]:
+                              - /url: /discussion/comment/123059/#Comment_123059
+                              - time [ref=f16e571]: November 2025
+                          - button "Options" [ref=f16e573]:
+                            - generic [aria-hidden] [ref=f16e574] [cursor=pointer]
+                        - generic [ref=f16e576]:
+                          - generic [ref=f16e577]:
+                            - paragraph [ref=f16e578]:
+                              - text: some additional feedback
+                              - link "@Derek_Van_Allen_BD" [ref=f16e579] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - text: ":"
+                            - paragraph [ref=f16e580]: I used your query Variable + in qAdjancy mode. I wanted to query a face AND all its adjacent faces. I think this is a common use for it. However the qAdjacent only queries the adjacents, and omits the seed faces. I had to add those by uniting with an additional query. It works, but it cumbersome and less robust. if i want to edit the seed faces, i'll have to edit them in two different places.
+                            - paragraph [ref=f16e581]: "a simple boolean in the UI predicate would be nice:"
+                            - paragraph [ref=f16e582]: "annotation { \"Name\" : \"Include seeds\", \"Default\" : true } definition.includeSeeds is boolean;"
+                            - paragraph [ref=f16e583]: and a subsequent conditional qUnion in the function.
+                          - generic [ref=f16e584]:
+                            - generic [ref=f16e585]:
+                              - button "Flag comment" [ref=f16e586] [cursor=pointer]:
+                                - generic [ref=f16e587]: 
+                                - generic [ref=f16e588]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e589] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e590]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e591] [cursor=pointer]:
+                              - generic [ref=f16e592]: 
+                              - generic [ref=f16e593]: Vote Down
+                            - button "Vote Up comment" [ref=f16e594] [cursor=pointer]:
+                              - generic [ref=f16e595]: 
+                              - generic [ref=f16e596]: "1"
+                              - generic [ref=f16e597]: Vote Up
+                    - listitem [ref=f16e598]:
+                      - generic [ref=f16e599]:
+                        - generic [ref=f16e600]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e601] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e602]
+                          - generic [ref=f16e603]:
+                            - generic [ref=f16e604]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e606] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e607]:
+                                - generic [ref=f16e608]: Member
+                                - generic [ref=f16e609]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e610]: 1,108
+                                - generic "Professional user" [ref=f16e611]: PRO
+                            - link [ref=f16e614] [cursor=pointer]:
+                              - /url: /discussion/comment/123072/#Comment_123072
+                              - time [ref=f16e615]: November 2025
+                          - button "Options" [ref=f16e617]:
+                            - generic [aria-hidden] [ref=f16e618] [cursor=pointer]
+                        - generic [ref=f16e620]:
+                          - paragraph [ref=f16e622]: Dang, you've been busy. Nice implementation of nearly parallel edges, I could see that being useful for putting fillets in the XY coordinates on 3d printed parts and not on the top or bottom where they'd look terrible and mess with printability. I did develop the qAdjacent filter with the exact opposite case in mind where I wanted to query everything around the seed and exclude the seed on purpose to support draft features, but I could see some use cases where you might want to include the seed as well. I'll get to work on plugging these edits into the main feature.
+                          - paragraph [ref=f16e624]:
+                            - link [ref=f16e625] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e626]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e627]:
+                            - generic [ref=f16e628]:
+                              - button "Flag comment" [ref=f16e629] [cursor=pointer]:
+                                - generic [ref=f16e630]: 
+                                - generic [ref=f16e631]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e632] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e633]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e634] [cursor=pointer]:
+                              - generic [ref=f16e635]: 
+                              - generic [ref=f16e636]: Vote Down
+                            - button "Vote Up comment" [ref=f16e637] [cursor=pointer]:
+                              - generic [ref=f16e638]: 
+                              - generic [ref=f16e639]: "1"
+                              - generic [ref=f16e640]: Vote Up
+                    - listitem [ref=f16e641]:
+                      - generic [ref=f16e642]:
+                        - generic [ref=f16e643]:
+                          - 'link "User: \"EvanReese\"" [ref=f16e644] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/EvanReese
+                            - img "EvanReese"
+                          - generic [ref=f16e645]:
+                            - generic [ref=f16e646]:
+                              - link "EvanReese" [ref=f16e648] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/EvanReese
+                              - generic [ref=f16e649]:
+                                - generic [ref=f16e650]: Member, Mentor
+                                - generic [ref=f16e651]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e652]: 3,059
+                                - generic "Professional user" [ref=f16e653]: PRO
+                            - link [ref=f16e656] [cursor=pointer]:
+                              - /url: /discussion/comment/123082/#Comment_123082
+                              - time [ref=f16e657]: November 2025
+                          - button "Options" [ref=f16e659]:
+                            - generic [aria-hidden] [ref=f16e660] [cursor=pointer]
+                        - generic [ref=f16e662]:
+                          - paragraph [ref=f16e664]: On the topic of parallelish edges, I'm running into challenges where I'd like to choose ALL parallel edges in a part studio, not just limited to ones on the selected entity. I'd later use that to intersect some other criteria to get the selection count under control. I also keep wanting to be able to choose a direction in addition to any line. I very frequently want all "up" edges, and would rather pick the top plane than a random edge somewhere.
+                          - generic [ref=f16e665]:
+                            - text: Evan ReeseThe Onsherpa | Reach peak Onshape productivity
+                            - link "www.theonsherpa.com" [ref=f16e666] [cursor=pointer]:
+                              - /url: https://www.theonsherpa.com/
+                          - generic [ref=f16e667]:
+                            - generic [ref=f16e668]:
+                              - button "Flag comment" [ref=f16e669] [cursor=pointer]:
+                                - generic [ref=f16e670]: 
+                                - generic [ref=f16e671]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e672] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e673]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e674] [cursor=pointer]:
+                              - generic [ref=f16e675]: 
+                              - generic [ref=f16e676]: Vote Down
+                            - button "Vote Up comment" [ref=f16e677] [cursor=pointer]:
+                              - generic [ref=f16e678]: 
+                              - generic [ref=f16e679]: Vote Up
+                    - listitem [ref=f16e680]:
+                      - generic [ref=f16e681]:
+                        - generic [ref=f16e682]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e683] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e684]
+                          - generic [ref=f16e685]:
+                            - generic [ref=f16e686]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e688] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e689]:
+                                - generic [ref=f16e690]: Member
+                                - generic [ref=f16e691]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e692]: 1,108
+                                - generic "Professional user" [ref=f16e693]: PRO
+                            - generic [ref=f16e694]:
+                              - link [ref=f16e696] [cursor=pointer]:
+                                - /url: /discussion/comment/123913/#Comment_123913
+                                - time [ref=f16e697]: December 2025
+                              - generic "Edited Tue Dec 02 09:12:14 2025 by Derek_Van_Allen_BD." [ref=f16e699]: edited December 2025
+                          - button "Options" [ref=f16e701]:
+                            - generic [aria-hidden] [ref=f16e702] [cursor=pointer]
+                        - generic [ref=f16e704]:
+                          - paragraph [ref=f16e706]:
+                            - text: Pushed an update to merge recent changes from the last few updates to the standard library's QV to keep the plus version sync'd up. Next I'll work in integrating
+                            - link "@jelte_steur_info" [ref=f16e707] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - text: "'s cap filter and parallelish query"
+                          - paragraph [ref=f16e709]:
+                            - link [ref=f16e710] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e711]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e712]:
+                            - generic [ref=f16e713]:
+                              - button "Flag comment" [ref=f16e714] [cursor=pointer]:
+                                - generic [ref=f16e715]: 
+                                - generic [ref=f16e716]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e717] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e718]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e719] [cursor=pointer]:
+                              - generic [ref=f16e720]: 
+                              - generic [ref=f16e721]: Vote Down
+                            - button "Vote Up comment" [ref=f16e722] [cursor=pointer]:
+                              - generic [ref=f16e723]: 
+                              - generic [ref=f16e724]: "1"
+                              - generic [ref=f16e725]: Vote Up
+                    - listitem [ref=f16e726]:
+                      - generic [ref=f16e727]:
+                        - generic [ref=f16e728]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e729] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e730]
+                          - generic [ref=f16e731]:
+                            - generic [ref=f16e732]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e734] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e735]:
+                                - generic [ref=f16e736]: Member
+                                - generic [ref=f16e737]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e738]: 1,108
+                                - generic "Professional user" [ref=f16e739]: PRO
+                            - link [ref=f16e742] [cursor=pointer]:
+                              - /url: /discussion/comment/123918/#Comment_123918
+                              - time [ref=f16e743]: December 2025
+                          - button "Options" [ref=f16e745]:
+                            - generic [aria-hidden] [ref=f16e746] [cursor=pointer]
+                        - generic [ref=f16e748]:
+                          - generic [ref=f16e749]:
+                            - paragraph [ref=f16e750]:
+                              - strong [ref=f16e751]: qCapEntities
+                              - text: support added. Thanks for putting in the work Jelte.
+                            - link [ref=f16e754] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/9BW6FFX8YY43/image.png
+                              - img "image.png" [ref=f16e755]
+                          - generic [ref=f16e756]:  ×
+                          - paragraph [ref=f16e758]:
+                            - link [ref=f16e759] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e760]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e761]:
+                            - generic [ref=f16e762]:
+                              - button "Flag comment" [ref=f16e763] [cursor=pointer]:
+                                - generic [ref=f16e764]: 
+                                - generic [ref=f16e765]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e766] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e767]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e768] [cursor=pointer]:
+                              - generic [ref=f16e769]: 
+                              - generic [ref=f16e770]: Vote Down
+                            - button "Vote Up comment" [ref=f16e771] [cursor=pointer]:
+                              - generic [ref=f16e772]: 
+                              - generic [ref=f16e773]: "1"
+                              - generic [ref=f16e774]: Vote Up
+                    - listitem [ref=f16e775]:
+                      - generic [ref=f16e776]:
+                        - generic [ref=f16e777]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e778] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e779]:
+                            - generic [ref=f16e780]:
+                              - link "jelte_steur_info" [ref=f16e782] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e783]:
+                                - generic [ref=f16e784]: Member
+                                - generic [ref=f16e785]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e786]: "676"
+                                - generic "Professional user" [ref=f16e787]: PRO
+                            - generic [ref=f16e788]:
+                              - link [ref=f16e790] [cursor=pointer]:
+                                - /url: /discussion/comment/123925/#Comment_123925
+                                - time [ref=f16e791]: December 2025
+                              - generic "Edited Tue Dec 02 12:56:54 2025 by jelte_steur_info." [ref=f16e793]: edited December 2025
+                          - button "Options" [ref=f16e795]:
+                            - generic [aria-hidden] [ref=f16e796] [cursor=pointer]
+                        - generic [ref=f16e798]:
+                          - generic [ref=f16e799]:
+                            - paragraph [ref=f16e800]:
+                              - link "@Derek_Van_Allen_BD" [ref=f16e801] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - text: ": Thank you for integrating it so everybody can benefit from a great QV+ feature. I expect to use the parallelish a lot to fillet edges of injection molded parts after implementing drafts already. any tranverse fillets will then propagate easily accross the tangent edges…"
+                            - paragraph [ref=f16e802]:
+                              - link "@EvanReese" [ref=f16e803] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/EvanReese
+                              - text: my parallelish implementation uses the queryFilterCompound.Allows_direction filter so any direction will work. And it works on multiple parts as well.
+                            - link [ref=f16e806] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/X1QMDFBX2WL4/image.png
+                              - img "image.png" [ref=f16e807]
+                          - generic [ref=f16e808]:  ×
+                          - generic [ref=f16e809]:
+                            - generic [ref=f16e810]:
+                              - button "Flag comment" [ref=f16e811] [cursor=pointer]:
+                                - generic [ref=f16e812]: 
+                                - generic [ref=f16e813]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e814] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e815]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e816] [cursor=pointer]:
+                              - generic [ref=f16e817]: 
+                              - generic [ref=f16e818]: Vote Down
+                            - button "Vote Up comment" [ref=f16e819] [cursor=pointer]:
+                              - generic [ref=f16e820]: 
+                              - generic [ref=f16e821]: Vote Up
+                    - listitem [ref=f16e822]:
+                      - generic [ref=f16e823]:
+                        - generic [ref=f16e824]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e825] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e826]:
+                            - generic [ref=f16e827]:
+                              - link "jelte_steur_info" [ref=f16e829] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e830]:
+                                - generic [ref=f16e831]: Member
+                                - generic [ref=f16e832]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e833]: "676"
+                                - generic "Professional user" [ref=f16e834]: PRO
+                            - link [ref=f16e837] [cursor=pointer]:
+                              - /url: /discussion/comment/123934/#Comment_123934
+                              - time [ref=f16e838]: December 2025
+                          - button "Options" [ref=f16e840]:
+                            - generic [aria-hidden] [ref=f16e841] [cursor=pointer]
+                        - generic [ref=f16e843]:
+                          - generic [ref=f16e844]:
+                            - paragraph [ref=f16e845]
+                            - paragraph [ref=f16e846]:
+                              - link "@Derek_Van_Allen_BD" [ref=f16e847] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - paragraph [ref=f16e848]: "I was just thinking about updating the qCapEntities to include a NonCap type next to End/Start/Either, only to find you already made a separate nonCapEntities query! Awesome work! you implementation is probably cleaner as well. This catch may also be added to qCapEntities I guess?:"
+                            - paragraph [ref=f16e849]: if (definition.entityType == EntityType.BODY)
+                            - paragraph [ref=f16e850]: "{"
+                            - generic [ref=f16e851]: throw regenError("Non-cap queries cannot resolve bodies.", ["entityType"]);
+                            - generic [ref=f16e853]: "}"
+                          - generic [ref=f16e855]:
+                            - generic [ref=f16e856]:
+                              - button "Flag comment" [ref=f16e857] [cursor=pointer]:
+                                - generic [ref=f16e858]: 
+                                - generic [ref=f16e859]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e860] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e861]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e862] [cursor=pointer]:
+                              - generic [ref=f16e863]: 
+                              - generic [ref=f16e864]: Vote Down
+                            - button "Vote Up comment" [ref=f16e865] [cursor=pointer]:
+                              - generic [ref=f16e866]: 
+                              - generic [ref=f16e867]: Vote Up
+                    - listitem [ref=f16e868]:
+                      - generic [ref=f16e869]:
+                        - generic [ref=f16e870]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e871] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e872]
+                          - generic [ref=f16e873]:
+                            - generic [ref=f16e874]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e876] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e877]:
+                                - generic [ref=f16e878]: Member
+                                - generic [ref=f16e879]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e880]: 1,108
+                                - generic "Professional user" [ref=f16e881]: PRO
+                            - link [ref=f16e884] [cursor=pointer]:
+                              - /url: /discussion/comment/123952/#Comment_123952
+                              - time [ref=f16e885]: December 2025
+                          - button "Options" [ref=f16e887]:
+                            - generic [aria-hidden] [ref=f16e888] [cursor=pointer]
+                        - generic [ref=f16e890]:
+                          - paragraph [ref=f16e892]: Yeah I was pondering adding filters at the input level for the entity types to only allow you to select valid types for a given query but that would mean I'd need to split up the input field into several depending on what's valid for a given operation. I did start with cap vs noncap being a separate field but because Onshape's standard library has them defined as separate features I did them as separate selections for consistency with how you would actually implement things in a featurescript and with the Query Explorer's implementation.
+                          - paragraph [ref=f16e894]:
+                            - link [ref=f16e895] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e896]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e897]:
+                            - generic [ref=f16e898]:
+                              - button "Flag comment" [ref=f16e899] [cursor=pointer]:
+                                - generic [ref=f16e900]: 
+                                - generic [ref=f16e901]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e902] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e903]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e904] [cursor=pointer]:
+                              - generic [ref=f16e905]: 
+                              - generic [ref=f16e906]: Vote Down
+                            - button "Vote Up comment" [ref=f16e907] [cursor=pointer]:
+                              - generic [ref=f16e908]: 
+                              - generic [ref=f16e909]: Vote Up
+                    - listitem [ref=f16e910]:
+                      - generic [ref=f16e911]:
+                        - generic [ref=f16e912]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e913] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e914]
+                          - generic [ref=f16e915]:
+                            - generic [ref=f16e916]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e918] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e919]:
+                                - generic [ref=f16e920]: Member
+                                - generic [ref=f16e921]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e922]: 1,108
+                                - generic "Professional user" [ref=f16e923]: PRO
+                            - generic [ref=f16e924]:
+                              - link [ref=f16e926] [cursor=pointer]:
+                                - /url: /discussion/comment/124042/#Comment_124042
+                                - time [ref=f16e927]: December 2025
+                              - generic "Edited Fri Dec 05 13:53:32 2025 by Derek_Van_Allen_BD." [ref=f16e929]: edited December 2025
+                          - button "Options" [ref=f16e931]:
+                            - generic [aria-hidden] [ref=f16e932] [cursor=pointer]
+                        - generic [ref=f16e934]:
+                          - generic [ref=f16e935]:
+                            - paragraph [ref=f16e936]:
+                              - strong [ref=f16e937]: Size Comparison
+                              - text: query operations added.
+                              - strong [ref=f16e938]: qLargest
+                              - text: ","
+                              - strong [ref=f16e939]: qSmallest
+                              - text: added with vanilla operations and I've added
+                              - strong [ref=f16e940]: Smaller Than
+                              - text: and
+                              - strong [ref=f16e941]: Larger Than
+                              - text: conditions to the pool as well to do some power filtering of geometry of interest for features. Helpful for simplification on import geometry where you might want to delete small errant faces or bodies or other cleanup operations you'd like to make more parametric.
+                            - link [ref=f16e944] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/G3BNDCX53NUG/image.png
+                              - img "image.png" [ref=f16e945]
+                            - paragraph [ref=f16e946]:
+                              - text: Oh and there's some tolerant
+                              - strong [ref=f16e947]: Equal To
+                              - text: filtering in there if you're looking to include geometry that matches the size of the original selection.
+                          - generic [ref=f16e948]:  ×
+                          - paragraph [ref=f16e950]:
+                            - link [ref=f16e951] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e952]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e953]:
+                            - generic [ref=f16e954]:
+                              - button "Flag comment" [ref=f16e955] [cursor=pointer]:
+                                - generic [ref=f16e956]: 
+                                - generic [ref=f16e957]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e958] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e959]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e960] [cursor=pointer]:
+                              - generic [ref=f16e961]: 
+                              - generic [ref=f16e962]: Vote Down
+                            - button "Vote Up comment" [ref=f16e963] [cursor=pointer]:
+                              - generic [ref=f16e964]: 
+                              - generic [ref=f16e965]: "2"
+                              - generic [ref=f16e966]: Vote Up
+                    - listitem [ref=f16e967]:
+                      - generic [ref=f16e968]:
+                        - generic [ref=f16e969]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e970] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e971]
+                          - generic [ref=f16e972]:
+                            - generic [ref=f16e973]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e975] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e976]:
+                                - generic [ref=f16e977]: Member
+                                - generic [ref=f16e978]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e979]: 1,108
+                                - generic "Professional user" [ref=f16e980]: PRO
+                            - link [ref=f16e983] [cursor=pointer]:
+                              - /url: /discussion/comment/124045/#Comment_124045
+                              - time [ref=f16e984]: December 2025
+                          - button "Options" [ref=f16e986]:
+                            - generic [aria-hidden] [ref=f16e987] [cursor=pointer]
+                        - generic [ref=f16e989]:
+                          - generic [ref=f16e990]:
+                            - paragraph [ref=f16e991]:
+                              - text: Yeah yeah okay fine, that update was mid and I could do better. Here's 10 more query options for you all under the
+                              - strong [ref=f16e992]: Positional / Directional
+                              - text: "query umbrella:"
+                            - list [ref=f16e993]:
+                              - listitem [ref=f16e994]:
+                                - strong [ref=f16e995]: Plane Normal
+                                - text: ": Takes a reference plane face ("
+                                - code [ref=f16e996]: positionalPlane
+                                - text: ) and filters the input entities (
+                                - code [ref=f16e997]: positionalEntities
+                                - text: ) to those with normals parallel to that plane via
+                                - code [ref=f16e998]: qParallelPlanes
+                                - text: ; returns a Query of the matching entities.
+                              - listitem [ref=f16e999]:
+                                - strong [ref=f16e1000]: Intersects Line
+                                - text: ": Uses a selected linear edge ("
+                                - code [ref=f16e1001]: positionalLine
+                                - text: ) to keep entities intersecting that line through
+                                - code [ref=f16e1002]: qIntersectsLine
+                                - text: ; outputs a Query of the intersecting entities.
+                              - listitem [ref=f16e1003]:
+                                - strong [ref=f16e1004]: Intersects Plane
+                                - text: ": Requires a planar face reference and applies"
+                                - code [ref=f16e1005]: qIntersectsPlane
+                                - text: to find entities crossing that plane; returns a Query of intersecting entities.
+                              - listitem [ref=f16e1006]:
+                                - strong [ref=f16e1007]: Intersects Ball
+                                - text: ": Uses a reference vertex plus a radius to select entities within that sphere via"
+                                - code [ref=f16e1008]: qWithinRadius
+                                - text: ; emits a Query of entities inside or touching the ball.
+                              - listitem [ref=f16e1009]:
+                                - strong [ref=f16e1010]: Contains Point
+                                - text: ": With a reference vertex, applies"
+                                - code [ref=f16e1011]: qContainsPoint
+                                - text: to find entities that include the point; outputs a Query of containing entities.
+                              - listitem [ref=f16e1012]:
+                                - strong [ref=f16e1013]: Closest To
+                                - text: ": Given a reference vertex, uses"
+                                - code [ref=f16e1014]: qClosestTo
+                                - text: to pick the nearest entities to that point; returns a Query of the closest hits.
+                              - listitem [ref=f16e1015]:
+                                - strong [ref=f16e1016]: Farthest Along Direction
+                                - text: ": Accepts a direction reference (edge or direction-capable selection) and uses"
+                                - code [ref=f16e1017]: qFarthestAlong
+                                - text: to keep entities farthest in that direction; results in a Query of those entities.
+                              - listitem [ref=f16e1018]:
+                                - strong [ref=f16e1019]: Coincides With Plane
+                                - text: ": Selects a reference plane and returns entities that lie on it via"
+                                - code [ref=f16e1020]: qCoincidesWithPlane
+                                - text: ; output is a Query of coincident entities.
+                              - listitem [ref=f16e1021]:
+                                - strong [ref=f16e1022]: Plane Parallel To Direction
+                                - text: ": Uses a direction reference and"
+                                - code [ref=f16e1023]: qPlanesParallelToDirection
+                                - text: to keep planar entities whose normals align with that direction; produces a Query.
+                              - listitem [ref=f16e1024]:
+                                - strong [ref=f16e1025]: Face Parallel To Direction
+                                - text: ": Also direction-based; applies"
+                                - code [ref=f16e1026]: qFacesParallelToDirection
+                                - text: to retain faces parallel to the given direction, returning a Query of those faces
+                            - link [ref=f16e1029] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/TPNHUW9S5ISS/image.png
+                              - img "image.png" [ref=f16e1030]
+                          - generic [ref=f16e1031]:  ×
+                          - paragraph [ref=f16e1033]:
+                            - link [ref=f16e1034] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e1035]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e1036]:
+                            - generic [ref=f16e1037]:
+                              - button "Flag comment" [ref=f16e1038] [cursor=pointer]:
+                                - generic [ref=f16e1039]: 
+                                - generic [ref=f16e1040]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1041] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1042]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1043] [cursor=pointer]:
+                              - generic [ref=f16e1044]: 
+                              - generic [ref=f16e1045]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1046] [cursor=pointer]:
+                              - generic [ref=f16e1047]: 
+                              - generic [ref=f16e1048]: "3"
+                              - generic [ref=f16e1049]: Vote Up
+                    - listitem [ref=f16e1050]:
+                      - generic [ref=f16e1051]:
+                        - generic [ref=f16e1052]:
+                          - 'link "User: \"Konst_Sh\"" [ref=f16e1053] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Konst_Sh
+                            - img "Konst_Sh"
+                          - generic [ref=f16e1054]:
+                            - generic [ref=f16e1055]:
+                              - link "Konst_Sh" [ref=f16e1057] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Konst_Sh
+                              - generic [ref=f16e1058]:
+                                - generic [ref=f16e1059]: Member
+                                - generic [ref=f16e1060]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1061]: "169"
+                                - generic "Professional user" [ref=f16e1062]: PRO
+                            - generic [ref=f16e1063]:
+                              - link [ref=f16e1065] [cursor=pointer]:
+                                - /url: /discussion/comment/124055/#Comment_124055
+                                - time [ref=f16e1066]: December 2025
+                              - generic "Edited Sat Dec 06 03:47:15 2025 by Konst_Sh." [ref=f16e1068]: edited December 2025
+                          - button "Options" [ref=f16e1070]:
+                            - generic [aria-hidden] [ref=f16e1071] [cursor=pointer]
+                        - generic [ref=f16e1073]:
+                          - paragraph [ref=f16e1075]:
+                            - link "@Derek_Van_Allen_BD" [ref=f16e1076] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - text: there is also qInFrontOfPlane, and using intersection query of 2 such queries for plane-offset/2 and -plane +offset/2 there can be made a query for entities within +-offset/2 from plane - a tolerant version of qIntersectPlane
+                          - generic [ref=f16e1077]:
+                            - generic [ref=f16e1078]:
+                              - button "Flag comment" [ref=f16e1079] [cursor=pointer]:
+                                - generic [ref=f16e1080]: 
+                                - generic [ref=f16e1081]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1082] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1083]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1084] [cursor=pointer]:
+                              - generic [ref=f16e1085]: 
+                              - generic [ref=f16e1086]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1087] [cursor=pointer]:
+                              - generic [ref=f16e1088]: 
+                              - generic [ref=f16e1089]: "1"
+                              - generic [ref=f16e1090]: Vote Up
+                    - listitem [ref=f16e1091]:
+                      - generic [ref=f16e1092]:
+                        - generic [ref=f16e1093]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e1094] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e1095]
+                          - generic [ref=f16e1096]:
+                            - generic [ref=f16e1097]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e1099] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e1100]:
+                                - generic [ref=f16e1101]: Member
+                                - generic [ref=f16e1102]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1103]: 1,108
+                                - generic "Professional user" [ref=f16e1104]: PRO
+                            - link [ref=f16e1107] [cursor=pointer]:
+                              - /url: /discussion/comment/124224/#Comment_124224
+                              - time [ref=f16e1108]: December 2025
+                          - button "Options" [ref=f16e1110]:
+                            - generic [aria-hidden] [ref=f16e1111] [cursor=pointer]
+                        - generic [ref=f16e1113]:
+                          - generic [ref=f16e1114]:
+                            - paragraph [ref=f16e1115]:
+                              - link "@Konst_Sh" [ref=f16e1116] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Konst_Sh
+                              - text: Those could be really useful. I also realized that I might be able to get some use out of a generally tolerant equal to size query since I've already got the conditions built for larger than / equal and smaller than / equal. Different from qMatching if I'm looking for things that differ in geometry.
+                            - paragraph [ref=f16e1117]:
+                              - link "@jelte_steur_info" [ref=f16e1118] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - text: I implemented a modified version of
+                              - strong [ref=f16e1119]: tolerant parallel
+                              - text: that doesn't assume a qEverything because there are cases where I'd like to filter for parallelish items on a specific subset of queries. To make it up to you I also implemented
+                              - strong [ref=f16e1120]: qEverything
+                              - text: so you can still get the job done with two QV+s in a trenchcoat. Actually I needed some qEverything for other use-cases anyway so we can knock that one off the list.
+                            - link [ref=f16e1123] [cursor=pointer]:
+                              - /url: https://us.v-cdn.net/5022071/uploads/ZXMPT5BMLPZB/image.png
+                              - img "image.png" [ref=f16e1124]
+                          - generic [ref=f16e1125]:  ×
+                          - paragraph [ref=f16e1127]:
+                            - link [ref=f16e1128] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e1129]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e1130]:
+                            - generic [ref=f16e1131]:
+                              - button "Flag comment" [ref=f16e1132] [cursor=pointer]:
+                                - generic [ref=f16e1133]: 
+                                - generic [ref=f16e1134]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1135] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1136]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1137] [cursor=pointer]:
+                              - generic [ref=f16e1138]: 
+                              - generic [ref=f16e1139]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1140] [cursor=pointer]:
+                              - generic [ref=f16e1141]: 
+                              - generic [ref=f16e1142]: "1"
+                              - generic [ref=f16e1143]: Vote Up
+                    - listitem [ref=f16e1144]:
+                      - generic [ref=f16e1145]:
+                        - generic [ref=f16e1146]:
+                          - 'link "User: \"Konst_Sh\"" [ref=f16e1147] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Konst_Sh
+                            - img "Konst_Sh"
+                          - generic [ref=f16e1148]:
+                            - generic [ref=f16e1149]:
+                              - link "Konst_Sh" [ref=f16e1151] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Konst_Sh
+                              - generic [ref=f16e1152]:
+                                - generic [ref=f16e1153]: Member
+                                - generic [ref=f16e1154]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1155]: "169"
+                                - generic "Professional user" [ref=f16e1156]: PRO
+                            - generic [ref=f16e1157]:
+                              - link [ref=f16e1159] [cursor=pointer]:
+                                - /url: /discussion/comment/124227/#Comment_124227
+                                - time [ref=f16e1160]: December 2025
+                              - generic "Edited Wed Dec 10 12:53:26 2025 by Konst_Sh." [ref=f16e1162]: edited December 2025
+                          - button "Options" [ref=f16e1164]:
+                            - generic [aria-hidden] [ref=f16e1165] [cursor=pointer]
+                        - generic [ref=f16e1167]:
+                          - paragraph [ref=f16e1169]:
+                            - link "@Derek_Van_Allen_BD" [ref=f16e1170] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - text: also from my experience qLargest/qSmallest can pretty increase regen time, because they are based on length/area/volume calculations which are slow for non-primitives.What I found is that in most of the cases taking largest entity by the estimation of its bounding box volume is good enough and much faster, at least for solid bodies
+                          - generic [ref=f16e1171]:
+                            - generic [ref=f16e1172]:
+                              - button "Flag comment" [ref=f16e1173] [cursor=pointer]:
+                                - generic [ref=f16e1174]: 
+                                - generic [ref=f16e1175]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1176] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1177]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1178] [cursor=pointer]:
+                              - generic [ref=f16e1179]: 
+                              - generic [ref=f16e1180]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1181] [cursor=pointer]:
+                              - generic [ref=f16e1182]: 
+                              - generic [ref=f16e1183]: Vote Up
+                    - listitem [ref=f16e1184]:
+                      - generic [ref=f16e1185]:
+                        - generic [ref=f16e1186]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e1187] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e1188]
+                          - generic [ref=f16e1189]:
+                            - generic [ref=f16e1190]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e1192] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e1193]:
+                                - generic [ref=f16e1194]: Member
+                                - generic [ref=f16e1195]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1196]: 1,108
+                                - generic "Professional user" [ref=f16e1197]: PRO
+                            - link [ref=f16e1200] [cursor=pointer]:
+                              - /url: /discussion/comment/124230/#Comment_124230
+                              - time [ref=f16e1201]: December 2025
+                          - button "Options" [ref=f16e1203]:
+                            - generic [aria-hidden] [ref=f16e1204] [cursor=pointer]
+                        - generic [ref=f16e1206]:
+                          - paragraph [ref=f16e1208]:
+                            - link "@Konst_Sh" [ref=f16e1209] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/Konst_Sh
+                            - text: I work with a lot of long curvy snakey pieces due to the industry I'm in, so that metric would probably find incorrect results for a lot of cases I'd be using it for but I see the use for some geometries. I'll plan on implementing that and the plane queries into a future update.
+                          - paragraph [ref=f16e1211]:
+                            - link [ref=f16e1212] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e1213]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e1214]:
+                            - generic [ref=f16e1215]:
+                              - button "Flag comment" [ref=f16e1216] [cursor=pointer]:
+                                - generic [ref=f16e1217]: 
+                                - generic [ref=f16e1218]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1219] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1220]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1221] [cursor=pointer]:
+                              - generic [ref=f16e1222]: 
+                              - generic [ref=f16e1223]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1224] [cursor=pointer]:
+                              - generic [ref=f16e1225]: 
+                              - generic [ref=f16e1226]: Vote Up
+                    - listitem [ref=f16e1227]:
+                      - generic [ref=f16e1228]:
+                        - generic [ref=f16e1229]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e1230] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e1231]:
+                            - generic [ref=f16e1232]:
+                              - link "jelte_steur_info" [ref=f16e1234] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e1235]:
+                                - generic [ref=f16e1236]: Member
+                                - generic [ref=f16e1237]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1238]: "676"
+                                - generic "Professional user" [ref=f16e1239]: PRO
+                            - link [ref=f16e1242] [cursor=pointer]:
+                              - /url: /discussion/comment/124238/#Comment_124238
+                              - time [ref=f16e1243]: December 2025
+                          - button "Options" [ref=f16e1245]:
+                            - generic [aria-hidden] [ref=f16e1246] [cursor=pointer]
+                        - generic [ref=f16e1248]:
+                          - paragraph [ref=f16e1250]:
+                            - link "@Derek_Van_Allen_BD" [ref=f16e1251] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - text: aha! you made a filter out of it. Makes sense. qEverything can be rather expensive in complex models. Thanks for improving!
+                          - generic [ref=f16e1252]:
+                            - generic [ref=f16e1253]:
+                              - button "Flag comment" [ref=f16e1254] [cursor=pointer]:
+                                - generic [ref=f16e1255]: 
+                                - generic [ref=f16e1256]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1257] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1258]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1259] [cursor=pointer]:
+                              - generic [ref=f16e1260]: 
+                              - generic [ref=f16e1261]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1262] [cursor=pointer]:
+                              - generic [ref=f16e1263]: 
+                              - generic [ref=f16e1264]: Vote Up
+                    - listitem [ref=f16e1265]:
+                      - generic [ref=f16e1266]:
+                        - generic [ref=f16e1267]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e1268] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e1269]
+                          - generic [ref=f16e1270]:
+                            - generic [ref=f16e1271]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e1273] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e1274]:
+                                - generic [ref=f16e1275]: Member
+                                - generic [ref=f16e1276]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1277]: 1,108
+                                - generic "Professional user" [ref=f16e1278]: PRO
+                            - link [ref=f16e1281] [cursor=pointer]:
+                              - /url: /discussion/comment/124250/#Comment_124250
+                              - time [ref=f16e1282]: December 2025
+                          - button "Options" [ref=f16e1284]:
+                            - generic [aria-hidden] [ref=f16e1285] [cursor=pointer]
+                        - generic [ref=f16e1287]:
+                          - paragraph [ref=f16e1289]:
+                            - link "@jelte_steur_info" [ref=f16e1290] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - text: realized after pushing an update that I missed an opportunity to add qNothing too.
+                          - paragraph [ref=f16e1292]:
+                            - link [ref=f16e1293] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e1294]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e1295]:
+                            - generic [ref=f16e1296]:
+                              - button "Flag comment" [ref=f16e1297] [cursor=pointer]:
+                                - generic [ref=f16e1298]: 
+                                - generic [ref=f16e1299]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1300] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1301]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1302] [cursor=pointer]:
+                              - generic [ref=f16e1303]: 
+                              - generic [ref=f16e1304]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1305] [cursor=pointer]:
+                              - generic [ref=f16e1306]: 
+                              - generic [ref=f16e1307]: Vote Up
+                    - listitem [ref=f16e1308]:
+                      - generic [ref=f16e1309]:
+                        - generic [ref=f16e1310]:
+                          - 'link "User: \"armandoRR\"" [ref=f16e1311] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/armandoRR
+                            - img "armandoRR" [ref=f16e1312]
+                          - generic [ref=f16e1313]:
+                            - generic [ref=f16e1314]:
+                              - link "armandoRR" [ref=f16e1316] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/armandoRR
+                              - generic [ref=f16e1317]:
+                                - generic [ref=f16e1318]: Member, pcbaevp
+                                - generic [ref=f16e1319]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1320]: "38"
+                                - generic "Professional user" [ref=f16e1321]: PRO
+                            - link [ref=f16e1324] [cursor=pointer]:
+                              - /url: /discussion/comment/124484/#Comment_124484
+                              - time [ref=f16e1325]: December 2025
+                          - button "Options" [ref=f16e1327]:
+                            - generic [aria-hidden] [ref=f16e1328] [cursor=pointer]
+                        - generic [ref=f16e1330]:
+                          - paragraph [ref=f16e1332]:
+                            - text: I was just about to start my own implementation just to get
+                            - code [ref=f16e1333]: qParallelPlanes
+                            - text: functionality. Thank you so much!
+                          - generic [ref=f16e1334]:
+                            - generic [ref=f16e1335]:
+                              - button "Flag comment" [ref=f16e1336] [cursor=pointer]:
+                                - generic [ref=f16e1337]: 
+                                - generic [ref=f16e1338]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1339] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1340]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1341] [cursor=pointer]:
+                              - generic [ref=f16e1342]: 
+                              - generic [ref=f16e1343]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1344] [cursor=pointer]:
+                              - generic [ref=f16e1345]: 
+                              - generic [ref=f16e1346]: Vote Up
+                    - listitem [ref=f16e1347]:
+                      - generic [ref=f16e1348]:
+                        - generic [ref=f16e1349]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e1350] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e1351]
+                          - generic [ref=f16e1352]:
+                            - generic [ref=f16e1353]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e1355] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e1356]:
+                                - generic [ref=f16e1357]: Member
+                                - generic [ref=f16e1358]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1359]: 1,108
+                                - generic "Professional user" [ref=f16e1360]: PRO
+                            - link [ref=f16e1363] [cursor=pointer]:
+                              - /url: /discussion/comment/124485/#Comment_124485
+                              - time [ref=f16e1364]: December 2025
+                          - button "Options" [ref=f16e1366]:
+                            - generic [aria-hidden] [ref=f16e1367] [cursor=pointer]
+                        - generic [ref=f16e1369]:
+                          - paragraph [ref=f16e1371]:
+                            - link "@armandoRR" [ref=f16e1372] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/armandoRR
+                            - text: feel free to persuade me which queries to add next. I'm feeling sheet metal and frames attributes are next to come.
+                          - paragraph [ref=f16e1374]:
+                            - link [ref=f16e1375] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e1376]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e1377]:
+                            - generic [ref=f16e1378]:
+                              - button "Flag comment" [ref=f16e1379] [cursor=pointer]:
+                                - generic [ref=f16e1380]: 
+                                - generic [ref=f16e1381]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1382] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1383]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1384] [cursor=pointer]:
+                              - generic [ref=f16e1385]: 
+                              - generic [ref=f16e1386]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1387] [cursor=pointer]:
+                              - generic [ref=f16e1388]: 
+                              - generic [ref=f16e1389]: Vote Up
+                    - listitem [ref=f16e1390]:
+                      - generic [ref=f16e1391]:
+                        - generic [ref=f16e1392]:
+                          - 'link "User: \"armandoRR\"" [ref=f16e1393] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/armandoRR
+                            - img "armandoRR" [ref=f16e1394]
+                          - generic [ref=f16e1395]:
+                            - generic [ref=f16e1396]:
+                              - link "armandoRR" [ref=f16e1398] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/armandoRR
+                              - generic [ref=f16e1399]:
+                                - generic [ref=f16e1400]: Member, pcbaevp
+                                - generic [ref=f16e1401]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1402]: "38"
+                                - generic "Professional user" [ref=f16e1403]: PRO
+                            - link [ref=f16e1406] [cursor=pointer]:
+                              - /url: /discussion/comment/124518/#Comment_124518
+                              - time [ref=f16e1407]: December 2025
+                          - button "Options" [ref=f16e1409]:
+                            - generic [aria-hidden] [ref=f16e1410] [cursor=pointer]
+                        - generic [ref=f16e1412]:
+                          - paragraph [ref=f16e1414]:
+                            - link "@Derek_Van_Allen_BD" [ref=f16e1415] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - text: Most of my functionality requirements are around smart fillet selections. I had been using Evan's Selection Fillet FS before query variable arrived. My workflow is usually for making parts machinable, so it's a lot of convexity + parallel + above/below a plane. This lets me select all edges per machining setup (bottom, side, top) and make changes quickly. My other large use case is for selecting all faces that lie on the same plane. Would love sheet metal functionality because I use it for designing flex PCBs. Was considering a standalone FS that handled Sheet Metal → Flex PCB, but haven't set the time to create that just yet.
+                          - generic [ref=f16e1416]:
+                            - generic [ref=f16e1417]:
+                              - button "Flag comment" [ref=f16e1418] [cursor=pointer]:
+                                - generic [ref=f16e1419]: 
+                                - generic [ref=f16e1420]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1421] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1422]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1423] [cursor=pointer]:
+                              - generic [ref=f16e1424]: 
+                              - generic [ref=f16e1425]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1426] [cursor=pointer]:
+                              - generic [ref=f16e1427]: 
+                              - generic [ref=f16e1428]: Vote Up
+                    - listitem [ref=f16e1429]:
+                      - generic [ref=f16e1430]:
+                        - generic [ref=f16e1431]:
+                          - 'link "User: \"jelte_steur_info\"" [ref=f16e1432] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - img "jelte_steur_info"
+                          - generic [ref=f16e1433]:
+                            - generic [ref=f16e1434]:
+                              - link "jelte_steur_info" [ref=f16e1436] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/jelte_steur_info
+                              - generic [ref=f16e1437]:
+                                - generic [ref=f16e1438]: Member
+                                - generic [ref=f16e1439]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1440]: "676"
+                                - generic "Professional user" [ref=f16e1441]: PRO
+                            - link [ref=f16e1444] [cursor=pointer]:
+                              - /url: /discussion/comment/124774/#Comment_124774
+                              - time [ref=f16e1445]: December 2025
+                          - button "Options" [ref=f16e1447]:
+                            - generic [aria-hidden] [ref=f16e1448] [cursor=pointer]
+                        - generic [ref=f16e1450]:
+                          - generic [ref=f16e1451]:
+                            - group "External embed content - A file" [ref=f16e1454]:
+                              - link "File QueryVariable+SVG.zip Uploaded Dec 21, 2025 4.19 KB" [ref=f16e1455] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/api/v2/media/download-by-url?url=https%3A%2F%2Fus.v-cdn.net%2F5022071%2Fuploads%2FJGK5F04ILSUZ%2Fqueryvariable-2bsvg.zip
+                                - generic [ref=f16e1456]:
+                                  - img "File"
+                                - generic [ref=f16e1457]:
+                                  - generic [ref=f16e1458]: QueryVariable+SVG.zip
+                                  - generic [ref=f16e1459]:
+                                    - generic [ref=f16e1460]:
+                                      - text: Uploaded
+                                      - time [ref=f16e1461]: Dec 21, 2025
+                                    - generic [ref=f16e1462]:
+                                      - text: "4.19"
+                                      - generic "Kilobyte" [ref=f16e1463]: KB
+                            - paragraph [ref=f16e1464]:
+                              - link "@Derek_Van_Allen_BD" [ref=f16e1465] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - text: I wish you a happy and peaceful winter solstice. please find the
+                              - link [ref=f16e1468] [cursor=pointer]:
+                                - /url: https://us.v-cdn.net/5022071/uploads/N2K2IZBK1KCW/image.png
+                                - img "image.png" [ref=f16e1469]
+                              - text: QueryVariable+ icon attached.
+                          - generic [ref=f16e1470]:
+                            - generic "QueryVariable+SVG.zip" [ref=f16e1471]:
+                              - generic [ref=f16e1472]: 
+                              - generic [ref=f16e1473]:
+                                - link "QueryVariable+SVG.zip" [ref=f16e1474] [cursor=pointer]:
+                                  - /url: https://us.v-cdn.net/5022071/uploads/JGK5F04ILSUZ/queryvariable-2bsvg.zip
+                                - generic [ref=f16e1475]: 4.2K
+                              - text: ×
+                            - text:  ×
+                          - generic [ref=f16e1476]:
+                            - generic [ref=f16e1477]:
+                              - button "Flag comment" [ref=f16e1478] [cursor=pointer]:
+                                - generic [ref=f16e1479]: 
+                                - generic [ref=f16e1480]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1481] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1482]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1483] [cursor=pointer]:
+                              - generic [ref=f16e1484]: 
+                              - generic [ref=f16e1485]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1486] [cursor=pointer]:
+                              - generic [ref=f16e1487]: 
+                              - generic [ref=f16e1488]: "1"
+                              - generic [ref=f16e1489]: Vote Up
+                    - listitem [ref=f16e1490]:
+                      - generic [ref=f16e1491]:
+                        - generic [ref=f16e1492]:
+                          - 'link "User: \"Derek_Van_Allen_BD\"" [ref=f16e1493] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                            - img "Derek_Van_Allen_BD" [ref=f16e1494]
+                          - generic [ref=f16e1495]:
+                            - generic [ref=f16e1496]:
+                              - link "Derek_Van_Allen_BD" [ref=f16e1498] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/Derek_Van_Allen_BD
+                              - generic [ref=f16e1499]:
+                                - generic [ref=f16e1500]: Member
+                                - generic [ref=f16e1501]:
+                                  - text: "Posts:"
+                                  - generic [ref=f16e1502]: 1,108
+                                - generic "Professional user" [ref=f16e1503]: PRO
+                            - link [ref=f16e1506] [cursor=pointer]:
+                              - /url: /discussion/comment/124818/#Comment_124818
+                              - time [ref=f16e1507]: December 2025
+                          - button "Options" [ref=f16e1509]:
+                            - generic [aria-hidden] [ref=f16e1510] [cursor=pointer]
+                        - generic [ref=f16e1512]:
+                          - paragraph [ref=f16e1514]:
+                            - text: Thanks
+                            - link "@jelte_steur_info" [ref=f16e1515] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/jelte_steur_info
+                            - text: ", I need to find a better way to extract the default icons and modify them because my last attempt at scraping the site gave me 15000 icons unsorted and unnamed. Point of order for future QV+ enhancements, I have an implementation of a Visible Faces From Direction \"query\" that's actually just a geometry operation that returns queries after it runs. The way that geometry operation works, it would actually modify the input objects and create new split line geometry and edges in some cases where occlusion happens, so it's not a pure query function. Probably in the cases you'd reach for a query like this you'd be making the same modifications that the operation returns so I could convince myself that violating the purity of a query only function has justifiable utility but I don't want to muddy the waters with unexpected behavior when every other query in the feature does no modification to the input. Should this be included in QV+ or should I start a separate operator Query Variable feature that has utility but potentially modifies your input geometry?"
+                          - paragraph [ref=f16e1517]:
+                            - link [ref=f16e1518] [cursor=pointer]:
+                              - /url: https://www.linkedin.com/in/derek-van-allen-59416212a/
+                              - code [ref=f16e1519]: Derek Van Allen | Engineering Consultant | Meddler
+                          - generic [ref=f16e1520]:
+                            - generic [ref=f16e1521]:
+                              - button "Flag comment" [ref=f16e1522] [cursor=pointer]:
+                                - generic [ref=f16e1523]: 
+                                - generic [ref=f16e1524]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f16e1525] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f16e1526]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f16e1527] [cursor=pointer]:
+                              - generic [ref=f16e1528]: 
+                              - generic [ref=f16e1529]: Vote Down
+                            - button "Vote Up comment" [ref=f16e1530] [cursor=pointer]:
+                              - generic [ref=f16e1531]: 
+                              - generic [ref=f16e1532]: Vote Up
+                  - navigation "Pagination - Bottom" [ref=f16e1534]:
+                    - generic [ref=f16e1535]: «
+                    - link "Page 1":
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p1
+                      - text: "1"
+                    - link "Page 2" [ref=f16e1536] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p2
+                      - text: "2"
+                    - link "Page 3" [ref=f16e1537] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p3
+                      - text: "3"
+                    - link "Next Page" [ref=f16e1538] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/discussion/29012/custom-feature-query-variable/p2
+                      - text: »
+                  - heading "Leave a Comment" [level=2] [ref=f16e1540]
+                  - generic [ref=f16e1546]:
+                    - generic [ref=f16e1549]:
+                      - generic [ref=f16e1550]: To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu.
+                      - generic [ref=f16e1551]:
+                        - generic [ref=f16e1553]:
+                          - textbox "To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu." [ref=f16e1554]:
+                            - paragraph [ref=f16e1555]
+                          - generic: Type...
+                          - button "Element Toolbar" [ref=f16e1558] [cursor=pointer]
+                        - menubar [ref=f16e1562]:
+                          - menuitem "Emoji Picker" [ref=f16e1563] [cursor=pointer]
+                          - menuitem "Upload Image" [ref=f16e1564] [cursor=pointer]
+                          - menuitem "Insert Embed" [ref=f16e1565] [cursor=pointer]
+                          - menuitem "Upload File" [ref=f16e1566] [cursor=pointer]
+                          - menuitem "Insert Table" [ref=f16e1567] [cursor=pointer]
+                    - generic [ref=f16e1568]:
+                      - link "Save Draft" [ref=f16e1569] [cursor=pointer]:
+                        - /url: /discussion/29012/custom-feature-query-variable/p1#
+                      - button "Post Comment" [ref=f16e1570] [cursor=pointer]
+              - generic [ref=f16e1571]:
+                - button "New Post" [ref=f16e1574] [cursor=pointer]
+                - generic [ref=f16e1579]:
+                  - heading "Quick Links" [level=2] [ref=f16e1584]
+                  - navigation "Quick Links" [ref=f16e1586]:
+                    - list [ref=f16e1587]:
+                      - listitem [ref=f16e1588]:
+                        - link "All Categories" [ref=f16e1589] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/categories
+                      - listitem [ref=f16e1590]:
+                        - link "Recent Posts" [ref=f16e1591] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions
+                      - listitem [ref=f16e1592]:
+                        - link "Activity" [ref=f16e1593] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/activity
+                      - listitem [ref=f16e1594]:
+                        - link "My Bookmarks 0" [ref=f16e1595] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/bookmarked
+                          - text: My Bookmarks
+                          - generic [ref=f16e1596]: "0"
+                      - listitem [ref=f16e1597]:
+                        - link "My Posts 7" [ref=f16e1598] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/mine
+                          - text: My Posts
+                          - generic [ref=f16e1599]: "7"
+                      - listitem [ref=f16e1600]:
+                        - link "My Drafts 10" [ref=f16e1601] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/drafts
+                          - text: My Drafts
+                          - generic [ref=f16e1602]: "10"
+                      - listitem [ref=f16e1603]:
+                        - link "Unanswered 99+" [ref=f16e1604] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/unanswered
+                          - text: Unanswered
+                          - generic [ref=f16e1605]: 99+
+                      - listitem [ref=f16e1606]:
+                        - link "Groups" [ref=f16e1607] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/groups
+                      - listitem [ref=f16e1608]:
+                        - link "Best Of" [ref=f16e1609] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/bestof
+                - generic [ref=f16e1610]:
+                  - heading "Categories" [level=4] [ref=f16e1612]
+                  - list [ref=f16e1613]:
+                    - listitem [ref=f16e1614]:
+                      - link "All Categories" [ref=f16e1615] [cursor=pointer]:
+                        - /url: /categories
+                    - listitem [ref=f16e1616]:
+                      - link "10.1K Community Support" [ref=f16e1617] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                        - generic [ref=f16e1618]: 10.1K
+                        - text: Community Support
+                    - listitem [ref=f16e1620]:
+                      - link "3.6K Improvement requests" [ref=f16e1621] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/improvement-voting
+                        - generic [ref=f16e1622]: 3.6K
+                        - text: Improvement requests
+                    - listitem [ref=f16e1624]:
+                      - link "4.5K General" [ref=f16e1625] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/general
+                        - generic [ref=f16e1626]: 4.5K
+                        - text: General
+                    - listitem [ref=f16e1628]:
+                      - link "187 Account and subscriptions" [ref=f16e1629] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/account-and-subscriptions
+                        - generic [ref=f16e1630]: "187"
+                        - text: Account and subscriptions
+                    - listitem [ref=f16e1632]:
+                      - link "350 Data management" [ref=f16e1633] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/data-management
+                        - generic [ref=f16e1634]: "350"
+                        - text: Data management
+                    - listitem [ref=f16e1636]:
+                      - link "1.6K Product Feedback" [ref=f16e1637] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                        - generic [ref=f16e1638]: 1.6K
+                        - text: Product Feedback
+                    - listitem [ref=f16e1640]:
+                      - link "212 New in Onshape" [ref=f16e1641] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/recent-improvements
+                        - generic [ref=f16e1642]: "212"
+                        - text: New in Onshape
+                    - listitem [ref=f16e1644]:
+                      - link "10 Onshape Labs" [ref=f16e1645] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-labs
+                        - generic [ref=f16e1646]: "10"
+                        - text: Onshape Labs
+                    - listitem [ref=f16e1648]:
+                      - link "73 CAM Studio" [ref=f16e1649] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/cam-studio
+                        - generic [ref=f16e1650]: "73"
+                        - text: CAM Studio
+                    - listitem [ref=f16e1652]:
+                      - link "32 PCB Studio" [ref=f16e1653] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/pcb-altium
+                        - generic [ref=f16e1654]: "32"
+                        - text: PCB Studio
+                    - listitem [ref=f16e1656]:
+                      - link "104 Simulation" [ref=f16e1657] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/simulation
+                        - generic [ref=f16e1658]: "104"
+                        - text: Simulation
+                    - listitem [ref=f16e1660]:
+                      - link "207 Onshape Mobile" [ref=f16e1661] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-mobile
+                        - generic [ref=f16e1662]: "207"
+                        - text: Onshape Mobile
+                    - listitem [ref=f16e1664]:
+                      - link "312 App Store & Partners Apps" [ref=f16e1665] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/app-store-partners
+                        - generic [ref=f16e1666]: "312"
+                        - text: App Store & Partners Apps
+                    - listitem [ref=f16e1668]:
+                      - link "29 Public Model of the Week" [ref=f16e1669] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/public-model-of-the-week
+                        - generic [ref=f16e1670]: "29"
+                        - text: Public Model of the Week
+                    - listitem [ref=f16e1672]:
+                      - link "8.1K Using Onshape" [ref=f16e1673] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/using-onshape
+                        - generic [ref=f16e1674]: 8.1K
+                        - text: Using Onshape
+                    - listitem [ref=f16e1676]:
+                      - link "1.8K Drawings" [ref=f16e1677] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/drawings
+                        - generic [ref=f16e1678]: 1.8K
+                        - text: Drawings
+                    - listitem [ref=f16e1680]:
+                      - link "2.3K FeatureScript" [ref=f16e1681] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/featurescript
+                        - generic [ref=f16e1682]: 2.3K
+                        - text: FeatureScript
+                    - listitem [ref=f16e1684]:
+                      - link "304 Learning Center" [ref=f16e1685] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/learning-center
+                        - generic [ref=f16e1686]: "304"
+                        - text: Learning Center
+                    - listitem [ref=f16e1688]:
+                      - link "249 Education Community" [ref=f16e1689] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/education-community
+                        - generic [ref=f16e1690]: "249"
+                        - text: Education Community
+                - generic [ref=f16e1692]:
+                  - generic [ref=f16e1693]:
+                    - heading "Who's Online in this Category" [level=4] [ref=f16e1694]
+                    - generic "1" [ref=f16e1696]
+                  - 'link "User: \"Jed_Yeiser\"" [ref=f16e1699] [cursor=pointer]':
+                    - /url: https://forum.onshape.com/profile/Jed_Yeiser
+                    - img "Jed_Yeiser" [ref=f16e1700]
+        - generic [ref=f16e1701]:
+          - link "English" [ref=f16e1703] [cursor=pointer]:
+            - /url: /profile/setlocale/en
+          - link "Deutsch" [ref=f16e1705] [cursor=pointer]:
+            - /url: /profile/setlocale/de
+          - link "Español" [ref=f16e1707] [cursor=pointer]:
+            - /url: /profile/setlocale/es
+          - link "Français" [ref=f16e1709] [cursor=pointer]:
+            - /url: /profile/setlocale/fr
+          - link "Italiano" [ref=f16e1711] [cursor=pointer]:
+            - /url: /profile/setlocale/it
+          - link "中文" [ref=f16e1713] [cursor=pointer]:
+            - /url: /profile/setlocale/zh
+          - link "中文（台灣）" [ref=f16e1715] [cursor=pointer]:
+            - /url: /profile/setlocale/zh_TW
+          - link "日本語" [ref=f16e1717] [cursor=pointer]:
+            - /url: /profile/setlocale/ja
+          - link "한국어" [ref=f16e1719] [cursor=pointer]:
+            - /url: /profile/setlocale/ko
+    - contentinfo [ref=f16e1721]:
+      - generic [ref=f16e1722]:
+        - link "Facebook" [ref=f16e1723] [cursor=pointer]:
+          - /url: https://www.facebook.com/onshapeInc
+          - img "Facebook" [ref=f16e1724]
+        - link "Twitter" [ref=f16e1725] [cursor=pointer]:
+          - /url: https://twitter.com/Onshape
+          - img "Twitter" [ref=f16e1726]
+        - link "LinkedIn" [ref=f16e1727] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/onshape-inc
+          - img "LinkedIn" [ref=f16e1728]
+  - region "Dialogs"
+  - generic:
+    - generic:
+      - generic:
+        - log [ref=f16e1729]
+        - log [ref=f16e1730]
+        - log [ref=f16e1731]
+        - log [ref=f16e1732]
+  - generic [aria-hidden] [ref=f16e1733]: This is an embed external element. It can be deleted using the delete key or the backspace key. To view the full element, press the preview button below.
