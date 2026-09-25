@@ -291,6 +291,17 @@
       "last_push": "2026-09-24T22:58:02.144563+00:00",
       "document_id": "73271cfcd708b3f5e3fc315c",
       "workspace_id": "fea83d30106dba0a4e066761"
+    },
+    {
+      "name": "case_pattern",
+      "description": "Case Pattern: Case template (named query-variable inputs) + Case pattern (replay body feature list per named case, suffix outputs)",
+      "working_directory": "./case_pattern",
+      "onshape_url": "https://k2-sports.onshape.com/documents/2099413dd91f34578b385892/w/a875a90e6a8ebf49cc0eff73/e/ba9ec18112f977d6efad7627",
+      "references": [],
+      "last_pull": null,
+      "last_push": "2026-09-25T05:30:15.523821+00:00",
+      "document_id": "2099413dd91f34578b385892",
+      "workspace_id": "a875a90e6a8ebf49cc0eff73"
     }
   ],
   "sync_metadata": {}

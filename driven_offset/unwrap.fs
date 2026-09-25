@@ -118,6 +118,10 @@ const UNWRAP_CAP_ALIGNMENT = 0.95;
 /** Margin of the slab around the unwrapped outline. */
 const UNWRAP_SLAB_MARGIN = 10 * millimeter;
 
+/** Unwrap's own fit defaults: 0.005 mm leaves half the 0.01 mm budget to everything else. */
+const UNWRAP_FIT_TOLERANCE_BOUNDS = { (millimeter) : [1e-5, 0.005, 1] } as LengthBoundSpec;
+const UNWRAP_MAX_CP_BOUNDS = { (unitless) : [4, 60, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
+
 const UNWRAP_LENGTH_BOUNDS = { (millimeter) : [-1e4, 0, 1e4] } as LengthBoundSpec;
 const UNWRAP_THICKNESS_TOL_BOUNDS = { (millimeter) : [1e-6, 0.01, 10] } as LengthBoundSpec;
 
@@ -183,7 +187,14 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                         "Description" : "Emit an unwrapped edge as a line or an arc when its points are one within tolerance and its end tangents agree." }
             definition.recogniseShapes is boolean;
 
-            drivenOffsetApproximationPredicate(definition);
+            annotation { "Name" : "Target degree", "Description" : "Degree the fit aims for on unwrapped curves that are not lines or arcs" }
+            isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+            annotation { "Name" : "Tolerance", "Description" : "How far a fitted curve, a line or an arc may sit from the exactly unwrapped points" }
+            isLength(definition.approximationTolerance, UNWRAP_FIT_TOLERANCE_BOUNDS);
+
+            annotation { "Name" : "Maximum control points" }
+            isInteger(definition.approximationMaxCPs, UNWRAP_MAX_CP_BOUNDS);
         }
 
         annotation { "Group Name" : "Names & properties", "Collapsed By Default" : false }
@@ -457,8 +468,9 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         }
         else
         {
-            const chord = norm(points[count - 1] - points[0]);
-            emitSplineCurve(context, edgeId, points, chord * startTangent, chord * endTangent, settings.approximation);
+            // Unit tangents: approximateFamily scales them by the run's chord itself. Pre-scaling
+            // them here made the end speed a chord squared and no fit could reach tolerance.
+            emitSplineCurve(context, edgeId, points, startTangent, endTangent, settings.approximation);
         }
 
         tally[shape.kind] += 1;
