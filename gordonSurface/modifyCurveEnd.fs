@@ -54,18 +54,18 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         
         annotation { "Group Name" : "Parameters", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Offset frame", "Default": OffsetFrame.FRENET, "Description": "Apply offsets along the curve's frenet frame(s) [Default], or an offset in [x, y, z]." }
+            annotation { "Name" : "Offset frame", "UIHint" : [UIHint.SHOW_LABEL], "Default": OffsetFrame.FRENET, "Description": "Apply offsets along the curve's frenet frame(s) [Default], or an offset in [x, y, z]." }
             definition.offsetFrame is OffsetFrame;
             
-            annotation { "Name" : "Transition type", "Default": TransitionType.LOGISTIC, "Description": "Defines how the offset is applied across the curve, as a function of the parameter s." }
+            annotation { "Name" : "Transition type", "UIHint" : [UIHint.SHOW_LABEL], "Default": TransitionType.LOGISTIC, "Description": "Defines how the offset is applied across the curve, as a function of the parameter s." }
             definition.transitionType is TransitionType;
             
-            annotation { "Name" : "Fixed end continuity", "Default": GeometricContinuity.G0, "Description": "Specifies if output curve is G0: Coincident, G1: Tangent, G2: Equal curvature with the input curve" }
+            annotation { "Name" : "Fixed end continuity", "UIHint" : [UIHint.SHOW_LABEL], "Default": GeometricContinuity.G0, "Description": "Specifies if output curve is G0: Coincident, G1: Tangent, G2: Equal curvature with the input curve" }
             definition.fixedEndContinuity is GeometricContinuity;
             
             if (definition.fixedEndContinuity == GeometricContinuity.G2)
             {
-                annotation { "Name" : "G2 Mode", "Default": G2Mode.BEST_EFFORT, "Description": "Approximate or exact G2 continuity?" }
+                annotation { "Name" : "G2 Mode", "UIHint" : [UIHint.SHOW_LABEL], "Default": G2Mode.BEST_EFFORT, "Description": "Approximate or exact G2 continuity?" }
                 definition.g2Mode is G2Mode;
             }
             
@@ -86,7 +86,7 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
                     definition.showContinuity is boolean;
                     
                     
-                    annotation { "Name" : "Endpoint continuity", "Default": GeometricContinuity.G0, "Description": "Specifies the modified curves' continuity type with the supplied reference" }
+                    annotation { "Name" : "Endpoint continuity", "UIHint" : [UIHint.SHOW_LABEL], "Default": GeometricContinuity.G0, "Description": "Specifies the modified curves' continuity type with the supplied reference" }
                     definition.modEndContinuity is GeometricContinuity;
                 }
                    
@@ -114,7 +114,7 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Max control points" }
             isInteger(definition.splineCP, {(unitless) : [ 4, 10, 100]} as IntegerBoundSpec);
             
-            annotation { "Name" : "Sampling multiple", "Default" : 4, "Definition": "Samples splines over {total control points} * N points" }
+            annotation { "Name" : "Sampling multiple", "Default" : 4, "Description": "Samples splines over {total control points} * N points" }
             isInteger(definition.samplingMultiple, POSITIVE_COUNT_BOUNDS);
             
             annotation { "Name" : "Print input BSplineCurve" }
@@ -155,10 +155,13 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         var worldOffset = toPoint - modPoint;
         var useOffset = definition.offsetFrame == OffsetFrame.WORLD ? worldOffset : worldVectorToFrenet(worldOffset, computeFrenetFrame(unifiedCurve, modParam));
         
-        var useRef = size(evaluateQuery(context, definition.modContinuityRef)) > 0 ? definition.modContinuityRef : qNothing();
-        var useContinuity = size(evaluateQuery(context, definition.modContinuityRef)) > 0 ? definition.modEndContinuity : GeometricContinuity.G0;
-        
-        var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, definition.modEndContinuity, numSamples, definition.splineDegree, definition.splineTol);
+        // The end reference applies only while "Endpoint continuity ref?" is on (a stored reference used to
+        // apply even with the box unchecked).
+        var hasRef = definition.showModContinuity && !isQueryEmpty(context, definition.modContinuityRef);
+        var useRef = hasRef ? definition.modContinuityRef : qNothing();
+        var useContinuity = hasRef ? definition.modEndContinuity : GeometricContinuity.G0;
+
+        var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, useContinuity, numSamples, definition.splineDegree, definition.splineTol);
 
         if (definition.curveOnSurface)
         {
@@ -556,7 +559,9 @@ export function enforceG2AtEnd(curve is BSplineCurve, endParam is number, target
     var currentFrame = computeFrenetFrame(curve, endParam);
     var currentCurvature = currentFrame.curvature;
     
-    if (g2Mode == G2Mode.BEST_EFFORT)
+    // EXACT has no implementation of its own (it used to skip this block and do nothing); until the closed-form
+    // end overwrite replaces this function (tools review 2026-09-25, curves.md sec 4.2) both modes adjust.
+    if (g2Mode == G2Mode.BEST_EFFORT || g2Mode == G2Mode.EXACT)
     {
         // Adjust the third control point to influence curvature
         // This is approximate - curvature depends on the geometry in a nonlinear way
