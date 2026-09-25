@@ -257,7 +257,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
 
     // The main move keeps the original ids so existing references to its copies survive.
     var moves = [{ "id" : id, "nameMode" : definition.nameMode, "nameText" : definition.nameText,
-                "end" : endArcLength(context, pathData, startArcLength, definition.moveMode, definition.moveDist, definition.moveTarget, ["moveTarget"], definition) }];
+                "end" : endArcLength(context, pathData, startArcLength, definition.moveMode, definition.moveDist, definition.moveTarget, "moveTarget", definition) }];
     if (definition.copyBodies)
     {
         for (var j = 0; j < size(definition.extraCopies); j += 1)
@@ -265,7 +265,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
             var copy = definition.extraCopies[j];
             var mode = copy.copyMoveMode == undefined ? MoveToMode.DISTANCE : copy.copyMoveMode;
             moves = append(moves, { "id" : id + ("extra" ~ j), "nameMode" : copy.copyNameMode, "nameText" : copy.copyName,
-                        "end" : endArcLength(context, pathData, startArcLength, mode, copy.copyDistance, copy.copyTarget, ["extraCopies", j, "copyTarget"], definition) });
+                        "end" : endArcLength(context, pathData, startArcLength, mode, copy.copyDistance, copy.copyTarget, "extraCopies", definition) });
         }
     }
 
@@ -343,7 +343,7 @@ function composeName(mode is MoveNameMode, text is string, baseName) returns str
  * is set), or the path point nearest `target`.
  */
 function endArcLength(context is Context, pathData is map, startArcLength is ValueWithUnits, mode is MoveToMode,
-    distance, target, targetParameter is array, definition is map) returns ValueWithUnits
+    distance, target, targetParameter is string, definition is map) returns ValueWithUnits
 {
     if (mode == MoveToMode.NEAREST)
     {
