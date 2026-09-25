@@ -514,12 +514,29 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
  * AND the exactly-unwrapped end tangents agree with it -- so continuity is kept -- a fit otherwise.
  * @returns {map} : { "shape", "gate" (why a line / arc was refused, or "") }
  */
-function emitFlatCurve(context is Context, id is Id, points is array, startTangent is Vector, endTangent is Vector,
+function emitFlatCurve(context is Context, id is Id, points is array, startTangentIn is Vector, endTangentIn is Vector,
     settings is map) returns map
 {
+    var startTangent = startTangentIn;
+    var endTangent = endTangentIn;
     const count = size(points);
     var shape = { "kind" : "freeform" };
     var gate = "";
+
+    // A supplied end tangent more than 60 deg off the edge's own first / last span is wrong (seen at a
+    // pointed tail tip, where the section shrinks to a point and the map's tangent flips): use the span.
+    const startSpan = normalize(points[1] - points[0]);
+    const endSpan = normalize(points[count - 1] - points[count - 2]);
+    if (dot(startTangent, startSpan) < 0.5)
+    {
+        startTangent = startSpan;
+        gate = gate ~ " (start tangent replaced)";
+    }
+    if (dot(endTangent, endSpan) < 0.5)
+    {
+        endTangent = endSpan;
+        gate = gate ~ " (end tangent replaced)";
+    }
     if (settings.recognise)
     {
         shape = classifyPoints(points, settings.approximation.approximationTolerance, true, true);
@@ -1056,7 +1073,7 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
             text = text ~ " Thickness " ~ fmtMM(r.thickness, 4, 0) ~ " mm (offset pairs within " ~ fmtMM(r.spread, 5, 0)
                 ~ " mm); mid-surface mapped to the target offset " ~ fmtMM(r.offset, 4, 0) ~ " mm; "
                 ~ u.stations ~ " stations, " ~ u.fallbacks ~ " kernel sections. Deformation: lengthwise stretch "
-                ~ toString(roundToPrecision((u.stretchMin - 1) * 100, 3)) ~ "% .. " ~ toString(roundToPrecision((u.stretchMax - 1) * 100, 3))
+                ~ toString(roundToPrecision(u.stretchMin * 100, 3)) ~ "% .. " ~ toString(roundToPrecision(u.stretchMax * 100, 3))
                 ~ "%, shear up to " ~ toString(roundToPrecision(u.shearMax * 180 / PI, 2)) ~ " deg; rim "
                 ~ fmtMM(u.rim3d, 3, 0) ~ " mm draped -> " ~ fmtMM(u.rimFlat, 3, 0) ~ " mm flat"
                 ~ (r.pieces > 1 ? "; " ~ r.pieces ~ " solids" : "") ~ ".";

@@ -1,23 +1,25 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3070;
+import(path : "onshape/std/common.fs", version : "3070.0");
 
 /**
  * curveTrimCore - shared engine for the betterCurveTrim feature.
  *
- * Trims and splits wire curves by cutting them with construction planes built
- * perpendicular to the curve at each cut location, then letting opSplitPart do
- * the intersection. This delegates all cutting math to the kernel, so we never
- * touch BSpline knot vectors or parameter/arc-length conversion: evEdge* and
- * evDistance are already arc-length parameterized (their curve "parameter" is
- * normalized 0..1 arc length), which is all we need to place cuts and read
- * tangents.
+ * Trims and splits wire curves (single- or multi-edge) at arc-length locations. A
+ * wire is read as one ordered path (constructPath); every cut location is a fraction
+ * of the path length. Cuts are made exactly with opSplitEdges at arc-length
+ * parameters (evEdge* / evDistance / opSplitEdges are all arc-length parameterized
+ * by default), so no knot handling and no cutting planes - a plane would also cut the
+ * curve anywhere else it crossed.
  *
  * The exported helpers are grouped as:
- *   - locating cuts   : fractionOfPointOnEdge, fractionNearestEntity,
- *                       fractionAtDistanceTowardMid, evenDivisionFractions
- *   - building cuts   : cutPlaneAtFraction
- *   - performing cuts : splitWireIntoPieces (iterative, returns ordered pieces)
- *   - selecting result: keepPieceRange / keepOnePiece, combineSplitToSingleWire
+ *   - wire path       : wirePath, pathTangentAtFraction, pathPointAtFraction
+ *   - locating cuts   : projectToPath, fractionOfPoint, fractionNearestEntity,
+ *                       fractionAtSignedDistance, evenDivisionFractions,
+ *                       spacedFromPointFractions
+ *   - preview marks   : markCutPoints, markProjectionToCurve, markPositiveDirection
+ *   - performing cuts : splitEdgesAtFractions (in place, one wire),
+ *                       splitWireIntoPieces (separate wires), edgesBetweenCuts
+ *   - selecting result: keepPieceRange / keepOnePiece
  */
 
 // A picked point closer than this to the curve is treated as already "on" it, so
@@ -66,42 +68,153 @@ export const CTC_INFLECTION_INDEX_BOUNDS =
 } as IntegerBoundSpec;
 
 // ============================================================================
-// LOCATING CUTS (all return an arc-length fraction in 0..1 on the edge)
+// WIRE PATH (arc-length bookkeeping over a single- or multi-edge wire)
 // ============================================================================
 
 /**
- * Arc-length fraction of the point on `edge` closest to `worldPoint`. evDistance
- * reports the edge-side parameter as normalized arc length by default, so this
- * is exactly "how far along the curve" the projected point sits.
+ * A wire's edges as one ordered path (constructPath: the first edge's own direction
+ * is "forward"), with each edge's arc length and the arc length at which it starts.
+ * Every cut "fraction" in this module is a fraction of this path's total length, so a
+ * multi-edge wire behaves exactly like a single edge.
+ *
+ * @returns {{
+ *      @field path {Path}
+ *      @field lengths {array} : Arc length of each path edge.
+ *      @field starts {array} : Path arc length at the start of each edge.
+ *      @field total {ValueWithUnits} : Path length.
+ * }}
  */
-export function fractionOfPointOnEdge(context is Context, edge is Query, worldPoint is Vector) returns number
+export function wirePath(context is Context, wire is Query) returns map
 {
-    var d = evDistance(context, { "side0" : worldPoint, "side1" : edge });
-    return d.sides[1].parameter;
+    return wirePathInfo(context, constructPath(context, qOwnedByBody(wire, EntityType.EDGE)));
+}
+
+function wirePathInfo(context is Context, path is Path) returns map
+{
+    var lengths = [];
+    var starts = [];
+    var total = 0 * meter;
+    for (var e in path.edges)
+    {
+        var len = evLength(context, { "entities" : e });
+        starts = append(starts, total);
+        lengths = append(lengths, len);
+        total += len;
+    }
+    return { "path" : path, "lengths" : lengths, "starts" : starts, "total" : total };
 }
 
 /**
- * Arc-length fraction on `edge` where it is nearest to (or crosses) `toolEntity`.
- * For a true intersection the distance is ~0 and this is the crossing point.
- * evDistance yields a single extremum, so this locates one boundary per call.
+ * The wire's path re-read after its edges were split, oriented to start at
+ * `startPoint` (the old path's start) so piece order stays start->end.
  */
-export function fractionNearestEntity(context is Context, edge is Query, toolEntity is Query) returns number
+function wirePathFrom(context is Context, wire is Query, startPoint is Vector) returns map
 {
-    var d = evDistance(context, { "side0" : edge, "side1" : toolEntity });
-    return d.sides[0].parameter;
+    var path = constructPath(context, qOwnedByBody(wire, EntityType.EDGE));
+    var wp = wirePathInfo(context, path);
+    if (!tolerantEquals(pathPointAtFraction(context, wp, 0), startPoint))
+    {
+        wp = wirePathInfo(context, reverse(path));
+    }
+    return wp;
+}
+
+/** Path fraction of arc-length parameter `edgeParameter` on path edge `index`. */
+function pathFractionOnEdge(wp is map, index is number, edgeParameter is number) returns number
+{
+    var local = wp.path.flipped[index] ? 1 - edgeParameter : edgeParameter;
+    return (wp.starts[index] + local * wp.lengths[index]) / wp.total;
+}
+
+/** The path edge holding path fraction `f`, and the arc-length parameter on that edge. */
+function edgeAtFraction(wp is map, f is number) returns map
+{
+    var s = f * wp.total;
+    var n = size(wp.path.edges);
+    var index = n - 1;
+    for (var i = 0; i < n; i += 1)
+    {
+        if (s <= wp.starts[i] + wp.lengths[i])
+        {
+            index = i;
+            break;
+        }
+    }
+    var local = max(0, min(1, (s - wp.starts[index]) / wp.lengths[index]));
+    return { "index" : index, "parameter" : wp.path.flipped[index] ? 1 - local : local };
+}
+
+/** Tangent line at path fraction `f`, its direction along the path. */
+export function pathTangentAtFraction(context is Context, wp is map, f is number) returns Line
+{
+    var at = edgeAtFraction(wp, f);
+    var tl = evEdgeTangentLine(context, { "edge" : wp.path.edges[at.index], "parameter" : at.parameter });
+    if (wp.path.flipped[at.index])
+    {
+        tl.direction = -tl.direction;
+    }
+    return tl;
+}
+
+export function pathPointAtFraction(context is Context, wp is map, f is number) returns Vector
+{
+    return pathTangentAtFraction(context, wp, f).origin;
+}
+
+// ============================================================================
+// LOCATING CUTS (all return a path fraction in 0..1)
+// ============================================================================
+
+/**
+ * The point on the wire closest to `worldPoint`: its path `fraction`, the on-curve
+ * `point` and the `distance` off the curve. Edges are measured one at a time (evDistance
+ * to a query of several edges does not say which one it used).
+ */
+export function projectToPath(context is Context, wp is map, worldPoint is Vector) returns map
+{
+    var best = undefined;
+    for (var i = 0; i < size(wp.path.edges); i += 1)
+    {
+        var d = evDistance(context, { "side0" : worldPoint, "side1" : wp.path.edges[i] });
+        if (best == undefined || d.distance < best.distance - TOLERANCE.zeroLength)
+        {
+            best = { "fraction" : pathFractionOnEdge(wp, i, d.sides[1].parameter), "point" : d.sides[1].point, "distance" : d.distance };
+        }
+    }
+    return best;
+}
+
+export function fractionOfPoint(context is Context, wp is map, worldPoint is Vector) returns number
+{
+    return projectToPath(context, wp, worldPoint).fraction;
 }
 
 /**
- * Cut fraction a blind arc-length `dist` from `fromPoint`, measured toward the
- * curve midpoint (fraction 0.5). The result is clamped just inside the curve.
- * dist / length is unitless, so it adds directly to the fraction.
+ * Path fraction where the wire is nearest to (or crosses) `toolEntity`. evDistance
+ * yields a single extremum per edge, so this locates one boundary per call.
  */
-export function fractionAtDistanceTowardMid(context is Context, edge is Query, fromPoint is Vector, dist is ValueWithUnits) returns number
+export function fractionNearestEntity(context is Context, wp is map, toolEntity is Query) returns number
 {
-    var f0 = fractionOfPointOnEdge(context, edge, fromPoint);
-    var df = dist / evLength(context, { "entities" : edge });
-    var signed = (f0 <= 0.5) ? (f0 + df) : (f0 - df);
-    return max(CTC_FRACTION_EPS, min(1 - CTC_FRACTION_EPS, signed));
+    var best = undefined;
+    for (var i = 0; i < size(wp.path.edges); i += 1)
+    {
+        var d = evDistance(context, { "side0" : wp.path.edges[i], "side1" : toolEntity });
+        if (best == undefined || d.distance < best.distance - TOLERANCE.zeroLength)
+        {
+            best = { "fraction" : pathFractionOnEdge(wp, i, d.sides[0].parameter), "distance" : d.distance };
+        }
+    }
+    return best.fraction;
+}
+
+/**
+ * Cut fraction a signed arc-length `dist` from path fraction `f0` in direction `dir`
+ * (+1 along the path, -1 against it). Not clamped - a cut past an end is dropped by
+ * the caller.
+ */
+export function fractionAtSignedDistance(wp is map, f0 is number, dist is ValueWithUnits, dir is number) returns number
+{
+    return f0 + dir * dist / wp.total;
 }
 
 /**
@@ -111,10 +224,10 @@ export function fractionAtDistanceTowardMid(context is Context, edge is Query, f
  * numParts inclusive. Any cut that lands on a curve end is dropped later by
  * cleanFractions. The two points define the span in either order.
  */
-export function evenDivisionFractions(context is Context, edge is Query, pointA is Vector, pointB is Vector, numParts is number) returns array
+export function evenDivisionFractions(context is Context, wp is map, pointA is Vector, pointB is Vector, numParts is number) returns array
 {
-    var fA = fractionOfPointOnEdge(context, edge, pointA);
-    var fB = fractionOfPointOnEdge(context, edge, pointB);
+    var fA = fractionOfPoint(context, wp, pointA);
+    var fB = fractionOfPoint(context, wp, pointB);
     var lo = min([fA, fB]);
     var hi = max([fA, fB]);
 
@@ -127,23 +240,23 @@ export function evenDivisionFractions(context is Context, edge is Query, pointA 
 }
 
 /**
- * Fractions for `count` cuts spaced `spacing` apart along the curve, starting one
- * step from `fromPoint` (cuts at distance spacing, 2*spacing, ... count*spacing).
- * By default the cuts run toward the curve midpoint so they stay on the curve;
- * `reverse` flips that direction. Fractions that fall past an end are dropped by
- * the caller (cleanFractions). spacing / length is unitless, so it scales the
- * fraction directly.
+ * Direction sign (+1 along the path, -1 against it) for the "every distance from
+ * point" style: toward the curve midpoint by default, `reverse` flips it.
  */
-export function spacedFromPointFractions(context is Context, edge is Query, fromPoint is Vector, spacing is ValueWithUnits, count is number, reverse is boolean) returns array
+export function spacingDirection(f0 is number, reverse is boolean) returns number
 {
-    var f0 = fractionOfPointOnEdge(context, edge, fromPoint);
-    var df = spacing / evLength(context, { "entities" : edge });
     var dir = (f0 <= 0.5) ? 1 : -1;
-    if (reverse)
-    {
-        dir = -dir;
-    }
+    return reverse ? -dir : dir;
+}
 
+/**
+ * Fractions for `count` cuts spaced `spacing` apart along the curve from path
+ * fraction `f0` (cuts at spacing, 2*spacing, ... count*spacing) in direction `dir`
+ * (+1 / -1, see [spacingDirection]). Fractions past an end are dropped by the caller.
+ */
+export function spacedFromPointFractions(wp is map, f0 is number, spacing is ValueWithUnits, count is number, dir is number) returns array
+{
+    var df = spacing / wp.total;
     var fractions = [];
     for (var k = 1; k <= count; k += 1)
     {
@@ -153,31 +266,18 @@ export function spacedFromPointFractions(context is Context, edge is Query, from
 }
 
 // ============================================================================
-// BUILDING CUTS
+// PREVIEW MARKS
 // ============================================================================
 
 /**
- * Plane through `edge` at arc-length fraction `f`, with its normal along the
- * curve tangent there - so the plane cuts the curve perpendicularly at that
- * point. evEdgeTangentLine is arc-length parameterized, so `f` maps directly to
- * fractional length along the edge.
- */
-export function cutPlaneAtFraction(context is Context, edge is Query, f is number) returns Plane
-{
-    var tl = evEdgeTangentLine(context, { "edge" : edge, "parameter" : f });
-    return plane(tl.origin, tl.direction);
-}
-
-/**
  * Mark each cut location with a red debug point so the user can preview where the
- * curve will be cut (visible while the edit dialog is open). The cut plane origin
- * sits on the curve at its cut fraction, so it doubles as the cut point.
+ * curve will be cut (visible while the edit dialog is open).
  */
-export function markCutPoints(context is Context, planes is array)
+export function markCutPoints(context is Context, points is array)
 {
-    for (var i = 0; i < size(planes); i += 1)
+    for (var pt in points)
     {
-        addDebugPoint(context, planes[i].origin, DebugColor.RED);
+        addDebugPoint(context, pt, DebugColor.RED);
     }
 }
 
@@ -187,15 +287,15 @@ export function markCutPoints(context is Context, planes is array)
  * has no dotted style, so the dashes are a series of short segments. Nothing is
  * drawn when the point already lies on the curve.
  */
-export function markProjectionToCurve(context is Context, edge is Query, worldPoint is Vector)
+export function markProjectionToCurve(context is Context, wp is map, worldPoint is Vector)
 {
-    var d = evDistance(context, { "side0" : worldPoint, "side1" : edge });
-    if (d.distance <= CTC_ON_CURVE_TOL)
+    var proj = projectToPath(context, wp, worldPoint);
+    if (proj.distance <= CTC_ON_CURVE_TOL)
     {
         return;
     }
 
-    var onCurve = d.sides[1].point;
+    var onCurve = proj.point;
     var nDashes = 12;
     for (var i = 0; i < nDashes; i += 1)
     {
@@ -205,51 +305,110 @@ export function markProjectionToCurve(context is Context, edge is Query, worldPo
     }
 }
 
+/**
+ * Blue arrow at path fraction `f0` pointing the way positive distances run (`dir` +1
+ * along the path, -1 against it): 5% of the curve length, at most 50 mm.
+ */
+export function markPositiveDirection(context is Context, wp is map, f0 is number, dir is number)
+{
+    var tl = pathTangentAtFraction(context, wp, max(0, min(1, f0)));
+    var len = min(0.05 * wp.total, 50 * millimeter);
+    addDebugArrow(context, tl.origin, tl.origin + dir * len * tl.direction, len / 10, DebugColor.BLUE);
+}
+
 // ============================================================================
 // PERFORMING CUTS
 // ============================================================================
 
 /**
- * Split `wire` at every plane in `planes` and return the resulting pieces as an
- * array ordered along the curve (start to end). A single opSplitPart cannot cut a
- * wire at several planes at once - it yields only one front/back partition, so
- * with N planes it produces 2 pieces, not N+1. We therefore split iteratively:
- * each pass cuts the current remainder with ONE plane, finalizes the back piece
- * (smaller arc length) and carries the front remainder forward to the next plane.
- * Every pass is a single-plane split, so qSplitBy's front/back stays unambiguous.
- *
- * `planes` must be ordered along the curve (the caller sorts the cut fractions),
- * and each plane's normal is the curve tangent, so its "front" is the larger-arc-
- * length side. Each construction plane is deleted after its split (opSplitPart
- * does not remove plane tools itself).
+ * Split the wire's edges in place at every path fraction in `fractions` (opSplitEdges
+ * at arc-length parameters): the wire stays ONE body, now with a vertex at each cut.
+ * A cut on an existing vertex needs no split. Exact - no cutting planes, so a curve
+ * that doubles back is only cut where asked.
  */
-export function splitWireIntoPieces(context is Context, id is Id, wire is Query, planes is array) returns array
+export function splitEdgesAtFractions(context is Context, id is Id, wp is map, fractions is array)
 {
-    var pieces = [];
-    var remainder = wire;
-
-    for (var i = 0; i < size(planes); i += 1)
+    var perEdge = makeArray(size(wp.path.edges), []);
+    for (var f in fractions)
     {
-        opPlane(context, id + ("cutPlane" ~ i), { "plane" : planes[i] });
-        var planeBody = qCreatedBy(id + ("cutPlane" ~ i), EntityType.BODY);
+        var at = edgeAtFraction(wp, f);
+        if (at.parameter > CTC_FRACTION_EPS && at.parameter < 1 - CTC_FRACTION_EPS)
+        {
+            perEdge[at.index] = append(perEdge[at.index], at.parameter);
+        }
+    }
+    for (var i = 0; i < size(perEdge); i += 1)
+    {
+        if (size(perEdge[i]) > 0)
+        {
+            opSplitEdges(context, id + ("splitEdge" ~ i), {
+                        "edges" : wp.path.edges[i],
+                        "parameters" : [sort(perEdge[i], function(a, b) { return a - b; })]
+                    });
+        }
+    }
+}
 
-        var splitId = id + ("split" ~ i);
-        opSplitPart(context, splitId, {
-            "targets" : remainder,
-            "tool" : planeBody,
-            "keepTools" : true,
-            "keepType" : SplitOperationKeepType.KEEP_ALL
-        });
+/**
+ * After [splitEdgesAtFractions]: the wire's edges grouped into the spans between cuts,
+ * one array of edge queries per span (fractions.size + 1 groups, start to end; a group
+ * is empty when two cuts coincide). `start` is the wire's start point before the split.
+ */
+export function edgesBetweenCuts(context is Context, wire is Query, start is Vector, fractions is array) returns array
+{
+    var after = wirePathFrom(context, wire, start);
+    var groups = makeArray(size(fractions) + 1, []);
+    for (var i = 0; i < size(after.path.edges); i += 1)
+    {
+        var mid = (after.starts[i] + after.lengths[i] / 2) / after.total;
+        var k = 0;
+        for (var f in fractions)
+        {
+            if (f < mid)
+            {
+                k += 1;
+            }
+        }
+        groups[k] = append(groups[k], after.path.edges[i]);
+    }
+    return groups;
+}
 
-        opDeleteBodies(context, id + ("deletePlane" ~ i), { "entities" : planeBody });
+/**
+ * Split `wire` at every path fraction in `fractions` (ascending) into separate wire
+ * bodies, returned as an array of body queries ordered start to end. The edges are split
+ * in place, grouped between cuts, and each group extracted as its own wire; the original
+ * wire is then deleted. With no effective cut the array is just [wire].
+ */
+export function splitWireIntoPieces(context is Context, id is Id, wire is Query, wp is map, fractions is array) returns array
+{
+    var start = pathPointAtFraction(context, wp, 0);
+    splitEdgesAtFractions(context, id, wp, fractions);
+    var groups = edgesBetweenCuts(context, wire, start, fractions);
 
-        // Back side (smaller arc length) is done; front side is cut by the next
-        // plane, which lands within it because the planes ascend along the curve.
-        pieces = append(pieces, qSplitBy(splitId, EntityType.BODY, true));
-        remainder = qSplitBy(splitId, EntityType.BODY, false);
+    var nonEmpty = 0;
+    for (var g in groups)
+    {
+        if (size(g) > 0)
+        {
+            nonEmpty += 1;
+        }
+    }
+    if (nonEmpty < 2)
+    {
+        return [wire];
     }
 
-    pieces = append(pieces, remainder);
+    var pieces = [];
+    for (var k = 0; k < size(groups); k += 1)
+    {
+        if (size(groups[k]) > 0)
+        {
+            opExtractWires(context, id + ("piece" ~ k), { "edges" : qUnion(groups[k]) });
+            pieces = append(pieces, qCreatedBy(id + ("piece" ~ k), EntityType.BODY));
+        }
+    }
+    opDeleteBodies(context, id + "deleteSource", { "entities" : wire });
     return pieces;
 }
 
@@ -319,28 +478,6 @@ function highlightRemovedSegment(context is Context, bodies is Query)
             prev = pt;
         }
     }
-}
-
-/**
- * SPLIT "return single wire": recombine the `pieces` into one wire body. opBoolean
- * does NOT combine wires, so all piece edges are re-extracted into one connected
- * wire with opExtractWires (edges stay joined at the cut vertices, only two per
- * cut, so no ">2 edges at a point" failure), then the pieces are deleted. The
- * pieces come straight from splitWireIntoPieces, so there is no created-vs-modified
- * guessing; the empty guard just avoids opExtractWires' cryptic error if the split
- * produced nothing.
- */
-export function combineSplitToSingleWire(context is Context, id is Id, pieces is array)
-{
-    var all = qUnion(pieces);
-    var edges = qOwnedByBody(all, EntityType.EDGE);
-    if (isQueryEmpty(context, edges))
-    {
-        return;
-    }
-
-    opExtractWires(context, id + "singleWire", { "edges" : edges });
-    opDeleteBodies(context, id + "removeSegments", { "entities" : all });
 }
 
 // ============================================================================
