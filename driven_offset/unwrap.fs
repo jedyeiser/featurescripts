@@ -168,9 +168,15 @@ const UNWRAP_TANGENT_AGREE = 2 * degree;
 /** Samples per reference edge for the "X rises along the reference" check (the chart re-checks densely). */
 const UNWRAP_REFERENCE_X_SAMPLES = 9;
 
+/** 5-point Gauss-Legendre nodes and weights on [-1, 1], for the length check's span integrals. */
+const UNWRAP_GAUSS_X = [-0.9061798459386640, -0.5384693101056831, 0, 0.5384693101056831, 0.9061798459386640];
+const UNWRAP_GAUSS_W = [0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891];
+
+/** Points per table span on a kept wrapped length curve. */
+const UNWRAP_CHECK_PER_SPAN = 6;
+
 /** Vertices read for a body's extent in the length check, and samples on the wrapped length curve. */
 const UNWRAP_CHECK_VERTICES = 400;
-const UNWRAP_CHECK_SAMPLES = 400;
 
 /** Edges touching a vertex within this arc (metres) of either end of the extent are sampled along their length. */
 const UNWRAP_CHECK_END_ZONE = 0.03;
@@ -1000,26 +1006,53 @@ function outlineArcRange(edges is array)
 function lengthFromArcs(context is Context, id is Id, chart is map, cs is CoordSystem, source is Query, bodies is Query,
     lengthZ is ValueWithUnits, keep is boolean, arcLo is number, arcHi is number) returns map
 {
-    // The preserved curve on the packed tables (plain metres; the same Hermite as referencePointAtArc).
+    // The preserved curve's length on the packed tables: integrated span by span (breakpoints at every table sample,
+    // 5-point Gauss on the curve's speed |dA/da|, chartEval's e[8]). Not a uniform polyline: 400 even chords (4.6 mm)
+    // cut across the topsheet's two ~2.4 mm-radius S-bends and lost 1.119 mm.
     const c = chart.packed;
-    var span = chartSpanOf(c, arcLo);
-    var last = undefined;
     var wrappedM = 0;
     var points = [];
-    for (var j = 0; j <= UNWRAP_CHECK_SAMPLES; j += 1)
+    var span = chartSpanOf(c, arcLo);
+    var a0 = arcLo;
+    while (a0 < arcHi - 1e-12)
     {
-        const a = arcLo + (arcHi - arcLo) * j / UNWRAP_CHECK_SAMPLES;
-        span = chartSpan(c, a, span);
-        const e = chartEval(c, a, span);
-        if (last != undefined)
+        // Step past zero-length spans (the repeated sample at an edge join) to the next real breakpoint.
+        while (span + 2 < c.count && c.arcs[span + 1] <= a0 + 1e-12)
         {
-            wrappedM += sqrt((e[0] - last[0]) * (e[0] - last[0]) + (e[1] - last[1]) * (e[1] - last[1]) + (e[2] - last[2]) * (e[2] - last[2]));
+            span += 1;
         }
-        last = e;
+        var a1 = arcHi;
+        if (span + 1 < c.count && c.arcs[span + 1] > a0 + 1e-12 && c.arcs[span + 1] < arcHi)
+        {
+            a1 = c.arcs[span + 1];
+        }
+        const half = 0.5 * (a1 - a0);
+        const middle = 0.5 * (a1 + a0);
+        for (var g = 0; g < 5; g += 1)
+        {
+            const a = middle + half * UNWRAP_GAUSS_X[g];
+            wrappedM += UNWRAP_GAUSS_W[g] * half * chartEval(c, a, chartSpan(c, a, span))[8];
+        }
         if (keep)
         {
-            points = append(points, vector(e[0], e[1], e[2]) * meter);
+            for (var k = 0; k < UNWRAP_CHECK_PER_SPAN; k += 1)
+            {
+                const a = a0 + (a1 - a0) * k / UNWRAP_CHECK_PER_SPAN;
+                const e = chartEval(c, a, chartSpan(c, a, span));
+                points = append(points, vector(e[0], e[1], e[2]) * meter);
+            }
         }
+        a0 = a1;
+        span += 1;
+        if (span > c.count - 2)
+        {
+            span = c.count - 2;
+        }
+    }
+    if (keep)
+    {
+        const e = chartEval(c, arcHi, chartSpan(c, arcHi, span));
+        points = append(points, vector(e[0], e[1], e[2]) * meter);
     }
     const wrapped = wrappedM * meter;
 
