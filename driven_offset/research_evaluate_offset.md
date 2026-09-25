@@ -1,5 +1,43 @@
 # evaluate_offset -- research
 
+## 0. AS BUILT (v1, 2026-09-24) -- read this first; sections 1-9 are the 2026-09-10 research
+
+`driven_offset/evaluate_offset.fs` (tab a2ebb5abc7ddda01f64ff8df), feature "Evaluate offset". Inputs: Reference
+edges (key `offsetEdges`, what DEO would offset), Target edges, and DEO's own Measure along / Offset alignment /
+Zero point / spacing / approximation keys, so one definition means the same in both features.
+
+Changed from the phase-1 plan (section 3) -- STATION-driven, not target-driven:
+- Stations and frames are DEO's own: DEO now exports `offsetStationBase` (zero point, chain, alongRef, regular
+  stations, coords), `offsetStationFrames` (resolveFrames) and `offsetStationsWithBreaks` (insertCrossings +
+  resolveFrames); `sharedOffsetContext` calls them (pure refactor, Design_Master fingerprint identical per feature).
+  So the measured stations ARE the stations DEO will sample -- no projection, no arc(u) table, no frame roll.
+- At each station the offset lies in the section plane (normal = frame tangent: chain tangent for Along, X for
+  World). The target is cut by that plane: non-rational B-spline per target edge (correction 39), coarse samples,
+  bracket by PLANE side (bracketStation; a 3D-nearest walk fails under World frames), safeguarded Newton batched
+  per target edge. Zero kernel calls per station. w = dot(P - O, W), h = dot(P - O, H); offsetShrink <= 0 dropped.
+- Every target vertex gets an exact crossing pair (coordinate from an osculating-model Newton at the bracketing
+  station), so target corners are profile corners. At a crossing pair each half takes the target edge on its own
+  side (a jump = two ends at one plane).
+- Profile BREAKS (one wire per piece) at a step (two stations at one coordinate disagree) and at a gap the target
+  does not run across. A gap the target DOES run across (connected target edges) is bridged by the run's fit.
+- Inside G0 reference corners: cuts ahead of the next edge's start plane / behind the previous edge's end plane are
+  rejected (inCornerOverlap) -- they belong to the other side's trimmed target; the gap is bridged. Outside corners
+  need nothing (the fill lies between the halves' planes).
+- Output: lines where straight, else approximateSpline fits (no arcs, no end derivatives). Published (VT V2
+  extract_outputs): pieceCount, breakCount, breakStations, start/endStation, measuredStations, stationCount,
+  piece1..N, start/endVertex, breakVertices.
+
+Tests: Part Studio "Evaluate offset tests" (0ce4ac09e693f8ecd18e8a7f), real instances built by
+`devtools/onshape/build_evaluate_offset_tests.py`, checked by `devtools/onshape/check_evaluate_offset.py` (11/11 on
+2026-09-24): E1 line, E2 arc R400, E3 jump -> 2 pieces, E4 World / World X, E5 outside G0 corner, E6 inside G0
+corner -- measured vs original profile <= 5.5 um; R2-R6 DEO driven by the MEASURED profile vs the original target
+<= 10.4 um, lengths within 1.5 um. All at 5 mm spacing (at 71 mm spacing the target itself only approximates the
+original profile).
+
+Not in v1 / open: Measure along = Reference wire (regenError; the placement is a walk in the reference surface --
+its cut is (arc_P - arc0) * beta * scale = (v_P - v0) * alpha in the chart, same bracket/solve framework);
+3D reference untested; end derivatives on fitted runs; timing on a real chain; icon.
+
 Abbreviations: utils = driven_offset/edge_offset_utils.fs, DEO = driven_offset/driven_edge_offset.fs,
 CM = curveMapping/curveMappingCore.fs. Shared enums and predicates: research_shared_vocabulary.md.
 

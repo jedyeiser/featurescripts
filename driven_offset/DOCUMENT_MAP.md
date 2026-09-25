@@ -8,7 +8,7 @@ before editing or pushing.
 
 | Onshape document | sync project / local dir | Owns | Doc id |
 |---|---|---|---|
-| driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, unwrap / evaluate_offset stubs | `f61d2c000ab2d1240776342e` |
+| driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, Create offset profile, Evaluate offset, unwrap stub | `f61d2c000ab2d1240776342e` |
 | Curve_tools | `curve_tools` | `curve_core` (shared curve machinery), Clean wire, Map curve, Merge curve, Evaluate profiles | `2143812a99089658c704f0bc` |
 | Variable_tools | `variable_tools` | `extract_outputs` (producer library), Extract variables feature + consumer library | `a47f90bfa6b17a59e20cebd0` |
 | Reference_Side_Features | `reference_side` | Mutual Trim+, Split+, Offset+ (keep side named by a reference) | `22764764a00a7f607dbc1c4d` |
@@ -105,6 +105,12 @@ curve_core (Curve_tools, by VERSION)
   case and expected result; check them with `PYTHONPATH=. python devtools/onshape/check_offset_profile.py`
   (7/7 pass incl. 2 error cases via temporary instances). No test tabs (user preference). Not yet done: consumer-side break handling in DEO / DOS (None / Line per break).
   Design: `research_create_offset_profile.md`.
+
+- **evaluate_offset** (tab a2ebb5abc7ddda01f64ff8df, BUILT 2026-09-24): DEO run backwards -- reference + target
+  edges -> offset profile, on DEO's own stations (DEO exports `offsetStationBase` / `offsetStationFrames` /
+  `offsetStationsWithBreaks`). Tests: studio "Evaluate offset tests" (0ce4ac09e693f8ecd18e8a7f), built by
+  `devtools/onshape/build_evaluate_offset_tests.py`, checked by `PYTHONPATH=. python devtools/onshape/check_evaluate_offset.py`
+  (11/11). Reference-wire measure not supported yet. As-built notes: section 0 of `research_evaluate_offset.md`.
 
 ## Known open items touching this document
 

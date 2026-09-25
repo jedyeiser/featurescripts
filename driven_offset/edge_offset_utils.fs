@@ -122,11 +122,15 @@ export const NEWTON_ITERATIONS = 4;
 export const SEED_SAMPLES = 9;
 
 /**
- * Steps taken to walk a reference station from "same world X" onto the foot of the
- * normal. Two holds a ski's standing height to well under a micron; the seed is
- * already exact for a point lying on the surface, which most of them do.
+ * Most Newton steps taken to walk a point's reference foot from "same world X" onto the foot
+ * of the normal. The walk stops as soon as the tangential residual is below
+ * REFERENCE_FOOT_TOL; a point lying on the surface converges in one, a point well off it
+ * (an unwrap target, a source edge high above the core) in three or four.
  */
-export const REFERENCE_FOOT_STEPS = 2;
+export const REFERENCE_FOOT_STEPS = 8;
+
+/** Tangential residual at which a reference foot counts as found. */
+export const REFERENCE_FOOT_TOL = 1e-10 * meter;
 
 /** How close two profile edge ends must be to count as joined. */
 export const PROFILE_JOIN_TOL = 1e-5 * meter;
@@ -1246,11 +1250,17 @@ export function referenceBasisAtArc(alongRef is map, arc is ValueWithUnits) retu
  * Every point reconstructs exactly as A(arc) + v * planeNormal + height * N(arc).
  *
  * The seed station is the one at the same world X, which is already the foot of the
- * normal for a point lying on the surface. Each step then slides it by the leftover
- * tangential component, which is Newton on dot(P - A(u), t(u)) = 0 with the
- * curvature term dropped. The seed degenerates where the reference turns vertical
- * and the source curve stops advancing in X -- the ski tip, exactly where this
- * matters -- and the walk is what recovers from that.
+ * normal for a point lying on the surface. The walk is Newton on
+ *
+ *     g(u) = dot(P - A(u), t(u)) = 0,   g'(u) = -(scale - kappa * height)
+ *
+ * (dA/du = scale * t, dt/du = kappa * N, height = dot(P - A, N)). Until 2026-09-24 the
+ * slope was taken as scale alone, dropping kappa * height, and the walk stopped after two
+ * steps whatever the residual: fine on the surface, but a point a few millimetres off a
+ * curved reference kept a tangential residual that referenceSurfacePoint then silently
+ * dropped. It now iterates to REFERENCE_FOOT_TOL. Where scale - kappa * height is not
+ * positive the point is past the reference's centre of curvature and its foot is not
+ * unique; the step then falls back to scale, which still walks towards a foot.
  */
 export function referenceSurfaceCoords(alongRef is map, point is Vector) returns map
 {
@@ -1260,12 +1270,25 @@ export function referenceSurfaceCoords(alongRef is map, point is Vector) returns
 
     for (var step = 0; step < REFERENCE_FOOT_STEPS; step += 1)
     {
-        if (abs(basis.scale) > 1e-9)
+        const residual = dot(toPoint, basis.tangent);
+        if (abs(residual) < REFERENCE_FOOT_TOL)
         {
-            arc = arc + dot(toPoint, basis.tangent) / basis.scale;
-            basis = referenceBasisAtArc(alongRef, arc);
-            toPoint = point - referencePointAtArc(alongRef, arc);
+            break;
         }
+
+        var slope = basis.scale - basis.curvature * dot(toPoint, basis.normal);
+        if (slope < 1e-3)
+        {
+            slope = basis.scale;
+        }
+        if (abs(slope) < 1e-9)
+        {
+            break;
+        }
+
+        arc = arc + residual / slope;
+        basis = referenceBasisAtArc(alongRef, arc);
+        toPoint = point - referencePointAtArc(alongRef, arc);
     }
 
     return mergeMaps(basis, {

@@ -228,12 +228,12 @@
     },
     {
       "name": "driven_offset",
-      "description": "additional edge offseting tools",
+      "description": "driven_offset (Design_Master / BeamBuilder Testbed): Driven edge offset, Driven offset surface, Create offset profile, Evaluate offset, unwrap (stub); edge_offset_utils, offset_run_treatment, offset_debug, bspline_compat. Read driven_offset/DOCUMENT_MAP.md first",
       "working_directory": "./driven_offset",
       "onshape_url": "https://k2-sports.onshape.com/documents/f61d2c000ab2d1240776342e/w/5b11f323ab31b04cba8b36ef/e/786f62f4d67ed8d9c7d56d16",
       "references": [],
       "last_pull": "2026-09-14T20:48:44.397531+00:00",
-      "last_push": "2026-09-25T03:54:31.126043+00:00",
+      "last_push": "2026-09-25T03:55:06.098932+00:00",
       "document_id": "f61d2c000ab2d1240776342e",
       "workspace_id": "5b11f323ab31b04cba8b36ef"
     },
@@ -250,7 +250,7 @@
     },
     {
       "name": "reference_side",
-      "description": "Reference_Side_Features: Mutual Trim+, Split+, Offset+ with keep-side references",
+      "description": "Reference_Side_Features: Mutual Trim+, Split+, Offset+, Thicken+ with keep-side references",
       "working_directory": "./reference_side",
       "onshape_url": "https://k2-sports.onshape.com/documents/22764764a00a7f607dbc1c4d/w/3b5e11a121111a161684adee/e/e94b3282e4a5717b8a4b629a",
       "references": [],
@@ -261,7 +261,7 @@
     },
     {
       "name": "variable_tools",
-      "description": "Variable_tools: Extract variables, producer library, query variable tools",
+      "description": "Variable_tools: Extract variables (consumer) + extract_outputs (producer library)",
       "working_directory": "./variable_tools",
       "onshape_url": "https://k2-sports.onshape.com/documents/a47f90bfa6b17a59e20cebd0/w/0bd1fa4306898d9fe9c9fb47/e/d33a3bd9d5c8c403c98fdece",
       "references": [],
@@ -272,7 +272,7 @@
     },
     {
       "name": "curve_tools",
-      "description": "Curve_tools: Merge curve, Evaluate profiles, Clean wire, Map curve + shared curve core",
+      "description": "Curve_tools: curve_core (shared curve machinery), Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire",
       "working_directory": "./curve_tools",
       "onshape_url": "https://k2-sports.onshape.com/documents/2143812a99089658c704f0bc/w/4ea63c7ef14610f212917c42/e/1ae3cdda8a2f916c6a038ca6",
       "references": [],
