@@ -402,6 +402,7 @@ function cutTargets(stations is array, targets is array) returns array
 {
     var best = makeArray(size(stations));
     var bestDistance = makeArray(size(stations));
+    const guards = cornerGuards(stations);
 
     for (var t = 0; t < size(targets); t += 1)
     {
@@ -468,6 +469,10 @@ function cutTargets(stations is array, targets is array) returns array
         for (var c = 0; c < size(candidates); c += 1)
         {
             const k = candidates[c].station;
+            if (inCornerOverlap(stations, guards, k, solved[c]))
+            {
+                continue;
+            }
 
             // The first half of a crossing pair ends the run behind it and wants target that
             // runs back; the second half (the head) wants target that runs on. A cut on the
@@ -485,6 +490,71 @@ function cutTargets(stations is array, targets is array) returns array
     }
 
     return best;
+}
+
+/**
+ * For every station, the G0 reference corners either side of it: "next" the index of the half
+ * that STARTS the next edge (its plane faces along that edge), "previous" the half that ENDS the
+ * previous edge. -1 where there is none. Welded joints are not corners.
+ */
+function cornerGuards(stations is array) returns map
+{
+    const count = size(stations);
+    var next = makeArray(count, -1);
+    var previous = makeArray(count, -1);
+
+    var ahead = -1;
+    for (var k = count - 1; k >= 0; k -= 1)
+    {
+        next[k] = ahead;
+        if (k > 0 && stations[k].junctionBreak != undefined && stations[k].welded != true)
+        {
+            ahead = k;
+        }
+    }
+
+    var behind = -1;
+    for (var k = 0; k < count; k += 1)
+    {
+        previous[k] = behind;
+        if (k + 1 < count && stations[k + 1].junctionBreak != undefined && stations[k + 1].welded != true)
+        {
+            behind = k;
+        }
+    }
+
+    return { "next" : next, "previous" : previous };
+}
+
+/**
+ * Whether a cut for station k lies where the NEIGHBOURING edge owns the offset: ahead of the plane
+ * that starts the next edge at a G0 corner, or behind the plane that ends the previous one.
+ *
+ * At an inside corner those half-spaces overlap, and the forward offset trims both sides back to
+ * where they cross; a station short of the corner then cuts the OTHER side's target line, a
+ * millimetre or more from its own offset. Such a cut is not this station's. Only corners within
+ * a few offset lengths are asked: a plane is infinite, and on a chain that turns far round a
+ * distant corner's plane says nothing about this station.
+ */
+function inCornerOverlap(stations is array, guards is map, k is number, point is Vector) returns boolean
+{
+    const reach = 4 * norm(point - stations[k].origin) + OFFSET_GEOM_TOL;
+
+    const j = guards.next[k];
+    if (j >= 0 && norm(stations[j].origin - stations[k].origin) <= reach
+        && sectionDistance(stations[j], point) * chainSense(stations[j]) > OFFSET_GEOM_TOL)
+    {
+        return true;
+    }
+
+    const i = guards.previous[k];
+    if (i >= 0 && norm(stations[i].origin - stations[k].origin) <= reach
+        && sectionDistance(stations[i], point) * chainSense(stations[i]) < -OFFSET_GEOM_TOL)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 /**
