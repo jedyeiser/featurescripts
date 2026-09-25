@@ -1,0 +1,336 @@
+- generic [active] [ref=f12e1]:
+  - generic [ref=f12e2]:
+    - generic [ref=f12e3]:
+      - banner [ref=f12e5]:
+        - generic [ref=f12e13]:
+          - generic [ref=f12e15]:
+            - link "Skip to content":
+              - /url: "#skip-nav-content"
+            - link "Onshape" [ref=f12e16] [cursor=pointer]:
+              - /url: https://forum.onshape.com/
+              - img "Home" [ref=f12e18]
+          - navigation "Community" [ref=f12e19]:
+            - list [ref=f12e20]:
+              - listitem [ref=f12e21]:
+                - link "Discussions" [ref=f12e22] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/discussions
+              - listitem [ref=f12e24]:
+                - link "Categories" [ref=f12e25] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/categories
+              - listitem [ref=f12e27]:
+                - link "Activity" [ref=f12e28] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/activity
+              - listitem [ref=f12e30]:
+                - link "Ask a Question" [ref=f12e31] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/post/question
+          - button "Search" [ref=f12e35] [cursor=pointer]
+      - generic [ref=f12e37]:
+        - main [ref=f12e39]:
+          - generic [ref=f12e44]:
+            - navigation "Breadcrumb" [ref=f12e46]:
+              - generic [ref=f12e47]:
+                - link "Home" [ref=f12e49] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/
+                - generic [ref=f12e50]:
+                  - text: ›
+                  - link "Using Onshape" [ref=f12e52] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/using-onshape
+                - generic [ref=f12e53]:
+                  - text: ›
+                  - link "FeatureScript" [ref=f12e55] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/featurescript
+            - generic [ref=f12e56]:
+              - generic [ref=f12e57]:
+                - generic [ref=f12e58]:
+                  - link "×" [ref=f12e59] [cursor=pointer]:
+                    - /url: /dashboard/message/dismiss/5/i2AGneC3igK3eBK1?Target=discussion/12655/control-flow-features-while-loop-if-else-etc
+                  - paragraph [ref=f12e60]: Welcome to the Onshape forum! Ask questions and join in the discussions about everything Onshape.
+                  - strong [ref=f12e61]: "First time visiting? Here are some places to start:"
+                  - list [ref=f12e62]:
+                    - listitem [ref=f12e63]:
+                      - text: Looking for a certain topic? Check out the
+                      - link "categories filter" [ref=f12e64] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories
+                      - text: or use Search (upper right).
+                    - listitem [ref=f12e65]:
+                      - text: Need support?
+                      - link "Ask a question" [ref=f12e66] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/post/question/community-support
+                      - text: to our
+                      - link "Community Support" [ref=f12e67] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                      - text: category.
+                    - listitem [ref=f12e68]:
+                      - text: Please submit support tickets for bugs but you can request improvements in the
+                      - link "Product Feedback category" [ref=f12e69] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                      - text: .
+                    - listitem [ref=f12e70]: Be respectful, on topic and if you see a problem, Flag it.
+                  - paragraph [ref=f12e71]:
+                    - text: If you would like to contact our Community Manager personally, feel free to
+                    - link "send a private message" [ref=f12e72] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/profile/6/LouGallo
+                    - text: or
+                    - link "an email" [ref=f12e73] [cursor=pointer]:
+                      - /url: mailto:lgallo@onshape.com
+                    - text: .
+                - generic [ref=f12e74]:
+                  - heading "Control Flow Features (while loop, if/else, etc...)" [level=1] [ref=f12e75]
+                  - generic [ref=f12e76]:
+                    - 'link "Bookmark for discussion: &quot;Control Flow Features (while loop, if/else, etc...)&quot;" [ref=f12e77] [cursor=pointer]':
+                      - /url: /discussion/bookmark/12655/i2AGneC3igK3eBK1?Target=discussion%2F12655%2Fcontrol-flow-features-while-loop-if-else-etc
+                    - button "Options" [ref=f12e78]
+                - generic [ref=f12e82]:
+                  - generic [ref=f12e85]:
+                    - generic [ref=f12e86]:
+                      - 'link "User: \"ethan_keller924\"" [ref=f12e87] [cursor=pointer]':
+                        - /url: https://forum.onshape.com/profile/ethan_keller924
+                        - img "ethan_keller924" [ref=f12e88]
+                      - generic [ref=f12e89]:
+                        - generic [ref=f12e90]:
+                          - link "ethan_keller924" [ref=f12e92] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/profile/ethan_keller924
+                          - generic [ref=f12e93]:
+                            - generic [ref=f12e94]: Member, csevp
+                            - generic [ref=f12e95]:
+                              - text: "Posts:"
+                              - generic [ref=f12e96]: "44"
+                            - generic "Professional user" [ref=f12e97]: PRO
+                        - link [ref=f12e100] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussion/12655/control-flow-features-while-loop-if-else-etc
+                          - time [ref=f12e101]: November 2019
+                    - generic [ref=f12e103]:
+                      - generic [ref=f12e104]:
+                        - text: Over the last couple of weeks, I realized that I need better Control Flow for feature execution, so I have started to hack away at a while loop feature. Have control-flow type features already been implemented? And if so, where can I find it?I have started by incorporating 'while loop' type behavior into the std linear pattern. My goal is to be able to recreate geometry a number of times until some condition is satisfied (ultimately using FS eval as a means to optimize some geometry.) In this contrived example, I am deriving a star, and continue to derive a larger and larger star until the star's volume would falsify a while loop guard. I got that working fine. But since each time I have to delete the previous star attempt, at the end I'm left with the star that just so happens to be the last one before the while loop exited. Is there any way to assign this star the same id as the first one created such that subsequent features 'recognize' it? How would I do that?
+                        - link "https://cad.onshape.com/documents/9b79414e1e0f4657737c60a1/w/7a7ca4a3e5bbfe2a831c16b5/e/d1a090a875d0434a34c6cebb" [ref=f12e105] [cursor=pointer]:
+                          - /url: https://cad.onshape.com/documents/9b79414e1e0f4657737c60a1/w/7a7ca4a3e5bbfe2a831c16b5/e/d1a090a875d0434a34c6cebb
+                        - text: (This is for a student team I'll be working with tomorrow) Also any other feedback about my overall approach/what to do instead of having a 'delete If' custom feature - is there a way I could make a generic feature execution conditional that doesn't involve writing a new conditional-type feature?
+                      - generic [ref=f12e106]:
+                        - text: "Tagged:"
+                        - list [ref=f12e107]:
+                          - listitem [ref=f12e108]:
+                            - link "featurescript" [ref=f12e109] [cursor=pointer]:
+                              - /url: /discussions/tagged/featurescript
+                      - generic [ref=f12e110]:
+                        - generic [ref=f12e111]:
+                          - button "Flag discussion" [ref=f12e112] [cursor=pointer]:
+                            - generic [ref=f12e113]: 
+                            - generic [ref=f12e114]: Flag
+                          - generic:  
+                        - button "Quote" [ref=f12e115] [cursor=pointer]:
+                          - generic [aria-hidden] [ref=f12e116]: 
+                          - text: Quote
+                        - button "Vote Down discussion" [ref=f12e117] [cursor=pointer]:
+                          - generic [ref=f12e118]: 
+                          - generic [ref=f12e119]: Vote Down
+                        - button "Vote Up discussion" [ref=f12e120] [cursor=pointer]:
+                          - generic [ref=f12e121]: 
+                          - generic [ref=f12e122]: Vote Up
+                  - list
+                  - heading "Leave a Comment" [level=2] [ref=f12e124]
+                  - generic [ref=f12e130]:
+                    - generic [ref=f12e133]:
+                      - generic [ref=f12e134]: To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu.
+                      - generic [ref=f12e135]:
+                        - generic [ref=f12e137]:
+                          - textbox "To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu." [ref=f12e138]:
+                            - paragraph [ref=f12e139]
+                          - generic: Type...
+                          - button "Element Toolbar" [ref=f12e142] [cursor=pointer]
+                        - menubar [ref=f12e146]:
+                          - menuitem "Emoji Picker" [ref=f12e147] [cursor=pointer]
+                          - menuitem "Upload Image" [ref=f12e148] [cursor=pointer]
+                          - menuitem "Insert Embed" [ref=f12e149] [cursor=pointer]
+                          - menuitem "Upload File" [ref=f12e150] [cursor=pointer]
+                          - menuitem "Insert Table" [ref=f12e151] [cursor=pointer]
+                    - generic [ref=f12e152]:
+                      - link "Save Draft" [ref=f12e153] [cursor=pointer]:
+                        - /url: /discussion/12655/control-flow-features-while-loop-if-else-etc#
+                      - button "Post Comment" [ref=f12e154] [cursor=pointer]
+              - generic [ref=f12e155]:
+                - button "New Post" [ref=f12e158] [cursor=pointer]
+                - generic [ref=f12e163]:
+                  - heading "Quick Links" [level=2] [ref=f12e168]
+                  - navigation "Quick Links" [ref=f12e170]:
+                    - list [ref=f12e171]:
+                      - listitem [ref=f12e172]:
+                        - link "All Categories" [ref=f12e173] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/categories
+                      - listitem [ref=f12e174]:
+                        - link "Recent Posts" [ref=f12e175] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions
+                      - listitem [ref=f12e176]:
+                        - link "Activity" [ref=f12e177] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/activity
+                      - listitem [ref=f12e178]:
+                        - link "My Bookmarks 0" [ref=f12e179] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/bookmarked
+                          - text: My Bookmarks
+                          - generic [ref=f12e180]: "0"
+                      - listitem [ref=f12e181]:
+                        - link "My Posts 7" [ref=f12e182] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/mine
+                          - text: My Posts
+                          - generic [ref=f12e183]: "7"
+                      - listitem [ref=f12e184]:
+                        - link "My Drafts 10" [ref=f12e185] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/drafts
+                          - text: My Drafts
+                          - generic [ref=f12e186]: "10"
+                      - listitem [ref=f12e187]:
+                        - link "Unanswered 99+" [ref=f12e188] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/unanswered
+                          - text: Unanswered
+                          - generic [ref=f12e189]: 99+
+                      - listitem [ref=f12e190]:
+                        - link "Groups" [ref=f12e191] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/groups
+                      - listitem [ref=f12e192]:
+                        - link "Best Of" [ref=f12e193] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/bestof
+                - generic [ref=f12e194]:
+                  - heading "Categories" [level=4] [ref=f12e196]
+                  - list [ref=f12e197]:
+                    - listitem [ref=f12e198]:
+                      - link "All Categories" [ref=f12e199] [cursor=pointer]:
+                        - /url: /categories
+                    - listitem [ref=f12e200]:
+                      - link "10.1K Community Support" [ref=f12e201] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                        - generic [ref=f12e202]: 10.1K
+                        - text: Community Support
+                    - listitem [ref=f12e204]:
+                      - link "3.6K Improvement requests" [ref=f12e205] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/improvement-voting
+                        - generic [ref=f12e206]: 3.6K
+                        - text: Improvement requests
+                    - listitem [ref=f12e208]:
+                      - link "4.5K General" [ref=f12e209] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/general
+                        - generic [ref=f12e210]: 4.5K
+                        - text: General
+                    - listitem [ref=f12e212]:
+                      - link "187 Account and subscriptions" [ref=f12e213] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/account-and-subscriptions
+                        - generic [ref=f12e214]: "187"
+                        - text: Account and subscriptions
+                    - listitem [ref=f12e216]:
+                      - link "350 Data management" [ref=f12e217] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/data-management
+                        - generic [ref=f12e218]: "350"
+                        - text: Data management
+                    - listitem [ref=f12e220]:
+                      - link "1.6K Product Feedback" [ref=f12e221] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                        - generic [ref=f12e222]: 1.6K
+                        - text: Product Feedback
+                    - listitem [ref=f12e224]:
+                      - link "212 New in Onshape" [ref=f12e225] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/recent-improvements
+                        - generic [ref=f12e226]: "212"
+                        - text: New in Onshape
+                    - listitem [ref=f12e228]:
+                      - link "10 Onshape Labs" [ref=f12e229] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-labs
+                        - generic [ref=f12e230]: "10"
+                        - text: Onshape Labs
+                    - listitem [ref=f12e232]:
+                      - link "73 CAM Studio" [ref=f12e233] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/cam-studio
+                        - generic [ref=f12e234]: "73"
+                        - text: CAM Studio
+                    - listitem [ref=f12e236]:
+                      - link "32 PCB Studio" [ref=f12e237] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/pcb-altium
+                        - generic [ref=f12e238]: "32"
+                        - text: PCB Studio
+                    - listitem [ref=f12e240]:
+                      - link "104 Simulation" [ref=f12e241] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/simulation
+                        - generic [ref=f12e242]: "104"
+                        - text: Simulation
+                    - listitem [ref=f12e244]:
+                      - link "207 Onshape Mobile" [ref=f12e245] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-mobile
+                        - generic [ref=f12e246]: "207"
+                        - text: Onshape Mobile
+                    - listitem [ref=f12e248]:
+                      - link "312 App Store & Partners Apps" [ref=f12e249] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/app-store-partners
+                        - generic [ref=f12e250]: "312"
+                        - text: App Store & Partners Apps
+                    - listitem [ref=f12e252]:
+                      - link "29 Public Model of the Week" [ref=f12e253] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/public-model-of-the-week
+                        - generic [ref=f12e254]: "29"
+                        - text: Public Model of the Week
+                    - listitem [ref=f12e256]:
+                      - link "8.1K Using Onshape" [ref=f12e257] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/using-onshape
+                        - generic [ref=f12e258]: 8.1K
+                        - text: Using Onshape
+                    - listitem [ref=f12e260]:
+                      - link "1.8K Drawings" [ref=f12e261] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/drawings
+                        - generic [ref=f12e262]: 1.8K
+                        - text: Drawings
+                    - listitem [ref=f12e264]:
+                      - link "2.3K FeatureScript" [ref=f12e265] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/featurescript
+                        - generic [ref=f12e266]: 2.3K
+                        - text: FeatureScript
+                    - listitem [ref=f12e268]:
+                      - link "304 Learning Center" [ref=f12e269] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/learning-center
+                        - generic [ref=f12e270]: "304"
+                        - text: Learning Center
+                    - listitem [ref=f12e272]:
+                      - link "249 Education Community" [ref=f12e273] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/education-community
+                        - generic [ref=f12e274]: "249"
+                        - text: Education Community
+                - generic [ref=f12e276]:
+                  - generic [ref=f12e277]:
+                    - heading "Who's Online in this Category" [level=4] [ref=f12e278]
+                    - generic "1" [ref=f12e280]
+                  - 'link "User: \"Jed_Yeiser\"" [ref=f12e283] [cursor=pointer]':
+                    - /url: https://forum.onshape.com/profile/Jed_Yeiser
+                    - img "Jed_Yeiser" [ref=f12e284]
+        - generic [ref=f12e285]:
+          - link "English" [ref=f12e287] [cursor=pointer]:
+            - /url: /profile/setlocale/en
+          - link "Deutsch" [ref=f12e289] [cursor=pointer]:
+            - /url: /profile/setlocale/de
+          - link "Español" [ref=f12e291] [cursor=pointer]:
+            - /url: /profile/setlocale/es
+          - link "Français" [ref=f12e293] [cursor=pointer]:
+            - /url: /profile/setlocale/fr
+          - link "Italiano" [ref=f12e295] [cursor=pointer]:
+            - /url: /profile/setlocale/it
+          - link "中文" [ref=f12e297] [cursor=pointer]:
+            - /url: /profile/setlocale/zh
+          - link "中文（台灣）" [ref=f12e299] [cursor=pointer]:
+            - /url: /profile/setlocale/zh_TW
+          - link "日本語" [ref=f12e301] [cursor=pointer]:
+            - /url: /profile/setlocale/ja
+          - link "한국어" [ref=f12e303] [cursor=pointer]:
+            - /url: /profile/setlocale/ko
+    - contentinfo [ref=f12e305]:
+      - generic [ref=f12e306]:
+        - link "Facebook" [ref=f12e307] [cursor=pointer]:
+          - /url: https://www.facebook.com/onshapeInc
+          - img "Facebook" [ref=f12e308]
+        - link "Twitter" [ref=f12e309] [cursor=pointer]:
+          - /url: https://twitter.com/Onshape
+          - img "Twitter" [ref=f12e310]
+        - link "LinkedIn" [ref=f12e311] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/onshape-inc
+          - img "LinkedIn" [ref=f12e312]
+  - region "Dialogs"
+  - generic:
+    - generic:
+      - generic:
+        - log [ref=f12e313]
+        - log [ref=f12e314]
+        - log [ref=f12e315]
+        - log [ref=f12e316]

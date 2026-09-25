@@ -1,0 +1,451 @@
+- generic [active] [ref=f11e1]:
+  - generic [ref=f11e2]:
+    - generic [ref=f11e3]:
+      - banner [ref=f11e5]:
+        - generic [ref=f11e13]:
+          - generic [ref=f11e15]:
+            - link "Skip to content":
+              - /url: "#skip-nav-content"
+            - link "Onshape" [ref=f11e16] [cursor=pointer]:
+              - /url: https://forum.onshape.com/
+              - img "Home" [ref=f11e18]
+          - navigation "Community" [ref=f11e19]:
+            - list [ref=f11e20]:
+              - listitem [ref=f11e21]:
+                - link "Discussions" [ref=f11e22] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/discussions
+              - listitem [ref=f11e24]:
+                - link "Categories" [ref=f11e25] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/categories
+              - listitem [ref=f11e27]:
+                - link "Activity" [ref=f11e28] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/activity
+              - listitem [ref=f11e30]:
+                - link "Ask a Question" [ref=f11e31] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/post/question
+          - button "Search" [ref=f11e35] [cursor=pointer]
+      - generic [ref=f11e37]:
+        - main [ref=f11e39]:
+          - generic [ref=f11e44]:
+            - navigation "Breadcrumb" [ref=f11e46]:
+              - generic [ref=f11e47]:
+                - link "Home" [ref=f11e49] [cursor=pointer]:
+                  - /url: https://forum.onshape.com/
+                - generic [ref=f11e50]:
+                  - text: ›
+                  - link "General" [ref=f11e52] [cursor=pointer]:
+                    - /url: https://forum.onshape.com/categories/general
+            - generic [ref=f11e53]:
+              - generic [ref=f11e54]:
+                - generic [ref=f11e55]:
+                  - link "×" [ref=f11e56] [cursor=pointer]:
+                    - /url: /dashboard/message/dismiss/5/i2AGneC3igK3eBK1?Target=discussion/30453/repeat-only-feature-pattern
+                  - paragraph [ref=f11e57]: Welcome to the Onshape forum! Ask questions and join in the discussions about everything Onshape.
+                  - strong [ref=f11e58]: "First time visiting? Here are some places to start:"
+                  - list [ref=f11e59]:
+                    - listitem [ref=f11e60]:
+                      - text: Looking for a certain topic? Check out the
+                      - link "categories filter" [ref=f11e61] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories
+                      - text: or use Search (upper right).
+                    - listitem [ref=f11e62]:
+                      - text: Need support?
+                      - link "Ask a question" [ref=f11e63] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/post/question/community-support
+                      - text: to our
+                      - link "Community Support" [ref=f11e64] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                      - text: category.
+                    - listitem [ref=f11e65]:
+                      - text: Please submit support tickets for bugs but you can request improvements in the
+                      - link "Product Feedback category" [ref=f11e66] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                      - text: .
+                    - listitem [ref=f11e67]: Be respectful, on topic and if you see a problem, Flag it.
+                  - paragraph [ref=f11e68]:
+                    - text: If you would like to contact our Community Manager personally, feel free to
+                    - link "send a private message" [ref=f11e69] [cursor=pointer]:
+                      - /url: https://forum.onshape.com/profile/6/LouGallo
+                    - text: or
+                    - link "an email" [ref=f11e70] [cursor=pointer]:
+                      - /url: mailto:lgallo@onshape.com
+                    - text: .
+                - generic [ref=f11e71]:
+                  - heading "\"Repeat only\" feature pattern?" [level=1] [ref=f11e72]
+                  - generic [ref=f11e73]:
+                    - 'link "Bookmark for discussion: &quot;&amp;quot;Repeat only&amp;quot; feature pattern?&quot;" [ref=f11e74] [cursor=pointer]':
+                      - /url: /discussion/bookmark/30453/i2AGneC3igK3eBK1?Target=discussion%2F30453%2Frepeat-only-feature-pattern
+                    - button "Options" [ref=f11e75]
+                - generic [ref=f11e79]:
+                  - generic [ref=f11e82]:
+                    - generic [ref=f11e83]:
+                      - 'link "User: \"sasha_sklar061\"" [ref=f11e84] [cursor=pointer]':
+                        - /url: https://forum.onshape.com/profile/sasha_sklar061
+                        - img "sasha_sklar061" [ref=f11e85]
+                      - generic [ref=f11e86]:
+                        - generic [ref=f11e87]:
+                          - link "sasha_sklar061" [ref=f11e89] [cursor=pointer]:
+                            - /url: https://forum.onshape.com/profile/sasha_sklar061
+                          - generic [ref=f11e90]:
+                            - generic [ref=f11e91]: Member
+                            - generic [ref=f11e92]:
+                              - text: "Posts:"
+                              - generic [ref=f11e93]: "34"
+                            - generic "Padawan" [ref=f11e94]: ✭✭
+                        - link [ref=f11e97] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussion/30453/repeat-only-feature-pattern
+                          - time [ref=f11e98]: March 13
+                    - generic [ref=f11e100]:
+                      - generic [ref=f11e101]:
+                        - paragraph [ref=f11e102]: Is there a way to repeat a set of features without translating the geometry? Basically linear/circular/curve pattern but just reapplying the features to update the value of driving variables in each iteration?
+                        - paragraph [ref=f11e103]: My example use case is a sweep operation that I want to repeat while increasing rotation on the sketch profile (not the twist) on each iteration.
+                        - paragraph [ref=f11e104]: This feels like something that will have an obvious answer but I promise I searched before posting this!
+                      - generic [ref=f11e105]:
+                        - generic [ref=f11e106]:
+                          - button "Flag discussion" [ref=f11e107] [cursor=pointer]:
+                            - generic [ref=f11e108]: 
+                            - generic [ref=f11e109]: Flag
+                          - generic:  
+                        - button "Quote" [ref=f11e110] [cursor=pointer]:
+                          - generic [aria-hidden] [ref=f11e111]: 
+                          - text: Quote
+                        - button "Vote Down discussion" [ref=f11e112] [cursor=pointer]:
+                          - generic [ref=f11e113]: 
+                          - generic [ref=f11e114]: Vote Down
+                        - button "Vote Up discussion" [ref=f11e115] [cursor=pointer]:
+                          - generic [ref=f11e116]: 
+                          - generic [ref=f11e117]: Vote Up
+                  - heading "Comments" [level=2] [ref=f11e119]
+                  - list [ref=f11e120]:
+                    - listitem [ref=f11e121]:
+                      - generic [ref=f11e122]:
+                        - generic [ref=f11e123]:
+                          - 'link "User: \"bladec\"" [ref=f11e124] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/bladec
+                            - img "bladec" [ref=f11e125]
+                          - generic [ref=f11e126]:
+                            - generic [ref=f11e127]:
+                              - link "bladec" [ref=f11e129] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/bladec
+                              - generic [ref=f11e130]:
+                                - generic [ref=f11e131]: Member
+                                - generic [ref=f11e132]:
+                                  - text: "Posts:"
+                                  - generic [ref=f11e133]: "35"
+                                - generic "Professional user" [ref=f11e134]: PRO
+                            - link [ref=f11e137] [cursor=pointer]:
+                              - /url: /discussion/comment/128153/#Comment_128153
+                              - time [ref=f11e138]: March 13
+                          - button "Options" [ref=f11e140]:
+                            - generic [aria-hidden] [ref=f11e141] [cursor=pointer]
+                        - generic [ref=f11e143]:
+                          - paragraph [ref=f11e145]: For variable driven patterns I just use a linear pattern with distance set to 0 and top plane as the direction.
+                          - generic [ref=f11e146]:
+                            - generic [ref=f11e147]:
+                              - button "Flag comment" [ref=f11e148] [cursor=pointer]:
+                                - generic [ref=f11e149]: 
+                                - generic [ref=f11e150]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f11e151] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f11e152]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f11e153] [cursor=pointer]:
+                              - generic [ref=f11e154]: 
+                              - generic [ref=f11e155]: Vote Down
+                            - button "Vote Up comment" [ref=f11e156] [cursor=pointer]:
+                              - generic [ref=f11e157]: 
+                              - generic [ref=f11e158]: "1"
+                              - generic [ref=f11e159]: Vote Up
+                    - listitem [ref=f11e160]:
+                      - generic [ref=f11e161]:
+                        - generic [ref=f11e162]:
+                          - 'link "User: \"RhettRobinson\"" [ref=f11e163] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/RhettRobinson
+                            - img "RhettRobinson" [ref=f11e164]
+                          - generic [ref=f11e165]:
+                            - generic [ref=f11e166]:
+                              - link "RhettRobinson" [ref=f11e168] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/RhettRobinson
+                              - generic [ref=f11e169]:
+                                - generic [ref=f11e170]: Member
+                                - generic [ref=f11e171]:
+                                  - text: "Posts:"
+                                  - generic [ref=f11e172]: "231"
+                                - generic "Knight" [ref=f11e173]: ✭✭✭
+                            - link [ref=f11e176] [cursor=pointer]:
+                              - /url: /discussion/comment/128154/#Comment_128154
+                              - time [ref=f11e177]: March 13
+                          - button "Options" [ref=f11e179]:
+                            - generic [aria-hidden] [ref=f11e180] [cursor=pointer]
+                        - generic [ref=f11e182]:
+                          - paragraph [ref=f11e184]:
+                            - text: "Are you meaning something like this?:"
+                            - 'link "Tech Tip: How to Use Variables in Patterns to Vary Features" [ref=f11e185] [cursor=pointer]':
+                              - /url: https://www.onshape.com/en/resource-center/tech-tips/tech-tip-how-to-use-variables-in-patterns-to-vary-features
+                            - text: ". Checking out this FeatureScript from Evan Reese may also be what you are looking for:"
+                            - link "🚨 Custom Feature Alert 🚨 Query Pattern — Onshape" [ref=f11e186] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/discussion/29873/custom-feature-alert-query-pattern/p1
+                          - generic [ref=f11e187]:
+                            - generic [ref=f11e188]:
+                              - button "Flag comment" [ref=f11e189] [cursor=pointer]:
+                                - generic [ref=f11e190]: 
+                                - generic [ref=f11e191]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f11e192] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f11e193]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f11e194] [cursor=pointer]:
+                              - generic [ref=f11e195]: 
+                              - generic [ref=f11e196]: Vote Down
+                            - button "Vote Up comment" [ref=f11e197] [cursor=pointer]:
+                              - generic [ref=f11e198]: 
+                              - generic [ref=f11e199]: Vote Up
+                    - listitem [ref=f11e200]:
+                      - generic [ref=f11e201]:
+                        - generic [ref=f11e202]:
+                          - 'link "User: \"eric_pesty\"" [ref=f11e203] [cursor=pointer]':
+                            - /url: https://forum.onshape.com/profile/eric_pesty
+                            - img "eric_pesty" [ref=f11e204]
+                          - generic [ref=f11e205]:
+                            - generic [ref=f11e206]:
+                              - link "eric_pesty" [ref=f11e208] [cursor=pointer]:
+                                - /url: https://forum.onshape.com/profile/eric_pesty
+                              - generic [ref=f11e209]:
+                                - generic [ref=f11e210]: Member, pcbaevp
+                                - generic [ref=f11e211]:
+                                  - text: "Posts:"
+                                  - generic [ref=f11e212]: 2,878
+                                - generic "Professional user" [ref=f11e213]: PRO
+                            - link [ref=f11e216] [cursor=pointer]:
+                              - /url: /discussion/comment/128159/#Comment_128159
+                              - time [ref=f11e217]: March 13
+                          - button "Options" [ref=f11e219]:
+                            - generic [aria-hidden] [ref=f11e220] [cursor=pointer]
+                        - generic [ref=f11e222]:
+                          - paragraph [ref=f11e224]:
+                            - text: Yeah as
+                            - link "@bladec" [ref=f11e225] [cursor=pointer]:
+                              - /url: https://forum.onshape.com/profile/bladec
+                            - text: says, if incrementing the variable is what makes things happen you can use 0 distance linear pattern to do that (a zero angle circular pattern should also work)
+                          - generic [ref=f11e226]:
+                            - generic [ref=f11e227]:
+                              - button "Flag comment" [ref=f11e228] [cursor=pointer]:
+                                - generic [ref=f11e229]: 
+                                - generic [ref=f11e230]: Flag
+                              - generic:  
+                            - button "Quote" [ref=f11e231] [cursor=pointer]:
+                              - generic [aria-hidden] [ref=f11e232]: 
+                              - text: Quote
+                            - button "Vote Down comment" [ref=f11e233] [cursor=pointer]:
+                              - generic [ref=f11e234]: 
+                              - generic [ref=f11e235]: Vote Down
+                            - button "Vote Up comment" [ref=f11e236] [cursor=pointer]:
+                              - generic [ref=f11e237]: 
+                              - generic [ref=f11e238]: Vote Up
+                  - heading "Leave a Comment" [level=2] [ref=f11e240]
+                  - generic [ref=f11e246]:
+                    - generic [ref=f11e249]:
+                      - generic [ref=f11e250]: To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu.
+                      - generic [ref=f11e251]:
+                        - generic [ref=f11e253]:
+                          - textbox "To access the paragraph format menu, press control, shift, and P. To access the text format menu, or element specific menu, press control, shift, and K. Use the arrow keys to navigate in each menu." [ref=f11e254]:
+                            - paragraph [ref=f11e255]
+                          - generic: Type...
+                          - button "Element Toolbar" [ref=f11e258] [cursor=pointer]
+                        - menubar [ref=f11e262]:
+                          - menuitem "Emoji Picker" [ref=f11e263] [cursor=pointer]
+                          - menuitem "Upload Image" [ref=f11e264] [cursor=pointer]
+                          - menuitem "Insert Embed" [ref=f11e265] [cursor=pointer]
+                          - menuitem "Upload File" [ref=f11e266] [cursor=pointer]
+                          - menuitem "Insert Table" [ref=f11e267] [cursor=pointer]
+                    - generic [ref=f11e268]:
+                      - link "Save Draft" [ref=f11e269] [cursor=pointer]:
+                        - /url: /discussion/30453/repeat-only-feature-pattern#
+                      - button "Post Comment" [ref=f11e270] [cursor=pointer]
+              - generic [ref=f11e271]:
+                - button "New Post" [ref=f11e274] [cursor=pointer]
+                - generic [ref=f11e279]:
+                  - heading "Quick Links" [level=2] [ref=f11e284]
+                  - navigation "Quick Links" [ref=f11e286]:
+                    - list [ref=f11e287]:
+                      - listitem [ref=f11e288]:
+                        - link "All Categories" [ref=f11e289] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/categories
+                      - listitem [ref=f11e290]:
+                        - link "Recent Posts" [ref=f11e291] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions
+                      - listitem [ref=f11e292]:
+                        - link "Activity" [ref=f11e293] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/activity
+                      - listitem [ref=f11e294]:
+                        - link "My Bookmarks 0" [ref=f11e295] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/bookmarked
+                          - text: My Bookmarks
+                          - generic [ref=f11e296]: "0"
+                      - listitem [ref=f11e297]:
+                        - link "My Posts 7" [ref=f11e298] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/mine
+                          - text: My Posts
+                          - generic [ref=f11e299]: "7"
+                      - listitem [ref=f11e300]:
+                        - link "My Drafts 10" [ref=f11e301] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/drafts
+                          - text: My Drafts
+                          - generic [ref=f11e302]: "10"
+                      - listitem [ref=f11e303]:
+                        - link "Unanswered 99+" [ref=f11e304] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/discussions/unanswered
+                          - text: Unanswered
+                          - generic [ref=f11e305]: 99+
+                      - listitem [ref=f11e306]:
+                        - link "Groups" [ref=f11e307] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/groups
+                      - listitem [ref=f11e308]:
+                        - link "Best Of" [ref=f11e309] [cursor=pointer]:
+                          - /url: https://forum.onshape.com/bestof
+                - generic [ref=f11e310]:
+                  - heading "Categories" [level=4] [ref=f11e312]
+                  - list [ref=f11e313]:
+                    - listitem [ref=f11e314]:
+                      - link "All Categories" [ref=f11e315] [cursor=pointer]:
+                        - /url: /categories
+                    - listitem [ref=f11e316]:
+                      - link "10.1K Community Support" [ref=f11e317] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/community-support
+                        - generic [ref=f11e318]: 10.1K
+                        - text: Community Support
+                    - listitem [ref=f11e320]:
+                      - link "3.6K Improvement requests" [ref=f11e321] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/improvement-voting
+                        - generic [ref=f11e322]: 3.6K
+                        - text: Improvement requests
+                    - listitem [ref=f11e324]:
+                      - link "4.5K General" [ref=f11e325] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/general
+                        - generic [ref=f11e326]: 4.5K
+                        - text: General
+                    - listitem [ref=f11e328]:
+                      - link "187 Account and subscriptions" [ref=f11e329] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/account-and-subscriptions
+                        - generic [ref=f11e330]: "187"
+                        - text: Account and subscriptions
+                    - listitem [ref=f11e332]:
+                      - link "350 Data management" [ref=f11e333] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/data-management
+                        - generic [ref=f11e334]: "350"
+                        - text: Data management
+                    - listitem [ref=f11e336]:
+                      - link "1.6K Product Feedback" [ref=f11e337] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/product-feedback
+                        - generic [ref=f11e338]: 1.6K
+                        - text: Product Feedback
+                    - listitem [ref=f11e340]:
+                      - link "212 New in Onshape" [ref=f11e341] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/recent-improvements
+                        - generic [ref=f11e342]: "212"
+                        - text: New in Onshape
+                    - listitem [ref=f11e344]:
+                      - link "10 Onshape Labs" [ref=f11e345] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-labs
+                        - generic [ref=f11e346]: "10"
+                        - text: Onshape Labs
+                    - listitem [ref=f11e348]:
+                      - link "73 CAM Studio" [ref=f11e349] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/cam-studio
+                        - generic [ref=f11e350]: "73"
+                        - text: CAM Studio
+                    - listitem [ref=f11e352]:
+                      - link "32 PCB Studio" [ref=f11e353] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/pcb-altium
+                        - generic [ref=f11e354]: "32"
+                        - text: PCB Studio
+                    - listitem [ref=f11e356]:
+                      - link "104 Simulation" [ref=f11e357] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/simulation
+                        - generic [ref=f11e358]: "104"
+                        - text: Simulation
+                    - listitem [ref=f11e360]:
+                      - link "207 Onshape Mobile" [ref=f11e361] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/onshape-mobile
+                        - generic [ref=f11e362]: "207"
+                        - text: Onshape Mobile
+                    - listitem [ref=f11e364]:
+                      - link "312 App Store & Partners Apps" [ref=f11e365] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/app-store-partners
+                        - generic [ref=f11e366]: "312"
+                        - text: App Store & Partners Apps
+                    - listitem [ref=f11e368]:
+                      - link "29 Public Model of the Week" [ref=f11e369] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/public-model-of-the-week
+                        - generic [ref=f11e370]: "29"
+                        - text: Public Model of the Week
+                    - listitem [ref=f11e372]:
+                      - link "8.1K Using Onshape" [ref=f11e373] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/using-onshape
+                        - generic [ref=f11e374]: 8.1K
+                        - text: Using Onshape
+                    - listitem [ref=f11e376]:
+                      - link "1.8K Drawings" [ref=f11e377] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/drawings
+                        - generic [ref=f11e378]: 1.8K
+                        - text: Drawings
+                    - listitem [ref=f11e380]:
+                      - link "2.3K FeatureScript" [ref=f11e381] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/featurescript
+                        - generic [ref=f11e382]: 2.3K
+                        - text: FeatureScript
+                    - listitem [ref=f11e384]:
+                      - link "304 Learning Center" [ref=f11e385] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/learning-center
+                        - generic [ref=f11e386]: "304"
+                        - text: Learning Center
+                    - listitem [ref=f11e388]:
+                      - link "249 Education Community" [ref=f11e389] [cursor=pointer]:
+                        - /url: https://forum.onshape.com/categories/education-community
+                        - generic [ref=f11e390]: "249"
+                        - text: Education Community
+                - generic [ref=f11e392]:
+                  - generic [ref=f11e393]:
+                    - heading "Who's Online in this Category" [level=4] [ref=f11e394]
+                    - generic "1" [ref=f11e396]
+                  - 'link "User: \"Jed_Yeiser\"" [ref=f11e399] [cursor=pointer]':
+                    - /url: https://forum.onshape.com/profile/Jed_Yeiser
+                    - img "Jed_Yeiser" [ref=f11e400]
+        - generic [ref=f11e401]:
+          - link "English" [ref=f11e403] [cursor=pointer]:
+            - /url: /profile/setlocale/en
+          - link "Deutsch" [ref=f11e405] [cursor=pointer]:
+            - /url: /profile/setlocale/de
+          - link "Español" [ref=f11e407] [cursor=pointer]:
+            - /url: /profile/setlocale/es
+          - link "Français" [ref=f11e409] [cursor=pointer]:
+            - /url: /profile/setlocale/fr
+          - link "Italiano" [ref=f11e411] [cursor=pointer]:
+            - /url: /profile/setlocale/it
+          - link "中文" [ref=f11e413] [cursor=pointer]:
+            - /url: /profile/setlocale/zh
+          - link "中文（台灣）" [ref=f11e415] [cursor=pointer]:
+            - /url: /profile/setlocale/zh_TW
+          - link "日本語" [ref=f11e417] [cursor=pointer]:
+            - /url: /profile/setlocale/ja
+          - link "한국어" [ref=f11e419] [cursor=pointer]:
+            - /url: /profile/setlocale/ko
+    - contentinfo [ref=f11e421]:
+      - generic [ref=f11e422]:
+        - link "Facebook" [ref=f11e423] [cursor=pointer]:
+          - /url: https://www.facebook.com/onshapeInc
+          - img "Facebook" [ref=f11e424]
+        - link "Twitter" [ref=f11e425] [cursor=pointer]:
+          - /url: https://twitter.com/Onshape
+          - img "Twitter" [ref=f11e426]
+        - link "LinkedIn" [ref=f11e427] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/onshape-inc
+          - img "LinkedIn" [ref=f11e428]
+  - region "Dialogs"
+  - generic:
+    - generic:
+      - generic:
+        - log [ref=f11e429]
+        - log [ref=f11e430]
+        - log [ref=f11e431]
+        - log [ref=f11e432]
