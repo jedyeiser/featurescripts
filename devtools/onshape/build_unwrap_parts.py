@@ -88,7 +88,7 @@ for name, body in [("4101 base", "RtjP"), ("4305", "RtjT"), ("6005", "Rtjf"), ("
     if ONLY and ONLY != body:
         continue
     unwrap("Unwrap %s (plate, own section)" % name,
-           [qd("parts", body), qd("profileFace", "JCC"), qd("alignPoint", MC), qd("origin", TOP_PLANE), b("debugPrintEdges", body == __import__("os").environ.get("DEBUG"))],
+           [qd("parts", body), qd("profileFace", "JCC"), qd("alignPoint", MC), qd("origin", TOP_PLANE), b("debugPrintEdges", body == __import__("os").environ.get("DEBUG")), b("debugKeepLengthCurves", True)],
            {"unwrapType": "THICKENED", "targetFrom": "FACE"})
 
 # Tip / tail pieces that do not reach the alignment station: REF_WIRE, offset to their mid-height.
@@ -97,7 +97,7 @@ for name, body, offset in [("Tip-Mat", "RtjX", "1.88 mm"), ("Tail-Mat", "Rtjb", 
     if ONLY and ONLY != body:
         continue
     unwrap("Unwrap %s (plate, REF_WIRE offset %s)" % (name, offset),
-           [qd("parts", body), qd("reference", REF_WIRE), num("targetOffset", offset), qd("alignPoint", MC), qd("origin", TOP_PLANE)],
+           [qd("parts", body), qd("reference", REF_WIRE), num("targetOffset", offset), qd("alignPoint", MC), qd("origin", TOP_PLANE), b("debugKeepLengthCurves", True)],
            {"unwrapType": "THICKENED", "targetFrom": "WIRE"})
 print("studio", E)
 
@@ -107,5 +107,5 @@ for name, body in [("CORE", "Rtjn"), ("4802 tip extension", "Rtj7"), ("4803 tail
     if ONLY and ONLY != body:
         continue
     unwrap("Unwrap %s (part, along REF_WIRE)" % name,
-           [qd("parts", body), qd("reference", REF_WIRE), qd("alignPoint", MC), qd("origin", TOP_PLANE)],
+           [qd("parts", body), qd("reference", REF_WIRE), qd("alignPoint", MC), qd("origin", TOP_PLANE), b("debugKeepLengthCurves", True)],
            {"unwrapType": "PART", "preserveLength": "REFERENCE"})

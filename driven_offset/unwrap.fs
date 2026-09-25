@@ -618,6 +618,36 @@ function lengthAndVolume(context is Context, id is Id, chart is map, cs is Coord
         arcHi = (arcHi == undefined) ? u[3] : max(arcHi, u[3]);
     }
 
+    // A rounded end or a U-turn reaches furthest part way along an edge, not at a vertex: sample the edges that
+    // touch a vertex near either end of the extent.
+    var nearEnds = [];
+    previous = undefined;
+    for (var k = 0; k < size(vertices); k += stride)
+    {
+        const u = unwrapFast(chart, evVertexPoint(context, { "vertex" : vertices[k] }), previous);
+        previous = u;
+        if (u[3] - arcLo < UNWRAP_CHECK_END_ZONE || arcHi - u[3] < UNWRAP_CHECK_END_ZONE)
+        {
+            nearEnds = append(nearEnds, vertices[k]);
+        }
+    }
+    var params = [];
+    for (var j = 1; j < UNWRAP_CHECK_EDGE_SAMPLES; j += 1)
+    {
+        params = append(params, j / UNWRAP_CHECK_EDGE_SAMPLES);
+    }
+    for (var edge in evaluateQuery(context, qAdjacent(qUnion(nearEnds), AdjacencyType.VERTEX, EntityType.EDGE)))
+    {
+        previous = undefined;
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params }))
+        {
+            const u = unwrapFast(chart, tl.origin, previous);
+            previous = u;
+            arcLo = min(arcLo, u[3]);
+            arcHi = max(arcHi, u[3]);
+        }
+    }
+
     var points = [];
     var wrapped = 0 * meter;
     for (var j = 0; j <= UNWRAP_CHECK_SAMPLES; j += 1)
@@ -663,6 +693,10 @@ function lengthAndVolume(context is Context, id is Id, chart is map, cs is Coord
 /** Vertices read for a body's extent in the length check, and samples on the wrapped length curve. */
 const UNWRAP_CHECK_VERTICES = 400;
 const UNWRAP_CHECK_SAMPLES = 400;
+
+/** Edges touching a vertex within this arc of either end of the extent are sampled along their length. */
+const UNWRAP_CHECK_END_ZONE = 0.03;
+const UNWRAP_CHECK_EDGE_SAMPLES = 40;
 
 function checkValues(checks is array, key is string) returns array
 {

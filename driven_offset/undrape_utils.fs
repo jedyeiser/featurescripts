@@ -109,6 +109,9 @@ export const UNDRAPE_KERNEL_RETRIES = [0, 1e-6, -1e-6, 5e-5, -5e-5];
 //   14 px, 15 py, 16 pz        world point (metres)
 //   17 sample                  1 when emitted as an edge sample lying in the plane (not a transverse crossing)
 //   18 span                    the edge-table span it lies in (a warm start for the next station)
+//   19 tw0, 20 th0             unit section tangent on the edge's first side face (tw >= 0)
+//   21 tw1, 22 th1             the same on its second side face (= first unless creased)
+//   23 face0, 24 face1         the edge's side faces (indices into the side's faces; -1: none, a rim edge)
 
 // ============================================================================
 // Chart access (plain numbers)
@@ -438,19 +441,23 @@ export function undrapeSampleSide(context is Context, side is Query, c is map) r
     // Every edge of a solid bounds two faces: an edge with one side face bounds a wall, i.e. is on the rim.
     var edges = [];
     var facesOf = {};
-    for (var f in faces)
+    var faceIndicesOf = {};
+    for (var fi = 0; fi < size(faces); fi += 1)
     {
+        const f = faces[fi];
         for (var edge in evaluateQuery(context, qAdjacent(f, AdjacencyType.EDGE, EntityType.EDGE)))
         {
             const key = edge.transientId;
             if (facesOf[key] == undefined)
             {
                 facesOf[key] = [f];
+                faceIndicesOf[key] = [fi];
                 edges = append(edges, edge);
             }
             else
             {
                 facesOf[key] = append(facesOf[key], f);
+                faceIndicesOf[key] = append(faceIndicesOf[key], fi);
             }
         }
     }
@@ -500,9 +507,43 @@ export function undrapeSampleSide(context is Context, side is Query, c is map) r
         }
         var table = undrapeEdgeTable(lines, normals, others, intoSign, onRim);
         table.edge = edge;
+        // the side faces as indices (section ordering by face adjacency): first, second (-1 on the rim)
+        const fis = faceIndicesOf[edge.transientId];
+        table.faces = [fis[0], (size(fis) > 1) ? fis[1] : -1];
+        if (onRim)
+        {
+            table.vertexKeys = undrapeVertexKeys(context, edge, table);
+        }
         tables[k] = table;
     }
     return { "tables" : tables, "faceCount" : size(faces) };
+}
+
+/**
+ * The topological vertices at the first and last sample of a rim edge, as transient ids: rim loops are
+ * chained by these, not by position. Tolerant models leave neighbouring edges' end points apart by up to a
+ * micron or so (0.4 and 0.6 um on the 0.44 mm wing plate 4305, which split its outline into 7 open chains).
+ * A closed edge has one vertex (or none): both ends get the same key.
+ */
+export function undrapeVertexKeys(context is Context, edge is Query, tb is map) returns array
+{
+    const vertices = evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX));
+    if (size(vertices) == 0)
+    {
+        const key = "closed:" ~ edge.transientId;
+        return [key, key];
+    }
+    if (size(vertices) == 1)
+    {
+        return [vertices[0].transientId, vertices[0].transientId];
+    }
+    const last = tb.count - 1;
+    const p = evVertexPoint(context, { "vertex" : vertices[0] });
+    const d0 = (p[0].value - tb.px[0]) * (p[0].value - tb.px[0]) + (p[1].value - tb.py[0]) * (p[1].value - tb.py[0])
+        + (p[2].value - tb.pz[0]) * (p[2].value - tb.pz[0]);
+    const d1 = (p[0].value - tb.px[last]) * (p[0].value - tb.px[last]) + (p[1].value - tb.py[last]) * (p[1].value - tb.py[last])
+        + (p[2].value - tb.pz[last]) * (p[2].value - tb.pz[last]);
+    return (d0 <= d1) ? [vertices[0].transientId, vertices[1].transientId] : [vertices[1].transientId, vertices[0].transientId];
 }
 
 /**
@@ -846,6 +887,8 @@ export function undrapeCrossingAt(tb is map, e is number, i is number, f is numb
     var thA = th;
     var twB = tw;
     var thB = th;
+    var tw1 = tw;
+    var th1 = th;
     if (tb.creased)
     {
         var mx = r * tb.mx[j] + g * tb.mx[k];
@@ -853,6 +896,8 @@ export function undrapeCrossingAt(tb is map, e is number, i is number, f is numb
         var mz = r * tb.mz[j] + g * tb.mz[k];
         const mn = sqrt(mx * mx + my * my + mz * mz);
         const s2 = undrapeTangent(fr, mx / mn, my / mn, mz / mn);
+        tw1 = s2[0];
+        th1 = s2[1];
         // Face 1 lies on the +w side of the crossing when its inward direction runs with its section tangent.
         const ix = r * tb.ix[j] + g * tb.ix[k];
         const iy = r * tb.iy[j] + g * tb.iy[k];
@@ -885,7 +930,8 @@ export function undrapeCrossingAt(tb is map, e is number, i is number, f is numb
         valid = min(valid, s2[3]);
     }
     return [dx * w0 + dy * w1 + dz * w2, dx * h0 + dy * h1 + dz * h2,
-            twA, thA, twB, thB, inPlane, cosCross, tb.onRim ? 1 : 0, e, nx, ny, nz, valid, qx, qy, qz, sample, i];
+            twA, thA, twB, thB, inPlane, cosCross, tb.onRim ? 1 : 0, e, nx, ny, nz, valid, qx, qy, qz, sample, i,
+            tw, th, tw1, th1, tb.faces[0], tb.faces[1]];
 }
 
 /** Newton on Hermite span i of `tb` for the plane crossing, bracketed by distances g0, g1. Returns f. */
@@ -1533,15 +1579,20 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
     var vertices = [];
     var incident = [];
     var vertexOf = {};
+    var byKey = {};
     for (var r in rim)
     {
         const tb = tables[r];
         const last = tb.count - 1;
         var ends = [];
-        for (var p in [[tb.px[0], tb.py[0], tb.pz[0]], [tb.px[last], tb.py[last], tb.pz[last]]])
+        for (var end = 0; end < 2; end += 1)
         {
-            var found = -1;
-            for (var v = 0; v < size(vertices); v += 1)
+            const i = (end == 0) ? 0 : last;
+            const p = [tb.px[i], tb.py[i], tb.pz[i]];
+            // topological vertex first (tolerant models leave edge ends apart), else by position
+            const key = (tb.vertexKeys == undefined) ? undefined : tb.vertexKeys[end];
+            var found = (key == undefined || byKey[key] == undefined) ? -1 : byKey[key];
+            for (var v = 0; found < 0 && key == undefined && v < size(vertices); v += 1)
             {
                 const dx = vertices[v][0] - p[0];
                 const dy = vertices[v][1] - p[1];
@@ -1549,8 +1600,11 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
                 if (dx * dx + dy * dy + dz * dz < UNDRAPE_VERTEX_TOL * UNDRAPE_VERTEX_TOL)
                 {
                     found = v;
-                    break;
                 }
+            }
+            if (found < 0 && key != undefined)
+            {
+                byKey[key] = size(vertices);
             }
             if (found < 0)
             {
