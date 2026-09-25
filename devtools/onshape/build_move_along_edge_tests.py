@@ -12,10 +12,13 @@ Cases sit 1000 mm apart along X. Cubes are 20 mm, centred on the path unless sta
   M4  mate connector as points: 100 "M4 P0", copy 200 "M4 P1" -> 2 named points, connector stays at 4000
   M5  mate connector moved 100                               -> connector origin (5100, 0, 0)
   M6  closed square loop (perimeter 800), moved 900          -> wraps to a corner (6100 or 5900, -100)
-  M7  S-curve (inflection), cube 30 above the plane, Frenet  -> normal flips: centroid (7200, 200, -30)
-  M8  same, Transported                                      -> no twist: centroid (8200, 200, 30)
+  M7  S-curve (inflection), cube 30 above the plane, Orientation Frenet -> normal flips: centroid (7200, 200, -30)
+  M8  same, Orientation Transported                          -> no twist: centroid (8200, 200, 30)
   M9  flip + past the path start: line 9000..9200, cube at 9050, 100 back -> (8950, 0, 0)
   M10 two sketch edges, second drawn reversed, 130          -> round the corner (10100, 50, 0)
+  M12-M14 sketch edge -> wire, sketch point -> points, mixed selection names
+  M15-M16 move to the path point nearest a target (a point; a line crossing the path)
+  M17-M19 Apply: translate only, rotate only, rotate only to a nearest point (40 x 20 blocks show the turn)
   M11 disconnected edges (temporary instance, deleted)      -> ERROR
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_move_along_edge_tests.py
@@ -144,10 +147,11 @@ def plane_at(name, offset):
     return 'qCreatedBy(makeId("%s"), EntityType.FACE)' % PLANES[offset]
 
 
-def cube(name, x, y, zc=0, half=10):
-    """A 2*half cube centred at (x, y, zc)."""
+def cube(name, x, y, zc=0, half=10, hx=None):
+    """A box centred at (x, y, zc): 2*hx (default 2*half) along X, 2*half along Y and Z."""
+    hx = half if hx is None else hx
     plane = TOP if zc == 0 else plane_at("Plane z = %g" % zc, zc)
-    sk = sketch(name + " (sketch)", plane, polyline("r", [(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)], closed=True))
+    sk = sketch(name + " (sketch)", plane, polyline("r", [(x - hx, y - half), (x + hx, y - half), (x + hx, y + half), (x - hx, y + half)], closed=True))
     return feature(name, "extrude", [
         en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
         q("entities", 'qSketchRegion(makeId("%s"))' % sk), en("endBound", "BoundingType", "BLIND"),
@@ -252,7 +256,7 @@ for tag, x0, mode, want in [("M7", 7000, "FRENET", -30), ("M8", 8000, "TRANSPORT
                 [arc("a", *mmv(x0, 100, 100), -math.pi / 2, 0), arc("b", *mmv(x0 + 200, 100, 100), math.pi / 2, math.pi)])
     cs = cube("%s cube at (%d, 0, 30)" % (tag, x0), x0, 0, zc=30)
     move("%s S-curve, %s, 314.16 -> centroid (%d, 200, %d)" % (tag, mode.lower(), x0 + 200, want), body(cs), edges(ls), "314.159265 mm",
-         [b("useFrenet", True)], {"frameMode": mode})
+         [], {"orientation": mode})
 
 # M9 flip + extrapolation past the start
 l9 = sketch("M9 path: line x 9000..9200", TOP, polyline("l", [(9000, 0), (9200, 0)]))
@@ -299,6 +303,20 @@ t16 = sketch("M16 target: line x = 16050 crossing the arc", TOP, polyline("l", [
 c16 = cube("M16 cube at (16000, 0, 0)", 16000, 0)
 move("M16 nearest to a line crossing the arc -> the crossing (16050, 13.3975, 0)", body(c16), edges(l16), "0 mm",
      [q("moveTarget", edges(t16))], {"moveMode": "NEAREST"})
+
+# M17-M19 Apply modes on a quarter arc (R100, centre (x0, 100), from (x0, 0) to (x0 + 100, 100)); 40 x 20 blocks
+QUARTER = "157.0796327 mm"
+for tag, x0, apply_mode, expect in [("M17", 17000, "TRANSLATE", "translate only -> centroid (17100, 100, 0), still 40 along X"),
+                                    ("M18", 18000, "ROTATE", "rotate only -> centroid stays (18000, 0, 0), turned 90 deg: 40 along Y")]:
+    la = sketch("%s path: R100 quarter arc centre (%d, 100)" % (tag, x0), TOP, [arc("a", *mmv(x0, 100, 100), -math.pi / 2, 0)])
+    blk = cube("%s block 40 x 20 at (%d, 0, 0)" % (tag, x0), x0, 0, hx=20)
+    move("%s quarter arc, %s" % (tag, expect), body(blk), edges(la), QUARTER, [], {"applyMode": apply_mode})
+
+l19 = sketch("M19 path: R100 quarter arc centre (19000, 100)", TOP, [arc("a", *mmv(19000, 100, 100), -math.pi / 2, 0)])
+t19 = sketch("M19 target: point (19150, 100)", TOP, [point("p", *mmv(19150, 100))])
+b19 = cube("M19 block 40 x 20 at (19000, 0, 0)", 19000, 0, hx=20)
+move("M19 rotate only, nearest to (19150, 100) = arc end -> centroid stays (19000, 0, 0), 40 along Y", body(b19), edges(l19), "0 mm",
+     [q("moveTarget", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % t19)], {"applyMode": "ROTATE", "moveMode": "NEAREST"})
 
 # M11 disconnected edges: temporary instance, must fail
 l11 = sketch("M11 path: two lines with a gap", TOP, polyline("l", [(11000, 0), (11100, 0)]) + polyline("m", [(11200, 0), (11300, 0)]))

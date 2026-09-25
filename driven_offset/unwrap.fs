@@ -724,7 +724,10 @@ function plateFromOutline(context is Context, id is Id, wireEdges is Query, flat
                 "startBound" : BoundingType.BLIND,
                 "startDepth" : 0.5 * thickness
             });
-    opDeleteBodies(context, id + "deleteSheet", { "entities" : sheet });
+    // The split leaves the plane sheet under a different id than opPlane gave it, so qCreatedBy(sheet) no
+    // longer finds it: delete every construction body this step made (the sheet is the only one).
+    opDeleteBodies(context, id + "deleteSheet", { "entities" : qUnion([sheet,
+                    qConstructionFilter(qCreatedBy(id, EntityType.BODY), ConstructionObject.YES)]) });
     return qCreatedBy(id + "plate", EntityType.BODY);
 }
 
@@ -793,7 +796,8 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     opExtractWires(context, id + "outlineWires", { "edges" : qOwnedByBody(curveBodies, EntityType.EDGE) });
     const outlineWires = qCreatedBy(id + "outlineWires", EntityType.BODY);
     const plates = plateFromOutline(context, id + "plate", qOwnedByBody(outlineWires, EntityType.EDGE), flatPlane, thickness);
-    opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion(concatenateArrays([[curveBodies, outlineWires], temporary])) });
+    opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion(concatenateArrays([[curveBodies, outlineWires,
+                        qConstructionFilter(qCreatedBy(id, EntityType.BODY), ConstructionObject.YES)], temporary])) });
 
     const lowerPlane = plane(flatPlane.origin - 0.5 * thickness * cs.zAxis, cs.zAxis, cs.xAxis);
     const lowerFace = qCoincidesWithPlane(qOwnedByBody(plates, EntityType.FACE), lowerPlane);

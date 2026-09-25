@@ -142,6 +142,22 @@ case("M15 ", r'''
 
 moved_to("M16 ", "M16 cube", 16050, 13.3975, 0)
 
+def block(prefix, fixture, x, y, along_x):
+    case(prefix, r'''
+        const blk = created(@BLOCK@);
+        const bb = evBox3d(context, { "topology" : blk, "tight" : true });
+        const dx = bb.maxCorner[0] - bb.minCorner[0];
+        const dy = bb.maxCorner[1] - bb.minCorner[1];
+        const turned = abs(dx - 20 * millimeter) < 0.001 * millimeter && abs(dy - 40 * millimeter) < 0.001 * millimeter;
+        const straight = abs(dx - 40 * millimeter) < 0.001 * millimeter && abs(dy - 20 * millimeter) < 0.001 * millimeter;
+        return [at(blk, %g, %g, 0) && %s, describe("block", blk) ~ ", size " ~ fmt(dx) ~ " x " ~ fmt(dy) ~ ", expected (%g, %g, 0) %s"];''' % (
+        x, y, "straight" if along_x else "turned", x, y, "40 x 20" if along_x else "20 x 40"), BLOCK=fixture)
+
+
+block("M17 ", "M17 block", 17100, 100, True)
+block("M18 ", "M18 block", 18000, 0, False)
+block("M19 ", "M19 block", 19000, 0, False)
+
 EXPECTED_WARNINGS = ["M3b "]
 
 
