@@ -160,18 +160,8 @@ export function drivenOffset(context is Context, id is Id, definition is map) re
 export function sharedOffsetContext(context is Context, definition is map,
     profileQueries is array, matchRuns is boolean) returns map
 {
-    const zeroPoint = evZeroPoint(context, definition.offsetRefPoint);
-    const sourceChain = buildChain(context, definition.offsetEdges, zeroPoint);
-
-    var alongRef = undefined;
-    if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
-    {
-        const delta = definition.flipAlongOffsetDir ? -1 * definition.alongOffsetDelta : definition.alongOffsetDelta;
-        alongRef = buildAlongReference(context, definition.referenceWire, zeroPoint, delta);
-    }
-
-    const stations = chainStations(context, sourceChain, spacingSettings(definition));
-    const coords = stationCoordinates(stations, definition, alongRef, zeroPoint);
+    const base = offsetStationBase(context, definition);
+    const zeroPoint = base.zeroPoint;
 
     var profiles = [];
     var breaks = [];
@@ -194,24 +184,85 @@ export function sharedOffsetContext(context is Context, definition is map,
         breaks = mergeBreaks(breaks, own);
     }
 
+    const split = offsetStationsWithBreaks(context, definition, base, breaks);
+
+    return {
+        "zeroPoint" : zeroPoint,
+        "sourceChain" : base.sourceChain,
+        "alongRef" : base.alongRef,
+        "stations" : split.stations,
+        "coords" : split.coords,
+        "profiles" : profiles,
+        "matchRuns" : matchRuns
+    };
+}
+
+/**
+ * The stations before any break is inserted: zero point, chain, reference mapping, the
+ * regular samples and their profile coordinates. Frames are NOT resolved yet.
+ *
+ * Split out of sharedOffsetContext so that evaluate_offset, which measures an existing
+ * offset instead of making one, samples exactly the stations this feature would -- same
+ * chain, same spacing, same transported frames -- and chooses its own breaks.
+ *
+ * @returns {map} : { "zeroPoint", "sourceChain", "alongRef", "stations", "coords" }
+ */
+export function offsetStationBase(context is Context, definition is map) returns map
+{
+    const zeroPoint = evZeroPoint(context, definition.offsetRefPoint);
+    const sourceChain = buildChain(context, definition.offsetEdges, zeroPoint);
+
+    var alongRef = undefined;
+    if (definition.measureAlong == MeasureAlong.REFERENCE_WIRE)
+    {
+        const delta = definition.flipAlongOffsetDir ? -1 * definition.alongOffsetDelta : definition.alongOffsetDelta;
+        alongRef = buildAlongReference(context, definition.referenceWire, zeroPoint, delta);
+    }
+
+    const stations = chainStations(context, sourceChain, spacingSettings(definition));
+
+    return {
+        "zeroPoint" : zeroPoint,
+        "sourceChain" : sourceChain,
+        "alongRef" : alongRef,
+        "stations" : stations,
+        "coords" : stationCoordinates(stations, definition, alongRef, zeroPoint)
+    };
+}
+
+/**
+ * The base stations with an exact station pair at every break coordinate, and the chosen
+ * alignment resolved onto all of them.
+ *
+ * @param base {map} : from offsetStationBase.
+ * @param breaks {array} : profile coordinates, ascending.
+ * @returns {map} : { "stations", "coords" }
+ */
+export function offsetStationsWithBreaks(context is Context, definition is map, base is map,
+    breaks is array) returns map
+{
     // Put an exact station on each offset discontinuity before anything is evaluated, so
     // the break lands on the profile's own boundary rather than on whichever sample
     // happened to fall nearest it.
-    const split = insertCrossings(context, sourceChain, stations, coords, breaks);
+    const split = insertCrossings(context, base.sourceChain, base.stations, base.coords, breaks);
 
     // Resolve the alignment once and stamp it onto the stations. Everything downstream --
     // placement, run-end tangents, the frame differences behind them, and both debug tables
     // -- then reads one settled frame instead of rebuilding it two or three times per
     // station, and now once rather than once per profile.
     return {
-        "zeroPoint" : zeroPoint,
-        "sourceChain" : sourceChain,
-        "alongRef" : alongRef,
-        "stations" : resolveFrames(split.stations, definition, alongRef),
-        "coords" : split.coords,
-        "profiles" : profiles,
-        "matchRuns" : matchRuns
+        "stations" : resolveFrames(split.stations, definition, base.alongRef),
+        "coords" : split.coords
     };
+}
+
+/**
+ * The chosen alignment resolved onto stations, without inserting anything. For a caller that
+ * needs the frames to decide where its breaks go before calling offsetStationsWithBreaks.
+ */
+export function offsetStationFrames(stations is array, definition is map, alongRef) returns array
+{
+    return resolveFrames(stations, definition, alongRef);
 }
 
 /**

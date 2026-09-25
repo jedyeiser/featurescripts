@@ -117,3 +117,46 @@ flat_body = 'qCreatedBy(makeId("%s"), EntityType.BODY)' % flat
 profiles("P3 flat sheet onto Front: edge-on -> ERROR with a message (no outline area)", flat_body, "Front", "PERIPHERY", "flat")
 profiles("P4 flat sheet onto Top, Periphery -> the 1000 x 100 rectangle, 2200 long", flat_body, "Top", "PERIPHERY", "flat")
 print("studio", E)
+
+
+# ---- short-edge merging (the RD 20FOU SW_Fill case): a part whose outline carries a 1.7 um step ----
+def profiles_with(name, part, onto, parts, output, extra):
+    given = {p["parameterId"]: p for p in [
+        en("profileSource", "ProfileSource", "PART", NS), s("outputName", output), q("profilePart", part),
+        en("profileParts", "ProfilePart", parts, NS), q("projectionFace", 'qCreatedBy(makeId("%s"), EntityType.FACE)' % onto),
+        en("grouping", "ProfileGrouping", "SINGLE", NS)] + extra}
+    params = [given.get(p["parameterId"], dict(p["defaultValue"], parameterId=p["parameterId"]))
+              for p in SPEC["parameters"] if isinstance(p.get("defaultValue"), dict)]
+    return upsert({"btType": "BTMFeature-134", "featureType": "evaluateProfiles", "name": name, "namespace": NS, "parameters": params})
+
+
+def fill(name, wire_feature):
+    spec = [x for x in c.get(f"{BASE}/featurespecs")["featureSpecs"] if x["featureType"] == "fill"][0]
+    item_defaults = [p["defaultValue"] for p in [x for x in spec["parameters"] if x["parameterId"] == "edges"][0]["parameters"]]
+    given = {"entities": q("entities", 'qOwnedByBody(qCreatedBy(makeId("%s"), EntityType.BODY), EntityType.EDGE)' % wire_feature),
+             "continuity": en("continuity", "GeometricContinuity", "G0")}
+    item = {"btType": "BTMArrayParameterItem-1843", "parameters": [dict(given.get(d["parameterId"], d)) for d in item_defaults]}
+    return upsert({"btType": "BTMFeature-134", "featureType": "fill", "name": name, "parameters": [
+        en("surfaceOperationType", "NewSurfaceOperationType", "NEW"), {"btType": "BTMParameterArray-2025", "parameterId": "edges", "items": [item]}]})
+
+
+STEP = 0.0017   # mm
+pts = [(0, 400), (100, 400), (100, 420), (60, 420), (60, 420 + STEP), (0, 420 + STEP)]
+segs = []
+for i in range(len(pts)):
+    x0, z0 = pts[i]
+    x1, z1 = pts[(i + 1) % len(pts)]
+    L = math.hypot(x1 - x0, z1 - z0)
+    segs.append({"btType": "BTMSketchCurveSegment-155", "entityId": "s%d" % i, "startPointId": "s%d.start" % i, "endPointId": "s%d.end" % i,
+                 "startParam": 0.0, "endParam": L / 1000, "isConstruction": False,
+                 "geometry": {"btType": "BTCurveGeometryLine-117", "pntX": x0 / 1000, "pntY": z0 / 1000, "dirX": (x1 - x0) / L, "dirY": (z1 - z0) / L}})
+step_sketch = sketch("Step: 100 x 20 outline on Front with a 0.0017 mm step at x 60", "Front", segs)
+step_part = upsert({"btType": "BTMFeature-134", "featureType": "extrude", "name": "Step part (extruded 50 symmetric)", "parameters": [
+    en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
+    q("entities", 'qSketchRegion(makeId("%s"))' % step_sketch), en("endBound", "BoundingType", "BLIND"), num("depth", "50 mm"), b("symmetric", True)]})
+part_q = 'qCreatedBy(makeId("%s"), EntityType.BODY)' % step_part
+p5 = profiles_with("P5 step part, Periphery, merge < 0.01 mm (default) -> 5 edges, the step merged, notice", part_q, "Front", "PERIPHERY", "step", [])
+fill("P6 Fill on P5's periphery -> OK, area 2000.0935", p5)
+p7 = profiles_with("P7 step part, Periphery, merge 0 -> 6 edges, the 0.0017 mm step kept", part_q, "Front", "PERIPHERY", "step raw",
+                   [num("mergeShorter", "0 mm")])
+fill("P8 Fill on P7's periphery -> ERROR (the kernel refuses the 0.0017 mm edge)", p7)
