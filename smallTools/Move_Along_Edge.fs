@@ -339,20 +339,26 @@ function transportNormal(context is Context, pathData is map, s0 is ValueWithUni
     return normalize(normal - dot(normal, tangent) * tangent);
 }
 
-// Project startQ onto the path and return its position as an arc length measured
-// from the path start (parameter 0), in the path's travel direction. A body that
-// touches or crosses the path has no single closest point (evDistance returns any
-// point of the overlap), so its centroid -- a mate connector's origin -- is projected instead.
+// Project the start onto the path and return its position as an arc length measured
+// from the path start (parameter 0), in the path's travel direction. A body projects its
+// centroid (a mate connector its origin): the body's own closest point is ambiguous when it
+// touches the path or has a face parallel to it (evDistance returns any point of the tie).
 function locateStartArcLength(context is Context, pathData is map, startQ is Query) returns ValueWithUnits
 {
-    var nearest = nearestOnPath(context, pathData, startQ);
-    if (nearest.distance <= TOLERANCE.zeroLength * meter)
+    var start;
+    if (!isQueryEmpty(context, qEntityFilter(startQ, EntityType.VERTEX)))
     {
-        var center = isQueryEmpty(context, qBodyType(startQ, BodyType.MATE_CONNECTOR))
-            ? evApproximateCentroid(context, { "entities" : startQ })
-            : evMateConnector(context, { "mateConnector" : startQ }).origin;
-        nearest = nearestOnPath(context, pathData, center);
+        start = evVertexPoint(context, { "vertex" : startQ });
     }
+    else if (!isQueryEmpty(context, qBodyType(startQ, BodyType.MATE_CONNECTOR)))
+    {
+        start = evMateConnector(context, { "mateConnector" : startQ }).origin;
+    }
+    else
+    {
+        start = evApproximateCentroid(context, { "entities" : startQ });
+    }
+    var nearest = nearestOnPath(context, pathData, start);
 
     var path = pathData.path;
     var cumulative = 0 * meter;
@@ -366,9 +372,9 @@ function locateStartArcLength(context is Context, pathData is map, startQ is Que
     return cumulative + fractionInPathDir * pathData.lengths[nearest.edgeIndex];
 }
 
-// The path edge closest to `target` (a Query or a point) and the arc-length fraction on it,
+// The path edge closest to the point `target` and the arc-length fraction on it,
 // in the edge's own direction: { distance, edgeIndex, edgeParam }.
-function nearestOnPath(context is Context, pathData is map, target) returns map
+function nearestOnPath(context is Context, pathData is map, target is Vector) returns map
 {
     var best = { "distance" : inf * meter, "edgeIndex" : 0, "edgeParam" : 0 };
     for (var i = 0; i < size(pathData.path.edges); i += 1)

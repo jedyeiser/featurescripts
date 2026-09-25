@@ -66,8 +66,8 @@ case("M3 ", r'''
         const q3 = out.query.copy_3.value;
         const ok = at(cube, 2000, 0, 0) && keysOk && count(out.query.output.value) == 4
             && at(q0, 2100, 0, 0) && name(q0) == "M3 main"
-            && at(q1, 2050, 0, 0) && name(q1) == "A_" ~ cubeName
-            && at(q2, 2150, 0, 0) && name(q2) == cubeName ~ "_B"
+            && at(q1, 2050, 0, 0) && name(q1) == ("A_" ~ cubeName)
+            && at(q2, 2150, 0, 0) && name(q2) == (cubeName ~ "_B")
             && at(q3, 2250, 0, 0);
         return [ok, describe("source", cube) ~ "; " ~ describe("initial_copy", q0) ~ "; " ~ describe("copy_1", q1) ~ "; "
             ~ describe("copy_2", q2) ~ "; " ~ describe("copy_3", q3) ~ "; output " ~ count(out.query.output.value) ~ "; keys " ~ toString(keys)];''',
@@ -124,13 +124,13 @@ def main():
 
     for name, i in by_name:
         status = states.get(i, {}).get("featureStatus")
-        want = "WARNING" if any(name.startswith(p) for p in EXPECTED_WARNINGS) and "->" in name and "path" not in name else "OK"
+        want = "WARNING" if any(name.startswith(p) for p in EXPECTED_WARNINGS) and "->" in name and not name.startswith("M3b path") else "OK"
         if status != want:
             failed += 1
             print("FAIL", name, "-- status", status, "expected", want)
 
     for prefix, body, names in CASES:
-        cases = [(n, i) for n, i in by_name if n.startswith(prefix) and "->" in n and "path" not in n]
+        cases = [(n, i) for n, i in by_name if n.startswith(prefix) and "->" in n and not n.startswith(prefix + "path")]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1
