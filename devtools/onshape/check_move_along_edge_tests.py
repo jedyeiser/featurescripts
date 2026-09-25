@@ -103,6 +103,35 @@ moved_to("M8 ", "M8 cube", 8200, 200, 30)
 moved_to("M9 ", "M9 cube", 8950, 0, 0)
 moved_to("M10 ", "M10 cube", 10100, 50, 0)
 
+case("M12 ", r'''
+        const q0 = embedded(SELF).query.initial_copy.value;
+        const wires = count(qBodyType(q0, BodyType.WIRE));
+        const source = created(@SKETCH@);
+        return [at(q0, 12100, 40, 0) && wires == 1 && name(q0) == "M12 wire" && at(source, 12000, 40, 0),
+            describe("initial_copy", q0) ~ " (" ~ wires ~ " wire); " ~ describe("source sketch", source)];''', SKETCH="M12 source sketch")
+
+case("M13 ", r'''
+        const out = embedded(SELF);
+        const q0 = out.query.initial_copy.value;
+        const q1 = out.query.copy_1.value;
+        const points = count(qBodyType(out.query.output.value, BodyType.POINT));
+        return [at(q0, 13100, 30, 0) && name(q0) == "M13 P0" && at(q1, 13200, 30, 0) && name(q1) == "M13 P1" && points == 2,
+            describe("initial_copy", q0) ~ "; " ~ describe("copy_1", q1) ~ "; " ~ points ~ " point bodies"];''')
+
+case("M14 ", r'''
+        const q0 = evaluateQuery(context, embedded(SELF).query.initial_copy.value);
+        const cube = created(@CUBE@);
+        const cubeName = name(cube);
+        var wire = qNothing();
+        var solid = qNothing();
+        for (var b in q0)
+        {
+            if (count(qBodyType(b, BodyType.WIRE)) == 1) { wire = b; }
+            if (count(qBodyType(b, BodyType.SOLID)) == 1) { solid = b; }
+        }
+        return [size(q0) == 2 && at(wire, 14100, 40, 0) && name(wire) == "_S" && at(solid, 14100, 0, 0) && name(solid) == (cubeName ~ "_S") && at(cube, 14000, 0, 0),
+            describe("wire", wire) ~ "; " ~ describe("solid", solid) ~ "; " ~ describe("source cube", cube)];''', CUBE="M14 cube")
+
 EXPECTED_WARNINGS = ["M3b "]
 
 
@@ -130,7 +159,7 @@ def main():
             print("FAIL", name, "-- status", status, "expected", want)
 
     for prefix, body, names in CASES:
-        cases = [(n, i) for n, i in by_name if n.startswith(prefix) and "->" in n and not n.startswith(prefix + "path")]
+        cases = [(n, i) for n, i in by_name if n.startswith(prefix) and "->" in n and not n.startswith(prefix + "path") and not n.startswith(prefix + "source")]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

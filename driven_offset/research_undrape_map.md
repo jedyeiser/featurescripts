@@ -873,3 +873,92 @@ export function undrapeMidArcAtWidth(section is map, w0 is number) returns numbe
 * `undrape_core.fs` (the code above). `mkharness.py` -> `harness_full.fs` runs it in Onshape on RnRD. `tev.py`
   does the timing. `bench*.fs`, `b2*/b3*/e_*/ftp_*/pd_*.fs` are the cost measurements of section 3.
 * Figures: `secs.png` (sections), `plan.png` (edges in the chart plan), `E.png` (excess per side vs s).
+
+---
+
+## 12. As built (2026-09-24): `driven_offset/undrape_utils.fs`
+
+Not pushed. `undrapeOutline(context, id, chart, side0, side1, thickness, spacing)` implements sections 1-10, with
+the U-turn rule in one marked function (`undrapeRefusedSection`, currently literal: the station's own kernel
+section). Interface as agreed, plus two extras: each edge carries `arcs` (the chart arc of each point's
+station) and the report carries `failed` (stations nothing could measure). Loop 0 is the outer loop and runs
+counter-clockwise in (x, y); holes run clockwise. Shared vertices are computed once, so joints are exact.
+
+**Changes from sections 4 and 10 (each found on RnRD):**
+
+1. *Edge sampling.* Positions and tangents come from `evEdgeTangentLines` every 10 mm, which is about 7x cheaper
+   per point than `evFaceTangentPlanesAtEdge`. Normals come from `evFaceTangentPlanesAtEdge` at every 4th sample
+   and at every sample of a stretch where they turn more than 2 deg; the rest are interpolated and made normal to
+   the edge tangent. Positions need 10 mm spans: 40 mm Hermite spans were 5 um off in height where W's curvature
+   changes, which gave 0.0035 mm on the rim. Normals do not.
+2. *Creases.* `evEdgeConvexity` reports 137 of the 336 side edges as not smooth. 118 of them have real normal
+   jumps of 0.2 to 77 deg. All of these are face ends kinked lengthwise (for example the transition flap's 11.3 deg
+   lengthwise slope), not creases across the section, so 8.4's "the test part has none" is wrong. The second face
+   is sampled only for kinked edges that run along the reference. With `usingFaceOrientation` the second face
+   runs the edge in its own loop direction (samples reversed), so its samples are matched by position. When the
+   face side is ambiguous at a crossing (|into-face . section tangent| < 0.1), the two tangents are averaged.
+3. *Edges lying in a station plane.* Face-end edges running straight across (any line along Y lies in a station
+   plane) contribute their samples as section points when |distance| < 5e-8 m. The tail and tip end edges are
+   such edges, so their outline samples map through their own in-plane section.
+4. *Refusal rule.* An oblique non-rim crossing refuses the station only if inPlane < 0.995, i.e. the face is cut
+   lengthwise. In-plane samples never refuse, and rim crossings are never dropped. Under the rule of section 4,
+   every vertex station (vertices sit on face ends) went to the kernel.
+5. *Stations.* Rim edges running along the reference (|t . u| >= 0.5) use the shared grid arc = k * spacing,
+   which both long sides share. Other rim edges (ends, notches, holes) are sampled every `spacing` along their
+   length, each sample at its own station. Each vertex gets one station. Three more stations sit at 0.2, 0.4 and
+   0.6 mm inside each edge end; the end tangent is the derivative of the quadratic through them, and the vertex
+   is left out (see finding c).
+6. *Kernel fallback.* Faces are box-filtered (loose `evBox3d`, 1e-4 m pad). Each result edge is read at
+   9 samples and scaled to its exact `evLength`. At a face-end plane the kernel returns the same piece twice,
+   so already-covered widths are skipped. Gaps are bridged by the chord. Lookups are lazy: pairing every node
+   with the other side cost 1.3 s. The rim end pairs with the other side's rim end, not with its nearest point.
+   Retries at s + 1e-6, -1e-6, +5e-5, -5e-5 m, with `try silent` only there. Temporary bodies are created under
+   `id` and deleted before return.
+
+**Accuracy on RnRD** (W = RjRP, align StjLB, d = -0.2 mm, t = 0.4 mm, spacing 6 mm; truth = kernel sections of
+both sides, `evLength` per piece, mean of the sides):
+- 124 stations (every third grid station, plus every station in the transitions, the U-turns and at the
+  vertices), both rims: at edge-method stations the max error is 0.0015 mm (mean 0.00016). Kernel-fallback
+  stations are within 0.0010 mm, except s = 1818 at 0.0088 mm. There the truth itself leaves out two ~10 um gaps
+  (a sliver the intersection does not return); the fallback bridges them.
+- 7 vertex arcs, each at 0, +-0.2, +-0.4 and +-1.0 mm (49 stations): vertices are within 0.0002 mm, except
+  s = 536.22 on one side at 0.0018 mm (finding c). End tangents are within 0.3 deg of the truth's one-sided
+  slope, and within 0.05 deg away from the transition vertices.
+- Tail end: 150.000 mm. Tip end edges: 75.000 mm each.
+
+**Speed** (eval API, wall clock minus the setup baseline): about 2.8 s for the whole call.
+
+| part of the call | time |
+|---|---|
+| side edge sampling (336 edges, 2773 samples) | 0.89 s |
+| requests and stations | 0.19 s |
+| candidates and crossings (358 stations, 10.3 candidate edges per station) | 0.48 s |
+| sections | 0.18 s |
+| mapping and assembly | 0.06 s |
+| deformation tally | 0.20 s |
+| 11 kernel fallbacks (tail U-turn s 42-60, tip U-turn s 1788-1824), ~68 ms each; the kernel floor is ~63 ms | 0.84 s |
+
+Batching every refused plane into one `opIntersectFaces` per side saved only ~0.08 s. Tight boxes cost 0.6 s to
+compute. Neither was adopted.
+
+**Deformation on RnRD (report):**
+- Stretch along the rim and the bend lines runs from -6.48 % to +7.53 %. The maximum is on a tip U-turn bend
+  line at x 896.9 mm, y -26.5 mm. Outside the U-turns it runs from -1.04 % to +0.41 %.
+- Shear (the change in angle between a tracked chord and its section) reaches 22.6 deg in the U-turns and
+  9.5 deg outside them (the transition zones; section 7 gives 9.2).
+- Rim length: 3956.419 mm in 3D, 3952.478 mm flat.
+
+**Findings:**
+- (a) Plane-through-vertex kernel failures do occur: the truth run gave `WIRE_CREATION_FAILED` at s = 1663.70.
+  Edge-method stations are unaffected.
+- (b) `evEdgeConvexity` is no crease test on pressed parts: see change 2.
+- (c) At the transition vertices the true outline has a sharp ~0.01 mm feature within ~0.2 mm of the vertex.
+  The step's face ends are slanted up to 0.09 mm in s against the rim's face end, and the lengthwise kink makes
+  the in-plane thickness at exactly s_v ambiguous. The vertex point is right to 0.002 mm. A smooth fit through
+  the vertex with the one-sided tangent can deviate by ~0.005-0.01 mm over the first 0.2 mm. The caller should
+  either accept this or place the edge end 0.2 mm inside.
+
+**Harness** (scratchpad `undrape_impl/`): `conv.py` + `mk.py` turn this file into eval lambdas (dependency-ordered)
+with `setup.fsx`, which holds the sides and a chart built like `buildAlongReference`. `t_run.fsx` dumps the
+outline. `truth_tmpl.fsx` + `mktruth.py` compute the kernel truth. `cmp.py` (rims) and `vcheck.py` (vertices and
+tangents) compare. `tev.py` times, and `mkstage.py` cuts the call at each stage for the breakdown.

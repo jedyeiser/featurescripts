@@ -84,7 +84,7 @@ export const UNDRAPE_STATION_MERGE = 1e-8;
 /** Outline end points of rim edges closer than this are one vertex, metres. */
 export const UNDRAPE_VERTEX_TOL = 1e-7;
 
-/** Step of the one-sided difference that gives each flat edge its end tangents, metres. */
+/** Step between the three stations inside each edge end that give the flat edge its end tangent, metres. */
 export const UNDRAPE_TANGENT_STEP = 2e-4;
 
 /** A request point farther than this from every section node is interpolated rather than read, metres. */
@@ -1883,12 +1883,12 @@ export function undrapeReach(tables is array, candidates is array, fr is map) re
  * the reference (|t . u| >= UNDRAPE_LENGTHWISE everywhere, arcs monotone) is sampled at the SHARED station
  * grid arc = k * spacing: its crossing with that station ("edge" requests; both long sides of a part share
  * the stations). Any other rim edge (ends, notches, holes) is sampled every `spacing` along its length and
- * each sample takes its own station ("point" requests). Each edge end also gets two requests at one and
- * two UNDRAPE_TANGENT_STEP inside it, for a second-order one-sided end tangent.
+ * each sample takes its own station ("point" requests). Each edge end also gets three requests at one, two
+ * and three UNDRAPE_TANGENT_STEP inside it, for its end tangent (undrapeEndTangent).
  *
  * @returns {map} : { "requests" : array of { "arc", "kind" ("edge" | "point"), "edge", "p" ([x, y, z, nx, ny, nz]) },
  *      "edgeRequests" : map table -> { "points" : request indices along the edge's own direction, vertices
- *      included, "startTangent", "endTangent" : [vertex, step, 2 step] request indices } }
+ *      included, "startTangent", "endTangent" : [vertex, 1, 2, 3 steps] request indices } }
  */
 export function undrapeRequests(c is map, tables is array, rim is array, loopData is map, sp is number) returns map
 {
@@ -1974,8 +1974,8 @@ export function undrapeRequests(c is map, tables is array, rim is array, loopDat
                 inner = append(inner, size(requests));
                 requests = append(requests, { "arc" : a, "kind" : "edge", "edge" : r });
             }
-            const step = min(UNDRAPE_TANGENT_STEP, (hi - lo) / 6);
-            for (var k = 1; k <= 2; k += 1)
+            const step = min(UNDRAPE_TANGENT_STEP, (hi - lo) / 8);
+            for (var k = 1; k <= 3; k += 1)
             {
                 tanStart = append(tanStart, size(requests));
                 requests = append(requests, { "arc" : s0 + dir * k * step, "kind" : "edge", "edge" : r });
@@ -1996,8 +1996,8 @@ export function undrapeRequests(c is map, tables is array, rim is array, loopDat
                 inner = append(inner, size(requests));
                 requests = append(requests, { "arc" : a, "kind" : "point", "p" : p });
             }
-            const step = min(UNDRAPE_TANGENT_STEP, length / 6);
-            for (var k = 1; k <= 2; k += 1)
+            const step = min(UNDRAPE_TANGENT_STEP, length / 8);
+            for (var k = 1; k <= 3; k += 1)
             {
                 const p0 = undrapeEdgePoint(tb, k * step);
                 tanStart = append(tanStart, size(requests));
@@ -2064,18 +2064,25 @@ export function undrapeResolve(request is map, section is map, crossings is arra
             p[0] - 0.5 * tk * p[3], p[1] - 0.5 * tk * p[4], p[2] - 0.5 * tk * p[5], fr.arc];
 }
 
-/** One-sided second-order derivative direction at an edge end from [end, step, 2 step] flat points. */
+/**
+ * End tangent of a flat edge from the points one, two and three steps inside it (indices [vertex, 1, 2, 3]
+ * steps): the derivative at the end of the quadratic through them, -2.5 P1 + 4 P2 - 1.5 P3 (per step).
+ * The vertex itself is left out: a vertex station lies exactly on a face end, where a lengthwise kink of the
+ * side makes the in-plane thickness ambiguous (up to ~0.002 mm on the test part), and a one-sided
+ * difference through it would carry that into the tangent.
+ */
 export function undrapeEndTangent(results is array, indices is array, atEnd is boolean)
 {
-    const p0 = results[indices[0]];
     const p1 = results[indices[1]];
     const p2 = results[indices[2]];
-    if (p0 == undefined || p1 == undefined || p2 == undefined)
+    const p3 = results[indices[3]];
+    if (p1 == undefined || p2 == undefined || p3 == undefined)
     {
         return undefined;
     }
-    var tx = -3 * p0[0] + 4 * p1[0] - p2[0];
-    var ty = -3 * p0[1] + 4 * p1[1] - p2[1];
+    var tx = -2.5 * p1[0] + 4 * p2[0] - 1.5 * p3[0];
+    var ty = -2.5 * p1[1] + 4 * p2[1] - 1.5 * p3[1];
+    // that derivative points into the edge: along the run at its start, against it at its end
     if (atEnd)
     {
         tx = -tx;

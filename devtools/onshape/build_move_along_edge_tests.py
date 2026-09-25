@@ -262,6 +262,25 @@ l10 = sketch("M10 path: (10000, 0) -> (10100, 0), second line drawn (10100, 100)
 c10 = cube("M10 cube at (10020, 0, 0)", 10020, 0)
 move("M10 two edges, second reversed, 130 -> centroid (10100, 50, 0)", body(c10), edges(l10), "130 mm")
 
+# M12 sketch edge -> wire
+l12 = sketch("M12 path: line x 12000..12400", TOP, polyline("l", [(12000, 0), (12400, 0)]))
+s12 = sketch("M12 source sketch: line (12000, 30) -> (12000, 50)", TOP, polyline("l", [(12000, 30), (12000, 50)]))
+move("M12 sketch edge, 100 'M12 wire' -> wire centred (12100, 40, 0), sketch stays", edges(s12), edges(l12), "100 mm", [s("nameText", "M12 wire")], {"nameMode": "NEW_NAME"})
+
+# M13 sketch vertex -> points
+l13 = sketch("M13 path: line x 13000..13400", TOP, polyline("l", [(13000, 0), (13400, 0)]))
+s13 = sketch("M13 source sketch: point (13000, 30)", TOP, [point("p", *mmv(13000, 30))])
+move("M13 sketch point, 100 'M13 P0', copy 200 'M13 P1' -> points (13100, 30) and (13200, 30)", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % s13,
+     edges(l13), "100 mm", [b("copyBodies", True), s("nameText", "M13 P0")], {"nameMode": "NEW_NAME"}, [extra(200, "NEW_NAME", "M13 P1")])
+
+# M14 mixed selection: a sketch edge before a body; the body's suffix must use the body's own name
+l14 = sketch("M14 path: line x 14000..14400", TOP, polyline("l", [(14000, 0), (14400, 0)]))
+s14 = sketch("M14 source sketch: line (14000, 30) -> (14000, 50)", TOP, polyline("l", [(14000, 30), (14000, 50)]))
+c14 = cube("M14 cube at (14000, 0, 0)", 14000, 0)
+move("M14 sketch edge + cube, copy 100, suffix '_S' -> wire '_S' at (14100, 40), cube copy '<name>_S' at (14100, 0)",
+     edges(s14), edges(l14), "100 mm", [q("moveBodies", edges(s14), body(c14)), b("copyBodies", True), s("nameText", "_S"), s("sourceNames", part_name(c14))],
+     {"nameMode": "SUFFIX"})
+
 # M11 disconnected edges: temporary instance, must fail
 l11 = sketch("M11 path: two lines with a gap", TOP, polyline("l", [(11000, 0), (11100, 0)]) + polyline("m", [(11200, 0), (11300, 0)]))
 c11 = cube("M11 cube at (11000, 0, 0)", 11000, 0)
