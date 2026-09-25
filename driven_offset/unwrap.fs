@@ -877,9 +877,16 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     const yAxis = cross(cs.zAxis, cs.xAxis);
     const flatPlane = plane(cs.origin + zMid * cs.zAxis, cs.zAxis, cs.xAxis);
 
+    if (settings.print)
+    {
+        for (var text in undraped.lines)
+        {
+            println(text);
+        }
+    }
+
     var curves = [];
     var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
-    var lines = [];
     for (var k = 0; k < size(undraped.edges); k += 1)
     {
         const edge = undraped.edges[k];
@@ -891,17 +898,21 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         const startTangent = normalize(edge.startTangent[0] * cs.xAxis + edge.startTangent[1] * yAxis);
         const endTangent = normalize(edge.endTangent[0] * cs.xAxis + edge.endTangent[1] * yAxis);
         const edgeId = id + ("outline" ~ k);
+        if (settings.print)
+        {
+            // Printed BEFORE emitting, so an edge the kernel refuses names itself.
+            println("    loop " ~ edge.loop ~ " edge " ~ edge.index ~ ": " ~ size(points) ~ " points, "
+                ~ fmtVec(points[0], 3, 0) ~ " -> " ~ fmtVec(points[size(points) - 1], 3, 0) ~ " mm, chord "
+                ~ fmtMM(norm(points[size(points) - 1] - points[0]), 4, 0) ~ " mm, end tangents "
+                ~ fmtVec(startTangent, 4, 0) ~ " / " ~ fmtVec(endTangent, 4, 0));
+        }
         const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
         tally[emitted.shape.kind] += 1;
         curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
-        lines = append(lines, "    loop " ~ edge.loop ~ " edge " ~ edge.index ~ ": " ~ emitted.shape.kind
-            ~ (emitted.shape.kind == "arc" ? " R " ~ fmtMM(emitted.shape.radius, 4, 0) : "") ~ emitted.gate);
-    }
-    if (settings.print)
-    {
-        for (var text in concatenateArrays([undraped.lines, lines]))
+        if (settings.print)
         {
-            println(text);
+            println("        -> " ~ emitted.shape.kind
+                ~ (emitted.shape.kind == "arc" ? " R " ~ fmtMM(emitted.shape.radius, 4, 0) : "") ~ emitted.gate);
         }
     }
 
