@@ -902,7 +902,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         {
             // Printed BEFORE emitting, so an edge the kernel refuses names itself.
             println("    loop " ~ edge.loop ~ " edge " ~ edge.index ~ ": " ~ size(points) ~ " points, "
-                ~ fmtVec(points[0], 3, 0) ~ " -> " ~ fmtVec(points[size(points) - 1], 3, 0) ~ " mm, chord "
+                ~ fmtVec(points[0] / millimeter, 3, 0) ~ " -> " ~ fmtVec(points[size(points) - 1] / millimeter, 3, 0) ~ " mm, chord "
                 ~ fmtMM(norm(points[size(points) - 1] - points[0]), 4, 0) ~ " mm, end tangents "
                 ~ fmtVec(startTangent, 4, 0) ~ " / " ~ fmtVec(endTangent, 4, 0));
         }
