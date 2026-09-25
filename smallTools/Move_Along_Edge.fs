@@ -165,7 +165,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
     {
         var pathData = buildMovePath(context, definition.moveEdge);
 
-        var moveBodies = evaluateQuery(context, qUnion([definition.moveBodies]));
+        var moveBodies = selectedEntities(context, definition.moveBodies);
         // Names are stored for bodies only, in selection order; sketch entities have no name to extend.
         var names = definition.sourceNames == "" ? [] : splitByRegexp(definition.sourceNames, NAME_SEPARATOR);
         var bodyIndex = 0;
@@ -190,8 +190,9 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         }
 
         // A point turned about itself stays where it is.
-        var points = qUnion([qEntityFilter(definition.moveBodies, EntityType.VERTEX),
-                    definition.mcAsPoints ? qBodyType(definition.moveBodies, BodyType.MATE_CONNECTOR) : qNothing()]);
+        var selection = qUnion(moveBodies);
+        var points = qUnion([qEntityFilter(selection, EntityType.VERTEX),
+                    definition.mcAsPoints ? qBodyType(selection, BodyType.MATE_CONNECTOR) : qNothing()]);
         if (definition.applyMode == MoveApplyMode.ROTATE && !definition.provideRef && !isQueryEmpty(context, points))
         {
             reportFeatureInfo(context, id, "Rotate only: points are created at their source locations (a point has no orientation).");
@@ -229,12 +230,33 @@ export function moveAlongEdgeEditLogic(context is Context, id is Id, oldDefiniti
     isCreating is boolean, specifiedParameters is map) returns map
 {
     var names = [];
-    for (var body in evaluateQuery(context, qEntityFilter(qUnion([definition.moveBodies]), EntityType.BODY)))
+    for (var body in selectedEntities(context, definition.moveBodies))
     {
+        if (isQueryEmpty(context, qEntityFilter(body, EntityType.BODY)))
+        {
+            continue;
+        }
         names = append(names, getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME }));
     }
     definition.sourceNames = join(names, NAME_SEPARATOR);
     return definition;
+}
+
+/**
+ * The selected entities in selection order, each as its own query. Anything picked on a mate
+ * connector (the dialog can hand over the connector's vertex) becomes the connector body, so it is
+ * moved as a connector and never mistaken for a sketch vertex. Shared by the feature body and the
+ * editing logic so the stored names line up with the bodies.
+ */
+function selectedEntities(context is Context, selection is Query) returns array
+{
+    var entities = [];
+    for (var entity in evaluateQuery(context, qUnion([selection])))
+    {
+        var connector = qBodyType(qOwnerBody(entity), BodyType.MATE_CONNECTOR);
+        entities = append(entities, isQueryEmpty(context, connector) ? entity : connector);
+    }
+    return entities;
 }
 
 /**
