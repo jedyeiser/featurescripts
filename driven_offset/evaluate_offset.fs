@@ -29,6 +29,12 @@ import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b982
  * the target does not reach the section plane, and where two stations at one coordinate see
  * different offsets (a step). It starts and stops where the target does.
  *
+ * G0 corners in the reference: outside the turn the forward offset fills the corner, and the fill
+ * lies between the two halves' planes where no station looks -- nothing to do. Inside the turn it
+ * trims both sides back to where they cross; the stations there cannot see their own (trimmed)
+ * target and would cut the OTHER side's, so such cuts are rejected (inCornerOverlap) and the run's
+ * fit bridges the gap. The forward offset trims the bridged stretch away again.
+ *
  * Not in v1: Measure along = Reference wire (the placement there is a walk in the reference
  * surface, not a plane; its inverse is a different cut -- see the design note).
  */
