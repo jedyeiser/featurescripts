@@ -130,7 +130,7 @@ export const evaluateOffset = defineFeature(function(context is Context, id is I
 
         const cuts = cutTargets(stations, targets);
         const rows = measuredRows(stations, resolved.coords, cuts, base.zeroPoint);
-        const pieces = buildPieces(stations, rows);
+        const pieces = buildPieces(stations, rows, targets);
 
         if (size(pieces) == 0)
         {
@@ -611,7 +611,8 @@ function measuredRows(stations is array, coords is map, cuts is array, zeroPoint
 /**
  * Group the rows into pieces (continuous wires) of runs (one curve each).
  *
- * A run ends at a gap, at every inserted crossing (a target vertex, so a target corner is a
+ * A gap the target runs on unbroken across is bridged by a straight run; any other gap breaks
+ * the profile. A run ends at every inserted crossing (a target vertex, so a target corner is a
  * profile corner), where two stations at one coordinate disagree, where the target edge changes
  * without a crossing, and where the coordinate turns back. A piece ends where the next run does
  * not start on the point the last one ended on. The two halves of a welded reference joint agree
@@ -619,31 +620,59 @@ function measuredRows(stations is array, coords is map, cuts is array, zeroPoint
  *
  * @returns {array} : pieces, each an array of runs, each an array of profile points.
  */
-function buildPieces(stations is array, rows is array) returns array
+function buildPieces(stations is array, rows is array, targets is array) returns array
 {
     var pieces = [];
     var piece = [];
     var run = [];
     var direction = 0;
     var previous = undefined;
+    var gap = false;
 
     for (var k = 0; k < size(rows); k += 1)
     {
         const row = rows[k];
         if (row == undefined)
         {
+            gap = previous != undefined;
+            continue;
+        }
+
+        if (gap)
+        {
+            gap = false;
             piece = closeRunInto(piece, run);
+            const last = run[size(run) - 1];
+
+            if (targetsConnected(targets, previous.targetIndex, row.targetIndex))
+            {
+                // The target runs on unbroken across stations it could not be measured at -- an
+                // inside corner the forward offset trimmed, or stations dropped as folded. The
+                // offset there is whatever the forward feature cuts away again, so bridge it
+                // with a straight run rather than breaking the profile.
+                if (norm(row.point - last) >= EVAL_STEP_TOL)
+                {
+                    piece = closeRunInto(piece, [last, row.point]);
+                    run = [row.point];
+                }
+                else
+                {
+                    run = [last];
+                }
+                direction = 0;
+                previous = row;
+                continue;
+            }
+
             pieces = closePieceInto(pieces, piece);
             piece = [];
-            run = [];
-            direction = 0;
             previous = undefined;
-            continue;
         }
 
         if (previous == undefined)
         {
             run = [row.point];
+            direction = 0;
             previous = row;
             continue;
         }
@@ -702,6 +731,28 @@ function buildPieces(stations is array, rows is array) returns array
 
     piece = closeRunInto(piece, run);
     return closePieceInto(pieces, piece);
+}
+
+/**
+ * Whether two target edges are one edge or meet end to end.
+ */
+function targetsConnected(targets is array, a is number, b is number) returns boolean
+{
+    if (a == b)
+    {
+        return true;
+    }
+    for (var p in [targets[a].start, targets[a].end])
+    {
+        for (var q in [targets[b].start, targets[b].end])
+        {
+            if (norm(p - q) < EVAL_STEP_TOL)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 function closeRunInto(piece is array, run is array) returns array

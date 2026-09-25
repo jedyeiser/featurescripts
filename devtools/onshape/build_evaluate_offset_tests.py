@@ -9,6 +9,7 @@ profile must reproduce the original wherever the original is defined.
   E2 arc R400 reference, Along / Offset edges, same profile -> 1 piece, matches the original
   E3 arc reference, profile with a jump at 200 -> 2 pieces, matches the original on both
   E4 arc reference, World / World X -> 1 piece, matches the original
+  R2 / R3 / R4 Driven edge offset of the reference by E2 / E3 / E4's MEASURED profile -> lands on T-E2 / T-E3 / T-E4
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_evaluate_offset_tests.py
 """
@@ -163,11 +164,41 @@ t1 = offset("T-E1 line offset by P-smooth (Along, Offset edges)", ref_line, smoo
 evaluate("E1 line, Along / Offset edges -> 1 piece, matches P-smooth", ref_line, t1)
 
 t2 = offset("T-E2 arc offset by P-smooth (Along, Offset edges)", ref_arc, smooth)
-evaluate("E2 arc R400, Along / Offset edges -> 1 piece, matches P-smooth", ref_arc, t2)
+e2 = evaluate("E2 arc R400, Along / Offset edges -> 1 piece, matches P-smooth", ref_arc, t2)
 
 t3 = offset("T-E3 arc offset by P-jump (Along, Offset edges)", ref_arc, jump)
-evaluate("E3 arc, jump at 200 -> 2 pieces, matches P-jump", ref_arc, t3)
+e3 = evaluate("E3 arc, jump at 200 -> 2 pieces, matches P-jump", ref_arc, t3)
 
 t4 = offset("T-E4 arc offset by P-smooth (World, World X)", ref_arc, smooth, "WORLD_X", "WORLD")
-evaluate("E4 arc, World / World X -> 1 piece, matches P-smooth", ref_arc, t4, "WORLD_X", "WORLD")
+e4 = evaluate("E4 arc, World / World X -> 1 piece, matches P-smooth", ref_arc, t4, "WORLD_X", "WORLD")
+
+# Round trips: Driven edge offset driven by the MEASURED profile must land on the original target.
+offset("R2 arc offset by E2's measured profile -> on T-E2", ref_arc, e2)
+offset("R3 arc offset by E3's measured profile -> on T-E3", ref_arc, e3)
+offset("R4 arc offset by E4's measured profile (World, World X) -> on T-E4", ref_arc, e4, "WORLD_X", "WORLD")
+
+
+# ---- a G0 corner in the reference: 200 along X, then 200 at 30 deg ------------------------------
+def polyline(name, turn_deg):
+    a = math.radians(turn_deg)
+    pts = [(0.0, 0.0), (0.2, 0.0), (0.2 + 0.2 * math.cos(a), 0.2 * math.sin(a))]
+    segs = []
+    for i in range(2):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        L = math.hypot(x1 - x0, y1 - y0)
+        segs.append({"btType": "BTMSketchCurveSegment-155", "entityId": "s%d" % i, "startPointId": "s%d.start" % i, "endPointId": "s%d.end" % i,
+                     "startParam": 0.0, "endParam": L, "isConstruction": False,
+                     "geometry": {"btType": "BTCurveGeometryLine-117", "pntX": x0, "pntY": y0, "dirX": (x1 - x0) / L, "dirY": (y1 - y0) / L}})
+    return sketch(name, "Top", segs)
+
+
+ref_out = polyline("Reference corner turning -Y (away from the width offset): 200 + 200 at -30 deg on Top", -30)
+t5 = offset("T-E5 corner offset by P-smooth (outside: arc fill)", ref_out, smooth)
+e5 = evaluate("E5 G0 corner, offset outside the turn -> 1 piece, matches P-smooth", ref_out, t5)
+offset("R5 corner offset by E5's measured profile -> on T-E5", ref_out, e5)
+
+ref_in = polyline("Reference corner turning +Y (toward the width offset): 200 + 200 at +30 deg on Top", 30)
+t6 = offset("T-E6 corner offset by P-smooth (inside: trimmed)", ref_in, smooth)
+e6 = evaluate("E6 G0 corner, offset inside the turn -> 1 piece, matches P-smooth", ref_in, t6)
+offset("R6 corner offset by E6's measured profile -> on T-E6", ref_in, e6)
 print("studio", E)

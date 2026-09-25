@@ -28,6 +28,8 @@ CASES = {
     "E2": ("P-smooth", 1, 0.0, 450.0),
     "E3": ("P-jump", 2, 0.0, 400.0),
     "E4": ("P-smooth", 1, 0.0, 400 * 0.9396926207859084),
+    "E5": ("P-smooth", 1, 0.0, 400.0),
+    "E6": ("P-smooth", 1, 0.0, 400.0),
 }
 
 SCRIPT = r'''
@@ -105,5 +107,56 @@ for case, (orig, pieces, xs, xe) in CASES.items():
     failed += 0 if ok else 1
     print("%s %s  %d piece(s) (want %d), x %.4f .. %.4f (want %.4f .. %.4f), max |dw|,|dh| %.6f mm at x %.3f, %d sample(s) off-profile  -- %s"
           % (case, "PASS" if ok else "FAIL", n, pieces, x0, x1, xs, xe, worst, worst_at, missing, m["name"]))
+
+# Round trips: points along each R case's edges, distance to the original target's edges.
+ROUND = {"R2": "T-E2", "R3": "T-E3", "R4": "T-E4", "R5": "T-E5", "R6": "T-E6"}
+RSCRIPT = r'''
+function(context is Context, queries)
+{
+    const again = qOwnedByBody(qCreatedBy(makeId("%(again)s"), EntityType.BODY), EntityType.EDGE);
+    const target = qOwnedByBody(qCreatedBy(makeId("%(target)s"), EntityType.BODY), EntityType.EDGE);
+    var worst = 0 * meter;
+    var worstAt = vector(0, 0, 0) * meter;
+    var params = [];
+    for (var i = 0; i <= 20; i += 1)
+    {
+        params = append(params, i / 20);
+    }
+    for (var e in evaluateQuery(context, again))
+    {
+        for (var line in evEdgeTangentLines(context, { "edge" : e, "parameters" : params }))
+        {
+            const d = evDistance(context, { "side0" : line.origin, "side1" : target }).distance;
+            if (d > worst)
+            {
+                worst = d;
+                worstAt = line.origin;
+            }
+        }
+    }
+    const lengthAgain = evLength(context, { "entities" : again });
+    const lengthTarget = evLength(context, { "entities" : target });
+    return [toString(roundToPrecision(worst / millimeter, 6)), toString(roundToPrecision(worstAt[0] / millimeter, 2)) ~ "," ~ toString(roundToPrecision(worstAt[1] / millimeter, 2)),
+        toString(roundToPrecision(lengthAgain / millimeter, 5)), toString(roundToPrecision(lengthTarget / millimeter, 5))];
+}
+'''
+for case, target in ROUND.items():
+    a = by_prefix.get(case)
+    t = by_prefix.get(target)
+    if a is None or t is None:
+        print("%s FAIL feature missing" % case)
+        failed += 1
+        continue
+    r = c.post(f"{BASE}/featurescript", json_data={"script": RSCRIPT % {"again": a["featureId"], "target": t["featureId"]}})
+    errors = [n.get("message") for n in (r.get("notices") or []) if n.get("level") == "ERROR"]
+    got = strings(r.get("result"))
+    if errors or len(got) < 4:
+        print("%s FAIL check did not run: %s" % (case, "; ".join(errors or ["no result"])))
+        failed += 1
+        continue
+    worst, at, la, lt = float(got[0]), got[1], float(got[2]), float(got[3])
+    ok = worst <= TOL_MM and abs(la - lt) <= TOL_MM
+    failed += 0 if ok else 1
+    print("%s %s  max distance to %s %.6f mm at %s, length %.5f vs %.5f mm  -- %s" % (case, "PASS" if ok else "FAIL", target, worst, at, la, lt, a["name"]))
 
 sys.exit(1 if failed else 0)
