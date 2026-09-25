@@ -982,6 +982,16 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
                 ~ fmtMM(norm(points[size(points) - 1] - points[0]), 4, 0) ~ " mm, end tangents "
                 ~ fmtVec(startTangent, 4, 0) ~ " / " ~ fmtVec(endTangent, 4, 0));
         }
+        if (settings.print)
+        {
+            var pts = "";
+            for (var i = 0; i < size(edge.points); i += 1)
+            {
+                pts = pts ~ " " ~ roundToPrecision(edge.points[i][0] * 1000, 4) ~ "," ~ roundToPrecision(edge.points[i][1] * 1000, 4)
+                    ~ (edge.arcs != undefined ? "@" ~ roundToPrecision(edge.arcs[i] * 1000, 3) : "");
+            }
+            println("        points:" ~ pts);
+        }
         const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
         tally[emitted.shape.kind] += 1;
         curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
