@@ -32,30 +32,18 @@ export const spikeBody = defineFeature(function(context is Context, id is Id, de
         definition.features is FeatureList;
     }
     {
+        // Called by a Case pattern inside its pattern frame: replay the listed features (route B --
+        // feature functions cannot be stored in a variable, setVariable fails "Execution error").
         if (isInFeaturePattern(context))
         {
+            const functions = valuesSortedById(context, definition.features);
+            for (var i = 0; i < size(functions); i += 1)
+            {
+                functions[i](id);
+            }
             return;
         }
-        var probe = { "keys" : size(keys(definition.features)) };
-        try
-        {
-            setVariable(context, "-caseSpikeProbeArray", values(definition.features));
-            probe.asArray = "ok";
-        }
-        catch (e)
-        {
-            probe.asArray = toString(e);
-        }
-        try
-        {
-            setVariable(context, SPIKE_BODY_KEY, { "functions" : definition.features, "count" : size(definition.features) });
-            probe.asMap = "ok";
-        }
-        catch (e)
-        {
-            probe.asMap = toString(e);
-        }
-        setVariable(context, "-caseSpikeProbe", probe);
+        setVariable(context, SPIKE_BODY_KEY, { "count" : size(definition.features) });
         reportFeatureInfo(context, id, "Published " ~ size(definition.features) ~ " feature functions.");
     });
 
@@ -63,6 +51,9 @@ annotation { "Feature Type Name" : "Case pattern (test)", "Editing Logic Functio
 export const spikeReplay = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
+        annotation { "Name" : "Close case" }
+        definition.closeCase is FeatureList;
+
         annotation { "Name" : "Query variable to rebind", "Default" : "seed", "MaxLength" : 64 }
         definition.seedName is string;
 
@@ -84,7 +75,7 @@ export const spikeReplay = defineFeature(function(context is Context, id is Id, 
         {
             throw regenError("No Close case (test) before this feature.");
         }
-        const functions = valuesSortedById(context, stored.functions);
+        const functions = valuesSortedById(context, definition.closeCase);
         println("S2 editing logic saw: " ~ definition.probe);
         println("S3 functions in body: " ~ size(functions) ~ " (Close case listed " ~ stored.count ~ ")");
 
@@ -125,7 +116,8 @@ export const spikeReplay = defineFeature(function(context is Context, id is Id, 
                 setByBody = append(setByBody, name);
             }
         }
-        const bodies = size(evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY)));
+        const bodies = size(evaluateQuery(context, qSketchFilter(qCreatedBy(caseId, EntityType.BODY), SketchObject.NO)));
+        const sketchBodies = size(evaluateQuery(context, qSketchFilter(qCreatedBy(caseId, EntityType.BODY), SketchObject.YES)));
         println("S1 bodies created by the replay: " ~ bodies ~ "; errors: " ~ (size(errors) == 0 ? "none" : join(errors, " | ")));
         println("S4 variables set or changed by the body: " ~ (size(setByBody) == 0 ? "none" : join(setByBody, ", ")));
 
@@ -143,6 +135,7 @@ export const spikeReplay = defineFeature(function(context is Context, id is Id, 
                     "functions" : size(functions),
                     "listed" : stored.count,
                     "bodies" : bodies,
+                    "sketchBodies" : sketchBodies,
                     "errors" : errors,
                     "seedListed" : isIn(definition.seedName, keys(varsBefore)),
                     "setByBody" : setByBody,
