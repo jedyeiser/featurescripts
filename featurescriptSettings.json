@@ -302,6 +302,17 @@
       "last_push": "2026-09-25T07:49:01.148177+00:00",
       "document_id": "2099413dd91f34578b385892",
       "workspace_id": "a875a90e6a8ebf49cc0eff73"
+    },
+    {
+      "name": "composite_part_tools",
+      "description": "Composite part tools: Composite boolean (intersect / subtract composite parts)",
+      "working_directory": "./composite_part_tools",
+      "onshape_url": "https://k2-sports.onshape.com/documents/aa401f26e81a260d97f6853c/w/d38ee54f2f9b2ff2eabbcccd",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "aa401f26e81a260d97f6853c",
+      "workspace_id": "d38ee54f2f9b2ff2eabbcccd"
     }
   ],
   "sync_metadata": {}
