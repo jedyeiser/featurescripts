@@ -8,8 +8,8 @@ States: planned -> draft -> reviewed -> approved -> published (uploaded to Onsha
 
 | id | title | state | flags | file | last change |
 |---|---|---|---|---|---|
-| x_unwrap | Unwrap (pre-existing) | **draft** | edited by user | `driven_offset/docs/unwrap_explained.md` | 2026-09-25 written by Claude |
-| x_reference_side | Reference-side features | **reviewed** | - | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 user: explainer looks great (2026-09-25); fig02 panel titles fixed after |
+| x_unwrap | Unwrap (pre-existing) | **draft** | edited by user, code changed since written | `driven_offset/docs/unwrap_explained.md` | 2026-09-25 written by Claude |
+| x_reference_side | Reference-side features | **reviewed** | - | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
 | x_curve_tools | Curve tools | **planned** | - | `docs/explainers/curve_tools/curve_tools_explained.md` |   |
 | x_variable_tools | Variable tools | **planned** | - | `docs/explainers/variable_tools/variable_tools_explained.md` |   |
 | x_case_pattern | Case pattern | **planned** | - | `docs/explainers/case_pattern/case_pattern_explained.md` |   |

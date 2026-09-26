@@ -365,11 +365,10 @@ if ids:
 else:
     print("OE22 NOT BUILT: OE6 has no output edge around x 5200 (%s)" % r.get("notices"))
 
-# OE16 non-G1 selection: temporary instance, must fail
-tmp = offset("OE16 temporary", edges(sketch("OE16 source corner (22000, 0) to (22100, 0) to (22100, 100)",
-                                            [seg("a", *mmv(22000, 0, 22100, 0)), seg("b", *mmv(22100, 0, 22100, 100))])),
-             ref_point("OE16", 22000, 0), [region("A", 0, 200, normal=(10, 10))])
-status = c.get(f"{BASE}/features")["featureStates"][tmp]["featureStatus"]
-c._request("DELETE", f"{BASE}/features/featureid/{tmp}")
-print("OE16 corner (not G1) -> %s (%s)" % (status, "PASS" if status == "ERROR" else "FAIL: expected ERROR"))
+# OE16 a G0 corner: sharp-corner paths are legitimate input (user, 2026-09-25) -- kept as a real case so its
+# output at the corner can be inspected and, once corners are handled, checked.
+offset("OE16 G0 corner (22000,0)-(22100,0)-(22100,100), normal 10 -> offset follows both legs, corner handled",
+       edges(sketch("OE16 source corner (22000, 0) to (22100, 0) to (22100, 100)",
+                    [seg("a", *mmv(22000, 0, 22100, 0)), seg("b", *mmv(22100, 0, 22100, 100))])),
+       ref_point("OE16", 22000, 0), [region("A", 0, 200, normal=(10, 10))])
 print("studio", E)

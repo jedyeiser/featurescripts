@@ -21,6 +21,7 @@ Figures are in `img/`, made by `img/src/figs.py` (`python docs/explainers/refere
   - [1.1 Why a flip is fragile](#11-why-a-flip-is-fragile)
   - [1.2 Reading a side: signed distance](#12-reading-a-side-signed-distance)
   - [1.3 Choosing a good reference](#13-choosing-a-good-reference)
+  - [1.4 What the reference does not change: output orientation](#14-what-the-reference-does-not-change-output-orientation)
 - [Part 2: The features](#part-2-the-features)
   - [2.1 Mutual Trim+](#21-mutual-trim)
   - [2.2 Split+](#22-split)
@@ -86,6 +87,37 @@ describe:
 - **Avoid references that lie on a tool.** A reference exactly on a splitting plane has no side of it.
 
 Rule of thumb used in all examples: *a local reference inside the region to keep*.
+
+## 1.4 What the reference does not change: output orientation
+
+The reference decides **which side**: which piece is kept, which way an offset or a thicken goes. It does **not**
+re-orient the surfaces the feature outputs. Every output sheet keeps the orientation its input had:
+
+- Split+ pieces face the way the split surface faced.
+- A Mutual Trim+ result keeps its inputs' orientation (one merged body shares one orientation).
+- An Offset+ surface faces the way its source faced, whichever side it was offset to.
+
+On the topsheet_surf example the topsheet surface faces **down**, into the ski (normal z about -0.9). All three
+Split+ pieces, and the Offset+ copy 2 mm below it, face down as well, although the references sit on either side.
+
+That matters downstream. The features after ours are usually **built-ins**, and they still name their side by the
+normal: Thicken's Thickness 1, Offset surface's direction, an extrude "up to" a surface, Move face, the built-in
+Split's front / back. If an input upstream flips, our output flips with it, and those built-ins flip too -- the very
+fragility these features remove on their own step.
+
+**Decided 2026-09-25, not built yet:** an option to orient output sheets by the reference as well
+(`opFlipOrientation` flips a whole sheet body): each output body turned so its normal points **toward** the
+reference (or away). Then built-ins downstream see a stable normal too. The decisions that go with it:
+
+- **Sheets only.** Split+ surface pieces, Mutual Trim+ results, Offset+ surfaces. Solids have no free orientation
+  (their normals always point outward), so Thicken+ outputs and solid Split+ pieces are unaffected.
+- **Per body.** A merged Mutual Trim+ result is one body and gets one orientation for both of its halves.
+- **Default off.** A new parameter's default is written into every saved instance (correction 25), so a default of
+  on would silently flip the surfaces of existing models.
+- Form still open: an option on the three features, or a separate "orient to reference" feature for any surface.
+
+**Until then:** prefer the reference-side features downstream as well (Thicken+ instead of Thicken, Offset+ instead
+of Offset surface), since they read the side from the reference and do not care which way the normal points.
 
 ---
 
@@ -303,6 +335,9 @@ result bodies) and `inputs`; the rest:
 Every key is present on every regeneration, empty when it does not apply, so an Extract variables entry never
 breaks because a key disappeared. Split+ publishes **one** edge per cut: keeping both sides leaves two coincident
 edges per cut, and an extrude or fillet on both fails.
+
+The surfaces these keys point at keep their inputs' orientation: the reference picks the side, not the normal
+(section 1.4). Orienting output sheets by the reference is decided but not built yet.
 
 ---
 

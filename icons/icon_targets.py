@@ -5,6 +5,7 @@ TARGETS = [
     ("reference_side", "mutual_trim_plus", "mutual_trim_plus"),
     ("reference_side", "offset_plus", "offset_plus"),
     ("reference_side", "thicken_plus", "thicken_plus"),
+    ("reference_side", "orient_to_reference", "orient_to_reference"),
     ("variable_tools", "extract_variables", "extract_variables"),
     ("curve_tools", "clean_wire", "clean_wire"),
     ("curve_tools", "map_curve", "map_curve"),

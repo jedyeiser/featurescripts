@@ -45,9 +45,14 @@
           "date": "2026-09-25",
           "state": "reviewed",
           "note": "user: explainer looks great (2026-09-25); fig02 panel titles fixed after"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "reviewed",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "d121b7fb9bf4",
+      "written_hash": "e6fdf1751bd3",
       "sources_hash": "227d9cd3f815",
       "state_hash": "d121b7fb9bf4"
     },

@@ -22,8 +22,16 @@ export import(path : "a2665e22c07b7a6929ce4e80", version : "19bb4e2dc00faa5df759
  *     the cells whose interior maps back inside the piece kept and united.
  *
  * So: split the part by planes normal to the reference where it changes between a line and a curve, move the
- * straight pieces, rebuild the curved ones, unite. Walls leaning by up to UNWRAP_PART_RULED_TOL are rebuilt
- * exactly as ruled surfaces, or stood up vertical with squareWalls.
+ * straight pieces, rebuild the curved ones, unite.
+ *
+ * A curved piece is rebuilt by PRISM, the band rebuild (research_unwrap_curved_ref.md 4): every face mapped to a
+ * SIDE-view curve (profile faces) and / or a PLAN-view curve (walls); each view's curves cut a flat sheet into
+ * cells; (plan cell x Z) INTERSECT (side cell x Y) products tested for membership by the inverse map; plan cells
+ * with the same set of solid side cells form a band; each band is one extrude-intersect; bands united. A face that
+ * departs from a pure profile / wall by more than the shape tolerance sends the piece to the exact CELL rebuild
+ * (rebuildPiece: one tool per chain, a box split by every tool, cells kept by the inverse map; walls leaning by up
+ * to UNWRAP_PART_RULED_TOL rebuilt exactly as ruled surfaces, or stood up vertical with squareWalls). Every rebuilt
+ * piece is REVERSE CHECKED (result faces mapped back onto the source) before it is accepted.
  */
 
 /** |b| (share of the flat normal along flat Y) below this: the face's image is an extrusion along flat Y. */
@@ -82,7 +90,54 @@ export const UNWRAP_PART_RULING_RISE = 0.5;
 
 /** The counted keys of a report (pieces add them up; maxLean is a maximum). */
 export const UNWRAP_PART_COUNT_KEYS = ["cells", "keptCells", "tools", "planeTools", "arcTools", "splineTools", "ruledTools",
-        "snappedTools", "squaredWalls"];
+        "snappedTools", "squaredWalls", "approximatedFaces", "fallbackFaces", "bands"];
+
+// ---- PRISM (band rebuild) ----
+
+/** Default shape tolerance: how far a face may depart from a pure side-view extrusion or plan-view wall. */
+export const UNWRAP_PART_SHAPE_TOL = 0.005 * millimeter;
+
+/** Classification grid of a PRISM face (G x G parameters, G odd so there is a middle row). */
+export const UNWRAP_PART_PRISM_GRID = 5;
+
+/** A face whose flat normal leans less than this out of flat XY (|c|) is also an x-facing face: a profile face this
+ * steep bounds the plan view as well (4802's tilted nose, research 5.1 item 4). */
+export const UNWRAP_PART_XFACING = 0.05;
+
+/** Rows: adaptive (seed every UNWRAP_PART_ROW_SEED_SPACING m, at least UNWRAP_PART_ROW_SEED_MIN, then split every
+ * span whose mapped midpoint misses the cubic through its neighbours by more than shapeTolerance *
+ * UNWRAP_PART_ROW_REFINE, up to UNWRAP_PART_ROW_PASSES passes), or fixed (UNWRAP_PART_ROW_FIXED_SPACING, at least
+ * UNWRAP_PART_ROW_MIN), both capped at UNWRAP_PART_PRISM_ROW_MAX points. */
+export const UNWRAP_PART_ADAPTIVE_ROWS = true;
+export const UNWRAP_PART_ROW_SEED_SPACING = 8e-3;
+export const UNWRAP_PART_ROW_SEED_MIN = 9;
+export const UNWRAP_PART_ROW_REFINE = 0.25;
+export const UNWRAP_PART_ROW_PASSES = 6;
+export const UNWRAP_PART_ROW_FIXED_SPACING = 4e-3;
+export const UNWRAP_PART_PRISM_ROW_MAX = 400;
+
+/** A mapped row within shapeTolerance * this of a line / circle is emitted as a line / arc ("keep" faces). */
+export const UNWRAP_PART_SHAPE_ARC_SHARE = 0.1;
+
+/** A chain end lying on another chain of its view (within UNWRAP_PART_JOIN) is extended by this (m) so the curves
+ * really cross; a free end is extended along its tangent to the box. */
+export const UNWRAP_PART_OVERSHOOT = 2e-5;
+
+/** The PRISM box comes from the piece's edges sampled every this (at least 5 points per edge). */
+export const UNWRAP_PART_EXTENT_SPACING = 20 * millimeter;
+
+/** Reverse check: result-face parameters mapped back, and the error floor (the limit is max(shapeTolerance, this)). */
+export const UNWRAP_PART_REVERSE_PARAMS = [vector(0.125, 0.125), vector(0.125, 0.375), vector(0.125, 0.625), vector(0.125, 0.875),
+        vector(0.375, 0.125), vector(0.375, 0.375), vector(0.375, 0.625), vector(0.375, 0.875),
+        vector(0.625, 0.125), vector(0.625, 0.375), vector(0.625, 0.625), vector(0.625, 0.875),
+        vector(0.875, 0.125), vector(0.875, 0.375), vector(0.875, 0.625), vector(0.875, 0.875)];
+export const UNWRAP_PART_REVERSE_FLOOR = 0.01 * millimeter;
+
+/** A face departing from its profile / wall by more than this (m) counts as approximated. */
+export const UNWRAP_PART_APPROX_EPS = 1e-7;
+
+/** "Not representable in this view". */
+export const UNWRAP_PART_NO_FIT = 1e9;
 
 /** An empty report: every UNWRAP_PART_COUNT_KEYS entry 0, plus maxLean 0. */
 export function emptyPartReport() returns map
@@ -105,22 +160,39 @@ export function emptyPartReport() returns map
  * @param chart : unwrapChart(context, W, alignPoint, d).
  * @param cs {CoordSystem} : the flat frame; a wrapped point P lands at toWorld(cs, vector(x, y, z) * meter) with
  *        [x, y, z] = unwrapFast(chart, P, undefined)[0..2] (plain metres) -- same convention as unwrap.fs.
- * @param options {map} : { "squareWalls" : boolean (default false = exact mapped walls), "flatTolerance" :
- *        ValueWithUnits (snap nearly flat mapped faces to planes; default 0.001 mm), "print" : boolean (accepted;
- *        nothing is printed here -- the caller prints "lines") }
+ * @param options {map} : {
+ *        "squareWalls" : boolean (default false). PRISM: a leaning wall beyond shapeTolerance is stood up (squared at
+ *              mid-height) instead of sending the piece to the exact cell rebuild. Cells: leaning walls squared
+ *              instead of ruled.
+ *        "faceMode" : "keep" (default: one rebuilt face per source face, a true line / arc where the mapped face
+ *              row is one) or "merge" (tangent-connected faces fitted as one spline tool: fewer faces).
+ *        "shapeTolerance" : ValueWithUnits (default 0.005 mm): how far a face may depart from a pure side-view
+ *              extrusion (profile) or plan-view wall and still be built as its best fit. Beyond it the piece falls
+ *              back to the exact cell rebuild.
+ *        "flatTolerance" : ValueWithUnits (snap nearly straight chains to lines; default 0.001 mm),
+ *        "print" : boolean (accepted; nothing is printed here -- the caller prints "lines") }
  * @returns {map} : { "bodies" : Query (flat solid(s), created under id), "report" : { "pieces", "rigidPieces",
- *        "rebuiltPieces", "cells", "keptCells", "tools", "planeTools", "arcTools", "splineTools", "ruledTools",
- *        "snappedTools", "squaredWalls", "maxLean" }, "lines" : array of strings }
+ *        "rebuiltPieces", "prismPieces", "cellPieces", "methods" (per piece: "rigid" / "prism" / "cells"), "bands",
+ *        "approximatedFaces", "approximationMax" (ValueWithUnits), "fallbackFaces", "reverseCheckMax"
+ *        (ValueWithUnits, rebuilt pieces; rigid pieces are exact), "cells", "keptCells", "tools", "planeTools",
+ *        "arcTools", "splineTools", "ruledTools", "snappedTools", "squaredWalls", "maxLean" }, "lines" : array of
+ *        strings }
  * Leaves the input part untouched (works on a copy); all temporaries are created under id and deleted.
+ * Throws a regenError when a rebuilt piece fails its reverse check (never returns a silently wrong body).
  */
 export function unwrapSolid(context is Context, id is Id, chart is map, cs is CoordSystem, part is Query, options is map) returns map
 {
+    const shapeTolerance = (options.shapeTolerance == undefined) ? UNWRAP_PART_SHAPE_TOL : options.shapeTolerance;
     const settings = {
             "squareWalls" : options.squareWalls == true,
             "flatTolerance" : (options.flatTolerance == undefined) ? 0.001 * millimeter : options.flatTolerance,
+            "faceMode" : (options.faceMode == "merge") ? "merge" : "keep",
+            "shapeTolerance" : shapeTolerance,
+            "arcTolerance" : shapeTolerance * UNWRAP_PART_SHAPE_ARC_SHARE,
             "part" : part
         };
-    var report = mergeMaps(emptyPartReport(), { "pieces" : 0, "rigidPieces" : 0, "rebuiltPieces" : 0 });
+    var report = mergeMaps(emptyPartReport(), { "pieces" : 0, "rigidPieces" : 0, "rebuiltPieces" : 0, "prismPieces" : 0,
+                "cellPieces" : 0, "methods" : [], "approximationMax" : 0 * meter, "reverseCheckMax" : 0 * meter });
     var lines = [];
     const inputSolids = evaluateQuery(context, qBodyType(part, BodyType.SOLID));
 
@@ -148,7 +220,7 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
         }
     }
 
-    // 2. Straight pieces move rigidly into the chart frame; curved pieces are rebuilt there.
+    // 2. Straight pieces move rigidly into the chart frame; curved pieces are rebuilt there (PRISM, else cells).
     const pieces = evaluateQuery(context, piecesQ);
     report.pieces = size(pieces);
     var results = [];
@@ -168,21 +240,26 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
             opTransform(context, id + ("rigid" ~ k), { "bodies" : piece, "transform" : rigidTransform(chart, foot, inside, span.direction) });
             results = append(results, piece);
             report.rigidPieces += 1;
+            report.methods = append(report.methods, "rigid");
             lines = append(lines, "  piece " ~ k ~ ": over a line, moved rigidly ("
                 ~ size(evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE))) ~ " faces kept)");
         }
         else
         {
-            const rebuilt = rebuildPiece(context, id + ("piece" ~ k), chart, piece, settings);
+            const rebuilt = rebuildCurvedPiece(context, id + ("piece" ~ k), chart, piece, settings);
             opDeleteBodies(context, id + ("deletePiece" ~ k), { "entities" : piece });
             results = append(results, rebuilt.body);
             report.rebuiltPieces += 1;
+            report.methods = append(report.methods, rebuilt.method);
+            report[(rebuilt.method == "prism") ? "prismPieces" : "cellPieces"] += 1;
             for (var key in UNWRAP_PART_COUNT_KEYS)
             {
                 report[key] += rebuilt.report[key];
             }
             report.maxLean = max(report.maxLean, rebuilt.report.maxLean);
-            lines = append(lines, "  piece " ~ k ~ ": over a curve, rebuilt: " ~ rebuilt.text);
+            report.approximationMax = max(report.approximationMax, rebuilt.report.approximationMax * meter);
+            report.reverseCheckMax = max(report.reverseCheckMax, rebuilt.report.reverseCheck * meter);
+            lines = concatenateArrays([lines, ["  piece " ~ k ~ ": over a curve, " ~ rebuilt.text], rebuilt.notes]);
         }
     }
 
@@ -212,13 +289,191 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
     }
     opTransform(context, id + "place", { "bodies" : bodies, "transform" : toWorld(cs) });
 
-    lines = concatenateArrays([["Unwrap part: " ~ report.pieces ~ " piece(s), " ~ report.rigidPieces ~ " moved rigidly, "
-                    ~ report.rebuiltPieces ~ " rebuilt (" ~ report.keptCells ~ "/" ~ report.cells ~ " cells, "
-                    ~ report.tools ~ " tools: " ~ report.planeTools ~ " planar, " ~ report.arcTools ~ " arc, " ~ report.splineTools ~ " spline, "
-                    ~ report.ruledTools ~ " ruled, " ~ report.snappedTools ~ " snapped flat; "
-                    ~ report.squaredWalls ~ " walls squared; worst wall lean " ~ roundToPrecision(report.maxLean, 6) ~ ")"],
-            lines]);
+    var summary = "Unwrap part: " ~ report.pieces ~ " piece(s): " ~ report.rigidPieces ~ " moved rigidly, "
+        ~ report.prismPieces ~ " band-rebuilt (" ~ report.bands ~ " bands), " ~ report.cellPieces ~ " cell-rebuilt";
+    if (report.rebuiltPieces > 0)
+    {
+        summary = summary ~ "; reverse check max " ~ roundToPrecision(report.reverseCheckMax / millimeter, 5) ~ " mm; "
+            ~ report.approximatedFaces ~ " face(s) approximated (max " ~ roundToPrecision(report.approximationMax / millimeter, 5)
+            ~ " mm), " ~ report.fallbackFaces ~ " beyond the shape tolerance; " ~ report.squaredWalls ~ " walls squared";
+    }
+    lines = concatenateArrays([[summary], lines]);
     return { "bodies" : bodies, "report" : report, "lines" : lines };
+}
+
+// ============================================================================
+// A curved piece: PRISM, the exact cell rebuild as fallback, the reverse check
+// ============================================================================
+
+/**
+ * Rebuild one piece lying over a curved span, in the chart frame. PRISM when every face is a profile or wall within
+ * the shape tolerance (or a wall to square, with squareWalls) and its result passes the reverse check; otherwise the
+ * exact cell rebuild, which must pass the reverse check too. A PRISM attempt runs as a sub-feature and is rolled
+ * back when it fails.
+ * @returns {map} : { "body" : Query, "method" : "prism" | "cells", "report" (counts, maxLean, approximationMax and
+ *      reverseCheck in plain metres), "text", "notes" : array of strings }
+ */
+export function rebuildCurvedPiece(context is Context, id is Id, chart is map, piece is Query, settings is map) returns map
+{
+    const analysis = prismAnalysis(context, chart, piece, settings);
+    const limit = max(settings.shapeTolerance, UNWRAP_PART_REVERSE_FLOOR).value + analysis.squaredMax;
+    var notes = [];
+    var reason = undefined;
+    if (size(analysis.fallback) == 0)
+    {
+        const pid = id + "prism";
+        startFeature(context, pid, {});
+        var built = undefined;
+        try silent
+        {
+            built = prismPiece(context, pid, chart, piece, analysis, settings);
+        }
+        catch (e)
+        {
+            reason = "the band rebuild failed (" ~ errorText(e) ~ ")";
+        }
+        if (built != undefined)
+        {
+            const check = reverseCheck(context, chart, built.body, piece);
+            if (check.distance <= limit)
+            {
+                endFeature(context, pid);
+                var report = mergeMaps(emptyPartReport(), analysis.report);
+                report.bands = built.bands;
+                report.tools = built.tools;
+                report.planeTools = built.counts.lines;
+                report.arcTools = built.counts.arcs;
+                report.splineTools = built.counts.splines;
+                report.snappedTools = built.snapped;
+                report.approximationMax = analysis.approximationMax;
+                report.reverseCheck = check.distance;
+                return { "body" : built.body, "method" : "prism", "report" : report, "notes" : built.notes,
+                        "text" : "band rebuild: " ~ built.text ~ "; " ~ analysis.text ~ "; reverse check "
+                            ~ roundToPrecision(check.distance * 1000, 5) ~ " mm on " ~ check.samples ~ " samples" };
+            }
+            reason = "the band rebuild missed the source by " ~ roundToPrecision(check.distance * 1000, 4) ~ " mm at flat "
+                ~ flatText(check.where) ~ " (limit " ~ roundToPrecision(limit * 1000, 4) ~ " mm)";
+        }
+        abortFeature(context, pid);
+    }
+    else
+    {
+        reason = size(analysis.fallback) ~ " face(s) depart from a side-view extrusion and a plan-view wall by more than "
+            ~ "the shape tolerance (" ~ roundToPrecision(settings.shapeTolerance / millimeter, 4) ~ " mm; worst "
+            ~ ((analysis.fallbackMax >= UNWRAP_PART_NO_FIT) ? "neither" : (roundToPrecision(analysis.fallbackMax * 1000, 4) ~ " mm")) ~ ")";
+    }
+    notes = append(notes, "    PRISM not used: " ~ reason ~ "; exact cell rebuild instead");
+
+    // The exact fallback.
+    var cells = undefined;
+    var failure = undefined;
+    try silent
+    {
+        cells = rebuildPiece(context, id + "cells", chart, piece, settings);
+    }
+    catch (e)
+    {
+        failure = errorText(e);
+    }
+    const highlight = (size(analysis.fallback) > 0) ? sourceFaces(context, analysis.fallback, settings.part) : settings.part;
+    if (cells == undefined)
+    {
+        throw regenError("Unwrap part: a curved piece of " ~ partName(context, settings.part) ~ " cannot be unwrapped: " ~ reason
+                ~ ", and the exact cell rebuild failed too (" ~ failure ~ ").", highlight);
+    }
+    const check = reverseCheck(context, chart, cells.body, piece);
+    if (check.distance > limit)
+    {
+        throw regenError("Unwrap part: the rebuilt " ~ partName(context, settings.part) ~ " misses the source by "
+                ~ roundToPrecision(check.distance * 1000, 4) ~ " mm (limit " ~ roundToPrecision(limit * 1000, 4) ~ " mm) at flat "
+                ~ flatText(check.where) ~ " (reverse check of the cell rebuild, after: " ~ reason ~ ").", highlight);
+    }
+    var report = cells.report;
+    report.fallbackFaces = size(analysis.fallback);
+    report.approximatedFaces = 0;
+    report.bands = 0;
+    report.approximationMax = 0;
+    report.reverseCheck = check.distance;
+    return { "body" : cells.body, "method" : "cells", "report" : report, "notes" : notes,
+            "text" : "cell rebuild: " ~ cells.text ~ "; reverse check " ~ roundToPrecision(check.distance * 1000, 5) ~ " mm on "
+                ~ check.samples ~ " samples" };
+}
+
+/**
+ * Reverse check: points of every face of `body` (flat, chart frame) mapped back with unwrapInverse, and their
+ * distance to the source's faces. Catches extra material and holes (a hole adds faces where the source has none).
+ * @returns {map} : { "distance" (plain metres, worst), "where" (flat point of the worst, plain metres), "samples" }
+ */
+export function reverseCheck(context is Context, chart is map, body is Query, source is Query) returns map
+{
+    const sourceFacesQ = qOwnedByBody(source, EntityType.FACE);
+    var worst = 0;
+    var where = undefined;
+    var samples = 0;
+    for (var face in evaluateQuery(context, qOwnedByBody(body, EntityType.FACE)))
+    {
+        for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : UNWRAP_PART_REVERSE_PARAMS,
+                        "returnUndefinedOutsideFace" : true }))
+        {
+            if (tp == undefined)
+            {
+                continue;
+            }
+            const q = tp.origin / meter;
+            const w = unwrapInverse(chart, q[0], q[1], q[2]);
+            const d = evDistance(context, { "side0" : vector(w[0], w[1], w[2]) * meter, "side1" : sourceFacesQ }).distance / meter;
+            samples += 1;
+            if (d > worst)
+            {
+                worst = d;
+                where = q;
+            }
+        }
+    }
+    return { "distance" : worst, "where" : where, "samples" : samples };
+}
+
+/** "x, y, z mm" of a flat point in plain metres ("-" when undefined). */
+export function flatText(q) returns string
+{
+    if (q == undefined)
+    {
+        return "-";
+    }
+    return roundToPrecision(q[0] * 1000, 2) ~ ", " ~ roundToPrecision(q[1] * 1000, 2) ~ ", " ~ roundToPrecision(q[2] * 1000, 3) ~ " mm";
+}
+
+/** The message of a caught error (a regenError's custom message, else its message enum, else the value). */
+export function errorText(e) returns string
+{
+    if (e is map)
+    {
+        if (e.customMessage != undefined)
+        {
+            return e.customMessage;
+        }
+        if (e.message != undefined)
+        {
+            return toString(e.message);
+        }
+    }
+    return toString(e);
+}
+
+/**
+ * The source part's faces under the given faces of a working copy (the copy is gone when an error is shown): the
+ * source face containing a point of each.
+ */
+export function sourceFaces(context is Context, faces is array, part is Query) returns Query
+{
+    const partFaces = qOwnedByBody(part, EntityType.FACE);
+    var found = [];
+    for (var face in faces)
+    {
+        const tp = evFaceTangentPlane(context, { "face" : face, "parameter" : vector(0.5, 0.5) });
+        found = append(found, qContainsPoint(partFaces, tp.origin));
+    }
+    return qUnion(found);
 }
 
 // ============================================================================
@@ -570,11 +825,18 @@ export function rebuildPiece(context is Context, id is Id, chart is map, piece i
  */
 export function chartExtent(context is Context, chart is map, piece is Query, part is Query) returns array
 {
+    return chartExtentSampled(context, chart, piece, part, 2 * millimeter, 9);
+}
+
+/** As above, sampling every `spacing` with at least `minimum` points per edge. */
+export function chartExtentSampled(context is Context, chart is map, piece is Query, part is Query, spacing is ValueWithUnits,
+    minimum is number) returns array
+{
     var lo = [1e9, 1e9, 1e9];
     var hi = [-1e9, -1e9, -1e9];
     for (var edge in evaluateQuery(context, qOwnedByBody(piece, EntityType.EDGE)))
     {
-        const count = min(max(ceil(evLength(context, { "entities" : edge }) / (2 * millimeter)) + 1, 9), 200);
+        const count = min(max(ceil(evLength(context, { "entities" : edge }) / spacing) + 1, minimum), 200);
         var parameters = [];
         for (var k = 0; k < count; k += 1)
         {
@@ -819,7 +1081,7 @@ export function chainRows(rows is array, kind is string) returns array
                 }
             }
         }
-        chains = append(chains, { "kind" : kind, "pts" : ch.pts, "e0" : ch.e0, "e1" : ch.e1, "faces" : ch.faces });
+        chains = append(chains, { "kind" : kind, "pts" : ch.pts, "e0" : ch.e0, "e1" : ch.e1, "faces" : ch.faces, "parts" : ch.parts });
     }
     return chains;
 }
@@ -860,32 +1122,69 @@ export function joinRows(ch is map, row is map)
     const endDir = planarDirection(pts[cn - 2], pts[cn - 1]);
     const startDir = planarDirection(pts[0], pts[1]);
     var joined = undefined;
+    var how = 0;
     if (planarDistance(pts[cn - 1], q[0]) < UNWRAP_PART_JOIN
         && endsTangent(ch.e1, row.e0, endDir, planarDirection(q[0], q[1])))
     {
         joined = { "pts" : concatenateArrays([pts, subArray(q, 1, n)]), "e0" : ch.e0, "e1" : row.e1 };
+        how = 1;
     }
     else if (planarDistance(pts[cn - 1], q[n - 1]) < UNWRAP_PART_JOIN
         && endsTangent(ch.e1, row.e1, endDir, planarDirection(q[n - 1], q[n - 2])))
     {
         joined = { "pts" : concatenateArrays([pts, reverse(subArray(q, 0, n - 1))]), "e0" : ch.e0, "e1" : row.e0 };
+        how = 2;
     }
     else if (planarDistance(pts[0], q[n - 1]) < UNWRAP_PART_JOIN
         && endsTangent(ch.e0, row.e1, startDir, planarDirection(q[n - 2], q[n - 1])))
     {
         joined = { "pts" : concatenateArrays([subArray(q, 0, n - 1), pts]), "e0" : row.e0, "e1" : ch.e1 };
+        how = 3;
     }
     else if (planarDistance(pts[0], q[0]) < UNWRAP_PART_JOIN
         && endsTangent(ch.e0, row.e0, startDir, planarDirection(q[1], q[0])))
     {
         joined = { "pts" : concatenateArrays([reverse(subArray(q, 1, n)), pts]), "e0" : row.e1, "e1" : ch.e1 };
+        how = 4;
     }
     if (joined != undefined)
     {
         joined.kind = ch.kind;
         joined.faces = concatenateArrays([ch.faces, row.faces]);
+        if (ch.parts != undefined && row.parts != undefined)
+        {
+            // The per-face parts in chain order (PRISM "keep" faces), for the same four cases.
+            if (how == 1)
+            {
+                joined.parts = concatenateArrays([ch.parts, row.parts]);
+            }
+            else if (how == 2)
+            {
+                joined.parts = concatenateArrays([ch.parts, reversedParts(row.parts)]);
+            }
+            else if (how == 3)
+            {
+                joined.parts = concatenateArrays([row.parts, ch.parts]);
+            }
+            else
+            {
+                joined.parts = concatenateArrays([reversedParts(row.parts), ch.parts]);
+            }
+        }
     }
     return joined;
+}
+
+/** Per-face parts of a row or chain run backwards: order reversed, each part's points reversed, its end normals swapped. */
+export function reversedParts(parts is array) returns array
+{
+    var out = [];
+    for (var k = size(parts) - 1; k >= 0; k -= 1)
+    {
+        const part = parts[k];
+        out = append(out, { "pts" : reverse(part.pts), "n0" : part.n1, "n1" : part.n0, "face" : part.face });
+    }
+    return out;
 }
 
 /** Signed distance of p from the line through a and b (planar). */
@@ -1232,4 +1531,970 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
                 "endCondition" : ExtendEndType.EXTEND_BLIND, "extendDistance" : reach * meter,
                 "extensionShape" : ExtendSheetShapeType.LINEAR });
     return { "body" : body, "counter" : counter };
+}
+
+// ============================================================================
+// PRISM (band rebuild): face analysis
+// ============================================================================
+
+/** The PRISM classification grid: G x G face parameters, index i * G + j for parameter (i, j) / (G - 1). */
+export function prismGrid() returns array
+{
+    const G = UNWRAP_PART_PRISM_GRID;
+    var grid = [];
+    for (var i = 0; i < G; i += 1)
+    {
+        for (var j = 0; j < G; j += 1)
+        {
+            grid = append(grid, vector(i / (G - 1), j / (G - 1)));
+        }
+    }
+    return grid;
+}
+
+/**
+ * Chart points [x, y, z] and flat normals [a, b, c] of a face on the PRISM grid (undefined where there is none).
+ * onFace false: every grid point, the surface's extension included; a point the chart cannot map is counted in
+ * "misses". onFace true: only the points on the face's trim, and one the chart cannot map is an error on the face.
+ * @returns {map} : { "flat", "normals", "misses" }
+ */
+export function prismFaceSamples(context is Context, chart is map, face is Query, onFace is boolean, part is Query) returns map
+{
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : prismGrid(), "returnUndefinedOutsideFace" : onFace });
+    var flat = makeArray(size(planes));
+    var normals = makeArray(size(planes));
+    var misses = 0;
+    var previous = undefined;
+    for (var k = 0; k < size(planes); k += 1)
+    {
+        const tp = planes[k];
+        if (tp == undefined)
+        {
+            continue;
+        }
+        const u = chartFootAt(chart, tp.origin, previous);
+        if (!chartFootConverged(u))
+        {
+            if (onFace)
+            {
+                throw regenError("Unwrap part: a face of " ~ partName(context, part)
+                        ~ " reaches past the reference's centre of curvature (the chart has no foot there).", face);
+            }
+            misses += 1;
+            continue;
+        }
+        previous = u;
+        flat[k] = [u[0], u[1], u[2]];
+        normals[k] = flatNormal(chart, u, tp.normal);
+    }
+    return { "flat" : flat, "normals" : normals, "misses" : misses };
+}
+
+/** Grid index of station s along the curve direction and t across it (alongU: the curve runs along parameter u). */
+export function gridIndex(s is number, t is number, alongU is boolean) returns number
+{
+    return alongU ? s * UNWRAP_PART_PRISM_GRID + t : t * UNWRAP_PART_PRISM_GRID + s;
+}
+
+/** Longest polyline, in the view plane (x, coordinate ib), of the grid lines running along u (alongU) or v. */
+export function gridSpread(flat is array, alongU is boolean, ib is number) returns number
+{
+    const G = UNWRAP_PART_PRISM_GRID;
+    var best = 0;
+    for (var t = 0; t < G; t += 1)
+    {
+        var length = 0;
+        var last = undefined;
+        for (var s = 0; s < G; s += 1)
+        {
+            const p = flat[gridIndex(s, t, alongU)];
+            if (p == undefined)
+            {
+                continue;
+            }
+            if (last != undefined)
+            {
+                length += sqrt((p[0] - last[0]) ^ 2 + (p[ib] - last[ib]) ^ 2);
+            }
+            last = p;
+        }
+        best = max(best, length);
+    }
+    return best;
+}
+
+/**
+ * How far a face departs from a pure extrusion in one view: the side view (ib = 2, the image extruded along flat Y,
+ * a PROFILE) or the plan view (ib = 1, extruded along flat Z, a WALL). The curve direction is the grid direction
+ * spreading most in the view; at each station along it the points across the face are measured along the view normal
+ * of the middle one (so parameter slip along the curve does not count). The row PRISM builds is the middle one, so
+ * "dev" is the face's worst distance from its tool.
+ * @returns {map} : { "dev" (plain metres; UNWRAP_PART_NO_FIT when the face has no normal in the view plane), "out"
+ *      (largest offset along the outward normal), "alongU", "spread" (the curve's length in the view) }
+ */
+export function viewFit(samples is map, ib is number) returns map
+{
+    const G = UNWRAP_PART_PRISM_GRID;
+    const flat = samples.flat;
+    const normals = samples.normals;
+    const spreadU = gridSpread(flat, true, ib);
+    const spreadV = gridSpread(flat, false, ib);
+    const alongU = spreadU >= spreadV;
+    const noFit = { "dev" : UNWRAP_PART_NO_FIT, "out" : 0, "alongU" : alongU, "spread" : max(spreadU, spreadV) };
+    const m = (G - 1) / 2;
+    var dev = 0;
+    var out = 0;
+    var stations = 0;
+    for (var s = 0; s < G; s += 1)
+    {
+        // The defined point across the face nearest its middle.
+        var ref = undefined;
+        for (var d = 0; d <= m; d += 1)
+        {
+            for (var t in [m - d, m + d])
+            {
+                if (ref == undefined && flat[gridIndex(s, t, alongU)] != undefined)
+                {
+                    ref = gridIndex(s, t, alongU);
+                }
+            }
+        }
+        if (ref == undefined)
+        {
+            continue;
+        }
+        const nx = normals[ref][0];
+        const nc = normals[ref][ib];
+        const len = sqrt(nx * nx + nc * nc);
+        if (len < 0.5)
+        {
+            return noFit;
+        }
+        var count = 0;
+        for (var t = 0; t < G; t += 1)
+        {
+            const p = flat[gridIndex(s, t, alongU)];
+            if (p == undefined)
+            {
+                continue;
+            }
+            count += 1;
+            const offset = ((p[0] - flat[ref][0]) * nx + (p[ib] - flat[ref][ib]) * nc) / len;
+            dev = max(dev, abs(offset));
+            out = max(out, offset);
+        }
+        if (count >= 2)
+        {
+            stations += 1;
+        }
+    }
+    if (stations == 0)
+    {
+        return noFit;
+    }
+    return { "dev" : dev, "out" : out, "alongU" : alongU, "spread" : max(spreadU, spreadV) };
+}
+
+/** Largest |component ib| of the defined flat normals. */
+export function normalShareMax(normals is array, ib is number) returns number
+{
+    var best = 0;
+    for (var n in normals)
+    {
+        if (n != undefined)
+        {
+            best = max(best, abs(n[ib]));
+        }
+    }
+    return best;
+}
+
+/**
+ * PRISM's reading of a piece: every face measured as a profile (side view) and as a wall (plan view) on the PRISM
+ * grid (re-read on its trim only when the whole grid does not pass), and given a row in each view it fits within the
+ * shape tolerance. A steep (x-facing) profile face also gets a plan row at its outward envelope. With squareWalls a
+ * wall beyond the tolerance but leaning less than UNWRAP_PART_RULED_TOL is squared. Any other face is a fallback face.
+ * @returns {map} : { "rows", "fallback" (faces), "fallbackMax", "squaredMax", "approximationMax" (plain metres),
+ *      "report" : { "approximatedFaces", "squaredWalls", "maxLean" }, "text" }
+ */
+export function prismAnalysis(context is Context, chart is map, piece is Query, settings is map) returns map
+{
+    const tol = settings.shapeTolerance / meter;
+    const refine = tol * UNWRAP_PART_ROW_REFINE;
+    const uniform = settings.faceMode == "merge";
+    var rows = [];
+    var fallback = [];
+    var fallbackMax = 0;
+    var squaredMax = 0;
+    var approximationMax = 0;
+    var approximated = 0;
+    var squared = 0;
+    var maxLean = 0;
+    var profiles = 0;
+    var walls = 0;
+    var both = 0;
+    var envelopes = 0;
+    const faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
+    for (var face in faces)
+    {
+        var samples = prismFaceSamples(context, chart, face, false, settings.part);
+        var P = viewFit(samples, 2);
+        var W = viewFit(samples, 1);
+        if (samples.misses > 0 || min(P.dev, W.dev) > tol)
+        {
+            samples = prismFaceSamples(context, chart, face, true, settings.part);
+            P = viewFit(samples, 2);
+            W = viewFit(samples, 1);
+        }
+        const cMax = normalShareMax(samples.normals, 2);
+        const profileOK = P.dev <= tol;
+        var wallOK = W.dev <= tol;
+        var squaredHere = false;
+        if (!profileOK && !wallOK && settings.squareWalls && W.dev < UNWRAP_PART_NO_FIT && cMax < UNWRAP_PART_RULED_TOL)
+        {
+            wallOK = true;
+            squaredHere = true;
+        }
+        if (!profileOK && !wallOK)
+        {
+            fallback = append(fallback, face);
+            fallbackMax = max(fallbackMax, min(P.dev, W.dev));
+            continue;
+        }
+        var dev = 0;
+        if (profileOK)
+        {
+            rows = append(rows, prismRow(context, chart, face, "PROFILE", P, 0, refine, uniform, settings.part));
+            dev = P.dev;
+            profiles += 1;
+        }
+        if (wallOK)
+        {
+            rows = append(rows, prismRow(context, chart, face, "WALL", W, 0, refine, uniform, settings.part));
+            dev = max(dev, W.dev);
+            walls += 1;
+            maxLean = max(maxLean, cMax);
+            if (profileOK)
+            {
+                both += 1;
+            }
+        }
+        else if (cMax < UNWRAP_PART_XFACING && W.dev < UNWRAP_PART_NO_FIT)
+        {
+            // A steep profile face (4802's tilted nose) bounds the plan view too. Its plan row lies on its outward
+            // envelope: the side view carves the face exactly, and the plan cell beyond the row holds no material.
+            rows = append(rows, prismRow(context, chart, face, "WALL", W, W.out, refine, uniform, settings.part));
+            envelopes += 1;
+        }
+        if (squaredHere)
+        {
+            squared += 1;
+            squaredMax = max(squaredMax, W.dev);
+        }
+        if (dev > UNWRAP_PART_APPROX_EPS)
+        {
+            approximated += 1;
+            approximationMax = max(approximationMax, dev);
+        }
+    }
+    const text = size(faces) ~ " faces: " ~ profiles ~ " profile, " ~ walls ~ " wall (" ~ both ~ " both), " ~ envelopes
+        ~ " envelope, " ~ approximated ~ " approximated (max " ~ roundToPrecision(approximationMax * 1000, 5) ~ " mm), "
+        ~ squared ~ " squared, " ~ size(fallback) ~ " beyond tolerance";
+    return { "rows" : rows, "fallback" : fallback, "fallbackMax" : fallbackMax, "squaredMax" : squaredMax,
+            "approximationMax" : approximationMax, "text" : text,
+            "report" : { "approximatedFaces" : approximated, "squaredWalls" : squared, "maxLean" : maxLean } };
+}
+
+/** Face parameters of a row: (f, 0.5) along u, (0.5, f) along v. */
+export function rowParameters(fractions is array, alongU is boolean) returns array
+{
+    var out = [];
+    for (var f in fractions)
+    {
+        out = append(out, alongU ? vector(f, 0.5) : vector(0.5, f));
+    }
+    return out;
+}
+
+/** unwrapFast of a face point, warm-started, retried cold, refused with the face highlighted. */
+export function checkedFaceFoot(context is Context, chart is map, point is Vector, previous, face is Query, part is Query) returns array
+{
+    const u = chartFootAt(chart, point, previous);
+    if (!chartFootConverged(u))
+    {
+        throw regenError("Unwrap part: a face of " ~ partName(context, part)
+                ~ " reaches past the reference's centre of curvature (the chart has no foot there).", face);
+    }
+    return u;
+}
+
+/**
+ * How far the mapped midpoint of span j misses the cubic Hermite through the span's ends (slopes from the
+ * neighbours, one-sided at the ends), in the view plane (x, coordinate ib). Plain metres.
+ */
+export function rowMidMiss(fs is array, feet is array, j is number, mid is array, ib is number) returns number
+{
+    const n = size(fs);
+    const h = fs[j + 1] - fs[j];
+    var miss = 0;
+    for (var c in [0, ib])
+    {
+        const p0 = feet[j][c];
+        const p1 = feet[j + 1][c];
+        const m0 = (j > 0) ? (feet[j + 1][c] - feet[j - 1][c]) / (fs[j + 1] - fs[j - 1]) : (p1 - p0) / h;
+        const m1 = (j + 2 < n) ? (feet[j + 2][c] - feet[j][c]) / (fs[j + 2] - fs[j]) : (p1 - p0) / h;
+        miss = max(miss, abs(mid[c] - (0.5 * (p0 + p1) + h / 8 * (m0 - m1))));
+    }
+    return miss;
+}
+
+/**
+ * One PRISM row: points along the face's curve direction (fit.alongU) at the middle of the other parameter, mapped
+ * to the chart, in the view's plane ((x, z) for a PROFILE, (x, y) for a WALL). Adaptive (UNWRAP_PART_ADAPTIVE_ROWS):
+ * a coarse seed, then every span whose mapped midpoint misses the cubic through its neighbours by more than
+ * `tolerance` (plain metres) is split. `shift` (plain metres) moves the row along the view normal (an envelope row).
+ * `uniform`: fixed spacing even when UNWRAP_PART_ADAPTIVE_ROWS ("merge" chains: one spline is fitted across the
+ * faces' joints, where the curvature jumps, and it rings between non-uniform samples -- measured 12 um on 4803's
+ * tight corner with adaptive rows, 5.9 um with uniform ones).
+ * @returns {map} : a row for chainRows: { "kind", "pts", "e0", "e1", "faces", "parts" }
+ */
+export function prismRow(context is Context, chart is map, face is Query, kind is string, fit is map, shift is number,
+    tolerance is number, uniform is boolean, part is Query) returns map
+{
+    const ib = (kind == "PROFILE") ? 2 : 1;
+    const adaptive = UNWRAP_PART_ADAPTIVE_ROWS && !uniform;
+    var n = adaptive
+        ? max(ceil(fit.spread / UNWRAP_PART_ROW_SEED_SPACING) + 1, UNWRAP_PART_ROW_SEED_MIN)
+        : max(ceil(fit.spread / UNWRAP_PART_ROW_FIXED_SPACING) + 1, UNWRAP_PART_ROW_MIN);
+    n = min(n, UNWRAP_PART_PRISM_ROW_MAX);
+    var fs = [];
+    for (var k = 0; k < n; k += 1)
+    {
+        fs = append(fs, k / (n - 1));
+    }
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : rowParameters(fs, fit.alongU) });
+    var feet = [];
+    var previous = undefined;
+    for (var tp in planes)
+    {
+        previous = checkedFaceFoot(context, chart, tp.origin, previous, face, part);
+        feet = append(feet, previous);
+    }
+    const last = size(fs) - 1;
+    const nStart = flatNormal(chart, feet[0], planes[0].normal);
+    const nEnd = flatNormal(chart, feet[last], planes[last].normal);
+
+    if (adaptive)
+    {
+        var open = makeArray(last, true);
+        for (var pass = 0; pass < UNWRAP_PART_ROW_PASSES; pass += 1)
+        {
+            var spans = [];
+            for (var j = 0; j + 1 < size(fs); j += 1)
+            {
+                if (open[j])
+                {
+                    spans = append(spans, j);
+                }
+            }
+            if (size(spans) == 0 || size(fs) + size(spans) > UNWRAP_PART_PRISM_ROW_MAX)
+            {
+                break;
+            }
+            var mids = [];
+            for (var j in spans)
+            {
+                mids = append(mids, 0.5 * (fs[j] + fs[j + 1]));
+            }
+            const midPlanes = evFaceTangentPlanes(context, { "face" : face, "parameters" : rowParameters(mids, fit.alongU) });
+            var newFs = [];
+            var newFeet = [];
+            var newOpen = [];
+            var k = 0;
+            for (var j = 0; j < size(fs); j += 1)
+            {
+                newFs = append(newFs, fs[j]);
+                newFeet = append(newFeet, feet[j]);
+                if (j + 1 == size(fs))
+                {
+                    break;
+                }
+                if (k < size(spans) && spans[k] == j)
+                {
+                    const mid = checkedFaceFoot(context, chart, midPlanes[k].origin, feet[j], face, part);
+                    const miss = rowMidMiss(fs, feet, j, mid, ib);
+                    k += 1;
+                    if (miss > tolerance)
+                    {
+                        newOpen = append(newOpen, true);
+                        newFs = append(newFs, mids[k - 1]);
+                        newFeet = append(newFeet, mid);
+                        newOpen = append(newOpen, true);
+                        continue;
+                    }
+                }
+                newOpen = append(newOpen, false);
+            }
+            fs = newFs;
+            feet = newFeet;
+            open = newOpen;
+        }
+    }
+
+    const n0 = [nStart[0], nStart[ib]];
+    const n1 = [nEnd[0], nEnd[ib]];
+    var dx = 0;
+    var dc = 0;
+    if (shift != 0)
+    {
+        const sx = n0[0] + n1[0];
+        const sc = n0[1] + n1[1];
+        const len = sqrt(sx * sx + sc * sc);
+        if (len > 1e-9)
+        {
+            dx = shift * sx / len;
+            dc = shift * sc / len;
+        }
+    }
+    var pts = [];
+    for (var u in feet)
+    {
+        pts = append(pts, [u[0] + dx, u[ib] + dc]);
+    }
+    return { "kind" : kind, "pts" : pts, "e0" : { "n" : n0 }, "e1" : { "n" : n1 }, "faces" : [face],
+            "parts" : [{ "pts" : pts, "n0" : n0, "n1" : n1, "face" : face }] };
+}
+
+// ============================================================================
+// PRISM: the two views, membership, bands
+// ============================================================================
+
+/** [xmin, xmax, cmin, cmax] of 2D points. */
+export function chainBox(pts is array) returns array
+{
+    var b = [1e9, -1e9, 1e9, -1e9];
+    for (var p in pts)
+    {
+        b = [min(b[0], p[0]), max(b[1], p[0]), min(b[2], p[1]), max(b[3], p[1])];
+    }
+    return b;
+}
+
+/** Whether a 2D point lies within tol of a chain (its line when straight, else its polyline; box prefilter). */
+export function nearChain(ch is map, p is array, tol is number) returns boolean
+{
+    if (ch.straight)
+    {
+        return polylineDistance([ch.lineStart, ch.lineEnd], p) < tol;
+    }
+    const b = ch.bbx;
+    if (p[0] < b[0] - tol || p[0] > b[1] + tol || p[1] < b[2] - tol || p[1] > b[3] + tol)
+    {
+        return false;
+    }
+    return polylineDistance(ch.pts, p) < tol;
+}
+
+/**
+ * distinctChains for one view, with a bounding box per chain ("bbx") to prefilter the duplicate test: marks straight
+ * chains (lineStart / lineEnd moved to the middle of their band) and drops chains lying on an earlier one.
+ */
+export function distinctViewChains(chains is array, flatTolerance is number) returns array
+{
+    const tol = max(flatTolerance, UNWRAP_PART_STRAIGHT);
+    var kept = [];
+    for (var ch in chains)
+    {
+        const pts = ch.pts;
+        const n = size(pts);
+        var c = ch;
+        c.straight = false;
+        c.snapped = false;
+        c.bbx = chainBox(pts);
+        var lowest = 0;
+        var highest = 0;
+        for (var p in pts)
+        {
+            const off = lineOffset(pts[0], pts[n - 1], p);
+            lowest = min(lowest, off);
+            highest = max(highest, off);
+        }
+        if (highest - lowest <= tol)
+        {
+            const shift = 0.5 * (highest + lowest);
+            const d = planarDirection(pts[0], pts[n - 1]);
+            c.straight = true;
+            c.snapped = highest - lowest > UNWRAP_PART_STRAIGHT;
+            c.lineStart = [pts[0][0] - shift * d[1], pts[0][1] + shift * d[0]];
+            c.lineEnd = [pts[n - 1][0] - shift * d[1], pts[n - 1][1] + shift * d[0]];
+        }
+        var duplicate = false;
+        for (var k in kept)
+        {
+            var all = true;
+            for (var p in [pts[0], pts[n - 1], pts[floor(n / 2)]])
+            {
+                if (!nearChain(k, p, UNWRAP_PART_DUPLICATE))
+                {
+                    all = false;
+                    break;
+                }
+            }
+            if (all)
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+        {
+            kept = append(kept, c);
+        }
+    }
+    return kept;
+}
+
+/**
+ * The curves of one chain in "keep" mode: one edge per source face, meeting at the averaged joints; a line or an arc
+ * where the face's row is one within arcTolerance (so planar and cylindrical faces come out planar and cylindrical),
+ * else a spline with exact end tangents.
+ * @returns {map} : counts { "lines", "arcs", "splines" } updated
+ */
+export function emitChainParts(context is Context, id is Id, ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits,
+    counts is map) returns map
+{
+    var result = counts;
+    const parts = ch.parts;
+    const np = size(parts);
+    var joints = [parts[0].pts[0]];
+    for (var q = 1; q < np; q += 1)
+    {
+        const a = parts[q - 1].pts[size(parts[q - 1].pts) - 1];
+        const b = parts[q].pts[0];
+        joints = append(joints, [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])]);
+    }
+    joints = append(joints, parts[np - 1].pts[size(parts[np - 1].pts) - 1]);
+    for (var q = 0; q < np; q += 1)
+    {
+        var pts = parts[q].pts;
+        const n = size(pts);
+        pts[0] = joints[q];
+        pts[n - 1] = joints[q + 1];
+        var points = [];
+        for (var p in pts)
+        {
+            points = append(points, toolPoint(p, profile, lo));
+        }
+        const pid = id + ("p" ~ q);
+        const shape = classifyPoints(points, arcTolerance, true, true);
+        if (shape.kind == "line")
+        {
+            emitLineCurve(context, pid, points[0], points[n - 1]);
+            result.lines += 1;
+        }
+        else if (shape.kind == "arc")
+        {
+            emitArcCurve(context, pid, shape);
+            result.arcs += 1;
+        }
+        else
+        {
+            const t0 = endTangent(parts[q].n0, pts[0], pts[1]);
+            const t1 = endTangent(parts[q].n1, pts[n - 2], pts[n - 1]);
+            const start = (t0 == undefined) ? undefined : (profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0));
+            const end = (t1 == undefined) ? undefined : (profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0));
+            emitSplineCurve(context, pid, pickIndices(points, separatedIndices([points])), start, end, fitApproximation());
+            result.splines += 1;
+        }
+    }
+    return result;
+}
+
+/**
+ * The 2D arrangement of one view: a flat sheet just outside the box (side view: y = lo[1] - 1 mm, coordinates (x, z);
+ * plan view: z = lo[2] - 1 mm, coordinates (x, y)) split by the curves of every chain and their extensions. Each end
+ * lying on another chain of the view (within UNWRAP_PART_JOIN) is extended by UNWRAP_PART_OVERSHOOT so the curves
+ * really cross; a free end is extended along its tangent to the box. Straight chains are finite segments.
+ * @returns {map} : { "chains" (with "ext": the extensions), "faces" (the cells), "counts" }
+ */
+export function prismArrangement(context is Context, id is Id, chains is array, profile is boolean, lo is array, hi is array,
+    settings is map) returns map
+{
+    const reach = sqrt((hi[0] - lo[0]) ^ 2 + (hi[1] - lo[1]) ^ 2 + (hi[2] - lo[2]) ^ 2) + 0.01;
+    const ib = profile ? 2 : 1;
+    const keep = settings.faceMode == "keep";
+    var out = [];
+    var counts = { "lines" : 0, "arcs" : 0, "splines" : 0 };
+    for (var i = 0; i < size(chains); i += 1)
+    {
+        var ch = chains[i];
+        ch.ext = [];
+        const cid = id + ("c" ~ i);
+        var t0 = undefined;
+        var t1 = undefined;
+        var p0 = ch.pts[0];
+        var p1 = ch.pts[size(ch.pts) - 1];
+        if (ch.straight)
+        {
+            const d = planarDirection(ch.lineStart, ch.lineEnd);
+            p0 = ch.lineStart;
+            p1 = ch.lineEnd;
+            t0 = d;
+            t1 = d;
+            emitLineCurve(context, cid + "line", toolPoint(p0, profile, lo), toolPoint(p1, profile, lo));
+            counts.lines += 1;
+        }
+        else
+        {
+            const n = size(ch.pts);
+            t0 = endTangent(ch.e0.n, ch.pts[0], ch.pts[1]);
+            t1 = endTangent(ch.e1.n, ch.pts[n - 2], ch.pts[n - 1]);
+            if (keep && ch.parts != undefined)
+            {
+                counts = emitChainParts(context, cid + "part", ch, profile, lo, settings.arcTolerance, counts);
+            }
+            else
+            {
+                var points = [];
+                for (var p in ch.pts)
+                {
+                    points = append(points, toolPoint(p, profile, lo));
+                }
+                const start = (t0 == undefined) ? undefined : (profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0));
+                const end = (t1 == undefined) ? undefined : (profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0));
+                emitSplineCurve(context, cid + "fit", pickIndices(points, separatedIndices([points])), start, end, fitApproximation());
+                counts.splines += 1;
+            }
+            if (t0 == undefined)
+            {
+                t0 = planarDirection(ch.pts[0], ch.pts[1]);
+            }
+            if (t1 == undefined)
+            {
+                t1 = planarDirection(ch.pts[n - 2], ch.pts[n - 1]);
+            }
+        }
+        const ends = [{ "p" : p0, "t" : [-t0[0], -t0[1]] }, { "p" : p1, "t" : t1 }];
+        for (var k in [0, 1])
+        {
+            var onOther = false;
+            for (var j = 0; j < size(chains); j += 1)
+            {
+                if (j != i && nearChain(chains[j], ends[k].p, UNWRAP_PART_JOIN))
+                {
+                    onOther = true;
+                    break;
+                }
+            }
+            const len = onOther ? UNWRAP_PART_OVERSHOOT : reach;
+            const e = ends[k];
+            emitLineCurve(context, cid + ("ext" ~ k), toolPoint(e.p, profile, lo), toolPoint([e.p[0] + len * e.t[0], e.p[1] + len * e.t[1]], profile, lo));
+            ch.ext = append(ch.ext, { "p" : e.p, "t" : e.t, "len" : len });
+        }
+        out = append(out, ch);
+    }
+    // The sheet: a line along x extruded across the other coordinate, split by every curve at once.
+    const x0 = lo[0] - 0.001;
+    const x1 = hi[0] + 0.001;
+    const c0 = lo[ib] - 0.001;
+    const c1 = hi[ib] + 0.001;
+    emitLineCurve(context, id + "base", toolPoint([x0, c0], profile, lo), toolPoint([x1, c0], profile, lo));
+    opExtrude(context, id + "sheet", { "entities" : qCreatedBy(id + "base", EntityType.EDGE), "direction" : profile ? vector(0, 0, 1) : vector(0, 1, 0),
+                "endBound" : BoundingType.BLIND, "endDepth" : (c1 - c0) * meter });
+    const tools = qSubtraction(qOwnedByBody(qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE), EntityType.EDGE),
+        qCreatedBy(id + "base", EntityType.EDGE));
+    const sheet = qCreatedBy(id + "sheet", EntityType.BODY);
+    opSplitFace(context, id + "split", { "faceTargets" : qOwnedByBody(sheet, EntityType.FACE), "edgeTools" : tools });
+    return { "chains" : out, "faces" : evaluateQuery(context, qOwnedByBody(sheet, EntityType.FACE)), "counts" : counts };
+}
+
+/** Crossings (the other coordinate) of the line x = xp with a chain: its polyline (or line) and its extensions. */
+export function chainCrossings(ch is map, xp is number) returns array
+{
+    var cs = [];
+    const pts = ch.straight ? [ch.lineStart, ch.lineEnd] : ch.pts;
+    for (var k = 0; k + 1 < size(pts); k += 1)
+    {
+        const a = pts[k];
+        const b = pts[k + 1];
+        if ((a[0] - xp) * (b[0] - xp) <= 0 && abs(b[0] - a[0]) > 1e-12)
+        {
+            cs = append(cs, a[1] + (xp - a[0]) / (b[0] - a[0]) * (b[1] - a[1]));
+        }
+    }
+    for (var e in ch.ext)
+    {
+        if (abs(e.t[0]) > 1e-12)
+        {
+            const f = (xp - e.p[0]) / e.t[0];
+            if (f > 0 && f <= e.len)
+            {
+                cs = append(cs, e.p[1] + f * e.t[1]);
+            }
+        }
+    }
+    return cs;
+}
+
+/** [xmin, xmax, cmin, cmax] (plain metres) of each cell, c = coordinate ib. */
+export function cellBoxes(context is Context, faces is array, ib is number) returns array
+{
+    var boxes = [];
+    for (var f in faces)
+    {
+        const bb = evBox3d(context, { "topology" : f, "tight" : true });
+        boxes = append(boxes, [bb.minCorner[0] / meter, bb.maxCorner[0] / meter, bb.minCorner[ib] / meter, bb.maxCorner[ib] / meter]);
+    }
+    return boxes;
+}
+
+/** The cell holding a sheet point (box prefilter, qContainsPoint only when ambiguous), or undefined. */
+export function locateCell(context is Context, faces is array, boxes is array, px is number, pc is number, point is Vector)
+{
+    var candidates = [];
+    for (var k = 0; k < size(faces); k += 1)
+    {
+        const b = boxes[k];
+        if (px >= b[0] - 1e-7 && px <= b[1] + 1e-7 && pc >= b[2] - 1e-7 && pc <= b[3] + 1e-7)
+        {
+            candidates = append(candidates, k);
+        }
+    }
+    if (size(candidates) == 1)
+    {
+        return candidates[0];
+    }
+    for (var k in candidates)
+    {
+        if (!isQueryEmpty(context, qContainsPoint(faces[k], point)))
+        {
+            return k;
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Which (plan cell, side cell) products are part of the piece. Columns at x-probes (midpoints between all chain
+ * end / extension / x-extremum events, plus every cell's centroid x): at each, the side curves' crossings give
+ * z-intervals (each in one side cell) and the plan curves' crossings y-intervals (each in one plan cell); every
+ * product not yet known is decided by one point test (unwrapInverse + qContainsPoint on the piece). A product is
+ * inside when any of its tests is.
+ * @returns {map} : { "memb" (per plan cell: map side-cell key -> { "i", "inside" }), "probes", "tests" }
+ */
+export function prismMembership(context is Context, chart is map, piece is Query, side is map, plan is map, lo is array, hi is array) returns map
+{
+    const sideBoxes = cellBoxes(context, side.faces, 2);
+    const planBoxes = cellBoxes(context, plan.faces, 1);
+    var events = [lo[0], hi[0]];
+    for (var ch in concatenateArrays([side.chains, plan.chains]))
+    {
+        const cp = ch.straight ? [ch.lineStart, ch.lineEnd] : ch.pts;
+        const n = size(cp);
+        events = append(events, cp[0][0]);
+        events = append(events, cp[n - 1][0]);
+        for (var k = 1; k + 1 < n; k += 1)
+        {
+            if ((cp[k][0] - cp[k - 1][0]) * (cp[k + 1][0] - cp[k][0]) < 0)
+            {
+                events = append(events, cp[k][0]);
+            }
+        }
+        for (var e in ch.ext)
+        {
+            events = append(events, e.p[0] + e.len * e.t[0]);
+        }
+    }
+    events = sort(events, function(a, b) { return a - b; });
+    var probes = [];
+    for (var k = 0; k + 1 < size(events); k += 1)
+    {
+        if (events[k + 1] - events[k] > 2e-6 && events[k] >= lo[0] - 1e-9 && events[k + 1] <= hi[0] + 1e-9)
+        {
+            probes = append(probes, 0.5 * (events[k] + events[k + 1]));
+        }
+    }
+    for (var f in concatenateArrays([side.faces, plan.faces]))
+    {
+        probes = append(probes, (evApproximateCentroid(context, { "entities" : f }) / meter)[0]);
+    }
+    var memb = makeArray(size(plan.faces), {});
+    var tests = 0;
+    for (var xp in probes)
+    {
+        var zs = [lo[2] - 0.0005, hi[2] + 0.0005];
+        for (var ch in side.chains)
+        {
+            zs = concatenateArrays([zs, chainCrossings(ch, xp)]);
+        }
+        zs = sort(zs, function(a, b) { return a - b; });
+        var zm = [];
+        var zc = [];
+        for (var k = 0; k + 1 < size(zs); k += 1)
+        {
+            if (zs[k + 1] - zs[k] < 2e-6)
+            {
+                continue;
+            }
+            const z = 0.5 * (zs[k] + zs[k + 1]);
+            if (z < lo[2] || z > hi[2])
+            {
+                continue;
+            }
+            const si = locateCell(context, side.faces, sideBoxes, xp, z, vector(xp, lo[1] - 0.001, z) * meter);
+            if (si != undefined)
+            {
+                zm = append(zm, z);
+                zc = append(zc, si);
+            }
+        }
+        var ys = [lo[1] - 0.0005, hi[1] + 0.0005];
+        for (var ch in plan.chains)
+        {
+            ys = concatenateArrays([ys, chainCrossings(ch, xp)]);
+        }
+        ys = sort(ys, function(a, b) { return a - b; });
+        for (var k = 0; k + 1 < size(ys); k += 1)
+        {
+            if (ys[k + 1] - ys[k] < 2e-6)
+            {
+                continue;
+            }
+            const y = 0.5 * (ys[k] + ys[k + 1]);
+            if (y < lo[1] || y > hi[1])
+            {
+                continue;
+            }
+            const pci = locateCell(context, plan.faces, planBoxes, xp, y, vector(xp, y, lo[2] - 0.001) * meter);
+            if (pci == undefined)
+            {
+                continue;
+            }
+            var m = memb[pci];
+            var changed = false;
+            for (var j = 0; j < size(zm); j += 1)
+            {
+                const key = "" ~ zc[j];
+                if (m[key] != undefined)
+                {
+                    continue;
+                }
+                const w = unwrapInverse(chart, xp, y, zm[j]);
+                m[key] = { "i" : zc[j], "inside" : !isQueryEmpty(context, qContainsPoint(piece, vector(w[0], w[1], w[2]) * meter)) };
+                tests += 1;
+                changed = true;
+            }
+            if (changed)
+            {
+                memb[pci] = m;
+            }
+        }
+    }
+    return { "memb" : memb, "probes" : size(probes), "tests" : tests };
+}
+
+/**
+ * PRISM, the band rebuild of one piece (research_unwrap_curved_ref.md 4): the analysis rows chained per view and
+ * deduplicated, the two arrangements, membership, plan cells grouped by their set of solid side cells (the bands),
+ * one (plan cells x Z) INTERSECT (side cells x Y) per band, bands united. Temporaries are deleted.
+ * @returns {map} : { "body" : Query (one solid), "bands", "tools", "counts", "snapped", "text", "notes" }
+ */
+export function prismPiece(context is Context, id is Id, chart is map, piece is Query, analysis is map, settings is map) returns map
+{
+    const extent = chartExtentSampled(context, chart, piece, settings.part, UNWRAP_PART_EXTENT_SPACING, 5);
+    var lo = extent[0];
+    var hi = extent[1];
+    for (var ax in [0, 1, 2])
+    {
+        lo[ax] -= UNWRAP_PART_BOX_MARGIN;
+        hi[ax] += UNWRAP_PART_BOX_MARGIN;
+    }
+    const flatTol = settings.flatTolerance / meter;
+    const pch = distinctViewChains(chainRows(analysis.rows, "PROFILE"), flatTol);
+    const wch = distinctViewChains(chainRows(analysis.rows, "WALL"), flatTol);
+    var snapped = 0;
+    for (var ch in concatenateArrays([pch, wch]))
+    {
+        if (ch.snapped)
+        {
+            snapped += 1;
+        }
+    }
+    const side = prismArrangement(context, id + "side", pch, true, lo, hi, settings);
+    const plan = prismArrangement(context, id + "plan", wch, false, lo, hi, settings);
+    const membership = prismMembership(context, chart, piece, side, plan, lo, hi);
+
+    // Bands: plan cells with the same set of solid side cells.
+    var groups = {};
+    for (var pci = 0; pci < size(plan.faces); pci += 1)
+    {
+        var inside = [];
+        for (var entry in membership.memb[pci])
+        {
+            if (entry.value.inside)
+            {
+                inside = append(inside, entry.value.i);
+            }
+        }
+        if (size(inside) == 0)
+        {
+            continue;
+        }
+        inside = sort(inside, function(a, b) { return a - b; });
+        const key = toString(inside);
+        if (groups[key] == undefined)
+        {
+            groups[key] = { "side" : inside, "plan" : [] };
+        }
+        groups[key].plan = append(groups[key].plan, plan.faces[pci]);
+    }
+    var results = [];
+    var notes = [];
+    var gi = 0;
+    for (var entry in groups)
+    {
+        const g = entry.value;
+        var sideFaces = [];
+        for (var k in g.side)
+        {
+            sideFaces = append(sideFaces, side.faces[k]);
+        }
+        const gid = id + ("band" ~ gi);
+        opExtrude(context, gid + "plan", { "entities" : qUnion(g.plan), "direction" : vector(0, 0, 1),
+                    "endBound" : BoundingType.BLIND, "endDepth" : (hi[2] - lo[2] + 0.004) * meter });
+        opExtrude(context, gid + "side", { "entities" : qUnion(sideFaces), "direction" : vector(0, 1, 0),
+                    "endBound" : BoundingType.BLIND, "endDepth" : (hi[1] - lo[1] + 0.004) * meter });
+        // Several disjoint plan prisms, each intersected with the side prism (INTERSECTION would intersect them all).
+        opBoolean(context, gid + "intersect", { "targets" : qCreatedBy(gid + "plan", EntityType.BODY),
+                    "tools" : qCreatedBy(gid + "side", EntityType.BODY), "operationType" : BooleanOperationType.SUBTRACT_COMPLEMENT });
+        results = append(results, qCreatedBy(gid + "plan", EntityType.BODY));
+        notes = append(notes, "    band " ~ gi ~ ": " ~ size(g.plan) ~ " plan cell(s) x " ~ size(g.side) ~ " side cell(s)");
+        gi += 1;
+    }
+    if (size(results) == 0)
+    {
+        throw regenError("no plan cell holds material");
+    }
+    if (size(results) > 1)
+    {
+        opBoolean(context, id + "unite", { "tools" : qUnion(results), "operationType" : BooleanOperationType.UNION });
+    }
+    const scrap = qBodyType(qCreatedBy(id, EntityType.BODY), [BodyType.SHEET, BodyType.WIRE, BodyType.POINT]);
+    if (!isQueryEmpty(context, scrap))
+    {
+        opDeleteBodies(context, id + "clean", { "entities" : scrap });
+    }
+    const body = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID);
+    const count = size(evaluateQuery(context, body));
+    if (count != 1)
+    {
+        throw regenError("the bands gave " ~ count ~ " solids, not one");
+    }
+    const counts = { "lines" : side.counts.lines + plan.counts.lines, "arcs" : side.counts.arcs + plan.counts.arcs,
+        "splines" : side.counts.splines + plan.counts.splines };
+    const text = size(groups) ~ " band(s); side view " ~ size(pch) ~ " chains -> " ~ size(side.faces) ~ " cells, plan view "
+        ~ size(wch) ~ " chains -> " ~ size(plan.faces) ~ " cells; curves " ~ counts.lines ~ " line, " ~ counts.arcs ~ " arc, "
+        ~ counts.splines ~ " spline; " ~ membership.probes ~ " probes, " ~ membership.tests ~ " point tests";
+    return { "body" : body, "bands" : size(groups), "tools" : size(pch) + size(wch), "counts" : counts, "snapped" : snapped,
+            "text" : text, "notes" : notes };
 }

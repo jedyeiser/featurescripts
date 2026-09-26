@@ -1598,6 +1598,9 @@ a clamped curve). Never assume clamped for curves that come from the kernel.
 two-stage extract (arcs to `id + "fpArcWires"` first). Same geometry, same final op id -- but the output edges'
 identities derive from their source edges, so Bridging curve 1/2, Mirror 1 and Join wires 2 in the footprint
 "Test" studio lost their references and errored.
-**Fix / rule**: in a feature that existing documents build on, keep the op-id chain that produces referenced
-output edges unchanged unless the change is required. Check a studio that USES the feature (feature statuses
-via `notices --monitor`, or fingerprint) after every push -- test studios alone do not catch this.
+**Rule (user policy 2026-09-25)**: correctness wins. Make the right change even when it re-identifies output
+edges; a document that breaks either stays on the older version of the feature (its import pin) or gets its
+references re-picked / replaced by the corrected feature. What IS required: check a studio that USES the feature
+(`notices --monitor` statuses or a fingerprint) after every push and REPORT which downstream features lost
+references, so the user knows what to re-pick when they update. (The two-stage extract was reverted once,
+then re-applied on the user's call.)

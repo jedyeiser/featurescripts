@@ -130,6 +130,15 @@ export enum UnwrapPreserveLength
     OFFSET
 }
 
+/** How Part mode builds the faces it has to rebuild (over curved reference spans). */
+export enum UnwrapPartFaces
+{
+    annotation { "Name" : "Keep source faces (arcs preserved)" }
+    KEEP,
+    annotation { "Name" : "Simplify (merge tangent faces)" }
+    MERGE
+}
+
 /** Where a plate's undrape target (the wire whose extrusion the mid-surface maps onto) comes from. */
 export enum UndrapeTargetSource
 {
@@ -162,6 +171,7 @@ const UNWRAP_FIT_TOLERANCE_BOUNDS = { (millimeter) : [1e-5, 0.005, 1] } as Lengt
 const UNWRAP_MAX_CP_BOUNDS = { (unitless) : [4, 60, MAX_CONTROL_POINTS] } as IntegerBoundSpec;
 
 const UNWRAP_LENGTH_BOUNDS = { (millimeter) : [-1e4, 0, 1e4] } as LengthBoundSpec;
+const UNWRAP_SHAPE_TOLERANCE_BOUNDS = { (millimeter) : [0.0001, 0.005, 1] } as LengthBoundSpec;
 const UNWRAP_SPACING_BOUNDS = { (millimeter) : [0.5, 50, 1000] } as LengthBoundSpec;
 
 /** How far a supplied end tangent may disagree with the edge's own three end points. */
@@ -275,6 +285,13 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
 
         if (definition.unwrapType == UnwrapType.PART)
         {
+            annotation { "Name" : "Rebuilt faces", "Default" : UnwrapPartFaces.KEEP, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Over curved stretches of the reference the part is rebuilt. Keep: one face per source face, true arcs and planes wherever the flattened geometry is one. Simplify: tangent-connected faces merged into fitted surfaces -- fewer faces, faster, splines only." }
+            definition.partFaces is UnwrapPartFaces;
+
+            annotation { "Name" : "Shape tolerance", "Description" : "How far a face may depart from a pure side-view shape (constant across the width) or plan-view wall and still be built as one. Beyond it the face is rebuilt exactly (slower). Every result is checked against the source afterwards and the worst deviation is reported; exceeding this tolerance (or 0.01 mm, whichever is larger) is an error." }
+            isLength(definition.shapeTolerance, UNWRAP_SHAPE_TOLERANCE_BOUNDS);
+
             annotation { "Name" : "Square walls", "Default" : false,
                         "Description" : "Make walls normal to the flat plane (a machined blank). Off, walls keep the exact mapped lean (e.g. 1.2 deg at a core extension's nose)." }
             definition.squareWalls is boolean;
@@ -467,6 +484,8 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             // Parameters added after the first release: a saved feature that lacks one regenerates with the
             // old behaviour instead of failing its precondition (corrections 16.3, 25). No buttons (correction 27).
             "squareWalls" : false,
+            "partFaces" : UnwrapPartFaces.KEEP,
+            "shapeTolerance" : 0.005 * millimeter,
             "debugKeepLengthCurves" : false,
             "targetFrom" : UndrapeTargetSource.WIRE,
             "sampleSpacing" : 50 * millimeter,
@@ -878,7 +897,11 @@ function unwrapPart(context is Context, id is Id, definition is map, chart is ma
         throw regenError("Part (solid) unwrap does not yet support a reference that is curved along its whole length (no straight edge): the current rebuild can fail or return a wrong body there. A band rebuild for this case is in progress.",
             ["reference"]);
     }
-    const result = unwrapSolid(context, id, chart, cs, part, { "squareWalls" : definition.squareWalls });
+    const result = unwrapSolid(context, id, chart, cs, part, {
+                "squareWalls" : definition.squareWalls,
+                "faceMode" : (definition.partFaces == UnwrapPartFaces.MERGE) ? "merge" : "keep",
+                "shapeTolerance" : definition.shapeTolerance
+            });
     if (settings.print)
     {
         for (var text in result.lines)
@@ -1890,7 +1913,12 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
         if (r.part != undefined)
         {
             text = text ~ " Part: " ~ r.part.pieces ~ " piece(s), " ~ r.part.rigidPieces ~ " moved rigidly, "
-                ~ r.part.rebuiltPieces ~ " rebuilt.";
+                ~ r.part.rebuiltPieces ~ " rebuilt"
+                ~ (r.part.approximatedFaces != undefined && r.part.approximatedFaces > 0
+                    ? "; " ~ r.part.approximatedFaces ~ " face(s) built as the nearest pure shape, max "
+                        ~ fmtMM(r.part.approximationMax, 4, 0) ~ " mm" : "")
+                ~ (r.part.reverseCheckMax != undefined ? "; checked against the source: max " ~ fmtMM(r.part.reverseCheckMax, 4, 0) ~ " mm" : "")
+                ~ ".";
         }
     }
     for (var r in records)

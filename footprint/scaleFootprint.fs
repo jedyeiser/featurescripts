@@ -20,7 +20,7 @@ export import(path : "71d853c0fd2f10ca3bb20a4b", version : "f50ebb563ceb08045e09
 import(path : "66f4f03cf728e94b8f823585", version : "b8dd4d8f60d89054b3452842");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "0cf5fc35335b60e4ab9b037a");
+import(path : "5d198387b3966ae60a549555", version : "7334f2ee149483751b55103b");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
 import(path : "d3ad341f5b87924b36b5aba8", version : "fdd989cbbf4082b8c7c4e55f");

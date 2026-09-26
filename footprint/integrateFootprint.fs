@@ -480,15 +480,24 @@ function emitFootprintWithArcs(context is Context, id is Id, definition is map, 
 
     var sketchEdges = qCreatedBy(arcSketchId, EntityType.EDGE);
 
-    // 3) Copy transitions + analytic arcs into one composite wire. opExtractWires preserves
-    //    the arcs' analytic type and merges edges that share endpoints into a single wire.
-    //    (Kept single-stage: a two-stage extract changed the output edges' ids and broke downstream
-    //    references in existing studios, 2026-09-25.)
-    var allEdges = qUnion(append(origEdges, sketchEdges));
+    // 3) Copy transitions + analytic arcs into one composite wire, in two stages as scaleFootprint's
+    //    emitter: sketch edges first extracted to their own wire (mixing sketch and non-sketch edges in
+    //    one opExtractWires can fail with OVERLAPPING_EDGES), then that wire's edges together with the
+    //    spline edges. opExtractWires preserves the arcs' analytic type.
+    //    (This changed the output edges' ids on 2026-09-25: documents that reference them re-pick or stay
+    //    on an older version -- correction 47.)
+    var allEdges = qUnion(origEdges);
+    var arcWires = qNothing();
+    if (!isQueryEmpty(context, sketchEdges))
+    {
+        opExtractWires(context, id + "fpArcWires", { "edges" : sketchEdges });
+        arcWires = qCreatedBy(id + "fpArcWires", EntityType.BODY);
+        allEdges = qUnion([allEdges, qOwnedByBody(arcWires, EntityType.EDGE)]);
+    }
     opExtractWires(context, id + "fpCompositeWire", { "edges" : allEdges });
 
-    // 4) Delete the temporary spline bodies and the sketch, leaving only the composite wire.
-    var toDelete = append(origBodies, qCreatedBy(arcSketchId, EntityType.BODY));
+    // 4) Delete the temporary spline bodies, the arc wire and the sketch, leaving only the composite wire.
+    var toDelete = concatenateArrays([origBodies, [arcWires, qCreatedBy(arcSketchId, EntityType.BODY)]]);
     opDeleteBodies(context, id + "fpDeleteTemp", { "entities" : qUnion(toDelete) });
 }
 

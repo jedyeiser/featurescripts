@@ -262,6 +262,11 @@
         },
         {
           "kind": "limit",
+          "head": "Outputs keep their input's orientation",
+          "body": "The reference picks the side to keep, not the normal: pieces face the way the input faced (the topsheet example faces down). Built-ins downstream (Thicken, Offset surface, Move face) still follow that normal -- use Thicken+ / Offset+ there. Orienting outputs by the reference is decided, not built yet."
+        },
+        {
+          "kind": "limit",
           "head": "Edge tools are not offered",
           "body": "The side rule needs a surface. Use the built-in Split for projected edges."
         },
