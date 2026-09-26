@@ -110,6 +110,27 @@ export const spikeReplay = defineFeature(function(context is Context, id is Id, 
         println("S1 bodies created by the replay: " ~ bodies ~ "; errors: " ~ (size(errors) == 0 ? "none" : join(errors, " | ")));
         println("S4 variables set or changed by the body: " ~ (size(setByBody) == 0 ? "none" : join(setByBody, ", ")));
 
+        // S1: how much of each body-set query variable lies on this replay's geometry.
+        var onReplay = {};
+        for (var name in setByBody)
+        {
+            if (varsAfter[name] is Query)
+            {
+                onReplay[name] = size(evaluateQuery(context, varsAfter[name])) ~ " entities, "
+                        ~ size(evaluateQuery(context, qIntersection([varsAfter[name], qCreatedBy(caseId)]))) ~ " created by the replay";
+            }
+        }
+        setVariable(context, "-caseSpikeResult", {
+                    "functions" : size(functions),
+                    "listed" : stored.count,
+                    "bodies" : bodies,
+                    "errors" : errors,
+                    "seedListed" : isIn(definition.seedName, keys(varsBefore)),
+                    "setByBody" : setByBody,
+                    "onReplay" : onReplay,
+                    "probe" : definition.probe
+                });
+
         setQueryVariable(context, definition.seedName, originalSeed);
         if (originalFlag != MISSING)
         {
