@@ -40,20 +40,20 @@ export const spikeBody = defineFeature(function(context is Context, id is Id, de
         try
         {
             setVariable(context, "-caseSpikeProbeArray", values(definition.features));
-            probe.array = "ok";
+            probe.asArray = "ok";
         }
         catch (e)
         {
-            probe.array = toString(e);
+            probe.asArray = toString(e);
         }
         try
         {
             setVariable(context, SPIKE_BODY_KEY, { "functions" : definition.features, "count" : size(definition.features) });
-            probe.map = "ok";
+            probe.asMap = "ok";
         }
         catch (e)
         {
-            probe.map = toString(e);
+            probe.asMap = toString(e);
         }
         setVariable(context, "-caseSpikeProbe", probe);
         reportFeatureInfo(context, id, "Published " ~ size(definition.features) ~ " feature functions.");
