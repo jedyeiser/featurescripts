@@ -175,6 +175,14 @@ instance"; tables of instances only where variation is numbers on fixed geometry
                     the published signature; optional More cases array
 Everything between Define case and Close case is the template.
 
+Mental model (user, 2026-09-26) -- a function definition and its calls:
+- Define case = the signature. Its declared names are the ONLY names a Case pattern can rebind.
+- Features between = the body. Variables they define are locals, recomputed every replay, never slots.
+- Close case = end of the definition (points back to its Define case, lists the body).
+- Case pattern = a call with new arguments (one slot per declared parameter).
+- Variables defined BEFORE Define case are globals: every case reads the same value.
+Boolean parameters are typed expressions (true / false / #other / !#flag), not checkboxes.
+
 ### Decisions
 - Migration: not a concern (clean break; rebuild the T1-T5 test studio).
 - Multiple cases per Case pattern: supported (array), one case is the normal use.
@@ -193,6 +201,21 @@ Everything between Define case and Close case is the template.
 - Rule to document: after a Case pattern, INPUTS are back on case 1 but variables the BODY set hold
   the last case's.
 - Better errors: name the failing feature by name; detect body features clicked to case 1's geometry.
+
+### Spike results (2026-09-26, "Case pattern v2 spikes" studio, correction 50)
+- S1 as designed FAILS: FeatureList functions cannot be stored with setVariable ("Execution error").
+  S1 via route B PASSES: Case pattern selects the Close case (FeatureList) and calls it in the frame;
+  Close case, seeing isInFeaturePattern, replays its own list. QV "created by" followed the replay (B's
+  boss filleted, A's untouched); a sketch in the list rebuilt. => Close case holds the list; Case pattern
+  picks the Close case. Close case still publishes the signature (names/kinds/count) through a variable.
+- S4 FAILS: getAllVariables omits query variables -> no automatic `#rib_R` copies. If wanted later,
+  outputs must be declared by name.
+- S2 PASSES: Case pattern editing logic read the Close case's published variable (and other variables)
+  -- editing logic only runs on a parameter CHANGE in the dialog, not on open or REST insert.
+- S3 PASSES: suppression by expression IS re-evaluated per replay. Case 1 #flag false -> post suppressed
+  under A; replay with #flag true -> post built under B. Suppressed features stay in the FeatureList.
+  REST format: feature.suppressionState = BTMSuppressionStateExpression-1811 with value
+  BTMParameterQuantity-147 expression "#flag" (parameterId "feature-suppression-state").
 
 ### Spikes (spike_v2.fs, throwaway tab: "Close case (test)", "Case pattern (test)")
 - S1 feature functions published through setVariable, read back and replayed in the frame: does a

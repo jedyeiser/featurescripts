@@ -1639,3 +1639,27 @@ only for tabs whose cross-document pins you did not change.
 **Fixed the same day** (tools-review session): `adopt_remote_pins` now keeps, per import, whichever of the local and
 the live pin is the NEWER library version (by the version's createdAt), so a deliberate bump survives and a stale
 local file still cannot push an old version back. Renumbered from a second "48" (two sessions wrote one).
+
+---
+
+## Correction 50: FeatureList functions cannot be stored in a variable; getAllVariables omits query variables (2026-09-26)
+
+Measured live in the "Case pattern v2 spikes" studio (case_pattern/spike_v2.fs):
+
+- `setVariable(context, name, <FeatureList map>)` and `setVariable(..., values(<FeatureList>))` both throw
+  "Execution error". Plain lambdas store fine (`setVariable(context, "x", {"f": function(x){...}})` works),
+  so it is the generated feature functions that are refused. A feature cannot hand its FeatureList to a
+  LATER feature through a variable.
+- **Working route**: the later feature takes a FeatureList of the EARLIER feature and calls that feature's
+  own function inside its pattern frame; the earlier feature detects `isInFeaturePattern(context)` and
+  replays its own listed functions with the id it was given (`functions[i](id)`). Frame remapping still
+  works through that extra level (Query Variable "created by" followed the replayed copy; case 1 untouched),
+  and a sketch in the list rebuilt (not the correction-31 no-op -- the extra level is the feature wrapper's
+  own startFeature, which is fine).
+- `getAllVariables(context)` does NOT list query variables (neither one set by setQueryVariable in a custom
+  feature nor a native Query Variable feature). A before/after diff cannot find query variables a replay set.
+- Editing logic DOES see variables set by earlier features (getVariable / getAllVariables in the editing
+  logic function) -- but it only runs on a parameter change in the open dialog, never on open or REST insert.
+- Suppression by expression (feature.suppressionState = BTMSuppressionStateExpression-1811, a
+  BTMParameterQuantity-147 with expression "#flag") IS re-evaluated when the feature function is replayed
+  from a FeatureList with a different #flag; a suppressed feature is still in the FeatureList.

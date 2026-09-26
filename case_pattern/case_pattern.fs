@@ -7,34 +7,45 @@ TemplateIconNamespace::import(path : "9351cbcfff2de180accfa3c3", version : "592b
 PatternIconNamespace::import(path : "43ecc8444d55ee8be1ecba57", version : "7de38dec2759e6efe06cf4e7");
 
 /**
- * Case Pattern: build a chain of features once against named query variables (case 1), then
- * re-run that chain for further cases, each case rebinding every name to new geometry and
- * suffixing the bodies it creates with its case name.
+ * Case Pattern v2: a repeatable feature chain, written like a function and called per case.
  *
- * Case template   declares the inputs (query variable names) and case values (# variables), binds
- *                 case 1, and holds the further cases. Publishes all of it under its own feature id.
- * Case pattern    takes a Case template and the features built on it and, per case, binds the
- *                 inputs and values and re-runs the features the way a feature Pattern with
- *                 "Reapply features" runs an instance (identity transform: nothing moves).
+ * Define case     the signature: declares the inputs (query variables) and values (# variables) with
+ *                 case 1's selections and values, and binds them. Also sets #caseName and #caseIndex.
+ * (features)      the body, built on those names. Variables made here are locals: recomputed per case.
+ * Close case      ends the body: points back to its Define case, lists the features to repeat, and
+ *                 declares outputs, published per case as #<case>_<name>.
+ * Case pattern    a call: picks a Close case, and for each case row binds new selections and values
+ *                 and re-runs the body the way a Pattern with "Reapply features" runs an instance.
  *
- * Referencing geometry made by the repeated features: only a FeatureList parameter follows each
- * case (a Query Variable "created by"); clicks stay on case 1. Correction 41; design in
- * case_pattern/DESIGN.md.
+ * Mechanism (correction 50): a FeatureList cannot be stored in a variable, so Case pattern calls the
+ * Close case's own feature function inside its pattern frame, and the Close case -- seeing it is in a
+ * pattern -- replays its listed features. Only FeatureList references and query variables follow each
+ * case; clicks stay on case 1 (correction 41). Design: case_pattern/DESIGN.md section 11.
  */
 
-/** Most query variables one template may declare (the number of input slots in a case row). */
+/** Most inputs (query variables) one Define case may declare. */
 export const CASE_MAX_INPUTS = 8;
 
-/** Most case values one template may declare (the number of value slots in a case row). */
-export const CASE_MAX_VALUES = 4;
+/** Most values (# variables) one Define case may declare. */
+export const CASE_MAX_VALUES = 6;
 
-/** Returned by getVariable when a name is not set (an undefined default still throws). */
+/** Returned by getVariable when a name is not set (an undefined default still throws, correction 32). */
 const MISSING = "__caseMissing__";
+
+/** Set by Case pattern around each call of a Close case: { caseId, caseName }. */
+const CASE_REPLAY_KEY = "-caseReplay";
+
+/** Set by a replayed Close case for its Case pattern: { origins, outputs, outside }. */
+const CASE_RESULT_KEY = "-caseReplayResult";
+
+/** Names reserved for the per-case variables every case sets. */
+const CASE_RESERVED_NAMES = ["caseName", "caseIndex"];
 
 const CASE_LENGTH_BOUNDS = { (millimeter) : [-1e7, 0, 1e7] } as LengthBoundSpec;
 const CASE_ANGLE_BOUNDS = { (degree) : [-1e6, 0, 1e6] } as AngleBoundSpec;
 // Area and volume are not dialog parameter types (correction 30): entered in mm^2 / mm^3.
 const CASE_REAL_BOUNDS = { (unitless) : [-1e12, 0, 1e12] } as RealBoundSpec;
+const CASE_INTEGER_BOUNDS = { (unitless) : [-1e6, 0, 1e6] } as IntegerBoundSpec;
 
 /** The type of a case value. */
 export enum CaseValueKind
@@ -49,8 +60,12 @@ export enum CaseValueKind
     VOLUME,
     annotation { "Name" : "Number" }
     NUMBER,
+    annotation { "Name" : "Integer" }
+    INTEGER,
     annotation { "Name" : "Text" }
-    TEXT
+    TEXT,
+    annotation { "Name" : "Boolean" }
+    BOOLEAN
 }
 
 /** A case row's value slot type, set by the editing logic (NONE: slot unused). */
@@ -62,21 +77,22 @@ export enum CaseSlotKind
     AREA,
     VOLUME,
     NUMBER,
-    TEXT
+    INTEGER,
+    TEXT,
+    BOOLEAN
 }
 
 // ---------------------------------------------------------------------------------------------
-// Case template
+// Define case
 // ---------------------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Case template", "Icon" : TemplateIconNamespace::BLOB_DATA,
-        "Editing Logic Function" : "caseTemplateEditLogic",
-        "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) a Case pattern rebinds, binds case 1, and lists the further cases with their own selections and values. Build case 1's features on these names, then repeat them with a Case pattern." }
-export const caseTemplate = defineFeature(function(context is Context, id is Id, definition is map)
+annotation { "Feature Type Name" : "Define case", "Icon" : TemplateIconNamespace::BLOB_DATA,
+        "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) of a repeatable feature chain, and binds case 1. Build the features on these names, end them with Close case, then repeat them with Case pattern." }
+export const defineCase = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
         annotation { "Name" : "Case 1 name", "Default" : "A", "MaxLength" : 64,
-                    "Description" : "Case pattern swaps this suffix for each case's name when naming what the case creates." }
+                    "Description" : "Letters, digits and _, starting with a letter. Outputs are published as #<case>_<name>; Case pattern swaps this suffix for each case's name when naming parts." }
         definition.caseName is string;
 
         annotation { "Name" : "Inputs", "Item name" : "Input", "Item label template" : "#inputName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
@@ -91,15 +107,15 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
             input.query is Query;
         }
 
-        annotation { "Name" : "Case values", "Item name" : "Value", "Item label template" : "#valueName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
-                    "Description" : "# variables that change per case. The template defines each with case 1's value; every further case gives its own." }
+        annotation { "Name" : "Values", "Item name" : "Value", "Item label template" : "#valueName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
+                    "Description" : "# variables that change per case. Each is defined here with case 1's value; every case gives its own (case 1's by default)." }
         definition.values is array;
         for (var value in definition.values)
         {
             annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64 }
             value.valueName is string;
 
-            annotation { "Name" : "Type" }
+            annotation { "Name" : "Type", "UIHint" : [UIHint.SHOW_LABEL] }
             value.valueKind is CaseValueKind;
 
             if (value.valueKind == CaseValueKind.LENGTH)
@@ -127,113 +143,393 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Case 1 value" }
                 isReal(value.valueNumber, CASE_REAL_BOUNDS);
             }
+            if (value.valueKind == CaseValueKind.INTEGER)
+            {
+                annotation { "Name" : "Case 1 value" }
+                isInteger(value.valueInteger, CASE_INTEGER_BOUNDS);
+            }
             if (value.valueKind == CaseValueKind.TEXT)
             {
                 annotation { "Name" : "Case 1 value", "Default" : "" }
                 value.valueText is string;
             }
+            if (value.valueKind == CaseValueKind.BOOLEAN)
+            {
+                annotation { "Name" : "Case 1 value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                isAnything(value.valueBoolean);
+            }
         }
-
-        // Which slot labels show; set by the editing logic from the input count.
-        annotation { "Name" : "Show slot 2", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot2 is boolean;
-        annotation { "Name" : "Show slot 3", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot3 is boolean;
-        annotation { "Name" : "Show slot 4", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot4 is boolean;
-        annotation { "Name" : "Show slot 5", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot5 is boolean;
-        annotation { "Name" : "Show slot 6", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot6 is boolean;
-        annotation { "Name" : "Show slot 7", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot7 is boolean;
-        annotation { "Name" : "Show slot 8", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.showSlot8 is boolean;
-
-        annotation { "Group Name" : "Input slots", "Collapsed By Default" : true }
+    }
+    {
+        // Re-run inside a pattern (listed by mistake): the Case pattern has already bound this case.
+        if (isInFeaturePattern(context))
         {
-            annotation { "Name" : "Slot 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-            definition.slot1 is string;
-            if (definition.showSlot2)
+            return;
+        }
+
+        verifyCaseName(definition.caseName, "caseName");
+        const count = size(definition.inputs);
+        const valueCount = size(definition.values);
+        if (count == 0 && valueCount == 0)
+        {
+            throw regenError("Add at least one input or value.", ["inputs"]);
+        }
+        if (count > CASE_MAX_INPUTS)
+        {
+            throw regenError("A Define case takes at most " ~ CASE_MAX_INPUTS ~ " inputs.", ["inputs"]);
+        }
+        if (valueCount > CASE_MAX_VALUES)
+        {
+            throw regenError("A Define case takes at most " ~ CASE_MAX_VALUES ~ " values.", ["values"]);
+        }
+
+        var names = [];
+        var queries = [];
+        for (var input in definition.inputs)
+        {
+            verifyDeclaredName(input.inputName, names, "inputs");
+            if (isQueryEmpty(context, input.query))
             {
-                annotation { "Name" : "Slot 2", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot2 is string;
+                throw regenError("Case 1 selection for #" ~ input.inputName ~ " selects nothing.", ["inputs"]);
             }
-            if (definition.showSlot3)
+            setQueryVariable(context, input.inputName, input.query);
+            names = append(names, input.inputName);
+            queries = append(queries, input.query);
+        }
+
+        var valueNames = [];
+        var valueKinds = [];
+        var caseOneValues = [];
+        for (var value in definition.values)
+        {
+            verifyDeclaredName(value.valueName, concatenateArrays([names, valueNames]), "values");
+            const caseOne = typedValue(value, "value", value.valueKind);
+            verifyValueKind(caseOne, value.valueKind, value.valueName, "values");
+            setVariable(context, value.valueName, caseOne);
+            valueNames = append(valueNames, value.valueName);
+            valueKinds = append(valueKinds, value.valueKind);
+            caseOneValues = append(caseOneValues, caseOne);
+        }
+
+        setVariable(context, "caseName", definition.caseName);
+        setVariable(context, "caseIndex", 1);
+        setVariable(context, caseNamesKey(toString(id)), [definition.caseName]);
+        setVariable(context, toString(id), {
+                    "caseDefine" : true,
+                    "caseName" : definition.caseName,
+                    "names" : names,
+                    "queries" : queries,
+                    "valueNames" : valueNames,
+                    "valueKinds" : valueKinds,
+                    "values" : caseOneValues
+                }, "Define case");
+    }, {
+        "caseName" : "A",
+        "inputs" : [],
+        "values" : []
+    });
+
+// ---------------------------------------------------------------------------------------------
+// Close case
+// ---------------------------------------------------------------------------------------------
+
+annotation { "Feature Type Name" : "Close case", "Icon" : TemplateIconNamespace::BLOB_DATA,
+        "Editing Logic Function" : "closeCaseEditLogic",
+        "Feature Type Description" : "Ends a repeatable feature chain: names its Define case, lists the features to repeat, and declares the outputs every case publishes as #<case>_<name>. Repeat it with Case pattern." }
+export const closeCase = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Define case", "Description" : "The Define case declaring the inputs these features use." }
+        definition.defineCase is FeatureList;
+
+        annotation { "Name" : "Features to repeat",
+                    "Description" : "The features built on the Define case's inputs. Reference geometry they create through a Query Variable, not by clicking it." }
+        definition.features is FeatureList;
+
+        annotation { "Name" : "Outputs", "Item name" : "Output", "Item label template" : "#outputName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
+                    "Description" : "Query variables every case publishes as #<case>_<name>, case 1 included." }
+        definition.outputs is array;
+        for (var output in definition.outputs)
+        {
+            annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64 }
+            output.outputName is string;
+
+            annotation { "Name" : "Query", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
+                        "Description" : "Usually a query variable made inside the repeated features. A clicked selection stays on case 1's geometry." }
+            output.outputQuery is Query;
+
+            annotation { "Name" : "Evaluate on use", "Default" : false,
+                        "Description" : "Off: the entities are fixed when the case closes (they follow identity-preserving edits). On: the query is stored and re-evaluated wherever the variable is used." }
+            output.outputOnUse is boolean;
+
+            if (!output.outputOnUse)
             {
-                annotation { "Name" : "Slot 3", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot3 is string;
-            }
-            if (definition.showSlot4)
-            {
-                annotation { "Name" : "Slot 4", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot4 is string;
-            }
-            if (definition.showSlot5)
-            {
-                annotation { "Name" : "Slot 5", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot5 is string;
-            }
-            if (definition.showSlot6)
-            {
-                annotation { "Name" : "Slot 6", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot6 is string;
-            }
-            if (definition.showSlot7)
-            {
-                annotation { "Name" : "Slot 7", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot7 is string;
-            }
-            if (definition.showSlot8)
-            {
-                annotation { "Name" : "Slot 8", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-                definition.slot8 is string;
+                annotation { "Name" : "Track downstream changes", "Default" : false,
+                            "Description" : "Also include entities later derived from these (the halves of a split edge). The same name can then mean different entities before and after an edit." }
+                output.outputTrack is boolean;
             }
         }
 
-        annotation { "Name" : "Further cases", "Item name" : "Case", "Item label template" : "#rowCaseName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS }
+        annotation { "Group Name" : "Keep", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Parts", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
+            definition.keepParts is boolean;
+            annotation { "Name" : "Surfaces", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
+            definition.keepSurfaces is boolean;
+            annotation { "Name" : "Curves and points", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
+            definition.keepCurves is boolean;
+            annotation { "Name" : "Mate connectors", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
+            definition.keepMateConnectors is boolean;
+            annotation { "Name" : "Planes", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
+            definition.keepPlanes is boolean;
+            annotation { "Name" : "Sketches", "Default" : false, "UIHint" : UIHint.DISPLAY_SHORT }
+            definition.keepSketches is boolean;
+        }
+
+        annotation { "Name" : "Name separator", "Default" : "_", "MaxLength" : 8,
+                    "Description" : "Between a part's base name and its case name (Rib_A -> Rib_B)." }
+        definition.separator is string;
+
+        // Case 1 body names, cached by the editing logic (getProperty throws during regen,
+        // correction 36). One line per body: "<feature index>\t<body index>\t<name>".
+        annotation { "Name" : "Template names", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.templateNames is string;
+    }
+    {
+        // Called by a Case pattern inside its pattern frame: run this case.
+        if (isInFeaturePattern(context))
+        {
+            replayCase(context, id, definition);
+            return;
+        }
+
+        const define = findSignature(context, definition.defineCase, "caseDefine");
+        if (define == undefined)
+        {
+            throw regenError("Select the Define case.", ["defineCase"]);
+        }
+        if (define.count > 1)
+        {
+            throw regenError("Select one Define case.", ["defineCase"]);
+        }
+        if (size(definition.features) == 0)
+        {
+            throw regenError("Select the features built on the Define case's inputs.", ["features"]);
+        }
+        var outputNames = [];
+        var outputs = [];
+        for (var output in definition.outputs)
+        {
+            verifyDeclaredName(output.outputName, outputNames, "outputs");
+            outputNames = append(outputNames, output.outputName);
+            const onUse = output.outputOnUse;
+            const track = !onUse && output.outputTrack == true;
+            outputs = append(outputs, { "name" : output.outputName, "onUse" : onUse, "track" : track });
+            publishCaseOutput(context, define.signature.caseName, output.outputName, output.outputQuery, onUse, track, "outputs");
+        }
+
+        var signature = define.signature;
+        signature.caseDefine = undefined;
+        signature.caseClose = true;
+        signature.defineKey = toString(define.featureId);
+        signature.outputs = outputs;
+        signature.templateNames = definition.templateNames;
+        signature.separator = definition.separator;
+        signature.keep = {
+                "keepParts" : definition.keepParts,
+                "keepSurfaces" : definition.keepSurfaces,
+                "keepCurves" : definition.keepCurves,
+                "keepMateConnectors" : definition.keepMateConnectors,
+                "keepPlanes" : definition.keepPlanes,
+                "keepSketches" : definition.keepSketches
+            };
+        signature.containsSketch = containsSketch(context, definition.features);
+        setVariable(context, toString(id), signature, "Close case");
+    }, {
+        "outputs" : [],
+        "keepParts" : true,
+        "keepSurfaces" : true,
+        "keepCurves" : true,
+        "keepMateConnectors" : true,
+        "keepPlanes" : true,
+        "keepSketches" : false,
+        "separator" : "_",
+        "templateNames" : ""
+    });
+
+/**
+ * One case, run by the Close case when its Case pattern calls it inside the pattern frame
+ * (frame id = the case id the Case pattern published). Records the bodies each listed feature
+ * creates (for naming) and the outputs' queries -- evaluated here, after the case's own
+ * query variables were set -- for the Case pattern to publish once the frame is popped.
+ */
+function replayCase(context is Context, id is Id, definition is map)
+{
+    const replay = getVariable(context, CASE_REPLAY_KEY, MISSING);
+    if (!(replay is map) || replay.caseId == undefined)
+    {
+        throw regenError("A Close case is repeated only by a Case pattern.");
+    }
+    const caseId = replay.caseId;
+    const functions = valuesSortedById(context, definition.features);
+    var origins = [];
+    var outside = [];
+    var before = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
+    for (var i = 0; i < size(functions); i += 1)
+    {
+        const outcome = runListedFeature(context, functions, i, caseId, id);
+        if (outcome.error != undefined)
+        {
+            throw regenError("repeated feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")");
+        }
+        if (!outcome.inFrame)
+        {
+            outside = append(outside, i + 1);
+        }
+        const after = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
+        var j = 0;
+        for (var body in after)
+        {
+            if (!isIn(body, before))
+            {
+                origins = append(origins, { "body" : body, "key" : i ~ "." ~ j });
+                j += 1;
+            }
+        }
+        before = after;
+    }
+    var outputs = [];
+    for (var output in definition.outputs)
+    {
+        outputs = append(outputs, output.outputQuery);
+    }
+    setVariable(context, CASE_RESULT_KEY, { "origins" : origins, "outputs" : outputs, "outside" : outside });
+}
+
+/**
+ * Close case editing logic: caches the names of the bodies the listed features created for case 1
+ * (the feature body cannot read names during regen).
+ */
+export function closeCaseEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map) returns map
+{
+    const featureIds = sortedFeatureIds(context, definition.features);
+    var lines = [];
+    for (var i = 0; i < size(featureIds); i += 1)
+    {
+        const bodies = evaluateQuery(context, qSketchFilter(qCreatedBy(featureIds[i], EntityType.BODY), SketchObject.NO));
+        for (var j = 0; j < size(bodies); j += 1)
+        {
+            const name = try silent(getProperty(context, { "entity" : bodies[j], "propertyType" : PropertyType.NAME }));
+            if (name is string && name != "")
+            {
+                lines = append(lines, i ~ "\t" ~ j ~ "\t" ~ name);
+            }
+        }
+    }
+    definition.templateNames = join(lines, "\n");
+    return definition;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Case pattern
+// ---------------------------------------------------------------------------------------------
+
+annotation { "Feature Type Name" : "Case pattern", "Icon" : PatternIconNamespace::BLOB_DATA,
+        "Editing Logic Function" : "casePatternEditLogic",
+        "Feature Type Description" : "Repeats the features of a Close case for new inputs: each case binds the Define case's inputs and values to its own selections and values and re-runs the features. Parts are named after case 1's with the case name as suffix; outputs are published as #<case>_<name>." }
+export const casePattern = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Close case", "Description" : "The Close case ending the features to repeat." }
+        definition.closeCase is FeatureList;
+
+        annotation { "Name" : "Cases", "Item name" : "Case", "Item label template" : "#caseName",
+                    "Description" : "Usually one. Each case gives a selection per input and a value per value (case 1's by default)." }
         definition.cases is array;
         for (var row in definition.cases)
         {
-            annotation { "Name" : "Case name", "Default" : "", "MaxLength" : 64 }
-            row.rowCaseName is string;
+            annotation { "Name" : "Case name", "Default" : "", "MaxLength" : 64,
+                        "Description" : "Letters, digits and _, starting with a letter; unique among the Define case's cases. Outputs are published as #<case>_<name>." }
+            row.caseName is string;
 
-            // Hidden layout flags, set by the editing logic from the inputs and values above.
-            annotation { "Name" : "Use input 2", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Use input 1", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.use1 is boolean;
+            annotation { "Name" : "Input 1 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in1Key is string;
+            annotation { "Name" : "Use input 2", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use2 is boolean;
-            annotation { "Name" : "Use input 3", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Input 2 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in2Key is string;
+            annotation { "Name" : "Use input 3", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use3 is boolean;
-            annotation { "Name" : "Use input 4", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Input 3 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in3Key is string;
+            annotation { "Name" : "Use input 4", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use4 is boolean;
-            annotation { "Name" : "Use input 5", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Input 4 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in4Key is string;
+            annotation { "Name" : "Use input 5", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use5 is boolean;
-            annotation { "Name" : "Use input 6", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Input 5 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in5Key is string;
+            annotation { "Name" : "Use input 6", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use6 is boolean;
-            annotation { "Name" : "Use input 7", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Input 6 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in6Key is string;
+            annotation { "Name" : "Use input 7", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use7 is boolean;
-            annotation { "Name" : "Use input 8", "Default" : true, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            annotation { "Name" : "Input 7 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in7Key is string;
+            annotation { "Name" : "Use input 8", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.use8 is boolean;
+            annotation { "Name" : "Input 8 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.in8Key is string;
             annotation { "Name" : "Use value 1", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.useValue1 is boolean;
             annotation { "Name" : "Value 1 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.v1Kind is CaseSlotKind;
+            annotation { "Name" : "Value 1 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v1Key is string;
             annotation { "Name" : "Use value 2", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.useValue2 is boolean;
             annotation { "Name" : "Value 2 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.v2Kind is CaseSlotKind;
+            annotation { "Name" : "Value 2 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v2Key is string;
             annotation { "Name" : "Use value 3", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.useValue3 is boolean;
             annotation { "Name" : "Value 3 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.v3Kind is CaseSlotKind;
+            annotation { "Name" : "Value 3 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v3Key is string;
             annotation { "Name" : "Use value 4", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.useValue4 is boolean;
             annotation { "Name" : "Value 4 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
             row.v4Kind is CaseSlotKind;
+            annotation { "Name" : "Value 4 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v4Key is string;
+            annotation { "Name" : "Use value 5", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.useValue5 is boolean;
+            annotation { "Name" : "Value 5 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v5Kind is CaseSlotKind;
+            annotation { "Name" : "Value 5 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v5Key is string;
+            annotation { "Name" : "Use value 6", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.useValue6 is boolean;
+            annotation { "Name" : "Value 6 type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v6Kind is CaseSlotKind;
+            annotation { "Name" : "Value 6 key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            row.v6Key is string;
 
-            annotation { "Name" : "Input 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
-            row.in1Name is string;
-            annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
-            row.input1 is Query;
+            if (row.use1)
+            {
+                annotation { "Name" : "Input 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.in1Name is string;
+                annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+                row.input1 is Query;
+            }
+
             if (row.use2)
             {
                 annotation { "Name" : "Input 2", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -241,6 +537,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input2 is Query;
             }
+
             if (row.use3)
             {
                 annotation { "Name" : "Input 3", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -248,6 +545,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input3 is Query;
             }
+
             if (row.use4)
             {
                 annotation { "Name" : "Input 4", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -255,6 +553,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input4 is Query;
             }
+
             if (row.use5)
             {
                 annotation { "Name" : "Input 5", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -262,6 +561,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input5 is Query;
             }
+
             if (row.use6)
             {
                 annotation { "Name" : "Input 6", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -269,6 +569,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input6 is Query;
             }
+
             if (row.use7)
             {
                 annotation { "Name" : "Input 7", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -276,6 +577,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input7 is Query;
             }
+
             if (row.use8)
             {
                 annotation { "Name" : "Input 8", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -283,6 +585,7 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                 annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
                 row.input8 is Query;
             }
+
             if (row.useValue1)
             {
                 annotation { "Name" : "Value 1", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -312,12 +615,23 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                     annotation { "Name" : "Value" }
                     isReal(row.v1Number, CASE_REAL_BOUNDS);
                 }
+                if (row.v1Kind == CaseSlotKind.INTEGER)
+                {
+                    annotation { "Name" : "Value" }
+                    isInteger(row.v1Integer, CASE_INTEGER_BOUNDS);
+                }
                 if (row.v1Kind == CaseSlotKind.TEXT)
                 {
                     annotation { "Name" : "Value", "Default" : "" }
                     row.v1Text is string;
                 }
+                if (row.v1Kind == CaseSlotKind.BOOLEAN)
+                {
+                    annotation { "Name" : "Value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                    isAnything(row.v1Boolean);
+                }
             }
+
             if (row.useValue2)
             {
                 annotation { "Name" : "Value 2", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -347,12 +661,23 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                     annotation { "Name" : "Value" }
                     isReal(row.v2Number, CASE_REAL_BOUNDS);
                 }
+                if (row.v2Kind == CaseSlotKind.INTEGER)
+                {
+                    annotation { "Name" : "Value" }
+                    isInteger(row.v2Integer, CASE_INTEGER_BOUNDS);
+                }
                 if (row.v2Kind == CaseSlotKind.TEXT)
                 {
                     annotation { "Name" : "Value", "Default" : "" }
                     row.v2Text is string;
                 }
+                if (row.v2Kind == CaseSlotKind.BOOLEAN)
+                {
+                    annotation { "Name" : "Value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                    isAnything(row.v2Boolean);
+                }
             }
+
             if (row.useValue3)
             {
                 annotation { "Name" : "Value 3", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -382,12 +707,23 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                     annotation { "Name" : "Value" }
                     isReal(row.v3Number, CASE_REAL_BOUNDS);
                 }
+                if (row.v3Kind == CaseSlotKind.INTEGER)
+                {
+                    annotation { "Name" : "Value" }
+                    isInteger(row.v3Integer, CASE_INTEGER_BOUNDS);
+                }
                 if (row.v3Kind == CaseSlotKind.TEXT)
                 {
                     annotation { "Name" : "Value", "Default" : "" }
                     row.v3Text is string;
                 }
+                if (row.v3Kind == CaseSlotKind.BOOLEAN)
+                {
+                    annotation { "Name" : "Value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                    isAnything(row.v3Boolean);
+                }
             }
+
             if (row.useValue4)
             {
                 annotation { "Name" : "Value 4", "Default" : "", "UIHint" : UIHint.READ_ONLY }
@@ -417,192 +753,557 @@ export const caseTemplate = defineFeature(function(context is Context, id is Id,
                     annotation { "Name" : "Value" }
                     isReal(row.v4Number, CASE_REAL_BOUNDS);
                 }
+                if (row.v4Kind == CaseSlotKind.INTEGER)
+                {
+                    annotation { "Name" : "Value" }
+                    isInteger(row.v4Integer, CASE_INTEGER_BOUNDS);
+                }
                 if (row.v4Kind == CaseSlotKind.TEXT)
                 {
                     annotation { "Name" : "Value", "Default" : "" }
                     row.v4Text is string;
                 }
+                if (row.v4Kind == CaseSlotKind.BOOLEAN)
+                {
+                    annotation { "Name" : "Value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                    isAnything(row.v4Boolean);
+                }
+            }
+
+            if (row.useValue5)
+            {
+                annotation { "Name" : "Value 5", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.v5Name is string;
+                if (row.v5Kind == CaseSlotKind.LENGTH)
+                {
+                    annotation { "Name" : "Value" }
+                    isLength(row.v5Length, CASE_LENGTH_BOUNDS);
+                }
+                if (row.v5Kind == CaseSlotKind.ANGLE)
+                {
+                    annotation { "Name" : "Value" }
+                    isAngle(row.v5Angle, CASE_ANGLE_BOUNDS);
+                }
+                if (row.v5Kind == CaseSlotKind.AREA)
+                {
+                    annotation { "Name" : "Value (mm^2)" }
+                    isReal(row.v5Area, CASE_REAL_BOUNDS);
+                }
+                if (row.v5Kind == CaseSlotKind.VOLUME)
+                {
+                    annotation { "Name" : "Value (mm^3)" }
+                    isReal(row.v5Volume, CASE_REAL_BOUNDS);
+                }
+                if (row.v5Kind == CaseSlotKind.NUMBER)
+                {
+                    annotation { "Name" : "Value" }
+                    isReal(row.v5Number, CASE_REAL_BOUNDS);
+                }
+                if (row.v5Kind == CaseSlotKind.INTEGER)
+                {
+                    annotation { "Name" : "Value" }
+                    isInteger(row.v5Integer, CASE_INTEGER_BOUNDS);
+                }
+                if (row.v5Kind == CaseSlotKind.TEXT)
+                {
+                    annotation { "Name" : "Value", "Default" : "" }
+                    row.v5Text is string;
+                }
+                if (row.v5Kind == CaseSlotKind.BOOLEAN)
+                {
+                    annotation { "Name" : "Value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                    isAnything(row.v5Boolean);
+                }
+            }
+
+            if (row.useValue6)
+            {
+                annotation { "Name" : "Value 6", "Default" : "", "UIHint" : UIHint.READ_ONLY }
+                row.v6Name is string;
+                if (row.v6Kind == CaseSlotKind.LENGTH)
+                {
+                    annotation { "Name" : "Value" }
+                    isLength(row.v6Length, CASE_LENGTH_BOUNDS);
+                }
+                if (row.v6Kind == CaseSlotKind.ANGLE)
+                {
+                    annotation { "Name" : "Value" }
+                    isAngle(row.v6Angle, CASE_ANGLE_BOUNDS);
+                }
+                if (row.v6Kind == CaseSlotKind.AREA)
+                {
+                    annotation { "Name" : "Value (mm^2)" }
+                    isReal(row.v6Area, CASE_REAL_BOUNDS);
+                }
+                if (row.v6Kind == CaseSlotKind.VOLUME)
+                {
+                    annotation { "Name" : "Value (mm^3)" }
+                    isReal(row.v6Volume, CASE_REAL_BOUNDS);
+                }
+                if (row.v6Kind == CaseSlotKind.NUMBER)
+                {
+                    annotation { "Name" : "Value" }
+                    isReal(row.v6Number, CASE_REAL_BOUNDS);
+                }
+                if (row.v6Kind == CaseSlotKind.INTEGER)
+                {
+                    annotation { "Name" : "Value" }
+                    isInteger(row.v6Integer, CASE_INTEGER_BOUNDS);
+                }
+                if (row.v6Kind == CaseSlotKind.TEXT)
+                {
+                    annotation { "Name" : "Value", "Default" : "" }
+                    row.v6Text is string;
+                }
+                if (row.v6Kind == CaseSlotKind.BOOLEAN)
+                {
+                    annotation { "Name" : "Value", "Default" : "true", "Description" : "An expression that is true or false: true, false, #other, !#other." }
+                    isAnything(row.v6Boolean);
+                }
             }
         }
 
-        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
-        {
-            annotation { "Name" : "Print bindings", "Default" : false,
-                        "Description" : "Print the input slots and every case's selections and values to the FeatureScript notices." }
-            definition.debug is boolean;
-        }
+        annotation { "Name" : "Print bindings", "Default" : false,
+                    "Description" : "Print every case's selections and values to the FeatureScript notices." }
+        definition.debug is boolean;
     }
     {
-        // Re-run inside a Case pattern: the pattern has already bound this case.
         if (isInFeaturePattern(context))
         {
-            return;
+            throw regenError("A Case pattern cannot run inside another pattern.");
+        }
+        const close = findSignature(context, definition.closeCase, "caseClose");
+        if (close == undefined)
+        {
+            throw regenError("Select a Close case.", ["closeCase"]);
+        }
+        if (close.count > 1)
+        {
+            throw regenError("Select one Close case.", ["closeCase"]);
+        }
+        const signature = close.signature;
+        const closeFunctions = valuesSortedById(context, definition.closeCase);
+        const caseCount = size(definition.cases);
+        if (caseCount == 0)
+        {
+            throw regenError("Add a case.", ["cases"]);
         }
 
-        if (definition.caseName == "")
+        const namesKey = caseNamesKey(signature.defineKey);
+        var usedNames = getVariable(context, namesKey, MISSING);
+        if (!(usedNames is array))
         {
-            throw regenError("Name case 1.", ["caseName"]);
+            usedNames = [signature.caseName];
         }
-        const count = size(definition.inputs);
-        if (count == 0)
-        {
-            throw regenError("Add at least one input.", ["inputs"]);
-        }
-        if (count > CASE_MAX_INPUTS)
-        {
-            throw regenError("A Case template takes at most " ~ CASE_MAX_INPUTS ~ " inputs.", ["inputs"]);
-        }
+        const templateNames = parseTemplateNames(signature.templateNames);
+        var failures = [];
+        var notes = [];
+        var unnamed = 0;
 
-        var names = [];
-        var queries = [];
-        for (var n = 0; n < count; n += 1)
-        {
-            const input = definition.inputs[n];
-            verifyVariableNameIsValid(input.inputName, "inputs");
-            if (isIn(input.inputName, names))
-            {
-                throw regenError("Input name #" ~ input.inputName ~ " is used twice.", ["inputs"]);
-            }
-            if (isQueryEmpty(context, input.query))
-            {
-                throw regenError("Case 1 selection for #" ~ input.inputName ~ " selects nothing.", ["inputs"]);
-            }
-            setQueryVariable(context, input.inputName, input.query);
-            names = append(names, input.inputName);
-            queries = append(queries, input.query);
-        }
-
-        const valueCount = size(definition.values);
-        if (valueCount > CASE_MAX_VALUES)
-        {
-            throw regenError("A Case template takes at most " ~ CASE_MAX_VALUES ~ " values.", ["values"]);
-        }
-        var valueNames = [];
-        var valueKinds = [];
-        var caseOneValues = [];
-        for (var value in definition.values)
-        {
-            verifyVariableNameIsValid(value.valueName, "values");
-            if (isIn(value.valueName, valueNames) || isIn(value.valueName, names))
-            {
-                throw regenError("Name #" ~ value.valueName ~ " is used twice.", ["values"]);
-            }
-            const caseOne = typedValue(value, "value", value.valueKind);
-            setVariable(context, value.valueName, caseOne);
-            valueNames = append(valueNames, value.valueName);
-            valueKinds = append(valueKinds, value.valueKind);
-            caseOneValues = append(caseOneValues, caseOne);
-        }
-
-        var caseNames = [definition.caseName];
-        var cases = [];
         for (var row in definition.cases)
         {
-            if (row.rowCaseName == "")
+            const caseName = row.caseName;
+            if (caseName == "" || match(caseName, "[A-Za-z][A-Za-z0-9_]*").hasMatch != true)
             {
-                throw regenError("Name case " ~ (size(caseNames) + 1) ~ ".", ["cases"]);
+                failures = append(failures, "\"" ~ caseName ~ "\": name each case with letters, digits and _, starting with a letter");
+                continue;
             }
-            if (isIn(row.rowCaseName, caseNames))
+            if (isIn(caseName, usedNames))
             {
-                throw regenError("Case name \"" ~ row.rowCaseName ~ "\" is used twice.", ["cases"]);
+                failures = append(failures, caseName ~ ": the case name is already used by this Define case");
+                continue;
             }
-            caseNames = append(caseNames, row.rowCaseName);
+            const caseIndex = size(usedNames) + 1;
+            usedNames = append(usedNames, caseName);
+
+            // Bind every input and value by name (slots keep their names; see casePatternEditLogic).
+            var bindFailure = undefined;
             var selections = [];
-            for (var n = 0; n < count; n += 1)
+            for (var name in signature.names)
             {
-                selections = append(selections, row["input" ~ (n + 1)]);
+                const slot = findSlot(row, "in", CASE_MAX_INPUTS, name);
+                const selection = slot == undefined ? undefined : row["input" ~ slot];
+                if (selection == undefined || isQueryEmpty(context, selection))
+                {
+                    bindFailure = "#" ~ name ~ " selects nothing" ~ (slot == undefined ? " (edit this Case pattern after changing the Define case)" : "");
+                    break;
+                }
+                selections = append(selections, selection);
             }
-            // A slot the editing logic has not typed yet reads as undefined; Case pattern reports it.
+            if (bindFailure != undefined)
+            {
+                failures = append(failures, caseName ~ ": " ~ bindFailure);
+                continue;
+            }
             var values = [];
-            for (var m = 0; m < valueCount; m += 1)
+            for (var m = 0; m < size(signature.valueNames); m += 1)
             {
-                values = append(values, typedValue(row, "v" ~ (m + 1), valueKinds[m]));
+                const name = signature.valueNames[m];
+                const kind = signature.valueKinds[m];
+                const slot = findSlot(row, "v", CASE_MAX_VALUES, name);
+                var value = undefined;
+                if (slot != undefined && row["v" ~ slot ~ "Kind"] == slotKind(kind))
+                {
+                    value = typedValue(row, "v" ~ slot, kind);
+                }
+                if (value == undefined)
+                {
+                    value = signature.values[m];
+                    notes = append(notes, caseName ~ " uses case 1's #" ~ name ~ " (edit this Case pattern after changing the Define case)");
+                }
+                else if (kind == CaseValueKind.BOOLEAN && !(value is boolean))
+                {
+                    bindFailure = "#" ~ name ~ " must be true or false";
+                    break;
+                }
+                values = append(values, value);
             }
-            cases = append(cases, { "caseName" : row.rowCaseName, "queries" : selections, "values" : values });
+            if (bindFailure != undefined)
+            {
+                failures = append(failures, caseName ~ ": " ~ bindFailure);
+                continue;
+            }
+
+            for (var n = 0; n < size(signature.names); n += 1)
+            {
+                setQueryVariable(context, signature.names[n], selections[n]);
+            }
+            for (var m = 0; m < size(values); m += 1)
+            {
+                setVariable(context, signature.valueNames[m], values[m]);
+            }
+            setVariable(context, "caseName", caseName);
+            setVariable(context, "caseIndex", caseIndex);
+            if (definition.debug)
+            {
+                println("Case " ~ caseName ~ " (#caseIndex " ~ caseIndex ~ "):");
+                for (var n = 0; n < size(signature.names); n += 1)
+                {
+                    println("  #" ~ signature.names[n] ~ " = " ~ size(evaluateQuery(context, selections[n])) ~ " entities");
+                }
+                for (var m = 0; m < size(values); m += 1)
+                {
+                    println("  #" ~ signature.valueNames[m] ~ " = " ~ toString(values[m]));
+                }
+            }
+
+            // Run the case as a Pattern runs one instance (correction 31: never inside startFeature):
+            // the Close case replays its features under this frame (correction 50).
+            const caseId = id + ("case_" ~ caseName);
+            setVariable(context, CASE_REPLAY_KEY, { "caseId" : caseId, "caseName" : caseName });
+            setVariable(context, CASE_RESULT_KEY, MISSING);
+            setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
+            var failure = undefined;
+            try
+            {
+                closeFunctions[0](caseId);
+            }
+            catch (e)
+            {
+                failure = errorText(e);
+            }
+            unsetFeaturePatternInstanceData(context, caseId);
+            const result = getVariable(context, CASE_RESULT_KEY, MISSING);
+            const caseBodies = qCreatedBy(caseId, EntityType.BODY);
+            if (failure == undefined && !(result is map))
+            {
+                failure = "the Close case did not run";
+            }
+            if (failure != undefined)
+            {
+                if (!isQueryEmpty(context, caseBodies))
+                {
+                    opDeleteBodies(context, id + ("discard_" ~ caseName), { "entities" : caseBodies });
+                }
+                failures = append(failures, caseName ~ ": " ~ failure);
+                continue;
+            }
+            if (definition.debug)
+            {
+                for (var i in result.outside)
+                {
+                    println("  repeated feature " ~ i ~ " edits geometry from outside the list: ran outside the pattern frame");
+                }
+            }
+
+            const dropped = unkeptBodies(caseBodies, signature.keep);
+            if (!isQueryEmpty(context, dropped))
+            {
+                opDeleteBodies(context, id + ("drop_" ~ caseName), { "entities" : dropped });
+            }
+            for (var origin in result.origins)
+            {
+                if (isQueryEmpty(context, origin.body) || isQueryEmpty(context, qSketchFilter(origin.body, SketchObject.NO)))
+                {
+                    continue;
+                }
+                const templateName = templateNames[origin.key];
+                if (templateName == undefined)
+                {
+                    unnamed += 1;
+                    continue;
+                }
+                setProperty(context, {
+                            "entities" : origin.body,
+                            "propertyType" : PropertyType.NAME,
+                            "value" : caseBodyName(templateName, signature.caseName, caseName, signature.separator)
+                        });
+            }
+
+            for (var k = 0; k < size(signature.outputs); k += 1)
+            {
+                const output = signature.outputs[k];
+                const q = result.outputs[k];
+                publishCaseOutput(context, caseName, output.name, q, output.onUse, output.track, "cases");
+                const found = evaluateQuery(context, q);
+                if (size(found) > 0 && isQueryEmpty(context, qIntersection([qUnion(found), qCreatedBy(caseId)])))
+                {
+                    notes = append(notes, "#" ~ caseName ~ "_" ~ output.name ~ " is not case " ~ caseName
+                                ~ "'s geometry: make the Close case output a query variable, not a click");
+                }
+            }
         }
 
-        setVariable(context, toString(id), {
-                    "caseTemplate" : true,
-                    "caseName" : definition.caseName,
-                    "names" : names,
-                    "queries" : queries,
-                    "valueNames" : valueNames,
-                    "values" : caseOneValues,
-                    "cases" : cases,
-                    "debug" : definition.debug
-                }, "Case template");
-
-        if (definition.debug)
+        // Later features see case 1's inputs again (variables the repeated features set keep the last case's).
+        for (var n = 0; n < size(signature.names); n += 1)
         {
-            println("Case template " ~ toString(id) ~ ", case " ~ definition.caseName ~ ":");
-            for (var n = 0; n < count; n += 1)
-            {
-                println("  Input " ~ (n + 1) ~ ": #" ~ names[n] ~ " = " ~ size(evaluateQuery(context, queries[n])) ~ " entities");
-            }
-            for (var m = 0; m < valueCount; m += 1)
-            {
-                println("  Value " ~ (m + 1) ~ ": #" ~ valueNames[m] ~ " = " ~ toString(caseOneValues[m]));
-            }
+            setQueryVariable(context, signature.names[n], signature.queries[n]);
+        }
+        for (var m = 0; m < size(signature.valueNames); m += 1)
+        {
+            setVariable(context, signature.valueNames[m], signature.values[m]);
+        }
+        setVariable(context, "caseName", signature.caseName);
+        setVariable(context, "caseIndex", 1);
+        setVariable(context, namesKey, usedNames);
+        setVariable(context, CASE_REPLAY_KEY, MISSING);
+
+        if (size(failures) == caseCount)
+        {
+            throw regenError("No case was built. " ~ join(failures, "; "), ["cases"]);
+        }
+        if (size(failures) > 0)
+        {
+            reportFeatureWarning(context, id, "Not built: " ~ join(failures, "; "));
+            return;
+        }
+        if (signature.containsSketch)
+        {
+            notes = append(notes, "Sketches are re-solved per case. Dimensions and constraints to the origin or the default planes are not"
+                    ~ " reapplied, so those entities keep case 1's position; constrain sketches to geometry derived from the inputs.");
+        }
+        if (unnamed > 0)
+        {
+            notes = append(notes, unnamed ~ " bod" ~ (unnamed == 1 ? "y" : "ies") ~ " kept Onshape's default name: edit the Close case"
+                    ~ " to refresh case 1's names.");
+        }
+        if (size(notes) > 0)
+        {
+            reportFeatureInfo(context, id, join(notes, " "));
         }
     }, {
-        "caseName" : "A",
-        "inputs" : [],
-        "values" : [],
         "cases" : [],
-        "debug" : false,
-        "slot1" : "",
-        "slot2" : "",
-        "slot3" : "",
-        "slot4" : "",
-        "slot5" : "",
-        "slot6" : "",
-        "slot7" : "",
-        "slot8" : "",
-        "showSlot2" : false,
-        "showSlot3" : false,
-        "showSlot4" : false,
-        "showSlot5" : false,
-        "showSlot6" : false,
-        "showSlot7" : false,
-        "showSlot8" : false
+        "debug" : false
     });
 
 /**
- * Case template editing logic: labels the input slots with the input names, and lays out every
- * case row -- one labelled selection per input, one labelled field of the right type per value.
+ * Case pattern editing logic: lays out every case row from the Close case's signature -- one
+ * labelled selection per input, one labelled field of the right type per value -- keeping each
+ * slot's selection or value by NAME, so adding, removing or reordering inputs in the Define case
+ * does not shuffle them. A new slot, or one whose type changed, starts at case 1's value. Adds the
+ * first case row when the Close case is picked on a new feature.
  */
-export function caseTemplateEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+export function casePatternEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map) returns map
 {
-    const count = size(definition.inputs);
-    const valueCount = size(definition.values);
-    for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
+    const close = findSignature(context, definition.closeCase, "caseClose");
+    if (close == undefined)
     {
-        definition["slot" ~ k] = k <= count ? "Input " ~ k ~ ": #" ~ definition.inputs[k - 1].inputName : "";
-        if (k > 1)
-        {
-            definition["showSlot" ~ k] = k <= count;
-        }
+        return definition;
+    }
+    const signature = close.signature;
+    if (size(definition.cases) == 0 && isCreating)
+    {
+        definition.cases = [emptyCaseRow()];
     }
     for (var r = 0; r < size(definition.cases); r += 1)
     {
-        for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
-        {
-            if (k > 1)
-            {
-                definition.cases[r]["use" ~ k] = k <= count;
-            }
-            definition.cases[r]["in" ~ k ~ "Name"] = k <= count ? "#" ~ definition.inputs[k - 1].inputName : "";
-        }
-        for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
-        {
-            const used = m <= valueCount;
-            definition.cases[r]["useValue" ~ m] = used;
-            definition.cases[r]["v" ~ m ~ "Kind"] = used ? slotKind(definition.values[m - 1].valueKind) : CaseSlotKind.NONE;
-            definition.cases[r]["v" ~ m ~ "Name"] = used ? "#" ~ definition.values[m - 1].valueName ~ " (" ~ kindText(definition.values[m - 1].valueKind) ~ ")" : "";
-        }
+        definition.cases[r] = layoutRow(definition.cases[r], signature);
     }
     return definition;
+}
+
+/** A case row laid out for `signature`, keeping selections and values by name. */
+function layoutRow(row is map, signature is map) returns map
+{
+    var oldInputs = {};
+    for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
+    {
+        if (row["in" ~ k ~ "Key"] is string && row["in" ~ k ~ "Key"] != "")
+        {
+            oldInputs[row["in" ~ k ~ "Key"]] = row["input" ~ k];
+        }
+    }
+    var oldValues = {};
+    for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
+    {
+        if (row["v" ~ m ~ "Key"] is string && row["v" ~ m ~ "Key"] != "")
+        {
+            oldValues[row["v" ~ m ~ "Key"]] = { "kind" : row["v" ~ m ~ "Kind"], "row" : row, "slot" : m };
+        }
+    }
+    var result = row;
+    const count = size(signature.names);
+    for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
+    {
+        const used = k <= count;
+        const name = used ? signature.names[k - 1] : "";
+        result["use" ~ k] = used;
+        result["in" ~ k ~ "Key"] = name;
+        result["in" ~ k ~ "Name"] = used ? "#" ~ name : "";
+        const kept = used ? oldInputs[name] : undefined;
+        result["input" ~ k] = kept is Query ? kept : qNothing();
+    }
+    const valueCount = size(signature.valueNames);
+    for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
+    {
+        const used = m <= valueCount;
+        const name = used ? signature.valueNames[m - 1] : "";
+        const kind = used ? signature.valueKinds[m - 1] : undefined;
+        result["useValue" ~ m] = used;
+        result["v" ~ m ~ "Key"] = name;
+        result["v" ~ m ~ "Kind"] = used ? slotKind(kind) : CaseSlotKind.NONE;
+        result["v" ~ m ~ "Name"] = used ? "#" ~ name ~ " (" ~ kindText(kind) ~ ")" : "";
+        if (!used)
+        {
+            continue;
+        }
+        const old = oldValues[name];
+        const kept = (old != undefined && old.kind == slotKind(kind)) ? typedValue(old.row, "v" ~ old.slot, kind) : undefined;
+        result = setTypedField(result, "v" ~ m, kind, kept != undefined ? kept : signature.values[m - 1]);
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------------------------
+
+/** A new, empty case row: every row parameter at its default. */
+function emptyCaseRow() returns map
+{
+    var row = { "caseName" : "" };
+    for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
+    {
+        row["use" ~ k] = false;
+        row["in" ~ k ~ "Key"] = "";
+        row["in" ~ k ~ "Name"] = "";
+        row["input" ~ k] = qNothing();
+    }
+    for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
+    {
+        const prefix = "v" ~ m;
+        row["useValue" ~ m] = false;
+        row[prefix ~ "Key"] = "";
+        row[prefix ~ "Kind"] = CaseSlotKind.NONE;
+        row[prefix ~ "Name"] = "";
+        row[prefix ~ "Length"] = 0 * millimeter;
+        row[prefix ~ "Angle"] = 0 * degree;
+        row[prefix ~ "Area"] = 0;
+        row[prefix ~ "Volume"] = 0;
+        row[prefix ~ "Number"] = 0;
+        row[prefix ~ "Integer"] = 0;
+        row[prefix ~ "Text"] = "";
+        row[prefix ~ "Boolean"] = true;
+    }
+    return row;
+}
+
+/** The slot (1-based) of a row whose `<prefix><k>Key` is `name`, or undefined. */
+function findSlot(row is map, prefix is string, slotCount is number, name is string)
+{
+    for (var k = 1; k <= slotCount; k += 1)
+    {
+        if (row[prefix ~ k ~ "Key"] == name)
+        {
+            return k;
+        }
+    }
+    return undefined;
+}
+
+/** "<defineKey>" -> the variable holding every case name used so far for that Define case. */
+function caseNamesKey(defineKey is string) returns string
+{
+    return "-caseNames-" ~ defineKey;
+}
+
+/** Case names become part of variable names (#<case>_<output>) and of part names. */
+function verifyCaseName(caseName is string, faultyParameter is string)
+{
+    if (match(caseName, "[A-Za-z][A-Za-z0-9_]*").hasMatch != true)
+    {
+        throw regenError("Name case 1 with letters, digits and _, starting with a letter.", [faultyParameter]);
+    }
+}
+
+/** A declared input, value or output name: a valid variable name, unused so far, not reserved. */
+function verifyDeclaredName(name is string, used is array, faultyParameter is string)
+{
+    verifyVariableNameIsValid(name, faultyParameter);
+    if (isIn(name, used))
+    {
+        throw regenError("#" ~ name ~ " is declared twice.", [faultyParameter]);
+    }
+    if (isIn(name, CASE_RESERVED_NAMES))
+    {
+        throw regenError("#" ~ name ~ " is set by every case; choose another name.", [faultyParameter]);
+    }
+}
+
+/** A Boolean value must evaluate to true or false. */
+function verifyValueKind(value, kind is CaseValueKind, name is string, faultyParameter is string)
+{
+    if (kind == CaseValueKind.BOOLEAN && !(value is boolean))
+    {
+        throw regenError("#" ~ name ~ " must be true or false (an expression such as true, false or !#other).", [faultyParameter]);
+    }
+}
+
+/**
+ * Publishes a case's output `q` as `#<caseName>_<outputName>`.
+ *
+ * Held (default): the std robust freeze -- the entities present now, each followed through
+ * identity-preserving edits (what the std Query variable feature stores).
+ * Tracked: that freeze plus startTracking, restricted to the entity types held now (a feature built
+ * FROM the entities is derived from them too and would add its bodies and faces).
+ * Evaluate on use: `q` stored as is and re-resolved wherever used. `q` is the query the case's
+ * variables held when it closed, so later cases rebinding those variables do not change it.
+ * Same scheme as Extract variables' publishQueryVariable (variable_tools/extract_variables_utils.fs).
+ */
+function publishCaseOutput(context is Context, caseName is string, outputName is string, q is Query,
+    evaluateOnUse is boolean, track is boolean, faultyParameter is string)
+{
+    const name = caseName ~ "_" ~ outputName;
+    verifyVariableNameIsValid(name, faultyParameter);
+    var stored = q;
+    if (!evaluateOnUse)
+    {
+        var held = makeRobustQueriesBatched(context, q);
+        if (track)
+        {
+            const tracking = startTracking(context, q);
+            for (var t in [EntityType.BODY, EntityType.FACE, EntityType.EDGE, EntityType.VERTEX])
+            {
+                if (!isQueryEmpty(context, qEntityFilter(q, t)))
+                {
+                    held = append(held, qEntityFilter(tracking, t));
+                }
+            }
+        }
+        stored = qUnion(held);
+    }
+    setQueryVariable(context, name, "Case " ~ caseName ~ " output", stored);
 }
 
 /** The value a typed field holds: `source[prefix ~ "Length"]` etc., with units for area/volume. */
@@ -630,10 +1331,57 @@ function typedValue(source is map, prefix is string, kind is CaseValueKind)
     {
         return source[prefix ~ "Number"];
     }
+    if (kind == CaseValueKind.INTEGER)
+    {
+        return source[prefix ~ "Integer"];
+    }
+    if (kind == CaseValueKind.BOOLEAN)
+    {
+        return source[prefix ~ "Boolean"];
+    }
     return source[prefix ~ "Text"];
 }
 
-/** A case row slot's type for a template value's type. */
+/** `row` with the typed field of `kind` set to `value` (the inverse of typedValue). */
+function setTypedField(row is map, prefix is string, kind is CaseValueKind, value) returns map
+{
+    var result = row;
+    if (kind == CaseValueKind.LENGTH)
+    {
+        result[prefix ~ "Length"] = value;
+    }
+    else if (kind == CaseValueKind.ANGLE)
+    {
+        result[prefix ~ "Angle"] = value;
+    }
+    else if (kind == CaseValueKind.AREA)
+    {
+        result[prefix ~ "Area"] = value == undefined ? undefined : value / squareMillimeter;
+    }
+    else if (kind == CaseValueKind.VOLUME)
+    {
+        result[prefix ~ "Volume"] = value == undefined ? undefined : value / cubicMillimeter;
+    }
+    else if (kind == CaseValueKind.NUMBER)
+    {
+        result[prefix ~ "Number"] = value;
+    }
+    else if (kind == CaseValueKind.INTEGER)
+    {
+        result[prefix ~ "Integer"] = value;
+    }
+    else if (kind == CaseValueKind.BOOLEAN)
+    {
+        result[prefix ~ "Boolean"] = value;
+    }
+    else
+    {
+        result[prefix ~ "Text"] = value;
+    }
+    return result;
+}
+
+/** A case row slot's type for a Define case value's type. */
 function slotKind(kind is CaseValueKind) returns CaseSlotKind
 {
     if (kind == CaseValueKind.LENGTH)
@@ -656,10 +1404,18 @@ function slotKind(kind is CaseValueKind) returns CaseSlotKind
     {
         return CaseSlotKind.NUMBER;
     }
+    if (kind == CaseValueKind.INTEGER)
+    {
+        return CaseSlotKind.INTEGER;
+    }
+    if (kind == CaseValueKind.BOOLEAN)
+    {
+        return CaseSlotKind.BOOLEAN;
+    }
     return CaseSlotKind.TEXT;
 }
 
-/** "length", "area in mm^2", ... for a slot label. */
+/** "length", "area, mm^2", ... for a slot label. */
 function kindText(kind is CaseValueKind) returns string
 {
     if (kind == CaseValueKind.LENGTH)
@@ -682,271 +1438,16 @@ function kindText(kind is CaseValueKind) returns string
     {
         return "number";
     }
+    if (kind == CaseValueKind.INTEGER)
+    {
+        return "integer";
+    }
+    if (kind == CaseValueKind.BOOLEAN)
+    {
+        return "true or false";
+    }
     return "text";
 }
-
-// ---------------------------------------------------------------------------------------------
-// Case pattern
-// ---------------------------------------------------------------------------------------------
-
-annotation { "Feature Type Name" : "Case pattern", "Icon" : PatternIconNamespace::BLOB_DATA,
-        "Editing Logic Function" : "casePatternEditLogic",
-        "Feature Type Description" : "Re-runs the features built on a Case template once per further case, binding the template's inputs and values to each case's. Bodies a case creates are named after case 1's with the case name as suffix." }
-export const casePattern = defineFeature(function(context is Context, id is Id, definition is map)
-    precondition
-    {
-        annotation { "Name" : "Case template", "Description" : "The Case template holding the inputs and cases." }
-        definition.template is FeatureList;
-
-        annotation { "Name" : "Features to repeat",
-                    "Description" : "The features built on the template's inputs. Reference geometry they create through a Query Variable 'created by', not by clicking it." }
-        definition.features is FeatureList;
-
-        annotation { "Group Name" : "Keep", "Collapsed By Default" : true }
-        {
-            annotation { "Name" : "Parts", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
-            definition.keepParts is boolean;
-            annotation { "Name" : "Surfaces", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
-            definition.keepSurfaces is boolean;
-            annotation { "Name" : "Curves and points", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
-            definition.keepCurves is boolean;
-            annotation { "Name" : "Mate connectors", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
-            definition.keepMateConnectors is boolean;
-            annotation { "Name" : "Planes", "Default" : true, "UIHint" : UIHint.DISPLAY_SHORT }
-            definition.keepPlanes is boolean;
-            annotation { "Name" : "Sketches", "Default" : false, "UIHint" : UIHint.DISPLAY_SHORT }
-            definition.keepSketches is boolean;
-        }
-
-        annotation { "Name" : "Name separator", "Default" : "_", "MaxLength" : 8 }
-        definition.separator is string;
-
-        // Case 1 body names, cached by the editing logic (getProperty throws during regen,
-        // correction 36). One line per body: "<feature index>\t<body index>\t<name>".
-        annotation { "Name" : "Template names", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.templateNames is string;
-    }
-    {
-        const template = findTemplate(context, sortedFeatureIds(context, definition.template));
-        if (template == undefined)
-        {
-            throw regenError("Select a Case template.", ["template"]);
-        }
-        if (template.count > 1)
-        {
-            throw regenError("Select one Case template.", ["template"]);
-        }
-        const signature = template.signature;
-        const functions = valuesSortedById(context, definition.features);
-        if (size(functions) == 0)
-        {
-            throw regenError("Select the features built on the template's inputs.", ["features"]);
-        }
-        const cases = signature.cases;
-        const caseCount = size(cases);
-        if (caseCount == 0)
-        {
-            reportFeatureInfo(context, id, "The Case template has no further cases.");
-            return;
-        }
-        const nameCount = size(signature.names);
-        const valueNames = signature.valueNames;
-
-        const templateNames = parseTemplateNames(definition.templateNames);
-        var failures = [];
-        var unnamed = 0;
-
-        for (var k = 0; k < caseCount; k += 1)
-        {
-            const thisCase = cases[k];
-            const caseId = id + ("case" ~ k);
-
-            // Bind every input and value to this case's.
-            var bindFailure = undefined;
-            for (var n = 0; n < nameCount; n += 1)
-            {
-                const selection = thisCase.queries[n];
-                if (selection == undefined || isQueryEmpty(context, selection))
-                {
-                    bindFailure = "input " ~ (n + 1) ~ " (#" ~ signature.names[n] ~ ") selects nothing";
-                    break;
-                }
-                setQueryVariable(context, signature.names[n], selection);
-            }
-            if (bindFailure == undefined)
-            {
-                for (var m = 0; m < size(valueNames); m += 1)
-                {
-                    const value = thisCase.values[m];
-                    if (value == undefined)
-                    {
-                        bindFailure = "value " ~ (m + 1) ~ " (#" ~ valueNames[m] ~ ") is not set; edit the Case template";
-                        break;
-                    }
-                    setVariable(context, valueNames[m], value);
-                }
-            }
-            if (bindFailure != undefined)
-            {
-                failures = append(failures, thisCase.caseName ~ ": " ~ bindFailure);
-                continue;
-            }
-            if (signature.debug)
-            {
-                println("Case " ~ thisCase.caseName ~ ":");
-                for (var n = 0; n < nameCount; n += 1)
-                {
-                    println("  Input " ~ (n + 1) ~ ": #" ~ signature.names[n] ~ " = "
-                            ~ size(evaluateQuery(context, thisCase.queries[n])) ~ " entities");
-                }
-                for (var name in valueNames)
-                {
-                    println("  #" ~ name ~ " = " ~ toString(getVariable(context, name)));
-                }
-            }
-
-            // Run the features as a Pattern runs one instance (correction 31: never inside
-            // startFeature), recording the bodies each creates so they can be named after case 1's.
-            setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
-            var origins = [];
-            var before = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
-            var failure = undefined;
-            for (var i = 0; i < size(functions); i += 1)
-            {
-                const outcome = runListedFeature(context, functions, i, caseId);
-                if (outcome.error != undefined)
-                {
-                    failure = "feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")";
-                    break;
-                }
-                if (signature.debug && !outcome.inFrame)
-                {
-                    println("  feature " ~ (i + 1) ~ " edits geometry from outside the list: ran outside the pattern frame");
-                }
-                const after = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
-                var j = 0;
-                for (var body in after)
-                {
-                    if (!isIn(body, before))
-                    {
-                        origins = append(origins, { "body" : body, "key" : i ~ "." ~ j });
-                        j += 1;
-                    }
-                }
-                before = after;
-            }
-            unsetFeaturePatternInstanceData(context, caseId);
-
-            const caseBodies = qCreatedBy(caseId, EntityType.BODY);
-            if (failure != undefined)
-            {
-                if (!isQueryEmpty(context, caseBodies))
-                {
-                    opDeleteBodies(context, id + ("discard" ~ k), { "entities" : caseBodies });
-                }
-                failures = append(failures, thisCase.caseName ~ ": " ~ failure);
-                continue;
-            }
-
-            const dropped = unkeptBodies(caseBodies, definition);
-            if (!isQueryEmpty(context, dropped))
-            {
-                opDeleteBodies(context, id + ("drop" ~ k), { "entities" : dropped });
-            }
-
-            for (var origin in origins)
-            {
-                if (isQueryEmpty(context, origin.body) || isQueryEmpty(context, qSketchFilter(origin.body, SketchObject.NO)))
-                {
-                    continue;
-                }
-                const templateName = templateNames[origin.key];
-                if (templateName == undefined)
-                {
-                    unnamed += 1;
-                    continue;
-                }
-                setProperty(context, {
-                            "entities" : origin.body,
-                            "propertyType" : PropertyType.NAME,
-                            "value" : caseBodyName(templateName, signature.caseName, thisCase.caseName, definition.separator)
-                        });
-            }
-        }
-
-        // Later features see case 1 again.
-        for (var n = 0; n < nameCount; n += 1)
-        {
-            setQueryVariable(context, signature.names[n], signature.queries[n]);
-        }
-        for (var m = 0; m < size(valueNames); m += 1)
-        {
-            setVariable(context, valueNames[m], signature.values[m]);
-        }
-
-        if (size(failures) == caseCount)
-        {
-            throw regenError("No case was built. " ~ join(failures, "; "), ["template"]);
-        }
-        if (size(failures) > 0)
-        {
-            reportFeatureWarning(context, id, "Not built: " ~ join(failures, "; "));
-            return;
-        }
-        var notes = [];
-        if (containsSketch(context, definition.features))
-        {
-            notes = append(notes, "Sketches are re-solved per case. Dimensions and constraints to the origin or the default planes are not"
-                    ~ " reapplied, so those entities keep case 1's position; constrain sketches to geometry derived from the inputs.");
-        }
-        if (unnamed > 0)
-        {
-            notes = append(notes, unnamed ~ " bod" ~ (unnamed == 1 ? "y" : "ies") ~ " kept Onshape's default name: edit this feature to"
-                    ~ " refresh case 1's names.");
-        }
-        if (size(notes) > 0)
-        {
-            reportFeatureInfo(context, id, join(notes, " "));
-        }
-    }, {
-        "keepParts" : true,
-        "keepSurfaces" : true,
-        "keepCurves" : true,
-        "keepMateConnectors" : true,
-        "keepPlanes" : true,
-        "keepSketches" : false,
-        "separator" : "_",
-        "templateNames" : ""
-    });
-
-/**
- * Case pattern editing logic: caches the names of the bodies the repeated features created for
- * case 1 (the feature body cannot read names during regen).
- */
-export function casePatternEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
-    isCreating is boolean, specifiedParameters is map) returns map
-{
-    const featureIds = sortedFeatureIds(context, definition.features);
-    var lines = [];
-    for (var i = 0; i < size(featureIds); i += 1)
-    {
-        const bodies = evaluateQuery(context, qSketchFilter(qCreatedBy(featureIds[i], EntityType.BODY), SketchObject.NO));
-        for (var j = 0; j < size(bodies); j += 1)
-        {
-            const name = try silent(getProperty(context, { "entity" : bodies[j], "propertyType" : PropertyType.NAME }));
-            if (name is string && name != "")
-            {
-                lines = append(lines, i ~ "\t" ~ j ~ "\t" ~ name);
-            }
-        }
-    }
-    definition.templateNames = join(lines, "\n");
-    return definition;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------------------------
 
 /** The ids of a FeatureList in tree order (the same order as valuesSortedById of its functions). */
 function sortedFeatureIds(context is Context, features is map) returns array
@@ -959,20 +1460,23 @@ function sortedFeatureIds(context is Context, features is map) returns array
     return valuesSortedById(context, idOf);
 }
 
-/** The first Case template signature among the listed features, with how many were found. */
-function findTemplate(context is Context, featureIds is array)
+/**
+ * The signature published by the first listed feature carrying `marker` ("caseDefine" or
+ * "caseClose"), with its feature id and how many listed features carry the marker.
+ */
+function findSignature(context is Context, features is map, marker is string)
 {
     var found = undefined;
     var count = 0;
-    for (var i = 0; i < size(featureIds); i += 1)
+    for (var featureId in sortedFeatureIds(context, features))
     {
-        const value = getVariable(context, toString(featureIds[i]), MISSING);
-        if (value is map && value.caseTemplate == true)
+        const value = getVariable(context, toString(featureId), MISSING);
+        if (value is map && value[marker] == true)
         {
             count += 1;
             if (found == undefined)
             {
-                found = { "signature" : value, "index" : i };
+                found = { "signature" : value, "featureId" : featureId };
             }
         }
     }
@@ -1016,32 +1520,32 @@ function caseBodyName(templateName is string, templateCase is string, thisCase i
 }
 
 /** The bodies of a case the Keep options discard. */
-function unkeptBodies(caseBodies is Query, definition is map) returns Query
+function unkeptBodies(caseBodies is Query, keep is map) returns Query
 {
     const solidModel = qSketchFilter(caseBodies, SketchObject.NO);
     const regular = qConstructionFilter(solidModel, ConstructionObject.NO);
     var dropped = [];
-    if (!definition.keepSketches)
+    if (!keep.keepSketches)
     {
         dropped = append(dropped, qSketchFilter(caseBodies, SketchObject.YES));
     }
-    if (!definition.keepParts)
+    if (!keep.keepParts)
     {
         dropped = append(dropped, qBodyType(regular, BodyType.SOLID));
     }
-    if (!definition.keepSurfaces)
+    if (!keep.keepSurfaces)
     {
         dropped = append(dropped, qBodyType(regular, BodyType.SHEET));
     }
-    if (!definition.keepCurves)
+    if (!keep.keepCurves)
     {
         dropped = append(dropped, qBodyType(regular, [BodyType.WIRE, BodyType.POINT]));
     }
-    if (!definition.keepMateConnectors)
+    if (!keep.keepMateConnectors)
     {
         dropped = append(dropped, qBodyType(solidModel, BodyType.MATE_CONNECTOR));
     }
-    if (!definition.keepPlanes)
+    if (!keep.keepPlanes)
     {
         dropped = append(dropped, qBodyType(qConstructionFilter(solidModel, ConstructionObject.YES), BodyType.SHEET));
     }
@@ -1049,11 +1553,11 @@ function unkeptBodies(caseBodies is Query, definition is map) returns Query
 }
 
 /**
- * Runs one listed feature for a case whose pattern frame is already pushed.
+ * Runs listed feature `i` for a case whose pattern frame (`frameId`) is pushed, under `callId`.
  *
  * The frame (identity transform) is what makes FeatureList parameters of the listed features --
  * a Query Variable "created by", say -- resolve to this case's copies. Plain queries (clicks,
- * qCreatedBy(makeId(...))) are NOT remapped; they keep pointing at case 1 (verified 2026-09-24).
+ * qCreatedBy(makeId(...))) are NOT remapped; they keep pointing at case 1 (correction 41).
  *
  * A kernel op that edits geometry from outside the list (fillet an existing edge, move an existing
  * face) refuses to run in the frame with SELF_INTERSECTING_CURVE_SELECTED -- Query Pattern's open
@@ -1061,12 +1565,12 @@ function unkeptBodies(caseBodies is Query, definition is map) returns Query
  * sub-id (the aborted attempt's ids are not reusable); any other failure stands, so a feature
  * whose in-list reference did not remap cannot fall back onto case 1's geometry.
  */
-function runListedFeature(context is Context, functions is array, i is number, caseId is Id) returns map
+function runListedFeature(context is Context, functions is array, i is number, frameId is Id, callId is Id) returns map
 {
     var frameError = undefined;
     try
     {
-        functions[i](caseId);
+        functions[i](callId);
     }
     catch (e)
     {
@@ -1080,17 +1584,17 @@ function runListedFeature(context is Context, functions is array, i is number, c
     {
         return { "inFrame" : true, "error" : frameError };
     }
-    unsetFeaturePatternInstanceData(context, caseId);
+    unsetFeaturePatternInstanceData(context, frameId);
     var directError = undefined;
     try
     {
-        functions[i](caseId + ("direct" ~ i));
+        functions[i](callId + ("direct" ~ i));
     }
     catch (e)
     {
         directError = errorText(e);
     }
-    setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
+    setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
     if (directError != undefined)
     {
         return { "inFrame" : false, "error" : directError };
