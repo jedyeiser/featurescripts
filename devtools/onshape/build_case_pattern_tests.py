@@ -11,9 +11,10 @@ Fixture: per test a row of three blocks, 20 mm tall on Top, at y = 100 mm * row:
 
 T1  Define case A: #top, #rim; values #bossH (length 15 mm), #edgeR (number 3)
     Boss extrude #top #bossH new; Rim fillet #rim 2 mm (outside the list); #bossEdges QV created by Boss;
-    Boss edges fillet #bossEdges #edgeR mm. Close case, output bossEdges.
+    Boss edges fillet #bossEdges #edgeR mm; #bossFaces QV created by Boss. Close case, output bossFaces
+    (not bossEdges: the fillet consumes those edges before the case closes).
     Case pattern B (25 mm, 3), Case pattern C (8 mm, 2)
-    -> Boss_B 25 mm, Boss_C 8 mm tall, edges filleted; #A_/#B_/#C_bossEdges on each case's boss
+    -> Boss_B 25 mm, Boss_C 8 mm tall, edges filleted; #A_/#B_/#C_bossFaces on each case's boss
 T2  Move face as the FIRST repeated feature, ONE Case pattern with two cases B and C
     -> B's +X face and C's 54 deg face offset 5 mm
 T3  In-list reference by click: expected ERROR (clicks are not remapped onto the case)
@@ -281,10 +282,11 @@ boss = feature("T1 Boss: extrude #top #bossH new", "extrude", extrude_new("", qv
 rimf = feature("T1 Rim: fillet #rim 2 mm (outside the list)", "fillet", [qv("entities", "rim"), num("radius", "2 mm")])
 qv1 = feature("T1 #bossEdges = edges created by Boss (native QV)", "queryVariable", native_qv("bossEdges", [boss], "EDGE"))
 bossf = feature("T1 Boss edges: fillet #bossEdges #edgeR mm", "fillet", [qv("entities", "bossEdges"), num("radius", "#edgeR * 1 mm")])
-c1 = close_case("T1 Close case: output bossEdges", d1, [boss, rimf, qv1, bossf], [("bossEdges", "bossEdges", False)], "0\t0\tBoss_A")
-case_pattern("T1 Case pattern B -> Boss_B 25 mm tall R3, #B_bossEdges", c1,
+qv1f = feature("T1 #bossFaces = faces created by Boss (native QV)", "queryVariable", native_qv("bossFaces", [boss], "FACE"))
+c1 = close_case("T1 Close case: output bossFaces", d1, [boss, rimf, qv1, bossf, qv1f], [("bossFaces", "bossFaces", False)], "0\t0\tBoss_A")
+case_pattern("T1 Case pattern B -> Boss_B 25 mm tall R3, #B_bossFaces", c1,
              [case_row("B", T1_IN, [top(B), rim(B)], T1_VAL, ["25 mm", "3"])])
-case_pattern("T1 Case pattern C -> Boss_C 8 mm tall R2, #C_bossEdges", c1,
+case_pattern("T1 Case pattern C -> Boss_C 8 mm tall R2, #C_bossFaces", c1,
              [case_row("C", T1_IN, [top(C), rim(C)], T1_VAL, ["8 mm", "2"])])
 
 # ---- T2 ----

@@ -296,10 +296,23 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         definition.templateNames is string;
     }
     {
-        // Called by a Case pattern: run this case.
+        // Called by a Case pattern: run this case, or (second call) read its outputs.
         const replay = getVariable(context, CASE_REPLAY_KEY, MISSING);
         if (replay is map)
         {
+            if (replay.mode == "outputs")
+            {
+                // A query parameter is resolved when the feature is called, so the outputs are read
+                // by a second call after the features ran: the first call would still see the
+                // previous case's query variables (measured 2026-09-26).
+                var outputs = [];
+                for (var output in definition.outputs)
+                {
+                    outputs = append(outputs, output.outputQuery);
+                }
+                setVariable(context, CASE_RESULT_KEY, { "outputs" : outputs });
+                return;
+            }
             replayCase(context, id, definition, replay);
             return;
         }
@@ -368,8 +381,7 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
  * pushes on its own id -- the frame id must be the id the features run under, and everything must
  * run under this feature's id (anything created outside it is discarded) -- so it can pop the frame
  * to retry an outside-geometry edit (runListedFeature). Records the bodies each listed feature creates
- * (for naming) and the outputs' queries -- evaluated here, after the case's own query variables and
- * the listed features ran -- for the Case pattern to publish.
+ * (for naming). The outputs are read by a second call (mode "outputs", see closeCase).
  */
 function replayCase(context is Context, id is Id, definition is map, replay is map)
 {
@@ -404,12 +416,7 @@ function replayCase(context is Context, id is Id, definition is map, replay is m
         before = after;
     }
     unsetFeaturePatternInstanceData(context, id);
-    var outputs = [];
-    for (var output in definition.outputs)
-    {
-        outputs = append(outputs, output.outputQuery);
-    }
-    setVariable(context, CASE_RESULT_KEY, { "origins" : origins, "outputs" : outputs, "outside" : outside });
+    setVariable(context, CASE_RESULT_KEY, { "origins" : origins, "outside" : outside });
 }
 
 /**
@@ -1232,16 +1239,35 @@ function layoutRow(row is map, signature is map) returns map
 
 /**
  * Runs one case: calls the Close case (closeFunctions[0]) under caseId with the case published in
- * CASE_REPLAY_KEY (correction 50). Returns { failure } or { result : { origins, outputs, outside } }.
+ * CASE_REPLAY_KEY (correction 50), then calls it again to read the outputs, whose query parameters
+ * resolve only at call time. Returns { failure } or { result : { origins, outputs, outside } }.
  */
 function runCase(context is Context, closeFunctions is array, caseId is Id, caseName is string) returns map
 {
-    setVariable(context, CASE_REPLAY_KEY, { "caseId" : caseId, "caseName" : caseName });
+    const run = callClose(context, closeFunctions, caseId, { "caseId" : caseId, "caseName" : caseName, "mode" : "run" });
+    if (run.failure != undefined)
+    {
+        return run;
+    }
+    const read = callClose(context, closeFunctions, caseId + "outputs", { "caseId" : caseId, "caseName" : caseName, "mode" : "outputs" });
+    if (read.failure != undefined)
+    {
+        return read;
+    }
+    var result = run.result;
+    result.outputs = read.result.outputs;
+    return { "result" : result };
+}
+
+/** Calls the Close case once with `replay` published; returns { failure } or { result }. */
+function callClose(context is Context, closeFunctions is array, callId is Id, replay is map) returns map
+{
+    setVariable(context, CASE_REPLAY_KEY, replay);
     setVariable(context, CASE_RESULT_KEY, MISSING);
     var failure = undefined;
     try
     {
-        closeFunctions[0](caseId);
+        closeFunctions[0](callId);
     }
     catch (e)
     {
