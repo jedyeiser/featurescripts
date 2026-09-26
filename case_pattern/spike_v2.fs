@@ -36,7 +36,26 @@ export const spikeBody = defineFeature(function(context is Context, id is Id, de
         {
             return;
         }
-        setVariable(context, SPIKE_BODY_KEY, { "functions" : definition.features, "count" : size(definition.features) });
+        var probe = { "keys" : size(keys(definition.features)) };
+        try
+        {
+            setVariable(context, "-caseSpikeProbeArray", values(definition.features));
+            probe.array = "ok";
+        }
+        catch (e)
+        {
+            probe.array = toString(e);
+        }
+        try
+        {
+            setVariable(context, SPIKE_BODY_KEY, { "functions" : definition.features, "count" : size(definition.features) });
+            probe.map = "ok";
+        }
+        catch (e)
+        {
+            probe.map = toString(e);
+        }
+        setVariable(context, "-caseSpikeProbe", probe);
         reportFeatureInfo(context, id, "Published " ~ size(definition.features) ~ " feature functions.");
     });
 
