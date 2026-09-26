@@ -383,6 +383,10 @@ function replayCase(context is Context, id is Id, definition is map, replay is m
     const functions = valuesSortedById(context, definition.features);
     var origins = [];
     var before = evaluateQuery(context, qCreatedBy(replay.caseId, EntityType.BODY));
+    if (replay.mode == "direct" && replay.index >= size(functions)) // TEMP diagnosis
+    {
+        throw regenError("TEMP direct: keys " ~ toString(keys(definition.features)) ~ " sorted " ~ size(functions));
+    }
     const first = replay.mode == "direct" ? replay.index : replay.from;
     const last = replay.mode == "direct" ? replay.index : size(functions) - 1;
     for (var i = first; i <= last; i += 1)
