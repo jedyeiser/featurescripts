@@ -1585,7 +1585,14 @@ function runListedFeature(context is Context, functions is array, i is number, f
     {
         return { "inFrame" : true, "error" : frameError };
     }
-    unsetFeaturePatternInstanceData(context, frameId);
+    try // TEMP diagnosis
+    {
+        unsetFeaturePatternInstanceData(context, frameId);
+    }
+    catch (e)
+    {
+        return { "inFrame" : true, "error" : "TEMP unset failed: " ~ errorText(e) ~ " / frame error was " ~ frameError };
+    }
     var directError = undefined;
     try
     {
@@ -1595,7 +1602,14 @@ function runListedFeature(context is Context, functions is array, i is number, f
     {
         directError = errorText(e);
     }
-    setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
+    try // TEMP diagnosis
+    {
+        setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
+    }
+    catch (e)
+    {
+        return { "inFrame" : false, "error" : "TEMP re-set failed: " ~ errorText(e) ~ " / direct error " ~ directError };
+    }
     if (directError != undefined)
     {
         return { "inFrame" : false, "error" : directError };
@@ -1606,6 +1620,10 @@ function runListedFeature(context is Context, functions is array, i is number, f
 /** A short text for a caught regen error. */
 function errorText(e) returns string
 {
+    if (e is map && e.customMessage != undefined)
+    {
+        return toString(e.customMessage);
+    }
     if (e is map && e.message != undefined)
     {
         return toString(e.message);
