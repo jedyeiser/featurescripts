@@ -1119,8 +1119,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         setVariable(context, namesKey, usedNames);
         setVariable(context, CASE_REPLAY_KEY, MISSING);
 
-        setVariable(context, "-caseDebug-" ~ toString(id), { "failures" : failures, "notes" : notes }); // TEMP diagnosis, remove
-        if (size(failures) == caseCount && !definition.debug) // TEMP: debug keeps the feature to read failures
+        if (size(failures) == caseCount)
         {
             throw regenError("No case was built. " ~ join(failures, "; "), ["cases"]);
         }
