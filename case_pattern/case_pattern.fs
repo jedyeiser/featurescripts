@@ -388,10 +388,13 @@ function replayCase(context is Context, id is Id, definition is map, replay is m
     const last = replay.mode == "direct" ? replay.index : size(functions) - 1;
     for (var i = first; i <= last; i += 1)
     {
+        // The features always run under the case id (the old version's layout), whatever id this
+        // Close case was called with: references inside the list resolve relative to the id a
+        // feature runs under, so they must not change between the parts of a case.
         var failure = undefined;
         try
         {
-            functions[i](id);
+            functions[i](replay.mode == "direct" ? replay.caseId + ("direct" ~ i) : replay.caseId);
         }
         catch (e)
         {
@@ -1214,14 +1217,13 @@ function runCase(context is Context, closeFunctions is array, caseId is Id, case
     var segment = 0;
     while (true)
     {
-        // The frame id must be the id the features run under (a frame on caseId with calls under
-        // caseId + "s0" builds nothing -- measured 2026-09-26).
-        const segmentId = caseId + ("s" ~ segment);
-        segment += 1;
-        setFeaturePatternInstanceData(context, segmentId, { "transform" : identityTransform() });
-        var part = callClose(context, closeFunctions, segmentId,
+        // The frame id is the id the repeated features run under (caseId, see replayCase); the
+        // Close case itself is called under a fresh sub-id per part.
+        setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
+        var part = callClose(context, closeFunctions, caseId + ("s" ~ segment),
             { "caseId" : caseId, "caseName" : caseName, "mode" : "frame", "from" : from });
-        unsetFeaturePatternInstanceData(context, segmentId);
+        segment += 1;
+        unsetFeaturePatternInstanceData(context, caseId);
         if (part.failure != undefined)
         {
             return part;
