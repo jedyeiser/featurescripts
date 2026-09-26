@@ -1,0 +1,15 @@
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+ETE_Core_Composite | compositeIntersect | bodies 10 | edges 192 len 40621.95491 | faces 82 area 440822.9075
+MNS_Composite | compositeIntersect | bodies 10 | edges 186 len 37347.52529 | faces 80 area 417297.7112
+ONE_Composite | compositeIntersect | bodies 10 | edges 144 len 37995.84769 | faces 66 area 415905.8911
+MOO_Composite | compositeIntersect | bodies 10 | edges 162 len 41457.37897 | faces 72 area 454720.6149
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+###name | queryVariable | bodies 0 | edges 0 len 0 | faces 0 area 0
+ALL bodies 135 total edge length 1.4657636184e+6

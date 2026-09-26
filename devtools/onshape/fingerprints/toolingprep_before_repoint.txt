@@ -1,0 +1,19 @@
+Derive_Ref_Geo_From_Design_Master | superDerive | bodies 30 | edges 11661 len 132911.81227 | faces 3927 area 2.0426675265e+6
+Set Attribute on Body 1 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Set Attribute on Body 2 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Extrude_BSR_Top_Edge | extrudeEdges | bodies 1 | edges 7 len 657.62145 | faces 3 area 8964.3181
+fcp_-5mmMove | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+fcp_+5mmMove | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+tip_5mm_Move | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+tip_-5mm_move | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Subtract Composite 1 | subtractComposite | bodies 0 | edges 78 len 4286.13822 | faces 79 area 17788.2615
+Extride Edge 1 | extrudeEdges | bodies 1 | edges 19 len 4481.88253 | faces 6 area 308187.9206
+Move Along Edge 1 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 1 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 2 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 3 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 4 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 5 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 6 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Create cross section along 1 | createCrossSectionAlong | bodies 0 | edges 0 len 0 | faces 0 area 0
+ALL bodies 1096 total edge length 267646.6215

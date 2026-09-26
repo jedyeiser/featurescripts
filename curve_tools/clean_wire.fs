@@ -8,9 +8,9 @@ import(path : "onshape/std/curveextensionshape.gen.fs", version : "3083.0");
 
 // IMPORT: curve_core.fs -- the fitter (approximateFamily), emitters, classifiers, the
 // approximation predicate and bounds, formatting helpers.
-export import(path : "02d7784437f621c76397f0d6", version : "e41a02b7ec48fcfe089eea40");
+export import(path : "02d7784437f621c76397f0d6", version : "186e92dbecd6f2c72288eef8");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs and the extractable wrappers)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: clean_wire_icon.svg (feature icon)
 IconNamespace::import(path : "1e73d83b62d863a0542f795b", version : "e46007f7d293943c9b73b950");
 

@@ -1604,3 +1604,21 @@ references re-picked / replaced by the corrected feature. What IS required: chec
 (`notices --monitor` statuses or a fingerprint) after every push and REPORT which downstream features lost
 references, so the user knows what to re-pick when they update. (The two-stage extract was reverted once,
 then re-applied on the user's call.)
+
+## Correction 48: a saved feature's namespace (source document) cannot be changed through the REST API (2026-09-26)
+
+**Symptom:** moving a custom feature's instances to a new document by editing `feature.namespace`:
+- `POST .../features/featureid/{fid}` returns 400 "Feature does not match".
+- `POST .../features/updates` (BTUpdateFeaturesCall-1748) answers OK but silently keeps the old namespace.
+Updating only the `m<microversion>` part of a SAME-document namespace works.
+
+**Fix: shim tab.** Replace the old feature tab's contents with a re-export of the new library, then update each instance
+to the tab's new microversion:
+```
+FeatureScript 3083;
+export import(path : "<new did>/<version id>/<element id>", version : "<element microversion>");
+```
+Instances keep their feature ids, so `<fid>result`-style downstream references and query variables survive.
+The exported feature names and parameter ids must match the old ones.
+Used for Composite intersection (Mindbender Cores) and Subtract Composite (20BSS Tooling_Prep): fingerprints
+identical. Backups of the old tabs: composite_part_tools/legacy_backups/ (*.fs.txt so the sync does not push them), and reviews/2026-09-25_tools_review/composite_intersection_remote_snapshot.fs.

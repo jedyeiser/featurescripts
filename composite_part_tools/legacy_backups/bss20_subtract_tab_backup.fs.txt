@@ -1,0 +1,21 @@
+FeatureScript 2491;
+import(path : "onshape/std/common.fs", version : "2491.0");
+
+annotation { "Feature Type Name" : "Subtract Composite", "Feature Type Description" : "" }
+export const subtractComposite = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Composite Part", "Filter" : BodyType.COMPOSITE, "MaxNumberOfPicks" : 1 }
+        definition.composteBody is Query;
+        
+        annotation { "Name" : "Bodies to subtract from", "Filter" : BodyType.SOLID}
+        definition.targetBodies is Query;
+    }
+    {
+        var individualCompositeBodies = evaluateQuery(context, qContainedInCompositeParts(definition.composteBody));
+        opBoolean(context, id + "subtractComposites", {
+                "tools" : qUnion(individualCompositeBodies),
+                "targets" : qUnion([definition.targetBodies]),
+                "operationType" : BooleanOperationType.SUBTRACTION
+        });
+    });
