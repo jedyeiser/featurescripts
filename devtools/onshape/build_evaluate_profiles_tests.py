@@ -160,3 +160,41 @@ fill("P6 Fill on P5's periphery -> OK, area 2000.0935", p5)
 p7 = profiles_with("P7 step part, Periphery, merge 0 -> 6 edges, the 0.0017 mm step kept", part_q, "Front", "PERIPHERY", "step raw",
                    [num("mergeShorter", "0 mm")])
 fill("P8 Fill on P7's periphery -> ERROR (the kernel refuses the 0.0017 mm edge)", p7)
+
+
+# ---- Edges mode Output (2026-09-25): One curve / One per input curve / Efficient -------------------------------
+# A chain on Top at y 600..: two collinear lines (0 > 200 > 400), a slanted line to (700, 700), then an R100 arc
+# tangent to it that turns back past +X. Projected onto Top it is itself; the scan cuts the arc where it turns back.
+#   P9  One curve              -> 1 edge (a fit)
+#   P10 One per input curve    -> 4 edges: line, line, line, arc R100 (exact, the arc cut at the reversal)
+#   P11 Efficient              -> 3 edges: the collinear pair merged into one 400 mm line, the slanted line, the arc R100
+def seg(eid, x0, y0, x1, y1):
+    L = math.hypot(x1 - x0, y1 - y0)
+    return {"btType": "BTMSketchCurveSegment-155", "entityId": eid, "startPointId": eid + ".start", "endPointId": eid + ".end",
+            "startParam": 0.0, "endParam": L / 1000, "isConstruction": False,
+            "geometry": {"btType": "BTCurveGeometryLine-117", "pntX": x0 / 1000, "pntY": y0 / 1000, "dirX": (x1 - x0) / L, "dirY": (y1 - y0) / L}}
+
+
+th = math.atan2(100, 300)
+cx, cy_ = 700 - 100 * math.sin(th), 700 + 100 * math.cos(th)
+hook = {"btType": "BTMSketchCurveSegment-155", "entityId": "h", "startPointId": "h.start", "endPointId": "h.end",
+        "startParam": th - math.pi / 2, "endParam": th - math.pi / 2 + math.radians(200), "isConstruction": False,
+        "geometry": {"btType": "BTCurveGeometryCircle-115", "radius": 0.1, "xCenter": cx / 1000, "yCenter": cy_ / 1000,
+                     "xDir": 1.0, "yDir": 0.0, "clockwise": False}}
+chain = sketch("Chain on Top: lines 0>200>400 (collinear), line to (700, 700), R100 hook turning back", "Top",
+               [seg("a", 0, 600, 200, 600), seg("b", 200, 600, 400, 600), seg("c", 400, 600, 700, 700), hook])
+
+
+def profiles_edges(name, grouping, output):
+    given = {p["parameterId"]: p for p in [
+        en("profileSource", "ProfileSource", "EDGES", NS), s("outputName", output),
+        q("profileEdges", 'qCreatedBy(makeId("%s"), EntityType.EDGE)' % chain),
+        q("projectionFace", 'qCreatedBy(makeId("Top"), EntityType.FACE)'), en("grouping", "ProfileGrouping", grouping, NS)]}
+    params = [given.get(p["parameterId"], dict(p["defaultValue"], parameterId=p["parameterId"]))
+              for p in SPEC["parameters"] if isinstance(p.get("defaultValue"), dict)]
+    return upsert({"btType": "BTMFeature-134", "featureType": "evaluateProfiles", "name": name, "namespace": NS, "parameters": params})
+
+
+profiles_edges("P9 chain, One curve -> 1 edge", "SINGLE", "chain single")
+profiles_edges("P10 chain, One per input curve -> 4 edges, exact lines + arc R100 cut at the reversal", "PER_CURVE", "chain per curve")
+profiles_edges("P11 chain, Efficient -> 3 edges: collinear lines merged (400 long), line, arc R100", "EFFICIENT", "chain efficient")

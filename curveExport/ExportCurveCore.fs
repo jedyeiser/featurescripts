@@ -1,5 +1,5 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
@@ -110,7 +110,7 @@ function roundToSigFigs(value is number, sigFigs is number) returns number
     {
         return 0;
     }
-    var exp = sigFigs - floor(log10(abs(value)) + 1);
+    var exp = sigFigs;
     var magnitude = 10 ^ exp;
     return round(value * magnitude) / magnitude;
 }

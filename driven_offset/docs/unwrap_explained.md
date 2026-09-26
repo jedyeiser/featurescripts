@@ -31,6 +31,10 @@ geometry read from the test studio. See section 3.8 for how to regenerate them.
   - [1.9 Adaptive vs fixed sampling](#19-adaptive-vs-fixed-sampling)
   - [1.10 The 0.01 mm budget](#110-tolerances-and-the-001-mm-budget)
 - [Part 2: Our feature](#part-2-our-feature)
+  - [2.2 Parameters (the dialog tree)](#22-parameters-and-what-they-mean-physically)
+  - [2.5 Known limits (incl. U-turns)](#25-known-limits-and-open-decisions)
+  - [2.6 Curved references, walls, PRISM](#26-curved-references-walls-and-prism-2026-09-25)
+  - [2.7 Your two questions](#27-your-two-questions)
 - [Part 3: The codebase](#part-3-the-codebase)
 - [Appendix: unclear or contradictory items](#appendix-unclear-or-contradictory-items-found-while-writing-this)
 
@@ -115,7 +119,7 @@ the whole design:
   the same length there. That is why straight spans unwrap rigidly (1.7).
 
 Scale on our test ski: REF_WIRE turns about 0.64 rad through the tip. 4802 (core tip extension) sits 1.8 to
-5.8 mm above REF_WIRE, so its flat length changes by about 0.59 mm for every mm of d (see fig14 in 2.6).
+5.8 mm above REF_WIRE, so its flat length changes by about 0.59 mm for every mm of d (see fig14 in 2.7).
 
 ## 1.4 Why a bent plate keeps its length at mid-thickness
 
@@ -129,7 +133,7 @@ W.
 
 For a single-material plate the neutral surface is the mid-surface. For a laminate or a core it is the
 stiffness-weighted neutral axis, which sits nearer the stiff layers. The code works with a *constant* d or a
-plate's own *mid*-surface. A variable "neutral line" for solids is not built yet (2.6 (b)).
+plate's own *mid*-surface. A variable "neutral line" for solids is not built yet (2.7 (b); for parts, 2.6).
 
 ## 1.5 Handedness: why y = -v
 
@@ -145,6 +149,18 @@ is oriented with its largest world component positive (`referencePlaneNormal`, `
 Without that rule, an S-curve edit could flip height, width and every solid.
 
 ## 1.6 Undrape: a plate draped over something that is not developable
+
+**Plates and sections: two different things.**
+
+- A **plate** is a *part*: a body of constant thickness t whose two large faces (its **sides**) are exact offsets of
+  each other, joined round the edge by thin **walls**. Topsheet (0.4 mm), laminates, base (1.2 mm), mats and shears
+  are plates. So is 4802 (4.0 mm): its sides measure 3.996-4.001 mm apart. The core, 4803, the sidewalls and 4401
+  are not; they are Part-mode solids.
+- A plate is handled through its **mid-surface**, the surface halfway between its sides. That surface is flattened,
+  and the flat plate is rebuilt t/2 either side of it. Its walls therefore come out exactly normal to the flat
+  plane.
+- A **section** is a *measurement*: the curve where the plane normal to W at one station cuts the mid-surface.
+  Undrape unrolls each section across the width; the unrolled length from the centreline becomes flat y.
 
 The topsheet is the case the chart alone cannot handle. Its top face lies *on* the ski top surface (W swept
 along Y) over the centre, but outside a pressed **step** its flaps drape down the sides by 2.4 to 8 mm. In the
@@ -311,25 +327,85 @@ the "neutral axis" length curve, and projection of a wire onto a plane normal to
 
 ## 2.2 Parameters and what they mean physically
 
-| Parameter | Modes | Physical meaning |
+The dialog shows a parameter only when the choices above it make it meaningful. The tree below is the dialog,
+top to bottom (unwrap.fs precondition): an indented item appears only under the choice it is nested in. Each
+entry says what the parameter means physically.
+
+**Unwrap** -- which algorithm (2.1).
+
+- **Edges / wires**
+  - **Edges to unwrap** -- the curves to flatten. Grouped by owner body: one output wire per source body.
+  - **Wrapped reference** -- W, the planar tangent chain the edges are wrapped along. One chain, joints within
+    1 deg, X rising steadily along it.
+  - **Preserve length** -- which height above W keeps its length when flattened (1.3):
+    - *Along the reference* -- d = 0: lengths are measured along W itself.
+    - *Along an offset of the reference* -- d = **Offset** along W's surface normal (**Flip offset** reverses it).
+      Pick the height the geometry actually lives at, or lengths there change by (h - d) * turn.
+- **Constant-thickness part** (undrape)
+  - **Parts to unwrap** -- constant-thickness plates, draped or not.
+  - **Undrape target from** -- where the curve the plate's mid-surface is unrolled along comes from:
+    - *Wire*
+      - **Wrapped reference** -- W, a curve you pick (e.g. the ski's top-surface profile).
+      - **Target offset** (+ **Flip target offset**) -- the plate's mid-surface is mapped onto W offset by this, and
+        that offset's length is the one kept. Set it to the plate's mid height above W (a topsheet whose top face
+        lies on W's extrusion: -t/2).
+    - *Section by a face*
+      - **Section face** -- a plane (e.g. Front) cutting the plate's own mid-surface; the cut is W, so the plate
+        keeps its OWN mid-line length. The cut must be one piece (no hole, slot or notch on that plane).
+      - **Target offset** -- leave at 0: W already is the mid line.
+  - **Maximum sample gap** -- only a cap on the largest gap between outline samples; the density itself comes from
+    the fit **Tolerance** / 4.
+- **Part (solid)**
+  - **Parts to unwrap** -- any solid along the reference (a core, an extension, a sidewall).
+  - **Wrapped reference** -- W, as in Edges mode.
+  - **Preserve length** (+ **Offset**, **Flip offset** under *Along an offset*) -- as in Edges mode. For a part
+    sitting above W, set the offset to its height, or its length changes (4802: x1.0126 volume at d = 0).
+  - **Square walls** -- off: walls keep their exact mapped lean (1.2 deg at 4802's nose); on: walls stand normal to
+    the flat plane, as a CNC blank would (up to 43.6 um at 4802's nose corners).
+
+**Always shown, every mode:**
+
+- **Wrapped alignment point** -- the wrapped point that lands on the unwrapped origin; it fixes x = 0. Must lie
+  within W's X span. A mate connector (or its vertex) or a vertex.
+- **Unwrapped origin** -- the flat frame: a mate connector (implicit ones included) or a plane / planar face (its own
+  axes). Flat X runs along W, flat Z along W's surface normal.
+- **Lay the part on the origin plane** -- *Constant-thickness part and Part only*. On: the flat part's lowest face
+  sits on the origin's XY plane. Off: it keeps its height relative to the alignment point.
+
+**Lines, arcs & fitting** (group; all modes, used for every flat curve except Part mode's rebuilt faces)
+
+- **Recognise lines and arcs** -- emit a flat edge as a true line or arc when its points are one within tolerance
+  AND its exactly-unwrapped end tangents agree (1.8).
+- **Target degree**, **Tolerance**, **Maximum control points** -- the spline fit (1.10). Defaults 3, 0.005 mm, 60.
+  The tolerance also sets sample density: samples are refined until the flat curve is predicted within Tolerance / 4.
+
+**Names & properties** (group; all modes)
+
+- **Name suffix** -- appended to the source body's name when the table is filled.
+- **Read names and properties** (button) -- the ONLY thing that fills or updates the table (getProperty cannot run
+  in the feature body, correction 36). Output names you edited are kept on a re-read.
+- **Outputs** (table, one row per source body)
+  - **Source** (read-only), **Output name**, **Material** (read-only)
+  - **Copy material and appearance** -- per row.
+- **Copy attributes** -- copies the source bodies' attributes on every regeneration (no button needed).
+
+Rows pair with source bodies by position; if the count no longer matches, the table is skipped with a warning.
+
+**Debug** (group)
+
+- **Print edge table** -- per-edge kind, radius, samples and gate reasons (plus undrape / part lines).
+- **Keep length curves** -- leaves the wrapped preserved curve and its flat image as wires; a good unwrap leaves
+  their lengths equal (2.3).
+- **Measure deformation** -- *Constant-thickness part only*: the undrape's stretch / shear report (about 0.2 s).
+
+**What you must set, per mode**
+
+| Mode | Must pick | Usually adjust |
 |---|---|---|
-| **Unwrap** | all | Which of the three algorithms (2.1). |
-| **Edges to unwrap** / **Parts to unwrap** | E / T, P | The geometry. Edges are grouped by owner body, so one wire is output per body. |
-| **Undrape target from**: Wire / Section by a face | T | Where the curve the plate is unrolled along comes from. **Section by a face** = the plate's OWN mid-surface cut by a plane (e.g. Front), so length is kept along the plate's own mid line. **Wire** = a curve you pick (e.g. REF_WIRE) plus the target offset. |
-| **Wrapped reference** | E, P, T (Wire) | W: the planar tangent chain the geometry is wrapped along. Must be one chain (joints <= 1 deg), with X rising steadily. |
-| **Section face** | T (Face) | The plane that cuts the mid-surface. The cut must be one piece: no hole, slot or notch on that plane. |
-| **Preserve length**: Along the reference / Along an offset; **Offset**, **Flip offset** | E, P | d in x = s - d*theta. Which height above W keeps its length (1.3). Positive d is along W's surface normal (up for a normal profile). |
-| **Target offset**, **Flip target offset** | T | The plate's mid-surface is mapped onto W offset by this. That offset is also the curve whose length is kept. For a Wire target, set it to the plate's mid height above the wire (topsheet on the top surface: -t/2). For a Face target, leave it at 0 (W already is the mid line). |
-| **Wrapped alignment point** | all | The wrapped point that lands on the unwrapped origin. It fixes x = 0. It must lie within W's X span; a mate connector's vertex is accepted too (correction 44). |
-| **Unwrapped origin** | all | The flat frame: a mate connector (implicit ones included), or a plane / planar face using its own axes. X = along W, Z = W's surface normal. |
-| **Lay the part on the origin plane** | T, P | On: the flat part's lowest face sits on the origin's XY plane. Off: it keeps its height relative to the alignment point (z = h - h_align). |
-| **Square walls** | P | Off: walls keep the exact mapped lean (e.g. 1.2 deg at 4802's nose, rebuilt as ruled surfaces). On: walls stand normal to the flat plane, as for a CNC blank. That costs up to 43.6 um at 4802's nose corners. |
-| **Maximum sample gap** | T | The *largest gap* between outline samples; the density comes from the fit **Tolerance** / 4 (as in Edges mode). |
-| **Recognise lines and arcs**, **Target degree**, **Tolerance**, **Maximum control points** | all (not the Part rebuild) | Section 1.8 and 1.10. Defaults: degree 3, 0.005 mm, 60 control points. |
-| **Name suffix**, **Read names and properties** (button), **Outputs** table, **Copy attributes** | all | Names, material and appearance are copied ONLY when you press the button (getProperty cannot run in the feature body, correction 36). Rows pair with source bodies by index. If the row count no longer matches the body count, the table is skipped and a warning says so. |
-| **Print edge table** | debug | Prints per-edge kind, radius, samples and gate reasons (plus undrape and part lines). |
-| **Keep length curves** | debug | Leaves two wires in the model: the wrapped preserved curve over the part's extent, and its flat image. A good unwrap leaves their lengths equal. |
-| **Measure deformation** | T, debug | Computes the undrape's stretch and shear report. Off saves about 0.2 s. |
+| Edges / wires | edges, wrapped reference, alignment point, origin | preserve length (offset = the edges' height above W) |
+| Constant-thickness part, target Wire | parts, wrapped reference, alignment point, origin | target offset = the plate's mid height above W |
+| Constant-thickness part, target Section | parts, section face, alignment point, origin | nothing (target offset 0) |
+| Part (solid) | parts, wrapped reference, alignment point, origin | preserve length offset = the part's height above W; square walls for blanks |
 
 ## 2.3 The length and volume check: how to read it
 
@@ -399,6 +475,19 @@ Limits of the chart and inputs:
   alignment station.** The tip and tail mats and shears cannot use it.
 - A Face target must give **one** section piece: no hole, slot or notch on the section plane.
 
+**U-turns: resolution and rule.** On the topsheet the pressed step runs along the ski on each side, and at the tip and
+tail it wraps round the end of the raised centre, crossing the ski (a U-turn in plan). There the step wall runs nearly
+PARALLEL to the station planes, so a section slices along the wall instead of across it. Two separate issues follow:
+
+- *Resolution (numerical).* Those stations need a slow kernel section (~0.1 s each), so adaptive refinement is capped
+  there (0.01 mm / 3 mm spans). The flat outline in the last few tens of mm of tip and tail can be off by up to ~0.45 mm
+  (fig08: the purple spike the feature's orange outline misses); everywhere else it is within ~1 um. Fix: lift the cap
+  (~1-2 s more on the topsheet).
+- *Rule (physical).* Section-by-section unrolling assumes the drape only needs unrolling across the width; in a U-turn
+  the material is also folded lengthwise, so the literal rule puts large lengthwise stretch there (-9.6 % .. +10.9 %
+  in the topsheet report vs about +-1 % elsewhere). The 0.5 mm bump may be an artefact of the rule. Decide the rule
+  before spending time on resolution.
+
 Undrape open decisions (research_undrape_map.md 9):
 
 1. **U-turn rule.** The literal section-by-section unroll gives up to 15 % principal strain and a rim bulge of
@@ -426,7 +515,45 @@ Also open:
 - **Split-and-join fitting** (research_unwrap_perf.md 3.3).
 - A tighter continuity gate than 0.57 deg (perf note 3.4 recommends 1e-3 rad).
 
-## 2.6 Your two questions
+## 2.6 Curved references, walls, and PRISM (2026-09-25)
+
+The test parts happen to sit on a reference that is straight between the contact points. That is a special case: the
+general case is a **baseline curved along its whole length**, and some parts will then have walls normal to the
+baseline rather than vertical in world Z. Findings (research_unwrap_curved_ref.md):
+
+- **Today's Part mode fails on a fully curved reference.** CORE and 4103 stop with SPLIT_FAILED; the base, with exact
+  walls, came out **silently wrong** (volume x0.94, 12 mm holes). Until the fix below lands, Part mode must refuse a
+  reference with no straight span, and always run a *reverse check* (map points of every result face back and measure
+  the distance to the source), which caught every silent failure in the study.
+- **Walls: normal vs vertical.** A wall normal to the reference maps to a wall exactly normal to the flat plane. A wall
+  vertical in world Z over a curved reference leans in the flat (over a 4 mm camber: 0.0014-0.0016 rad, ~6-11 um on
+  a 12 mm core wall). Parts modelled with walls normal to the baseline therefore unwrap exactly; parts modelled with
+  world-vertical walls carry that small lean (fudge room, if acceptable).
+- **Thickened parts belong in the plate path.** 4802 is a 4.0 mm plate (thickness 3.996-4.001 mm). As a plate
+  (Unwrap_Testing Copy 2, "Unwrap 4802 as plate", REF_WIRE offset 3.8 mm = its mid height) it unwraps to
+  178.3968 -> 178.3967 mm, volume x1.000085, walls normal by construction. Its 1.2 deg "nose lean" is in the model:
+  the nose-end walls meet the sides at 88.8 / 91.2 and 89.2 / 90.8 deg, while its long walls meet them at 90.00 deg.
+  A true thicken would have none.
+- **PRISM** (prototype, not yet in the feature): map every face into a *side view* (profile curves) and a *plan view*
+  (wall curves), detect **bands** (regions of the plan with the same side profile: the core has 3 -- body, ledge ring,
+  8 groove strips), build each band as plan-outline-extruded-vertically INTERSECT side-profile-extruded-sideways, then
+  union. Core: 6-7 s on REF_WIRE, a camber, or FULL_BASELINE, within 3.4-4.7 um. Base 2.5 s, sidewall 3.1 s, 4803 1.0 s.
+- **Arcs in PRISM.** In straight spans (rigid move) every original face survives, arcs included. In rebuilt spans
+  PRISM currently *chains* tangent-connected wall faces into ONE fitted spline tool, so a run of sidecut arcs becomes
+  one spline face (core 90 -> ~43 faces). It does not have to: each source face can get its own tool, classified as an
+  arc where its mapped curve is one (the cell method already does this: 4 true arcs on 4401). One face per source face,
+  arcs kept, costs some speed.
+- **Faces PRISM refuses.** PRISM can only build faces that are constant across the width (side-view extrusions) or
+  vertical (plan-view walls). 4401's top faces are neither: across its ~23 mm width the top rises or falls by up to
+  1.3e-3 (about 30 um edge to edge), a slight twist. They are refused rather than approximated: relaxing the test made a
+  silently wrong body (volume x1.61), caught only by the reverse check. The cell method (ruled tools) handles them.
+
+Recommended build: PRISM for curved spans, the exact rigid move for genuinely straight spans, the cell method as the
+exact fallback (leaning walls, twisted faces), and the reverse check always. Open decisions: modelling convention for
+walls (normal vs vertical), squared vs exact leaning walls, one face per source face (arcs kept) vs merged faces, and
+whether twisted faces like 4401's are design intent.
+
+## 2.7 Your two questions
 
 ### (a) "Our first big test will be a reference curved along its whole length (a baseline). How will that affect evaluation times?"
 
@@ -441,6 +568,11 @@ point on the packed tables). What does change:
 - **Plates with a Wire target**: the mid-surface of a plate far above a curved baseline no longer sits at a
   constant offset. Every region away from d gets kappa*(h - d) lengthwise strain. That is question (b)
   territory, not a speed issue.
+
+> **Update 2026-09-25 (measured, research_unwrap_curved_ref.md; see 2.6):** today's Part mode does fail on a fully
+> curved reference (CORE, 4103: SPLIT_FAILED; base: silently wrong, volume x0.94). The piecewise-rigid idea below is
+> ruled out (first-order end wedge; rigid moves of the core are not acceptable anyway). PRISM (band rebuild) does the
+> core in 6-7 s within 3.4-4.7 um on a camber and on FULL_BASELINE. The analysis below is kept as the reasoning.
 
 **Part mode: a big cost as built, and likely failures.** Part mode gets its speed from moving the pieces over
 STRAIGHT spans of W rigidly and rebuilding only the curved spans. Today's CORE is 1480 of 1500 mm rigid, so
@@ -737,7 +869,7 @@ Status after the 2026-09-25 cleanup pass: **RESOLVED** items say what changed; t
    skipped vertices. The memory note attributes this to the U-turn ends. The check, not the undrape, is the
    first suspect.
 7. The **question (a) hypothesis** (0.5*h*dtheta^2, 400 mm pieces) disagrees with the exact computation by more
-   than an order of magnitude in allowed length (2.6 (a), fig12). Worth a second pair of eyes on my setup.
+   than an order of magnitude in allowed length (2.7 (a), fig12). Worth a second pair of eyes on my setup.
 8. **Straightness by edge type** (`referenceSpans`: `curveType == LINE`). A spline reference that is
    geometrically straight is rebuilt everywhere, and Clean-wire outputs are usually splines. This is not
    documented as a limit in the as-built notes.

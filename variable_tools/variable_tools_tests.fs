@@ -1,8 +1,8 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: extract_variables_utils.fs
-import(path : "a4dcd70ce9ceec588536fb0c", version : "");
+import(path : "a4dcd70ce9ceec588536fb0c", version : "16969bd79ed1ef79531eb7e0");
 
 /**
  * Variable tools tests: builds its own fixtures and runs Extract variables entry types

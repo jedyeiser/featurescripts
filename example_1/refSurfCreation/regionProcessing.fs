@@ -1,5 +1,5 @@
-FeatureScript 2909;
-import(path : "onshape/std/common.fs", version : "2909.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import CurveWrapping_full/curveMappingCore
 import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/683d867c35fdab9c98d47556", version : "08ced7a9bfddd7090ead6e97");
@@ -9,9 +9,9 @@ import(path : "08e8748f2ef24eea16072b75/34dde8fbf0531890b902d1d5/ad98c7f43a25a4c
 
 
 //import refSurfCore
-import(path : "828cc4108f1c8683bc0e59cf", version : "19939e975eb473ccfc23a8be");
+import(path : "828cc4108f1c8683bc0e59cf", version : "c491879986efec302af2e276");
 //import pathProcessessing
-import(path : "e9dd34f07820388a202cb620", version : "8ce012e6b4094ce7b8a2adf7");
+import(path : "e9dd34f07820388a202cb620", version : "b069b8000abb267262c7f1cf");
 
 
 

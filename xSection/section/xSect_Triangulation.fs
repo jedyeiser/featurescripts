@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 /**
  * CROSS-SECTION TRIANGULATION MODULE
@@ -34,7 +34,7 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  */
 
 // xSectUtils (provides POINT_DEDUP_TOL constant)
-import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
+import(path : "c2c3edd39b85fde5e6062533", version : "9cf03ed1102fc8e100e8e3f1");
 
 // =============================================================================
 // CONSTANTS
@@ -547,8 +547,19 @@ function reverseChain(chain is map) returns map
  */
 function getCurveEndpoint(curve is BSplineCurve, atEnd is boolean) returns Vector
 {
-    var cps = curve.controlPoints;
-    return atEnd ? cps[size(cps) - 1] : cps[0];
+    // Evaluated, not the first/last control point: those are only on the curve for a clamped
+    // (non-periodic) B-spline; a full circle comes back periodic (tools review 2026-09-25).
+    var domain = curveDomain(curve);
+    return evaluateSpline({ "spline" : curve, "parameters" : [atEnd ? domain[1] : domain[0]] })[0][0];
+}
+
+// Parameter domain [knots[p], knots[last - p]]: for a clamped curve the same as the first/last knot,
+// for a periodic curve the actual range of the curve.
+function curveDomain(curve is BSplineCurve) returns array
+{
+    var knots = curve.knots;
+    var p = curve.degree;
+    return [knots[p], knots[size(knots) - 1 - p]];
 }
 
 // =============================================================================
@@ -629,6 +640,9 @@ function buildPerimeterFromCurveGroup(curveGroup is array, frame is CoordSystem,
  * Sample N points on curve (N = number of control points).
  * Endpoints are taken directly; interior points are evaluated.
  */
+// Maximum turning between consecutive perimeter samples of a curved edge.
+const SAMPLE_TURN = 5 * degree;
+
 function sampleCurvePoints(curve is BSplineCurve) returns array
 {
     var cps = curve.controlPoints;
@@ -639,24 +653,32 @@ function sampleCurvePoints(curve is BSplineCurve) returns array
         return cps;
     }
     
-    var points = [cps[0]];
-    
-    var knots = curve.knots;
-    var uMin = knots[0];
-    var uMax = knots[size(knots) - 1];
-    
-    var interiorParams = [];
+    var domain = curveDomain(curve);
+    var uMin = domain[0];
+    var uMax = domain[1];
+
+    // Samples follow the curve's turning, not its control-point count: one per SAMPLE_TURN of the control
+    // polygon's total turning (a straight edge keeps its two endpoints; a full circle gets ~72 points, an
+    // area error of ~0.1% instead of several % from a 7-point polygon).
+    var turning = 0;
     for (var j = 1; j < n - 1; j += 1)
     {
-        interiorParams = append(interiorParams, uMin + (j / (n - 1)) * (uMax - uMin));
+        var a = cps[j] - cps[j - 1];
+        var b = cps[j + 1] - cps[j];
+        if (norm(a) > TOLERANCE.zeroLength * meter && norm(b) > TOLERANCE.zeroLength * meter)
+        {
+            turning += angleBetween(a, b) / radian;
+        }
     }
-    
-    var interiorPoints = evaluateSpline({ "spline" : curve, "parameters" : interiorParams })[0];
-    points = concatenateArrays(points, interiorPoints);
-    
-    points = append(points, cps[n - 1]);
-    
-    return points;
+    var numSamples = max(n, ceil(turning / (SAMPLE_TURN / radian)) + 1);
+
+    // All samples evaluated, ends included (the first/last control points are not on a periodic curve).
+    var params = [];
+    for (var j = 0; j < numSamples; j += 1)
+    {
+        params = append(params, uMin + (j / (numSamples - 1)) * (uMax - uMin));
+    }
+    return evaluateSpline({ "spline" : curve, "parameters" : params })[0];
 }
 
 // =============================================================================

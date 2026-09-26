@@ -1,7 +1,7 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: extract_variables_utils.fs (re-exports extract_outputs.fs)
-export import(path : "a4dcd70ce9ceec588536fb0c", version : "");
+export import(path : "a4dcd70ce9ceec588536fb0c", version : "16969bd79ed1ef79531eb7e0");
 // IMPORT: extract_variables_icon.svg (feature icon)
 IconNamespace::import(path : "1fec12e049522ab98f8177ff", version : "9c7ddae6a84d0131481b57c4");
 

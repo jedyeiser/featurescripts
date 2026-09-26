@@ -1,6 +1,6 @@
-FeatureScript 3008;
-import(path : "onshape/std/common.fs", version : "3008.0");
-import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 
 
 //import curveMappingCore

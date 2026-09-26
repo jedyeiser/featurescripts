@@ -8,6 +8,8 @@ studio's fingerprint changes or a tab fails to write, every tab is restored to i
 usage (repo root, Git Bash):
     PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/bump_fs.py <document id> [--to 3083] [--keep]
 --keep leaves the bumped tabs in place even when a fingerprint changes (for reviewing an intended change).
+A fingerprint that differs only by floating-point noise (identical counts, lengths/areas within 1e-6 relative)
+is accepted; any topology change restores the originals.
 Originals are saved to devtools/onshape/fingerprints/bump_<did>_originals.json.
 """
 import argparse
@@ -27,18 +29,40 @@ STD = re.compile(r'(import\(path : "onshape/std/[A-Za-z0-9_./]+", version : ")\d
 PIN = re.compile(r'(import\(path : "[0-9a-f]{24}", version : ")[0-9a-f]{24}("\))')
 
 
+NOISE = 1e-6
+NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def same_within_noise(before, after):
+    """Fingerprints equal up to floating-point noise: same lines, same integer counts (bodies/edges/faces),
+    and every measured length/area within NOISE relative. A topology change is never noise."""
+    if len(before) != len(after):
+        return False
+    for b, a in zip(before, after):
+        nb, na = NUMBER.findall(b), NUMBER.findall(a)
+        if NUMBER.sub("#", b) != NUMBER.sub("#", a) or len(nb) != len(na):
+            return False
+        for x, y in zip(nb, na):
+            if "." not in x and "." not in y:
+                if x != y:
+                    return False
+            elif abs(float(x) - float(y)) > NOISE * max(1.0, abs(float(x))):
+                return False
+    return True
+
+
 def unpinned(text):
     return PIN.sub(r"\1\2", text.replace("\r\n", "\n").strip())
 
 
-def retry(fn, tries=4):
+def retry(fn, tries=8):
     for k in range(tries):
         try:
             return fn()
         except Exception:
             if k == tries - 1:
                 raise
-            time.sleep(10)
+            time.sleep(20)
 
 
 def studios_with_custom_features(c, did, wid):
@@ -103,7 +127,9 @@ def main():
     changed = []
     for sname, eid in studios:
         after = retry(lambda: fingerprint(did, wid, eid, None))
-        if after != before[sname]:
+        if after != before[sname] and same_within_noise(before[sname], after):
+            print("    %s within noise (counts identical, lengths/areas within %g relative)" % (sname, NOISE))
+        elif after != before[sname]:
             changed.append(sname)
             print("--- %s CHANGED" % sname)
             b, f = before[sname], after

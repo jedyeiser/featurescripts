@@ -80,6 +80,11 @@
   "lengthWrapped: 1500.196 | lengthFlat: 1500.196 | volumeRatio: 1.000041"
  ],
  [
+  "Unwrap 4802 as plate (REF_WIRE offset 3.8 mm)",
+  "INFO",
+  "lengthWrapped: 178.3968 | lengthFlat: 178.3967 | volumeRatio: 1.000085"
+ ],
+ [
   "U1 Wrapped_profile over FULL_BASELINE (edges, along reference) -> 1 wire, tip/tail at constant height",
   "INFO",
   "lengthWrapped: 1830 | lengthFlat: 1830 | volumeRatio: 0"

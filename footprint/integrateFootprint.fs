@@ -1,8 +1,8 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import fpt_geometrty (export/import)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "d1e9dfde21eebf5ac5808256");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "b3607c6e2325cd91e25313f2");
 
 
 // NOTE: fpt_math.fs has been deleted - all functions moved to tools/
@@ -20,10 +20,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e235
 
 // evPathCurvatures() moved to fpt_geometry.fs
 //import predicates
-import(path : "a54a829744c4e15e8da55e0e", version : "a5c4ff59b5e5990444080826");
+import(path : "a54a829744c4e15e8da55e0e", version : "849a0888e10eff97f5f0e84a");
 
 //import arcFit
-import(path : "66f4f03cf728e94b8f823585", version : "2e255abd0bd910b9d14de958");
+import(path : "66f4f03cf728e94b8f823585", version : "b8dd4d8f60d89054b3452842");
 
 
 
@@ -265,27 +265,17 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
                         "edge" : x
                 });});
                 
-                var solvedArcs = forceQuadraticNurbs(context, id + 'forceFitNURBS', inputNURBS);
-                
+                var strictWire = emitStrictArcWire(context, id + "strictFit", inputNURBS);
+
                 opDeleteBodies(context, id + "deleteFitBSplines", {
                         "entities" : bodyQuery
                 });
-                
-                fitCurves = [];
-                fitBodies = [];
-                
-                for (var i = 0; i < size(solvedArcs); i += 1)
-                {
-                    opCreateBSplineCurve(context, id + ("NurbsFromFit" ~ i), {
-                            "bSplineCurve" : solvedArcs[i]
-                    });
-                    
-                    fitBodies = append(fitBodies, qCreatedBy(id + ("NurbsFromFit" ~ i), EntityType.BODY));
-                    fitCurves = append(fitCurves, qCreatedBy(id + ("NurbsFromFit" ~ i), EntityType.EDGE));
-                }
-                
-                bodyQuery = qUnion(fitBodies);
-                edgeQuery = qUnion(fitCurves);
+
+                // One wire of real arcs and lines already; nothing left to extract.
+                fitBodies = [strictWire];
+                fitCurves = [qOwnedByBody(strictWire, EntityType.EDGE)];
+                bodyQuery = strictWire;
+                edgeQuery = qOwnedByBody(strictWire, EntityType.EDGE);
                 
             }
             
@@ -334,24 +324,11 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
                             "edge" : x
                     });});
                     
-                    var solvedArcs = forceQuadraticNurbs(context, id + 'forceFitNURBS', inputNURBS);
-                    
+                    emitStrictArcWire(context, id + "strictAprox", inputNURBS);
+
                     opDeleteBodies(context, id + "deleteAproxBSplines", {
                             "entities" : qCreatedBy(id + "bSplineFootprint", EntityType.BODY)
                     });
-                    
-                    var nurbsEdges = [];
-                    var nurbsBodies = [];
-                    
-                    for (var i = 0; i < size(solvedArcs); i += 1)
-                    {
-                        opCreateBSplineCurve(context, id + ("NurbsFromAprox" ~ i), {
-                                "bSplineCurve" : solvedArcs[i]
-                        });
-                        
-                        nurbsBodies = append(nurbsBodies, qCreatedBy(id + ("NurbsFromAprox" ~ i), EntityType.BODY));
-                        nurbsEdges = append(nurbsEdges, qCreatedBy(id + ("NurbsFromAprox" ~ i), EntityType.EDGE));
-                    }
 
                     
                 }
@@ -367,17 +344,8 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
                 
                 if (definition.strict)
                 {
-                    var returnNurbs = forceQuadraticNurbs(context, id + "multiApproxNurbs", splines);
-                    
-                    for (var i = 0; i < size(returnNurbs); i += 1)
-                    {
-                        opCreateBSplineCurve(context, id + ("multiApproxNurbs" ~ i ), {
-                                "bSplineCurve" : returnNurbs[i]
-                        });
-                        
-                        splineEdges = append(splineEdges, qCreatedBy(id + ("multiApproxNurbs" ~ i ), EntityType.EDGE));
-                        splineBodies = append(splineBodies, qCreatedBy(id + ("multiApproxNurbs" ~ i ), EntityType.BODY));
-                    }
+                    // Real sketch arcs and lines in one wire (rational NURBS arcs read as splines, correction 39).
+                    emitStrictArcWire(context, id + "multiApproxStrict", splines);
                 }
                 else
                 {
@@ -410,6 +378,21 @@ export const integrateFootprint = defineFeature(function(context is Context, id 
         
     });
     
+/**
+ * Strict output: fit the curves with arcs and lines (Arc fit's library) and emit them as SKETCH arcs and lines
+ * extracted into one wire, so Onshape reports real radii. (It used to emit rational quadratic NURBS, which
+ * Onshape reports as splines with no radius -- correction 39, footprint test IF7.) Returns the wire body.
+ */
+function emitStrictArcWire(context is Context, id is Id, bSplines is array) returns Query
+{
+    var polyArcs = approximateSplinesWithPolyArcs(bSplines, 1e-3 * millimeter, 1e-3 * millimeter, cos(0.1 * degree), 1 * millimeter, 16, 8, false);
+    var xyPlane = plane(vector(0, 0, 0) * meter, vector(0, 0, 1), vector(1, 0, 0));
+    emitSketchFromPrimitives(context, id + "sketch", xyPlane, polyArcs.segments);
+    opExtractWires(context, id + "wire", { "edges" : qCreatedBy(id + "sketch", EntityType.EDGE) });
+    opDeleteBodies(context, id + "deleteSketch", { "entities" : qCreatedBy(id + "sketch", EntityType.BODY) });
+    return qCreatedBy(id + "wire", EntityType.BODY);
+}
+
 export function forceQuadraticNurbs(context is Context, id is Id, bSplines is array) returns array
 {    
     var dotTol = cos(0.1 * degree);
@@ -497,22 +480,15 @@ function emitFootprintWithArcs(context is Context, id is Id, definition is map, 
 
     var sketchEdges = qCreatedBy(arcSketchId, EntityType.EDGE);
 
-    // 3) Copy transitions + analytic arcs into one composite wire, in two stages as scaleFootprint's
-    //    emitter: sketch edges first extracted to their own wire (mixing sketch and non-sketch edges in
-    //    one opExtractWires can fail with OVERLAPPING_EDGES), then that wire's edges together with the
-    //    spline edges. opExtractWires preserves the arcs' analytic type.
-    var allEdges = qUnion(origEdges);
-    var arcWires = qNothing();
-    if (!isQueryEmpty(context, sketchEdges))
-    {
-        opExtractWires(context, id + "fpArcWires", { "edges" : sketchEdges });
-        arcWires = qCreatedBy(id + "fpArcWires", EntityType.BODY);
-        allEdges = qUnion([allEdges, qOwnedByBody(arcWires, EntityType.EDGE)]);
-    }
+    // 3) Copy transitions + analytic arcs into one composite wire. opExtractWires preserves
+    //    the arcs' analytic type and merges edges that share endpoints into a single wire.
+    //    (Kept single-stage: a two-stage extract changed the output edges' ids and broke downstream
+    //    references in existing studios, 2026-09-25.)
+    var allEdges = qUnion(append(origEdges, sketchEdges));
     opExtractWires(context, id + "fpCompositeWire", { "edges" : allEdges });
 
-    // 4) Delete the temporary spline bodies, the arc wire and the sketch, leaving only the composite wire.
-    var toDelete = concatenateArrays([origBodies, [arcWires, qCreatedBy(arcSketchId, EntityType.BODY)]]);
+    // 4) Delete the temporary spline bodies and the sketch, leaving only the composite wire.
+    var toDelete = append(origBodies, qCreatedBy(arcSketchId, EntityType.BODY));
     opDeleteBodies(context, id + "fpDeleteTemp", { "entities" : qUnion(toDelete) });
 }
 

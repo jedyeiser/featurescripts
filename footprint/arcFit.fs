@@ -1,12 +1,12 @@
-FeatureScript 2892;
+FeatureScript 3083;
 
-import(path : "onshape/std/common.fs", version : "2892.0");
-import(path : "onshape/std/math.fs", version : "2892.0");
-import(path : "onshape/std/vector.fs", version : "2892.0");
-import(path : "onshape/std/sketch.fs", version : "2892.0");
-import(path : "onshape/std/surfaceGeometry.fs", version : "2892.0");
-import(path : "onshape/std/containers.fs", version : "2892.0");
-export import(path : "onshape/std/nurbsUtils.fs", version : "2892.0");
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/math.fs", version : "3083.0");
+import(path : "onshape/std/vector.fs", version : "3083.0");
+import(path : "onshape/std/sketch.fs", version : "3083.0");
+import(path : "onshape/std/surfaceGeometry.fs", version : "3083.0");
+import(path : "onshape/std/containers.fs", version : "3083.0");
+export import(path : "onshape/std/nurbsUtils.fs", version : "3083.0");
 
 export const PositionTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
 export const PlaneTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;

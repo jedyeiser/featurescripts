@@ -12,8 +12,8 @@
 // P&T Eq. 5.15: α_i = (u_bar - u_i) / (u_{i+p} - u_i)
 // where u_bar is the new knot, p is degree
 
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import tools/bspline_knots
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");

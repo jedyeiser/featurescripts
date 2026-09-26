@@ -1,4 +1,4 @@
-FeatureScript 3008; /* Automatically generated version */
+FeatureScript 3083; /* Automatically generated version */
 // This module is part of the FeatureScript Standard Library and is distributed under the MIT License.
 // See the LICENSE tab for the license text.
 // Copyright (c) 2013-Present PTC Inc.
@@ -9,22 +9,22 @@ FeatureScript 3008; /* Automatically generated version */
 
 
 // Imports used in interface
-export import(path : "onshape/std/query.fs", version : "3008.0");
-export import(path : "onshape/std/variabletype.gen.fs", version : "3008.0");
+export import(path : "onshape/std/query.fs", version : "3083.0");
+export import(path : "onshape/std/variabletype.gen.fs", version : "3083.0");
 
 // Imports used internally
-import(path : "onshape/std/containers.fs", version : "3008.0");
-import(path : "onshape/std/debug.fs", version : "3008.0");
-import(path : "onshape/std/evaluate.fs", version : "3008.0");
-import(path : "onshape/std/feature.fs", version : "3008.0");
-import(path : "onshape/std/string.fs", version : "3008.0");
-import(path : "onshape/std/valueBounds.fs", version : "3008.0");
-import(path : "onshape/std/manipulator.fs", version : "3008.0");
-import(path : "onshape/std/vector.fs", version : "3008.0");
-import(path : "onshape/std/curveGeometry.fs", version : "3008.0");
-import(path : "onshape/std/topologyUtils.fs", version : "3008.0");
-import(path : "onshape/std/coordSystem.fs", version : "3008.0");
-import(path : "onshape/std/tabReferences.fs", version : "3008.0");
+import(path : "onshape/std/containers.fs", version : "3083.0");
+import(path : "onshape/std/debug.fs", version : "3083.0");
+import(path : "onshape/std/evaluate.fs", version : "3083.0");
+import(path : "onshape/std/feature.fs", version : "3083.0");
+import(path : "onshape/std/string.fs", version : "3083.0");
+import(path : "onshape/std/valueBounds.fs", version : "3083.0");
+import(path : "onshape/std/manipulator.fs", version : "3083.0");
+import(path : "onshape/std/vector.fs", version : "3083.0");
+import(path : "onshape/std/curveGeometry.fs", version : "3083.0");
+import(path : "onshape/std/topologyUtils.fs", version : "3083.0");
+import(path : "onshape/std/coordSystem.fs", version : "3083.0");
+import(path : "onshape/std/tabReferences.fs", version : "3083.0");
 
 IconNamespace::import(path : "ec3ff312013d4044c5a3263f", version : "1f86a3719ac577b79afa79b6");
 

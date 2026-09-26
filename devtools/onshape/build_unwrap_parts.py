@@ -109,3 +109,11 @@ for name, body in [("CORE", "Rtjn"), ("4802 tip extension", "Rtj7"), ("4803 tail
     unwrap("Unwrap %s (part, along REF_WIRE)" % name,
            [qd("parts", body), qd("reference", REF_WIRE), qd("alignPoint", MC), qd("origin", TOP_PLANE), b("debugKeepLengthCurves", True)],
            {"unwrapType": "PART", "preserveLength": "REFERENCE"})
+
+# 4802 is a ~4 mm constant-thickness plate (rays 3.996-4.001 mm; offset detection pairs its side walls, so the raycast
+# fallback finds the sides). As a plate its walls come out normal by construction.
+if not ONLY or ONLY == "Rtj7plate":
+    unwrap("Unwrap 4802 as plate (REF_WIRE offset 3.8 mm)",
+           [qd("parts", "Rtj7"), qd("reference", REF_WIRE), num("targetOffset", "3.8 mm"), qd("alignPoint", MC), qd("origin", TOP_PLANE),
+            b("debugKeepLengthCurves", True)],
+           {"unwrapType": "THICKENED", "targetFrom": "WIRE"})

@@ -1,9 +1,9 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 // common.fs does not re-export queryVariable.fs; needed for setQueryVariable.
-import(path : "onshape/std/queryVariable.fs", version : "3070.0");
+import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: extract_outputs.fs (producer library; re-exported so the feature sees it)
-export import(path : "3cac74f0bc2b98272db13cd3", version : "");
+export import(path : "3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 /**
  * Extract variables -- CONSUMER library, used by the "Extract variables" feature

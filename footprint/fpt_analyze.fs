@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: tools/math_utils.fs (for safeSign)
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
@@ -11,10 +11,10 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e235
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 
 //import fpt_geometry
-import(path : "67c190b80e8b74dcee72e7ff", version : "d1e9dfde21eebf5ac5808256");
+import(path : "67c190b80e8b74dcee72e7ff", version : "b3607c6e2325cd91e25313f2");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "59e6d83710d6eec8d5cf3843");
+import(path : "d3ad341f5b87924b36b5aba8", version : "fdd989cbbf4082b8c7c4e55f");
 
 
 
@@ -425,16 +425,20 @@ function sampleBSplineWithCurvature(bspline is BSplineCurve, numSamples is numbe
     {
         var u = uMin + (uMax - uMin) * i / (numSamples - 1);
         var curv = getBSplineCurvatureAtParam(bspline, u);
-        
+        // Signs are taken walking toward +X, whatever the edge's own direction: sketch arcs are always
+        // counter-clockwise, so an arc-to-reverse-arc inflection between two raw sketch edges was invisible
+        // to the junction test (footprint test AF7, 2026-09-25).
+        var dirSign = curv.tangent[0] < 0 ? -1 : 1;
+
         samples = append(samples, {
             "u" : u,
             "point" : curv.point,
             "tangent" : curv.tangent,
             "x" : curv.point[0],
             "y" : curv.point[1],
-            "curvatureSigned" : curv.curvatureSigned,
+            "curvatureSigned" : curv.curvatureSigned * dirSign,
             "curvatureMag" : curv.curvatureMag,
-            "sign" : curv.sign
+            "sign" : curv.sign * dirSign
         });
     }
     
@@ -806,8 +810,16 @@ export function findInflectionPoint(curveDataArray is array, xInner is ValueWith
             }
         }
 
-        // Update prevSample to this curve's last in-bounds sample
-        prevSample = inBoundsSamples[size(inBoundsSamples) - 1];
+        // Update prevSample to this curve's last in-bounds sample with a curvature sign; a straight edge
+        // (sign 0 throughout) keeps the previous one, so arc - line - reverse arc is still an inflection.
+        for (var k = size(inBoundsSamples) - 1; k >= 0; k -= 1)
+        {
+            if (inBoundsSamples[k].sign != 0)
+            {
+                prevSample = inBoundsSamples[k];
+                break;
+            }
+        }
     }
 
     return { "found" : false };

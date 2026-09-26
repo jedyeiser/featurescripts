@@ -1,8 +1,8 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: estimateDeflectionSolver.fs
-import(path : "b94e66e5f6d027e5be938121", version : "528777e4e5d7f56c6f819e3c");
+import(path : "b94e66e5f6d027e5be938121", version : "c1246cff5d641ddb01376bd3");
 
 /**
  * ESTIMATE DEFLECTION

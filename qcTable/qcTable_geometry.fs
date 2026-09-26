@@ -1,8 +1,8 @@
-FeatureScript 3008;
-import(path : "onshape/std/common.fs", version : "3008.0");
-import(path : "onshape/std/geomOperations.fs", version : "3008.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/geomOperations.fs", version : "3083.0");
 //import table types
-import(path : "ff9221b7148cfda8a449abff", version : "31d87ccebeed70c9ff76b9ed");
+import(path : "ff9221b7148cfda8a449abff", version : "1e352b8a8849d91676fd9521");
 
 
 /**

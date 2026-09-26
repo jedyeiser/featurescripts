@@ -1,11 +1,11 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
-import(path : "onshape/std/table.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/table.fs", version : "3083.0");
 
 // xSectMaterials (for tryGetKey)
-import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
+import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 
-import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf45572");
+import(path : "17142132b20343b5f125e7e7", version : "92eaeac3778fb2c3abe9bc15");
 
 /**
  * CROSS-SECTION ANALYSIS TABLE MODULE

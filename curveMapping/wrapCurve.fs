@@ -1,13 +1,13 @@
-FeatureScript 3008;
-import(path : "onshape/std/common.fs", version : "3008.0");
-import(path : "onshape/std/approximationUtils.fs", version : "3008.0");
-import(path : "onshape/std/path.fs", version : "3008.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
+import(path : "onshape/std/path.fs", version : "3083.0");
 
 
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
 //import Utils
-import(path : "ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
+import(path : "ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
 // IMPORT: tools/frenet.fs
@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
+export import(path : "683d867c35fdab9c98d47556", version : "f32212e769c8b54f8cb4a6b1");
 
 
 

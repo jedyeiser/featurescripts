@@ -1,14 +1,14 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
-import(path : "onshape/std/extend.fs", version : "2892.0");
-import(path : "onshape/std/faceIntersection.fs", version : "2892.0");
-import(path : "onshape/std/loft.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/extend.fs", version : "3083.0");
+import(path : "onshape/std/faceIntersection.fs", version : "3083.0");
+import(path : "onshape/std/loft.fs", version : "3083.0");
 
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
 
 // import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
-export import(path : "7e3b271854475bf6cf878b2b", version : "ca95f9eb7a06969a3e46df7b");
+export import(path : "7e3b271854475bf6cf878b2b", version : "202178aa8f713464c4f51f87");
 
 
 export const DEBUG_STEP_BOUNDS = { (unitless) : [0, 1, 10]} as IntegerBoundSpec;

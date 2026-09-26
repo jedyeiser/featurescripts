@@ -1,49 +1,51 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
-
-
-annotation { "Feature Type Name" : "Join wires", "Feature Type Description" : "Takes a selection of wires and joins them" }
+annotation { "Feature Type Name" : "Join wires", "Feature Type Description" : "Joins the selected edges and wires into one wire (exact geometry, edges kept). Optionally deletes the input wire bodies." }
 export const joinWires = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Edges and wires", "Filter" : (EntityType.BODY && BodyType.WIRE)}
+        annotation { "Name" : "Edges and wires", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) }
         definition.edgeWireSelection is Query;
-        
+
         annotation { "Name" : "Keep seed bodies" }
         definition.keepSeeds is boolean;
-        
-        
     }
     {
-        
-        var inputBodies = evaluateQuery(context, qUnion([qEntityFilter(definition.edgeWireSelection, EntityType.BODY)]));
-        var extractEdges = [];
-        
-        for (var i = 0; i < size(inputBodies); i += 1)
+        // Selected edges plus every edge of the selected wire bodies.
+        var wireBodies = qEntityFilter(definition.edgeWireSelection, EntityType.BODY);
+        var edges = qUnion([qEntityFilter(definition.edgeWireSelection, EntityType.EDGE),
+                    qOwnedByBody(wireBodies, EntityType.EDGE)]);
+        if (isQueryEmpty(context, edges))
         {
-            var bodyEdges = evaluateQuery(context, qUnion([qOwnedByBody(inputBodies[i], EntityType.EDGE)]));
-            for (var j = 0; j < size(bodyEdges); j += 1)
-            {
-                extractEdges = append(extractEdges, bodyEdges[j]);
-            }
+            throw regenError("Select edges or wire bodies to join.", ["edgeWireSelection"]);
         }
-        
-        extractEdges = qUnion(extractEdges);
-        
+
         opExtractWires(context, id + "opExtractWires1", {
-                "edges" : extractEdges
+                "edges" : edges
         });
-        
+
+        var wires = qCreatedBy(id + "opExtractWires1", EntityType.BODY);
+        var wireCount = size(evaluateQuery(context, wires));
+        if (wireCount > 1)
+        {
+            reportFeatureWarning(context, id, "The selection does not form one chain: " ~ wireCount ~ " wires were created (gaps or branches in the input).");
+        }
+        else if (size(evaluateQuery(context, qOwnedByBody(wires, EntityType.EDGE))) == size(evaluateQuery(context, qOwnedByBody(wires, EntityType.VERTEX))))
+        {
+            // One wire with as many vertices as edges: a closed loop.
+            reportFeatureInfo(context, id, "The joined wire is a closed loop.");
+        }
+
+        // Only wire bodies picked directly are consumed; sketch bodies are never deleted.
         if (!definition.keepSeeds)
         {
-            var bodyQ = qUnion([qEntityFilter(definition.edgeWireSelection, EntityType.BODY)]);
-            if (!isQueryEmpty(context, bodyQ))
+            var seeds = qSketchFilter(wireBodies, SketchObject.NO);
+            if (!isQueryEmpty(context, seeds))
             {
                 opDeleteBodies(context, id + "deleteBodies1", {
-                        "entities" : bodyQ
+                        "entities" : seeds
                 });
             }
         }
-        
     });

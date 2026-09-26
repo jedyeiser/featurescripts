@@ -45,8 +45,14 @@ def unpinned(text):
 
 def main():
     mode, project, names = sys.argv[1], sys.argv[2], sys.argv[3:]
-    doc = json.load(open("%s/.document.json" % project))
-    did, wid = doc["document_id"], doc["workspace_id"]
+    if os.path.exists("%s/.document.json" % project):
+        doc = json.load(open("%s/.document.json" % project))
+        did, wid = doc["document_id"], doc["workspace_id"]
+    else:
+        # Projects without .document.json (gordonSurface): the document of the project's files in .sync-state.json.
+        files = json.load(open(".sync-state.json", encoding="utf-8"))["files"]
+        entry = [e for k, e in files.items() if k.replace("\\", "/").startswith(project + "/") and isinstance(e, dict) and e.get("workspace_id")][0]
+        did, wid = entry["document_id"], entry["workspace_id"]
     client = OnshapeClient()
     tabs = tabs_of(project)
     if mode == "pin":

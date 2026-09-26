@@ -1,11 +1,11 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "6e68ed6cb07a952caa490205");
+import(path : "08fddb59786b6bfee020ee05", version : "16a3259bfc59aee2fbc2c1dd");
 
 // IMPORT: xSectUtils.fs
-import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
+import(path : "c2c3edd39b85fde5e6062533", version : "9cf03ed1102fc8e100e8e3f1");
 
 /**
  * This function takes a query of multiple edges (must be G1 continuous)

@@ -1,11 +1,11 @@
-FeatureScript 2909;
-import(path : "onshape/std/common.fs", version : "2909.0");
-import(path : "onshape/std/extend.fs", version : "2909.0");
-import(path : "onshape/std/bridgingCurve.fs", version : "2909.0");
-import(path : "onshape/std/loft.fs", version : "2909.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/extend.fs", version : "3083.0");
+import(path : "onshape/std/bridgingCurve.fs", version : "3083.0");
+import(path : "onshape/std/loft.fs", version : "3083.0");
 
 //import refSurfCore
-import(path : "828cc4108f1c8683bc0e59cf", version : "19939e975eb473ccfc23a8be");
+import(path : "828cc4108f1c8683bc0e59cf", version : "c491879986efec302af2e276");
 
 
 // =====================================================================

@@ -1,0 +1,202 @@
+{
+ "doc": "22764764a00a7f607dbc1c4d",
+ "ws": "3b5e11a121111a161684adee",
+ "elem": "97d8c9aeebe259091033c914",
+ "renders": [
+  {
+   "out": "docs/decks/split_plus/shots/regions_plan.png",
+   "view": "plan",
+   "yscale": 3,
+   "size": [
+    10,
+    2.8
+   ],
+   "title": "Topsheet split at Station A and B, both sides kept: three named regions (plan view)",
+   "xlines": [
+    [
+     300,
+     "Station A"
+    ],
+    [
+     1500,
+     "Station B"
+    ]
+   ],
+   "layers": [
+    {
+     "parts": [
+      "RPSD"
+     ],
+     "color": "#8fd6bb",
+     "edges": true,
+     "label": "start",
+     "labelAt": [
+      140,
+      37
+     ]
+    },
+    {
+     "parts": [
+      "RQSD"
+     ],
+     "color": "#f5cf7a",
+     "edges": true,
+     "label": "middle",
+     "labelAt": [
+      900,
+      37
+     ]
+    },
+    {
+     "parts": [
+      "RQSH"
+     ],
+     "color": "#b3aee0",
+     "edges": true,
+     "label": "end",
+     "labelAt": [
+      1650,
+      37
+     ]
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/split_plus/shots/volume_plan.png",
+   "view": "plan",
+   "yscale": 3,
+   "size": [
+    10,
+    3.2
+   ],
+   "title": "Keep both sides OFF, reference at Mid (x 900): only the region between A and B survives (plan view)",
+   "xlines": [
+    [
+     300,
+     "Station A"
+    ],
+    [
+     900,
+     "Mid (reference)"
+    ],
+    [
+     1500,
+     "Station B"
+    ]
+   ],
+   "layers": [
+    {
+     "parts": [
+      "RjRT"
+     ],
+     "color": "#d9d6cf",
+     "alpha": 0.6,
+     "edges": false,
+     "labels": [
+      {
+       "text": "removed",
+       "at": [
+        150,
+        0
+       ],
+       "color": "#8a8883"
+      },
+      {
+       "text": "removed",
+       "at": [
+        1650,
+        0
+       ],
+       "color": "#8a8883"
+      }
+     ]
+    },
+    {
+     "parts": [
+      "ROSD"
+     ],
+     "color": "#1baf7a",
+     "edges": true,
+     "label": "kept: VOLUME_STD",
+     "labelAt": [
+      900,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/split_plus/shots/faces_plan.png",
+   "view": "side",
+   "yscale": 6,
+   "size": [
+    10,
+    3.6
+   ],
+   "title": "Face split of the SW_SHELF faces at A and B: nothing removed, faces sorted into regions (side view)",
+   "xlines": [
+    [
+     300,
+     "Station A"
+    ],
+    [
+     1500,
+     "Station B"
+    ]
+   ],
+   "layers": [
+    {
+     "parts": [
+      "RjRT"
+     ],
+     "color": "#d9d6cf",
+     "alpha": 0.35,
+     "edges": false
+    },
+    {
+     "parts": [
+      "RjRD"
+     ],
+     "edges": false,
+     "bands": {
+      "x": [
+       300,
+       1500
+      ],
+      "colors": [
+       "#1baf7a",
+       "#eda100",
+       "#4a3aa7"
+      ]
+     },
+     "labels": [
+      {
+       "text": "start",
+       "at": [
+        150,
+        -8
+       ],
+       "color": "#ffffff"
+      },
+      {
+       "text": "middle (the region to use downstream)",
+       "at": [
+        900,
+        -8
+       ],
+       "color": "#ffffff"
+      },
+      {
+       "text": "end",
+       "at": [
+        1590,
+        -10
+       ],
+       "color": "#ffffff"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

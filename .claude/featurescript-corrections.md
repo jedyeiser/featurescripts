@@ -1578,3 +1578,26 @@ make it worse.
 VERIFY by GETting the contents and comparing to the local file; re-pin callers with
 `devtools/onshape/repin.py <project> <callee...>` (reads element microversions). Never trust
 "pushed"/"skipped" alone on a chain.
+
+---
+
+## Correction 46: first/last control points are NOT the curve's ends on a periodic B-spline (2026-09-25)
+
+**Symptom**: xSection's triangulation took section outline end points from `controlPoints[0]` / `[n-1]`. A cut
+circle comes back from `evApproximateBSplineCurve` as ONE periodic curve, so its "ends" were off the curve,
+the loop never closed ("outline left open and closed by a chord") and the r5 circle's area came out +1.4%
+(+26% before forceNonRational).
+**Fix**: evaluate the ends over the real domain `[knots[p], knots[size - 1 - p]]` (same as first/last knot for
+a clamped curve). Never assume clamped for curves that come from the kernel.
+
+---
+
+## Correction 47: changing a feature's op-id structure breaks downstream references in existing documents (2026-09-25)
+
+**Symptom**: Integrate footprint's output was changed from one `opExtractWires(id + "fpCompositeWire")` to a
+two-stage extract (arcs to `id + "fpArcWires"` first). Same geometry, same final op id -- but the output edges'
+identities derive from their source edges, so Bridging curve 1/2, Mirror 1 and Join wires 2 in the footprint
+"Test" studio lost their references and errored.
+**Fix / rule**: in a feature that existing documents build on, keep the op-id chain that produces referenced
+output edges unchanged unless the change is required. Check a studio that USES the feature (feature statuses
+via `notices --monitor`, or fingerprint) after every push -- test studios alone do not catch this.

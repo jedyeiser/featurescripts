@@ -1,6 +1,6 @@
-FeatureScript 2345;
-import(path : "onshape/std/common.fs", version : "2345.0");
-export import(path : "onshape/std/query.fs", version : "2345.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+export import(path : "onshape/std/query.fs", version : "3083.0");
 
 
 
@@ -77,7 +77,7 @@ export function notEditingLogic(context is Context, id is Id, definition is map)
     return retMap;
 }
 
-annotation { "Feature Type Name" : "Name Bodies" , "Editing Logic Function" : "elFunction"}
+annotation { "Feature Type Name" : "Name Bodies (legacy)", "Feature Type Description" : "Legacy: find/replace does not work; use Simple Body Rename.", "Editing Logic Function" : "elFunction"}
 export const findReplaceName = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

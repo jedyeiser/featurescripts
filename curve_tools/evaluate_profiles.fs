@@ -1,10 +1,10 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // ProjectionType lives in its own module and common.fs does not re-export it, so it is
 // out of scope on a plain common import even though geomOperations documents opDropCurve
 // in terms of it.
-import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // IMPORT: evaluate_profiles_icon.svg (feature icon)
@@ -393,9 +393,10 @@ export function projectedProfile(context is Context, id is Id, definition is map
     const scan = scanForReversals(context, path, heading);
 
     const samples = sampleSpan(context, path, scan.start, scan.end, definition, plane);
-    const curves = emitGrouping(context, id, definition, path, scan, samples);
+    const droppedBody = qCreatedBy(dropId, EntityType.BODY);
+    const curves = emitGrouping(context, id, definition, path, scan, samples, heading, plane, droppedBody);
 
-    opDeleteBodies(context, id + "dropCleanup", { "entities" : qOwnerBody(dropped) });
+    opDeleteBodies(context, id + "dropCleanup", { "entities" : droppedBody });
 
     nameProfile(context, qCreatedBy(id + "profile", EntityType.BODY), definition.outputName);
 
@@ -2209,38 +2210,173 @@ function sampleSpan(context is Context, path is Path, start is number, end is nu
 /**
  * Emit the retained projection, grouped as asked.
  *
- * PER_CURVE is the only grouping that does not refit. The dropped edges already ARE the
- * projection exactly, so where no trim touched them the honest thing is to keep them.
+ * SINGLE fits one curve through the retained span. PER_CURVE and EFFICIENT work from the
+ * dropped edges themselves -- the exact projection -- cut exactly where the scan trimmed the
+ * span: PER_CURVE keeps every edge as it is, EFFICIENT merges them as the Part path does
+ * (collinear lines and co-circular arcs stay exact, smooth freeform runs are refitted).
+ * Every mode ends as one wire body created under id + "profile".
  */
 function emitGrouping(context is Context, id is Id, definition is map, path is Path,
-    scan is map, samples is array) returns array
+    scan is map, samples is array, heading is Vector, plane is Plane, droppedBody is Query) returns array
 {
-    var points = [];
-    for (var sample in samples)
+    if (definition.grouping == ProfileGrouping.SINGLE)
     {
-        points = append(points, sample.point);
+        var points = [];
+        for (var sample in samples)
+        {
+            points = append(points, sample.point);
+        }
+        const fitted = approximateSpline(context, {
+                    "degree" : definition.fitDegree,
+                    "tolerance" : definition.fitTolerance,
+                    "isPeriodic" : false,
+                    "maxControlPoints" : definition.fitMaxCPs,
+                    "targets" : [approximationTarget({
+                                    "positions" : points,
+                                    "startDerivative" : samples[0].tangent * scan.retainedLength,
+                                    "endDerivative" : samples[size(samples) - 1].tangent * scan.retainedLength
+                                })]
+                });
+        opCreateBSplineCurve(context, id + "profile", { "bSplineCurve" : fitted[0] });
+        return fitted;
     }
 
-    // SINGLE and EFFICIENT both fit one curve through the retained span for now. EFFICIENT
-    // is where the merge test described in the header goes -- comparing curvature
-    // progression, degree, weights and control-point spacing across a junction to decide
-    // whether two spans want to be one. Until that exists it must not silently behave like
-    // PER_CURVE, so it fits as one and says so.
-    const fitted = approximateSpline(context, {
-                "degree" : definition.fitDegree,
-                "tolerance" : definition.fitTolerance,
-                "isPeriodic" : false,
-                "maxControlPoints" : definition.fitMaxCPs,
-                "targets" : [approximationTarget({
-                                "positions" : points,
-                                "startDerivative" : samples[0].tangent * scan.retainedLength,
-                                "endDerivative" : samples[size(samples) - 1].tangent * scan.retainedLength
-                            })]
-            });
+    const kept = retainedEdges(context, id, path, scan, droppedBody);
+    const keptPath = constructPath(context, qUnion(kept));
+    const edgeData = peripheryEdges(context, keptPath, heading);
+    var members = [];
+    for (var i = 0; i < size(edgeData); i += 1)
+    {
+        members = append(members, i);
+    }
+    const group = makeGroup(edgeData, members);
 
-    opCreateBSplineCurve(context, id + "profile", { "bSplineCurve" : fitted[0] });
+    var pieces = [];
+    if (definition.grouping == ProfileGrouping.PER_CURVE)
+    {
+        pieces = liveEdges(edgeData, group);
+    }
+    else
+    {
+        pieces = buildMergedRuns(context, id + "merge", definition, edgeData, group, plane).pieces;
+    }
 
-    return fitted;
+    opExtractWires(context, id + "profile", { "edges" : qUnion(pieces) });
+    const scaffolding = qCreatedBy(id + "merge", EntityType.BODY);
+    if (!isQueryEmpty(context, scaffolding))
+    {
+        opDeleteBodies(context, id + "deleteMerge", { "entities" : scaffolding });
+    }
+
+    var curves = [];
+    for (var edge in evaluateQuery(context, qOwnedByBody(qCreatedBy(id + "profile", EntityType.BODY), EntityType.EDGE)))
+    {
+        curves = append(curves, evApproximateBSplineCurve(context, { "edge" : edge }));
+    }
+    return curves;
+}
+
+/**
+ * The dropped edges that make up the retained span, the span's ends cut exactly.
+ *
+ * A trimmed end is split at its path parameter with opSplitEdges (arc-length parameters, read
+ * from each edge's own start). Which pieces are kept is decided by where each edge's middle
+ * lies along the path as it was before the split, projected onto a dense polyline of it.
+ */
+function retainedEdges(context is Context, id is Id, path is Path, scan is map, droppedBody is Query) returns array
+{
+    const total = evPathLength(context, path);
+
+    var params = [];
+    for (var i = 0; i < PROFILE_SCAN_SAMPLES; i += 1)
+    {
+        params = append(params, i / (PROFILE_SCAN_SAMPLES - 1));
+    }
+    var polyline = [];
+    for (var tl in evPathTangentLines(context, path, params).tangentLines)
+    {
+        polyline = append(polyline, tl.origin);
+    }
+
+    var cumulative = [0 * meter];
+    for (var i = 0; i < size(path.edges); i += 1)
+    {
+        cumulative = append(cumulative, cumulative[i] + evLength(context, { "entities" : path.edges[i] }));
+    }
+
+    var splitEdges = [];
+    var splitParameters = [];
+    for (var cut in [scan.trimmedStart ? scan.start : undefined, scan.trimmedEnd ? scan.end : undefined])
+    {
+        if (cut == undefined)
+        {
+            continue;
+        }
+        const arc = cut * cumulative[size(path.edges)];
+        for (var i = 0; i < size(path.edges); i += 1)
+        {
+            if (arc <= cumulative[i + 1] || i == size(path.edges) - 1)
+            {
+                const f = (arc - cumulative[i]) / (cumulative[i + 1] - cumulative[i]);
+                if (f > 1e-9 && f < 1 - 1e-9)
+                {
+                    splitEdges = append(splitEdges, path.edges[i]);
+                    splitParameters = append(splitParameters, [path.flipped[i] ? 1 - f : f]);
+                }
+                break;
+            }
+        }
+    }
+    if (size(splitEdges) > 0)
+    {
+        opSplitEdges(context, id + "trim", {
+                    "edges" : qUnion(splitEdges),
+                    "parameters" : splitParameters,
+                    "arcLengthParameterization" : true
+                });
+    }
+
+    const lo = scan.start * total;
+    const hi = scan.end * total;
+    var kept = [];
+    for (var edge in evaluateQuery(context, qOwnedByBody(droppedBody, EntityType.EDGE)))
+    {
+        const at = arcAlongPolyline(polyline, total, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin);
+        if (at > lo && at < hi)
+        {
+            kept = append(kept, edge);
+        }
+    }
+    if (size(kept) == 0)
+    {
+        throw regenError("No part of the projection is left after trimming where it doubles back.");
+    }
+    return kept;
+}
+
+/**
+ * Arc length along a polyline of evenly spaced path samples to the point's projection.
+ */
+function arcAlongPolyline(polyline is array, total is ValueWithUnits, point is Vector) returns ValueWithUnits
+{
+    const step = total / (size(polyline) - 1);
+    var best = inf * meter;
+    var arc = 0 * meter;
+    for (var i = 0; i < size(polyline) - 1; i += 1)
+    {
+        const a = polyline[i];
+        const d = polyline[i + 1] - a;
+        const len2 = dot(d, d);
+        var t = len2 > 0 * meter * meter ? dot(point - a, d) / len2 : 0;
+        t = min(1, max(0, t));
+        const dist = norm(a + d * t - point);
+        if (dist < best)
+        {
+            best = dist;
+            arc = step * (i + t);
+        }
+    }
+    return arc;
 }
 
 /**

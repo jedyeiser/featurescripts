@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 export enum ExtrudeEdgeInputType
 {
@@ -31,7 +31,7 @@ export function extrudeEdgeEditingLogic(context is Context, id is Id, oldDefinit
 
 export const VectorInputBounds = {(unitless) : [-1, 0, 1]} as RealBoundSpec;
 
-annotation { "Feature Type Name" : "Extrude edge", "Feature Type Description" : "Takes a wire body or a set of edges as input with standard exrude parameters and creates an extruded surface", "Editing Logic Function" : "extrudeEdgeEditingLogic" }
+annotation { "Feature Type Name" : "Extrude edge", "Feature Type Description" : "Takes a wire body or a set of edges as input with standard extrude parameters and creates an extruded surface", "Editing Logic Function" : "extrudeEdgeEditingLogic" }
 export const extrudeEdge = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -103,6 +103,11 @@ export const extrudeEdge = defineFeature(function(context is Context, id is Id, 
     {
         var extrudeDir = extractDir(context, definition);
         var extrudeEdges = (definition.inputType == ExtrudeEdgeInputType.BODIES) ? qUnion([qOwnedByBody(definition.wireBody, EntityType.EDGE)]) : qUnion([definition.selEdges]);
+        if (isQueryEmpty(context, extrudeEdges))
+        {
+            throw regenError("Select the edges or wire body to extrude.", [definition.inputType == ExtrudeEdgeInputType.BODIES ? "wireBody" : "selEdges"]);
+        }
+        checkDirectionAcrossEdges(context, extrudeEdges, extrudeDir);
         
         var extrudeDef = {
                 "entities" : extrudeEdges,
@@ -123,37 +128,49 @@ export const extrudeEdge = defineFeature(function(context is Context, id is Id, 
 
 function extractDir(context is Context, definition is map) returns Vector
 {
+    var dir;
     if (definition.extrudeDirectionFrom == ExtrudeEdgeDirectionType.VECTOR)
     {
-        return normalize(vector(definition.vectorX, definition.vectorY, definition.vectorZ));
-    }   
-    else if (definition.extrudeDirectionFrom == ExtrudeEdgeDirectionType.QUERY)
+        var v = vector(definition.vectorX, definition.vectorY, definition.vectorZ);
+        if (norm(v) < TOLERANCE.zeroLength)
+        {
+            throw regenError("The direction vector is zero; set X, Y or Z.", ["vectorX", "vectorY", "vectorZ"]);
+        }
+        return normalize(v);
+    }
+    // A mate connector can arrive as its vertex (correction 44): resolve it to the connector body.
+    var connector = qBodyType(qUnion([definition.directionQuery, qOwnerBody(definition.directionQuery)]), BodyType.MATE_CONNECTOR);
+    if (!isQueryEmpty(context, connector))
     {
-        if (!isQueryEmpty(context, qBodyType(definition.directionQuery, BodyType.MATE_CONNECTOR)))
+        dir = evMateConnector(context, { "mateConnector" : connector }).zAxis;
+    }
+    else if (!isQueryEmpty(context, qGeometry(definition.directionQuery, GeometryType.LINE)))
+    {
+        dir = evLine(context, { "edge" : definition.directionQuery }).direction;
+    }
+    else if (!isQueryEmpty(context, qGeometry(definition.directionQuery, GeometryType.PLANE)))
+    {
+        dir = evPlane(context, { "face" : definition.directionQuery }).normal;
+    }
+    else
+    {
+        throw regenError("Select a planar face, a line or a mate connector for the extrude direction.", ["directionQuery"]);
+    }
+    return definition.flipDir ? -dir : dir;
+}
+
+// Extruding along an edge's own tangent makes a zero-area face and the kernel fails with EXTRUDE_FAILED;
+// catch it up front with a message that says what to change.
+function checkDirectionAcrossEdges(context is Context, edges is Query, dir is Vector)
+{
+    for (var edge in evaluateQuery(context, edges))
+    {
+        for (var line in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.5, 1] }))
         {
-            var mcDef = evMateConnector(context, {
-                    "mateConnector" : definition.directionQuery
-            });
-            
-            return (definition.flipDir) ? -1 * mcDef.zAxis : mcDef.zAxis;
-        }
-        else if (!isQueryEmpty(context, qGeometry(definition.directionQuery, GeometryType.LINE)))
-        {
-            var dirLine = evLine(context, {
-                    "edge" : definition.directionQuery
-            });
-            
-            return (definition.flipDir) ? -1 * dirLine.direction : dirLine.direction;
-        }
-        else if (!isQueryEmpty(context, qGeometry(definition.directionQuery, GeometryType.PLANE)))
-        {
-            var dirPlane = evPlane(context, {
-                    "face" : definition.directionQuery
-            });
-            
-            return (definition.flipDir) ? -1 * dirPlane.normal : dirPlane.normal;
+            if (abs(dot(line.direction, dir)) > 1 - 1e-6)
+            {
+                throw regenError("The extrude direction runs along the selected edges; choose a direction across them.", ["directionQuery"], edge);
+            }
         }
     }
 }
-
-

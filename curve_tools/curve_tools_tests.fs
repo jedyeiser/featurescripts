@@ -1,10 +1,10 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: clean_wire.fs, merge_curve.fs, map_curve.fs
-import(path : "ad14cae77548843ba119071c", version : "");
-import(path : "584469527ba0d496604523ec", version : "");
-import(path : "83aa07e20d0c8710c97a6cd7", version : "");
+import(path : "ad14cae77548843ba119071c", version : "231a0f9c912df022ab9860ac");
+import(path : "584469527ba0d496604523ec", version : "7364e5d4fa56e0b9f84d2814");
+import(path : "83aa07e20d0c8710c97a6cd7", version : "8697a2b8a7c108b18a89e225");
 
 /**
  * Curve tools tests: builds its own wires, runs Clean wire, Merge curve and Map curve on

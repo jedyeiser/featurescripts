@@ -1,0 +1,825 @@
+{
+  "docs": [
+    {
+      "id": "x_unwrap",
+      "kind": "explainer",
+      "title": "Unwrap (pre-existing)",
+      "path": "driven_offset/docs/unwrap_explained.md",
+      "sources": [
+        "driven_offset/unwrap.fs",
+        "driven_offset/undrape_utils.fs",
+        "driven_offset/unwrap_part.fs",
+        "driven_offset/edge_offset_utils.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "9f9d44e09e7b",
+      "sources_hash": "19ffb1aed745"
+    },
+    {
+      "id": "x_reference_side",
+      "kind": "explainer",
+      "title": "Reference-side features",
+      "path": "docs/explainers/reference_side/reference_side_explained.md",
+      "sources": [
+        "reference_side/mutual_trim_plus.fs",
+        "reference_side/offset_plus.fs",
+        "reference_side/reference_side_utils.fs",
+        "reference_side/split_plus.fs",
+        "reference_side/thicken_plus.fs"
+      ],
+      "state": "reviewed",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "reviewed",
+          "note": "user: explainer looks great (2026-09-25); fig02 panel titles fixed after"
+        }
+      ],
+      "written_hash": "d121b7fb9bf4",
+      "sources_hash": "227d9cd3f815",
+      "state_hash": "d121b7fb9bf4"
+    },
+    {
+      "id": "d_mutual_trim_plus",
+      "kind": "deck",
+      "family": "reference_side",
+      "title": "Mutual Trim+",
+      "path": "docs/decks/mutual_trim_plus/mutual_trim_plus.pptx",
+      "sources": [
+        "reference_side/mutual_trim_plus.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_split_plus",
+      "kind": "deck",
+      "family": "reference_side",
+      "title": "Split+",
+      "path": "docs/decks/split_plus/split_plus.pptx",
+      "sources": [
+        "reference_side/split_plus.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "e06d6f7830b3",
+      "sources_hash": "0604bc613be4"
+    },
+    {
+      "id": "d_offset_plus",
+      "kind": "deck",
+      "family": "reference_side",
+      "title": "Offset+",
+      "path": "docs/decks/offset_plus/offset_plus.pptx",
+      "sources": [
+        "reference_side/offset_plus.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_thicken_plus",
+      "kind": "deck",
+      "family": "reference_side",
+      "title": "Thicken+",
+      "path": "docs/decks/thicken_plus/thicken_plus.pptx",
+      "sources": [
+        "reference_side/thicken_plus.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_curve_tools",
+      "kind": "explainer",
+      "title": "Curve tools",
+      "path": "docs/explainers/curve_tools/curve_tools_explained.md",
+      "sources": [
+        "curve_tools/clean_wire.fs",
+        "curve_tools/curve_core.fs",
+        "curve_tools/evaluate_profiles.fs",
+        "curve_tools/fillet_wire.fs",
+        "curve_tools/map_curve.fs",
+        "curve_tools/merge_curve.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_clean_wire",
+      "kind": "deck",
+      "family": "curve_tools",
+      "title": "Clean wire",
+      "path": "docs/decks/clean_wire/clean_wire.pptx",
+      "sources": [
+        "curve_tools/clean_wire.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_map_curve",
+      "kind": "deck",
+      "family": "curve_tools",
+      "title": "Map curve",
+      "path": "docs/decks/map_curve/map_curve.pptx",
+      "sources": [
+        "curve_tools/map_curve.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_merge_curve",
+      "kind": "deck",
+      "family": "curve_tools",
+      "title": "Merge curve",
+      "path": "docs/decks/merge_curve/merge_curve.pptx",
+      "sources": [
+        "curve_tools/merge_curve.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_evaluate_profiles",
+      "kind": "deck",
+      "family": "curve_tools",
+      "title": "Evaluate profiles",
+      "path": "docs/decks/evaluate_profiles/evaluate_profiles.pptx",
+      "sources": [
+        "curve_tools/evaluate_profiles.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_fillet_wire",
+      "kind": "deck",
+      "family": "curve_tools",
+      "title": "Fillet wire",
+      "path": "docs/decks/fillet_wire/fillet_wire.pptx",
+      "sources": [
+        "curve_tools/fillet_wire.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_variable_tools",
+      "kind": "explainer",
+      "title": "Variable tools",
+      "path": "docs/explainers/variable_tools/variable_tools_explained.md",
+      "sources": [
+        "variable_tools/extract_outputs.fs",
+        "variable_tools/extract_variables.fs",
+        "variable_tools/extract_variables_utils.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_extract_variables",
+      "kind": "deck",
+      "family": "variable_tools",
+      "title": "Extract variables",
+      "path": "docs/decks/extract_variables/extract_variables.pptx",
+      "sources": [
+        "variable_tools/extract_variables.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_case_pattern",
+      "kind": "explainer",
+      "title": "Case pattern",
+      "path": "docs/explainers/case_pattern/case_pattern_explained.md",
+      "sources": [
+        "case_pattern/case_pattern.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_case_template",
+      "kind": "deck",
+      "family": "case_pattern",
+      "title": "Case template",
+      "path": "docs/decks/case_template/case_template.pptx",
+      "sources": [
+        "case_pattern/case_pattern.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_case_pattern",
+      "kind": "deck",
+      "family": "case_pattern",
+      "title": "Case pattern",
+      "path": "docs/decks/case_pattern/case_pattern.pptx",
+      "sources": [
+        "case_pattern/case_pattern.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_driven_offset",
+      "kind": "explainer",
+      "title": "Driven offset",
+      "path": "docs/explainers/driven_offset/driven_offset_explained.md",
+      "sources": [
+        "driven_offset/bspline_compat.fs",
+        "driven_offset/create_offset_profile.fs",
+        "driven_offset/driven_edge_offset.fs",
+        "driven_offset/driven_offset_surface.fs",
+        "driven_offset/edge_offset_utils.fs",
+        "driven_offset/evaluate_offset.fs",
+        "driven_offset/offset_run_treatment.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_driven_edge_offset",
+      "kind": "deck",
+      "family": "driven_offset",
+      "title": "Driven edge offset",
+      "path": "docs/decks/driven_edge_offset/driven_edge_offset.pptx",
+      "sources": [
+        "driven_offset/driven_edge_offset.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_driven_offset_surface",
+      "kind": "deck",
+      "family": "driven_offset",
+      "title": "Driven offset surface",
+      "path": "docs/decks/driven_offset_surface/driven_offset_surface.pptx",
+      "sources": [
+        "driven_offset/driven_offset_surface.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_evaluate_offset",
+      "kind": "deck",
+      "family": "driven_offset",
+      "title": "Evaluate offset",
+      "path": "docs/decks/evaluate_offset/evaluate_offset.pptx",
+      "sources": [
+        "driven_offset/evaluate_offset.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_create_offset_profile",
+      "kind": "deck",
+      "family": "driven_offset",
+      "title": "Create offset profile",
+      "path": "docs/decks/create_offset_profile/create_offset_profile.pptx",
+      "sources": [
+        "driven_offset/create_offset_profile.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_unwrap",
+      "kind": "deck",
+      "family": "driven_offset",
+      "title": "Unwrap",
+      "path": "docs/decks/unwrap/unwrap.pptx",
+      "sources": [
+        "driven_offset/unwrap.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_publish_tools",
+      "kind": "explainer",
+      "title": "Publish & drawing tools",
+      "path": "docs/explainers/publish_tools/publish_tools_explained.md",
+      "sources": [
+        "publish_tools/station_definition.fs",
+        "publish_tools/station_geometry.fs",
+        "publish_tools/station_utils.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_station_definition",
+      "kind": "deck",
+      "family": "publish_tools",
+      "title": "Station definition",
+      "path": "docs/decks/station_definition/station_definition.pptx",
+      "sources": [
+        "publish_tools/station_definition.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_station_geometry",
+      "kind": "deck",
+      "family": "publish_tools",
+      "title": "Station geometry",
+      "path": "docs/decks/station_geometry/station_geometry.pptx",
+      "sources": [
+        "publish_tools/station_geometry.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_solvers",
+      "kind": "explainer",
+      "title": "Solvers",
+      "path": "docs/explainers/solvers/solvers_explained.md",
+      "sources": [
+        "solvers/Part_Vol.fs",
+        "solvers/iterative_solve.fs",
+        "solvers/solver_core.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_iterative_solve",
+      "kind": "deck",
+      "family": "solvers",
+      "title": "Iterative Solve",
+      "path": "docs/decks/iterative_solve/iterative_solve.pptx",
+      "sources": [
+        "solvers/iterative_solve.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_part_volume",
+      "kind": "deck",
+      "family": "solvers",
+      "title": "Part Volume",
+      "path": "docs/decks/part_volume/part_volume.pptx",
+      "sources": [
+        "solvers/Part_Vol.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_small_tools",
+      "kind": "explainer",
+      "title": "Small tools",
+      "path": "docs/explainers/small_tools/small_tools_explained.md",
+      "sources": [
+        "smallTools/Move_Along_Edge.fs",
+        "smallTools/OS_Trim.fs",
+        "smallTools/betterCurveTrim.fs",
+        "smallTools/curveTrimCore.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_move_along_edge",
+      "kind": "deck",
+      "family": "small_tools",
+      "title": "Move Along Edge",
+      "path": "docs/decks/move_along_edge/move_along_edge.pptx",
+      "sources": [
+        "smallTools/Move_Along_Edge.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_trim_curve",
+      "kind": "deck",
+      "family": "small_tools",
+      "title": "Trim curve",
+      "path": "docs/decks/trim_curve/trim_curve.pptx",
+      "sources": [
+        "smallTools/OS_Trim.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_trim_curve_plus",
+      "kind": "deck",
+      "family": "small_tools",
+      "title": "Trim curve +",
+      "path": "docs/decks/trim_curve_plus/trim_curve_plus.pptx",
+      "sources": [
+        "smallTools/betterCurveTrim.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_curve_mapping",
+      "kind": "explainer",
+      "title": "Curve mapping (public)",
+      "path": "docs/explainers/curve_mapping/curve_mapping_explained.md",
+      "sources": [
+        "curveMapping_public/deform.fs",
+        "curveMapping_public/measureBetweenCurves.fs",
+        "curveMapping_public/wrapAndLoft.fs",
+        "curveMapping_public/wrapCurve.fs",
+        "example_1/refSurfCreation/offsetEdges.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_wrap_curve",
+      "kind": "deck",
+      "family": "curve_mapping",
+      "title": "Wrap Curve",
+      "path": "docs/decks/wrap_curve/wrap_curve.pptx",
+      "sources": [
+        "curveMapping_public/wrapCurve.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_wrap_and_loft",
+      "kind": "deck",
+      "family": "curve_mapping",
+      "title": "Wrap and Loft",
+      "path": "docs/decks/wrap_and_loft/wrap_and_loft.pptx",
+      "sources": [
+        "curveMapping_public/wrapAndLoft.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_deform",
+      "kind": "deck",
+      "family": "curve_mapping",
+      "title": "Deform",
+      "path": "docs/decks/deform/deform.pptx",
+      "sources": [
+        "curveMapping_public/deform.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_offset_edges",
+      "kind": "deck",
+      "family": "curve_mapping",
+      "title": "Offset edges",
+      "path": "docs/decks/offset_edges/offset_edges.pptx",
+      "sources": [
+        "example_1/refSurfCreation/offsetEdges.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_footprint",
+      "kind": "explainer",
+      "title": "Footprint",
+      "path": "docs/explainers/footprint/footprint_explained.md",
+      "sources": [
+        "footprint/Feature_Studio_1.fs",
+        "footprint/analyzeFootprint.fs",
+        "footprint/arcFit.fs",
+        "footprint/footprintAnalytics.fs",
+        "footprint/footprint_config.fs",
+        "footprint/footprint_math.fs",
+        "footprint/fpt_analyze.fs",
+        "footprint/fpt_geometry.fs",
+        "footprint/getFootprintPoints.fs",
+        "footprint/integrateFootprint.fs",
+        "footprint/predicates.fs",
+        "footprint/scaleFootprint.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_generate_footprint_points",
+      "kind": "deck",
+      "family": "footprint",
+      "title": "Generate Footprint Points",
+      "path": "docs/decks/generate_footprint_points/generate_footprint_points.pptx",
+      "sources": [
+        "footprint/getFootprintPoints.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_analyze_footprint",
+      "kind": "deck",
+      "family": "footprint",
+      "title": "Analyze footprint",
+      "path": "docs/decks/analyze_footprint/analyze_footprint.pptx",
+      "sources": [
+        "footprint/analyzeFootprint.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_integrate_footprint",
+      "kind": "deck",
+      "family": "footprint",
+      "title": "Integrate footprint",
+      "path": "docs/decks/integrate_footprint/integrate_footprint.pptx",
+      "sources": [
+        "footprint/integrateFootprint.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_scale_footprint",
+      "kind": "deck",
+      "family": "footprint",
+      "title": "Scale Footprint",
+      "path": "docs/decks/scale_footprint/scale_footprint.pptx",
+      "sources": [
+        "footprint/scaleFootprint.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_arc_fit",
+      "kind": "deck",
+      "family": "footprint",
+      "title": "Arc fit",
+      "path": "docs/decks/arc_fit/arc_fit.pptx",
+      "sources": [
+        "footprint/arcFit.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_gordon_surface",
+      "kind": "explainer",
+      "title": "Gordon surface",
+      "path": "docs/explainers/gordon_surface/gordon_surface_explained.md",
+      "sources": [
+        "gordonSurface/constEnums.fs",
+        "gordonSurface/continuityTools.fs",
+        "gordonSurface/curveOps.fs",
+        "gordonSurface/debugTools.fs",
+        "gordonSurface/gordonCurveCompat.fs",
+        "gordonSurface/gordonSurface.fs",
+        "gordonSurface/interiorCurves.fs",
+        "gordonSurface/modifyCurveEnd.fs",
+        "gordonSurface/pullSurface.fs",
+        "gordonSurface/scaledCurve.fs",
+        "gordonSurface/simplifySurface.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_gordon_surface",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "Gordon Surface",
+      "path": "docs/decks/gordon_surface/gordon_surface.pptx",
+      "sources": [
+        "gordonSurface/gordonSurface.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_interior_curves",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "Interior curves",
+      "path": "docs/decks/interior_curves/interior_curves.pptx",
+      "sources": [
+        "gordonSurface/interiorCurves.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_modify_curve_end",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "Modify curve end",
+      "path": "docs/decks/modify_curve_end/modify_curve_end.pptx",
+      "sources": [
+        "gordonSurface/modifyCurveEnd.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_pull_surface",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "Pull surface",
+      "path": "docs/decks/pull_surface/pull_surface.pptx",
+      "sources": [
+        "gordonSurface/pullSurface.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_scaled_curve",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "Scaled Curve",
+      "path": "docs/decks/scaled_curve/scaled_curve.pptx",
+      "sources": [
+        "gordonSurface/scaledCurve.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_simplify_surface",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "Simplify surface",
+      "path": "docs/decks/simplify_surface/simplify_surface.pptx",
+      "sources": [
+        "gordonSurface/simplifySurface.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_makecurvescompitable",
+      "kind": "deck",
+      "family": "gordon_surface",
+      "title": "makeCurvesCompitable",
+      "path": "docs/decks/makecurvescompitable/makecurvescompitable.pptx",
+      "sources": [
+        "gordonSurface/gordonCurveCompat.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "x_xsection",
+      "kind": "explainer",
+      "title": "Cross-section (xSection)",
+      "path": "docs/explainers/xsection/xsection_explained.md",
+      "sources": [
+        "xSection/baselineCore.fs",
+        "xSection/beam/analyzeBaseline.fs",
+        "xSection/beam/estimateDeflectionSolver.fs",
+        "xSection/beam/generateBaselineSolver.fs",
+        "xSection/beam/xSectBeamAnalysis.fs",
+        "xSection/core/xSectDebug.fs",
+        "xSection/core/xSectLanguage.fs",
+        "xSection/core/xSectPredicates.fs",
+        "xSection/core/xSectReferencePoints.fs",
+        "xSection/core/xSectStorage.fs",
+        "xSection/core/xSectUtils.fs",
+        "xSection/features/GJ_Feature.fs",
+        "xSection/features/estimateDeflection.fs",
+        "xSection/features/estimateStiffness.fs",
+        "xSection/features/generateBaseline.fs",
+        "xSection/features/updateProfile.fs",
+        "xSection/features/xSect.fs",
+        "xSection/materials/xSectCLT.fs",
+        "xSection/materials/xSectComposites.fs",
+        "xSection/materials/xSectMaterials.fs",
+        "xSection/section/gjAnalysis.fs",
+        "xSection/section/gjDataAccess.fs",
+        "xSection/section/xSectProcessing.fs",
+        "xSection/section/xSectVisualization.fs",
+        "xSection/section/xSect_GJ.fs",
+        "xSection/section/xSect_Triangulation.fs",
+        "xSection/tables/profileUpdatesTable.fs",
+        "xSection/tables/xSectionAnalysisTable.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_ei_and_cross_section",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "EI and Cross Section",
+      "path": "docs/decks/ei_and_cross_section/ei_and_cross_section.pptx",
+      "sources": [
+        "xSection/features/xSect.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_solve_gj",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "Solve GJ",
+      "path": "docs/decks/solve_gj/solve_gj.pptx",
+      "sources": [
+        "xSection/features/GJ_Feature.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_generate_baseline",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "Generate baseline",
+      "path": "docs/decks/generate_baseline/generate_baseline.pptx",
+      "sources": [
+        "xSection/features/generateBaseline.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_analyze_baseline",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "Analyze baseline",
+      "path": "docs/decks/analyze_baseline/analyze_baseline.pptx",
+      "sources": [
+        "xSection/beam/analyzeBaseline.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_estimate_deflection",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "Estimate Deflection",
+      "path": "docs/decks/estimate_deflection/estimate_deflection.pptx",
+      "sources": [
+        "xSection/features/estimateDeflection.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_estimate_stiffness",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "Estimate Stiffness",
+      "path": "docs/decks/estimate_stiffness/estimate_stiffness.pptx",
+      "sources": [
+        "xSection/features/estimateStiffness.fs"
+      ],
+      "state": "planned",
+      "history": []
+    },
+    {
+      "id": "d_update_profile",
+      "kind": "deck",
+      "family": "xsection",
+      "title": "Update profile",
+      "path": "docs/decks/update_profile/update_profile.pptx",
+      "sources": [
+        "xSection/features/updateProfile.fs"
+      ],
+      "state": "planned",
+      "history": []
+    }
+  ]
+}

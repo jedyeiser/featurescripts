@@ -1,4 +1,4 @@
-FeatureScript 2892;
+FeatureScript 3083;
 
 /**
  * Torsional Stiffness (GJ) Calculation for Cross-Sections
@@ -14,7 +14,7 @@ FeatureScript 2892;
  * @see GJ_torsional_stiffness_reference.md for mathematical derivation
  */
 
-import(path : "onshape/std/common.fs", version : "2878.0");
+import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: tools/solvers.fs
 import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 

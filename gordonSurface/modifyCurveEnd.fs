@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import tools/bspline_knots.fs
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
@@ -8,14 +8,14 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47
 //import tools/transition_functions (export/import)
 export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a656fa0d17723f0dafaf8638", version : "56689ead56dff6bcc596641b");
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "048699fcdedbc5b8c1a8c019");
+export import(path : "050a4670bd42b2ca8da04540", version : "3e1798281ef975ee9c4347c8");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "702197eace829bdb750bf79a");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "76bc8c9afe3d321353d3bff6");
 
 //import continuityTools
-import(path : "6db2a56b5418f71818d7a607", version : "f9c777561ced8b1862bc2a5f");
+import(path : "6db2a56b5418f71818d7a607", version : "83f6800b12709ff24c7d9f9b");
 //import curveOps
-import(path : "73de71e75b755f0042e0e6d8", version : "cf7136027f5acacde288d7e3");
+import(path : "73de71e75b755f0042e0e6d8", version : "f51c516b967c2c9a09b18a89");
 
 
 
@@ -80,7 +80,7 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
                     definition.modContinuityRef is Query;
                     
                     annotation { "Name" : "Flip ref", "Default" : false, "UIHint": UIHint.OPPOSITE_DIRECTION }
-                    definition.flipREf is boolean;
+                    definition.flipRef is boolean;
                     
                     annotation { "Name" : "showContinuity", "Default": false, "UIHint": UIHint.ALWAYS_HIDDEN }
                     definition.showContinuity is boolean;
@@ -135,9 +135,12 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
     }
     {
         var evSelEdges = evaluateQuery(context, qUnion([definition.selEdges]));
-        var inputBSplineCurves = mapArray(evSelEdges, function(x) {return evApproximateBSplineCurve(context, { "edge" : x }); });
+        // forceNonRational: evaluateSpline ignores weights, so an arc would be evaluated off the circle (correction 39).
+        var inputBSplineCurves = mapArray(evSelEdges, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true }); });
         var numSamples = definition.samplingMultiple * sum(mapArray(inputBSplineCurves, function(x) {return size(x.controlPoints);}));
-        var unifiedCurve = joinCurveSegments(context, inputBSplineCurves, numSamples, definition.splineTol);
+        // The code below evaluates at parameters 0 and 1; a trimmed sketch spline keeps its trimmed domain
+        // (e.g. [0.15, 1]) and failed with "Parameter outside the knot vector" (tools review 2026-09-25).
+        var unifiedCurve = withUnitDomain(joinCurveSegments(context, inputBSplineCurves, numSamples, definition.splineTol));
         
         var modPoint = evVertexPoint(context, {
                 "vertex" : definition.fromPoint
@@ -161,7 +164,7 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         var useRef = hasRef ? definition.modContinuityRef : qNothing();
         var useContinuity = hasRef ? definition.modEndContinuity : GeometricContinuity.G0;
 
-        var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, useContinuity, numSamples, definition.splineDegree, definition.splineTol);
+        var modifiedCurve = modifyCurveEnd(context, unifiedCurve, modParam, useOffset, definition.offsetFrame, definition.transitionType, definition.fixedEndContinuity, definition.g2Mode, useRef, useContinuity, hasRef && definition.flipRef, numSamples, definition.splineDegree, definition.splineTol);
 
         if (definition.curveOnSurface)
         {
@@ -235,6 +238,30 @@ export function modifyCurveEnd(
     g2Mode is G2Mode,
     modPointRef is Query,
     modPointContinuity is GeometricContinuity,
+    numSamples is number,
+    degree is number,
+    tolerance is ValueWithUnits
+) returns BSplineCurve
+{
+    return modifyCurveEnd(context, inputCurve, modPointParam, offsetVector, offsetFrame, transitionType,
+        fixedEndContinuity, g2Mode, modPointRef, modPointContinuity, false, numSamples, degree, tolerance);
+}
+
+/**
+ * modifyCurveEnd with the reference tangent optionally reversed ("Flip ref").
+ */
+export function modifyCurveEnd(
+    context is Context,
+    inputCurve is BSplineCurve,
+    modPointParam is number,
+    offsetVector is Vector,
+    offsetFrame is OffsetFrame,
+    transitionType is TransitionType,
+    fixedEndContinuity is GeometricContinuity,
+    g2Mode is G2Mode,
+    modPointRef is Query,
+    modPointContinuity is GeometricContinuity,
+    flipRef is boolean,
     numSamples is number,
     degree is number,
     tolerance is ValueWithUnits
@@ -319,6 +346,10 @@ export function modifyCurveEnd(
     if (!isQueryEmpty(context, modPointRef) && modPointContinuity != GeometricContinuity.G0)
     {
         var constraints = computeRefContinuityConstraints(context, modPointRef, fittedCurve, modPointParam);
+        if (flipRef)
+        {
+            constraints.tangent = -constraints.tangent;
+        }
         
         if (modPointContinuity == GeometricContinuity.G1 || modPointContinuity == GeometricContinuity.G2)
         {
@@ -388,7 +419,7 @@ export function computeEdgeContinuityConstraints(context is Context, edge is Que
     var edgeParam = distResult.sides[0].parameter;
     
     // Get edge as BSpline and compute Frenet frame
-    var edgeCurve = evApproximateBSplineCurve(context, { "edge" : edge });
+    var edgeCurve = evApproximateBSplineCurve(context, { "edge" : edge, "forceNonRational" : true });
     var frame = computeFrenetFrame(edgeCurve, edgeParam);
     
     return {
@@ -664,3 +695,34 @@ export function enforceG2AtEnd(curve is BSplineCurve, endParam is number, target
 // - worldVectorToFrenet(worldVector, frenetResult)
 // - frenetPointToWorld(localPoint, frenetResult)
 // - worldPointToFrenet(worldPoint, frenetResult)
+
+/**
+ * The same curve with its knot vector rescaled to [0, 1] (the shape is unchanged).
+ */
+export function withUnitDomain(curve is BSplineCurve) returns BSplineCurve
+{
+    var knots = curve.knots;
+    var k0 = knots[0];
+    var k1 = knots[size(knots) - 1];
+    if (k0 == 0 && k1 == 1)
+    {
+        return curve;
+    }
+    var scaled = [];
+    for (var k in knots)
+    {
+        scaled = append(scaled, (k - k0) / (k1 - k0));
+    }
+    var params = {
+        "degree" : curve.degree,
+        "controlPoints" : curve.controlPoints,
+        "knots" : scaled as KnotArray,
+        "isPeriodic" : curve.isPeriodic
+    };
+    if (curve.isRational == true)
+    {
+        params.isRational = true;
+        params.weights = curve.weights;
+    }
+    return bSplineCurve(params);
+}

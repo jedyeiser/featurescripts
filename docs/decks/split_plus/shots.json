@@ -1,0 +1,28 @@
+{
+  "doc": "22764764a00a7f607dbc1c4d", "ws": "3b5e11a121111a161684adee",
+  "shots": [
+    {"elem": "97d8c9aeebe259091033c914", "wait": 25,
+     "feature": "Split+ topsheet into 3 regions at A and B",
+     "dialog": "docs/decks/split_plus/shots/dialog_both.png", "graphics": "docs/decks/split_plus/shots/hero.png",
+     "labels": [
+       {"name": "Split type", "find": "Part"},
+       {"name": "Parts, surfaces, or curves to split", "find": "Parts, surfaces, or curves to split"},
+       {"name": "Entities to split with", "find": "Entities to split with"},
+       {"name": "Keep tools", "find": "Keep tools"},
+       {"name": "Trim to face boundaries", "find": "Trim to face boundaries"},
+       {"name": "Keep both sides", "find": "Keep both sides"},
+       {"name": "Debug", "find": "Debug"}]},
+    {"elem": "97d8c9aeebe259091033c914", "feature": "Split+ volume, keep between A and B (reference Mid)",
+     "dialog": "docs/decks/split_plus/shots/dialog_one_side.png",
+     "labels": [
+       {"name": "Keep both sides", "find": "Keep both sides"},
+       {"name": "Side reference", "find": "Side reference"},
+       {"name": "Keep side nearest reference", "find": "Keep side nearest reference"}]},
+    {"elem": "97d8c9aeebe259091033c914", "feature": "Split+ faces: SW_SHELF faces at A and B (face regions)",
+     "dialog": "docs/decks/split_plus/shots/dialog_face.png",
+     "labels": [
+       {"name": "Split type", "find": "Face"},
+       {"name": "Faces to split", "find": "Faces to split"},
+       {"name": "Side reference", "find": "Side reference"}]}
+  ]
+}

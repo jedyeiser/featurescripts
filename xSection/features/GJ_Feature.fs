@@ -1,41 +1,13 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "ae5d0150c1f0be15fc446cce");
+import(path : "9df6ba3db06d479fabe63c1d", version : "85b2b777fcad63294d446295");
 // import gjAnalysis
-import(path : "d30d288c7bf272efb0957cff", version : "fb16a7181c7a7449ef8fea65");
+import(path : "d30d288c7bf272efb0957cff", version : "66d41e7cc5fa381e0beff893");
 //import gjDataAccess
-import(path : "12c9e75dc2139eb927245033", version : "464c23d3e37eca7b323a4054");
+import(path : "12c9e75dc2139eb927245033", version : "245034f4d110f01b5a55c774");
 //import gjPredicates
-
-/**
- * Editing logic for the Solve GJ feature.
- *
- * Hides the `curvePrefix` name field when `createGJCurve` is false (no curve to name).
- *
- * @param context {Context}
- * @param id {Id}
- * @param oldDefinition {map} : Previous definition snapshot
- * @param definition {map} : Current definition. Relevant fields:
- *   - `definition.createGJCurve` {boolean} : Whether to create a GJ visualization curve
- *   - `definition.curvePrefix` {string} : Name prefix for the curve (cleared when curve disabled)
- * @param isCreating {boolean}
- * @param specifiedParameters {map}
- * @returns {map} : Updated definition
- */
-export function gjAnalysisEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
-                                     isCreating is boolean, specifiedParameters is map) returns map
-{
-    // Show curve name field only if visualization is enabled
-    if (definition.createGJCurve == false)
-    {
-        definition.curvePrefix = "";
-    }
-
-    return definition;
-}
-
 
 /**
  * Solve GJ feature.
@@ -56,9 +28,10 @@ export function gjAnalysisEditLogic(context is Context, id is Id, oldDefinition 
  *   - Mutates `CrossSectionAnalysis[featureKey].tableData.crossSections[row][3]` (GJ column).
  *   - Re-writes the full attribute to the origin body.
  *
- * Does not create geometry unless `createGJCurve` is true (handled by gjAnalysisEditLogic).
+ * Creates no geometry. EI and Cross Section now computes GJ itself with the same solver, so this
+ * feature only re-runs that step on the stored sections.
  */
-annotation { "Feature Type Name" : "Solve GJ", "Editing Logic Function" : "gjAnalysisEditLogic", "Feature Type Description" : "Takes a cross section/ei feature as input and calculates the torsional stiffness profile of the cross sections. Adds GJ data to the appropriate map on the origin to add the GJ data into the existing EI data" }
+annotation { "Feature Type Name" : "Solve GJ", "Feature Type Description" : "Takes a cross section/ei feature as input and calculates the torsional stiffness profile of the cross sections. Adds GJ data to the appropriate map on the origin to add the GJ data into the existing EI data" }
 export const solveGJ = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -67,6 +40,10 @@ export const solveGJ = defineFeature(function(context is Context, id is Id, defi
 
     }
     {
-        var featureKey = keys(definition.xSectFeature)[0][0];
+        if (size(definition.xSectFeature) == 0)
+        {
+            throw regenError("Select the cross section feature.", ["xSectFeature"]);
+        }
+        var featureKey = toAttributeId(keys(definition.xSectFeature)[0]);
         computeAndStoreGJByFeatureKey(context, id, featureKey, false, "");
     });

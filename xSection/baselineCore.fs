@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 export const CamberHeightBounds = {(millimeter) : [0, 5, 15]} as LengthBoundSpec;
 export const RockerHeightBounds = {(millimeter) : [0, 5, 35]} as LengthBoundSpec;

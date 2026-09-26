@@ -1,10 +1,10 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: xSection/gjDataAccess
-import(path : "12c9e75dc2139eb927245033", version : "464c23d3e37eca7b323a4054");
+import(path : "12c9e75dc2139eb927245033", version : "245034f4d110f01b5a55c774");
 // IMPORT: xSection/xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "ae5d0150c1f0be15fc446cce");
+import(path : "9df6ba3db06d479fabe63c1d", version : "85b2b777fcad63294d446295");
 
 
 /**
@@ -27,7 +27,7 @@ import(path : "9df6ba3db06d479fabe63c1d", version : "ae5d0150c1f0be15fc446cce");
 /**
  * Compute GJ for all sections of an xSect feature and write results back to the attribute.
  *
- * Absorbs the read → loop → compute → write pattern from the Solve GJ feature body so
+ * Absorbs the read -> loop -> compute -> write pattern from the Solve GJ feature body so
  * that the feature definition itself stays thin and this logic is reusable by other callers.
  *
  * @param context {Context}
@@ -49,7 +49,7 @@ export function computeAndStoreGJByFeatureKey(context is Context, id is Id,
     }
     catch (e)
     {
-        throw regenError("Solve GJ: failed to read xSect data — " ~ e);
+        throw regenError("Solve GJ: failed to read xSect data - " ~ e);
     }
 
     var bodies = xSectData.bodies;
@@ -67,15 +67,8 @@ export function computeAndStoreGJByFeatureKey(context is Context, id is Id,
             continue;
         }
 
-        try
-        {
-            var GJ_eff = computeTorsionalStiffness(section, bodies);
-            section.GJ_eff = GJ_eff;
-        }
-        catch (e)
-        {
-            // Keep existing GJ value on failure
-        }
+        // No try/catch: a failed station used to keep its old GJ silently (as xSect.fs, which also lets it throw).
+        section.GJ_eff = computeTorsionalStiffness(section, bodies);
 
         updatedSections = append(updatedSections, section);
     }
@@ -148,20 +141,8 @@ export function gjAnalysisMain(context is Context, id is Id, definition is map)
         }
 
         // Compute GJ using FEM solver
-        var GJ_eff = 0 * newton * meter * meter;
-        try
-        {
-            GJ_eff = computeTorsionalStiffness(section, bodies);
-            successCount += 1;
-
-            // Update section with new GJ value (only on success)
-            section.GJ_eff = GJ_eff;
-        }
-        catch (e)
-        {
-            failCount += 1;
-            // Keep existing GJ value (don't overwrite with 0)
-        }
+        section.GJ_eff = computeTorsionalStiffness(section, bodies);
+        successCount += 1;
 
         updatedSections = append(updatedSections, section);
     }
@@ -249,7 +230,7 @@ function getXSectFeatureFromEntity(context is Context, entityQuery is Query) ret
  * The curve is created in the XZ plane (world coordinates):
  * - X coordinate: section location along beam
  * - Y coordinate: 0 (in XZ plane)
- * - Z coordinate: GJ value scaled to height (1 N·m² = 1mm)
+ * - Z coordinate: GJ value scaled to height (1 N*m^2 = 1mm)
  *
  * This follows the same pattern as EI curve visualization in xSectVisualization.fs.
  *
@@ -268,7 +249,7 @@ function createGJCurve(context is Context, id is Id, sections is array, namePref
         // World X coordinate of this cross-section
         var worldX = section.frame.origin[0];
 
-        // GJ value scaled to millimeters (1 N·m² = 1mm height)
+        // GJ value scaled to millimeters (1 N*m^2 = 1mm height)
         var GJ_val = section.GJ_eff / (newton * meter * meter);
         var gjHeight = GJ_val * millimeter;
 

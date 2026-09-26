@@ -1,10 +1,10 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: bridgingFilletUtils.fs
 // IMPORT: tools/bspline_data.fs
 // IMPORT: tools/arc_length.fs
-import(path : "onshape/std/bridgingCurve.fs", version : "2892.0");
+import(path : "onshape/std/bridgingCurve.fs", version : "3083.0");
 
 /**
  * Bridging fillet creates a bridging curve or surface between two input curves or two faces.

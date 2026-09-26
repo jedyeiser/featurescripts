@@ -1,8 +1,11 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: ExportCurveCore.fs
-export import(path : "666228ba3514cc062764888b", version : "9a1363cd20be83b8573cf508");
+export import(path : "666228ba3514cc062764888b", version : "063c36297737f49f6a0fb950");
+IconNamespace::import(path : "560e3f8338425e540d0270ba", version : "f93cae02d6118be9d4557727");
+ImageNamespace::import(path : "13b759b4e5246c3f2da05727", version : "db3f34a93d3f50b51d63ad0f");
+
 
 
 /**
@@ -47,7 +50,9 @@ export function elFunction(context is Context, id is Id, oldDef is map, def is m
 // =============================================================================
 
 annotation { "Feature Type Name" : "Export Curve",
-             "Editing Logic Function" : "elFunction" }
+             "Editing Logic Function" : "elFunction", 
+             "Icon" : IconNamespace::BLOB_DATA,
+             "Description Image" : ImageNamespace::BLOB_DATA}
 export const exportCurve = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

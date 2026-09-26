@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: tools/math_utils.fs (safeSign)
 export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
@@ -11,19 +11,19 @@ import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
 
 // IMPORT: fpt_geometry.fs (prepareFootprintCurves, filterAndTrimBSplines, etc.)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "d1e9dfde21eebf5ac5808256");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "b3607c6e2325cd91e25313f2");
 
 // IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "3a1dbd519c49debbbd0bee64");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "f50ebb563ceb08045e094758");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "2e255abd0bd910b9d14de958");
+import(path : "66f4f03cf728e94b8f823585", version : "b8dd4d8f60d89054b3452842");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "3139e04c4896f95fba376908");
+import(path : "5d198387b3966ae60a549555", version : "0cf5fc35335b60e4ab9b037a");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "59e6d83710d6eec8d5cf3843");
+import(path : "d3ad341f5b87924b36b5aba8", version : "fdd989cbbf4082b8c7c4e55f");
 
 IconNamespace::import(path : "e81c3eb0b5c51be678eebf9c", version : "ca36ec3d0a7592b4305a1f84");
 
@@ -37,13 +37,12 @@ IconNamespace::import(path : "e81c3eb0b5c51be678eebf9c", version : "ca36ec3d0a75
  * Supports multiple scaling modes:
  *   - ACCORDION: Simple X scaling, optional uniform Y scaling for target width
  *   - KEEP_TAPER: Accordion + rotate about pin point to preserve taper angle
- *   - SCALE_RADIUS: Scale curvature progression to target radius, preserve taper
  *
  * Supports symmetric (mirror +Y to -Y) and asymmetric (independent sides) modes.
  *
  * Width targeting:
  *   - ACCORDION: scales Y uniformly to hit target waist width
- *   - KEEP_TAPER / SCALE_RADIUS: shifts Y to hit target waist width
+ *   - KEEP_TAPER: shifts Y to hit target waist width
  *
  * Tip/tail curves are translated and Y-scaled to match new contact widths.
  * Optional G1 continuity repair at contact points (minimum-change control-point method).
@@ -60,10 +59,8 @@ export enum FootprintScaleMode
     ACCORDION,
 
     annotation { "Name" : "Keep taper angle" }
-    KEEP_TAPER,
-
-    annotation { "Name" : "Scale radius" }
-    SCALE_RADIUS
+    KEEP_TAPER
+    // (Scale radius removed 2026-09-25: too complicated, and it missed its target -- footprint test SF3.)
 }
 
 // Bounds for sidecut radius input (in meters for better UX)
@@ -133,13 +130,6 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             definition.pinLocation is ScalePinLocation;
         }
 
-        if (definition.scaleMode == FootprintScaleMode.SCALE_RADIUS)
-        {
-            annotation { "Name" : "Target average radius",
-                         "Description" : "Target average sidecut radius. Only used in Scale Radius mode." }
-            isLength(definition.targetRadius, SIDECUT_RADIUS_BOUNDS);
-        }
-
         annotation { "Group Name" : "Spline options", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Output curve degree", "Default" : 3 }
@@ -148,14 +138,6 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             annotation { "Name" : "Strict arcs", "Default" : false,
                          "Description" : "When enabled, forces output curve segments to be exact circular arcs." }
             definition.strictArcs is boolean;
-
-            annotation { "Name" : "Approximation tolerance",
-                         "Description" : "Maximum deviation between the approximated output B-spline and the target curve. Lower values produce more control points." }
-            isLength(definition.approximationTolerance, APPROX_TOLERANCE_BOUNDS);
-
-            annotation { "Name" : "Max control points", "Default" : 30,
-                         "Description" : "Upper limit on the number of control points in the approximated output curve." }
-            isInteger(definition.maxControlPoints, MAX_CONTROL_POINTS_BOUNDS);
         }
 
         annotation { "Name" : "Specify target width", "Default" : false }
@@ -181,13 +163,6 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                 definition.negPinLocation is ScalePinLocation;
             }
 
-            if (definition.negScaleMode == FootprintScaleMode.SCALE_RADIUS)
-            {
-                annotation { "Name" : "-Y Target average radius",
-                             "Description" : "Target average sidecut radius. Only used in Scale Radius mode." }
-                isLength(definition.negTargetRadius, SIDECUT_RADIUS_BOUNDS);
-            }
-
             annotation { "Group Name" : "-Y Spline options", "Collapsed By Default" : true }
             {
                 annotation { "Name" : "-Y Output curve degree", "Default" : 3 }
@@ -196,14 +171,6 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "-Y Strict arcs", "Default" : false,
                              "Description" : "When enabled, forces output curve segments to be exact circular arcs." }
                 definition.negStrictArcs is boolean;
-
-                annotation { "Name" : "-Y Approximation tolerance",
-                             "Description" : "Maximum deviation between the approximated output B-spline and the target curve. Lower values produce more control points." }
-                isLength(definition.negApproximationTolerance, APPROX_TOLERANCE_BOUNDS);
-
-                annotation { "Name" : "-Y Max control points", "Default" : 30,
-                             "Description" : "Upper limit on the number of control points in the approximated output curve." }
-                isInteger(definition.negMaxControlPoints, MAX_CONTROL_POINTS_BOUNDS);
             }
 
             annotation { "Name" : "-Y Specify target width", "Default" : false }
@@ -314,19 +281,16 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // Output degree and strict arcs are now always available (not mode-dependent)
         var outputDegree = definition.outputDegree;
         var strictArcs = definition.strictArcs;
-        var approxTolerance = definition.approximationTolerance;
-        var maxControlPoints = definition.maxControlPoints;
 
         var scaledPos = scaleSidecut(context, id + "scaledPos", categorized.sidecutPos, refAnalysisPos,
             refFcp[0], refAcp[0], refMrs[0],
             newFcp[0], newAcp[0], newMrs[0],
             definition.scaleMode,
             definition.scaleMode == FootprintScaleMode.KEEP_TAPER ? definition.pinLocation : ScalePinLocation.PIN_ACP,
-            definition.scaleMode == FootprintScaleMode.SCALE_RADIUS ? definition.targetRadius : refAnalysisPos.avgRadius,
             definition.specifyWidth,
             definition.specifyWidth ? definition.targetWaistWidth / 2 : refAnalysisPos.waistWidth,
             tolerance,
-            outputDegree, strictArcs, approxTolerance, maxControlPoints);
+            outputDegree, strictArcs);
 
         // =====================================================================
         // STEP 6: Transform +Y tip/tail
@@ -366,8 +330,6 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             var negScaleMode = definition.negScaleMode;
             var negPinLocation = (negScaleMode == FootprintScaleMode.KEEP_TAPER) ?
                 definition.negPinLocation : ScalePinLocation.PIN_ACP;
-            var negTargetRadius = (negScaleMode == FootprintScaleMode.SCALE_RADIUS) ?
-                definition.negTargetRadius : refAnalysisNeg.avgRadius;
             var negSpecifyWidth = definition.negSpecifyWidth;
             var negTargetWaistWidth = negSpecifyWidth ?
                 definition.negTargetWaistWidth / 2 : refAnalysisNeg.waistWidth;
@@ -375,15 +337,13 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             // Output degree and strict arcs are now always available (not mode-dependent)
             var negOutputDegree = definition.negOutputDegree;
             var negStrictArcs = definition.negStrictArcs;
-            var negApproximationTolerance = definition.negApproximationTolerance;
-            var negMaxControlPoints = definition.negMaxControlPoints;
 
             var scaledNegFlipped = scaleSidecut(context, id + "scaledNeg", negFlipped, refAnalysisNeg,
                 refFcp[0], refAcp[0], refMrs[0],
                 newFcp[0], newAcp[0], newMrs[0],
-                negScaleMode, negPinLocation, negTargetRadius,
+                negScaleMode, negPinLocation,
                 negSpecifyWidth, negTargetWaistWidth, tolerance,
-                negOutputDegree, negStrictArcs, negApproximationTolerance, negMaxControlPoints);
+                negOutputDegree, negStrictArcs);
             
             // Flip back to -Y space
             scaledNegCurves = mirrorCurvesY(scaledNegFlipped.curves);
@@ -562,11 +522,9 @@ function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refA
     refFcpX is ValueWithUnits, refAcpX is ValueWithUnits, refMrsX is ValueWithUnits,
     newFcpX is ValueWithUnits, newAcpX is ValueWithUnits, newMrsX is ValueWithUnits,
     scaleMode is FootprintScaleMode, pinLocation is ScalePinLocation,
-    targetRadius is ValueWithUnits,
     specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
     tolerance is ValueWithUnits,
-    outputDegree is number, strictArcs is boolean,
-    approxTolerance is ValueWithUnits, maxControlPoints is number) returns map
+    outputDegree is number, strictArcs is boolean) returns map
 {
     if (scaleMode == FootprintScaleMode.ACCORDION)
     {
@@ -575,21 +533,12 @@ function scaleSidecut(context is Context, id is Id, sidecutCurves is array, refA
             specifyWidth, targetWaistWidth, tolerance,
             outputDegree, strictArcs);
     }
-    else if (scaleMode == FootprintScaleMode.KEEP_TAPER)
-    {
-        return scaleKeepTaper(context, id, sidecutCurves, refAnalysis,
-            refFcpX, refAcpX, refMrsX,
-            newFcpX, newAcpX, newMrsX,
-            pinLocation, specifyWidth, targetWaistWidth, tolerance,
-            outputDegree, strictArcs);
-    }
-    else // SCALE_RADIUS
-    {
-        return scaleRadius(context, id, sidecutCurves, refAnalysis,
-            refFcpX, refAcpX, newFcpX, newAcpX,
-            targetRadius, specifyWidth, targetWaistWidth, tolerance,
-            outputDegree, strictArcs, approxTolerance, maxControlPoints);
-    }
+    // KEEP_TAPER
+    return scaleKeepTaper(context, id, sidecutCurves, refAnalysis,
+        refFcpX, refAcpX, refMrsX,
+        newFcpX, newAcpX, newMrsX,
+        pinLocation, specifyWidth, targetWaistWidth, tolerance,
+        outputDegree, strictArcs);
 }
 
 // =============================================================================
@@ -879,7 +828,7 @@ function analyzeReferenceSidecut(sidecutCurves is array, fcpX is ValueWithUnits,
         // Radius
         "avgRadius" : avgRadius,
         
-        // Raw curve data (for scaleRadius curvature sampling)
+        // Raw curve data
         "curveData" : curveData
     };
 }
@@ -949,24 +898,6 @@ function getWidthAtX(curveData is array, targetX is ValueWithUnits, tolerance is
     return 0 * millimeter;
 }
 
-
-/**
- * Get curvature at a specific X coordinate.
- */
-function getCurvatureAtX(curveData is array, targetX is ValueWithUnits, tolerance is ValueWithUnits)
-{
-    var searchTol = 1 * millimeter;
-    for (var cd in curveData)
-    {
-        if (cd.xMin <= targetX + searchTol && cd.xMax >= targetX - searchTol)
-        {
-            var param = findParamAtX(cd.bspline, targetX, tolerance);
-            var curv = getBSplineCurvatureAtParam(cd.bspline, param);
-            return curv.curvatureSigned;
-        }
-    }
-    return 0 / meter;
-}
 
 // =============================================================================
 // CURVE CATEGORIZATION  (+Y / -Y split)
@@ -1465,124 +1396,8 @@ function scaleKeepTaper(context is Context, id is Id, sidecutCurves is array, re
 }
 
 // =============================================================================
-// SCALE RADIUS HELPERS
+// CURVE REBUILD HELPERS
 // =============================================================================
-
-/**
- * Build a single approximated BSpline from X, Y arrays.
- */
-function buildSingleCurveFromPoints(context is Context, xSamples is array,
-    ySamples is array) returns BSplineCurve
-{
-    var points = [];
-    for (var i = 0; i < size(xSamples); i += 1)
-    {
-        points = append(points, vector(xSamples[i], ySamples[i], 0 * millimeter));
-    }
-
-    return approximateSpline(context, {
-        "degree" : 3,
-        "tolerance" : 0.001 * millimeter,
-        "maxControlPoints" : 30,
-        "targets" : [approximationTarget({ "positions" : points })],
-        "interpolateIndices" : [0, size(points) - 1]
-    })[0];
-}
-
-/**
- * Find inflection point (curvature sign change) in a temporary BSpline curve.
- * Searches from xStart toward the waist (center).
- *
- * @param curve : BSplineCurve - The curve to search
- * @param xStart : ValueWithUnits - Starting X position (FCP or ACP)
- * @param searchInward : boolean - True to search toward waist (smaller |X|)
- * @returns map - {found, x, y, param} or {found: false}
- */
-function findInflectionInTempCurve(curve is BSplineCurve, xStart is ValueWithUnits,
-    searchInward is boolean) returns map
-{
-    var numSamples = 50;
-    var range = getBSplineParamRange(curve);
-    var uMin = range.uMin;
-    var uMax = range.uMax;
-
-    // Sample the curve with curvature
-    var samples = [];
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var u = uMin + (uMax - uMin) * i / (numSamples - 1);
-        var curv = getBSplineCurvatureAtParam(curve, u);
-
-        samples = append(samples, {
-            "u" : u,
-            "x" : curv.point[0],
-            "y" : curv.point[1],
-            "curvatureSigned" : curv.curvatureSigned,
-            "sign" : safeSign(curv.curvatureSigned * meter, 1e-12)
-        });
-    }
-
-    // Determine search direction
-    var searchDir = searchInward ? ((xStart > 0 * meter) ? -1 : 1) : ((xStart > 0 * meter) ? 1 : -1);
-
-    // Sort samples in search direction
-    samples = sort(samples, function(a, b)
-    {
-        if (searchDir > 0)
-            return a.x - b.x;  // Increasing X
-        else
-            return b.x - a.x;  // Decreasing X
-    });
-
-    // Find first sample at or past xStart
-    var startIdx = 0;
-    for (var i = 0; i < size(samples); i += 1)
-    {
-        if (searchDir > 0 && samples[i].x >= xStart)
-        {
-            startIdx = i;
-            break;
-        }
-        else if (searchDir < 0 && samples[i].x <= xStart)
-        {
-            startIdx = i;
-            break;
-        }
-    }
-
-    // Search for sign change
-    for (var i = startIdx; i < size(samples) - 1; i += 1)
-    {
-        var s1 = samples[i];
-        var s2 = samples[i + 1];
-
-        if (s1.sign != 0 && s2.sign != 0 && s1.sign != s2.sign)
-        {
-            // Found inflection! Refine with solver
-            var uLo = min([s1.u, s2.u]);
-            var uHi = max([s1.u, s2.u]);
-
-            var f = function(u)
-            {
-                var curv = getBSplineCurvatureAtParam(curve, u);
-                return curv.curvatureSigned * meter;
-            };
-
-            var result = solveRootHybrid(f, uLo, uHi, 1e-9, 20);
-            var finalU = result.u;
-            var finalCurv = getBSplineCurvatureAtParam(curve, finalU);
-
-            return {
-                "found" : true,
-                "x" : finalCurv.point[0],
-                "y" : finalCurv.point[1],
-                "param" : finalU
-            };
-        }
-    }
-
-    return { "found" : false };
-}
 
 /**
  * The same B-spline with new control points: degree, knots, weights and periodicity are kept, so only the
@@ -1603,379 +1418,6 @@ function withControlPoints(bspline is BSplineCurve, controlPoints is array) retu
         params.weights = bspline.weights;
     }
     return bSplineCurve(params);
-}
-
-/**
- * Evaluate average radius between two X positions on a BSpline curve: the same definition as
- * analyzeFootprint (fpt_analyze computeAverageRadius -- mean R at evenly spaced x stations).
- *
- * @param curve : BSplineCurve - The curve to evaluate
- * @param xMin, xMax : ValueWithUnits - X bounds for evaluation
- * @returns ValueWithUnits - Average radius (inf if no curvature found)
- */
-function evaluateRadiusBetweenInflections(curve is BSplineCurve,
-    xMin is ValueWithUnits, xMax is ValueWithUnits) returns ValueWithUnits
-{
-    var result = computeAverageRadius(buildCurveDataArray([curve]), xMin, xMax, {});
-    return result.valid ? result.avgRadius : inf * meter;
-}
-
-/**
- * Find the index in xSamples closest to targetX.
- */
-function findClosestIndex(xSamples is array, targetX is ValueWithUnits) returns number
-{
-    var bestIdx = 0;
-    var bestDist = abs(xSamples[0] - targetX);
-
-    for (var i = 1; i < size(xSamples); i += 1)
-    {
-        var dist = abs(xSamples[i] - targetX);
-        if (dist < bestDist)
-        {
-            bestDist = dist;
-            bestIdx = i;
-        }
-    }
-
-    return bestIdx;
-}
-
-// =============================================================================
-// SCALE RADIUS  (Iterative radius targeting with curve boundary preservation)
-// =============================================================================
-// NOTE: forceQuadraticNurbs() is imported from integrateFootprint.fs
-
-/**
- * Scale sidecut curves to achieve target average radius while preserving taper angle.
- *
- * Uses iterative radius targeting:
- * 1. Extract curve boundaries for later splitting
- * 2. Initialize radius scale factor (guess: R_ref / R_target)
- * 3. ITERATE until radius converges:
- *    a. Sample curvature UNIFORMLY across sidecut (maintains continuity)
- *    b. Scale by current factor: k_scaled = k_ref * radiusScaleFactor
- *    c. Map X to new RSL length
- *    d. Integrate: build theta_base and y_base (cumTrapz)
- *    e. Solve theta0 to preserve taper angle
- *    f. Solve y0 to hit target waist width
- *    g. Build temporary curve and EVALUATE actual radius
- *    h. Check convergence: |R_actual - R_target| < tolerance
- *    i. Adjust scale factor: radiusScaleFactor *= (R_actual / R_target)
- * 4. SPLIT converged geometry at original curve boundaries
- * 5. Return array of curves with correct radius and preserved structure
- */
-function scaleRadius(context is Context, id is Id, sidecutCurves is array, refAnalysis is map,
-    refFcpX is ValueWithUnits, refAcpX is ValueWithUnits,
-    newFcpX is ValueWithUnits, newAcpX is ValueWithUnits,
-    targetRadius is ValueWithUnits,
-    specifyWidth is boolean, targetWaistWidth is ValueWithUnits,
-    tolerance is ValueWithUnits,
-    outputDegree is number, strictArcs is boolean,
-    approxTolerance is ValueWithUnits, maxControlPoints is number) returns map
-{
-    var refLength = abs(refAcpX - refFcpX);
-    var newLength = abs(newAcpX - newFcpX);
-    var xScale = newLength / refLength;
-
-    var refCurveData = refAnalysis.curveData;
-
-    // Extract curve boundaries for later splitting
-    var curveBoundaries = [];
-    for (var curveIdx = 1; curveIdx < size(refCurveData); curveIdx += 1)
-    {
-        var cd = refCurveData[curveIdx];
-        var boundaryX = cd.xMin;
-
-        // Only include boundaries within sidecut region
-        if (boundaryX >= min([refFcpX, refAcpX]) && boundaryX <= max([refFcpX, refAcpX]))
-        {
-            curveBoundaries = append(curveBoundaries, boundaryX);
-        }
-    }
-
-    // CRITICAL: Sort boundaries in ascending X order for splitting algorithm
-    curveBoundaries = sort(curveBoundaries, function(a, b) { return a - b; });
-
-    // Initial guess for radius scale factor (start at 1.0 to bootstrap)
-    var radiusScaleFactor = 1.0;
-    var maxIterations = 10;
-    var radiusTolerance = 0.01 * meter;  // 1cm tolerance (tightened to compensate for splitting error)
-
-    var finalY = [];
-    var finalTheta = [];
-    var newXSamples = [];
-    var converged = false;
-
-    // Declare outside loop so they're accessible after loop ends
-    var minY = inf * meter;
-    var y0 = 0 * meter;
-
-    // Store reference curvature (unscaled) for selective scaling
-    var kReference = [];
-
-    // Inflection bounds (will be updated each iteration)
-    var inflectionXMin = newFcpX;  // Default to full sidecut (NEW space)
-    var inflectionXMax = newAcpX;
-    var refInflectionXMin = refFcpX;  // Default to full sidecut (REFERENCE space)
-    var refInflectionXMax = refAcpX;
-
-    // ITERATION LOOP: Adjust scale factor until radius matches target
-    for (var iteration = 0; iteration < maxIterations; iteration += 1)
-    {
-        // Sample curvature UNIFORMLY across sidecut (maintains continuity)
-        // Scale sample count with number of curves to ensure small curves get adequate resolution
-        var numSamples = max([100, size(curveBoundaries) * 30]);
-        var refXSamples = [];
-        var kSamples = [];
-
-        for (var i = 0; i < numSamples; i += 1)
-        {
-            var t = i / (numSamples - 1);
-            var x = refFcpX + t * (refAcpX - refFcpX);
-            refXSamples = append(refXSamples, x);
-
-            var k = getCurvatureAtX(refCurveData, x, tolerance);
-            kSamples = append(kSamples, k);
-        }
-
-        // Store reference curvature on first iteration
-        if (iteration == 0)
-        {
-            kReference = kSamples;
-        }
-
-        // Scale curvature SELECTIVELY
-        // - Between inflections: apply radiusScaleFactor
-        // - Outside inflections (taper): keep original
-        //
-        // CRITICAL: Use REFERENCE space coordinates consistently!
-        // - kReference was sampled at refXSamples (reference space)
-        // - inflectionXMin/Max are in NEW space
-        // - Must transform inflection bounds to reference space for comparison
-        var scaledK = [];
-
-        // Transform inflection bounds from NEW space to REFERENCE space
-        // Formula: refX = refFcpX + (newX - newFcpX) / xScale
-        var xScale = (newAcpX - newFcpX) / (refAcpX - refFcpX);
-        refInflectionXMin = refFcpX + (inflectionXMin - newFcpX) / xScale;
-        refInflectionXMax = refFcpX + (inflectionXMax - newFcpX) / xScale;
-
-        for (var i = 0; i < size(kReference); i += 1)
-        {
-            // Use REFERENCE X coordinate (matching how kReference was sampled)
-            var xRef = refXSamples[i];
-            var k = kReference[i];
-
-            // Check if this sample is between inflections (sidecut region) in REFERENCE space
-            if (xRef >= refInflectionXMin && xRef <= refInflectionXMax)
-            {
-                // Scale sidecut curvature
-                scaledK = append(scaledK, k * radiusScaleFactor);
-            }
-            else
-            {
-                // Keep taper curvature unchanged
-                scaledK = append(scaledK, k);
-            }
-        }
-
-        // Map X to new RSL length
-        newXSamples = [];
-        for (var refX in refXSamples)
-        {
-            var relativeX = refX - refFcpX;
-            var newX = newFcpX + relativeX * xScale;
-            newXSamples = append(newXSamples, newX);
-        }
-
-        // Integrate to build base geometry
-        // Type contract (matching buildBaseIntegrals):
-        //   base.x  = VWU (length)
-        //   base.k  = plain number (for solver seed)
-        //   base.yP = plain number (dimensionless slope)
-        //   base.y  = VWU (length)
-        var thetaBase = cumTrapz(newXSamples, scaledK, 0).cumulative;
-        var yBase = cumTrapz(newXSamples, thetaBase, 0 * millimeter).cumulative;
-        var kPlain = mapArray(scaledK, function(r) { return r * meter; });
-
-        var base = {
-            "x" : newXSamples,
-            "k" : kPlain,
-            "yP" : thetaBase,
-            "y" : yBase
-        };
-
-        // Solve for theta0 to preserve taper angle
-        var integrationDef = {
-            "angleDriver" : AngleDriver.TAPER_ANGLE,
-            "taperAngle" : refAnalysis.taperAngle
-        };
-
-        var theta0 = solveTheta0ForDriver(base, integrationDef, 0.0001 * degree, 50);
-
-        // Evaluate Y and find waist
-        var yFinal = evalY(base, theta0, 0 * meter);
-
-        // Update minY for this iteration
-        minY = inf * meter;
-        for (var i = 0; i < size(yFinal); i += 1)
-        {
-            if (yFinal[i] < minY)
-            {
-                minY = yFinal[i];
-            }
-        }
-
-        // Update y0 for this iteration
-        y0 = targetWaistWidth - minY;
-
-        // Apply y0 shift
-        finalY = [];
-        finalTheta = [];
-        for (var i = 0; i < size(yFinal); i += 1)
-        {
-            finalY = append(finalY, yFinal[i] + y0);
-            finalTheta = append(finalTheta, thetaBase[i] + theta0);
-        }
-
-        // Build temporary curve for radius evaluation
-        var tempCurve = buildSingleCurveFromPoints(context, newXSamples, finalY);
-
-        // Find inflection points (search inward from FCP and ACP toward waist)
-        var fbInflection = findInflectionInTempCurve(tempCurve, newFcpX, true);
-        var abInflection = findInflectionInTempCurve(tempCurve, newAcpX, true);
-
-        // Determine evaluation bounds (between inflections if found, else full sidecut)
-        var evalXMin = fbInflection.found ? fbInflection.x : newFcpX;
-        var evalXMax = abInflection.found ? abInflection.x : newAcpX;
-
-        // UPDATE inflection bounds for next iteration
-        inflectionXMin = evalXMin;
-        inflectionXMax = evalXMax;
-
-        // EVALUATE ACTUAL RADIUS between inflection points (like analyzeFootprint)
-        var actualRadius = evaluateRadiusBetweenInflections(tempCurve, evalXMin, evalXMax);
-
-        // Check for invalid radius (straight line or evaluation failure)
-        if (actualRadius == inf * meter || actualRadius <= 0 * meter)
-        {
-            break;
-        }
-
-        var error = actualRadius - targetRadius;
-
-        // Check convergence
-        if (abs(error) < radiusTolerance)
-        {
-            converged = true;
-            break;
-        }
-
-        // Adjust scale factor for next iteration
-        // If actual > target, we need MORE curvature (higher k), so HIGHER scale
-        radiusScaleFactor = radiusScaleFactor * (actualRadius / targetRadius);
-    }
-
-    // SPLIT converged geometry at original curve boundaries
-    var outputCurves = [];
-    var segmentStartIdx = 0;
-
-    // Map reference boundaries to new coordinate space
-    var mappedBoundaries = [];
-    for (var boundaryX in curveBoundaries)
-    {
-        var newBoundaryX = newFcpX + (boundaryX - refFcpX) * xScale;
-        mappedBoundaries = append(mappedBoundaries, newBoundaryX);
-    }
-
-    for (var boundaryIdx = 0; boundaryIdx < size(mappedBoundaries); boundaryIdx += 1)
-    {
-        var boundaryX = mappedBoundaries[boundaryIdx];
-        var splitIdx = findClosestIndex(newXSamples, boundaryX);
-
-        // Build segment from start to split point (INCLUSIVE)
-        var segmentPoints = [];
-        for (var i = segmentStartIdx; i <= splitIdx; i += 1)
-        {
-            segmentPoints = append(segmentPoints,
-                vector(newXSamples[i], finalY[i], 0 * millimeter));
-        }
-
-        // Create curve if segment has enough points
-        if (size(segmentPoints) >= 2)
-        {
-            var segmentCurve = approximateSpline(context, {
-                "degree" : outputDegree,
-                "tolerance" : approxTolerance,
-                "maxControlPoints" : maxControlPoints,
-                "targets" : [approximationTarget({
-                    "positions" : segmentPoints,
-                    "startDerivative" : vector(1, finalTheta[segmentStartIdx], 0),
-                    "endDerivative" : vector(1, finalTheta[splitIdx], 0)
-                })],
-                "interpolateIndices" : [0, size(segmentPoints) - 1]
-            })[0];
-
-            outputCurves = append(outputCurves, segmentCurve);
-        }
-
-        // CRITICAL: Share boundary point for G0 continuity
-        // Next segment starts at splitIdx (NOT splitIdx + 1)
-        segmentStartIdx = splitIdx;
-    }
-
-    // Last segment (from last boundary to end)
-    var segmentPoints = [];
-    for (var i = segmentStartIdx; i < size(newXSamples); i += 1)
-    {
-        segmentPoints = append(segmentPoints,
-            vector(newXSamples[i], finalY[i], 0 * millimeter));
-    }
-
-    if (size(segmentPoints) >= 2)
-    {
-        var segmentCurve = approximateSpline(context, {
-            "degree" : outputDegree,
-            "tolerance" : approxTolerance,
-            "maxControlPoints" : maxControlPoints,
-            "targets" : [approximationTarget({
-                "positions" : segmentPoints,
-                "startDerivative" : vector(1, finalTheta[segmentStartIdx], 0),
-                "endDerivative" : vector(1, last(finalTheta), 0)
-            })],
-            "interpolateIndices" : [0, size(segmentPoints) - 1]
-        })[0];
-
-        outputCurves = append(outputCurves, segmentCurve);
-    }
-
-    // NOTE: Post-process simplification was tested but caused catastrophic radius error
-    // (16.06m vs 21m target). Control point count is less important than accuracy.
-    // To reduce CPs, adjust the original approximation parameters instead.
-
-    // OPTIONAL: Convert to strict arcs if requested
-    if (strictArcs)
-    {
-        var arcCurves = forceQuadraticNurbs(context, id + "strictArcs", outputCurves);
-        outputCurves = arcCurves;
-    }
-
-    // NOTE: To validate final radius accuracy, run analyzeFootprint on the output curves
-    // The tighter iteration tolerance (1cm) and improved approximation quality should
-    // reduce the radius error from ~0.63m to < 0.1m
-
-    // Get final widths
-    var finalFcpWidth = finalY[0];
-    var finalAcpWidth = finalY[size(finalY) - 1];
-    var finalWaistWidth = minY + y0;
-
-    return {
-        "curves" : outputCurves,
-        "fcpWidth" : finalFcpWidth,
-        "acpWidth" : finalAcpWidth,
-        "waistWidth" : finalWaistWidth
-    };
 }
 
 // =============================================================================

@@ -1,19 +1,19 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: xSectReferencePoints.fs
-import(path : "08fddb59786b6bfee020ee05", version : "6e68ed6cb07a952caa490205");
+import(path : "08fddb59786b6bfee020ee05", version : "16a3259bfc59aee2fbc2c1dd");
 // IMPORT: xSectBeamAnalysis.fs
-import(path : "ebac109589e3bf405d3f3ae7", version : "995918706a03f1f08e8720c3");
+import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
 
 // IMPORT: generateBaselineSolver.fs
-import(path : "649902142758d832c018a0be", version : "51f22588d50dd1e27dd8ca21");
+import(path : "649902142758d832c018a0be", version : "2f8e7e08ff278c2f5b8a6b94");
 
 // IMPORT: analyzeBaseline.fs
-import(path : "f0717a1116fee7304957da5b", version : "bc6672c3eaa71b82e0e5bd58");
+import(path : "f0717a1116fee7304957da5b", version : "19a2ff2b2d1fd8cd6b86c88e");
 
 //import export baselineCore
-export import(path : "14d1222501acfaf0e2029dac", version : "67e62afa1aab1769b4f072cb");
+export import(path : "14d1222501acfaf0e2029dac", version : "d83a4c4cfdf21a07692867d7");
 
 
 

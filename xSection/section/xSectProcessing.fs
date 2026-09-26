@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 /**
  * XSECTION PROCESSING MODULE
@@ -17,16 +17,16 @@ import(path : "onshape/std/common.fs", version : "2892.0");
  */
 
 // IMPORTS - xSectPredicates (for MaterialBehavior and MaterialType enums)
-import(path : "17142132b20343b5f125e7e7", version : "2edb3fb19b9fe466ccf45572");
+import(path : "17142132b20343b5f125e7e7", version : "92eaeac3778fb2c3abe9bc15");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "036a908cdda829a2921a06cb");
+import(path : "c2c3edd39b85fde5e6062533", version : "9cf03ed1102fc8e100e8e3f1");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "2a88df21eb5c57e22a79652c");
+import(path : "08d3a8d4e34a60d45d46e261", version : "b3ec304e131f77982d65a20b");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
-import(path : "f8e590162884d45f56e0a05f", version : "e39ee522102aabd0712b071d");
+import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 
 // IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
-import(path : "74231d1d53f5a117d47d17a9", version : "6fa10b1b28cfb0ed4e80268e");
+import(path : "74231d1d53f5a117d47d17a9", version : "96b75ab8c8195bb7b4b02060");
 
 // =============================================================================
 // OVERLAP DETECTION CONSTANTS
@@ -231,7 +231,9 @@ export function processCrossSections(context is Context, id is Id, definition is
 
         for (var edge in evaluateQuery(context, qCreatedBy(intersectId, EntityType.EDGE)))
         {
-            const bspline = evApproximateBSplineCurve(context, { "edge" : edge });
+            // forceNonRational: the triangulation samples with evaluateSpline, which ignores weights; an exact
+            // (rational) arc was sampled off the circle -- a r5 circle came out 26% too large (correction 39).
+            const bspline = evApproximateBSplineCurve(context, { "edge" : edge, "forceNonRational" : true });
             const station = nearestStation(bspline, stations, stationPlanes);
             const curveData = {
                 "bSplineCurve" : bspline,

@@ -1,22 +1,22 @@
-FeatureScript 3008;
-import(path : "onshape/std/common.fs", version : "3008.0");
-import(path : "onshape/std/table.fs", version : "3008.0");
-import(path : "onshape/std/geomOperations.fs", version : "3008.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/table.fs", version : "3083.0");
+import(path : "onshape/std/geomOperations.fs", version : "3083.0");
 
 IconNamespace::import(path : "0000309041e9c3b92133b446", version : "a9dc4faab1eebbe16277a197");
 ImageNamespace::import(path : "d2436a000fa53adb2c26a3e5", version : "82746b7d7ae306a6e3685e54");
 
 //import qcTable_types
-export import(path : "ff9221b7148cfda8a449abff", version : "31d87ccebeed70c9ff76b9ed");
+export import(path : "ff9221b7148cfda8a449abff", version : "1e352b8a8849d91676fd9521");
 
 //import qcTable_stations
-import(path : "f78f146e807209053299e5a5", version : "fa07c9bb45b3eb098a649183");
+import(path : "f78f146e807209053299e5a5", version : "b3a06038d37ca234d362d348");
 
 //import qcTable_geometry
-import(path : "0f9cf9b21a3c654880d3167c", version : "421b5d303f642d54a6110154");
+import(path : "0f9cf9b21a3c654880d3167c", version : "d04be9c925d28ec09fb9b6b5");
 
 //import qcTable_merge
-import(path : "7fe95d3b9947e33ce37bdeab", version : "9ffe402fa918d80a83020033");
+import(path : "7fe95d3b9947e33ce37bdeab", version : "0a1a640e201320625fe108b8");
 
 
 /**
@@ -613,28 +613,11 @@ export const qcTable = defineTable(function(context is Context, definition is ma
         // Build dynamic column definitions
         var columns = buildColumnDefinitions(hasCore, hasSW, detailLevel, language, hasSwFromEnd);
 
-        // Build table rows. Each stored row carries every measured field regardless
-        // of the active detail level (and some never-shown fields like the deltas),
-        // so filter each row's cells to the ids that actually have a column -
-        // otherwise the renderer warns about cell values for undefined column ids.
-        var columnIds = {};
-        for (var col in columns)
-        {
-            columnIds[col.id] = true;
-        }
-
+        // Build table rows
         var rows = [];
         for (var rowData in tableData)
         {
-            var cells = {};
-            for (var key in keys(rowData))
-            {
-                if (columnIds[key] == true)
-                {
-                    cells[key] = rowData[key];
-                }
-            }
-            rows = append(rows, tableRow(cells));
+            rows = append(rows, tableRow(rowData));
         }
 
         // Return table with appropriate title. A user-supplied Name overrides

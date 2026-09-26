@@ -1,5 +1,5 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 /**
  * Curve core: chains, stations, point classification, fitting, curve emitters and console

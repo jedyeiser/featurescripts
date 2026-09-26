@@ -1,6 +1,6 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
-import(path : "onshape/std/transform.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/transform.fs", version : "3083.0");
 
 // IMPORT: tools/math_utils.fs (for safeSign)
 import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
@@ -752,8 +752,12 @@ export function solveTheta0Exact(base is map, integrationDef is map, tol is Valu
 
 export function solveFootprintConstraints(samples is array, integrationDef is map) returns map
 {
-    if (size(samples) < 2)
-        throw regenError("solveFootprintConstraints: need at least 2 samples.");
+    // One section is valid: a single straight radius-profile line is a constant radius (one exact arc).
+    // (This used to require 2 sections and rejected that case -- found by the footprint test suite 2026-09-25.)
+    if (size(samples) < 1)
+    {
+        throw regenError("The radius profile has no usable sections.");
+    }
 
     //samples has keys xPoints, radiusPoints, isArc, arcR0, regionSign/edgeRadiusSign, etc
 

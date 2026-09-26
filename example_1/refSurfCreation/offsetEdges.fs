@@ -1,6 +1,6 @@
-FeatureScript 2909;
-import(path : "onshape/std/common.fs", version : "2909.0");
-export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "2909.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3083.0");
 
 //import CurveWrapping_full/curveMappingCore
 import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");

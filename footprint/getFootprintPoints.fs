@@ -1,5 +1,5 @@
-FeatureScript 2892;
-import(path : "onshape/std/common.fs", version : "2892.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 
 const tipTailBounds =
@@ -63,6 +63,9 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
 
         annotation { "Name" : "RSL Line", "Filter" : EntityType.EDGE && GeometryType.LINE, "MaxNumberOfPicks" : 1 }
         definition.rslQuery is Query;
+
+        annotation { "Name" : "Tip toward +X", "Default" : false, "Description" : "Off: the tip is the lower-X end of the RSL line. On: the higher-X end (the tip/tail points and their FCP/ACP origins swap)." }
+        definition.tipAtPositiveX is boolean;
 
         annotation { "Name" : "Include Points", "Filter" : EntityType.VERTEX }
         definition.includePoints is Query;
@@ -303,6 +306,18 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         var tailBodyParts = tailSpanBodies;
         if (size(tailEdgesArr) > 0)
             tailBodyParts = append(tailBodyParts, qCreatedBy(id + "tailWire", EntityType.BODY));
+
+        // The regions above are found by X (tip = below the lower-X contact point). A footprint whose tip
+        // points to +X swaps the roles here (it used to be reported tip-for-tail -- footprint test GP2).
+        if (definition.tipAtPositiveX)
+        {
+            var swapParts = tipBodyParts;
+            tipBodyParts = tailBodyParts;
+            tailBodyParts = swapParts;
+            var swapOrigin = fcpORGIN;
+            fcpORGIN = acpORIGIN;
+            acpORIGIN = swapOrigin;
+        }
 
         var hasTip = size(tipBodyParts) > 0;
         var hasRSL = size(rslBodyParts) > 0;

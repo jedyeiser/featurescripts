@@ -1,8 +1,8 @@
-FeatureScript 3008;
-import(path : "onshape/std/common.fs", version : "3008.0");
-import(path : "onshape/std/extend.fs", version : "3008.0");
-import(path : "onshape/std/faceIntersection.fs", version : "3008.0");
-import(path : "onshape/std/loft.fs", version : "3008.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/extend.fs", version : "3083.0");
+import(path : "onshape/std/faceIntersection.fs", version : "3083.0");
+import(path : "onshape/std/loft.fs", version : "3083.0");
 
 //This feature is a simplified (arguably improved) version of create SW Rout surf
 // 1. Create intersection curve/wire between bottom surface and periphery surface

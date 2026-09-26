@@ -1,14 +1,14 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 // ProjectionType and the curve-extension enums are not reached by common.fs (corrections log 17).
-import(path : "onshape/std/projectiontype.gen.fs", version : "3070.0");
-import(path : "onshape/std/movecurveboundarytype.gen.fs", version : "3070.0");
-import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3070.0");
-import(path : "onshape/std/curveextensionshape.gen.fs", version : "3070.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
+import(path : "onshape/std/movecurveboundarytype.gen.fs", version : "3083.0");
+import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3083.0");
+import(path : "onshape/std/curveextensionshape.gen.fs", version : "3083.0");
 
 // IMPORT: curve_core.fs -- the fitter (approximateFamily), emitters, classifiers, the
 // approximation predicate and bounds, formatting helpers.
-export import(path : "02d7784437f621c76397f0d6", version : "");
+export import(path : "02d7784437f621c76397f0d6", version : "e41a02b7ec48fcfe089eea40");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs and the extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // IMPORT: clean_wire_icon.svg (feature icon)
