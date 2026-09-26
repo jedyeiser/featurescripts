@@ -3,9 +3,11 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3083.0");
 
 //import CurveWrapping_full/curveMappingCore
-import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
+import(path : "08e8748f2ef24eea16072b75/fa1a00e26f19c86291f2c55e/683d867c35fdab9c98d47556", version : "3e109f7b7c74c76503dcf207");
 //import CurveWrapping_full/Utils
-import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
+import(path : "08e8748f2ef24eea16072b75/fa1a00e26f19c86291f2c55e/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
+// IMPORT: offset_edges_icon.svg (feature icon)
+IconNamespace::import(path : "9b66aac0eca270c9a24c93de", version : "7196161a1c8274f32f669319");
 
 
 // --- Enums --------------------------------------------------------------------
@@ -173,7 +175,7 @@ export function generateOffsetEdgesEditingLogic(context is Context, id is Id,
 
 // --- Feature ------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Offset edges",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Offset edges",
              "Feature Type Description" : "Offsets a G1-continuous edge chain by per-region normal and binormal amounts in the Frenet frame",
              "Editing Logic Function" : "generateOffsetEdgesEditingLogic" }
 export const offsetEdges = defineFeature(function(context is Context, id is Id, definition is map)

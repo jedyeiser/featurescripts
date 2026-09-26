@@ -12,10 +12,12 @@ import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c
 
 //import curveOps
 import(path : "73de71e75b755f0042e0e6d8", version : "585ddf22041315f25495eeec");
+// IMPORT: scaled_curve_icon.svg (feature icon)
+IconNamespace::import(path : "8b2fda35054b2e92a6334cd4", version : "501e50ca04aec46d534e616f");
 
 
 
-annotation { "Feature Type Name" : "Scaled Curve", "Feature Type Description" : "Creates a new BSplineCurve as a scaled combination of the two input curves" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Scaled Curve", "Feature Type Description" : "Creates a new BSplineCurve as a scaled combination of the two input curves" }
 export const createScaledCurve = defineFeature(function(context is Context, id is Id, definition is map) returns map
     precondition
     {

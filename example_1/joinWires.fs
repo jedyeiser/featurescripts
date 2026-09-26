@@ -1,7 +1,9 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: join_wires_icon.svg (feature icon)
+IconNamespace::import(path : "18bb73fa2033d423c7d6871b", version : "69e0690da68b4bd87c85e127");
 
-annotation { "Feature Type Name" : "Join wires", "Feature Type Description" : "Joins the selected edges and wires into one wire (exact geometry, edges kept). Optionally deletes the input wire bodies." }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Join wires", "Feature Type Description" : "Joins the selected edges and wires into one wire (exact geometry, edges kept). Optionally deletes the input wire bodies." }
 export const joinWires = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

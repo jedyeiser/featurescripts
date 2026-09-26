@@ -2,33 +2,33 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: tools/math_utils.fs (safeSign)
-export import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+export import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/280a24d76f52bdbf44cd941d", version : "43549bf2d5a2bb2e92fb44bd");
 
 // IMPORT: tools/numerical_integration.fs (cumTrapz)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/ef834eed6e0d2df2b34c10eb", version : "7967b0a31f464314605b7b85");
 
 // IMPORT: tools/solvers.fs (solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/99e84dbe2a4e2350792fa693", version : "91ebe2327e2b0654bb603e52");
 
 // IMPORT: fpt_geometry.fs (prepareFootprintCurves, filterAndTrimBSplines, etc.)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "b3607c6e2325cd91e25313f2");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "89446acd00aa71384f74fd8a");
 
 // IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "f50ebb563ceb08045e094758");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d30593b1d10021e1a6b5b134");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "b8dd4d8f60d89054b3452842");
+import(path : "66f4f03cf728e94b8f823585", version : "34d39c868f7461c1eb8f0b30");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "7334f2ee149483751b55103b");
+import(path : "5d198387b3966ae60a549555", version : "9d37396dadd3a09f4cf81d50");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "fdd989cbbf4082b8c7c4e55f");
+import(path : "d3ad341f5b87924b36b5aba8", version : "f1609d01a8fb2c0f775abd6f");
 
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
-IconNamespace::import(path : "e81c3eb0b5c51be678eebf9c", version : "ca36ec3d0a7592b4305a1f84");
+IconNamespace::import(path : "03c6fdcd8fc9878a751d19e8", version : "beca5c59cb53d96be9ef04bd");
 
 
 

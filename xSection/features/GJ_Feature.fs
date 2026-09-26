@@ -2,11 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "85b2b777fcad63294d446295");
+import(path : "9df6ba3db06d479fabe63c1d", version : "7781ee9189d96d6b7d8bf9cf");
 // import gjAnalysis
-import(path : "d30d288c7bf272efb0957cff", version : "66d41e7cc5fa381e0beff893");
+import(path : "d30d288c7bf272efb0957cff", version : "9ceb89edd66db6a41385f82c");
 //import gjDataAccess
 import(path : "12c9e75dc2139eb927245033", version : "245034f4d110f01b5a55c774");
+// IMPORT: solve_gj_icon.svg (feature icon)
+IconNamespace::import(path : "66edc6d5df2a56ab4e87f16d", version : "e4cbab8036f5c907c9f4e018");
 //import gjPredicates
 
 /**
@@ -31,7 +33,7 @@ import(path : "12c9e75dc2139eb927245033", version : "245034f4d110f01b5a55c774");
  * Creates no geometry. EI and Cross Section now computes GJ itself with the same solver, so this
  * feature only re-runs that step on the stored sections.
  */
-annotation { "Feature Type Name" : "Solve GJ", "Feature Type Description" : "Takes a cross section/ei feature as input and calculates the torsional stiffness profile of the cross sections. Adds GJ data to the appropriate map on the origin to add the GJ data into the existing EI data" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Solve GJ", "Feature Type Description" : "Takes a cross section/ei feature as input and calculates the torsional stiffness profile of the cross sections. Adds GJ data to the appropriate map on the origin to add the GJ data into the existing EI data" }
 export const solveGJ = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

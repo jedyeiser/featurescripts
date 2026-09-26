@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import fpt_analyze
-import(path : "71d853c0fd2f10ca3bb20a4b", version : "f50ebb563ceb08045e094758");
+import(path : "71d853c0fd2f10ca3bb20a4b", version : "d30593b1d10021e1a6b5b134");
 
 
 //import predicates
@@ -12,7 +12,7 @@ import(path : "a54a829744c4e15e8da55e0e", version : "849a0888e10eff97f5f0e84a");
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 
-IconNamespace::import(path : "279bd6d83f4e7bcd77624952", version : "a9ec7800d2f223cb59b31642");
+IconNamespace::import(path : "0158364dbbd8bb849b6a6cd9", version : "19c3ced3655f07d9a0a41b99");
 
 
 // Default values for resettable footprint data fields

@@ -2,32 +2,32 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import fpt_geometrty (export/import)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "b3607c6e2325cd91e25313f2");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "89446acd00aa71384f74fd8a");
 
 
 // NOTE: fpt_math.fs has been deleted - all functions moved to tools/
 // IMPORT: tools/assertions.fs (for assertTrue)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/34fb2c6a3c895cfce6b281f3", version : "18fcdac56b39d12dba5ce285");
 
 // IMPORT: tools/math_utils.fs (for safeSign, clamp01)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/280a24d76f52bdbf44cd941d", version : "43549bf2d5a2bb2e92fb44bd");
 
 // IMPORT: tools/numerical_integration.fs (for cumTrapz)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/ef834eed6e0d2df2b34c10eb", version : "542adae37c1360ee2171b5fd");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/ef834eed6e0d2df2b34c10eb", version : "7967b0a31f464314605b7b85");
 
 // IMPORT: tools/solvers.fs (for bracketFromSamples, solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/99e84dbe2a4e2350792fa693", version : "91ebe2327e2b0654bb603e52");
 
 // evPathCurvatures() moved to fpt_geometry.fs
 //import predicates
 import(path : "a54a829744c4e15e8da55e0e", version : "849a0888e10eff97f5f0e84a");
 
 //import arcFit
-import(path : "66f4f03cf728e94b8f823585", version : "b8dd4d8f60d89054b3452842");
+import(path : "66f4f03cf728e94b8f823585", version : "34d39c868f7461c1eb8f0b30");
 
 
 
-IconNamespace::import(path : "d351ce8959527c18c8b58a5f", version : "b3cc4f36c103b56147655d00");
+IconNamespace::import(path : "bf9ea3f62b60ecdbadaaffd0", version : "4b6968d25725072ecb55c4c1");
 
 
 

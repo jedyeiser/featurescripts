@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: extrude_edge_icon.svg (feature icon)
+IconNamespace::import(path : "767e9ea707a86fb82e710e5a", version : "8038a27c525caa815e3bf7da");
 
 export enum ExtrudeEdgeInputType
 {
@@ -31,7 +33,7 @@ export function extrudeEdgeEditingLogic(context is Context, id is Id, oldDefinit
 
 export const VectorInputBounds = {(unitless) : [-1, 0, 1]} as RealBoundSpec;
 
-annotation { "Feature Type Name" : "Extrude edge", "Feature Type Description" : "Takes a wire body or a set of edges as input with standard extrude parameters and creates an extruded surface", "Editing Logic Function" : "extrudeEdgeEditingLogic" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Extrude edge", "Feature Type Description" : "Takes a wire body or a set of edges as input with standard extrude parameters and creates an extruded surface", "Editing Logic Function" : "extrudeEdgeEditingLogic" }
 export const extrudeEdge = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

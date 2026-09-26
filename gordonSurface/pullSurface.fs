@@ -5,6 +5,8 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: pull_surface_icon.svg (feature icon)
+IconNamespace::import(path : "a2fbcb115c3ae9d8c34586c8", version : "d4bd951dc528ccff5aec857c");
 
 /**
  * Pull surface: push and pull a face with a grid of normal handles and hold its edges.
@@ -934,7 +936,7 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
 
 // -- Feature ----------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Pull surface",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Pull surface",
         "Editing Logic Function" : "pullSurfaceEditingLogic",
         "Manipulator Change Function" : "pullSurfaceManipulator",
         "Feature Type Description" : "Creates a copy of a face pushed and pulled along its normal by a grid of handles. The edges keep their position (G0), tangent plane (G1) or curvature (G2) along their whole length; the face's control net is edited, not refitted." }

@@ -8,7 +8,7 @@ export import(path : "17142132b20343b5f125e7e7", version : "92eaeac3778fb2c3abe9
 import(path : "c2c3edd39b85fde5e6062533", version : "9cf03ed1102fc8e100e8e3f1");
 
 // xSectCLT (CLT computations)
-import(path : "74231d1d53f5a117d47d17a9", version : "96b75ab8c8195bb7b4b02060");
+import(path : "74231d1d53f5a117d47d17a9", version : "bbd7b9fd818bff648fbc7a33");
 
 // xSectBeamAnalysis (beam stiffness computations)
 import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
@@ -16,7 +16,7 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
 //import xSectMatrials
 import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 //import xSectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "f5220d1c2de32ba9128a230b");
+import(path : "3cb3cff6974529bf6bed096b", version : "265b9f240f78a53bc451b0f3");
 //import xSectVisualization
 import(path : "19991d0446ad0551339572d9", version : "9cc7ada68c37bb8a8eabea7f");
 //import xSectStorage
@@ -24,11 +24,13 @@ import(path : "a2f2ae10eb446d33ccd47bb9", version : "4d8b2173a8aeabb5a68e2580");
 //import xSectComposites
 import(path : "8c01f1526e7b93cc89fe9811", version : "2d8b92bd11edcfc8999293e2");
 //import xSectDebug
-import(path : "4973f90e73d48ab3578831f0", version : "62a2c22075786b5e33e42a33");
+import(path : "4973f90e73d48ab3578831f0", version : "e38efa2b86d0d20ef2d1f40f");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "16a3259bfc59aee2fbc2c1dd");
 // xSect_GJ (torsional stiffness)
-import(path : "9df6ba3db06d479fabe63c1d", version : "85b2b777fcad63294d446295");
+import(path : "9df6ba3db06d479fabe63c1d", version : "7781ee9189d96d6b7d8bf9cf");
+// IMPORT: ei_cross_section_icon.svg (feature icon)
+IconNamespace::import(path : "824194cb21a5aee07a7868cc", version : "f85aced860369faf18f69948");
 
 // =============================================================================
 // FEATURE DEFINITION
@@ -341,7 +343,7 @@ export function elFunc(context is Context, id is Id, oldDefinition is map, defin
 // MAIN FEATURE
 // =============================================================================
 
-annotation { "Feature Type Name" : "EI and Cross Section",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "EI and Cross Section",
              "Feature Type Description" : "Generates cross-section analysis data for solid bodies along an edge path.",
              "Editing Logic Function" : "elFunc" }
 export const eiXSect = defineFeature(function(context is Context, id is Id, definition is map)

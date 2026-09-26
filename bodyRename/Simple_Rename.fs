@@ -2,8 +2,10 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: simple_body_rename_icon.svg (feature icon)
+IconNamespace::import(path : "026bf217ee0cf42310c85703", version : "fbdf1e6dfb8670db5c67d9c5");
 
-annotation { "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select bodies or composite parts to rename, with an optional shared prefix and suffix applied to every name." }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select bodies or composite parts to rename, with an optional shared prefix and suffix applied to every name." }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

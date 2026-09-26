@@ -2,6 +2,8 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: footprint_points_icon.svg (feature icon)
+IconNamespace::import(path : "bd6809e3824911901b3509db", version : "1185b1aac6556dee51aeac1c");
 
 
 const tipTailBounds =
@@ -44,7 +46,7 @@ export function editingLogic(context is Context, id is Id, oldDefinition is map,
 }
 
 
-annotation { "Feature Type Name" : "Generate Footprint Points", "Editing Logic Function" : "editingLogic" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Generate Footprint Points", "Editing Logic Function" : "editingLogic" }
 export const getFootprintPoints = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

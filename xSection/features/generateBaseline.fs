@@ -17,6 +17,8 @@ export import(path : "14d1222501acfaf0e2029dac", version : "d83a4c4cfdf21a076928
 
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: generate_baseline_icon.svg (feature icon)
+IconNamespace::import(path : "92cb84f99f9acfdb3db593ed", version : "7d36630807449ffc64091b74");
 
 
 
@@ -75,7 +77,7 @@ export function generateBaselineEditLogic(context is Context, id is Id,
 // FEATURE DEFINITION
 // =============================================================================
 
-annotation {"Feature Type Name"        : "Generate baseline",
+annotation { "Icon" : IconNamespace::BLOB_DATA,"Feature Type Name"        : "Generate baseline",
     "Feature Type Description" : "Generates a camber/rocker baseline curve for a ski or snowboard",
     "Editing Logic Function"   : "generateBaselineEditLogic" }
 export const generateBaseline = defineFeature(function(context is Context, id is Id, definition is map)

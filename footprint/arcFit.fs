@@ -9,6 +9,8 @@ import(path : "onshape/std/containers.fs", version : "3083.0");
 export import(path : "onshape/std/nurbsUtils.fs", version : "3083.0");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: arc_fit_icon.svg (feature icon)
+IconNamespace::import(path : "aaaaa4628911c07906d227fd", version : "438ffa7ebfd9e4784d020e93");
 
 export const PositionTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
 export const PlaneTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
@@ -28,7 +30,7 @@ export enum ArcFitOutputType
 }
 
 
-annotation { "Feature Type Name" : "Arc fit", "Feature Type Description" : "Takes coplanar edges as input and outputs an arc fit representation of the edges. Lines collapse to lines. Continuity is not preserved if input edges are not within a given range" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Arc fit", "Feature Type Description" : "Takes coplanar edges as input and outputs an arc fit representation of the edges. Lines collapse to lines. Continuity is not preserved if input edges are not within a given range" }
 export const arcFit = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

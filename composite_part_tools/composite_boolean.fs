@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: composite_boolean_icon.svg (feature icon)
+IconNamespace::import(path : "3ffc437e9fd2d135555f86d9", version : "e502443e32caf0ba2eef8eb7");
 
 /*
  * Composite boolean -- clip a composite part against a solid, or cut a composite part out of bodies.
@@ -45,7 +47,7 @@ export enum ConstituentPlacement
     TOUCHING
 }
 
-annotation { "Feature Type Name" : "Composite boolean",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Composite boolean",
         "Feature Type Description" : "Intersect a composite part with a solid, or subtract the solid from it, into a new composite part. Or subtract a composite part's constituents from other bodies." }
 export const compositeBoolean = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -216,12 +218,14 @@ precondition
         }
     }
 
-    // 3. One boolean for every copy that crosses the solid. The solid is kept.
+    // 3. One boolean for every copy that crosses the solid. The solid is kept. Intersect is SUBTRACT_COMPLEMENT
+    //    (each target keeps what lies inside the tools, as std extrude-intersect does): INTERSECTION ignores the
+    //    target/tool split and intersects every body together, which the kernel refuses (BOOLEAN_BAD_INPUT, 2026-09-26).
     const clipId = id + "clip";
     if (size(crossing) > 0)
     {
         opBoolean(context, clipId, {
-                    "operationType" : intersect ? BooleanOperationType.INTERSECTION : BooleanOperationType.SUBTRACTION,
+                    "operationType" : intersect ? BooleanOperationType.SUBTRACT_COMPLEMENT : BooleanOperationType.SUBTRACTION,
                     "targets" : qUnion(crossing),
                     "tools" : arg.solidBody,
                     "keepTools" : true
@@ -321,6 +325,19 @@ export function placementInSolid(context is Context, body is Query, solid is Que
     if (swapped[ClashType.ABUT_TOOL_OUT_TARGET] == true || primary[ClashType.ABUT_TOOL_OUT_TARGET] == true)
     {
         return ConstituentPlacement.OUTSIDE;
+    }
+    // ABUT_NO_CLASS both ways (a strip touching one face from outside, test C4): no shared volume, so the body
+    // is wholly on one side. evDistance to a solid is zero inside it, so the body's centroid decides. (A body
+    // whose centroid lies outside itself could be misplaced; TOUCHING is kept for a centroid on the boundary.)
+    const centroid = evApproximateCentroid(context, { "entities" : body });
+    const gap = evDistance(context, { "side0" : solid, "side1" : centroid }).distance;
+    if (gap > TOLERANCE.zeroLength * meter)
+    {
+        return ConstituentPlacement.OUTSIDE;
+    }
+    if (size(evaluateQuery(context, qContainsPoint(qOwnedByBody(solid, EntityType.FACE), centroid))) == 0)
+    {
+        return ConstituentPlacement.INSIDE;
     }
     return ConstituentPlacement.TOUCHING;
 }

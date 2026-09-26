@@ -10,7 +10,7 @@ export import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a656fa0d
 //import constEnums (export - needed for enums in preconditions)
 export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "697107b420d9d97965d2d809");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "40fd9a6d864b4d7389b4b809");
 
 //import continuityTools
 import(path : "6db2a56b5418f71818d7a607", version : "572e9b00092aba3c046bebcc");
@@ -20,7 +20,7 @@ import(path : "73de71e75b755f0042e0e6d8", version : "585ddf22041315f25495eeec");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
-IconNamespace::import(path : "e96867c52539556a75762725", version : "58044f708ff560e305b72aec");
+IconNamespace::import(path : "71590b120a852dc32d7ad90a", version : "41610d09c4cd9ac57a27e926");
 
 /**
  * How the part of the curve that must not move is given.

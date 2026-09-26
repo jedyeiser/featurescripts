@@ -36,6 +36,6 @@ TARGETS = [
     ("footprint", "integrateFootprint", "integrate_footprint"),
     ("footprint", "scaleFootprint", "scale_footprint"),
     ("gordonSurface", "modifyCurveEnd", "modify_curve_end"),
-    # PENDING: composite_part_tools / Composite boolean has no local project or tab yet -- enable once it exists.
-    # ("composite_part_tools", "composite_boolean", "composite_boolean"),
+    # composite_part_tools document created 2026-09-26.
+    ("composite_part_tools", "composite_boolean", "composite_boolean"),
 ]
