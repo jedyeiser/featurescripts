@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 annotation { "Feature Type Name" : "Simple Body Rename", "Feature Type Description" : "Select bodies or composite parts to rename, with an optional shared prefix and suffix applied to every name." }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
@@ -38,6 +40,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         const suffix = definition.useSuffix ? definition.suffix : "";
 
         var renamed = 0;
+        var renamedBodies = [];
         var blank = [];
         var lost = [];
         for (var i = 0; i < size(definition.renameArray); i += 1)
@@ -60,6 +63,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                     "value" : prefix ~ renameBody.renameString ~ suffix
             });
             renamed += 1;
+            renamedBodies = append(renamedBodies, renameBody.query);
         }
 
         if (size(lost) > 0)
@@ -75,6 +79,12 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             }
             reportFeatureInfo(context, id, message);
         }
+
+        // Publish for Extract variables: the renamed bodies (modified in place, so qCreatedBy misses them).
+        embedStandardOutputs(context, id, {
+                    "output" : qUnion(renamedBodies),
+                    "outputDescription" : "The renamed bodies"
+                });
     });
 
 // "1, 3, 4"

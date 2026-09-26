@@ -8,6 +8,9 @@ import(path : "71d853c0fd2f10ca3bb20a4b", version : "f50ebb563ceb08045e094758");
 //import predicates
 import(path : "a54a829744c4e15e8da55e0e", version : "849a0888e10eff97f5f0e84a");
 
+// IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+
 
 IconNamespace::import(path : "279bd6d83f4e7bcd77624952", version : "a9ec7800d2f223cb59b31642");
 
@@ -210,7 +213,35 @@ export const analyzeFootprint = defineFeature(function(context is Context, id is
             });
 
         }
+
+        // Publish the design dimensions for Extract variables. Widths are full widths (twice the +Y
+        // half-width); tip/tail lengths are 0 when the footprint has no tip/tail beyond the contact points.
+        embedStandardOutputs(context, id, {
+                    "output" : qCreatedBy(id + "footprintAnalysisSketch", EntityType.BODY),
+                    "outputDescription" : "The key-point sketch (only when Sketch key points is on)",
+                    "inputs" : definition.fptEdges,
+                    "variables" : footprintVariables(footprintData)
+                });
     });
+
+/**
+ * The Analyze footprint values published to Extract variables. Every key is always present.
+ */
+function footprintVariables(footprintData is map) returns map
+{
+    const tipLength = footprintData.tipLength is ValueWithUnits ? footprintData.tipLength : 0 * meter;
+    const tailLength = footprintData.tailLength is ValueWithUnits ? footprintData.tailLength : 0 * meter;
+    return {
+            "tipWidth" : extractableVariable(footprintData.fbWidestData.width * 2, "Full width at the widest point of the forebody (tip)."),
+            "waistWidth" : extractableVariable(footprintData.foundWaistWidth, "Full width at the waist (narrowest point near the running-surface middle)."),
+            "tailWidth" : extractableVariable(footprintData.abWidestData.width * 2, "Full width at the widest point of the aftbody (tail)."),
+            "waistX" : extractableVariable(footprintData.foundWaistLocation, "World X of the waist."),
+            "tipLength" : extractableVariable(tipLength, "FCP to the tip end along X; 0 when there is no tip beyond the FCP."),
+            "tailLength" : extractableVariable(tailLength, "ACP to the tail end along X; 0 when there is no tail beyond the ACP."),
+            "taperAngle" : extractableVariable(footprintData.foundTaperAngle, "Taper angle widest to widest; positive when the tip is wider than the tail."),
+            "sidecutRadius" : extractableVariable(footprintData.avgRadius, "Average sidecut radius: mean radius of curvature at evenly spaced X stations between the inflection points (the widest points when no inflection is found); 0 when it cannot be computed.")
+        };
+}
 
 export function checkInputData(context is Context, definition is map) returns map
 {

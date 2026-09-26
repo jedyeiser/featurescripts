@@ -351,8 +351,16 @@
         "variable_tools/extract_variables.fs",
         "variable_tools/extract_variables_utils.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "5a6680b77ad5",
+      "sources_hash": "db302366c9a7"
     },
     {
       "id": "d_extract_variables",
@@ -363,8 +371,16 @@
       "sources": [
         "variable_tools/extract_variables.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "66003c3bd088",
+      "sources_hash": "1439705e2efb"
     },
     {
       "id": "x_case_pattern",
@@ -374,8 +390,16 @@
       "sources": [
         "case_pattern/case_pattern.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "f6c6dfcb41ba",
+      "sources_hash": "b6e6870b23ae"
     },
     {
       "id": "d_case_template",
@@ -386,8 +410,16 @@
       "sources": [
         "case_pattern/case_pattern.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "6de11e47ff1b",
+      "sources_hash": "b6e6870b23ae"
     },
     {
       "id": "d_case_pattern",
@@ -398,8 +430,16 @@
       "sources": [
         "case_pattern/case_pattern.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "0c66c87099da",
+      "sources_hash": "b6e6870b23ae"
     },
     {
       "id": "x_driven_offset",

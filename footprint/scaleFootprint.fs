@@ -25,6 +25,9 @@ import(path : "5d198387b3966ae60a549555", version : "7334f2ee149483751b55103b");
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
 import(path : "d3ad341f5b87924b36b5aba8", version : "fdd989cbbf4082b8c7c4e55f");
 
+// IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+
 IconNamespace::import(path : "e81c3eb0b5c51be678eebf9c", version : "ca36ec3d0a7592b4305a1f84");
 
 
@@ -476,6 +479,23 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
             ]));
             debugCurvesByType(context, outputEdges);
         }
+
+        // Publish for Extract variables: one wire per side (empty with "Skip merge" debug on).
+        const positiveSide = qCreatedBy(id + "posOut" + "wire", EntityType.BODY);
+        const negativeSide = qCreatedBy(id + "negOut" + "wire", EntityType.BODY);
+        embedStandardOutputs(context, id, {
+                    "output" : qUnion([positiveSide, negativeSide]),
+                    "outputDescription" : "The scaled footprint wires (+Y and -Y)",
+                    "inputs" : definition.keepReference ? definition.refEdges : qNothing(),
+                    "variables" : {
+                        "lengthScale" : extractableVariable(refLength > 0 * meter ? newLength / refLength : 1,
+                                "New RSL length / reference RSL length (FCP to ACP along X).")
+                    },
+                    "queries" : {
+                        "positiveSide" : extractableQuery(positiveSide, "The scaled +Y side wire.", DebugColor.GREEN),
+                        "negativeSide" : extractableQuery(negativeSide, "The scaled -Y side wire.", DebugColor.BLUE)
+                    }
+                });
     });
 
 /**

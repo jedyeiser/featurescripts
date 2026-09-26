@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 
 const tipTailBounds =
@@ -418,6 +420,26 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                 opDeleteBodies(context, id + "deleteCurves", { "entities" : qUnion(deleteBodyParts) });
         }
 
+        // Publish for Extract variables: the region curves, only when they are retained (empty otherwise).
+        // The point arrays stay in the origin attributes.
+        var tipCurve = qNothing();
+        var rslCurve = qNothing();
+        var tailCurve = qNothing();
+        if (definition.retainCurves)
+        {
+            tipCurve = qUnion(tipBodyParts);
+            rslCurve = qUnion(rslBodyParts);
+            tailCurve = qUnion(tailBodyParts);
+        }
+        embedStandardOutputs(context, id, {
+                    "output" : qUnion([tipCurve, rslCurve, tailCurve]),
+                    "outputDescription" : "The retained tip, RSL and tail curves (empty unless Retain curves is on)",
+                    "queries" : {
+                        "tipCurve" : extractableQuery(tipCurve, "Tip curve (FCP to tip); empty unless Retain curves is on.", DebugColor.RED),
+                        "rslCurve" : extractableQuery(rslCurve, "RSL curve (FCP to ACP); empty unless Retain curves is on.", DebugColor.BLUE),
+                        "tailCurve" : extractableQuery(tailCurve, "Tail curve (ACP to tail); empty unless Retain curves is on.", DebugColor.GREEN)
+                    }
+                });
     });
 
 function genPointArray(context is Context, id is Id, targetCurve is Query, curveName is string, numPoints is number, includePoints is Query, refOrigin is Vector, reverseOrder is boolean, createSketch is boolean, sketchID is string)

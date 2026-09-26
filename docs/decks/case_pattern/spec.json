@@ -1,0 +1,147 @@
+{
+  "slug": "case_pattern",
+  "title": "Case pattern",
+  "tagline": "Re-run a chain of features for every case of a Case template -- each case with its own selections and values -- and name the new bodies by case.",
+  "document": "Case_Pattern",
+  "icon": "icons/final/case_pattern_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "'Apply to each' for the feature tree. Onshape's Pattern moves copies by a transform; Evan Reese's Query Pattern rebinds one seed. Case pattern rebinds up to 8 query variables and 4 values per case and re-runs the listed features for each case.",
+      "useWhen": [
+        "A detail repeats on places that differ in shape",
+        "Each place needs its own dimensions",
+        "The chain edits existing geometry (fillets, move face) as well as making new"
+      ],
+      "image": "docs/decks/case_pattern/shots/t1_side.png",
+      "caption": "T1: the boss chain on three blocks, each at its own height and radius."
+    },
+    {
+      "type": "concept",
+      "title": "The one rule",
+      "image": "docs/explainers/case_pattern/img/fig02_references_in_list.png",
+      "points": [
+        {
+          "head": "Inside the list",
+          "body": "Geometry one listed feature made, used by another, must come through a Query variable 'created by' that feature."
+        },
+        {
+          "head": "Why",
+          "body": "Each case runs in a pattern frame that remaps those references onto the case's copies; clicks stay on case 1."
+        },
+        {
+          "head": "Outside the list",
+          "body": "References to existing geometry are fine: they are rebound through the template's names."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/case_pattern/shots/dialog.png",
+      "params": [
+        [
+          "Case template",
+          "Exactly one Case template."
+        ],
+        [
+          "Features to repeat",
+          "The chain built on the template's names."
+        ],
+        [
+          "Keep",
+          "Which new bodies to keep per case (sketches off by default)."
+        ],
+        [
+          "Name separator",
+          "Between name and case (default _): Boss_A -> Boss_B."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: bosses on three blocks (T1)",
+      "image": "docs/decks/case_pattern/shots/t1_side.png",
+      "head": "Chain: Boss (extrude #top by #bossH), rim fillet 2 mm, #bossEdges = edges created by Boss, fillet #bossEdges at #edgeR",
+      "body": "Case A: 15 mm, R3 (the template). Case B: 25 mm, R3. Case C (pentagon): 8 mm, R2. New bodies are named Boss_<case>. (In the studio case B is currently named 'Foobar!'.)"
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The bodies each case created (filtered by Keep), named <name>_<case>."
+        ]
+      ],
+      "messages": [
+        [
+          "Warning",
+          "Not built: B: input 1 (#top) selects nothing; C: feature 2 failed (...)",
+          "The other cases are still built."
+        ],
+        [
+          "Error",
+          "No case was built.",
+          ""
+        ],
+        [
+          "Info",
+          "N bodies kept Onshape's default name",
+          "Edit the Case pattern once to refresh case 1's names."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Sketches",
+          "body": "Re-solved per case, but references to input geometry stay on case 1. Build sketches on geometry derived from the inputs."
+        },
+        {
+          "kind": "limit",
+          "head": "Order matters",
+          "body": "Cases run in order and see earlier results; a failed case cannot undo edits to existing geometry."
+        },
+        {
+          "kind": "limit",
+          "head": "Cost",
+          "body": "(cases + 1) x the chain on every rebuild."
+        },
+        {
+          "kind": "tip",
+          "head": "Verified",
+          "body": "Fillet and Move face on existing geometry, new extrudes, native query variables (T1-T5)."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Case_Pattern (2099413dd91f34578b385892)"
+        ],
+        [
+          "Tab",
+          "case_pattern (both features)"
+        ],
+        [
+          "Tests",
+          "Case pattern tests studio: T1-T5 (T3, T4 must error)  -  devtools/onshape/build_case_pattern_tests.py"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/case_pattern/case_pattern_explained.md"
+        ],
+        [
+          "Related",
+          "Case template; Query variable"
+        ]
+      ]
+    }
+  ]
+}

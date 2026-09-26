@@ -1,0 +1,127 @@
+{
+  "slug": "case_template",
+  "title": "Case template",
+  "tagline": "Name the inputs a chain of features is built on -- selections and values -- for case 1, and list the further cases a Case pattern will re-run the chain for.",
+  "document": "Case_Pattern",
+  "icon": "icons/final/case_template_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "To build the same detail on several places (a boss on each of three blocks, each its own height), build it once against names -- #top, #rim, #bossH -- and let a Case pattern re-run it. The Case template defines those names for case 1 and holds the other cases' selections and values.",
+      "useWhen": [
+        "The same feature chain applies to several places",
+        "Each place has its own selections and values",
+        "A transform pattern cannot do it (the places differ)"
+      ],
+      "image": "docs/explainers/case_pattern/img/fig01_case_table.png",
+      "caption": "The template's case table and the chain built on case A."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/case_template/shots/dialog.png",
+      "params": [
+        [
+          "Case 1 name",
+          "The template's own case (default A); its suffix is swapped for each case's name."
+        ],
+        [
+          "Inputs",
+          "Up to 8: a query-variable name and case 1's selection."
+        ],
+        [
+          "Case values",
+          "Up to 4: a name, a type (Length / Angle / Area / Volume / Number / Text), case 1's value."
+        ],
+        [
+          "Input slots",
+          "Read-only: the inputs as the case rows show them."
+        ],
+        [
+          "Further cases",
+          "One row per case: its name, a selection per input, a value per value."
+        ],
+        [
+          "Debug",
+          "Print bindings."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "the input names",
+          "Query variables bound to case 1's selections."
+        ],
+        [
+          "the value names",
+          "#variables with case 1's values."
+        ],
+        [
+          "(hidden) case signature",
+          "What the Case pattern reads: every case's selections and values."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Case 1 selection for #x selects nothing",
+          ""
+        ],
+        [
+          "Error",
+          "Name #x is used twice / Case name \"B\" is used twice",
+          ""
+        ],
+        [
+          "Error",
+          "Add at least one input.",
+          "At most 8 inputs and 4 values."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Build the chain on the names",
+          "body": "Every listed feature should use #top, #bossH ... -- never a clicked case-1 entity."
+        },
+        {
+          "kind": "limit",
+          "head": "Rows follow the template",
+          "body": "After adding an input or changing a type, edit the template once so every row gets the slot."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Case_Pattern (2099413dd91f34578b385892)"
+        ],
+        [
+          "Tab",
+          "case_pattern (both features)"
+        ],
+        [
+          "Tests",
+          "Case pattern tests studio: T1-T5"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/case_pattern/case_pattern_explained.md"
+        ],
+        [
+          "Related",
+          "Case pattern"
+        ]
+      ]
+    }
+  ]
+}

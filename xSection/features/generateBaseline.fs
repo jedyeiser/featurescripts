@@ -15,6 +15,9 @@ import(path : "f0717a1116fee7304957da5b", version : "19a2ff2b2d1fd8cd6b86c88e");
 //import export baselineCore
 export import(path : "14d1222501acfaf0e2029dac", version : "d83a4c4cfdf21a07692867d7");
 
+// IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+
 
 
 /**
@@ -705,5 +708,26 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             }
             
         }
-    
+
+        // Publish for Extract variables. The rocker contact points (FRCP / ARCP) are the ends of the
+        // camber section; with "Curve per region" they are vertices of the baseline wire (the joins to
+        // the rockers, or the curve ends when a rocker length is 0). A single approximated curve has no
+        // vertex there, so those keys are empty in that mode.
+        const camberCPs = baselineBSplines[0].controlPoints;
+        const camberLoPt = camberCPs[0];
+        const camberHiPt = camberCPs[size(camberCPs) - 1];
+        const frcpPt = abs(camberLoPt[0] - xFCP) <= abs(camberHiPt[0] - xFCP) ? camberLoPt : camberHiPt;
+        const arcpPt = abs(camberLoPt[0] - xFCP) <= abs(camberHiPt[0] - xFCP) ? camberHiPt : camberLoPt;
+        const baselineVertices = qOwnedByBody(curveBodyQ, EntityType.VERTEX);
+        const weightedBaselineQ = qCreatedBy(id + "extractWeightedCurves", EntityType.BODY);
+        embedStandardOutputs(context, id, {
+                    "output" : qUnion([curveBodyQ, weightedBaselineQ]),
+                    "outputDescription" : "The baseline curve (and the weighted baseline when created)",
+                    "queries" : {
+                        "baseline" : extractableQuery(curveBodyQ, "The baseline (camber/rocker) curve.", DebugColor.GREEN),
+                        "weightedBaseline" : extractableQuery(weightedBaselineQ, "The zero-camber weighted baseline; empty unless Create weighted baseline is on.", DebugColor.BLUE),
+                        "frcpVertex" : extractableQuery(qContainsPoint(baselineVertices, frcpPt), "Forebody rocker contact point (camber/forebody-rocker join); empty for a single-curve output.", DebugColor.RED),
+                        "arcpVertex" : extractableQuery(qContainsPoint(baselineVertices, arcpPt), "Aftbody rocker contact point (camber/aftbody-rocker join); empty for a single-curve output.", DebugColor.RED)
+                    }
+                });
     });

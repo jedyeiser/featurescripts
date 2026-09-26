@@ -10,9 +10,9 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 |---|---|---|---|---|---|
 | x_unwrap | Unwrap (pre-existing) | **draft** | edited by user, code changed since written | `driven_offset/docs/unwrap_explained.md` | 2026-09-25 written by Claude |
 | x_reference_side | Reference-side features | **reviewed** | changed since reviewed, code changed since written | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
-| x_curve_tools | Curve tools | **draft** | - | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-25 written by Claude |
-| x_variable_tools | Variable tools | **planned** | - | `docs/explainers/variable_tools/variable_tools_explained.md` |   |
-| x_case_pattern | Case pattern | **planned** | - | `docs/explainers/case_pattern/case_pattern_explained.md` |   |
+| x_curve_tools | Curve tools | **draft** | code changed since written | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-25 written by Claude |
+| x_variable_tools | Variable tools | **draft** | - | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
+| x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-25 written by Claude |
 | x_driven_offset | Driven offset | **planned** | - | `docs/explainers/driven_offset/driven_offset_explained.md` |   |
 | x_publish_tools | Publish & drawing tools | **planned** | - | `docs/explainers/publish_tools/publish_tools_explained.md` |   |
 | x_solvers | Solvers | **planned** | - | `docs/explainers/solvers/solvers_explained.md` |   |
@@ -32,13 +32,13 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_thicken_plus | Thicken+ | **draft** | - | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-09-25 written by Claude |
 | d_orient_to_reference | Orient to reference | **draft** | - | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
 | d_clean_wire | Clean wire | **draft** | - | `docs/decks/clean_wire/clean_wire.pptx` | 2026-09-25 written by Claude |
-| d_map_curve | Map curve | **draft** | - | `docs/decks/map_curve/map_curve.pptx` | 2026-09-25 written by Claude |
+| d_map_curve | Map curve | **draft** | code changed since written | `docs/decks/map_curve/map_curve.pptx` | 2026-09-25 written by Claude |
 | d_merge_curve | Merge curve | **draft** | - | `docs/decks/merge_curve/merge_curve.pptx` | 2026-09-25 written by Claude |
-| d_evaluate_profiles | Evaluate profiles | **draft** | - | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-25 written by Claude |
+| d_evaluate_profiles | Evaluate profiles | **draft** | code changed since written | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-25 written by Claude |
 | d_fillet_wire | Fillet wire | **draft** | - | `docs/decks/fillet_wire/fillet_wire.pptx` | 2026-09-25 written by Claude |
-| d_extract_variables | Extract variables | **planned** | - | `docs/decks/extract_variables/extract_variables.pptx` |   |
-| d_case_template | Case template | **planned** | - | `docs/decks/case_template/case_template.pptx` |   |
-| d_case_pattern | Case pattern | **planned** | - | `docs/decks/case_pattern/case_pattern.pptx` |   |
+| d_extract_variables | Extract variables | **draft** | - | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
+| d_case_template | Case template | **draft** | - | `docs/decks/case_template/case_template.pptx` | 2026-09-25 written by Claude |
+| d_case_pattern | Case pattern | **draft** | - | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-25 written by Claude |
 | d_driven_edge_offset | Driven edge offset | **planned** | - | `docs/decks/driven_edge_offset/driven_edge_offset.pptx` |   |
 | d_driven_offset_surface | Driven offset surface | **planned** | - | `docs/decks/driven_offset_surface/driven_offset_surface.pptx` |   |
 | d_evaluate_offset | Evaluate offset | **planned** | - | `docs/decks/evaluate_offset/evaluate_offset.pptx` |   |

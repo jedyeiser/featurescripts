@@ -7,6 +7,8 @@ import(path : "onshape/std/sketch.fs", version : "3083.0");
 import(path : "onshape/std/surfaceGeometry.fs", version : "3083.0");
 import(path : "onshape/std/containers.fs", version : "3083.0");
 export import(path : "onshape/std/nurbsUtils.fs", version : "3083.0");
+// IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 export const PositionTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
 export const PlaneTolBounds = {(millimeter) : [0.00001, 0.01, 1]} as LengthBoundSpec;
@@ -172,6 +174,13 @@ export const arcFit = defineFeature(function(context is Context, id is Id, defin
                         "entities" : qCreatedBy(sketchId, EntityType.BODY)
                     });
         }
+
+        // Publish for Extract variables: the composite wire only (never the sketch).
+        embedStandardOutputs(context, id, {
+                    "output" : qCreatedBy(id + "compositeWire", EntityType.BODY),
+                    "outputDescription" : "The arc-fit wire (empty when Output type is Sketch)",
+                    "inputs" : definition.selEdges
+                });
     });
 
 /**

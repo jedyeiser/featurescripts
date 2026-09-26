@@ -1,0 +1,187 @@
+{
+  "slug": "extract_variables",
+  "title": "Extract variables",
+  "tagline": "One feature per block of the tree that turns what its features produced into named variables and query variables -- regions, cuts, chain ends, the largest faces -- instead of a query variable per name.",
+  "document": "Variable_tools",
+  "icon": "icons/final/extract_variables_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A variable-driven model needs dozens of named selections so later features keep working when the model changes. Native query variables give one node per name, picked by hand, and cannot express a region, a chain end or 'the two largest faces'. Extract variables publishes them all from one node, from what the source features published.",
+      "useWhen": [
+        "A block of features feeds many later selections",
+        "A selection must be computed (region, chain end, largest N)",
+        "Names must survive changes upstream"
+      ],
+      "image": "docs/decks/extract_variables/shots/hero.png",
+      "caption": "Examples studio: Show highlights what the entries publish; 'Published 6 name(s).'"
+    },
+    {
+      "type": "concept",
+      "title": "Producers and the consumer",
+      "image": "docs/explainers/variable_tools/img/fig01_producers_consumer.png",
+      "points": [
+        {
+          "head": "Producers",
+          "body": "Our features publish keys (output, regions, cuts, ends ...) in a hidden map; built-ins still offer output and modified* keys."
+        },
+        {
+          "head": "Addresses",
+          "body": "A key offered by one source is its bare name; by several, key@1, key@2 ... (Print keys lists them)."
+        },
+        {
+          "head": "Always present",
+          "body": "A producer's keys exist even when empty, so an entry never breaks after an edit."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Hold, Track, Evaluate on use",
+      "image": "docs/explainers/variable_tools/img/fig02_hold_track_evaluate.png",
+      "points": [
+        {
+          "head": "Hold (default)",
+          "body": "What was there, followed through edits that keep it -- verified: follows a 10 mm Move boundary extend."
+        },
+        {
+          "head": "Track",
+          "body": "Also what later splits and rebuilds make of it."
+        },
+        {
+          "head": "Evaluate on use",
+          "body": "Re-resolved wherever used: the most live, and the easiest to get wrong."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/extract_variables/shots/dialog.png",
+      "params": [
+        [
+          "Sources",
+          "The features to read (sorted by tree order)."
+        ],
+        [
+          "Prefix",
+          "Joined to every name with _ (box -> #box_body)."
+        ],
+        [
+          "Add keys from sources",
+          "Button: one entry per address not yet listed."
+        ],
+        [
+          "Entries",
+          "Per name: Type, Source key, Published name, Show, Track / Evaluate on use; Filtered adds entity type, body type, name, largest N."
+        ],
+        [
+          "Print keys",
+          "List every address with its description."
+        ],
+        [
+          "Manifest",
+          "Optional: one map variable listing everything published."
+        ]
+      ],
+      "note": "Entry types: Source key, Filtered, Closest to point, Shared edges, Chain end, Edges between points, Bridging curve input, Region."
+    },
+    {
+      "type": "example",
+      "title": "Example: box bands",
+      "image": "docs/decks/extract_variables/shots/hero.png",
+      "head": "Sources: a Box and a split of its faces into bands; prefix 'box'",
+      "body": "Entries publish the body (output@1), the two largest faces (Filtered, keep 2), the edges at a corner (Closest to point), shared edges and two regions -- 6 names, plus a manifest. With Show on, the published body and cuts are highlighted."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "#<prefix>_<name>",
+          "A value entry: an ordinary variable."
+        ],
+        [
+          "<prefix>_<name> (query)",
+          "A query entry: a native query variable, in the dropdowns of later features."
+        ],
+        [
+          "manifest (optional)",
+          "One map variable listing everything published."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "Published N name(s).",
+          "Empty names are published too, and listed."
+        ],
+        [
+          "Info",
+          "Nothing published yet: press Add keys...",
+          ""
+        ],
+        [
+          "Warning",
+          "Entry k (key): reason.",
+          "Not published: unknown or ambiguous key (choices listed), a value where geometry was expected, a missing point ..."
+        ],
+        [
+          "Error",
+          "a name used twice",
+          "Two entries publish the same name."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Press Add keys, then prune",
+          "body": "It lists everything the sources offer; delete what you do not need and rename the rest."
+        },
+        {
+          "kind": "tip",
+          "head": "Prefer Hold",
+          "body": "Use Track for things later split; Evaluate on use only when you know why."
+        },
+        {
+          "kind": "limit",
+          "head": "Adding a source",
+          "body": "Every source offers output: a second source makes the bare 'output' ambiguous -- use output@1."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Variable_tools (a47f90bfa6b17a59e20cebd0), V2"
+        ],
+        [
+          "Tabs",
+          "extract_variables, extract_variables_utils, extract_outputs (the producer library, pinned by every producer)"
+        ],
+        [
+          "Tests",
+          "Tracking tests studio (4/4), variable_tools_tests (Region, 6/6)"
+        ],
+        [
+          "Examples",
+          "Examples studio: Extract variables: box bands"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/variable_tools/variable_tools_explained.md"
+        ],
+        [
+          "Related",
+          "Every producer: Split+, Mutual Trim+, Offset+, Thicken+, Orient to reference, Clean wire, Map / Merge curve, ..."
+        ]
+      ]
+    }
+  ]
+}
