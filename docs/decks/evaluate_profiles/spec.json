@@ -72,7 +72,7 @@
         ],
         [
           "Output",
-          "One curve / One per input curve (exact) / Efficient (merges where exact)."
+          "One curve / One per input curve (exact) / Efficient (merges exact lines and arcs; freeform only across tangent joints)."
         ],
         [
           "Approximation",
@@ -184,6 +184,11 @@
           "kind": "limit",
           "head": "Longest loop only",
           "body": "An outline with several loops keeps only the longest."
+        },
+        {
+          "kind": "tip",
+          "head": "Efficient keeps corners",
+          "body": "Freeform edges merge only across tangent joints (0.57 deg): a 28 deg corner stays a joint (P12), a tangent joint merges (P13)."
         }
       ]
     },

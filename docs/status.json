@@ -218,7 +218,8 @@
         "curve_tools/evaluate_profiles.fs",
         "curve_tools/fillet_wire.fs",
         "curve_tools/map_curve.fs",
-        "curve_tools/merge_curve.fs"
+        "curve_tools/merge_curve.fs",
+        "curve_tools/recognize_arcs.fs"
       ],
       "state": "draft",
       "history": [
@@ -231,10 +232,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "f0f84a8c9b07",
-      "sources_hash": "9ea9e78853ed"
+      "written_hash": "a3b8282bb7c2",
+      "sources_hash": "e193e36b6801"
     },
     {
       "id": "d_clean_wire",
@@ -276,10 +282,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "6d9a02536b95",
-      "sources_hash": "3d9fd28dc1d3"
+      "written_hash": "6c8321953c5e",
+      "sources_hash": "4ad3caeb16a5"
     },
     {
       "id": "d_merge_curve",
@@ -316,10 +327,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "2e9e3ca7adb4",
-      "sources_hash": "2bbcc66f4d82"
+      "written_hash": "7d5f6df9843b",
+      "sources_hash": "213dd0feb59a"
     },
     {
       "id": "d_fillet_wire",
@@ -340,6 +356,32 @@
       ],
       "written_hash": "bf8030d7babf",
       "sources_hash": "b1c796272272"
+    },
+    {
+      "id": "d_recognize_arcs",
+      "kind": "deck",
+      "family": "curve_tools",
+      "title": "Recognize arcs",
+      "path": "docs/decks/recognize_arcs/recognize_arcs.pptx",
+      "sources": [
+        "curve_tools/recognize_arcs.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "bb11c57b0826",
+      "sources_hash": "2919725f9cd3",
+      "state_hash": "bb11c57b0826"
     },
     {
       "id": "x_variable_tools",
@@ -565,8 +607,16 @@
         "solvers/iterative_solve.fs",
         "solvers/solver_core.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "8af131f1e504",
+      "sources_hash": "14e2605516ab"
     },
     {
       "id": "d_iterative_solve",
@@ -577,8 +627,22 @@
       "sources": [
         "solvers/iterative_solve.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "caaabaaa631d",
+      "sources_hash": "36fe9c8701d4",
+      "state_hash": "caaabaaa631d"
     },
     {
       "id": "d_part_volume",
@@ -589,8 +653,16 @@
       "sources": [
         "solvers/Part_Vol.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "db238b9ec516",
+      "sources_hash": "81edd5f89886"
     },
     {
       "id": "x_small_tools",
@@ -603,8 +675,16 @@
         "smallTools/betterCurveTrim.fs",
         "smallTools/curveTrimCore.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "02aee363d07b",
+      "sources_hash": "bf2aee1aaedd"
     },
     {
       "id": "d_move_along_edge",
@@ -615,8 +695,22 @@
       "sources": [
         "smallTools/Move_Along_Edge.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "d3e8ea90f4ff",
+      "sources_hash": "e662ef5801fc",
+      "state_hash": "d3e8ea90f4ff"
     },
     {
       "id": "d_trim_curve",
@@ -627,8 +721,16 @@
       "sources": [
         "smallTools/OS_Trim.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "c018edbea166",
+      "sources_hash": "5afa2eff879f"
     },
     {
       "id": "d_trim_curve_plus",
@@ -639,8 +741,22 @@
       "sources": [
         "smallTools/betterCurveTrim.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "76f8e99e8a70",
+      "sources_hash": "16edd238b8b9",
+      "state_hash": "76f8e99e8a70"
     },
     {
       "id": "x_curve_mapping",
@@ -654,8 +770,16 @@
         "curveMapping_public/wrapCurve.fs",
         "example_1/refSurfCreation/offsetEdges.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "ce5391237cc8",
+      "sources_hash": "c5b45b99aff0"
     },
     {
       "id": "d_wrap_curve",
@@ -666,8 +790,22 @@
       "sources": [
         "curveMapping_public/wrapCurve.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "e641e722ce89",
+      "sources_hash": "16bb78799059",
+      "state_hash": "e641e722ce89"
     },
     {
       "id": "d_wrap_and_loft",
@@ -678,8 +816,22 @@
       "sources": [
         "curveMapping_public/wrapAndLoft.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "687e241da4ac",
+      "sources_hash": "42fb8174ca32",
+      "state_hash": "687e241da4ac"
     },
     {
       "id": "d_deform",
@@ -690,8 +842,22 @@
       "sources": [
         "curveMapping_public/deform.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "750e87e01ebe",
+      "sources_hash": "68f499829e7c",
+      "state_hash": "750e87e01ebe"
     },
     {
       "id": "d_offset_edges",
@@ -702,8 +868,22 @@
       "sources": [
         "example_1/refSurfCreation/offsetEdges.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "3d3cc71ad4db",
+      "sources_hash": "9cf72c3a1231",
+      "state_hash": "3d3cc71ad4db"
     },
     {
       "id": "x_footprint",
@@ -724,8 +904,16 @@
         "footprint/predicates.fs",
         "footprint/scaleFootprint.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "a19b5c7848e8",
+      "sources_hash": "0d311a117616"
     },
     {
       "id": "d_generate_footprint_points",
@@ -736,8 +924,22 @@
       "sources": [
         "footprint/getFootprintPoints.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "c92292a9f32c",
+      "sources_hash": "b2ee27cf7684",
+      "state_hash": "c92292a9f32c"
     },
     {
       "id": "d_analyze_footprint",
@@ -748,8 +950,22 @@
       "sources": [
         "footprint/analyzeFootprint.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "dc431dfa619e",
+      "sources_hash": "d99389cd72dd",
+      "state_hash": "dc431dfa619e"
     },
     {
       "id": "d_integrate_footprint",
@@ -760,8 +976,22 @@
       "sources": [
         "footprint/integrateFootprint.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "08406b8909b2",
+      "sources_hash": "4403e8d6627f",
+      "state_hash": "08406b8909b2"
     },
     {
       "id": "d_scale_footprint",
@@ -772,8 +1002,22 @@
       "sources": [
         "footprint/scaleFootprint.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "08456a6416ff",
+      "sources_hash": "59d1b96a8991",
+      "state_hash": "08456a6416ff"
     },
     {
       "id": "d_arc_fit",
@@ -784,8 +1028,22 @@
       "sources": [
         "footprint/arcFit.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "3e09f1848b15",
+      "sources_hash": "d9db1ad2f5bc",
+      "state_hash": "3e09f1848b15"
     },
     {
       "id": "x_gordon_surface",
@@ -805,8 +1063,16 @@
         "gordonSurface/scaledCurve.fs",
         "gordonSurface/simplifySurface.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "ca572eb6f14e",
+      "sources_hash": "53eb2449bdfd"
     },
     {
       "id": "d_gordon_surface",
@@ -817,8 +1083,22 @@
       "sources": [
         "gordonSurface/gordonSurface.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "16a13a327904",
+      "sources_hash": "5b13dbd376e7",
+      "state_hash": "16a13a327904"
     },
     {
       "id": "d_interior_curves",
@@ -829,8 +1109,22 @@
       "sources": [
         "gordonSurface/interiorCurves.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "58ab9dd4c609",
+      "sources_hash": "5e69493c14d3",
+      "state_hash": "58ab9dd4c609"
     },
     {
       "id": "d_modify_curve_end",
@@ -841,8 +1135,22 @@
       "sources": [
         "gordonSurface/modifyCurveEnd.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "2a6482e72cfc",
+      "sources_hash": "0f64810fdc59",
+      "state_hash": "2a6482e72cfc"
     },
     {
       "id": "d_pull_surface",
@@ -853,8 +1161,22 @@
       "sources": [
         "gordonSurface/pullSurface.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "941ba6244f80",
+      "sources_hash": "970271d0b84a",
+      "state_hash": "941ba6244f80"
     },
     {
       "id": "d_scaled_curve",
@@ -865,8 +1187,22 @@
       "sources": [
         "gordonSurface/scaledCurve.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "a8aab0fdb590",
+      "sources_hash": "c5e860ff79e3",
+      "state_hash": "a8aab0fdb590"
     },
     {
       "id": "d_simplify_surface",
@@ -877,8 +1213,22 @@
       "sources": [
         "gordonSurface/simplifySurface.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "dialog screenshot pending (Onshape login expired)"
+        }
+      ],
+      "written_hash": "90f168114bf0",
+      "sources_hash": "9a63b639b903",
+      "state_hash": "90f168114bf0"
     },
     {
       "id": "d_makecurvescompitable",
@@ -889,8 +1239,16 @@
       "sources": [
         "gordonSurface/gordonCurveCompat.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "b9f5aeb2dd0c",
+      "sources_hash": "fb2aaa0e8e52"
     },
     {
       "id": "x_xsection",

@@ -1,0 +1,76 @@
+{
+  "slug": "trim_curve",
+  "title": "Trim curve (reference copy)",
+  "tagline": "A verbatim copy of Onshape's own Trim curve (Move curve boundary), kept to compare with Trim curve +. Use the native feature.",
+  "document": "smallTools",
+  "icon": "docs/decks/_icons/trim_curve_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it is",
+      "problem": "OS_Trim.fs is PTC's MIT-licensed source of native Trim curve with only the version bumped. It exists so Trim curve + can be compared with it; nothing imports it.",
+      "useWhen": [
+        "Never in models: use the native Trim curve",
+        "Reading how the native feature works"
+      ],
+      "image": "docs/explainers/small_tools/img/fig03_trim_curve_plus.png",
+      "caption": "What Trim curve + adds: cuts at exact positions."
+    },
+    {
+      "type": "dialog",
+      "title": "The dialog",
+      "params": [
+        [
+          "Move curve boundary type",
+          "Trim / Extend."
+        ],
+        [
+          "Curves to adjust",
+          "Non-sketch wires."
+        ],
+        [
+          "End condition",
+          "(Extend) Blind + distance, or Up to entity; then extension shape."
+        ],
+        [
+          "Up to entity",
+          "(Trim) where to trim."
+        ],
+        [
+          "Help point",
+          "Picks the end / side."
+        ],
+        [
+          "Opposite direction",
+          "Flip."
+        ]
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "smallTools (14cdaad24a8beab67af40fe4)"
+        ],
+        [
+          "Tab",
+          "OS_Trim"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/small_tools/small_tools_explained.md, section 3"
+        ],
+        [
+          "Related",
+          "Trim curve +"
+        ]
+      ]
+    }
+  ]
+}

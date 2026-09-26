@@ -1,0 +1,169 @@
+{
+  "slug": "move_along_edge",
+  "title": "Move Along Edge",
+  "tagline": "Move or copy bodies, mate connectors, sketch edges or points along an edge, chain or wire -- by a distance along it, or to the point nearest a target.",
+  "document": "smallTools",
+  "icon": "icons/final/move_along_edge_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Native Transform cannot follow a curve by arc length, and Curve pattern spaces instances evenly. Move Along Edge moves (or copies) things a set distance along a path, or to where the path is nearest a target, turning them with the path if asked.",
+      "useWhen": [
+        "Place a part at a station along a curve",
+        "Copy a detail to several named stations",
+        "Put a point where a curve meets another"
+      ],
+      "image": "docs/explainers/small_tools/img/fig02_nearest_copies.png",
+      "caption": "M15: moved nearest target 1; copies nearest target 2 and at 50 mm."
+    },
+    {
+      "type": "concept",
+      "title": "Orientation",
+      "image": "docs/explainers/small_tools/img/fig01_orientation.png",
+      "points": [
+        {
+          "head": "Tangent only",
+          "body": "Default: the entity turns with the path's tangent."
+        },
+        {
+          "head": "Transported",
+          "body": "No twist: a rotation-minimising frame (M8 stays on top)."
+        },
+        {
+          "head": "Frenet",
+          "body": "Follows the curvature normal: flips at inflections (M7 ends below), arbitrary on lines."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/move_along_edge/shots/dialog.png",
+      "params": [
+        [
+          "Entities to move",
+          "Bodies, mate connectors, sketch edges, sketch vertices."
+        ],
+        [
+          "Edges or wire to move along",
+          "The path; positive = the first edge's own direction."
+        ],
+        [
+          "Provide Reference Point",
+          "+ vertex: use it instead of the centroid / connector origin."
+        ],
+        [
+          "Move to",
+          "Distance (signed, 25 mm; Flip direction or the arrow) / Nearest point to a target."
+        ],
+        [
+          "Apply",
+          "Move and rotate / Translate only / Rotate only."
+        ],
+        [
+          "Orientation",
+          "Tangent only / Transported (no twist) / Curve normal (Frenet)."
+        ],
+        [
+          "Copy Bodies?",
+          "Copy instead of move."
+        ],
+        [
+          "Naming",
+          "New name / Prefix / Suffix + Name text."
+        ],
+        [
+          "Mate connectors as points",
+          "Output points instead of moving connectors."
+        ],
+        [
+          "Additional copies",
+          "More copies from the same start, each by distance or target, each named."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: nearest point and copies (M15)",
+      "image": "docs/explainers/small_tools/img/fig02_nearest_copies.png",
+      "head": "Main move nearest (250, 60); copies nearest (320, -40) and at 50 mm",
+      "body": "The cube lands at x = 250, copies at 320 and 50. Also tested: a closed loop wraps (M6), moving back past the start extends the path (M9), rotate only turns in place (M18)."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output / inputs",
+          "The moved entities (or copies) / the sources."
+        ],
+        [
+          "initial_copy",
+          "The first copy (Copy on)."
+        ],
+        [
+          "copy_1 ... copy_n",
+          "The additional copies."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "rotate only on points / mate connectors cannot be named",
+          ""
+        ],
+        [
+          "Warning",
+          "source names missing",
+          "Edit the feature once to refresh the names."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Moves keep identity",
+          "body": "A moved body is the same body: downstream references survive."
+        },
+        {
+          "kind": "limit",
+          "head": "Nearest ignores Flip",
+          "body": "And names refresh only on edit."
+        },
+        {
+          "kind": "limit",
+          "head": "Frenet on lines",
+          "body": "Undefined normal: use Transported."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "smallTools (14cdaad24a8beab67af40fe4)"
+        ],
+        [
+          "Tab",
+          "Move_Along_Edge"
+        ],
+        [
+          "Tests",
+          "Move along edge tests: M1-M20 + M3b (all pass)"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/small_tools/small_tools_explained.md, section 1"
+        ],
+        [
+          "Related",
+          "Trim curve +; Extract variables (copy_n keys)"
+        ]
+      ]
+    }
+  ]
+}

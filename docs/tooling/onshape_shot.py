@@ -108,6 +108,12 @@ def main(listing):
                 if shot.get("filter"):
                     # long trees only render what is on screen: narrow the tree with its filter box (view only)
                     box = p.get_by_placeholder("Filter by name or type").first
+                    try:
+                        box.wait_for(state="visible", timeout=90000)
+                    except Exception:
+                        save(p, "docs/tooling/_render/filter_box.FAILED.png")
+                        print("  no tree filter box -- see docs/tooling/_render/filter_box.FAILED.png")
+                        raise
                     box.fill(shot["filter"])
                     p.wait_for_timeout(2000)
                 if shot.get("featurePrefix"):

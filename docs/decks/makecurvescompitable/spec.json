@@ -1,0 +1,83 @@
+{
+  "slug": "makecurvescompitable",
+  "title": "makeCurvesCompitable",
+  "tagline": "Developer utility: make selected curves share degree and knots, and print a before / after report.",
+  "document": "gordonSurface",
+  "icon": "docs/decks/_icons/makecurvescompitable_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Every surface-from-curves tool here first makes curves compatible. This feature exposes that step for checking: what degrees, knots and control-point counts the curves have before and after.",
+      "useWhen": [
+        "Diagnose a skinning or Gordon problem",
+        "Inspect curve structure"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig05_compatibility.png",
+      "caption": "Degree elevation and knot union, exact."
+    },
+    {
+      "type": "dialog",
+      "title": "The dialog",
+      "params": [
+        [
+          "Edges to make compatible",
+          "The curves (in selection order)."
+        ],
+        [
+          "Print Report?",
+          "Degrees, control-point counts, knots, rational flags, match checks -- before and after."
+        ],
+        [
+          "Create wire?",
+          "Output the compatible curves as wires compatibleBSpline_i (shapes unchanged)."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Name and description",
+          "body": "The feature name is misspelled and its description is empty."
+        },
+        {
+          "kind": "limit",
+          "head": "Rational input",
+          "body": "Edges are read without forcing non-rational."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "gordonCurveCompat"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Examples",
+          "none"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 1.1, 2.7"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

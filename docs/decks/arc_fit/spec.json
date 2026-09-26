@@ -1,0 +1,152 @@
+{
+  "slug": "arc_fit",
+  "title": "Arc fit",
+  "tagline": "Turn freeform coplanar edges into a chain of lines and circular arcs within a position tolerance -- for CAM and for radius callouts.",
+  "document": "footprint",
+  "icon": "icons/final/arc_fit_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Machines and drawings want lines and arcs; design curves are splines. Arc fit replaces each edge with the fewest lines and arcs that stay within tolerance, keeping edges that already are arcs or lines.",
+      "useWhen": [
+        "A spline sidecut needs radius callouts",
+        "CAM needs line/arc geometry",
+        "Check how 'arc-like' a curve is"
+      ],
+      "image": "docs/explainers/footprint/img/fig04_arc_fit.png",
+      "caption": "AR3: a spline S-curve -> 10 arcs within 0.008 mm."
+    },
+    {
+      "type": "concept",
+      "title": "How it fits",
+      "image": "docs/explainers/footprint/img/fig04_arc_fit.png",
+      "points": [
+        {
+          "head": "Keep what is exact",
+          "body": "An edge that already is a circle or line passes through whole."
+        },
+        {
+          "head": "Biarcs",
+          "body": "Each segment: a line, a biarc (two tangent arcs matching the end tangents) or a 3-point arc."
+        },
+        {
+          "head": "Split, then merge",
+          "body": "Split at the worst point until in tolerance; merge neighbours while it stays in tolerance."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/arc_fit/shots/dialog.png",
+      "params": [
+        [
+          "Edges to fit",
+          "Coplanar edges, selected in chain order."
+        ],
+        [
+          "Position tolerance",
+          "Largest deviation (0.01 mm); also the join tolerance."
+        ],
+        [
+          "Plane tolerance",
+          "Allowed out-of-plane error (0.01 mm)."
+        ],
+        [
+          "Minimum segment length",
+          "1 mm."
+        ],
+        [
+          "Tangency tol",
+          "No effect today."
+        ],
+        [
+          "Validation samples per arc",
+          "Where the deviation is checked (16)."
+        ],
+        [
+          "Max subdivision depth",
+          "8."
+        ],
+        [
+          "Output type",
+          "Curves / Sketch / Curves and sketch."
+        ],
+        [
+          "Debug",
+          "Console diagnostics."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: AR3",
+      "image": "docs/explainers/footprint/img/fig04_arc_fit.png",
+      "head": "A spline S-curve (R14 core into an R3 reverse flank), tolerance 0.01 mm",
+      "body": "10 arcs, within 0.008 mm both ways, one wire. Also tested: AR1 five exact arcs pass through unchanged; AR2 a spline on an R14 arc -> one arc R14000; AR4 2 mm knot spans with a 10 mm minimum -> no gaps."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The arc-fit wire (empty when Output type is Sketch)."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "edges not coplanar (deviation stated)",
+          "Raise Plane tolerance or fix the input."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Order matters",
+          "body": "Select the edges in chain order; they are not re-ordered."
+        },
+        {
+          "kind": "limit",
+          "head": "Across edges",
+          "body": "Arcs are tangent within an input edge, not across input edges."
+        },
+        {
+          "kind": "limit",
+          "head": "Tight tolerances",
+          "body": "Very small tolerances drive every segment to maximum depth: slow."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "footprint (52724f3a857fa52d3ecceb77)"
+        ],
+        [
+          "Tab",
+          "arcFit"
+        ],
+        [
+          "Tests",
+          "Footprint tests studio (build_ / check_footprint_tests.py): AR1-AR4"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/footprint/footprint_explained.md, section 2.4"
+        ],
+        [
+          "Related",
+          "Integrate footprint, Analyze footprint, Scale Footprint, Arc fit, Generate Footprint Points"
+        ]
+      ]
+    }
+  ]
+}

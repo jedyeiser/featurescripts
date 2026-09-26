@@ -1,0 +1,136 @@
+{
+  "slug": "pull_surface",
+  "title": "Pull surface",
+  "tagline": "Push and pull a face with a grid of handles; the edges keep G0, G1 or G2 with their neighbours along their whole length.",
+  "document": "gordonSurface",
+  "icon": "icons/final/pull_surface_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Onshape has no control-net push/pull. Pull surface puts arrow handles on a face; drag them and a new sheet is built from the face's own control net, with the edge rows locked so it still fits its neighbours.",
+      "useWhen": [
+        "Add a bump or dip to a face",
+        "Tweak a surface without rebuilding its curves",
+        "Keep continuity with surrounding faces"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig07_pull_surface.png",
+      "caption": "P2: +10 mm at the centre of a cylinder patch, G1 edges."
+    },
+    {
+      "type": "concept",
+      "title": "Locks and handles",
+      "image": "docs/explainers/gordon_surface/img/fig07_pull_surface.png",
+      "points": [
+        {
+          "head": "Locked rows",
+          "body": "1 / 2 / 3 control-point rows per edge for G0 / G1 / G2: continuity holds along the whole edge."
+        },
+        {
+          "head": "Handles",
+          "body": "Free control points move along the normal; the offsets are solved so the surface passes through each handle."
+        },
+        {
+          "head": "Enough handles",
+          "body": "G1 needs 5+ handles each way before any is free, G2 7+."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/pull_surface/shots/dialog.png",
+      "params": [
+        [
+          "Face",
+          "The face to pull (kept; the result is a new sheet)."
+        ],
+        [
+          "U curve count",
+          "Handles across u, edges included (2-20, 4)."
+        ],
+        [
+          "V curve count",
+          "Handles across v."
+        ],
+        [
+          "Continuity",
+          "G0 / G1 / G2 along the edges."
+        ],
+        [
+          "Active offsets",
+          "U, V, Offset per handle; filled by dragging; 0 removes."
+        ],
+        [
+          "Debug",
+          "Iso-curves, keep curves / points, handle grid, offset vectors, print."
+        ],
+        [
+          "Approximation",
+          "Degree (minimum, up to 5); how exactly the face is read."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The pulled sheet (pullSurf)."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "no handle is free / holes not kept / solve fell back / trimmed edges held approximately",
+          "One line."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Counts first",
+          "body": "Changing a count or the continuity resets the offsets; set them before dragging."
+        },
+        {
+          "kind": "limit",
+          "head": "Trims",
+          "body": "Holes are dropped; edges trimmed inside the face hold continuity only approximately."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "pullSurface"
+        ],
+        [
+          "Tests",
+          "Gordon tools tests: P1-P3"
+        ],
+        [
+          "Examples",
+          "Test Part Studio 1: Pull surface 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 2.5"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "slug": "modify_curve_end",
+  "title": "Modify curve end",
+  "tagline": "Move one end of a curve, chain or wire to a new point and blend the change back -- hold part of the curve exactly, keep G1/G2 there, and match the end to a reference.",
+  "document": "gordonSurface",
+  "icon": "icons/final/modify_curve_end_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Moving an end of a network curve usually means redrawing it. Modify curve end edits the curve's own control points: the end goes where you ask, the change fades back, and whatever you hold stays exactly as it was.",
+      "useWhen": [
+        "Stretch a curve to a new corner of the network",
+        "Keep most of a curve untouched",
+        "Land an end tangent (or curvature-continuous) to an edge, face or mate connector"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig03_modify_curve_end.png",
+      "caption": "T01 move, T30 hold, T10 match an arc (G2)."
+    },
+    {
+      "type": "concept",
+      "title": "How it works",
+      "image": "docs/explainers/gordon_surface/img/fig03_modify_curve_end.png",
+      "points": [
+        {
+          "head": "Control points, not a refit",
+          "body": "Free control points move by a share of the offset that fades by arc length; the last moves fully."
+        },
+        {
+          "head": "Exact hold",
+          "body": "Knots at the hold make the held part depend only on locked control points; G1 / G2 lock one / two more."
+        },
+        {
+          "head": "Closed-form end",
+          "body": "Tangent (and curvature) of an edge, face or mate connector set directly on the last control points."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/modify_curve_end/shots/dialog.png",
+      "params": [
+        [
+          "Edges or wire to modify",
+          "An edge, a chain in any order, or a wire; open, unbranched."
+        ],
+        [
+          "Modified end",
+          "The end to move (empty = the chain's end)."
+        ],
+        [
+          "To point",
+          "Where it goes (empty = stays / snaps onto the reference)."
+        ],
+        [
+          "Hold part of the curve",
+          "Hold by Point or Distance (arc length from the modified end)."
+        ],
+        [
+          "Parameters",
+          "Transition type; continuity at the fixed end / hold (G0 / G1 / G2); end reference."
+        ],
+        [
+          "Project onto surface?",
+          "+ face: only the part after the hold is projected (G1 kept at the hold)."
+        ],
+        [
+          "Debug, Details",
+          "Degree, tolerance, max control points of a merged chain, sampling multiple, print."
+        ]
+      ]
+    },
+    {
+      "type": "dialog",
+      "title": "End reference (in Parameters)",
+      "params": [
+        [
+          "Endpoint continuity ref.",
+          "An edge, a face or a mate connector."
+        ],
+        [
+          "Opposite direction",
+          "Reverse the end tangent."
+        ],
+        [
+          "Match",
+          "G0 / G1 / G2 at the moved end."
+        ],
+        [
+          "End curvature",
+          "(G2) Match the reference / Zero / Radius."
+        ],
+        [
+          "End radius",
+          "100 mm; bends toward the connector's X, else the edge's normal, else the curve's own."
+        ],
+        [
+          "Offset frame",
+          "No effect any more (kept for saved features)."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: hold point (T30)",
+      "image": "docs/explainers/gordon_surface/img/fig03_modify_curve_end.png",
+      "head": "End (200, 0) -> (200, 30); hold at (150, -30), G1",
+      "body": "Everything from the fixed end to the hold is unchanged (under 1 micron); the tangent at the hold is kept. T10: matching an R25 arc gives end curvature 40/m, as the arc."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The modified curve (one wire)."
+        ],
+        [
+          "movedVertex",
+          "The end at the To point."
+        ],
+        [
+          "holdVertex",
+          "The hold point, or the fixed end when there is no hold."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "Notes: no Modified end picked, hold has no effect, G0 hold leaves a corner, reference far away, handle shortened, projection keeps G1 only",
+          "One line."
+        ],
+        [
+          "Error",
+          "branched / several chains / closed chain",
+          "Select one open chain."
+        ],
+        [
+          "Error",
+          "hold point missing or at the modified end; hold distance longer than the curve",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Hold instead of G2 everywhere",
+          "body": "A hold keeps the part you care about exactly; blend only the rest."
+        },
+        {
+          "kind": "tip",
+          "head": "Mate connector reference",
+          "body": "Z = the end tangent, X = the bend side; set a radius for exact end curvature (T13)."
+        },
+        {
+          "kind": "limit",
+          "head": "Projection",
+          "body": "Keeps the end tangent only if it lies in the face; end curvature cannot be kept."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "modifyCurveEnd"
+        ],
+        [
+          "Tests",
+          "Gordon tools tests: T01-T40 (all pass)"
+        ],
+        [
+          "Examples",
+          "Test Part Studio 1: Modify curve end 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 2.4"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

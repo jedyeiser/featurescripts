@@ -5,19 +5,19 @@ import(path : "onshape/std/path.fs", version : "3083.0");
 
 
 //import tools/bspline_data
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 //import Utils
-export import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/ad98c7f43a25a4c0e8a428e7", version : "af176e222f5dedf312114187");
+export import(path : "08e8748f2ef24eea16072b75/6a7ed8c7d74ed47b642b408c/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 // IMPORT: tools/point_projection.fs
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/eb46317a27a44e391e11dfe6", version : "7b2ce264ee62cfbbb372ecdf");
 // IMPORT: tools/printing.fs
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/d10f79db069c0599ead6b0bd/683d867c35fdab9c98d47556", version : "f8390061d90f2b059777b525");
+export import(path : "08e8748f2ef24eea16072b75/6a7ed8c7d74ed47b642b408c/683d867c35fdab9c98d47556", version : "56e375ddd20a07f695dfed04");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");

@@ -1,0 +1,119 @@
+{
+  "slug": "simplify_surface",
+  "title": "Simplify surface",
+  "tagline": "Rebuild a heavy face as a lighter cubic B-spline within a tolerance -- or replace it in place.",
+  "document": "gordonSurface",
+  "icon": "docs/decks/_icons/simplify_surface_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Imported, derived and fitted faces carry far more control points than their shape needs, which slows and destabilises later features. Simplify surface finds, curve by curve, the fewest control points within your tolerance.",
+      "useWhen": [
+        "A heavy imported or fitted face",
+        "Downstream features are slow or fail on a face",
+        "Replace a face with a lighter one in place"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig05_compatibility.png",
+      "caption": "Station curves are reduced, made compatible and skinned."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/simplify_surface/shots/dialog.png",
+      "params": [
+        [
+          "Face",
+          "The face to simplify."
+        ],
+        [
+          "Tolerance",
+          "0.01-100 mm (1 mm)."
+        ],
+        [
+          "Continuity",
+          "G0 / G1 / G2 end derivatives along v (G2 mode has no effect)."
+        ],
+        [
+          "Mode",
+          "AUTO (Greville stations, binary search per curve) / MANUAL (U, V counts)."
+        ],
+        [
+          "Replace face",
+          "Replace the source face instead of a new sheet."
+        ],
+        [
+          "Debug print",
+          "Console."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "simplified",
+          "The new sheet (or the replaced face)."
+        ]
+      ],
+      "messages": [
+        [
+          "(none)",
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Checked on stations",
+          "body": "The error is measured along the station curves only."
+        },
+        {
+          "kind": "limit",
+          "head": "Compatibility re-inflates",
+          "body": "The final count follows the most complex station; G1 needs about 6 control points."
+        },
+        {
+          "kind": "limit",
+          "head": "Untested",
+          "body": "No test fixture yet."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "simplifySurface"
+        ],
+        [
+          "Tests",
+          "none yet"
+        ],
+        [
+          "Examples",
+          "Test Part Studio 1: Simplify surface 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 2.6"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

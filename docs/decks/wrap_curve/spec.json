@@ -1,0 +1,158 @@
+{
+  "slug": "wrap_curve",
+  "title": "Wrap Curve",
+  "tagline": "Wrap flat curves onto a curved profile by arc length -- length along the profile kept, height and width carried over.",
+  "document": "curveMapping_public",
+  "icon": "docs/decks/_icons/wrap_curve_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Planforms, graphics, inlays and insert lines are drawn flat; the ski is built on a rockered, cambered profile. Native Wrap only handles cylinders and cones, and projecting foreshortens. Wrap Curve keeps the arc length along the profile, so a station 1500 mm along the layout lands 1500 mm along the ski.",
+      "useWhen": [
+        "Put flat layout lines on the profile",
+        "Keep stations at their true distance along the ski",
+        "Carry width and height exactly"
+      ],
+      "image": "docs/explainers/curve_mapping/img/fig01_bending_map.png",
+      "caption": "Tip example: 1200 flat + R600 tip; x = 1500 lands 300 into the arc."
+    },
+    {
+      "type": "concept",
+      "title": "The bending map",
+      "image": "docs/explainers/curve_mapping/img/fig01_bending_map.png",
+      "points": [
+        {
+          "head": "Arc length kept",
+          "body": "A point s along the From reference lands s along the To reference (a shift, no scaling)."
+        },
+        {
+          "head": "Height and width kept",
+          "body": "The point's offsets in the frame carry over: ribs stay perpendicular."
+        },
+        {
+          "head": "Layers bend",
+          "body": "At height h around radius R they stretch or shrink by (R - h) / R, as a real layer does."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Frames and ends",
+      "image": "docs/explainers/curve_mapping/img/fig02_overrun.png",
+      "points": [
+        {
+          "head": "Frenet (default)",
+          "body": "One normal carried along with minimal rotation: no flip at inflections."
+        },
+        {
+          "head": "Binormal",
+          "body": "Normal from a plane you give (face or mate connector); every edge must lie in it."
+        },
+        {
+          "head": "Past the ends",
+          "body": "The osculating circle continues the chain -- exact on arcs."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/wrap_curve/shots/dialog.png",
+      "params": [
+        [
+          "From data",
+          "From edge(s) (G1 chain) and From reference (vertex, mate connector, plane)."
+        ],
+        [
+          "To data",
+          "To edge(s), Flip (reverse To), To reference, Flip normal."
+        ],
+        [
+          "Source curves",
+          "The curves to wrap."
+        ],
+        [
+          "Frame orientation",
+          "Frenet (default) / Binormal (face, mate connector or world axis)."
+        ],
+        [
+          "Details",
+          "Sampling (control-point or length based), degree 3, max control points 15, tolerance 0.01 mm; Break spans at curvature jumps and corners."
+        ],
+        [
+          "Debug",
+          "Print curves, show frames and sample points."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(wire)",
+          "One wire: spline spans, plus exact copies on straight stretches."
+        ]
+      ],
+      "messages": [
+        [
+          "Console",
+          "span fitted at a lower degree",
+          "The source's degree was too high for a short To edge."
+        ],
+        [
+          "Console",
+          "cannot be fitted; the output will have a gap",
+          "Rebuild the source at degree 3 or sample by length."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Flip normal",
+          "body": "If 'up' comes out on the wrong side -- older models may need it after the 2026-09-23 frame change."
+        },
+        {
+          "kind": "limit",
+          "head": "Only To flips",
+          "body": "From's direction comes from its chain; an off-centre From reference pushes points past an end."
+        },
+        {
+          "kind": "limit",
+          "head": "Break spans",
+          "body": "Changes topology (more edges) -- downstream references may move."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "curveMapping_public (d12583277c42b00c63a9b7b7)"
+        ],
+        [
+          "Tab",
+          "wrapCurve (+ engine curveMappingCore, pinned)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_mapping/curve_mapping_explained.md, section 1, 2.1"
+        ],
+        [
+          "Related",
+          "Wrap Curve, Wrap and Loft, Deform, Measure curve distance, Offset edges"
+        ]
+      ]
+    }
+  ]
+}

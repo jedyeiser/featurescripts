@@ -1,0 +1,266 @@
+{
+ "doc": "52724f3a857fa52d3ecceb77",
+ "ws": "a013b85fd726af3c2bdaca71",
+ "shots": [
+  {
+   "elem": "0fb7c73c1c590fb7a97da010",
+   "wait": 40,
+   "filter": "IF3",
+   "featurePrefix": "IF3 R14",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/integrate_footprint/shots/dialog.png",
+   "graphics": "docs/decks/integrate_footprint/shots/hero.png",
+   "labels": [
+    {
+     "name": "Spline method",
+     "find": "Spline method"
+    },
+    {
+     "name": "Build Mode",
+     "find": "Build Mode"
+    },
+    {
+     "name": "Unify curves",
+     "find": "Unify curves"
+    },
+    {
+     "name": "Strict",
+     "find": "Strict"
+    },
+    {
+     "name": "Waist/Taper Angle Calculations",
+     "find": "Waist/Taper Angle Calculations"
+    },
+    {
+     "name": "Waist location",
+     "find": "Waist location"
+    },
+    {
+     "name": "Waist width",
+     "find": "Waist width"
+    },
+    {
+     "name": "Radius Profile(s)",
+     "find": "Radius Profile(s)"
+    },
+    {
+     "name": "Contact points",
+     "find": "Contact points"
+    },
+    {
+     "name": "Integration definition",
+     "find": "Integration definition"
+    },
+    {
+     "name": "Spline approximation parameters",
+     "find": "Spline approximation parameters"
+    },
+    {
+     "name": "Debug & details",
+     "find": "Debug & details"
+    },
+    {
+     "name": "Recalculate?",
+     "find": "Recalculate?"
+    }
+   ]
+  },
+  {
+   "elem": "0fb7c73c1c590fb7a97da010",
+   "filter": "AF2",
+   "featurePrefix": "AF2",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/analyze_footprint/shots/dialog.png",
+   "graphics": "docs/decks/analyze_footprint/shots/hero.png",
+   "labels": [
+    {
+     "name": "Footprint edges",
+     "find": "Footprint edges"
+    },
+    {
+     "name": "RSL line",
+     "find": "RSL line"
+    },
+    {
+     "name": "FCP",
+     "find": "FCP"
+    },
+    {
+     "name": "ACP",
+     "find": "ACP"
+    },
+    {
+     "name": "Sketch key points",
+     "find": "Sketch key points"
+    },
+    {
+     "name": "Footprint Data",
+     "find": "Footprint Data"
+    },
+    {
+     "name": "Radius calculations",
+     "find": "Radius calculations"
+    },
+    {
+     "name": "Widest & Inflection points",
+     "find": "Widest & Inflection points"
+    },
+    {
+     "name": "Recalculate",
+     "find": "Recalculate"
+    }
+   ]
+  },
+  {
+   "elem": "0fb7c73c1c590fb7a97da010",
+   "filter": "SF2",
+   "featurePrefix": "SF2",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/scale_footprint/shots/dialog.png",
+   "graphics": "docs/decks/scale_footprint/shots/hero.png",
+   "labels": [
+    {
+     "name": "Reference footprint edges",
+     "find": "Reference footprint edges"
+    },
+    {
+     "name": "Reference RSL line",
+     "find": "Reference RSL line"
+    },
+    {
+     "name": "New RSL line",
+     "find": "New RSL line"
+    },
+    {
+     "name": "Symmetry mode",
+     "find": "Symmetry mode"
+    },
+    {
+     "name": "Scale mode",
+     "find": "Scale mode"
+    },
+    {
+     "name": "Pin location",
+     "find": "Pin location"
+    },
+    {
+     "name": "Spline options",
+     "find": "Spline options"
+    },
+    {
+     "name": "Specify target width",
+     "find": "Specify target width"
+    },
+    {
+     "name": "-Y Scale mode",
+     "find": "-Y Scale mode"
+    },
+    {
+     "name": "Enforce tangency at tip (FCP)",
+     "find": "Enforce tangency at tip (FCP)"
+    },
+    {
+     "name": "Enforce tangency at tail (ACP)",
+     "find": "Enforce tangency at tail (ACP)"
+    },
+    {
+     "name": "Keep reference curves",
+     "find": "Keep reference curves"
+    },
+    {
+     "name": "Debug",
+     "find": "Debug"
+    }
+   ]
+  },
+  {
+   "elem": "0fb7c73c1c590fb7a97da010",
+   "filter": "AR3",
+   "featurePrefix": "AR3",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/arc_fit/shots/dialog.png",
+   "graphics": "docs/decks/arc_fit/shots/hero.png",
+   "labels": [
+    {
+     "name": "Edges to fit",
+     "find": "Edges to fit"
+    },
+    {
+     "name": "Position tolerance",
+     "find": "Position tolerance"
+    },
+    {
+     "name": "Plane tolerance",
+     "find": "Plane tolerance"
+    },
+    {
+     "name": "Minimum segment length",
+     "find": "Minimum segment length"
+    },
+    {
+     "name": "Tangency tol",
+     "find": "Tangency tol"
+    },
+    {
+     "name": "Validation samples per arc",
+     "find": "Validation samples per arc"
+    },
+    {
+     "name": "Max subdivision depth",
+     "find": "Max subdivision depth"
+    },
+    {
+     "name": "Output type",
+     "find": "Output type"
+    },
+    {
+     "name": "Debug",
+     "find": "Debug"
+    }
+   ]
+  },
+  {
+   "elem": "0fb7c73c1c590fb7a97da010",
+   "filter": "GP1",
+   "featurePrefix": "GP1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/generate_footprint_points/shots/dialog.png",
+   "graphics": "docs/decks/generate_footprint_points/shots/hero.png",
+   "labels": [
+    {
+     "name": "Geometry Selection Type",
+     "find": "Geometry Selection Type"
+    },
+    {
+     "name": "Footprint Edges",
+     "find": "Footprint Edges"
+    },
+    {
+     "name": "RSL Line",
+     "find": "RSL Line"
+    },
+    {
+     "name": "Tip toward +X",
+     "find": "Tip toward +X"
+    },
+    {
+     "name": "Include Points",
+     "find": "Include Points"
+    },
+    {
+     "name": "Table Formatting",
+     "find": "Table Formatting"
+    },
+    {
+     "name": "Additional options",
+     "find": "Additional options"
+    }
+   ]
+  }
+ ]
+}

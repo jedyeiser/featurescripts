@@ -1,0 +1,188 @@
+{
+  "slug": "integrate_footprint",
+  "title": "Integrate footprint",
+  "tagline": "Design a sidecut from its radius: draw the radius along the ski as sketch lines, get the outline -- exact arcs where the radius is constant, placed so the waist lands where you ask.",
+  "document": "footprint",
+  "icon": "icons/final/integrate_footprint_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A sidecut is designed by its radii, but drawn as an outline. Integrate footprint turns a radius profile into the outline: curvature integrated twice, with the waist location (or taper) and width you set. Constant-radius stretches come out as true arcs that report their radius.",
+      "useWhen": [
+        "Start a sidecut from radius targets",
+        "Try a reverse-radius flank or a transition",
+        "Need arcs that show 'R 14000' when clicked"
+      ],
+      "image": "docs/explainers/footprint/img/fig02_integrate.png",
+      "caption": "IF3: profile lines at R14 m and R3 m (reverse) -> three exact, tangent arcs."
+    },
+    {
+      "type": "concept",
+      "title": "The words",
+      "image": "docs/explainers/footprint/img/fig01_vocabulary.png",
+      "points": [
+        {
+          "head": "Contacts and RSL",
+          "body": "FCP / ACP where the ski meets the snow; RSL between them, MRS its middle."
+        },
+        {
+          "head": "Waist, widest, inflection",
+          "body": "Narrowest point; widest point of each half; where the curvature changes sign."
+        },
+        {
+          "head": "Taper",
+          "body": "Angle of the line joining the widest points; positive when the tip is wider."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Exact where it matters",
+      "image": "docs/explainers/footprint/img/fig02_integrate.png",
+      "points": [
+        {
+          "head": "Constant radius -> arc",
+          "body": "Closed form sin(phi) = sin(phi0) + (x - x0) / R: an exact circle, emitted as a sketch arc."
+        },
+        {
+          "head": "Changing radius -> spline",
+          "body": "A sloped profile line is integrated numerically and joins the arcs tangentially."
+        },
+        {
+          "head": "Placed by a solver",
+          "body": "Tangent angle solved so the waist lands at the waist location (or the taper matches), then shifted to the waist width."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/integrate_footprint/shots/dialog.png",
+      "params": [
+        [
+          "Spline method",
+          "APPROX / FIT: how transition splines are made."
+        ],
+        [
+          "Build Mode",
+          "One curve per same-sign region, or per profile edge."
+        ],
+        [
+          "Unify curves",
+          "One curve for all (ignored when there are arcs)."
+        ],
+        [
+          "Strict",
+          "Force arcs / lines -- rational curves that do NOT report a radius."
+        ],
+        [
+          "Waist/Taper Angle Calculations",
+          "WAIST: place the narrowest point; TAPER: set the overall taper angle."
+        ],
+        [
+          "Waist location",
+          "World X of the waist (65 mm)."
+        ],
+        [
+          "Waist width",
+          "Full width at the waist (95 mm)."
+        ],
+        [
+          "Radius Profile(s)",
+          "The profile sketch lines: 10 mm of y = 1 m of radius; below y = 0 = reverse."
+        ],
+        [
+          "Contact points",
+          "FCP sets which end is the forebody (taper sign). ACP is not used yet."
+        ],
+        [
+          "Integration definition",
+          "Y-axis scaling: 10 / 20 / 50 / 100 mm per metre."
+        ],
+        [
+          "Spline approximation parameters",
+          "Degree, maximum control points, tolerance."
+        ],
+        [
+          "Debug & details",
+          "Samples per profile edge; group output into one wire."
+        ],
+        [
+          "Recalculate?",
+          "No effect."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: IF3",
+      "image": "docs/explainers/footprint/img/fig02_integrate.png",
+      "head": "Profile: R14 m core line (y = 140), R3 m reverse flanks (y = -30); waist width 200 at x = 0",
+      "body": "Three exact arcs R3000 / R14000 / R3000, tangent at the joints; widest points exactly at x = +-667.857. Also tested: IF1 one line -> one arc R14000; IF2 25 / 14 / 25 m -> three arcs; IF5 placed by taper 0.25 deg; IF6 sloped transitions -> exact core + 2 tangent splines."
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(wire)",
+          "One +Y side wire: sketch arcs for constant radius, splines for transitions."
+        ]
+      ],
+      "messages": [
+        [
+          "(none)",
+          "No messages; a solver that does not converge stops on its last try silently.",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Horizontal lines for arcs",
+          "body": "Only a constant-radius (horizontal) profile line gives an exact arc."
+        },
+        {
+          "kind": "limit",
+          "head": "Profile edges",
+          "body": "An edge may not cross y = 0: split concave and reverse regions."
+        },
+        {
+          "kind": "limit",
+          "head": "Strict",
+          "body": "Its arcs are rational splines and report no radius; leave it off for radius callouts."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "footprint (52724f3a857fa52d3ecceb77)"
+        ],
+        [
+          "Tab",
+          "integrateFootprint (+ fpt_geometry, arcFit)"
+        ],
+        [
+          "Tests",
+          "Footprint tests studio (build_ / check_footprint_tests.py): IF1-IF8"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/footprint/footprint_explained.md, section 1.2, 2.1"
+        ],
+        [
+          "Related",
+          "Integrate footprint, Analyze footprint, Scale Footprint, Arc fit, Generate Footprint Points"
+        ]
+      ]
+    }
+  ]
+}

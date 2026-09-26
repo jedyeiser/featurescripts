@@ -1,0 +1,134 @@
+{
+  "slug": "deform",
+  "title": "Deform",
+  "tagline": "Bend a whole body, or selected faces, onto the profile with the same map -- a flat-modelled insert, core feature or tip protector.",
+  "document": "curveMapping_public",
+  "icon": "docs/decks/_icons/deform_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Parts modelled flat must sit on the curved ski. Native Bend only flexes around an axis. Deform maps every vertex, edge and face through the bending map, so the part follows the profile exactly as a layer would.",
+      "useWhen": [
+        "An insert or protector modelled flat",
+        "Features that must follow rocker / camber",
+        "Faces rather than a whole body"
+      ],
+      "image": "docs/explainers/curve_mapping/img/fig04_deform.png",
+      "caption": "A 100 x 5 block bent onto the tip: bottom 100, top 99.2 (concave side)."
+    },
+    {
+      "type": "concept",
+      "title": "The bending map",
+      "image": "docs/explainers/curve_mapping/img/fig01_bending_map.png",
+      "points": [
+        {
+          "head": "Arc length kept",
+          "body": "A point s along the From reference lands s along the To reference (a shift, no scaling)."
+        },
+        {
+          "head": "Height and width kept",
+          "body": "The point's offsets in the frame carry over: ribs stay perpendicular."
+        },
+        {
+          "head": "Layers bend",
+          "body": "At height h around radius R they stretch or shrink by (R - h) / R, as a real layer does."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/deform/shots/dialog.png",
+      "params": [
+        [
+          "Mode",
+          "Bodies (one solid or sheet) / Faces."
+        ],
+        [
+          "From data",
+          "From edge(s) (G1 chain) and From reference (vertex, mate connector, plane)."
+        ],
+        [
+          "To data",
+          "To edge(s), Flip (reverse To), To reference, Flip normal."
+        ],
+        [
+          "Frame orientation",
+          "Frenet (default) / Binormal (face, mate connector or world axis)."
+        ],
+        [
+          "Setup",
+          "Sampling, degree, max control points, tolerance; Use face guide points; Keep wires."
+        ],
+        [
+          "Debug",
+          "Create wires / faces / bodies stages; show frames."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(body)",
+          "A new body (the source stays); solids closed into solids."
+        ]
+      ],
+      "messages": [
+        [
+          "Console",
+          "per-face WARNING / ERROR, OPEN END reports",
+          "Check for a missing face or a sheet instead of a solid."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Every face is a fill",
+          "body": "Planes and cylinders are not kept as such; inner loops may fail."
+        },
+        {
+          "kind": "tip",
+          "head": "Guide points",
+          "body": "Turn on Use face guide points when fills do not follow the face."
+        },
+        {
+          "kind": "limit",
+          "head": "Heavy",
+          "body": "The slowest of the family: many edges, many projections."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "curveMapping_public (d12583277c42b00c63a9b7b7)"
+        ],
+        [
+          "Tab",
+          "deform (+ engine curveMappingCore)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_mapping/curve_mapping_explained.md, section 2.3"
+        ],
+        [
+          "Related",
+          "Wrap Curve, Wrap and Loft, Deform, Measure curve distance, Offset edges"
+        ]
+      ]
+    }
+  ]
+}

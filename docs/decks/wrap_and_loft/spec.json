@@ -1,0 +1,165 @@
+{
+  "slug": "wrap_and_loft",
+  "title": "Wrap and Loft",
+  "tagline": "Wrap curves onto the profile, offset them along its normal, and loft a strip -- sidewall and core-edge reference surfaces that follow rocker and camber.",
+  "document": "curveMapping_public",
+  "icon": "docs/decks/_icons/wrap_and_loft_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A reference surface that follows the profile through the thickness needs the wrapped curve and a matching offset curve, lofted -- with no gaps where source curves meet. Wrap and Loft does all of it in one feature.",
+      "useWhen": [
+        "Sidewall or core-edge reference surfaces",
+        "A strip of set height along the profile",
+        "Planar sources (the From path is made for you)"
+      ],
+      "image": "docs/explainers/curve_mapping/img/fig03_wrap_and_loft.png",
+      "caption": "Primary 20 + second 5: a 25 wide strip along the To normal."
+    },
+    {
+      "type": "concept",
+      "title": "The bending map",
+      "image": "docs/explainers/curve_mapping/img/fig01_bending_map.png",
+      "points": [
+        {
+          "head": "Arc length kept",
+          "body": "A point s along the From reference lands s along the To reference (a shift, no scaling)."
+        },
+        {
+          "head": "Height and width kept",
+          "body": "The point's offsets in the frame carry over: ribs stay perpendicular."
+        },
+        {
+          "head": "Layers bend",
+          "body": "At height h around radius R they stretch or shrink by (R - h) / R, as a real layer does."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/wrap_and_loft/shots/dialog.png",
+      "params": [
+        [
+          "Wrap edges",
+          "The source curves."
+        ],
+        [
+          "From data",
+          "From edge(s) (G1 chain) and From reference (vertex, mate connector, plane)."
+        ],
+        [
+          "To data",
+          "To edge(s), Flip (reverse To), To reference, Flip normal."
+        ],
+        [
+          "Frame orientation",
+          "Frenet (default) / Binormal (face, mate connector or world axis)."
+        ],
+        [
+          "Offset",
+          "Primary offset (20 mm), Flip offset direction, Second direction + Second offset."
+        ],
+        [
+          "Keep output curves",
+          "Keep all / Keep wrapped only."
+        ],
+        [
+          "Details",
+          "As Wrap Curve, + Fix control-point clustering (on), Break spans, Exact ruled surface."
+        ],
+        [
+          "Debug",
+          "Print curves, show frames."
+        ]
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "What makes it robust",
+      "image": "docs/explainers/curve_mapping/img/fig03_wrap_and_loft.png",
+      "points": [
+        {
+          "head": "Planar shortcut",
+          "body": "Planar sources: From edge(s) disappears; the From path is the To chain projected onto the source plane (wraps, not drapes)."
+        },
+        {
+          "head": "Welds",
+          "body": "Where curves meet, the later adopts the first's offset direction: no 0.35 mm gaps at seams."
+        },
+        {
+          "head": "Exact ruled (option)",
+          "body": "An exact ruled B-spline instead of a loft where possible; changes face ids."
+        }
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(sheet)",
+          "One face per source curve, unioned."
+        ],
+        [
+          "(wires)",
+          "Optional: wrapped, primary, second curves."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "clustering fix recommended",
+          "Only when it is off and slivers were found."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Negative offset",
+          "body": "Use Flip offset direction; primary cannot be negative."
+        },
+        {
+          "kind": "limit",
+          "head": "Planar check",
+          "body": "A single straight source edge cannot define a plane: the flag keeps its previous value."
+        },
+        {
+          "kind": "limit",
+          "head": "Failures",
+          "body": "Loft / union failures are reported on the console only."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "curveMapping_public (d12583277c42b00c63a9b7b7)"
+        ],
+        [
+          "Tab",
+          "wrapAndLoft (+ engine curveMappingCore)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_mapping/curve_mapping_explained.md, section 2.2"
+        ],
+        [
+          "Related",
+          "Wrap Curve, Wrap and Loft, Deform, Measure curve distance, Offset edges"
+        ]
+      ]
+    }
+  ]
+}

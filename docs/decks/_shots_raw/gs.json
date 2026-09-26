@@ -1,0 +1,214 @@
+{
+ "doc": "d0950ed72a894fbe35c27d43",
+ "ws": "55351e2bc9e8b4ec141bf4b6",
+ "shots": [
+  {
+   "elem": "51c4e18aab64c557561f2b92",
+   "wait": 40,
+   "feature": "Gordon Surface 1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/gordon_surface/shots/dialog.png",
+   "graphics": "docs/decks/gordon_surface/shots/hero.png",
+   "labels": [
+    {
+     "name": "U-Curves",
+     "find": "U-Curves"
+    },
+    {
+     "name": "V-Curves",
+     "find": "V-Curves"
+    },
+    {
+     "name": "Debug and details",
+     "find": "Debug and details"
+    }
+   ]
+  },
+  {
+   "elem": "51c4e18aab64c557561f2b92",
+   "feature": "Interior curves 1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/interior_curves/shots/dialog.png",
+   "labels": [
+    {
+     "name": "U0",
+     "find": "U0"
+    },
+    {
+     "name": "U1",
+     "find": "U1"
+    },
+    {
+     "name": "V0",
+     "find": "V0"
+    },
+    {
+     "name": "V1",
+     "find": "V1"
+    },
+    {
+     "name": "Interior U cure count",
+     "find": "Interior U cure count"
+    },
+    {
+     "name": "Interior V cure count",
+     "find": "Interior V cure count"
+    },
+    {
+     "name": "Debug & Details",
+     "find": "Debug & Details"
+    }
+   ]
+  },
+  {
+   "elem": "51c4e18aab64c557561f2b92",
+   "feature": "Scaled Curve 1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/scaled_curve/shots/dialog.png",
+   "labels": [
+    {
+     "name": "Group 0",
+     "find": "Group 0"
+    },
+    {
+     "name": "Group 1",
+     "find": "Group 1"
+    },
+    {
+     "name": "Initial curve scalefactor",
+     "find": "Initial curve scalefactor"
+    },
+    {
+     "name": "Final curve scalefactor",
+     "find": "Final curve scalefactor"
+    },
+    {
+     "name": "Transition Type",
+     "find": "Transition Type"
+    },
+    {
+     "name": "Curve name",
+     "find": "Curve name"
+    },
+    {
+     "name": "Project onto surface?",
+     "find": "Project onto surface?"
+    },
+    {
+     "name": "Debug & Details",
+     "find": "Debug & Details"
+    }
+   ]
+  },
+  {
+   "elem": "51c4e18aab64c557561f2b92",
+   "feature": "Modify curve end 1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/modify_curve_end/shots/dialog.png",
+   "labels": [
+    {
+     "name": "Edges or wire to modify",
+     "find": "Edges or wire to modify"
+    },
+    {
+     "name": "Modified end",
+     "find": "Modified end"
+    },
+    {
+     "name": "To point",
+     "find": "To point"
+    },
+    {
+     "name": "Hold part of the curve",
+     "find": "Hold part of the curve"
+    },
+    {
+     "name": "Parameters",
+     "find": "Parameters"
+    },
+    {
+     "name": "Project onto surface?",
+     "find": "Project onto surface?"
+    },
+    {
+     "name": "Debug, Details",
+     "find": "Debug, Details"
+    }
+   ]
+  },
+  {
+   "elem": "51c4e18aab64c557561f2b92",
+   "feature": "Pull surface 1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/pull_surface/shots/dialog.png",
+   "labels": [
+    {
+     "name": "Face",
+     "find": "Face"
+    },
+    {
+     "name": "U curve count",
+     "find": "U curve count"
+    },
+    {
+     "name": "V curve count",
+     "find": "V curve count"
+    },
+    {
+     "name": "Continuity",
+     "find": "Continuity"
+    },
+    {
+     "name": "Active offsets",
+     "find": "Active offsets"
+    },
+    {
+     "name": "Debug",
+     "find": "Debug"
+    },
+    {
+     "name": "Approximation",
+     "find": "Approximation"
+    }
+   ]
+  },
+  {
+   "elem": "51c4e18aab64c557561f2b92",
+   "feature": "Simplify surface 1",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/simplify_surface/shots/dialog.png",
+   "labels": [
+    {
+     "name": "Face",
+     "find": "Face"
+    },
+    {
+     "name": "Tolerance",
+     "find": "Tolerance"
+    },
+    {
+     "name": "Continuity",
+     "find": "Continuity"
+    },
+    {
+     "name": "Mode",
+     "find": "Mode"
+    },
+    {
+     "name": "Replace face",
+     "find": "Replace face"
+    },
+    {
+     "name": "Debug print",
+     "find": "Debug print"
+    }
+   ]
+  }
+ ]
+}

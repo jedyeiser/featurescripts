@@ -1,0 +1,179 @@
+{
+  "slug": "scale_footprint",
+  "title": "Scale Footprint",
+  "tagline": "Derive a footprint for a new running-surface length from a reference: accordion in X, or keep the taper -- arcs stay tangent arcs that report their radius.",
+  "document": "footprint",
+  "icon": "icons/final/scale_footprint_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A ski family shares one sidecut at several lengths. Scale Footprint moves the tip and tail to the new contacts and stretches the sidecut between them -- keeping arcs as arcs and, if asked, the reference taper.",
+      "useWhen": [
+        "Grow or shrink a ski family by length",
+        "Keep a taper angle across lengths",
+        "Keep radius callouts on the scaled outline"
+      ],
+      "image": "docs/explainers/footprint/img/fig05_scale.png",
+      "caption": "SF1 (accordion) and SF2 (keep taper, pin ACP): reference grey, arcs blue, splines orange."
+    },
+    {
+      "type": "concept",
+      "title": "Arcs stay arcs",
+      "image": "docs/explainers/footprint/img/fig05_scale.png",
+      "points": [
+        {
+          "head": "Stretch = ellipse",
+          "body": "A circle stretched in X is no longer a circle."
+        },
+        {
+          "head": "Refit as a chain",
+          "body": "Arcs through the moved joints, each starting tangent to the last -- tangent by construction (R14 -> R16.94 m at x 1.1)."
+        },
+        {
+          "head": "Splines exact",
+          "body": "A spline sidecut is stretched by its control points; knots kept (within 0.001 mm)."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/scale_footprint/shots/dialog.png",
+      "params": [
+        [
+          "Reference footprint edges",
+          "The whole reference, +Y and -Y."
+        ],
+        [
+          "Reference RSL line",
+          "FCP = its lower-X end."
+        ],
+        [
+          "New RSL line",
+          "The new contacts."
+        ],
+        [
+          "Symmetry mode",
+          "Symmetric (mirror +Y) / Asymmetric (each side on its own)."
+        ],
+        [
+          "Scale mode",
+          "Accordion (X only) / Keep taper angle."
+        ],
+        [
+          "Pin location",
+          "Keep taper: hold the ACP width or the MRS width."
+        ],
+        [
+          "Spline options",
+          "Degree, Strict arcs, tolerance, maximum control points."
+        ],
+        [
+          "Specify target width",
+          "Target waist width (full)."
+        ],
+        [
+          "-Y Scale mode",
+          "Asymmetric: the -Y side's own settings."
+        ],
+        [
+          "Enforce tangency at tip (FCP)",
+          "Move one tip control point so the tip joins tangentially."
+        ],
+        [
+          "Enforce tangency at tail (ACP)",
+          "Same at the tail."
+        ],
+        [
+          "Keep reference curves",
+          "Keep the input."
+        ],
+        [
+          "Debug",
+          "Colour curves by type; skip wire merge; print the arc chain."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: accordion (SF1)",
+      "image": "docs/explainers/footprint/img/fig05a_accordion.png",
+      "head": "S14 to RSL 1650 (x 1.1)",
+      "body": "Contacts at +-825, y 61.999; tip end -924.567 -> -999.567; waist (0, 50) kept; arcs refit R14 -> R16.94 m, R3 -> R3.63 m; -Y is the mirror."
+    },
+    {
+      "type": "example",
+      "title": "Example: keep taper, pin ACP (SF2)",
+      "image": "docs/explainers/footprint/img/fig05b_keep_taper.png",
+      "head": "Asymmetric sidecut (R2 / R4 m flanks) to RSL 1650",
+      "body": "Taper -0.0662 deg kept (accordion alone would give -0.0602); ACP width 63.666 kept. Also tested: SF5, a spline sidecut stretched exactly (knots kept, within 0.001 mm)."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "positiveSide / negativeSide",
+          "The scaled +Y and -Y wires (open; never closed into a loop)."
+        ],
+        [
+          "lengthScale",
+          "New RSL / reference RSL."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Asymmetric with no -Y data",
+          "Select both sides of the reference."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Pin choice",
+          "body": "Pin ACP keeps the tail width; pin MRS keeps the mid-stance width."
+        },
+        {
+          "kind": "limit",
+          "head": "World axes",
+          "body": "Works in world XY with the FCP at the lower-X end of each RSL line."
+        },
+        {
+          "kind": "limit",
+          "head": "No Scale radius",
+          "body": "The retarget-radius mode was removed 2026-09-25 (it missed its target)."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "footprint (52724f3a857fa52d3ecceb77)"
+        ],
+        [
+          "Tab",
+          "scaleFootprint (+ fpt_analyze, arcFit)"
+        ],
+        [
+          "Tests",
+          "Footprint tests studio (build_ / check_footprint_tests.py): SF1, SF2, SF5"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/footprint/footprint_explained.md, section 2.3"
+        ],
+        [
+          "Related",
+          "Integrate footprint, Analyze footprint, Scale Footprint, Arc fit, Generate Footprint Points"
+        ]
+      ]
+    }
+  ]
+}

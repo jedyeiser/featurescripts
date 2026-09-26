@@ -112,7 +112,8 @@ MC = {"slug": "map_curve", "title": "Map curve",
                         ["Info", "Merged result is a spline; arc radius not preserved", "Deform and merge mode."]]},
           {"type": "tips", "items": [
               {"kind": "tip", "head": "Use Trim for exact results", "body": "It cuts the original edges; lines and arcs keep their type."},
-              {"kind": "limit", "head": "Deform modes are phase 1", "body": "They give the to-chain over the from span, resampled and refitted; carrying geometry that lies off the from-chain is not built yet."}]},
+              {"kind": "limit", "head": "Deform modes are phase 1", "body": "They give the to-chain over the from span, resampled and refitted; carrying geometry that lies off the from-chain is not built yet."},
+              {"kind": "tip", "head": "Arcs only on arc hosts", "body": "Since 2026-09-25 a mapped piece is an arc only where the host is a true arc (M2: R500); on a near-circle spline it stays a spline (M1). Use Recognize arcs to convert splines."}]},
           {"type": "reference", "rows": ref("map_curve", "Tests studio (curve_tools_tests: trim to-edges, ends)", "2.2")}]}
 
 MG = {"slug": "merge_curve", "title": "Merge curve",
@@ -172,7 +173,7 @@ EP = {"slug": "evaluate_profiles", "title": "Evaluate profiles",
                       ["Merge edges shorter than", "0.01 mm; 0 = off."],
                       ["Project onto", "A planar face."],
                       ["Prevailing direction", "The direction profiles run along (+ flip). Default: the longest in-plane extent."],
-                      ["Output", "One curve / One per input curve (exact) / Efficient (merges where exact)."],
+                      ["Output", "One curve / One per input curve (exact) / Efficient (merges exact lines and arcs; freeform only across tangent joints)."],
                       ["Approximation", "60 samples, degree 3, 0.01 mm, 24 control points."],
                       ["Debug", "Scan, curve detail, colour the profiles."]]},
           {"type": "dialogshot", "title": "The dialog: Edges", "screenshot": "docs/decks/evaluate_profiles/shots/dialog_edges.png",
@@ -201,7 +202,8 @@ EP = {"slug": "evaluate_profiles", "title": "Evaluate profiles",
                         ["Info", "Merged N outline edge(s) shorter than ...", "Micro-edges removed; locations listed."]]},
           {"type": "tips", "items": [
               {"kind": "tip", "head": "Prefer exact output", "body": "One per input curve or Efficient keep lines and arcs exact; One curve is a fit."},
-              {"kind": "limit", "head": "Longest loop only", "body": "An outline with several loops keeps only the longest."}]},
+              {"kind": "limit", "head": "Longest loop only", "body": "An outline with several loops keeps only the longest."},
+              {"kind": "tip", "head": "Efficient keeps corners", "body": "Freeform edges merge only across tangent joints (0.57 deg): a 28 deg corner stays a joint (P12), a tangent joint merges (P13)."}]},
           {"type": "reference", "rows": ref("evaluate_profiles", "Evaluate profiles tests studio: P1-P11 (P3 must error)", "2.4", "Evaluate profiles tests studio")}]}
 
 FW = {"slug": "fillet_wire", "title": "Fillet wire",
@@ -239,6 +241,42 @@ FW = {"slug": "fillet_wire", "title": "Fillet wire",
               {"kind": "limit", "head": "No end keys yet", "body": "Fillet wire does not publish start / end keys."}]},
           {"type": "reference", "rows": ref("fillet_wire", "Fillet wire tests studio: W1-W6 (devtools/onshape/check_fillet_wire.py)", "2.5", "Fillet wire tests studio")}]}
 
-for spec in (CW, MC, MG, EP, FW):
+RA = {"slug": "recognize_arcs", "title": "Recognize arcs",
+      "tagline": "Find spline edges that a single circular arc represents within a tolerance -- report them, and optionally rebuild the wire with true arcs so Onshape shows their radius.",
+      "document": "Curve_tools", "icon": "docs/decks/_icons/recognize_arcs_icon.svg", "status": "Draft 2026-09-26",
+      "slides": [
+          {"type": "why", "title": "What it does",
+           "problem": "Imported and fitted curves carry arcs as splines: clicking them shows no radius, and drawings and CAM cannot use them as arcs. Recognize arcs asks of each spline 'is this really one arc?' and, where it is, puts a true sketch arc in its place.",
+           "useWhen": ["A spline that should report a radius", "Check which edges of a wire are really arcs", "Before drawings or CAM that need arcs"],
+           "image": EXPL + "img/fig07_recognize_arcs.png", "caption": "R1: a spline through 9 points of R100 is replaced; R5's coarse spline is not."},
+          {"type": "concept", "title": "The test",
+           "image": EXPL + "img/fig07_recognize_arcs.png",
+           "points": [{"head": "One arc, never a biarc", "body": "The circle through both ends and the best interior sample must be within tolerance at all 64 samples."},
+                      {"head": "Ends agree", "body": "Both end directions within Max end tangent change of the circle's -- the kink a replacement can add."},
+                      {"head": "Connected", "body": "The arc passes exactly through the edge's ends; lines and arcs pass through unchanged."}]},
+          {"type": "dialogshot", "title": "The dialog", "screenshot": "docs/decks/recognize_arcs/shots/dialog.png",
+           "params": [["Edges or wires", "The edges or wire bodies to examine (only splines are candidates)."],
+                      ["Tolerance", "Largest distance between the spline and its arc (0.01 mm)."],
+                      ["Max end tangent change", "Largest end-direction change allowed (0.05 deg)."],
+                      ["Replace with arcs", "On: build a copy with true arcs. Off: report and highlight only."],
+                      ["Name", "Names the output wires."],
+                      ["Delete input", "Delete input wire bodies once the copy is built."],
+                      ["Highlight matches", "Show matching splines in green."]]},
+          {"type": "example", "title": "Example: a line-arc-line chain (R2)",
+           "image": EXPL + "img/fig07_recognize_arcs.png",
+           "head": "Line, spline on R200 (30 deg), line -> line, arc R200, line",
+           "body": "One wire of 3 edges, joints within the 0.05 deg allowance. Also tested: R1 -> arc R100.002; R3 (S-curve) and R5 (coarse) stay splines; R4 report only -> no body."},
+          {"type": "outputs",
+           "keys": [["output", "The rebuilt wire(s) (when Replace with arcs is on)."],
+                    ["recognizedCount / candidateCount", "Splines replaced / splines examined."],
+                    ["arcEdges", "The new arc edges."]],
+           "messages": [["Info", "N of M spline edges are arcs ... (deviation and tangent change per candidate)", "Near misses are visible."],
+                        ["Error", "Select edges or wire bodies.", ""]]},
+          {"type": "tips", "items": [
+              {"kind": "tip", "head": "Report first", "body": "Turn Replace off to see which edges qualify and by how much."},
+              {"kind": "limit", "head": "Kinks", "body": "A replacement can add up to Max end tangent change at a joint -- keep it small."}]},
+          {"type": "reference", "rows": ref("recognize_arcs", "Arc tangency tests: R1-R5 (9/9 incl. P12/P13, M1/M2)", "2.7", "Arc tangency tests studio")}]}
+
+for spec in (CW, MC, MG, EP, FW, RA):
     json.dump(spec, open("docs/decks/%s/spec.json" % spec["slug"], "w"), indent=2)
     print("wrote", spec["slug"])

@@ -1,0 +1,75 @@
+{
+  "slug": "part_volume",
+  "title": "Part Volume",
+  "tagline": "Write one solid's volume to a variable, as a plain number in mm^3 -- typically the result Iterative Solve drives.",
+  "document": "solvers",
+  "icon": "icons/final/part_volume_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Iterative Solve and later features read variables. Part Volume turns one part's volume into one: evaluated precisely, stored as a unitless number of mm^3, and printed to the console.",
+      "useWhen": [
+        "Drive Iterative Solve by a part's volume",
+        "Show a volume in a variable or table"
+      ],
+      "image": "docs/explainers/solvers/img/fig01_secant.png",
+      "caption": "Its value can be Iterative Solve's result variable."
+    },
+    {
+      "type": "dialog",
+      "title": "The dialog",
+      "params": [
+        [
+          "Part",
+          "One solid."
+        ],
+        [
+          "Variable Name",
+          "The name to set (not checked: an empty name is not caught)."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Unitless",
+          "body": "The value is a number of mm^3, not a volume with units."
+        },
+        {
+          "kind": "limit",
+          "head": "One part",
+          "body": "Single solid only; no description or messages."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "solvers (3cf445f157b6a28aa1d35fcf; named 'Stray_Weight_Concept_1' in Onshape)"
+        ],
+        [
+          "Tab",
+          "Part_Vol"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/solvers/solvers_explained.md, section 2.2"
+        ],
+        [
+          "Related",
+          "Iterative Solve"
+        ]
+      ]
+    }
+  ]
+}

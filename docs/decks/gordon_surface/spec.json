@@ -1,0 +1,150 @@
+{
+  "slug": "gordon_surface",
+  "title": "Gordon Surface",
+  "tagline": "One B-spline face through a whole network of crossing curves -- every U curve and every V curve, interior ones included.",
+  "document": "gordonSurface",
+  "icon": "docs/decks/_icons/gordon_surface_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A loft passes through one family of sections; a boundary surface only through its edges. Gordon Surface passes through a full U x V network, so interior curves shape the face exactly where you drew them.",
+      "useWhen": [
+        "The shape is defined by curves in both directions",
+        "Interior curves must lie on the surface",
+        "One smooth face instead of patches"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig02_real_network.png",
+      "caption": "Gordon Surface 1: one face through 5 U and 3 V curves."
+    },
+    {
+      "type": "concept",
+      "title": "S = S_u + S_v - T",
+      "image": "docs/explainers/gordon_surface/img/fig01_gordon_construction.png",
+      "points": [
+        {
+          "head": "Two skins",
+          "body": "S_u through the U curves (misses V); S_v through the V curves (misses U)."
+        },
+        {
+          "head": "Minus the grid",
+          "body": "T passes through the crossings only; along each curve it cancels the other skin."
+        },
+        {
+          "head": "Exact on both",
+          "body": "The sum reproduces every curve; done control point by control point once compatible."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Compatible curves",
+      "image": "docs/explainers/gordon_surface/img/fig05_compatibility.png",
+      "points": [
+        {
+          "head": "Same degree",
+          "body": "Every curve raised to the highest degree -- exactly."
+        },
+        {
+          "head": "Same knots",
+          "body": "The union of all interior knots inserted into every curve -- exactly."
+        },
+        {
+          "head": "Then blend",
+          "body": "Corresponding control points can be combined; the shapes do not change."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/gordon_surface/shots/dialog.png",
+      "params": [
+        [
+          "U-Curves",
+          "Up to 10 edges, in section order (the pick order is used)."
+        ],
+        [
+          "V-Curves",
+          "The crossing family, in order."
+        ],
+        [
+          "Debug and details",
+          "Create S_u / S_v / tensor sheets, show curves (on), print, degree in u and v (3)."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "Gordon surf",
+          "One sheet body."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Need at least 2 curves",
+          "Per family."
+        ],
+        [
+          "Error",
+          "(dimension mismatch)",
+          "The network is inconsistent."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Seed with Interior curves",
+          "body": "Four boundaries -> interior curves that are guaranteed to cross."
+        },
+        {
+          "kind": "limit",
+          "head": "Curves must cross",
+          "body": "Every U must cross every V, in order; a near miss is used silently (midpoint of the closest points)."
+        },
+        {
+          "kind": "limit",
+          "head": "Averaged crossings",
+          "body": "Uneven crossing parameters make the fit approximate; arcs' weights are ignored."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "gordonSurface (+ gordonCurveCompat)"
+        ],
+        [
+          "Tests",
+          "none yet"
+        ],
+        [
+          "Examples",
+          "Test Part Studio 1: Gordon Surface 1, 2"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 1.1, 1.2, 2.1"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

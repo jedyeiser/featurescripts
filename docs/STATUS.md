@@ -10,16 +10,16 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 |---|---|---|---|---|---|
 | x_unwrap | Unwrap (pre-existing) | **draft** | edited by user, code changed since written | `driven_offset/docs/unwrap_explained.md` | 2026-09-25 written by Claude |
 | x_reference_side | Reference-side features | **reviewed** | changed since reviewed, code changed since written | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
-| x_curve_tools | Curve tools | **draft** | code changed since written | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-25 written by Claude |
+| x_curve_tools | Curve tools | **draft** | - | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-26 written by Claude |
 | x_variable_tools | Variable tools | **draft** | - | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
 | x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-25 written by Claude |
 | x_driven_offset | Driven offset | **planned** | - | `docs/explainers/driven_offset/driven_offset_explained.md` |   |
 | x_publish_tools | Publish & drawing tools | **planned** | - | `docs/explainers/publish_tools/publish_tools_explained.md` |   |
-| x_solvers | Solvers | **planned** | - | `docs/explainers/solvers/solvers_explained.md` |   |
-| x_small_tools | Small tools | **planned** | - | `docs/explainers/small_tools/small_tools_explained.md` |   |
-| x_curve_mapping | Curve mapping (public) | **planned** | - | `docs/explainers/curve_mapping/curve_mapping_explained.md` |   |
-| x_footprint | Footprint | **planned** | - | `docs/explainers/footprint/footprint_explained.md` |   |
-| x_gordon_surface | Gordon surface | **planned** | - | `docs/explainers/gordon_surface/gordon_surface_explained.md` |   |
+| x_solvers | Solvers | **draft** | - | `docs/explainers/solvers/solvers_explained.md` | 2026-09-26 written by Claude |
+| x_small_tools | Small tools | **draft** | - | `docs/explainers/small_tools/small_tools_explained.md` | 2026-09-26 written by Claude |
+| x_curve_mapping | Curve mapping (public) | **draft** | - | `docs/explainers/curve_mapping/curve_mapping_explained.md` | 2026-09-26 written by Claude |
+| x_footprint | Footprint | **draft** | - | `docs/explainers/footprint/footprint_explained.md` | 2026-09-26 written by Claude |
+| x_gordon_surface | Gordon surface | **draft** | - | `docs/explainers/gordon_surface/gordon_surface_explained.md` | 2026-09-26 written by Claude |
 | x_xsection | Cross-section (xSection) | **draft** | - | `docs/explainers/xsection/xsection_explained.md` | 2026-09-25 written by Claude |
 
 ## Feature decks (.pptx -> .pdf for Onshape)
@@ -32,10 +32,11 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_thicken_plus | Thicken+ | **draft** | - | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-09-25 written by Claude |
 | d_orient_to_reference | Orient to reference | **draft** | - | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
 | d_clean_wire | Clean wire | **draft** | code changed since written | `docs/decks/clean_wire/clean_wire.pptx` | 2026-09-25 written by Claude |
-| d_map_curve | Map curve | **draft** | code changed since written | `docs/decks/map_curve/map_curve.pptx` | 2026-09-25 written by Claude |
+| d_map_curve | Map curve | **draft** | - | `docs/decks/map_curve/map_curve.pptx` | 2026-09-26 written by Claude |
 | d_merge_curve | Merge curve | **draft** | - | `docs/decks/merge_curve/merge_curve.pptx` | 2026-09-25 written by Claude |
-| d_evaluate_profiles | Evaluate profiles | **draft** | code changed since written | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-25 written by Claude |
+| d_evaluate_profiles | Evaluate profiles | **draft** | - | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-26 written by Claude |
 | d_fillet_wire | Fillet wire | **draft** | - | `docs/decks/fillet_wire/fillet_wire.pptx` | 2026-09-25 written by Claude |
+| d_recognize_arcs | Recognize arcs | **draft** | - | `docs/decks/recognize_arcs/recognize_arcs.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_extract_variables | Extract variables | **draft** | - | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
 | d_case_template | Case template | **draft** | - | `docs/decks/case_template/case_template.pptx` | 2026-09-25 written by Claude |
 | d_case_pattern | Case pattern | **draft** | - | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-25 written by Claude |
@@ -46,27 +47,27 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_unwrap | Unwrap | **planned** | - | `docs/decks/unwrap/unwrap.pptx` |   |
 | d_station_definition | Station definition | **planned** | - | `docs/decks/station_definition/station_definition.pptx` |   |
 | d_station_geometry | Station geometry | **planned** | - | `docs/decks/station_geometry/station_geometry.pptx` |   |
-| d_iterative_solve | Iterative Solve | **planned** | - | `docs/decks/iterative_solve/iterative_solve.pptx` |   |
-| d_part_volume | Part Volume | **planned** | - | `docs/decks/part_volume/part_volume.pptx` |   |
-| d_move_along_edge | Move Along Edge | **planned** | - | `docs/decks/move_along_edge/move_along_edge.pptx` |   |
-| d_trim_curve | Trim curve | **planned** | - | `docs/decks/trim_curve/trim_curve.pptx` |   |
-| d_trim_curve_plus | Trim curve + | **planned** | - | `docs/decks/trim_curve_plus/trim_curve_plus.pptx` |   |
-| d_wrap_curve | Wrap Curve | **planned** | - | `docs/decks/wrap_curve/wrap_curve.pptx` |   |
-| d_wrap_and_loft | Wrap and Loft | **planned** | - | `docs/decks/wrap_and_loft/wrap_and_loft.pptx` |   |
-| d_deform | Deform | **planned** | - | `docs/decks/deform/deform.pptx` |   |
-| d_offset_edges | Offset edges | **planned** | - | `docs/decks/offset_edges/offset_edges.pptx` |   |
-| d_generate_footprint_points | Generate Footprint Points | **planned** | - | `docs/decks/generate_footprint_points/generate_footprint_points.pptx` |   |
-| d_analyze_footprint | Analyze footprint | **planned** | - | `docs/decks/analyze_footprint/analyze_footprint.pptx` |   |
-| d_integrate_footprint | Integrate footprint | **planned** | - | `docs/decks/integrate_footprint/integrate_footprint.pptx` |   |
-| d_scale_footprint | Scale Footprint | **planned** | - | `docs/decks/scale_footprint/scale_footprint.pptx` |   |
-| d_arc_fit | Arc fit | **planned** | - | `docs/decks/arc_fit/arc_fit.pptx` |   |
-| d_gordon_surface | Gordon Surface | **planned** | - | `docs/decks/gordon_surface/gordon_surface.pptx` |   |
-| d_interior_curves | Interior curves | **planned** | - | `docs/decks/interior_curves/interior_curves.pptx` |   |
-| d_modify_curve_end | Modify curve end | **planned** | - | `docs/decks/modify_curve_end/modify_curve_end.pptx` |   |
-| d_pull_surface | Pull surface | **planned** | - | `docs/decks/pull_surface/pull_surface.pptx` |   |
-| d_scaled_curve | Scaled Curve | **planned** | - | `docs/decks/scaled_curve/scaled_curve.pptx` |   |
-| d_simplify_surface | Simplify surface | **planned** | - | `docs/decks/simplify_surface/simplify_surface.pptx` |   |
-| d_makecurvescompitable | makeCurvesCompitable | **planned** | - | `docs/decks/makecurvescompitable/makecurvescompitable.pptx` |   |
+| d_iterative_solve | Iterative Solve | **draft** | - | `docs/decks/iterative_solve/iterative_solve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_part_volume | Part Volume | **draft** | - | `docs/decks/part_volume/part_volume.pptx` | 2026-09-26 written by Claude |
+| d_move_along_edge | Move Along Edge | **draft** | - | `docs/decks/move_along_edge/move_along_edge.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_trim_curve | Trim curve | **draft** | - | `docs/decks/trim_curve/trim_curve.pptx` | 2026-09-26 written by Claude |
+| d_trim_curve_plus | Trim curve + | **draft** | - | `docs/decks/trim_curve_plus/trim_curve_plus.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_wrap_curve | Wrap Curve | **draft** | - | `docs/decks/wrap_curve/wrap_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_wrap_and_loft | Wrap and Loft | **draft** | - | `docs/decks/wrap_and_loft/wrap_and_loft.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_deform | Deform | **draft** | - | `docs/decks/deform/deform.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_offset_edges | Offset edges | **draft** | - | `docs/decks/offset_edges/offset_edges.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_generate_footprint_points | Generate Footprint Points | **draft** | - | `docs/decks/generate_footprint_points/generate_footprint_points.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_analyze_footprint | Analyze footprint | **draft** | - | `docs/decks/analyze_footprint/analyze_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_integrate_footprint | Integrate footprint | **draft** | - | `docs/decks/integrate_footprint/integrate_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_scale_footprint | Scale Footprint | **draft** | - | `docs/decks/scale_footprint/scale_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_arc_fit | Arc fit | **draft** | - | `docs/decks/arc_fit/arc_fit.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_gordon_surface | Gordon Surface | **draft** | - | `docs/decks/gordon_surface/gordon_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_interior_curves | Interior curves | **draft** | - | `docs/decks/interior_curves/interior_curves.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_modify_curve_end | Modify curve end | **draft** | - | `docs/decks/modify_curve_end/modify_curve_end.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_pull_surface | Pull surface | **draft** | - | `docs/decks/pull_surface/pull_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_scaled_curve | Scaled Curve | **draft** | - | `docs/decks/scaled_curve/scaled_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_simplify_surface | Simplify surface | **draft** | - | `docs/decks/simplify_surface/simplify_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_makecurvescompitable | makeCurvesCompitable | **draft** | - | `docs/decks/makecurvescompitable/makecurvescompitable.pptx` | 2026-09-26 written by Claude |
 | d_ei_and_cross_section | EI and Cross Section | **draft** | - | `docs/decks/ei_and_cross_section/ei_and_cross_section.pptx` | 2026-09-25 written by Claude |
 | d_solve_gj | Solve GJ | **draft** | - | `docs/decks/solve_gj/solve_gj.pptx` | 2026-09-25 written by Claude |
 | d_generate_baseline | Generate baseline | **draft** | - | `docs/decks/generate_baseline/generate_baseline.pptx` | 2026-09-25 written by Claude |

@@ -1,0 +1,168 @@
+{
+  "slug": "trim_curve_plus",
+  "title": "Trim curve +",
+  "tagline": "Trim or split wires at exact arc-length positions: at points, signed distances from a point, even divisions, or inflections.",
+  "document": "smallTools",
+  "icon": "smallTools/trimCurvePlus_A.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Native Trim curve trims up to one entity. Trim curve + reads each wire -- multi-edge too -- as one path and cuts it where you say, exactly, splitting into pieces or trimming away one side.",
+      "useWhen": [
+        "Split a profile at stations",
+        "Cut a set distance from a point",
+        "Divide evenly, or split at inflections"
+      ],
+      "image": "docs/explainers/small_tools/img/fig03_trim_curve_plus.png",
+      "caption": "T1 at points, T9 by distances."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/trim_curve_plus/shots/dialog.png",
+      "params": [
+        [
+          "Operation",
+          "Split (default) / Trim."
+        ],
+        [
+          "Curves to adjust",
+          "Wire bodies (not sketch)."
+        ],
+        [
+          "Cut location",
+          "At points / Up to entity / Distance from point / Even division / At inflections."
+        ],
+        [
+          "Cut points",
+          "(At points) off-curve picks are projected (dashed preview)."
+        ],
+        [
+          "Return single wire",
+          "(Split) one wire split in place; off = separate wires, source deleted."
+        ],
+        [
+          "Keep opposite side",
+          "(Trim) keep the other piece (default: end side)."
+        ],
+        [
+          "Debug",
+          "Print inflection solve / cuts."
+        ]
+      ]
+    },
+    {
+      "type": "dialog",
+      "title": "Cut locations",
+      "params": [
+        [
+          "At points",
+          "Cut points (vertices or mate connectors)."
+        ],
+        [
+          "Up to entity",
+          "Where the curve meets it (nearest point per edge)."
+        ],
+        [
+          "Distance from point",
+          "From point + signed Distance (Opposite direction); Split: Additional distances, Also split at reference point."
+        ],
+        [
+          "Even division",
+          "Between two points (segments; also cuts at both) / Every distance from point (spacing, count)."
+        ],
+        [
+          "At inflections",
+          "Click the red dots, or the one nearest each end (one planar, single-edge curve)."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Examples: T1 and T9",
+      "image": "docs/explainers/small_tools/img/fig03_trim_curve_plus.png",
+      "head": "T1: at 2 points (one 6 mm off) -> 100 / 357.08 / 100. T9: 50, extra 150 and -80 -> 20 / 130 / 100 / 307.08",
+      "body": "Also tested: split in place (T2, 5 edges), trim (T3), a mate connector point (T7), and 600 mm past the end -> error (T8)."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output / inputs",
+          "The result / the source."
+        ],
+        [
+          "cut_1 ... cut_n, cutVertices",
+          "The vertices at the cuts (2 per cut when split into separate wires)."
+        ],
+        [
+          "piece_1 ... piece_m",
+          "The pieces (bodies, or edges when split in place)."
+        ],
+        [
+          "cutCount",
+          "Variable: the number of cuts."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "runs past the end of the curve",
+          "Distance mode."
+        ],
+        [
+          "Error",
+          "no valid cut / not planar / no inflections",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Separate pieces",
+          "body": "The source wire is deleted: downstream references to it break. Use Return single wire to keep it."
+        },
+        {
+          "kind": "limit",
+          "head": "Trim",
+          "body": "Uses only the first cut."
+        },
+        {
+          "kind": "limit",
+          "head": "Directions",
+          "body": "Distance: positive = path direction. Spacing: away from the midpoint by default."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "smallTools (14cdaad24a8beab67af40fe4)"
+        ],
+        [
+          "Tabs",
+          "betterCurveTrim, curveTrimCore"
+        ],
+        [
+          "Tests",
+          "Trim curve + tests: T1-T9 (all pass)"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/small_tools/small_tools_explained.md, section 2"
+        ],
+        [
+          "Related",
+          "Move Along Edge; native Trim curve"
+        ]
+      ]
+    }
+  ]
+}

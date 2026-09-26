@@ -1,0 +1,117 @@
+{
+  "slug": "interior_curves",
+  "title": "Interior curves",
+  "tagline": "From four boundary chains, make interior U and V curves that are guaranteed to cross -- a ready network for Gordon Surface.",
+  "document": "gordonSurface",
+  "icon": "docs/decks/_icons/interior_curves_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A Gordon network needs curves that actually cross. Interior curves fills a four-sided boundary with the rows and columns of a Coons patch, which share their grid points by construction.",
+      "useWhen": [
+        "Start a Gordon network from its boundary",
+        "Need crossing interior curves to edit later"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig06_interior_curves.png",
+      "caption": "4 boundaries -> Coons grid -> 3 + 3 interior curves."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/interior_curves/shots/dialog.png",
+      "params": [
+        [
+          "U0",
+          "Boundary chain (edges joined)."
+        ],
+        [
+          "U1",
+          "Opposite boundary."
+        ],
+        [
+          "V0",
+          "Crossing boundary."
+        ],
+        [
+          "V1",
+          "Opposite crossing boundary."
+        ],
+        [
+          "Interior U cure count",
+          "Interior U curves (3; 1-15)."
+        ],
+        [
+          "Interior V cure count",
+          "Interior V curves (3)."
+        ],
+        [
+          "Debug & Details",
+          "Print curve data (its output tolerance / degree are not used)."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "interiorU_i, interiorV_i",
+          "The interior wires."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Boundary curves don't form a closed loop at v0",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Coarse",
+          "body": "Each curve is fitted through count + 2 points (3 x 3 -> 5 points each)."
+        },
+        {
+          "kind": "limit",
+          "head": "Uniform in parameter",
+          "body": "Not in length; prototype, untested."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "interiorCurves (symbol myFeature)"
+        ],
+        [
+          "Tests",
+          "none yet"
+        ],
+        [
+          "Examples",
+          "Test Part Studio 1: Interior curves 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 2.2"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

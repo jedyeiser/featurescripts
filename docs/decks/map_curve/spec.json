@@ -165,6 +165,11 @@
           "kind": "limit",
           "head": "Deform modes are phase 1",
           "body": "They give the to-chain over the from span, resampled and refitted; carrying geometry that lies off the from-chain is not built yet."
+        },
+        {
+          "kind": "tip",
+          "head": "Arcs only on arc hosts",
+          "body": "Since 2026-09-25 a mapped piece is an arc only where the host is a true arc (M2: R500); on a near-circle spline it stays a spline (M1). Use Recognize arcs to convert splines."
         }
       ]
     },

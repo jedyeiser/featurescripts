@@ -158,3 +158,46 @@ expected result, checked from devtools (no harness tabs).
 - Template in the Features-to-repeat list (proposal) vs a separate Template parameter.
 - Should Case pattern append case 1's suffix to template parts that lack it?
 - Separator default "_"?
+
+## 11. v2 redesign (agreed 2026-09-26, not built)
+
+User found v1 clunky: cases live in the template, which sits ABOVE the body, so case geometry is
+picked rolled back, a case can never select geometry made later, and rows go stale when inputs change.
+Consulted three read-only expert reviews (CAD prior art, FS feasibility, power-user UX); all agreed with
+the user's proposal. Prior art: PowerCopy / UDF / Library Feature are all "define once, insert per
+instance"; tables of instances only where variation is numbers on fixed geometry.
+
+### Three features (names agreed 2026-09-26)
+    Define case     declares names, kinds, case-1 selections/values; binds case 1
+      ...features to repeat (= the template)...
+    Close case      lists the features to repeat ONCE, Keep toggles, separator; publishes them
+    Case pattern    picks the Close case; case name; slots laid out by ITS OWN editing logic from
+                    the published signature; optional More cases array
+Everything between Define case and Close case is the template.
+
+### Decisions
+- Migration: not a concern (clean break; rebuild the T1-T5 test studio).
+- Multiple cases per Case pattern: supported (array), one case is the normal use.
+- Booleans: Boolean kind; used natively (features CAN be suppressed by a boolean variable -- user
+  correction) and in expressions. No custom skip-list unless spike S3 shows suppression is not
+  re-evaluated during replay.
+- Integer kind; `#caseName` / `#caseIndex` variables.
+- Slots bound by NAME, not position; a Define case change reports "edit this case"; a missing value
+  falls back to case 1's with an info notice. (No per-value override toggles: unchanging values are
+  ordinary variables outside the template.)
+- Case sub-id from the case name, not the row index (correction 47).
+- One-case-per-entity: out of scope -- use Derek Van Allen's Amalgamate.
+- Outputs: a Query Variable feature inside the body already follows each case ("latest case wins"
+  until the next Case pattern). Optional extra: publish suffixed copies (`#rib_R`) of variables the
+  body set, found by a before/after getAllVariables diff (spike S4), for features needing several cases.
+- Rule to document: after a Case pattern, INPUTS are back on case 1 but variables the BODY set hold
+  the last case's.
+- Better errors: name the failing feature by name; detect body features clicked to case 1's geometry.
+
+### Spikes (spike_v2.fs, throwaway tab: "Close case (test)", "Case pattern (test)")
+- S1 feature functions published through setVariable, read back and replayed in the frame: does a
+  Query Variable "created by" in the body still follow the replay?
+- S2 getVariable/getAllVariables in editing logic sees earlier features' variables.
+- S3 body feature suppressed by #flag: re-evaluated per replay, always skipped, or always run? Is a
+  suppressed feature still in the FeatureList?
+- S4 getAllVariables lists query variables; before/after diff finds variables the body set.

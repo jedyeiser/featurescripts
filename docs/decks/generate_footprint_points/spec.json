@@ -1,0 +1,124 @@
+{
+  "slug": "generate_footprint_points",
+  "title": "Generate Footprint Points",
+  "tagline": "Export the sidecut as tip, RSL and tail point tables at equal arc-length spacing, each relative to its own origin -- for CNC, specs and spreadsheets.",
+  "document": "footprint",
+  "icon": "icons/final/footprint_points_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Shops and spec sheets want numbers, not curves. Generate Footprint Points splits the +Y outline at the contacts and samples each region evenly, in a table you can copy out.",
+      "useWhen": [
+        "Send a sidecut to CNC or a supplier",
+        "Fill a spec sheet",
+        "Compare outlines point by point"
+      ],
+      "image": "docs/explainers/footprint/img/fig06_points.png",
+      "caption": "GP1: 23 tip, 80 RSL and 23 tail points on S14."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/generate_footprint_points/shots/dialog.png",
+      "params": [
+        [
+          "Geometry Selection Type",
+          "FACE (the footprint face) / EDGES (edges or wires)."
+        ],
+        [
+          "Footprint Edges",
+          "(EDGES) the outline."
+        ],
+        [
+          "RSL Line",
+          "FCP to ACP."
+        ],
+        [
+          "Tip toward +X",
+          "Off: the tip is the lower-X end; on: the higher-X end."
+        ],
+        [
+          "Include Points",
+          "Not used."
+        ],
+        [
+          "Table Formatting",
+          "Units, decimal places ('sig figs'), units in cells, point counts 23 / 80 / 23, flips."
+        ],
+        [
+          "Additional options",
+          "Keep the region curves / FCP-ACP planes; make sketches of the points."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: GP1",
+      "image": "docs/explainers/footprint/img/fig06_points.png",
+      "head": "S14, RSL -750 ... 750",
+      "body": "Tip: 23 points x -924.567 ... -750 relative to the FCP; RSL: 80 points relative to the MRS; tail: 23 points relative to the ACP. All on the curve, spacing equal to 0.2 %."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "tipCurve, rslCurve, tailCurve",
+          "The region curves (empty unless Retain curves is on)."
+        ],
+        [
+          "Footprint Points table",
+          "Reads tipEdgePoints / rslEdgePoints / tailEdgePoints / tableFormat stored on the origin (keep these stable)."
+        ]
+      ],
+      "messages": [
+        [
+          "(none)",
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Tip at +X",
+          "body": "Turn on Tip toward +X; tip and tail swap with their origins (GP2)."
+        },
+        {
+          "kind": "limit",
+          "head": "Last one wins",
+          "body": "The stored point lists are shared: the last Generate Footprint Points in the tree feeds the table."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "footprint (52724f3a857fa52d3ecceb77)"
+        ],
+        [
+          "Tab",
+          "getFootprintPoints"
+        ],
+        [
+          "Tests",
+          "Footprint tests studio (build_ / check_footprint_tests.py): GP1-GP3"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/footprint/footprint_explained.md, section 2.5"
+        ],
+        [
+          "Related",
+          "Integrate footprint, Analyze footprint, Scale Footprint, Arc fit, Generate Footprint Points"
+        ]
+      ]
+    }
+  ]
+}

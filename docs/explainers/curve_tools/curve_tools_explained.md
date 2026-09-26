@@ -1,6 +1,6 @@
 # Curve tools, explained
 
-*Clean wire, Map curve, Merge curve, Evaluate profiles and Fillet wire (Onshape document **Curve_tools**). Written
+*Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire and Recognize arcs (Onshape document **Curve_tools**). Written
 2026-09-25 against the code as it stands that day. Draft for review.*
 
 Three passes, each building on the one before:
@@ -32,6 +32,7 @@ and live in `docs/decks/<feature>/shots/`.
   - [2.4 Evaluate profiles](#24-evaluate-profiles)
   - [2.5 Fillet wire](#25-fillet-wire)
   - [2.6 Outputs for Extract variables](#26-outputs-for-extract-variables)
+  - [2.7 Recognize arcs](#27-recognize-arcs)
 - [Part 3: The code](#part-3-the-code)
 - [Appendix: unclear items](#appendix-unclear-or-contradictory-items)
 
@@ -69,6 +70,10 @@ world X -- the ski's length direction. Every tool reads its input as one or more
 - **Everything else is fitted**: a B-spline through well-placed points, with the end tangents taken from the true
   curve so neighbours join smoothly. The fit's end derivatives are scaled by the chord length -- a unit vector would
   bulge the curve by about 0.45 mm.
+- **An arc or line only where its end tangents agree** (since 2026-09-25). A piece is emitted as an exact arc or line
+  only if its end directions match the true tangents of the curve it stands for; otherwise it stays a fitted spline.
+  Before, a near-circle spline could come out as an arc whose ends kinked against its neighbours. **Recognize arcs**
+  (2.7) is the explicit tool for turning splines into arcs.
 
 ## 1.4 Joints and slivers
 
@@ -188,6 +193,11 @@ split work by position, not by distance along the curve.
 - **Flip to-chain** -- when the two chains run opposite ways at the zero.
 - **Spacing & approximation** (not used by Trim), **Output** (one wire per link / one body per run), **Name**, **Debug**.
 
+**Tangent gate** (since 2026-09-25, tests M1 / M2 in "Arc tangency tests"): the mapped result is an arc only when
+the host is a true arc. Mapped onto a near-circle *spline* host it stays a spline (M1) -- before, it came out as an
+arc with kinked ends; onto a sketch arc R500 it is an arc R500 (M2). Some edges therefore change type in models built
+before that date.
+
 **Messages.** Error "chains point in opposite directions ... Tick Flip to-chain"; error "from-edges run X mm past the
 start / end of the to-edges"; info "the from/to-edges do not span the zero point's X; closest point used"; info
 "Merged result is a spline; arc radius not preserved".
@@ -235,7 +245,7 @@ derivative** / **Keep end derivative** (on), **Approximation** (degree, toleranc
 |---|---|
 | One curve | one fitted spline |
 | One per input curve | the projected edges exactly (a projected B-spline IS the projection, not a fit), cut at the fold-back |
-| Efficient | collinear lines merged into one line, co-circular arcs kept exact, smooth freeform runs refitted |
+| Efficient | collinear lines merged into one line, co-circular arcs kept exact, freeform edges merged and refitted only across **tangent** junctions (within 0.57 deg) -- a real corner stays a joint (P12: a 28 deg corner keeps 2 edges; P13: a tangent joint gives 1). Before 2026-09-25 edges whose chords lay within 45 deg were merged, rounding off real corners. |
 
 ![P10](../../decks/evaluate_profiles/shots/p10.png)
 ![P11](../../decks/evaluate_profiles/shots/p11.png)
@@ -288,6 +298,31 @@ them. Info "N corner(s) found. Click them..." when nothing is picked.
 | Evaluate profiles | `top`, `bottom`, `middle`, `periphery`, `connectors` (empty when not requested), `length`, `trimmedStart`, `trimmedEnd` |
 | Fillet wire | `filletEdges`, `cornerCount`, `filletCount`, `skippedCount` |
 
+## 2.7 Recognize arcs
+
+![Recognize arcs](img/fig07_recognize_arcs.png)
+
+**What it does.** Finds spline edges that **one** circular arc represents within a tolerance, reports them, and
+optionally rebuilds the input with true (sketch) arcs in their place -- so Onshape shows a radius where it showed a
+spline. One arc, never a biarc: the question is "is this spline really an arc", not "how would arcs approximate it".
+
+**Test per spline edge** (64 samples): open and not straight; the circle through both ends and the best interior
+sample is within the tolerance of every sample (in and out of plane); both end directions within **Max end tangent
+change** of the circle's. The replacing arc passes exactly through the edge's ends, so the wire stays connected; its
+end directions are the circle's, so a joint can gain up to that angle as a kink -- every candidate's change is
+reported. Lines and arcs pass through unchanged.
+
+**Parameters.** **Edges or wires**; **Tolerance** (0.01 mm); **Max end tangent change** (0.05 deg); **Replace with
+arcs** (on; off = report and highlight only) -> **Name**, **Delete input** (wire bodies only); **Highlight matches**
+(green).
+
+**Outputs.** The rebuilt wire(s); keys `recognizedCount`, `candidateCount`, `arcEdges`; an info line with the counts
+and each candidate's deviation and tangent change. Error "Select edges or wire bodies."
+
+**Examples** ("Arc tangency tests" studio, 9/9 pass): R1 a spline through 9 points of R100 -> an arc R100.002; R2 a
+line / spline-on-R200 / line chain -> line, arc R200, line, joints within 0.05 deg; R3 an S-curve and R5 a coarse
+3-point spline -> not arcs (the figure: its radius swings 42-54 mm around R50); R4 report only -> no body.
+
 ---
 
 # Part 3: The code
@@ -301,12 +336,15 @@ them. Info "N corner(s) found. Click them..." when nothing is picked.
 | `map_curve.fs` | `resolveZeroPoints`, `resolveChain` (World-X / closest), `trimToEdges` (`opSplitEdges`, no refit), `mapSamples` / `buildRuns` / `emitRuns`. |
 | `merge_curve.fs` | `planMergeTarget` / `placeMergedCurve` (in place / rebuild / extract), `opEditCurve`, end snapping. |
 | `evaluate_profiles.fs` | `scanForReversals` / `refineReversals`, `partProfiles` (outline split), `middleProfile`, `mergeShortEdges`, `emitGrouping` + `retainedEdges` (Edges output) and `emitFromEdges` / `buildMergedRuns` (Part output). |
+| `recognize_arcs.fs` | `examineEdge` (the single-arc test), rebuild with sketch arcs, report. |
 | `fillet_wire.fs` | `chainCorners`, `solveArc` (Tangent), `solveBlend` (Curvature), `rejectOverlaps`, split-and-edit in place, the corner-picking manipulator. |
 
 ## 3.2 Tests
 
 - **Evaluate profiles tests** studio: P1-P11 (`devtools/onshape/build_evaluate_profiles_tests.py`). P3 must error
   (edge-on); P9-P11 check the Edges Output modes.
+- **Arc tangency tests** studio: R1-R5 (Recognize arcs), P12 / P13 (Evaluate profiles Efficient), M1 / M2 (Map
+  curve tangent gate) -- `devtools/onshape/build_ / check_arc_tangency_tests.py`, 9/9 on 2026-09-26.
 - **Fillet wire tests** studio: W1-W6 (`devtools/onshape/check_fillet_wire.py`).
 - **Tests** studio: `curve_tools_tests.fs` (a harness feature: Clean wire ends / runs, Merge curve, Map curve trim).
 - **Test_1** studio: the worked examples (Clean wire Auto on SW_SHELF, Map curve SKI_PROFILE -> RSL, Merge curve on

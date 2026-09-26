@@ -1,0 +1,178 @@
+{
+  "slug": "offset_edges",
+  "title": "Offset edges",
+  "tagline": "Offset one chain by amounts that vary along its length -- regions with ramps and dwells, blended; in-plane or out-of-plane; sharp corners handled.",
+  "document": "example_1",
+  "icon": "icons/final/offset_edges_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Native Offset curve is constant and in a sketch plane. Ski edges need offsets that change along the length -- a bevel that grows toward the tip, a step between two zones -- following a 3D chain.",
+      "useWhen": [
+        "Offsets that vary along a sidecut or edge line",
+        "Zones with blends between them",
+        "Out-of-plane offsets along a 3D chain"
+      ],
+      "image": "docs/explainers/curve_mapping/img/fig05_offset_edges.png",
+      "caption": "OE6 regions + blend, OE10 pins, OE24 corner."
+    },
+    {
+      "type": "concept",
+      "title": "Regions",
+      "image": "docs/explainers/curve_mapping/img/fig06_region_types.png",
+      "points": [
+        {
+          "head": "Per region",
+          "body": "Extent (distances from the reference or two points), start / end offset, Linear / Quadratic / Smooth, dwells."
+        },
+        {
+          "head": "Blends",
+          "body": "Neighbouring regions blended over a distance into each, matched to G0 / G1 / G2."
+        },
+        {
+          "head": "Or pins",
+          "body": "Single region: offsets at chosen points, flat beyond the first and last."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Directions (physically)",
+      "image": "docs/explainers/curve_mapping/img/fig05_offset_edges.png",
+      "points": [
+        {
+          "head": "'Normal offset'",
+          "body": "Moves OUT of the chain's plane (a line in XY offsets along Z)."
+        },
+        {
+          "head": "'Binormal offset'",
+          "body": "Moves WITHIN the plane, toward / away from the centre of curvature."
+        },
+        {
+          "head": "Names",
+          "body": "The reverse of Frenet naming: describe results physically."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/offset_edges/shots/dialog.png",
+      "params": [
+        [
+          "Reference edges",
+          "One chain (G1, or with sharp corners)."
+        ],
+        [
+          "Reference point",
+          "Where distance 0 is."
+        ],
+        [
+          "Flip direction",
+          "Reverse the distance direction (+ Show direction indicator)."
+        ],
+        [
+          "Flip normal",
+          "Reverse the out-of-plane direction (Flip binormal likewise)."
+        ],
+        [
+          "Source arcs",
+          "Convert to splines / Keep as arcs (concentric or arc pairs)."
+        ],
+        [
+          "Sampling density",
+          "Points per region / blend (20)."
+        ],
+        [
+          "Offset layout",
+          "Multiple regions / Single region."
+        ],
+        [
+          "Regions",
+          "Type, name, extent, offset type, start / end offsets, dwells."
+        ],
+        [
+          "Intersections",
+          "Per neighbouring pair: blend, continuities, distances."
+        ],
+        [
+          "Approximation",
+          "Degree 3, tolerance 0.01 mm, max control points 100."
+        ],
+        [
+          "Debug",
+          "Show frames / regions / blends; print data."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(wire)",
+          "One wire, split at source-edge boundaries and region / blend joints."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "N arc pairs, worst deviation ...",
+          "Keep as arcs with varying offsets."
+        ],
+        [
+          "Warning",
+          "no regions / overlapping regions / clamped dwell or blend / region consumed by blends",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Keep as arcs",
+          "body": "Constant offsets of arcs stay exact arcs (report a radius)."
+        },
+        {
+          "kind": "limit",
+          "head": "Gaps",
+          "body": "Gaps between regions are gaps in the output; blending off gives a step."
+        },
+        {
+          "kind": "limit",
+          "head": "Slivers",
+          "body": "A region boundary within ~1 mm of an edge boundary can leave a sliver edge."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "example_1 (7183868d32cdc7a6ad14410d)"
+        ],
+        [
+          "Tab",
+          "refSurfCreation/offsetEdges (+ engine curveMappingCore)"
+        ],
+        [
+          "Tests",
+          "Offset edges tests: OE1-OE24 (all pass)"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_mapping/curve_mapping_explained.md, section 2.5"
+        ],
+        [
+          "Related",
+          "Wrap Curve, Wrap and Loft, Deform, Measure curve distance, Offset edges"
+        ]
+      ]
+    }
+  ]
+}

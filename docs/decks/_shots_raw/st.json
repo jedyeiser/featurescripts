@@ -1,0 +1,88 @@
+{
+ "doc": "14cdaad24a8beab67af40fe4",
+ "ws": "9bfd33d53af778cf02e60d9f",
+ "shots": [
+  {
+   "elem": "1643f3256c710338d431e94e",
+   "wait": 40,
+   "filter": "M15",
+   "featurePrefix": "M15 nearest",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/move_along_edge/shots/dialog.png",
+   "labels": [
+    {
+     "name": "Entities to move",
+     "find": "Entities to move"
+    },
+    {
+     "name": "Edges or wire to move along",
+     "find": "Edges or wire to move along"
+    },
+    {
+     "name": "Provide Reference Point",
+     "find": "Provide Reference Point"
+    },
+    {
+     "name": "Move to",
+     "find": "Move to"
+    },
+    {
+     "name": "Apply",
+     "find": "Apply"
+    },
+    {
+     "name": "Orientation",
+     "find": "Orientation"
+    },
+    {
+     "name": "Copy Bodies?",
+     "find": "Copy Bodies?"
+    },
+    {
+     "name": "Naming",
+     "find": "Naming"
+    },
+    {
+     "name": "Mate connectors as points",
+     "find": "Mate connectors as points"
+    },
+    {
+     "name": "Additional copies",
+     "find": "Additional copies"
+    }
+   ]
+  },
+  {
+   "elem": "dd2cf287a5c44e5c3408d646",
+   "wait": 40,
+   "filter": "T9",
+   "featurePrefix": "T9 split",
+   "settle": 8,
+   "dialogWait": 90,
+   "dialog": "docs/decks/trim_curve_plus/shots/dialog.png",
+   "labels": [
+    {
+     "name": "Operation",
+     "find": "Operation"
+    },
+    {
+     "name": "Curves to adjust",
+     "find": "Curves to adjust"
+    },
+    {
+     "name": "Cut location",
+     "find": "Cut location"
+    },
+    {
+     "name": "Return single wire",
+     "find": "Return single wire"
+    },
+    {
+     "name": "Debug",
+     "find": "Debug"
+    }
+   ]
+  }
+ ]
+}

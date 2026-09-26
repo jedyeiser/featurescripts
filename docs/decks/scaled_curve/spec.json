@@ -1,0 +1,134 @@
+{
+  "slug": "scaled_curve",
+  "title": "Scaled Curve",
+  "tagline": "A curve between two rails whose position across them changes along its length -- 30 % at the start, 70 % at the end, along a chosen transition.",
+  "document": "gordonSurface",
+  "icon": "icons/final/scaled_curve_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A mid-curve between two rails at a varying percentage is tedious by hand. Scaled Curve blends the rails point by point with a factor that travels from the initial to the final value.",
+      "useWhen": [
+        "A character line drifting between two edges",
+        "A midline between two rails",
+        "Seed curves for a network"
+      ],
+      "image": "docs/explainers/gordon_surface/img/fig04_scaled_curve.png",
+      "caption": "SC3 and the three transition shapes."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/scaled_curve/shots/dialog.png",
+      "params": [
+        [
+          "Group 0",
+          "First rail (edges joined); Flip? reverses it."
+        ],
+        [
+          "Group 1",
+          "Second rail."
+        ],
+        [
+          "Initial curve scalefactor",
+          "-0.5 = on Group 0, 0 = halfway, +0.5 = on Group 1."
+        ],
+        [
+          "Final curve scalefactor",
+          "The value at the end."
+        ],
+        [
+          "Transition Type",
+          "Linear / Sinusoidal / Logistic."
+        ],
+        [
+          "Curve name",
+          "Names the wire."
+        ],
+        [
+          "Project onto surface?",
+          "+ face: drop the result onto it."
+        ],
+        [
+          "Debug & Details",
+          "Show ends / curves; output samples, tolerance, degree; input sampling."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: SC3",
+      "image": "docs/explainers/gordon_surface/img/fig04_scaled_curve.png",
+      "head": "Arcs R100 and R200, scale factor 0",
+      "body": "An exact R150 arc (within 0.00062 mm) -- but only its first radian: the known arc bug. SC0: lines y = 0 and y = 100 -> y = 50; SC2: output degree 5."
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(wire)",
+          "The scaled curve, named by Curve name."
+        ]
+      ],
+      "messages": [
+        [
+          "(none)",
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Arcs: first radian only",
+          "body": "On arc rails the result stops after 1 rad of each arc (bug; SC3 checks only the radius)."
+        },
+        {
+          "kind": "limit",
+          "head": "Matched by parameter",
+          "body": "Not by length: uneven rails skew the blend. Orientation is manual (Flip)."
+        },
+        {
+          "kind": "limit",
+          "head": "Projection",
+          "body": "Can move the ends."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "gordonSurface (d0950ed72a894fbe35c27d43)"
+        ],
+        [
+          "Tab",
+          "scaledCurve"
+        ],
+        [
+          "Tests",
+          "Gordon tools tests: SC0-SC3"
+        ],
+        [
+          "Examples",
+          "Test Part Studio 1: Scaled Curve 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/gordon_surface/gordon_surface_explained.md, section 2.3"
+        ],
+        [
+          "Related",
+          "Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface"
+        ]
+      ]
+    }
+  ]
+}

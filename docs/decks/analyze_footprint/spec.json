@@ -1,0 +1,172 @@
+{
+  "slug": "analyze_footprint",
+  "title": "Analyze footprint",
+  "tagline": "Measure any sidecut: dimensions, waist, taper, tip and tail length, average and natural radius, widest and inflection points -- and publish them as variables.",
+  "document": "footprint",
+  "icon": "icons/final/analyze_footprint_icon.svg",
+  "status": "Draft 2026-09-26",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Comparing sidecuts needs the same numbers, measured the same way: tip-waist-tail, taper, radius. Analyze footprint reads them off any outline -- designed, scaled or imported -- and publishes them for later features.",
+      "useWhen": [
+        "Check a sidecut against its targets",
+        "Compare skis in a family",
+        "Drive later features from measured values"
+      ],
+      "image": "docs/explainers/footprint/img/fig01_vocabulary.png",
+      "caption": "The points it finds: contacts, widest, inflections, waist."
+    },
+    {
+      "type": "concept",
+      "title": "Average vs natural radius",
+      "image": "docs/explainers/footprint/img/fig03_average_natural.png",
+      "points": [
+        {
+          "head": "Average",
+          "body": "Mean of R at 200 X stations between the inflections -- independent of how the edges are split."
+        },
+        {
+          "head": "Natural",
+          "body": "One circle through inflection - waist - inflection (or widest - waist - widest)."
+        },
+        {
+          "head": "They differ",
+          "body": "FX2: 16.97 m average vs 14.47 m natural. Both are right; they answer different questions."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/analyze_footprint/shots/dialog.png",
+      "params": [
+        [
+          "Footprint edges",
+          "The sidecut (+Y side)."
+        ],
+        [
+          "RSL line",
+          "A straight edge FCP to ACP."
+        ],
+        [
+          "FCP",
+          "Plane, vertex or mate connector; the nearest point on the RSL line is used."
+        ],
+        [
+          "ACP",
+          "As FCP."
+        ],
+        [
+          "Sketch key points",
+          "Draw the waist, widest and inflection lines."
+        ],
+        [
+          "Footprint Data",
+          "Read-only: tip-waist-tail, waist width and X, taper, tip and tail length."
+        ],
+        [
+          "Radius calculations",
+          "Average, natural (widest), natural (inflection)."
+        ],
+        [
+          "Widest & Inflection points",
+          "Distances from each contact; inflection to widest."
+        ],
+        [
+          "Recalculate",
+          "Button: refresh the panel."
+        ]
+      ]
+    },
+    {
+      "type": "examples",
+      "title": "Examples (Footprint tests)",
+      "cards": [
+        {
+          "image": "docs/explainers/footprint/img/fig01_vocabulary.png",
+          "head": "AF1: S14",
+          "body": "Inflections +-550, average 14.00 m, natural (inflection) 14.00 m, natural (widest) 17.00 m, taper 0."
+        },
+        {
+          "image": "docs/explainers/footprint/img/fig03_average_natural.png",
+          "head": "AF2 / AF3: FX2 in 7 or 13 edges",
+          "body": "Same result either way: average 16.97 m, natural 14.47 m."
+        }
+      ]
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "tipWidth, waistWidth, tailWidth",
+          "Full widths at the widest points and the waist."
+        ],
+        [
+          "waistX, tipLength, tailLength",
+          "World X of the waist; contact to tip / tail end."
+        ],
+        [
+          "taperAngle",
+          "Widest to widest; positive when the tip is wider."
+        ],
+        [
+          "sidecutRadius",
+          "The average radius."
+        ],
+        [
+          "output",
+          "The key-point sketch (when on)."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "Tip-waist-tail ... mm | average radius ... | natural radius (inflection) ...",
+          "Every regeneration, always current."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Panel goes stale",
+          "body": "The dialog panel updates only when the feature is edited or Recalculate is pressed; the info line and variables are always current."
+        },
+        {
+          "kind": "tip",
+          "head": "Any orientation along X",
+          "body": "Tip at +X and off-centre skis measure correctly (AF4, AF5); raw sketch arcs too (AF7)."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "footprint (52724f3a857fa52d3ecceb77)"
+        ],
+        [
+          "Tab",
+          "analyzeFootprint (+ fpt_analyze, predicates)"
+        ],
+        [
+          "Tests",
+          "Footprint tests studio (build_ / check_footprint_tests.py): AF1-AF7"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/footprint/footprint_explained.md, section 1.3, 2.2"
+        ],
+        [
+          "Related",
+          "Integrate footprint, Analyze footprint, Scale Footprint, Arc fit, Generate Footprint Points"
+        ]
+      ]
+    }
+  ]
+}
