@@ -380,13 +380,9 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
  */
 function replayCase(context is Context, id is Id, definition is map, replay is map)
 {
-    const functions = valuesSortedById(context, definition.features);
+    const functions = listedFunctions(context, definition.features);
     var origins = [];
     var before = evaluateQuery(context, qCreatedBy(replay.caseId, EntityType.BODY));
-    if (replay.mode == "direct" && replay.index >= size(functions)) // TEMP diagnosis
-    {
-        throw regenError("TEMP direct: keys " ~ toString(keys(definition.features)) ~ " sorted " ~ size(functions));
-    }
     const first = replay.mode == "direct" ? replay.index : replay.from;
     const last = replay.mode == "direct" ? replay.index : size(functions) - 1;
     for (var i = first; i <= last; i += 1)
@@ -1531,6 +1527,22 @@ function kindText(kind is CaseValueKind) returns string
         return "true or false";
     }
     return "text";
+}
+
+/**
+ * The functions of a FeatureList in tree order. When the feature holding the list is called under a
+ * prefix outside a pattern frame, its keys arrive as prefix + original id (measured 2026-09-26:
+ * [pattern, case_B, d1, <feature id>]) and valuesSortedById finds none of them, so sort by the
+ * original feature id -- the key's last component.
+ */
+function listedFunctions(context is Context, features is map) returns array
+{
+    var byFeature = {};
+    for (var key, listed in features)
+    {
+        byFeature[makeId(key[size(key) - 1])] = listed;
+    }
+    return valuesSortedById(context, byFeature);
 }
 
 /** The ids of a FeatureList in tree order (the same order as valuesSortedById of its functions). */
