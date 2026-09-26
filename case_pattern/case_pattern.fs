@@ -380,7 +380,8 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
  */
 function replayCase(context is Context, id is Id, definition is map, replay is map)
 {
-    const functions = listedFunctions(context, definition.features);
+    const functions = replay.mode == "direct" ? listedFunctionsOutsideFrame(context, definition.features)
+        : valuesSortedById(context, definition.features);
     var origins = [];
     var before = evaluateQuery(context, qCreatedBy(replay.caseId, EntityType.BODY));
     const first = replay.mode == "direct" ? replay.index : replay.from;
@@ -1530,12 +1531,13 @@ function kindText(kind is CaseValueKind) returns string
 }
 
 /**
- * The functions of a FeatureList in tree order. When the feature holding the list is called under a
- * prefix outside a pattern frame, its keys arrive as prefix + original id (measured 2026-09-26:
- * [pattern, case_B, d1, <feature id>]) and valuesSortedById finds none of them, so sort by the
- * original feature id -- the key's last component.
+ * The functions of a FeatureList in tree order, for a feature called under a prefix OUTSIDE a pattern
+ * frame: its keys then arrive as prefix + original id (measured 2026-09-26: [pattern, case_B, d1,
+ * <feature id>]) and valuesSortedById finds none of them, so sort by the original feature id -- the
+ * key's last component. (Inside the frame the keys must be used as given: sorting by the original ids
+ * there is refused as "out of pattern scope".)
  */
-function listedFunctions(context is Context, features is map) returns array
+function listedFunctionsOutsideFrame(context is Context, features is map) returns array
 {
     var byFeature = {};
     for (var key, listed in features)
