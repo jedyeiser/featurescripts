@@ -296,11 +296,16 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         definition.templateNames is string;
     }
     {
-        // Called by a Case pattern inside its pattern frame: run this case.
+        // Called by a Case pattern: run this case.
+        const replay = getVariable(context, CASE_REPLAY_KEY, MISSING);
+        if (replay is map)
+        {
+            replayCase(context, id, definition, replay);
+            return;
+        }
         if (isInFeaturePattern(context))
         {
-            replayCase(context, id, definition);
-            return;
+            throw regenError("A Close case is repeated only by a Case pattern.");
         }
 
         const define = findSignature(context, definition.defineCase, "caseDefine");
@@ -358,28 +363,26 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
     });
 
 /**
- * One case, run by the Close case when its Case pattern calls it inside the pattern frame
- * (frame id = the case id the Case pattern published). Records the bodies each listed feature
- * creates (for naming) and the outputs' queries -- evaluated here, after the case's own
- * query variables were set -- for the Case pattern to publish once the frame is popped.
+ * One case, run by the Close case when its Case pattern calls it (after binding the case's inputs
+ * and values). Replays the listed features in a pattern frame (identity transform) that this
+ * feature pushes itself, so it can pop it to retry an outside-geometry edit (runListedFeature).
+ * Records the bodies each listed feature creates (for naming) and the outputs' queries -- evaluated
+ * here, after the case's own query variables were set -- for the Case pattern to publish.
  */
-function replayCase(context is Context, id is Id, definition is map)
+function replayCase(context is Context, id is Id, definition is map, replay is map)
 {
-    const replay = getVariable(context, CASE_REPLAY_KEY, MISSING);
-    if (!(replay is map) || replay.caseId == undefined)
-    {
-        throw regenError("A Close case is repeated only by a Case pattern.");
-    }
     const caseId = replay.caseId;
     const functions = valuesSortedById(context, definition.features);
+    setFeaturePatternInstanceData(context, id, { "transform" : identityTransform() });
     var origins = [];
     var outside = [];
     var before = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
     for (var i = 0; i < size(functions); i += 1)
     {
-        const outcome = runListedFeature(context, functions, i, caseId, id);
+        const outcome = runListedFeature(context, functions, i, id, id);
         if (outcome.error != undefined)
         {
+            unsetFeaturePatternInstanceData(context, id);
             throw regenError("repeated feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")");
         }
         if (!outcome.inFrame)
@@ -398,6 +401,7 @@ function replayCase(context is Context, id is Id, definition is map)
         }
         before = after;
     }
+    unsetFeaturePatternInstanceData(context, id);
     var outputs = [];
     for (var output in definition.outputs)
     {
@@ -987,12 +991,10 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 }
             }
 
-            // Run the case as a Pattern runs one instance (correction 31: never inside startFeature):
-            // the Close case replays its features under this frame (correction 50).
+            // Run the case: the Close case replays its features in a pattern frame (correction 50).
             const caseId = id + ("case_" ~ caseName);
             setVariable(context, CASE_REPLAY_KEY, { "caseId" : caseId, "caseName" : caseName });
             setVariable(context, CASE_RESULT_KEY, MISSING);
-            setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
             var failure = undefined;
             try
             {
@@ -1002,7 +1004,6 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             {
                 failure = errorText(e);
             }
-            unsetFeaturePatternInstanceData(context, caseId);
             const result = getVariable(context, CASE_RESULT_KEY, MISSING);
             const caseBodies = qCreatedBy(caseId, EntityType.BODY);
             if (failure == undefined && !(result is map))
@@ -1555,6 +1556,8 @@ function unkeptBodies(caseBodies is Query, keep is map) returns Query
 
 /**
  * Runs listed feature `i` for a case whose pattern frame (`frameId`) is pushed, under `callId`.
+ * The frame must have been pushed by the calling feature itself: a frame pushed by an outer feature
+ * cannot be popped from inside a feature it calls ("Execution error", measured 2026-09-26).
  *
  * The frame (identity transform) is what makes FeatureList parameters of the listed features --
  * a Query Variable "created by", say -- resolve to this case's copies. Plain queries (clicks,
@@ -1585,14 +1588,7 @@ function runListedFeature(context is Context, functions is array, i is number, f
     {
         return { "inFrame" : true, "error" : frameError };
     }
-    try // TEMP diagnosis
-    {
-        unsetFeaturePatternInstanceData(context, frameId);
-    }
-    catch (e)
-    {
-        return { "inFrame" : true, "error" : "TEMP unset failed: " ~ errorText(e) ~ " / frame error was " ~ frameError };
-    }
+    unsetFeaturePatternInstanceData(context, frameId);
     var directError = undefined;
     try
     {
@@ -1602,14 +1598,7 @@ function runListedFeature(context is Context, functions is array, i is number, f
     {
         directError = errorText(e);
     }
-    try // TEMP diagnosis
-    {
-        setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
-    }
-    catch (e)
-    {
-        return { "inFrame" : false, "error" : "TEMP re-set failed: " ~ errorText(e) ~ " / direct error " ~ directError };
-    }
+    setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
     if (directError != undefined)
     {
         return { "inFrame" : false, "error" : directError };
