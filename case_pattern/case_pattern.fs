@@ -373,16 +373,18 @@ function replayCase(context is Context, id is Id, definition is map, replay is m
 {
     const caseId = replay.caseId;
     const functions = valuesSortedById(context, definition.features);
-    setFeaturePatternInstanceData(context, id, { "transform" : identityTransform() });
+    // A fresh sub-id for the frame and the calls (the feature's own id as frame id builds nothing).
+    const runId = id + "run";
+    setFeaturePatternInstanceData(context, runId, { "transform" : identityTransform() });
     var origins = [];
     var outside = [];
     var before = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
     for (var i = 0; i < size(functions); i += 1)
     {
-        const outcome = runListedFeature(context, functions, i, id, id);
+        const outcome = runListedFeature(context, functions, i, runId, runId);
         if (outcome.error != undefined)
         {
-            unsetFeaturePatternInstanceData(context, id);
+            unsetFeaturePatternInstanceData(context, runId);
             throw regenError("repeated feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")");
         }
         if (!outcome.inFrame)
@@ -401,7 +403,7 @@ function replayCase(context is Context, id is Id, definition is map, replay is m
         }
         before = after;
     }
-    unsetFeaturePatternInstanceData(context, id);
+    unsetFeaturePatternInstanceData(context, runId);
     var outputs = [];
     for (var output in definition.outputs)
     {
