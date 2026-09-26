@@ -2,7 +2,7 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: driven_edge_offset.fs (same document; export-imports edge_offset_utils -> curve_core)
-export import(path : "786f62f4d67ed8d9c7d56d16", version : "833746270e62ebc534466aa5");
+export import(path : "786f62f4d67ed8d9c7d56d16", version : "db8bdbb85dc01a1710acd046");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 

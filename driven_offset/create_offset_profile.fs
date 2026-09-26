@@ -6,7 +6,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
 // IMPORT: offset_profile_core.fs (same document; the profile machinery -- enums, dialog predicates, regions /
 // points -> pieces, exact curves). export import: the enums are this feature's parameter types.
 // PLACEHOLDER: replace path with the new tab's element id and version with its microversion once the tab exists.
-export import(path : "PLACEHOLDER_OFFSET_PROFILE_CORE_ELEMENT_ID", version : "PLACEHOLDER_OFFSET_PROFILE_CORE_MICROVERSION");
+export import(path : "9553c095d4d77c83c34a0a36", version : "223aaaeb6c249e3bf29f4710");
 // IMPORT: create_offset_profile_icon.svg (feature icon)
 IconNamespace::import(path : "5abec4cb3826cb3a41e6e340", version : "dff061882348551c0d057bb6");
 
