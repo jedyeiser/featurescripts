@@ -1,0 +1,6 @@
+Wrap Curve 1 | wrapCurve | bodies 0 | edges 0 len 0 | faces 0 area 0
+Wrap and Loft 1 | wrapAndLoft | bodies 2 | edges 13 len 1149.95313 | faces 3 area 7132.9024
+Deform 1 | deform | bodies 0 | edges 0 len 0 | faces 0 area 0
+Wrap Curve 3 | wrapCurve | bodies 0 | edges 0 len 0 | faces 0 area 0
+Wrap Curve 2 | wrapCurve | bodies 0 | edges 0 len 0 | faces 0 area 0
+ALL bodies 42 total edge length 8926.2048

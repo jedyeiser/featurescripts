@@ -1,0 +1,175 @@
+{
+  "slug": "generate_baseline",
+  "title": "Generate baseline",
+  "tagline": "Design the ski's unweighted side profile: a camber pocket between the rocker contact points and fore and aft rockers out to the tips -- optionally shaped by the ski's own EI.",
+  "document": "xSection",
+  "icon": "icons/final/generate_baseline_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A baseline is a handful of targets -- camber height, rocker lengths, tip heights -- that must meet in one smooth curve. Generate baseline builds it from those numbers, levels it on its rocker low points, and can shape the camber as the ski actually bends.",
+      "useWhen": [
+        "Start a new ski's side profile",
+        "Try camber / rocker targets quickly",
+        "Shape the camber from the real EI"
+      ],
+      "image": "docs/explainers/xsection/img/fig06_baseline.png",
+      "caption": "Test studio: NewTestBaseline, three edges (Z exaggerated 60 x)."
+    },
+    {
+      "type": "concept",
+      "title": "Camber and rocker",
+      "image": "docs/explainers/xsection/img/fig07_rocker_construction.png",
+      "points": [
+        {
+          "head": "Camber pocket",
+          "body": "Pinned at FRCP and ARCP. With EI: the bending shape under a load at the mount. Without: a cubic peaking at the mount."
+        },
+        {
+          "head": "Rocker",
+          "body": "A quadratic leaving FRCP tangent to the camber, ending FCP height below that tangent (measured normal to it)."
+        },
+        {
+          "head": "Levelled",
+          "body": "Rotated about the mount so both low points share Z; camber re-measured and corrected to 0.001 mm."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/generate_baseline/shots/dialog.png",
+      "positions": {
+        "Output type": [
+          0.02,
+          0.056
+        ]
+      },
+      "params": [
+        [
+          "Output type",
+          "Curve per region (3 edges, one wire) or Single curve."
+        ],
+        [
+          "Output curve name",
+          "Default 'Baseline'."
+        ],
+        [
+          "FCP",
+          "Front contact point (X only)."
+        ],
+        [
+          "ACP",
+          "Aft contact point (X only)."
+        ],
+        [
+          "Mount / load point",
+          "Between FCP and ACP: where camber height is measured and the load acts."
+        ],
+        [
+          "Baseline targets",
+          "Camber height (0-15 mm), fore / aft rocker length, optional low-point distance, FCP / ACP height."
+        ],
+        [
+          "Use EI profile",
+          "+ EI edges: camber = the ski's real bending shape."
+        ],
+        [
+          "Spline output",
+          "Tolerance, max control points, degree."
+        ],
+        [
+          "Add baseline sketch",
+          "The measurement sketch (as Analyze baseline draws)."
+        ],
+        [
+          "Create weighted baseline",
+          "A second wire: camber flattened, rockers rotated with it."
+        ],
+        [
+          "Debug",
+          "Print setup, solver passes, analysis."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: NewTestBaseline",
+      "image": "docs/explainers/xsection/img/fig06_baseline.png",
+      "head": "Camber 5 mm, rockers 200 / 200, FCP height 10, ACP height 6, Use EI profile on",
+      "body": "Camber exactly 5.0 mm at the mount (x = 0). The tips end 7.2 and 3.6 mm above the low points: tip height is measured from the camber tangent, not from Z = 0."
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "<Output curve name>",
+          "The baseline wire (camber, fore rocker, aft rocker; or one spline)."
+        ],
+        [
+          "Baseline (Weighted)",
+          "Optional second wire."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "minimum-point distance clamped",
+          "The requested rocker low point cannot be reached; the nearest reachable is used."
+        ],
+        [
+          "Error",
+          "mount not between FCP and ACP",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Two camber heights",
+          "body": "Generate baseline sets it at the mount; Analyze baseline reports the largest perpendicular distance -- they differ with an off-centre mount."
+        },
+        {
+          "kind": "limit",
+          "head": "No convergence notice",
+          "body": "If 20 correction passes do not reach 0.001 mm, nothing is reported."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "generateBaseline (+ beam/generateBaselineSolver.fs, baselineCore.fs)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Examples",
+          "Test studio: Generate baseline 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 2.5"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

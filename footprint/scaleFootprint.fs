@@ -17,10 +17,10 @@ export import(path : "67c190b80e8b74dcee72e7ff", version : "89446acd00aa71384f74
 export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d30593b1d10021e1a6b5b134");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
-import(path : "66f4f03cf728e94b8f823585", version : "34d39c868f7461c1eb8f0b30");
+import(path : "66f4f03cf728e94b8f823585", version : "72150f7fbb1546cf1ee01c88");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "9d37396dadd3a09f4cf81d50");
+import(path : "5d198387b3966ae60a549555", version : "a45ecf01ed15b6c11544e2fc");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
 import(path : "d3ad341f5b87924b36b5aba8", version : "f1609d01a8fb2c0f775abd6f");
@@ -2036,7 +2036,131 @@ function buildTaggedCurves(context is Context, id is Id, curves is array, isArcA
             }
         }
     }
-    return tagged;
+    return pinSplinesToArcs(tagged, printDebug);
+}
+
+/** Largest seam angle (radians) a spline end is turned through to meet an arc chain (0.57 deg). */
+const SCALE_SEAM_WELD_ANGLE = 1e-2;
+
+/** Largest movement of a spline's end handle allowed for that turn; above it the seam is left alone. */
+const SCALE_SEAM_TOL = 0.01 * millimeter;
+
+/**
+ * Unit travel direction (start -> mid -> end) of a tagged arc at its start or end, in the XY plane.
+ */
+function taggedArcTangent(t is map, atEnd is boolean) returns Vector
+{
+    const ax = t.start[0] / meter;
+    const ay = t.start[1] / meter;
+    const bx = t.mid[0] / meter;
+    const by = t.mid[1] / meter;
+    const cx = t.end[0] / meter;
+    const cy = t.end[1] / meter;
+    const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+    if (abs(d) < 1e-18)
+    {
+        return normalize(vector(cx - ax, cy - ay, 0));
+    }
+    const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+    const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+    const px = atEnd ? cx : ax;
+    const py = atEnd ? cy : ay;
+    var tangent = normalize(vector(-(py - uy), px - ux, 0));
+    const ref = atEnd ? vector(cx - bx, cy - by, 0) : vector(bx - ax, by - ay, 0);
+    if (dot(tangent, ref) < 0)
+    {
+        tangent = -tangent;
+    }
+    return tangent;
+}
+
+/**
+ * Turn a spline's end handle so the spline leaves / arrives along `direction` at that end, keeping the
+ * handle's length and height. Returns undefined when the turn is a corner (above SCALE_SEAM_WELD_ANGLE) or
+ * would move the handle more than SCALE_SEAM_TOL.
+ */
+function splineEndPinned(spline is BSplineCurve, atStart is boolean, direction is Vector)
+{
+    var cps = spline.controlPoints;
+    const n = size(cps);
+    const endIndex = atStart ? 0 : n - 1;
+    const handleIndex = atStart ? 1 : n - 2;
+    const handle = cps[handleIndex] - cps[endIndex];
+    const flat = vector(handle[0], handle[1], 0 * meter);
+    const length = norm(flat);
+    if (length < 1e-12 * meter)
+    {
+        return undefined;
+    }
+    const current = flat / length;
+    const target = (dot(current, direction) < 0) ? -direction : direction;
+    if (atan2(norm(cross(current, target)), dot(current, target)) / radian > SCALE_SEAM_WELD_ANGLE)
+    {
+        return undefined;
+    }
+    const moved = length * target;
+    if (norm(moved - flat) > SCALE_SEAM_TOL)
+    {
+        return undefined;
+    }
+    cps[handleIndex] = vector(cps[endIndex][0] + moved[0], cps[endIndex][1] + moved[1], cps[handleIndex][2]);
+    return mergeMaps(spline, { "controlPoints" : cps }) as BSplineCurve;
+}
+
+/**
+ * Where a spline meets a G1 arc chain, turn the spline's end to the ARC's tangent there (2026-09-25 arc /
+ * line tangency review). The chain's single degree of freedom is spent on a least-squares compromise, so
+ * its end tangents miss the scaled originals by a residual; the splines beside it were left pointing the
+ * original way and the seam kinked by that residual ("splines then absorb it" was the intent, never the
+ * code). Only a smooth seam is pinned, and only while the reshape stays within SCALE_SEAM_TOL; a LINE
+ * segment of the chain is left alone (each side keeps its own tangent).
+ */
+function pinSplinesToArcs(tagged is array, printDebug is boolean) returns array
+{
+    var out = tagged;
+    for (var i = 0; i < size(out); i += 1)
+    {
+        if (out[i].kind != "spline")
+        {
+            continue;
+        }
+        const cps = out[i].bspline.controlPoints;
+        const sStart = cps[0];
+        const sEnd = cps[size(cps) - 1];
+
+        for (var j in [i - 1, i + 1])
+        {
+            if (j < 0 || j >= size(out) || out[j].kind != "arc")
+            {
+                continue;
+            }
+            const arcSeg = out[j];
+            for (var pair in [[arcSeg.start, false], [arcSeg.end, true]])
+            {
+                const shared = pair[0];
+                const tangent = taggedArcTangent(arcSeg, pair[1]);
+                for (var atStart in [true, false])
+                {
+                    const end = atStart ? sStart : sEnd;
+                    if (norm(vector(end[0] - shared[0], end[1] - shared[1])) < 1e-6 * meter)
+                    {
+                        const pinned = splineEndPinned(out[i].bspline, atStart, tangent);
+                        if (pinned != undefined)
+                        {
+                            out[i] = mergeMaps(out[i], { "bspline" : pinned });
+                        }
+                        else if (printDebug)
+                        {
+                            println("[arcChain] seam at (" ~ roundToPrecision(shared[0] / millimeter, 3) ~ ", "
+                                ~ roundToPrecision(shared[1] / millimeter, 3) ~ ") left as it is (corner, or reshape > "
+                                ~ toString(SCALE_SEAM_TOL / millimeter) ~ " mm)");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return out;
 }
 
 /**

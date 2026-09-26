@@ -1,0 +1,221 @@
+{
+  "slug": "ei_and_cross_section",
+  "title": "EI and Cross Section",
+  "tagline": "Cut the ski's layup at stations and compute, at each, the bending stiffness EI, torsional stiffness GJ, neutral axis and mass -- then the ski's flex numbers and weight.",
+  "document": "xSection",
+  "icon": "icons/final/ei_cross_section_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A ski's flex comes from its layup: every ply's shape and material. EI and Cross Section reads the layup straight from CAD (one solid per ply, each with an Onshape material), looks up the moduli in a CSV table, and gives EI(x), GJ(x), the neutral axis and the flex numbers -- so a design change shows its stiffness effect at once.",
+      "useWhen": [
+        "You change a layup, core profile or sidecut",
+        "You need the EI curve for deflection, baseline or profile work",
+        "You compare a design with measured stiffness"
+      ],
+      "image": "docs/decks/ei_and_cross_section/shots/hero.png",
+      "caption": "ROY_Test: the output curves (EI, GJ ...) above the ski; the info reports repaired outlines."
+    },
+    {
+      "type": "concept",
+      "title": "Stations",
+      "image": "docs/explainers/xsection/img/fig02_stations.png",
+      "points": [
+        {
+          "head": "FCP to ACP",
+          "body": "N stations evenly spaced, one exactly at each contact point (numbered 0 ... N-1)."
+        },
+        {
+          "head": "Tip and tail",
+          "body": "Up to 4 extra each at about the same spacing; the tip's are numbered negative."
+        },
+        {
+          "head": "One cut per body",
+          "body": "Outlines are cleaned (duplicates, micron gaps), triangulated and integrated."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "EI of a laminate",
+      "image": "docs/explainers/xsection/img/fig03_laminate_ei.png",
+      "points": [
+        {
+          "head": "Each body is a ply",
+          "body": "Area, centroid height above the base, its own I, and its modulus E along the ski."
+        },
+        {
+          "head": "Neutral axis",
+          "body": "The E-weighted centroid; EI is the stiffness about it."
+        },
+        {
+          "head": "E, not Q11",
+          "body": "A narrow ski bends like a beam: Q11 would overstate by ~12 % (wood, Titanal), more for +-45 fabric."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/ei_and_cross_section/shots/dialog.png",
+      "params": [
+        [
+          "Wire to cross section along",
+          "One wire along the ski (X increasing)."
+        ],
+        [
+          "Analysis name",
+          "Prefix for the output curves."
+        ],
+        [
+          "FCP",
+          "Front contact point (vertex, planar face or mate connector; X only)."
+        ],
+        [
+          "ACP",
+          "Aft contact point. FCP and ACP are optional, but flex numbers need both."
+        ],
+        [
+          "Cross section bodies",
+          "The layer solids (composites are unpacked)."
+        ],
+        [
+          "Material library",
+          "materialData.csv: name, density, E, nu, Q11 ... Q66."
+        ],
+        [
+          "Refresh CSV data",
+          "Button: re-read the table."
+        ],
+        [
+          "Number of cross sections",
+          "3-200 (50); with FCP / ACP, this many from FCP to ACP."
+        ],
+        [
+          "Bodies & Materials",
+          "Per body: its material must match a CSV name exactly, or choose Ignore / Provide material data."
+        ],
+        [
+          "Output Options",
+          "Create composites (slow), language, material and body-detail tables."
+        ],
+        [
+          "Debug",
+          "Draw edges / points / mesh of chosen stations and bodies."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: ROY_Test, 35 stations",
+      "image": "docs/explainers/xsection/img/fig04_roy_results.png",
+      "head": "EI peaks at 390 N m^2 under the foot; GJ follows (453); the neutral axis sits near mid-thickness",
+      "body": "Summary: 20.7 lb/in and 81.3 mm under 30 kg (variable EI); 16.2 lb/in prismatic. The stations cut 4 bodies with micron gaps, repaired (info)."
+    },
+    {
+      "type": "concept",
+      "title": "Flex numbers",
+      "image": "docs/explainers/xsection/img/fig05_flex_numbers.png",
+      "points": [
+        {
+          "head": "The test",
+          "body": "Simply supported at FCP and ACP, a point load at the mount (MRS)."
+        },
+        {
+          "head": "Prismatic",
+          "body": "P L^3 / (48 EI_avg): the average EI over the span."
+        },
+        {
+          "head": "Variable EI (Mohr)",
+          "body": "P x integral s^2 / EI: the stiff middle counts more -- 20.7 vs 16.2 lb/in on ROY_Test."
+        }
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "<name>_EI",
+          "EI curve: Z mm = EI N m^2. The input of every other xSection feature."
+        ],
+        [
+          "_GJ, _neutralAxis, _linealDensity, _profileHeight",
+          "GJ (mm = N m^2), NA height, mass per length (1 kg/m = 100 mm), thickness (true scale)."
+        ],
+        [
+          "CrossSectionAnalysis (attribute)",
+          "Everything per station, read by the Cross-Section Analysis table and Update profile."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "Repaired N body section outline(s)...",
+          "Duplicate edges or micron gaps closed; details on the console."
+        ],
+        [
+          "Warning",
+          "N body section(s) between FCP and ACP could not be closed or came out with no area",
+          "EI is low there."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Name materials exactly",
+          "body": "The Onshape material name must match the CSV Name, case and spaces included; otherwise the body is ignored or needs data."
+        },
+        {
+          "kind": "tip",
+          "head": "Turn off Create composites",
+          "body": "It is the slowest step and only draws the section wires."
+        },
+        {
+          "kind": "limit",
+          "head": "Wood cores",
+          "body": "Some CSV rows (Aspen, Poplar) are isotropic placeholders: EI is fine, their GJ is overstated."
+        },
+        {
+          "kind": "limit",
+          "head": "Ends",
+          "body": "Planes grazing the tip or tail can lose a thin outline (console only)."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "xSect (features/xSect.fs + core/, section/, materials/, beam/)"
+        ],
+        [
+          "Tests",
+          "xSection tests studio: analytic EI / NA / GJ (check_xsection_tests.py)"
+        ],
+        [
+          "Examples",
+          "ROY_Test"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 1.1-1.6, 2.1"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

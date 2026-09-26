@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: curve_core.fs -- bestSingleArc, arcEndTangents, tangentAngle, emitArcCurve, expandEdgeQuery
-export import(path : "02d7784437f621c76397f0d6", version : "71f4e8e4d07b445940796389");
+export import(path : "02d7784437f621c76397f0d6", version : "186e92dbecd6f2c72288eef8");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 

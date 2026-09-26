@@ -1,7 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-import(path : "a2665e22c07b7a6929ce4e80", version : "19bb4e2dc00faa5df759cf24");
+import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
 
 /**
  * Treatment of the ends and joints of an offset run.
@@ -150,7 +150,20 @@ function fillCornerGap(definition is map, runs is array, corner is map) returns 
         return resolved;
     }
 
-    const arc = cornerArc(corner.vertex, p1, p2, OFFSET_GEOM_TOL);
+    var arc = cornerArc(corner.vertex, p1, p2, OFFSET_GEOM_TOL);
+
+    // Co-radial ends are not enough: the arc is only tangent to both runs where the runs'
+    // tangents lie in its plane. With a height offset the arc plane tilts off them, by about
+    // w * h * (1 - t1 . t2) -- a kink at both ends that the co-radial test cannot see
+    // (reviews/2026-09-25_arc_line_fitting). Then the arc-like cubic, tangent by construction.
+    if (arc != undefined)
+    {
+        const ends = arcEndTangents(arc);
+        if (tangentAngle(ends.start, t1) > CORNER_ARC_TANGENT || tangentAngle(ends.end, t2) > CORNER_ARC_TANGENT)
+        {
+            arc = undefined;
+        }
+    }
 
     resolved[index] = mergeMaps(resolved[index], {
                 "cornerKind" : "gap",
@@ -161,6 +174,13 @@ function fillCornerGap(definition is map, runs is array, corner is map) returns 
 
     return resolved;
 }
+
+/**
+ * How far, in radians, a corner arc's end directions may be from the runs' tangents and still
+ * be used (about 0.006 degrees). Above the noise in the differenced run tangents; far below the
+ * tilt a height offset gives the arc's plane.
+ */
+export const CORNER_ARC_TANGENT = 1e-4;
 
 /**
  * Cut both runs back to where they cross on the inside of a corner.

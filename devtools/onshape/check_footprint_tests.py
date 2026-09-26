@@ -421,7 +421,7 @@ def body_integrate(case, fid):
     want = fs_list(['{ "R" : %.6f, "cx" : %.6f, "cy" : %.6f }' % (w["R"], w["c"][0], w["c"][1]) if w["R"] else '{ "R" : 0 }'
                     for w in e["edges"]])
     ctx, cty = e["ctol"]
-    g1tol = 0.05 if any(not w["R"] for w in e["edges"]) else 0.01
+    g1tol = e.get("g1tol", 0.05 if any(not w["R"] for w in e["edges"]) else 0.01)
     extra = ""
     if "widest" in e:
         (fx_, fy_), (ax_, ay_) = e["widest"]

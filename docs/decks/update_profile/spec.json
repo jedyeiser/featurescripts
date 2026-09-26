@@ -1,0 +1,176 @@
+{
+  "slug": "update_profile",
+  "title": "Update profile",
+  "tagline": "Inverse design: from an EI and Cross Section model and a target EI curve, propose the thickness profile that hits the target.",
+  "document": "xSection",
+  "icon": "docs/decks/_icons/update_profile_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Knowing the EI you want is easy; knowing the core thickness that gives it is not. Update profile uses the modelled sections to solve, station by station, for the thickness that meets a target EI curve.",
+      "useWhen": [
+        "Hit a target flex from an existing layup",
+        "Scale a design part-way toward a target",
+        "Estimate thickness changes quickly (DELTA / PERCENT)"
+      ],
+      "image": "docs/explainers/xsection/img/fig10_update_profile.png",
+      "caption": "STD: section points above the neutral axis move up; output is a thickness curve."
+    },
+    {
+      "type": "concept",
+      "title": "Three solvers",
+      "image": "docs/explainers/xsection/img/fig10_update_profile.png",
+      "points": [
+        {
+          "head": "STD",
+          "body": "Full section model: move every point above the NA up by dt; bisection on dt until EI = target."
+        },
+        {
+          "head": "DELTA",
+          "body": "Fit EI / width = alpha t^beta over all stations; solve t for the new EI."
+        },
+        {
+          "head": "PERCENT",
+          "body": "Scale thickness by the EI ratio, using the fitted beta."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog (STD)",
+      "screenshot": "docs/decks/update_profile/shots/dialog.png",
+      "positions": {
+        "Solver type": [
+          0.02,
+          0.06
+        ],
+        "Scale delta": [
+          0.02,
+          0.473
+        ],
+        "Recalculate": [
+          0.02,
+          0.934
+        ]
+      },
+      "params": [
+        [
+          "Solver type",
+          "STD / DELTA / PERCENT."
+        ],
+        [
+          "Output curve name",
+          "Default 'Updated thickness'."
+        ],
+        [
+          "Cross section feature",
+          "The EI and Cross Section feature."
+        ],
+        [
+          "Target EI profile",
+          "The EI curve: an edge in the XZ plane, world Z in mm = EI in N m^2 (EI and Cross Section's <name>_EI, a measured or a target curve)."
+        ],
+        [
+          "Measured EI from",
+          "Inherit (the model) or Query (edges)."
+        ],
+        [
+          "Measured thickness from",
+          "Inherit or Query (the Query edges are not used)."
+        ],
+        [
+          "Scale delta",
+          "Apply only part of the change: measured + factor x (target - measured)."
+        ],
+        [
+          "FCP",
+          "With ACP: read-only flex numbers of the target."
+        ],
+        [
+          "ACP",
+          "Aft contact point."
+        ],
+        [
+          "Spline Output",
+          "Fit / Approximate."
+        ],
+        [
+          "Recalculate",
+          "No effect today."
+        ]
+      ]
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "<Output curve name>",
+          "Thickness wire, Z = thickness, true scale."
+        ],
+        [
+          "profileUpdates (attribute)",
+          "Per station: x, measured and updated thickness and EI; shown by the Profile Updates table (+ dt, dEI)."
+        ]
+      ],
+      "messages": [
+        [
+          "(none)",
+          "A spline fit that fails draws red / magenta debug points; no error.",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Growth above the NA",
+          "body": "STD assumes added thickness goes on top (core / topsheet); a base-side change is not modelled."
+        },
+        {
+          "kind": "limit",
+          "head": "Coarse target read",
+          "body": "The target EI is sampled 11 times per edge; stations outside it are skipped."
+        },
+        {
+          "kind": "limit",
+          "head": "Guard",
+          "body": "A new thickness outside 0.1-200 mm is reset to the old one."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "updateProfile (+ tables/profileUpdatesTable.fs)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Examples",
+          "Test studio: Update profile 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 2.7"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

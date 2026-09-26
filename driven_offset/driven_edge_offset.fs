@@ -1,11 +1,15 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-export import(path : "a2665e22c07b7a6929ce4e80", version : "19c2d1714545e02c0a67fe5f");
-import(path : "d009ddf4a8dd9534fc4dc4b5", version : "ecda8463daeefe20ebe2eb33");
-import(path : "6479d7fbd0ec7d11e0ae6c69", version : "9185a380d791d2798dd35b1c");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
+import(path : "d009ddf4a8dd9534fc4dc4b5", version : "05e1f78ac7e7a8682dbc8e1a");
+import(path : "6479d7fbd0ec7d11e0ae6c69", version : "4a442f1960c3ece8170129bc");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedVariableMap, embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: offset_profile_core.fs (same document; Regions profile source: region UI + in-memory profile).
+// export import: its enums are parameter types of this feature (and reach DOS / evaluate_offset harmlessly).
+// PLACEHOLDER: replace path with the new tab's element id and version with its microversion once the tab exists.
+export import(path : "PLACEHOLDER_OFFSET_PROFILE_CORE_ELEMENT_ID", version : "PLACEHOLDER_OFFSET_PROFILE_CORE_MICROVERSION");
 // IMPORT: driven_edge_offset_icon.svg (feature icon)
 IconNamespace::import(path : "a5478e383c9502910040f17c", version : "234ff09fac32522d9e5809af");
 
@@ -47,8 +51,28 @@ IconNamespace::import(path : "a5478e383c9502910040f17c", version : "234ff09fac32
  *   tolerance is emitted as a degree-one curve, which Onshape reads as a line. A run
  *   that is circular within tolerance is emitted through a sketch, so it carries a
  *   real radius. Everything else is fitted. One wire is extracted per G0 path.
+ *
+ * Profile source
+ *   WIRE     (default, and every instance saved before the option existed) a picked profile wire.
+ *   REGIONS  the profile is typed in this dialog, exactly as Create offset profile's Regions mode
+ *            (same parameters, stations from values or picked points / mate connectors at world X
+ *            plus a signed offset), and read in memory: the exact Bezier segments Create offset
+ *            profile would emit become the profile edges directly (offset_profile_core), so nothing
+ *            downstream can tell the two apart. A region profile's X means what a wire's X means
+ *            under the chosen "Measure along".
  */
-annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Driven edge offset", "Feature Type Description" : "Offset edges by a profile curve" }
+
+/** Where Driven edge offset's profile comes from. */
+export enum OffsetProfileSource
+{
+    annotation { "Name" : "Wire" }
+    WIRE,
+    annotation { "Name" : "Regions" }
+    REGIONS
+}
+
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Driven edge offset", "Feature Type Description" : "Offset edges by a profile curve",
+        "Editing Logic Function" : "drivenEdgeOffsetEditingLogic", "Manipulator Change Function" : "drivenEdgeOffsetManipulatorChange" }
 export const drivenEdgeOffset = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -65,10 +89,24 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
 
         offsetBreakPredicate(definition);
 
+        offsetArcFitPredicate(definition);
+
         offsetEdgesPredicate(definition);
 
-        annotation { "Name" : "Offset profile", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO, "Description" : "The edges defining the offset. X maps to position along the offset edges, Y to width offset, Z to height offset" }
-        definition.offsetProfile is Query;
+        // Correction 25: the annotation default is written into every saved instance, so it must be WIRE.
+        annotation { "Name" : "Profile source", "Default" : OffsetProfileSource.WIRE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                    "Description" : "Wire: pick a profile wire (X station, Y width, Z height), e.g. from Create offset profile. Regions: type the profile here, as Create offset profile's Regions mode; no wire is made." }
+        definition.profileSource is OffsetProfileSource;
+
+        if (definition.profileSource == OffsetProfileSource.REGIONS)
+        {
+            offsetProfileRegionsPredicate(definition);
+        }
+        else
+        {
+            annotation { "Name" : "Offset profile", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO, "Description" : "The edges defining the offset. X maps to position along the offset edges, Y to width offset, Z to height offset" }
+            definition.offsetProfile is Query;
+        }
 
         offsetCornersPredicate(definition);
 
@@ -81,6 +119,12 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         offsetDebugPredicate(definition);
     }
     {
+        if (definition.profileSource == OffsetProfileSource.REGIONS)
+        {
+            // Before building, so the arrows still show when a blend is refused.
+            addOffsetProfileBlendManipulators(context, id, resolveOffsetProfileStations(context, definition, true, true));
+        }
+
         const result = drivenOffset(context, id, definition);
 
         debugOutput(context, id + "debug", definition, result.sourceChain, result.profile,
@@ -92,8 +136,32 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
         // An annotation's "Default" only serves a NEW instance; a feature saved before this
         // parameter existed fails its precondition on the next regen without this.
         "joinTangentRuns" : false,
-        "runBreakMode" : RunBreakMode.SOURCE_EDGES
+        "runBreakMode" : RunBreakMode.SOURCE_EDGES,
+        "arcSourceFit" : ArcSourceFit.SPLINE,
+        "profileSource" : OffsetProfileSource.WIRE,
+        "regions" : [],
+        "intersections" : []
     });
+
+/**
+ * Regions profile source only: the station copy, region names and intersection list of Create offset
+ * profile's editing logic (offset_profile_core). A wire-sourced instance is returned untouched.
+ */
+export function drivenEdgeOffsetEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
+{
+    if (definition.profileSource != OffsetProfileSource.REGIONS)
+    {
+        return definition;
+    }
+    return offsetProfileEditingUpdate(context, definition, true);
+}
+
+/** Writes a dragged blend arrow (Regions profile source) back into its intersection's distance. */
+export function drivenEdgeOffsetManipulatorChange(context is Context, definition is map, newManipulators is map) returns map
+{
+    return offsetProfileManipulatorChange(definition, newManipulators);
+}
 
 // ============================================================================
 // Callable core
@@ -128,7 +196,7 @@ export const drivenEdgeOffset = defineFeature(function(context is Context, id is
  */
 export function drivenOffset(context is Context, id is Id, definition is map) returns map
 {
-    const shared = sharedOffsetContext(context, definition, [definition.offsetProfile], false);
+    const shared = sharedOffsetContext(context, definition, [profileSourceOf(context, definition)], false);
 
     return offsetFromShared(context, id, definition, shared, 0);
 }
@@ -154,7 +222,8 @@ export function drivenOffset(context is Context, id is Id, definition is map) re
  *           profiles with different breaks give sections with different edge counts and
  *           COLUMNS has nothing to match.
  *
- * @param profileQueries {array} : the profile of each offset, in output order.
+ * @param profileQueries {array} : the profile of each offset, in output order: a Query (a profile
+ *      wire, read by buildProfile) or an in-memory profile from profileSourceOf (Regions source).
  * @param matchRuns {boolean} : whether every profile splits at every profile's breaks.
  */
 export function sharedOffsetContext(context is Context, definition is map,
@@ -168,7 +237,7 @@ export function sharedOffsetContext(context is Context, definition is map,
 
     for (var query in profileQueries)
     {
-        const profile = buildProfile(context, query, zeroPoint);
+        const profile = (query is Query) ? buildProfile(context, query, zeroPoint) : profileFromCurves(query, zeroPoint);
 
         // The two ends of the profile are breaks as much as any interior discontinuity:
         // they are where the offset starts and stops existing. Without a station on them
@@ -279,7 +348,7 @@ export function offsetFromShared(context is Context, id is Id, definition is map
     if (definition.joinTangentRuns)
     {
         plan = withMergedRuns(plan,
-            tangentRunMerges([plan.points], plan.runs, shared.stations,
+            tangentRunMerges([plan.points], [plan.sided], plan.runs, shared.stations,
                 definition.approximationTolerance));
     }
 
@@ -321,6 +390,10 @@ export function planOffset(context is Context, definition is map, shared is map,
 
     if (size(runs) == 0)
     {
+        if (definition.profileSource == OffsetProfileSource.REGIONS)
+        {
+            throw regenError("The offset profile does not reach any of the offset edges.", ["regions"]);
+        }
         throw regenError("The offset profile does not reach any of the offset edges.", definition.offsetProfile);
     }
 
@@ -494,6 +567,72 @@ function approximationSettings(definition is map) returns map
         "approximationDegree" : definition.approximationDegree,
         "approximationTolerance" : definition.approximationTolerance,
         "approximationMaxCPs" : definition.approximationMaxCPs
+    };
+}
+
+// ============================================================================
+// Profile source: a wire, or regions in memory
+// ============================================================================
+
+/**
+ * What sharedOffsetContext reads the profile from: the picked wire (WIRE, and any definition without
+ * a profileSource -- DOS, evaluate_offset), or for REGIONS the region profile in memory:
+ * { "offsetProfileCurves" : per piece { curves, start, end } } -- the exact Beziers Create offset
+ * profile would emit for the same regions (offset_profile_core), no geometry made.
+ */
+export function profileSourceOf(context is Context, definition is map)
+{
+    if (definition.profileSource != OffsetProfileSource.REGIONS)
+    {
+        return definition.offsetProfile;
+    }
+    const resolved = resolveOffsetProfileStations(context, definition, true, true);
+    const built = offsetProfileRegionPieces(resolved);
+    if (size(built.pieces) == 0)
+    {
+        throw regenError("Add at least one region.", ["regions"]);
+    }
+    return { "offsetProfileCurves" : offsetProfileCurves(built.pieces) };
+}
+
+/**
+ * The profile map buildProfile makes from a wire, made from in-memory curves instead: one profile
+ * edge per segment Bezier, in station order. The curves run in +X with x linear in the parameter, so
+ * no edge is vertical, none doubles back, and nothing needs ordering. Pieces that touch (a jump) meet
+ * at a boundary exactly as the two wires of a stepped Create offset profile do; pieces with a gap
+ * between them leave the gap, where the profile has no value.
+ *
+ * @param source {map} : from profileSourceOf.
+ * @returns {map} : { "edges", "steps", "doublesBack", "zeroX", "minCoord", "maxCoord" } as buildProfile.
+ */
+export function profileFromCurves(source is map, zeroPoint is Vector) returns map
+{
+    const zeroX = zeroPoint[0];
+    var described = [];
+    for (var piece in source.offsetProfileCurves)
+    {
+        for (var curve in piece.curves)
+        {
+            const points = curve.controlPoints;
+            described = append(described, {
+                        "query" : qNothing(),
+                        "curve" : curve,
+                        "minCoord" : points[0][0] - zeroX,
+                        "maxCoord" : points[size(points) - 1][0] - zeroX
+                    });
+        }
+    }
+    if (size(described) == 0)
+    {
+        throw regenError("Add at least one region.", ["regions"]);
+    }
+    return {
+        "edges" : described,
+        "steps" : [],
+        "doublesBack" : [],
+        "zeroX" : zeroX,
+        "minCoord" : described[0].minCoord,
+        "maxCoord" : described[size(described) - 1].maxCoord
     };
 }
 
@@ -1211,6 +1350,18 @@ function edgeAtArc(chain is map, arc is ValueWithUnits) returns map
 
 /**
  * Emit one curve per run, then extract one wire per G0 path.
+ *
+ * What each run becomes is decided for all runs together (shapeRuns in curve_core), because a
+ * smooth joint between two runs gets ONE tangent that both sides are built to -- an exact line
+ * or arc keeps its own and the neighbour adopts it, so no joint carries the few-thousandths-of-
+ * a-degree kink a position-only classification left (reviews/2026-09-25_arc_line_fitting):
+ *   - a line where the run is straight AND its ends run along the chord;
+ *   - an exact arc where the source under the run is circular and the offset is constant over
+ *     it (a concentric arc), or where the circle through the points meets the true tangents;
+ *   - on an arc source with a varying offset, "Varying offset on arcs": Biarc fit makes a chain
+ *     of tangent arcs matching both end tangents (split until it is within tolerance), Spline
+ *     makes a spline pinned to them;
+ *   - otherwise a spline pinned to the (shared) end tangents.
  */
 function emitRuns(context is Context, id is Id, definition is map, stations is array,
     coords is map, points is array, offsets is array, runs is array, alongRef) returns array
@@ -1221,10 +1372,13 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
     // A corner filler whose run collapsed (see below) still leads into the next emitted run.
     var carriedFill = undefined;
 
+    // First pass: corner fillers, collapsed runs, and what each surviving run is made of.
+    var live = [];
+    var items = [];
+
     for (var r = 0; r < size(runs); r += 1)
     {
         const run = runs[r];
-        const runId = id + ("run" ~ r);
 
         // A trimmed run carries the exact crossing point in place of the stations it
         // gave up, so both sides of a trimmed corner end on the same coordinates.
@@ -1274,35 +1428,70 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         // An arc is only on the table where the source under this run is a line or a circle,
         // a line only where it is a line.
         const gates = sourceShapeGates(stations, run.start, run.end);
-        const shape = classifyPoints(runPoints, approximation.approximationTolerance,
-            gates.allowArc, gates.allowLine);
+        const leadFill = (run.fill != undefined) ? run.fill : carriedFill;
+        const previous = (size(live) > 0) ? live[size(live) - 1] : undefined;
 
-        if (shape.kind == "line")
+        items = append(items, {
+                    "points" : runPoints,
+                    // Each end takes the slope of the profile edge its station belongs to, which
+                    // at a slope break is the side of the break the run is on.
+                    "startTangent" : runEndTangent(stations, coords, offsets, definition, alongRef, run, run.start, ZERO_DISPLACEMENT, true),
+                    "endTangent" : runEndTangent(stations, coords, offsets, definition, alongRef, run, run.end, ZERO_DISPLACEMENT, false),
+                    "allowArc" : gates.allowArc,
+                    "allowLine" : gates.allowLine,
+                    "exactArc" : gates.allowArc && !gates.allowLine && offsetIsConstant(offsets, run.start, run.end),
+                    // Straight on from the previous run: same link, no filler between, same point.
+                    "joinsPrevious" : previous != undefined && leadFill == undefined
+                        && previous.linkIndex == run.linkIndex
+                        && norm(runPoints[0] - previous.lastPoint) < OFFSET_GEOM_TOL
+                });
+        live = append(live, {
+                    "r" : r,
+                    "linkIndex" : run.linkIndex,
+                    "points" : runPoints,
+                    "lastPoint" : runPoints[size(runPoints) - 1],
+                    "leadFill" : leadFill
+                });
+        carriedFill = undefined;
+    }
+
+    const shapes = shapeRuns(items, {
+                "tolerance" : approximation.approximationTolerance,
+                "arcFit" : (definition.arcSourceFit == undefined) ? ArcSourceFit.SPLINE : definition.arcSourceFit
+            });
+
+    for (var k = 0; k < size(live); k += 1)
+    {
+        const r = live[k].r;
+        const run = runs[r];
+        const runId = id + ("run" ~ r);
+        const runPoints = live[k].points;
+        const shape = shapes[k];
+
+        emitRunShape(context, runId, shape, runPoints, approximation);
+        if (shape.note != undefined)
         {
-            emitLineCurve(context, runId, shape.start, shape.end);
+            println("run " ~ toString(r) ~ " -> " ~ shape.kind ~ ": " ~ shape.note);
         }
-        else if (shape.kind == "arc")
+
+        var radii = undefined;
+        if (shape.kind == "arcs")
         {
-            emitArcCurve(context, runId, shape);
-        }
-        else
-        {
-            // Each end takes the slope of the profile edge its station belongs to, which
-            // at a slope break is the side of the break the run is on.
-            emitSplineCurve(context, runId, runPoints,
-                runEndTangent(stations, coords, offsets, definition, alongRef, run, run.start, ZERO_DISPLACEMENT, true),
-                runEndTangent(stations, coords, offsets, definition, alongRef, run, run.end, ZERO_DISPLACEMENT, false),
-                approximation);
+            radii = [];
+            for (var arcData in shape.arcs)
+            {
+                radii = append(radii, arcData.radius);
+            }
         }
 
         emitted = append(emitted, mergeMaps(run, {
                         "kind" : shape.kind,
                         "radius" : (shape.kind == "arc") ? shape.radius : undefined,
+                        "radii" : radii,
                         "firstPoint" : runPoints[0],
                         "lastPoint" : runPoints[size(runPoints) - 1],
-                        "leadFill" : (run.fill != undefined) ? run.fill : carriedFill
+                        "leadFill" : live[k].leadFill
                     }));
-        carriedFill = undefined;
 
         const key = "link" ~ run.linkIndex;
         bodiesByLink[key] = append(bodiesByLink[key] == undefined ? [] : bodiesByLink[key],

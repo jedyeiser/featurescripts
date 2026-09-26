@@ -1,0 +1,11 @@
+{"doc": "f8deedeb1fbd819a8fa20113", "ws": "33c32ba27726cb036d4d912b",
+ "shots": [
+  {"elem": "3abf8796eb7ade051e963f51", "wait": 45, "filter": "Analze", "feature": "Analze baseline 1", "settle": 8, "dialogWait": 120,
+   "dialog": "docs/decks/analyze_baseline/shots/dialog.png", "graphics": "docs/decks/analyze_baseline/shots/hero.png",
+   "labels": [{"name": "Baseline edges", "find": "Baseline edges"}, {"name": "FCP", "find": "FCP"}, {"name": "ACP", "find": "ACP"},
+              {"name": "Calculated data", "find": "Calculated data"}, {"name": "Output measurement sketch", "find": "Output measurement sketch"},
+              {"name": "Recalculate", "find": "Recalculate"}]},
+  {"elem": "ae8818764b4c2fae058941b7", "wait": 30, "filter": "SG1", "feature": "SG1 Solve GJ on X1 -> OK, stored GJ 125.31", "dialogWait": 60,
+   "dialog": "docs/decks/solve_gj/shots/dialog.png",
+   "labels": [{"name": "Cross section feature", "find": "Cross section feature"}]}
+ ]}

@@ -2,9 +2,9 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: curve_core.fs (export import: OffsetPointSpacing is a parameter type here)
-export import(path : "02d7784437f621c76397f0d6", version : "71f4e8e4d07b445940796389");
+export import(path : "02d7784437f621c76397f0d6", version : "186e92dbecd6f2c72288eef8");
 // IMPORT: merge_curve.fs
-import(path : "584469527ba0d496604523ec", version : "89d3f3abf456c89ff38fbb24");
+import(path : "584469527ba0d496604523ec", version : "9694d1be9e811924e50e67c2");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: map_curve_icon.svg (feature icon)

@@ -1218,9 +1218,9 @@ export function tangentAngle(a is Vector, b is Vector) returns number
  * ARC_TANGENT_EXACT. An end with no true tangent (a trimmed end whose miss exceeds the
  * tolerance) constrains nothing.
  */
-function meetsTangent(trueTangent, own is Vector) returns boolean
+function meetsTangent(trueTangent, own is Vector, limit is number) returns boolean
 {
-    return trueTangent == undefined || tangentAngle(trueTangent, own) <= ARC_TANGENT_EXACT;
+    return trueTangent == undefined || tangentAngle(trueTangent, own) <= limit;
 }
 
 /**
@@ -1638,9 +1638,10 @@ export function tangentArcChain(points is array, startTangent is Vector, endTang
  *      (`exactArc`: arc source, constant offset -- the offset is then a concentric arc, and
  *      the true tangent it would be compared against is only as good as the frame differences
  *      behind it). An exact piece keeps its own analytic end tangents.
- *   2. Joints. Where a run starts on the previous run's end (`joinsPrevious`) and the two
- *      tangents agree within G1_JUNCTION_ANGLE, the joint gets ONE tangent: an exact side's,
- *      else the two averaged. Two exact sides are left as they are.
+ *   2. Joints. Where two runs meet (`joinsPrevious`, or any coinciding ends with
+ *      `findJoints`) and their tangents agree within G1_JUNCTION_ANGLE, the joint gets ONE
+ *      tangent: an exact side's, else the two averaged. Two exact sides, and any joint with a
+ *      LINE on either side, are left as they are (withSharedTangent).
  *   3. The rest. With ArcSourceFit.BIARC, a run on an arc source (allowArc and not allowLine)
  *      becomes a tangent arc chain to its (shared) end tangents where one fits; otherwise it is
  *      freeform and the caller fits a spline pinned to them.
@@ -1648,9 +1649,11 @@ export function tangentArcChain(points is array, startTangent is Vector, endTang
  * @param items {array} : per run, in chain order, maps of
  *      points {array}, startTangent / endTangent (unit Vector or undefined: the TRUE travel
  *      directions), allowArc / allowLine {boolean} (the source gates; absent = true),
- *      exactArc {boolean} (optional), joinsPrevious {boolean} (optional).
+ *      exactArc {boolean} (optional), joinsPrevious {boolean} (optional), tangentSlack
+ *      {number, radians} (optional; see exactShape).
  * @param options {map} : tolerance {ValueWithUnits}, arcFit {ArcSourceFit} (optional, SPLINE),
- *      maxArcs {number} (optional, TANGENT_ARC_MAX).
+ *      maxArcs {number} (optional, TANGENT_ARC_MAX), findJoints {boolean} (optional: also join
+ *      runs whose ends coincide, in any order or direction).
  * @returns {array} : per run, { "kind" : "line" | "arc" | "arcs" | "freeform", "exact",
  *      "startTangent", "endTangent", "note" } plus start / end (line), the arc fields (arc),
  *      "arcs" (arcs).
@@ -1667,65 +1670,9 @@ export function shapeRuns(items is array, options is map) returns array
         shapes = append(shapes, exactShape(item, tolerance));
     }
 
-    for (var k = 1; k < size(items); k += 1)
+    for (var joint in runJoints(items, options.findJoints == true))
     {
-        if (items[k].joinsPrevious != true)
-        {
-            continue;
-        }
-
-        const before = shapes[k - 1];
-        const after = shapes[k];
-
-        if (before.exact && after.exact)
-        {
-            continue;
-        }
-
-        const tBefore = before.endTangent;
-        const tAfter = after.startTangent;
-
-        // A corner is not a joint: above the weld angle each side keeps its own direction.
-        if (tBefore != undefined && tAfter != undefined && tangentAngle(tBefore, tAfter) > G1_JUNCTION_ANGLE)
-        {
-            continue;
-        }
-
-        var shared = undefined;
-        if (before.exact)
-        {
-            shared = tBefore;
-        }
-        else if (after.exact)
-        {
-            shared = tAfter;
-        }
-        else if (tBefore == undefined)
-        {
-            shared = tAfter;
-        }
-        else if (tAfter == undefined)
-        {
-            shared = tBefore;
-        }
-        else
-        {
-            shared = normalize(tBefore + tAfter);
-        }
-
-        if (shared == undefined)
-        {
-            continue;
-        }
-
-        if (!before.exact)
-        {
-            shapes[k - 1] = mergeMaps(shapes[k - 1], { "endTangent" : shared });
-        }
-        if (!after.exact)
-        {
-            shapes[k] = mergeMaps(shapes[k], { "startTangent" : shared });
-        }
+        shapes = withSharedTangent(shapes, joint);
     }
 
     for (var k = 0; k < size(items); k += 1)
@@ -1758,7 +1705,169 @@ export function shapeRuns(items is array, options is map) returns array
 }
 
 /**
+ * The joints of shapeRuns: pairs of run ends that coincide. Each is
+ * { "a" : index, "aEnd" : "start" | "end", "b" : index, "bEnd" : "start" | "end" }.
+ *
+ * From `joinsPrevious` (run k starts where run k - 1 ends), and with `findJoints` also by
+ * matching end points within OFFSET_GEOM_TOL, for callers whose runs come in no particular
+ * order or direction (unwrap emits one edge at a time, in the input's order).
+ */
+function runJoints(items is array, findJoints is boolean) returns array
+{
+    var joints = [];
+
+    for (var k = 1; k < size(items); k += 1)
+    {
+        if (items[k].joinsPrevious == true)
+        {
+            joints = append(joints, { "a" : k - 1, "aEnd" : "end", "b" : k, "bEnd" : "start" });
+        }
+    }
+
+    if (!findJoints)
+    {
+        return joints;
+    }
+
+    // Every run end, sorted along world X so each is only compared with its near neighbours.
+    var ends = [];
+    for (var k = 0; k < size(items); k += 1)
+    {
+        const points = items[k].points;
+        ends = append(ends, { "index" : k, "end" : "start", "point" : points[0] });
+        ends = append(ends, { "index" : k, "end" : "end", "point" : points[size(points) - 1] });
+    }
+    ends = sort(ends, function(p, q)
+        {
+            return (p.point[0] - q.point[0]) / meter;
+        });
+
+    for (var i = 0; i < size(ends); i += 1)
+    {
+        for (var j = i + 1; j < size(ends); j += 1)
+        {
+            if (ends[j].point[0] - ends[i].point[0] > OFFSET_GEOM_TOL)
+            {
+                break;
+            }
+            if (ends[i].index == ends[j].index || norm(ends[j].point - ends[i].point) > OFFSET_GEOM_TOL)
+            {
+                continue;
+            }
+
+            const pair = { "a" : ends[i].index, "aEnd" : ends[i].end, "b" : ends[j].index, "bEnd" : ends[j].end };
+            var known = false;
+            for (var joint in joints)
+            {
+                known = known || (joint.a == pair.a && joint.aEnd == pair.aEnd && joint.b == pair.b && joint.bEnd == pair.bEnd)
+                    || (joint.a == pair.b && joint.aEnd == pair.bEnd && joint.b == pair.a && joint.bEnd == pair.aEnd);
+            }
+            if (!known)
+            {
+                joints = append(joints, pair);
+            }
+        }
+    }
+
+    return joints;
+}
+
+/**
+ * Pass 2 of shapeRuns for one joint: give both sides one tangent where they meet smoothly.
+ *
+ * Directions are compared as "leaving the joint along the run": +startTangent at a start,
+ * -endTangent at an end, so a joint between two starts or two ends (runs met head to head)
+ * works like any other. Smooth means the two leaving directions are opposite to within
+ * G1_JUNCTION_ANGLE; the shared THROUGH direction is an exact side's, else the two averaged.
+ *
+ * Left alone:
+ *   - a corner (above the weld angle): each side keeps its own direction;
+ *   - two exact sides: each is already what it is;
+ *   - any joint with a LINE on either side (user decision 2026-09-25): pinning a spline to a
+ *     line's direction bends the spline for the line's sake, and the line cannot bend at all,
+ *     so both sides keep their own true tangents.
+ */
+function withSharedTangent(shapes is array, joint is map) returns array
+{
+    const a = shapes[joint.a];
+    const b = shapes[joint.b];
+
+    if ((a.exact && b.exact) || a.kind == "line" || b.kind == "line")
+    {
+        return shapes;
+    }
+
+    const leaveA = leavingDirection(a, joint.aEnd);
+    const leaveB = leavingDirection(b, joint.bEnd);
+
+    if (leaveA != undefined && leaveB != undefined && tangentAngle(-leaveA, leaveB) > G1_JUNCTION_ANGLE)
+    {
+        return shapes;
+    }
+
+    // The direction of travel from a into b.
+    var through = undefined;
+    if (a.exact)
+    {
+        through = -leaveA;
+    }
+    else if (b.exact)
+    {
+        through = leaveB;
+    }
+    else if (leaveA == undefined)
+    {
+        through = leaveB;
+    }
+    else if (leaveB == undefined)
+    {
+        through = -leaveA;
+    }
+    else
+    {
+        through = normalize(leaveB - leaveA);
+    }
+
+    if (through == undefined)
+    {
+        return shapes;
+    }
+
+    var result = shapes;
+    if (!a.exact)
+    {
+        result[joint.a] = withLeavingDirection(a, joint.aEnd, -through);
+    }
+    if (!b.exact)
+    {
+        result[joint.b] = withLeavingDirection(b, joint.bEnd, through);
+    }
+    return result;
+}
+
+function leavingDirection(shape is map, whichEnd is string)
+{
+    if (whichEnd == "start")
+    {
+        return shape.startTangent;
+    }
+    return (shape.endTangent == undefined) ? undefined : -shape.endTangent;
+}
+
+function withLeavingDirection(shape is map, whichEnd is string, leaving is Vector) returns map
+{
+    return (whichEnd == "start")
+        ? mergeMaps(shape, { "startTangent" : leaving })
+        : mergeMaps(shape, { "endTangent" : -leaving });
+}
+
+/**
  * Pass 1 of shapeRuns for one run: the exact line or arc it is, or freeform.
+ *
+ * `tangentSlack` (radians, optional) widens ARC_TANGENT_EXACT for callers whose true tangents
+ * are themselves estimates (unwrap's come through its chart). An arc or line accepted inside the
+ * slack is emitted exactly and its OWN end tangents are what its neighbours adopt, so the joint
+ * still has no kink; only the piece's ends move, by at most the slack.
  */
 function exactShape(item is map, tolerance is ValueWithUnits) returns map
 {
@@ -1767,6 +1876,7 @@ function exactShape(item is map, tolerance is ValueWithUnits) returns map
     const endTangent = item.endTangent;
     const allowArc = item.allowArc != false;
     const allowLine = item.allowLine != false;
+    const slack = (item.tangentSlack == undefined) ? ARC_TANGENT_EXACT : max(ARC_TANGENT_EXACT, item.tangentSlack);
     var note = undefined;
 
     var shape = classifyPoints(points, tolerance, allowArc, allowLine);
@@ -1780,7 +1890,7 @@ function exactShape(item is map, tolerance is ValueWithUnits) returns map
         }
 
         const along = normalize(chord);
-        if (meetsTangent(startTangent, along) && meetsTangent(endTangent, along))
+        if (meetsTangent(startTangent, along, slack) && meetsTangent(endTangent, along, slack))
         {
             return mergeMaps(shape, { "exact" : true, "startTangent" : along, "endTangent" : along });
         }
@@ -1795,7 +1905,7 @@ function exactShape(item is map, tolerance is ValueWithUnits) returns map
     if (shape.kind == "arc")
     {
         const tangents = arcEndTangents(shape);
-        if (item.exactArc == true || (meetsTangent(startTangent, tangents.start) && meetsTangent(endTangent, tangents.end)))
+        if (item.exactArc == true || (meetsTangent(startTangent, tangents.start, slack) && meetsTangent(endTangent, tangents.end, slack)))
         {
             return mergeMaps(shape, { "exact" : true, "startTangent" : tangents.start, "endTangent" : tangents.end });
         }

@@ -23,7 +23,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/99e84dbe2a4e235
 import(path : "a54a829744c4e15e8da55e0e", version : "849a0888e10eff97f5f0e84a");
 
 //import arcFit
-import(path : "66f4f03cf728e94b8f823585", version : "34d39c868f7461c1eb8f0b30");
+import(path : "66f4f03cf728e94b8f823585", version : "72150f7fbb1546cf1ee01c88");
 
 
 
@@ -405,6 +405,81 @@ export function forceQuadraticNurbs(context is Context, id is Id, bSplines is ar
 }
 
 /**
+ * Unit travel direction of an arc section (exact samples, in order) at its first or last sample, from
+ * the circle through its first, middle and last samples; undefined when those are collinear.
+ */
+function arcSectionTangent(points is array, atEnd is boolean)
+{
+    const n = size(points);
+    const p0 = points[0];
+    const pm = points[floor(n / 2)];
+    const p1 = points[n - 1];
+    const a = pm - p0;
+    const b = p1 - p0;
+    const axb = cross(a, b);
+    if (norm(axb) < 1e-18 * meter * meter)
+    {
+        return undefined;
+    }
+    const center = p0 + (dot(a, a) * cross(b, axb) + dot(b, b) * cross(axb, a)) / (2 * dot(axb, axb));
+    const at = atEnd ? p1 : p0;
+    var tangent = normalize(cross(axb, at - center));
+    const ref = atEnd ? (p1 - pm) : (pm - p0);
+    if (dot(tangent, ref) < 0 * meter)
+    {
+        tangent = -tangent;
+    }
+    return tangent;
+}
+
+/**
+ * The opFitSpline definition for FIT transition i: its points, and at an end shared with an arc section the
+ * ARC's tangent as the end derivative (2026-09-25 arc / line tangency review). An unconstrained fit ended in
+ * whatever direction the fitter chose, so every arc <-> transition seam kinked; the arc is exact, so the
+ * transition is the side that takes the arc's direction. Magnitude: the transition's chord length, the
+ * natural speed for a fit through its points. A seam whose arc tangent and first chord of the transition
+ * differ by more than 0.2 rad (the chord is only a rough tangent) is taken for a corner and left free.
+ */
+function transitionFit(results is array, i is number) returns map
+{
+    const points = results[i].points;
+    const n = size(points);
+    var chord = 0 * meter;
+    for (var k = 1; k < n; k += 1)
+    {
+        chord += norm(points[k] - points[k - 1]);
+    }
+
+    var fit = { "points" : points };
+    if (n < 2 || chord < 1e-9 * meter)
+    {
+        return fit;
+    }
+
+    if (i > 0 && results[i - 1].isArc == true)
+    {
+        const prev = results[i - 1].points;
+        const t = arcSectionTangent(prev, true);
+        if (t != undefined && norm(prev[size(prev) - 1] - points[0]) < 1e-6 * meter
+            && atan2(norm(cross(t, normalize(points[1] - points[0]))), dot(t, normalize(points[1] - points[0]))) / radian < 0.2)
+        {
+            fit.startDerivative = t * chord;
+        }
+    }
+    if (i + 1 < size(results) && results[i + 1].isArc == true)
+    {
+        const next = results[i + 1].points;
+        const t = arcSectionTangent(next, false);
+        if (t != undefined && norm(next[0] - points[n - 1]) < 1e-6 * meter
+            && atan2(norm(cross(t, normalize(points[n - 1] - points[n - 2]))), dot(t, normalize(points[n - 1] - points[n - 2]))) / radian < 0.2)
+        {
+            fit.endDerivative = t * chord;
+        }
+    }
+    return fit;
+}
+
+/**
  * Emit a footprint that contains one or more exact circular-arc sections.
  *
  * Onshape only reports an analytic radius for curves whose kernel geometry IS analytic; a
@@ -434,7 +509,7 @@ function emitFootprintWithArcs(context is Context, id is Id, definition is map, 
 
         if (definition.splineExportType == FootprintSplineExportType.FIT)
         {
-            opFitSpline(context, id + ("fpTransFit" ~ tIdx), { "points" : r.points });
+            opFitSpline(context, id + ("fpTransFit" ~ tIdx), transitionFit(results, i));
             origEdges = append(origEdges, qCreatedBy(id + ("fpTransFit" ~ tIdx), EntityType.EDGE));
             origBodies = append(origBodies, qCreatedBy(id + ("fpTransFit" ~ tIdx), EntityType.BODY));
         }

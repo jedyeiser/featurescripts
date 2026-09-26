@@ -1,0 +1,99 @@
+{
+  "slug": "solve_gj",
+  "title": "Solve GJ",
+  "tagline": "Legacy: recompute the torsional stiffness GJ of an existing EI and Cross Section feature and write it back to its stored data and table.",
+  "document": "xSection",
+  "icon": "icons/final/solve_gj_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "GJ used to be a separate step. EI and Cross Section now computes GJ itself with the same solver, so Solve GJ changes nothing on a current model. It is kept so older documents still regenerate.",
+      "useWhen": [
+        "An older document still has it in the tree",
+        "Not needed for new work"
+      ],
+      "image": "docs/explainers/xsection/img/fig04_roy_results.png",
+      "caption": "GJ (orange) is already in every EI and Cross Section result."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/solve_gj/shots/dialog.png",
+      "params": [
+        [
+          "Cross section feature",
+          "One EI and Cross Section feature."
+        ]
+      ],
+      "note": "GJ = 4 x sum(G x Iz) over the section's triangles, G = each body's Q66 (thin-plate Saint-Venant)."
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "(stored data)",
+          "GJ of every station in the feature's CrossSectionAnalysis data and table."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Select the cross section feature.",
+          "Nothing selected."
+        ],
+        [
+          "Error",
+          "(missing data / station count mismatch)",
+          "The selected feature has no stored sections."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Fixed 2026-09-25",
+          "body": "The recomputed GJ was written to a copy and lost; errors were swallowed. Both fixed."
+        },
+        {
+          "kind": "limit",
+          "head": "Redundant",
+          "body": "Safe to delete from new models."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "GJ_Feature (+ section/gjAnalysis.fs, gjDataAccess.fs)"
+        ],
+        [
+          "Tests",
+          "SG1 in the xSection tests studio (stored GJ 125.31)"
+        ],
+        [
+          "Examples",
+          "xSection tests: SG1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 1.5, 2.2"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

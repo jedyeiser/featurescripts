@@ -927,8 +927,16 @@
         "xSection/tables/profileUpdatesTable.fs",
         "xSection/tables/xSectionAnalysisTable.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "38d437f60de2",
+      "sources_hash": "eb46995a3d9d"
     },
     {
       "id": "d_ei_and_cross_section",
@@ -939,8 +947,16 @@
       "sources": [
         "xSection/features/xSect.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "7d7e0ea89521",
+      "sources_hash": "93fb588b8688"
     },
     {
       "id": "d_solve_gj",
@@ -951,8 +967,16 @@
       "sources": [
         "xSection/features/GJ_Feature.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "b342b5667558",
+      "sources_hash": "50d45d87b135"
     },
     {
       "id": "d_generate_baseline",
@@ -963,8 +987,16 @@
       "sources": [
         "xSection/features/generateBaseline.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "5ff0170d5908",
+      "sources_hash": "023303ecfbd7"
     },
     {
       "id": "d_analyze_baseline",
@@ -975,8 +1007,22 @@
       "sources": [
         "xSection/beam/analyzeBaseline.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "no dialog capture: the dialog did not open in Test2 within 2 min"
+        }
+      ],
+      "written_hash": "e67ffc80a423",
+      "sources_hash": "9ecc6be4247b",
+      "state_hash": "e67ffc80a423"
     },
     {
       "id": "d_estimate_deflection",
@@ -987,8 +1033,16 @@
       "sources": [
         "xSection/features/estimateDeflection.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "762f744e6e21",
+      "sources_hash": "722b6cabbc90"
     },
     {
       "id": "d_estimate_stiffness",
@@ -999,8 +1053,16 @@
       "sources": [
         "xSection/features/estimateStiffness.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "8ebdd5224894",
+      "sources_hash": "e7ecc31b9613"
     },
     {
       "id": "d_update_profile",
@@ -1011,8 +1073,16 @@
       "sources": [
         "xSection/features/updateProfile.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "8cbd539404dc",
+      "sources_hash": "46e876cadc1f"
     }
   ]
 }

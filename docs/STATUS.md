@@ -20,7 +20,7 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | x_curve_mapping | Curve mapping (public) | **planned** | - | `docs/explainers/curve_mapping/curve_mapping_explained.md` |   |
 | x_footprint | Footprint | **planned** | - | `docs/explainers/footprint/footprint_explained.md` |   |
 | x_gordon_surface | Gordon surface | **planned** | - | `docs/explainers/gordon_surface/gordon_surface_explained.md` |   |
-| x_xsection | Cross-section (xSection) | **planned** | - | `docs/explainers/xsection/xsection_explained.md` |   |
+| x_xsection | Cross-section (xSection) | **draft** | - | `docs/explainers/xsection/xsection_explained.md` | 2026-09-25 written by Claude |
 
 ## Feature decks (.pptx -> .pdf for Onshape)
 
@@ -31,7 +31,7 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_offset_plus | Offset+ | **draft** | code changed since written | `docs/decks/offset_plus/offset_plus.pptx` | 2026-09-25 written by Claude |
 | d_thicken_plus | Thicken+ | **draft** | - | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-09-25 written by Claude |
 | d_orient_to_reference | Orient to reference | **draft** | - | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
-| d_clean_wire | Clean wire | **draft** | - | `docs/decks/clean_wire/clean_wire.pptx` | 2026-09-25 written by Claude |
+| d_clean_wire | Clean wire | **draft** | code changed since written | `docs/decks/clean_wire/clean_wire.pptx` | 2026-09-25 written by Claude |
 | d_map_curve | Map curve | **draft** | code changed since written | `docs/decks/map_curve/map_curve.pptx` | 2026-09-25 written by Claude |
 | d_merge_curve | Merge curve | **draft** | - | `docs/decks/merge_curve/merge_curve.pptx` | 2026-09-25 written by Claude |
 | d_evaluate_profiles | Evaluate profiles | **draft** | code changed since written | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-25 written by Claude |
@@ -67,10 +67,10 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_scaled_curve | Scaled Curve | **planned** | - | `docs/decks/scaled_curve/scaled_curve.pptx` |   |
 | d_simplify_surface | Simplify surface | **planned** | - | `docs/decks/simplify_surface/simplify_surface.pptx` |   |
 | d_makecurvescompitable | makeCurvesCompitable | **planned** | - | `docs/decks/makecurvescompitable/makecurvescompitable.pptx` |   |
-| d_ei_and_cross_section | EI and Cross Section | **planned** | - | `docs/decks/ei_and_cross_section/ei_and_cross_section.pptx` |   |
-| d_solve_gj | Solve GJ | **planned** | - | `docs/decks/solve_gj/solve_gj.pptx` |   |
-| d_generate_baseline | Generate baseline | **planned** | - | `docs/decks/generate_baseline/generate_baseline.pptx` |   |
-| d_analyze_baseline | Analyze baseline | **planned** | - | `docs/decks/analyze_baseline/analyze_baseline.pptx` |   |
-| d_estimate_deflection | Estimate Deflection | **planned** | - | `docs/decks/estimate_deflection/estimate_deflection.pptx` |   |
-| d_estimate_stiffness | Estimate Stiffness | **planned** | - | `docs/decks/estimate_stiffness/estimate_stiffness.pptx` |   |
-| d_update_profile | Update profile | **planned** | - | `docs/decks/update_profile/update_profile.pptx` |   |
+| d_ei_and_cross_section | EI and Cross Section | **draft** | - | `docs/decks/ei_and_cross_section/ei_and_cross_section.pptx` | 2026-09-25 written by Claude |
+| d_solve_gj | Solve GJ | **draft** | - | `docs/decks/solve_gj/solve_gj.pptx` | 2026-09-25 written by Claude |
+| d_generate_baseline | Generate baseline | **draft** | - | `docs/decks/generate_baseline/generate_baseline.pptx` | 2026-09-25 written by Claude |
+| d_analyze_baseline | Analyze baseline | **draft** | - | `docs/decks/analyze_baseline/analyze_baseline.pptx` | 2026-09-25 no dialog capture: the dialog did not open in Test2 within 2 min |
+| d_estimate_deflection | Estimate Deflection | **draft** | - | `docs/decks/estimate_deflection/estimate_deflection.pptx` | 2026-09-25 written by Claude |
+| d_estimate_stiffness | Estimate Stiffness | **draft** | - | `docs/decks/estimate_stiffness/estimate_stiffness.pptx` | 2026-09-25 written by Claude |
+| d_update_profile | Update profile | **draft** | - | `docs/decks/update_profile/update_profile.pptx` | 2026-09-25 written by Claude |

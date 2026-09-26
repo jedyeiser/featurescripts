@@ -91,6 +91,15 @@ function table(slide, rows, x, y, w, colW, opts) {
 }
 
 
+// A dialog screenshot taller than this (height / width) is split across two slides when it has 6+ fields.
+const TALL = 2.4;
+
+async function isTall(sl) {
+  if (!exists(sl.screenshot) || sl.params.length < 6) return false;
+  const sz = await imageSize(sl.screenshot);
+  return sz.h / sz.w > TALL;
+}
+
 async function dialogSlide(pres, spec, iconSmall, sl) {
       // One real dialog screenshot with numbered badges on its fields, and the same numbers in the table.
       // Positions come from <screenshot>.json (written by onshape_shot.py) and sl.positions (manual, e.g. an arrow
@@ -99,14 +108,34 @@ async function dialogSlide(pres, spec, iconSmall, sl) {
       header(s, spec, iconSmall, sl.title);
       const auto = exists(sl.screenshot) && fs.existsSync(abs(sl.screenshot).replace(/\.png$/, ".json"))
         ? JSON.parse(fs.readFileSync(abs(sl.screenshot).replace(/\.png$/, ".json"), "utf8")) : {};
-      const pos = Object.assign({}, auto, sl.positions || {});
+      let pos = Object.assign({}, auto, sl.positions || {});
       const boxH = 3.95, boxW = 3.0, x0 = M + 0.35, y0 = 1.0;
       let ix = x0, iy = y0, iw = boxW, ih = boxH;
       if (exists(sl.screenshot)) {
-        const sz = await imageSize(sl.screenshot);
+        let img = sl.screenshot;
+        let sz = await imageSize(img);
+        if (sl._page && sz.h / sz.w > TALL) {
+          // crop to this page's band: from just above its first field to just above the next page's first field
+          const fyOf = (a, b) => sl.params.slice(a, b).map(p => pos[p[0]]).filter(Boolean).map(p => p[1]);
+          const mine = fyOf(sl._page.first, sl._page.last), next = fyOf(sl._page.last, sl.params.length);
+          const c0 = sl._page.index === 0 || !mine.length ? 0 : Math.max(0, Math.min(...mine) - 0.012);
+          const c1 = next.length ? Math.min(1, Math.min(...next) - 0.01) : 1;
+          const top = Math.round(c0 * sz.h), h = Math.max(1, Math.round((c1 - c0) * sz.h));
+          const out = path.join(ROOT, "docs", "tooling", "_render", "_crops", spec.slug + "_" + sl._page.index + ".png");
+          fs.mkdirSync(path.dirname(out), { recursive: true });
+          await sharp(abs(img)).extract({ left: 0, top, width: sz.w, height: Math.min(h, sz.h - top) }).toFile(out);
+          const moved = {};
+          for (const [k, v] of Object.entries(pos)) {
+            const f = (v[1] - c0) / (c1 - c0);
+            if (f >= 0 && f <= 1) moved[k] = [v[0], f, v[2]];
+          }
+          pos = moved;
+          img = path.relative(ROOT, out);
+          sz = await imageSize(img);
+        }
         const r = Math.min(boxW / sz.w, boxH / sz.h);
         iw = sz.w * r; ih = sz.h * r;
-        s.addImage({ path: abs(sl.screenshot), x: ix, y: iy, w: iw, h: ih });
+        s.addImage({ path: abs(img), x: ix, y: iy, w: iw, h: ih });
         s.addShape("rect", { x: ix, y: iy, w: iw, h: ih, fill: { type: "none" }, line: { color: C.line, width: 0.75 } });
       } else {
         placeholder(s, ix, iy, iw, ih, "IMAGE MISSING: " + sl.screenshot);
@@ -198,12 +227,14 @@ async function build(specPath, force) {
         }
         table(s, rows.slice(k, k + per), x, 1.0, w, [w * 0.3, w * 0.7], { head: ["Parameter", "What it means"], fontSize: 10.5 });
       }
-    } else if (sl.type === "dialogshot" && sl.params.length > 9 && !sl._page) {
-      // too many rows for one table: the same screenshot on consecutive slides, rows split, numbering continuous
-      const per = Math.ceil(sl.params.length / Math.ceil(sl.params.length / 9));
+    } else if (sl.type === "dialogshot" && !sl._page && (sl.params.length > 9 || await isTall(sl))) {
+      // too many rows for one table, or a tall dialog: consecutive slides, rows split, numbering continuous;
+      // a tall dialog shows each slide only the band of the screenshot that holds that slide's fields
+      const nPages = sl.params.length > 9 ? Math.ceil(sl.params.length / 9) : 2;
+      const per = Math.ceil(sl.params.length / nPages);
       const pages = Math.ceil(sl.params.length / per);
       for (let k = 0; k < pages; k++) {
-        spec._pending = Object.assign({}, sl, { _page: { first: k * per, last: Math.min(sl.params.length, (k + 1) * per) },
+        spec._pending = Object.assign({}, sl, { _page: { first: k * per, last: Math.min(sl.params.length, (k + 1) * per), index: k, count: pages },
           title: sl.title + "  (" + (k + 1) + "/" + pages + ")" });
         await dialogSlide(pres, spec, iconSmall, spec._pending);
       }
@@ -234,7 +265,7 @@ async function build(specPath, force) {
       const both = sl.keys && sl.messages;
       const lw = both ? 4.25 : W - 2 * M;
       if (sl.keys) {
-        s.addText("Published for Extract variables", { x: M, y: 0.98, w: lw, h: 0.3, fontFace: FONT, fontSize: 12, bold: true, color: C.blue, margin: 0, isTextBox: true });
+        s.addText(sl.keysTitle || "Published for Extract variables", { x: M, y: 0.98, w: lw, h: 0.3, fontFace: FONT, fontSize: 12, bold: true, color: C.blue, margin: 0, isTextBox: true });
         table(s, sl.keys, M, 1.3, lw, [lw * (both ? 0.36 : 0.26), lw * (both ? 0.64 : 0.74)], { head: ["Key", "What it holds"], fontSize: both ? 9.5 : 10.5 });
       }
       if (sl.messages) {

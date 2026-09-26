@@ -2,11 +2,11 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; export-imports curve_core: chains, classifyPoints, emitters)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "19c2d1714545e02c0a67fe5f");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
 // IMPORT: undrape_utils.fs (same document; the undrape map)
-import(path : "283b8f7562a16e9c9ccc01b7", version : "c5fc186141c776a2e934c678");
+import(path : "283b8f7562a16e9c9ccc01b7", version : "2274ad753904a933662a9d79");
 // IMPORT: unwrap_part.fs (same document; solid unwrap)
-import(path : "fc976128871c5b4b2d33a91c", version : "0651942e8d9831563db221b0");
+import(path : "fc976128871c5b4b2d33a91c", version : "5e4c78078e0711b31db5464f");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
@@ -675,6 +675,9 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
     const ya = cross(cs.zAxis, cs.xAxis);
     const za = cs.zAxis;
 
+    var ids = [];
+    var entries = [];
+    var facts = [];
     for (var e = 0; e < size(edges); e += 1)
     {
         const edgeId = id + ("edge" ~ e);
@@ -694,16 +697,23 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         const startTangent = unwrapDirection(chart, cs, feet[0], tangentLines[0].direction);
         const endTangent = unwrapDirection(chart, cs, feet[count - 1], tangentLines[1].direction);
 
-        const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
-        const shape = emitted.shape;
-        const gate = emitted.gate;
+        ids = append(ids, edgeId);
+        entries = append(entries, flatCurveItem(points, startTangent, endTangent, settings));
+        facts = append(facts, { "length" : length, "chord" : norm(points[count - 1] - points[0]), "count" : count, "seed" : sampled.seed });
+    }
+
+    const emittedAll = emitFlatCurves(context, ids, entries, settings);
+    for (var e = 0; e < size(ids); e += 1)
+    {
+        const shape = emittedAll[e].shape;
+        const gate = emittedAll[e].gate;
 
         tally[shape.kind] += 1;
-        curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
+        curves = append(curves, qCreatedBy(ids[e], EntityType.BODY));
         lines = append(lines, "    edge " ~ e ~ ": " ~ shape.kind
             ~ (shape.kind == "arc" ? " R " ~ fmtMM(shape.radius, 4, 0) : "")
-            ~ ", length " ~ fmtMM(length, 3, 0) ~ " -> chord " ~ fmtMM(norm(points[count - 1] - points[0]), 3, 0)
-            ~ ", " ~ count ~ " samples (seed " ~ sampled.seed ~ ")" ~ gate);
+            ~ ", length " ~ fmtMM(facts[e].length, 3, 0) ~ " -> chord " ~ fmtMM(facts[e].chord, 3, 0)
+            ~ ", " ~ facts[e].count ~ " samples (seed " ~ facts[e].seed ~ ")" ~ gate);
     }
 
     if (settings.print)
@@ -1123,17 +1133,25 @@ function threePointTangent(p0 is Vector, p1 is Vector, p2 is Vector) returns Vec
 }
 
 /**
- * Emit one unwrapped edge: a line or an (exact, sketch) arc when the points are one within tolerance
- * AND the exactly-unwrapped end tangents agree with it -- so continuity is kept -- a fit otherwise.
- * @returns {map} : { "shape", "gate" (why a line / arc was refused, or "") }
+ * How far, in radians, a line's or arc's own end direction may be from an edge's unwrapped end tangent
+ * and still be emitted as a line or arc (about 0.057 degrees). The unwrapped tangents come through the
+ * chart, so they are estimates; inside this slack the exact piece's own tangent is what its neighbours
+ * are pinned to (shapeRuns), so the joint carries no kink either way. Until 2026-09-25 the limit was
+ * G1_JUNCTION_ANGLE (0.57 degrees) and an accepted arc was emitted with its ends where they fell
+ * (reviews/2026-09-25_arc_line_fitting).
  */
-function emitFlatCurve(context is Context, id is Id, points is array, startTangentIn is Vector, endTangentIn is Vector,
-    settings is map) returns map
+const UNWRAP_ARC_SLACK = 1e-3;
+
+/**
+ * One unwrapped edge as a shapeRuns item: its points and end tangents, the supplied tangents checked
+ * against the edge's own ends first.
+ * @returns {map} : { "item", "gate" (a note on a replaced tangent, or "") }
+ */
+function flatCurveItem(points is array, startTangentIn is Vector, endTangentIn is Vector, settings is map) returns map
 {
     var startTangent = startTangentIn;
     var endTangent = endTangentIn;
     const count = size(points);
-    var shape = { "kind" : "freeform" };
     var gate = "";
 
     // A supplied end tangent must agree with the edge's own end: checked against the tangent of the parabola
@@ -1155,60 +1173,47 @@ function emitFlatCurve(context is Context, id is Id, points is array, startTange
             endTangent = endEstimate;
         }
     }
-    if (settings.recognise)
-    {
-        shape = classifyPoints(points, settings.approximation.approximationTolerance, true, true);
-        if (shape.kind != "freeform")
-        {
-            const tangents = shapeEndTangents(shape, startTangent, endTangent);
-            const miss = max(angleBetween(tangents[0], startTangent), angleBetween(tangents[1], endTangent));
-            if (miss > G1_JUNCTION_ANGLE * radian)
-            {
-                gate = " (" ~ shape.kind ~ " rejected: end tangent off by " ~ toString(roundToPrecision(miss / degree, 4)) ~ " deg)";
-                shape = { "kind" : "freeform" };
-            }
-        }
-    }
 
-    if (shape.kind == "line")
-    {
-        emitLineCurve(context, id, points[0], points[count - 1]);
-    }
-    else if (shape.kind == "arc")
-    {
-        emitArcCurve(context, id, shape);
-    }
-    else
-    {
-        // Unit tangents: approximateFamily scales them by the run's chord itself. Pre-scaling
-        // them here made the end speed a chord squared and no fit could reach tolerance.
-        emitSplineCurve(context, id, points, startTangent, endTangent, settings.approximation);
-    }
-    return { "shape" : shape, "gate" : gate };
+    return {
+            "item" : {
+                "points" : points,
+                "startTangent" : startTangent,
+                "endTangent" : endTangent,
+                "allowArc" : settings.recognise,
+                "allowLine" : settings.recognise,
+                "tangentSlack" : UNWRAP_ARC_SLACK
+            },
+            "gate" : gate
+        };
 }
 
 /**
- * Unit tangents of a line or arc answer at its two ends, pointed the way the edge runs.
+ * Emit every unwrapped edge of one call together: a line or an (exact, sketch) arc where the points are one
+ * within tolerance AND its ends run along the unwrapped tangents (to UNWRAP_ARC_SLACK), a fit otherwise. The
+ * edges are shaped as a set (shapeRuns, joints found by coinciding ends), so where an edge meets its neighbour
+ * smoothly both are built to one tangent; a line keeps its own.
+ * @returns {array} : per edge { "shape", "gate" (why a line / arc was refused, or a replaced tangent) }
  */
-function shapeEndTangents(shape is map, startHint is Vector, endHint is Vector) returns array
+function emitFlatCurves(context is Context, ids is array, entries is array, settings is map) returns array
 {
-    if (shape.kind == "line")
+    var items = [];
+    for (var entry in entries)
     {
-        const direction = normalize(shape.end - shape.start);
-        return [direction, direction];
+        items = append(items, entry.item);
     }
 
-    var a = normalize(cross(shape.normal, shape.start - shape.center));
-    var b = normalize(cross(shape.normal, shape.end - shape.center));
-    if (dot(a, startHint) < 0)
+    const shapes = shapeRuns(items, { "tolerance" : settings.approximation.approximationTolerance, "findJoints" : true });
+
+    var out = [];
+    for (var k = 0; k < size(items); k += 1)
     {
-        a = -a;
+        // Unit tangents: approximateFamily scales them by the run's chord itself. Pre-scaling them made the end
+        // speed a chord squared and no fit could reach tolerance.
+        emitRunShape(context, ids[k], shapes[k], items[k].points, settings.approximation);
+        const note = shapes[k].note;
+        out = append(out, { "shape" : shapes[k], "gate" : entries[k].gate ~ ((note == undefined) ? "" : " (" ~ note ~ ")") });
     }
-    if (dot(b, endHint) < 0)
-    {
-        b = -b;
-    }
-    return [a, b];
+    return out;
 }
 
 function addTally(a is map, b is map) returns map
@@ -1565,6 +1570,8 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
 
     var curves = [];
     var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
+    var outlineIds = [];
+    var outlineEntries = [];
     for (var k = 0; k < size(undraped.edges); k += 1)
     {
         const edge = undraped.edges[k];
@@ -1591,12 +1598,19 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
             }
             println("        points:" ~ pts);
         }
-        const emitted = emitFlatCurve(context, edgeId, points, startTangent, endTangent, settings);
+        outlineIds = append(outlineIds, edgeId);
+        outlineEntries = append(outlineEntries, flatCurveItem(points, startTangent, endTangent, settings));
+    }
+
+    const outlineEmitted = emitFlatCurves(context, outlineIds, outlineEntries, settings);
+    for (var k = 0; k < size(outlineIds); k += 1)
+    {
+        const emitted = outlineEmitted[k];
         tally[emitted.shape.kind] += 1;
-        curves = append(curves, qCreatedBy(edgeId, EntityType.BODY));
+        curves = append(curves, qCreatedBy(outlineIds[k], EntityType.BODY));
         if (settings.print)
         {
-            println("        -> " ~ emitted.shape.kind
+            println("    outline edge " ~ k ~ " -> " ~ emitted.shape.kind
                 ~ (emitted.shape.kind == "arc" ? " R " ~ fmtMM(emitted.shape.radius, 4, 0) : "") ~ emitted.gate);
         }
     }

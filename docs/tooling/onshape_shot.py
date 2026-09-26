@@ -116,7 +116,15 @@ def main(listing):
                     p.get_by_text(_re.compile("^" + _re.escape(shot["featurePrefix"]))).first.dblclick()
                 else:
                     p.get_by_text(shot["feature"], exact=True).first.dblclick()
-                p.locator(".feature-dialog").first.wait_for(state="visible", timeout=20000)
+                try:
+                    p.locator(".feature-dialog").first.wait_for(state="visible", timeout=shot.get("dialogWait", 20) * 1000)
+                except Exception:
+                    # leave evidence, skip this shot, keep the batch going
+                    dbg = str(Path(shot.get("dialog") or shot.get("graphics") or "docs/decks/_shots_raw/x.png").with_suffix(".FAILED.png"))
+                    save(p, dbg)
+                    print("  dialog did not open -- skipped; see", dbg)
+                    p.keyboard.press("Escape")
+                    continue
                 p.mouse.move(1500, 900)   # off the tree, so its tooltip closes
                 p.wait_for_timeout(shot.get("settle", 5) * 1000)
                 opened = True

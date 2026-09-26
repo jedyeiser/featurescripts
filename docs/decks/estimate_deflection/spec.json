@@ -1,0 +1,162 @@
+{
+  "slug": "estimate_deflection",
+  "title": "Estimate Deflection",
+  "tagline": "Bend the ski under a load case: an EI curve, up to three supports and two applied loads, each spread over a width -- out comes the deflected shape.",
+  "document": "xSection",
+  "icon": "docs/decks/_icons/estimate_deflection_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Flex numbers are one load case. Estimate Deflection solves any: a bench test, a skier's weight fore and aft, a binding plate. Curvature = M / EI integrated twice gives the shape, zero at supports 1 and 2.",
+      "useWhen": [
+        "Predict a bench or on-snow deflection",
+        "See the effect of a binding plate or mounting moment",
+        "Find the EI that would give a shape (drag the curvature)"
+      ],
+      "image": "docs/explainers/xsection/img/fig08_deflection_case.png",
+      "caption": "Test2: supports at +-700 mm, 60 N and 20 N loads -> 14.6 mm."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/estimate_deflection/shots/dialog.png",
+      "params": [
+        [
+          "EI Edges",
+          "The EI curve: an edge in the XZ plane, world Z in mm = EI in N m^2 (EI and Cross Section's <name>_EI, a measured or a target curve)."
+        ],
+        [
+          "Number of evaluation points",
+          "20-500 (100); also EI samples per edge."
+        ],
+        [
+          "Show shear/moment diagrams",
+          "Draw V and M."
+        ],
+        [
+          "Alter deformed beam curvature",
+          "Drag curvature handles; outputs the matching EI (altered_EI)."
+        ],
+        [
+          "Add plate/mounting conditions?",
+          "Plate stiffness edge, reaction moment (N m, positive) and its x."
+        ],
+        [
+          "Applied load data",
+          "Load 3-600 N, balance between two loads; each: location, shape, width."
+        ],
+        [
+          "Support load data",
+          "Supports 1, 2 (optional 3 with its share); each: location, shape, width."
+        ],
+        [
+          "Output Options",
+          "Span (full EI / supports); Fit or Approximate."
+        ]
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Load shapes",
+      "image": "docs/explainers/xsection/img/fig09_load_shapes.png",
+      "points": [
+        {
+          "head": "Spread over a width",
+          "body": "Each shape integrates to the load's force."
+        },
+        {
+          "head": "Supports too",
+          "body": "Reactions can be spread (Logistic suits a support pad)."
+        },
+        {
+          "head": "Known bug",
+          "body": "Every distributed shape is computed as Logistic today (enum compared with strings). Point is correct."
+        }
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: Test2",
+      "image": "docs/explainers/xsection/img/fig08_deflection_case.png",
+      "head": "EI eiTarget; supports x = -700 / 700; 80 N split 0.75: 60 N at -125, 20 N at 250 (100 mm wide)",
+      "body": "The deflection_curve sags 14.6 mm near the middle. With 'Alter deformed beam curvature' on, the dragged shape gives altered_EI (dotted)."
+    },
+    {
+      "type": "outputs",
+      "keysTitle": "Outputs",
+      "keys": [
+        [
+          "deflection_curve",
+          "The deflected shape, Z = deflection, true scale."
+        ],
+        [
+          "altered_EI",
+          "Optional: the EI curve that gives the dragged curvature (EI format)."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "fewer than 2 EI samples / all EI zero",
+          ""
+        ],
+        [
+          "Error",
+          "supports 1 and 2 at the same x / zero span",
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Load shapes",
+          "body": "Until fixed, Constant / Linear / Quadratic / Quintic all behave as Logistic."
+        },
+        {
+          "kind": "limit",
+          "head": "Support 3",
+          "body": "Takes a fixed share of the load; the deflection is zero only at supports 1 and 2."
+        },
+        {
+          "kind": "limit",
+          "head": "Moment",
+          "body": "The reaction moment cannot be negative."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "estimateDeflection (+ beam/estimateDeflectionSolver.fs)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Examples",
+          "Test2 studio: Estimate Deflection 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 2.4"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

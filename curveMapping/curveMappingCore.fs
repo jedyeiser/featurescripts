@@ -3,15 +3,15 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/path.fs", version : "3083.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 //import tools/bspline_data
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 //import Utils
 import(path : "ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a19a275a032ee47f4dbcc83c", version : "65e923a8d375058271c92fbc");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 // IMPORT: tools/point_projection.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/eb46317a27a44e391e11dfe6", version : "0cea3c8d27e4f7fd660aa69f");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/eb46317a27a44e391e11dfe6", version : "7b2ce264ee62cfbbb372ecdf");
 
 export const samplingDensityBounds = {(millimeter) : [.1, 10, 200]} as LengthBoundSpec;
 
@@ -299,8 +299,10 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
 
         }
 
-        // One batched kernel call per curved edge, replacing one per mapped point.
-        var frameSamples = isLine ? undefined : sampleEdgeFrames(context, edge, stdDir);
+        // One batched kernel call per curved edge, replacing one per mapped point. A near-linear
+        // edge promoted to line mode above is sampled too: its NORMAL comes from the line logic, but
+        // its position and tangent must be the curve's own (see isExactLine).
+        var frameSamples = (curveDef.curveType == CurveType.LINE) ? undefined : sampleEdgeFrames(context, edge, stdDir);
 
         edgeData = append(edgeData, {
             "query"              : edge,
@@ -608,14 +610,26 @@ export const CM_SPAN_MERGE_ANGLE = 0.5 * degree;
 /** Traversal-direction tangent at an edge's start. */
 function edgeStartTangent(edgeDat is map) returns Vector
 {
-    return edgeDat.isLine ? edgeDat.lineFrame.zAxis : edgeDat.frameSamples.tangents[0];
+    return isExactLine(edgeDat) ? edgeDat.lineFrame.zAxis : edgeDat.frameSamples.tangents[0];
 }
 
 /** Traversal-direction tangent at an edge's end. */
 function edgeEndTangent(edgeDat is map) returns Vector
 {
-    return edgeDat.isLine ? edgeDat.lineFrame.zAxis
+    return isExactLine(edgeDat) ? edgeDat.lineFrame.zAxis
         : edgeDat.frameSamples.tangents[CM_FRAME_SAMPLES - 1];
+}
+
+/**
+ * Whether an edge is a TRUE line (the kernel's curve type), as opposed to a near-linear spline promoted
+ * to line mode for a stable normal. A promoted edge keeps its sampled frames and is read through them for
+ * position and tangent: taking its chord instead put mapped points up to the sagitta (0.1% of the edge
+ * length) off and turned the frame by up to ~0.23 degrees at its ends, kinking every curve mapped across
+ * the boundary (2026-09-25 arc / line tangency review).
+ */
+function isExactLine(edgeDat is map) returns boolean
+{
+    return edgeDat.isLine && edgeDat.frameSamples == undefined;
 }
 
 /**
@@ -731,7 +745,7 @@ export function curvatureAtArc(frenetPath is map, arc is ValueWithUnits)
     }
 
     var edgeDat = edgeData[edgeIdx];
-    if (edgeDat.isLine || edgeDat.frameSamples == undefined)
+    if (edgeDat.frameSamples == undefined)
     {
         return 0 / meter;
     }
@@ -822,7 +836,7 @@ function endCurvature(frenetPath is map, boundaryArc is ValueWithUnits, aboutAxi
     var edgeData = frenetPath.edgeData;
     var edgeDat  = (boundaryArc <= 0 * meter) ? edgeData[0] : edgeData[size(edgeData) - 1];
 
-    if (edgeDat.isLine || edgeDat.frameSamples == undefined)
+    if (edgeDat.frameSamples == undefined)
     {
         return 0 / meter;
     }
@@ -1042,7 +1056,17 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
 
     var frame;
 
-    if (edgeDat.isLine)
+    if (edgeDat.isLine && edgeDat.frameSamples != undefined)
+    {
+        // 6a'. Near-linear spline promoted to line mode: the curve's own position and tangent, the line
+        // logic's normal made perpendicular to that tangent (the tangent turns by well under a degree).
+        var sampledLine = frameAtLocalArc(edgeDat, localArc);
+        var lineNormal  = binormalMode ? planeNormalAxis(fopts.ref, sampledLine.tangent) : edgeDat.transportedNormal;
+        lineNormal = lineNormal - dot(lineNormal, sampledLine.tangent) * sampledLine.tangent;
+        lineNormal = (norm(lineNormal) < 1e-9) ? sampledLine.normal : normalize(lineNormal);
+        frame = coordSystem(sampledLine.origin, lineNormal, sampledLine.tangent);
+    }
+    else if (edgeDat.isLine)
     {
         // 6a. Line: interpolate position along traversal direction.
         var position = edgeDat.lineStartPt + localArc * edgeDat.lineFrame.zAxis;
@@ -1178,7 +1202,7 @@ function coarseNearest(edgeData is array, point is Vector) returns map
     for (var i = 0; i < size(edgeData); i += 1)
     {
         var edgeDat = edgeData[i];
-        if (edgeDat.isLine)
+        if (isExactLine(edgeDat))
         {
             var t = clamp(dot(point - edgeDat.lineStartPt, edgeDat.lineFrame.zAxis), 0 * meter, edgeDat.length);
             var dLine = norm(point - (edgeDat.lineStartPt + t * edgeDat.lineFrame.zAxis));
@@ -1224,7 +1248,7 @@ function coarseNearest(edgeData is array, point is Vector) returns map
 function footOnEdge(edgeDat is map, point is Vector, seed is ValueWithUnits) returns map
 {
     var length = edgeDat.length;
-    if (edgeDat.isLine)
+    if (isExactLine(edgeDat))
     {
         var t = clamp(dot(point - edgeDat.lineStartPt, edgeDat.lineFrame.zAxis), 0 * meter, length);
         return { "localArc": t, "distance": norm(point - (edgeDat.lineStartPt + t * edgeDat.lineFrame.zAxis)) };
@@ -1526,13 +1550,13 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
 
     var proj0       = projectOntoFrenetPath(fromMap, samplePts[0], undefined);
     var fromEdgeIdx = proj0.hint.edgeIndex;
-    if (!fromMap.edgeData[fromEdgeIdx].isLine)
+    if (!isExactLine(fromMap.edgeData[fromEdgeIdx]))
     {
         return { "eligible" : false };   // cheap reject: source is not over a line
     }
     // Cheap reject on the to side too, before projecting the other probes.
     var toArc0 = proj0.arcLength + (toRefArc - fromRefArc);
-    if (toArc0 < 0 * meter || toArc0 > toMap.totalLength || !toMap.edgeData[edgeIndexAtArcLength(toMap, toArc0)].isLine)
+    if (toArc0 < 0 * meter || toArc0 > toMap.totalLength || !isExactLine(toMap.edgeData[edgeIndexAtArcLength(toMap, toArc0)]))
     {
         return { "eligible" : false };
     }
@@ -1561,7 +1585,7 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
         return { "eligible" : false };
     }
     var toIdx = edgeIndexAtArcLength(toMap, sToMin);
-    if (toIdx != edgeIndexAtArcLength(toMap, sToMax) || !toMap.edgeData[toIdx].isLine)
+    if (toIdx != edgeIndexAtArcLength(toMap, sToMax) || !isExactLine(toMap.edgeData[toIdx]))
     {
         return { "eligible" : false };
     }

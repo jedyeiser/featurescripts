@@ -12,7 +12,7 @@ Fixtures (sketches on Top, mm):
 
 Cases:
   R1 Recognize arcs on F1, tol 0.01 mm                -> 1 of 1, output 1 edge, an arc R100
-  R2 Recognize arcs on F2 (3 edges)                    -> 1 of 1, output 1 wire of 3 edges: line, arc R200, line; joints 0 deg
+  R2 Recognize arcs on F2 (3 edges)                    -> 1 of 1, output 1 wire of 3 edges: line, arc R200, line; joints <= 0.05 deg (the max tangent change)
   R3 Recognize arcs on F3 (S-curve)                    -> 0 of 1, output edge still a spline
   R4 Recognize arcs on F1, report only                 -> no output body
   R5 Recognize arcs on F4, tol 0.01 mm                 -> 0 of 1 (off the arc)
@@ -185,7 +185,7 @@ def recognize(name, fid, tol_mm, replace, output):
 
 
 recognize("R1 F1, tol 0.01 -> 1 of 1, output 1 edge, arc R100", f1, 0.01, True, "R1")
-recognize("R2 F2 chain, tol 0.01 -> 1 of 1, 1 wire: line, arc R200, line, joints 0 deg", f2, 0.01, True, "R2")
+recognize("R2 F2 chain, tol 0.01 -> 1 of 1, 1 wire: line, arc R200, line, joints <= 0.05 deg (the max tangent change)", f2, 0.01, True, "R2")
 recognize("R3 F3 S-curve -> 0 of 1, output edge still a spline", f3, 0.01, True, "R3")
 recognize("R4 F1 report only -> no output body", f1, 0.01, False, "R4")
 recognize("R5 F4 coarse, tol 0.01 -> 0 of 1 (off the arc)", f4, 0.01, True, "R5")

@@ -1,0 +1,3 @@
+Wrap Curve 1 | wrapCurve | bodies 1 | edges 5 len 1909.8601 | faces 0 area 0
+Wrap Curve 2 | wrapCurve | bodies 1 | edges 1 len 1907.65709 | faces 0 area 0
+ALL bodies 20 total edge length 22827.6216

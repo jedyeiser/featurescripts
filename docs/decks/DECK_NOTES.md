@@ -22,3 +22,9 @@ Decisions from the user's reviews that apply beyond the deck they came from. Che
   before them, or use Thicken+ / Offset+ instead of the built-ins. Thicken+: its outputs are solids -- orientation
   does not apply; it is the recommended downstream replacement for Thicken. Explainer 1.4 / 2.6 have the full text.
 - Related slide / table: name Orient to reference alongside the other reference-side features.
+
+## Builder additions (2026-09-25, xSection family)
+- `outputs` slides take `keysTitle` (default "Published for Extract variables"); use "Outputs" for features that are not producers.
+- A `dialogshot` whose screenshot is taller than 2.4 x its width (and has 6+ fields) is split over two slides; each slide
+  shows only the band of the screenshot holding its fields (crops in docs/tooling/_render/_crops/), so badges stay apart.
+- Features without an installed icon get a deck-only draft in docs/decks/_icons/ (never installed to Onshape).

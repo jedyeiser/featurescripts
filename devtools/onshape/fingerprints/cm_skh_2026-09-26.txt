@@ -1,0 +1,4 @@
+Test_Wrap_Profile | wrapCurve | bodies 1 | edges 3 len 1820.19066 | faces 0 area 0
+Test_Wrap_and_loft | wrapAndLoft | bodies 1 | edges 31 len 3867.57603 | faces 10 area 31284.5818
+Deform 1 | deform | bodies 1 | edges 31 len 3878.10394 | faces 10 area 31374.3586
+ALL bodies 20 total edge length 22101.3383

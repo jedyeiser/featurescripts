@@ -659,6 +659,7 @@ export function approximateSplinesWithPolyArcs(
 
     // 3) Initial segmentation from knot spans
     var segments = buildInitialSegmentsFromKnotSpans(ordered.splines, joins, initialSpansPerSeg, minLength, posTol, numSamples, debug);
+    segments = pinToPreservedArcs(ordered.splines, segments);
 
     // 4) Initial fit per segment
     segments = fitAllSegments(ordered.splines, segments, posTol, planeTol, numSamples);
@@ -919,6 +920,104 @@ export function detectWholeCurveArcOrLine(c is map, curveIndex is number, posTol
     return result;
 }
 
+/**
+ * How closely a line's chord must run along the source's end tangents to be emitted as a line, in radians
+ * (about 0.0006 degrees). A true line (exact in any B-spline) meets it to rounding; a curved stretch within
+ * posTol of its chord misses by ~4 * sagitta / length.
+ */
+export const ARCFIT_LINE_TANGENT = 1e-5;
+
+/** Largest source joint angle, in radians, across which a preserved arc's tangent is shared (0.57 deg). */
+export const ARCFIT_WELD_ANGLE = 1e-2;
+
+/**
+ * Whether a chord runs along both end tangents (where they are known) to ARCFIT_LINE_TANGENT.
+ */
+function lineMeetsTangents(chord is Vector, t0 is Vector, t0Norm is ValueWithUnits, t1 is Vector, t1Norm is ValueWithUnits) returns boolean
+{
+    const len = norm(chord);
+    if (len == 0 * meter)
+    {
+        return true;
+    }
+    const along = chord / len;
+    for (var pair in [[t0, t0Norm], [t1, t1Norm]])
+    {
+        if (pair[1] > 0 * meter)
+        {
+            const t = pair[0] / pair[1];
+            if (atan2(norm(cross(t, along)), dot(t, along)) / radian > ARCFIT_LINE_TANGENT)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Unit travel directions at both ends of a preserved whole-curve arc, from its circle.
+ */
+function preservedArcTangents(seg is map) returns map
+{
+    const cs = seg.circle.coordSystem;
+    var ts = normalize(cross(cs.zAxis, seg.p0 - cs.origin));
+    var te = normalize(cross(cs.zAxis, seg.p1 - cs.origin));
+    if (dot(ts, seg.pMid - seg.p0) < 0 * meter)
+    {
+        ts = -ts;
+        te = -te;
+    }
+    return { "start" : ts, "end" : te };
+}
+
+/**
+ * Where a segment meets a preserved whole-curve ARC across a smooth source joint, fit it to the ARC's
+ * tangent there instead of its own source tangent (2026-09-25 arc / line tangency review).
+ *
+ * A preserved arc keeps the circle through three of its samples; its end directions are that circle's, not
+ * the (non-rational, forceNonRational) source's, and the biarc beside it was built to the source's -- a small
+ * kink at every such joint. One tangent at the joint, the arc's, removes it. A preserved LINE is left alone:
+ * each side keeps its own tangent (a line cannot bend, and pinning the neighbour to it only bends the
+ * neighbour). The pins travel with the segment through subdivision and merging.
+ */
+function pinToPreservedArcs(orderedSplines is array, segments is array) returns array
+{
+    var out = segments;
+    for (var i = 0; i < size(segments); i += 1)
+    {
+        const seg = segments[i];
+        if (seg["preserved"] == true)
+        {
+            continue;
+        }
+        const c = orderedSplines[seg.curveIndex0];
+
+        if (i > 0 && segments[i - 1]["preserved"] == true && segments[i - 1]["type"] == "arc"
+            && norm(segments[i - 1].p1 - seg.p0) < 1e-6 * meter)
+        {
+            const pinned = preservedArcTangents(segments[i - 1]).end;
+            const own = evalBSplineDerivAtParam(c, seg.u0);
+            if (norm(own) > 0 * meter && atan2(norm(cross(own / norm(own), pinned)), dot(own / norm(own), pinned)) / radian <= ARCFIT_WELD_ANGLE)
+            {
+                out[i] = mergeMaps(out[i], { "startTangent" : pinned });
+            }
+        }
+
+        if (i + 1 < size(segments) && segments[i + 1]["preserved"] == true && segments[i + 1]["type"] == "arc"
+            && norm(segments[i + 1].p0 - seg.p1) < 1e-6 * meter)
+        {
+            const pinned = preservedArcTangents(segments[i + 1]).start;
+            const own = evalBSplineDerivAtParam(c, seg.u1);
+            if (norm(own) > 0 * meter && atan2(norm(cross(own / norm(own), pinned)), dot(own / norm(own), pinned)) / radian <= ARCFIT_WELD_ANGLE)
+            {
+                out[i] = mergeMaps(out[i], { "endTangent" : pinned });
+            }
+        }
+    }
+    return out;
+}
+
 /** --------------------------------------------------------------------------
  * Step 3: Knot-span based initial segmentation
  * -------------------------------------------------------------------------- */
@@ -1093,9 +1192,19 @@ export function fitLineOrArcForSegment(
     const p1 = pts[size(pts) - 1];
     const pm = pts[floor((size(pts) - 1) / 2)];
 
-    // 1) Line test: if max deviation from chord <= posTol, treat as a line.
+    // End tangents: the source's own, or the one a neighbouring preserved arc pinned (pinToPreservedArcs).
+    const t0_raw = (seg.startTangent != undefined) ? seg.startTangent * meter : evalBSplineDerivAtParam(c, u0);
+    const t1_raw = (seg.endTangent != undefined) ? seg.endTangent * meter : evalBSplineDerivAtParam(c, u1);
+    const t0_norm = norm(t0_raw);
+    const t1_norm = norm(t1_raw);
+
+    // 1) Line test: max deviation from chord <= posTol AND both ends running along the chord
+    //    (ARCFIT_LINE_TANGENT). A slightly curved stretch within posTol of its chord is not a line: its
+    //    chord leaves both ends ~4 * sagitta / length off the source tangent, which the biarcs either side
+    //    DO match, so the joint kinked (reviews/2026-09-25_arc_line_fitting). A merge could promote a union
+    //    to such a line the same way.
     const chordErr = maxDistanceToChord(pts, p0, p1);
-    if (chordErr <= posTol)
+    if (chordErr <= posTol && lineMeetsTangents(p1 - p0, t0_raw, t0_norm, t1_raw, t1_norm))
     {
         var dir = p1 - p0;
         const len = norm(dir);
@@ -1117,10 +1226,6 @@ export function fitLineOrArcForSegment(
     }
 
     // 2) Biarc fit (preferred): two G1-continuous arcs matching source tangents at p0 and p1.
-    const t0_raw = evalBSplineDerivAtParam(c, u0);
-    const t1_raw = evalBSplineDerivAtParam(c, u1);
-    const t0_norm = norm(t0_raw);
-    const t1_norm = norm(t1_raw);
     if (t0_norm > 0 * meter && t1_norm > 0 * meter)
     {
         const t0_unit = t0_raw / t0_norm;
@@ -1329,17 +1434,20 @@ function subdivideOne(
 
     const pSplit = evalBSplineAtParam(c, uSplit);
 
+    // The outer end pins (pinToPreservedArcs) stay with the child that keeps that end.
     const segA = {
             "type" : "unfit",
             "p0" : fit.p0, "p1" : pSplit,
             "curveIndex0" : fit.curveIndex0, "u0" : fit.u0,
-            "curveIndex1" : fit.curveIndex0, "u1" : uSplit
+            "curveIndex1" : fit.curveIndex0, "u1" : uSplit,
+            "startTangent" : fit.startTangent
         };
     const segB = {
             "type" : "unfit",
             "p0" : pSplit, "p1" : fit.p1,
             "curveIndex0" : fit.curveIndex0, "u0" : uSplit,
-            "curveIndex1" : fit.curveIndex0, "u1" : fit.u1
+            "curveIndex1" : fit.curveIndex0, "u1" : fit.u1,
+            "endTangent" : fit.endTangent
         };
 
     const subA = subdivideOne(orderedSplines, segA, posTol, planeTol, minLength, numSamples, depth + 1, maxDepth, debug);
@@ -1460,7 +1568,9 @@ function makeUnionSegment(a is map, b is map) returns map
             "p0" : a.p0,
             "p1" : b.p1,
             "curveIndex0" : a.curveIndex0, "u0" : a.u0,
-            "curveIndex1" : b.curveIndex1, "u1" : b.u1
+            "curveIndex1" : b.curveIndex1, "u1" : b.u1,
+            "startTangent" : a.startTangent,
+            "endTangent" : b.endTangent
         };
 }
 

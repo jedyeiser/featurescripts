@@ -1,0 +1,98 @@
+{
+  "slug": "estimate_stiffness",
+  "title": "Estimate Stiffness",
+  "tagline": "The four flex numbers of any EI curve -- yours, a target, a competitor's -- between two contact points.",
+  "document": "xSection",
+  "icon": "docs/decks/_icons/estimate_stiffness_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "EI and Cross Section gives flex numbers for a modelled layup. Estimate Stiffness gives the same four numbers for any EI curve, so a measured or target curve can be compared on the same scale.",
+      "useWhen": [
+        "Rate a target or measured EI curve",
+        "Compare two EI curves by the numbers",
+        "Check a hand-edited EI profile"
+      ],
+      "image": "docs/explainers/xsection/img/fig05_flex_numbers.png",
+      "caption": "The test behind the numbers: FCP-ACP simply supported, load at the mount."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/estimate_stiffness/shots/dialog.png",
+      "params": [
+        [
+          "EI Edges",
+          "The EI curve: an edge in the XZ plane, world Z in mm = EI in N m^2 (EI and Cross Section's <name>_EI, a measured or a target curve)."
+        ],
+        [
+          "FCP",
+          "Front contact point (X only)."
+        ],
+        [
+          "ACP",
+          "Aft contact point (X only)."
+        ],
+        [
+          "Stiffness estimates",
+          "Read-only: prismatic lb/in and mm/30 kg; estimated (variable EI) lb/in and mm/30 kg."
+        ],
+        [
+          "Recalculate",
+          "Button: compute the numbers."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Dialog only",
+          "body": "Numbers are computed when you press Recalculate and do not follow later geometry changes."
+        },
+        {
+          "kind": "limit",
+          "head": "FCP before ACP",
+          "body": "If FCP is not before ACP in X nothing is computed, silently."
+        },
+        {
+          "kind": "tip",
+          "head": "Short curves",
+          "body": "An EI curve shorter than FCP-ACP is extended to reach them."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "estimateStiffness (+ beam/xSectBeamAnalysis.fs)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Examples",
+          "Test studio: Estimate Stiffness 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 1.6, 2.3"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

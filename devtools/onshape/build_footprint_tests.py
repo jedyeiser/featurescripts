@@ -319,9 +319,9 @@ add("AR4", "S-curve spline with 2 mm knot spans at the inflection, min length 10
 # AR4 (short knot-span block dropped -> gap) fixed 2026-09-25; the case now guards against regressions.
 
 
-def if_case(cid, text, lines, w, fcp, driver="WAIST", waist_loc=0.0, taper=0.0, strict=False, expect=None):
+def if_case(cid, text, lines, w, fcp, driver="WAIST", waist_loc=0.0, taper=0.0, strict=False, expect=None, export="APPROX"):
     add(cid, text, "integrate", lines=lines, waistWidth=2 * w, fcp=fcp, driver=driver, waistLocation=waist_loc,
-        taperAngle=taper, strict=strict, expect=expect or {})
+        taperAngle=taper, strict=strict, expect=expect or {}, export=export)
 
 
 def arc_list(arcs, centres=True):
@@ -353,6 +353,12 @@ if_case("IF6", "R14 m core line + sloped 14 -> 25 m transitions -> one wire, exa
         [((-550, 250), (-400, 140)), ((-400, 140), (400, 140)), ((400, 140), (550, 250))], 100.0, (-550, 250),
         expect={"edges": [{"R": None}, {"R": 14000.0, "c": (0.0, 14100.0)}, {"R": None}], "waist": (0.0, 100.0),
                 "ctol": (0.1, 0.05)})
+# IF8 (2026-09-25 arc / line tangency review): FIT transitions used to be fitted with free ends, so the
+# arc <-> transition seams kinked; they are now pinned to the arc's tangent.
+if_case("IF8", "IF6 with Spline export FIT -> exact R14000 core, 2 fitted transitions, seams tangent (<= 0.001 deg)",
+        [((-550, 250), (-400, 140)), ((-400, 140), (400, 140)), ((400, 140), (550, 250))], 100.0, (-550, 250),
+        expect={"edges": [{"R": None}, {"R": 14000.0, "c": (0.0, 14100.0)}, {"R": None}], "waist": (0.0, 100.0),
+                "ctol": (0.1, 0.05), "g1tol": 0.001}, export="FIT")
 if_case("IF7", "sloped profile only (14 -> 25 m), Strict on -> every output edge an exact arc or line (reports a radius)",
         [((43450, 140), (44550, 250))], 100.0, (43450, 140), driver="TAPER_ANGLE", taper=0.0, strict=True,
         expect={"allAnalytic": True})
@@ -608,7 +614,7 @@ def build_case(case, F):
             num("waistWidth", "%g mm" % case["waistWidth"]), num("waistLocation", "%g mm" % case["waistLocation"]),
             num("taperAngle", "%g deg" % case["taperAngle"]), num("numSamplesPerEdge", "51", integer=True),
             b("strict", case["strict"]), b("unifyCurves", False), b("extractWires", True)],
-            {"angleDriver": case["driver"], "curvatureScalefactor": "TEN", "splineExportType": "APPROX",
+            {"angleDriver": case["driver"], "curvatureScalefactor": "TEN", "splineExportType": case.get("export", "APPROX"),
              "footprintCurveBuildMode": "ONE_PER_REGION"})
     if kind == "scale":
         fx = case["fixture"]

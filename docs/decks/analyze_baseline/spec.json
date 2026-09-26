@@ -1,0 +1,116 @@
+{
+  "slug": "analyze_baseline",
+  "title": "Analyze baseline",
+  "tagline": "Measure an existing side profile -- camber height, rocker contact points and lengths, tip heights -- to compare a ski with its design targets.",
+  "document": "xSection",
+  "icon": "docs/decks/_icons/analyze_baseline_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Generate baseline builds a profile from targets; Analyze baseline goes the other way. Give it any baseline -- scanned, drawn, or generated -- and it reports the same quantities, and can draw them as a sketch.",
+      "useWhen": [
+        "Check a scanned or supplied ski against targets",
+        "Verify a hand-drawn baseline",
+        "Document a profile's numbers"
+      ],
+      "image": "docs/explainers/xsection/img/fig06_baseline.png",
+      "caption": "The quantities it reports: minima, camber, FRCP / ARCP, rocker lengths, tip heights."
+    },
+    {
+      "type": "dialog",
+      "title": "The dialog",
+      "params": [
+        [
+          "Baseline edges",
+          "The side profile (a tangent chain)."
+        ],
+        [
+          "FCP / ACP",
+          "Contact points (X only)."
+        ],
+        [
+          "Calculated data",
+          "Read-only: FB / AB minimum, max camber point, camber height, FRCP, FRCPL, FRCP tangent, FCPH, ARCP, ARCPL, ARCP tangent, ACPH."
+        ],
+        [
+          "Output measurement sketch",
+          "Chords, tangent lines and normals on the XZ plane."
+        ],
+        [
+          "Recalculate",
+          "Button (the values are also refreshed on every dialog change)."
+        ]
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "How it measures",
+      "image": "docs/explainers/xsection/img/fig07_rocker_construction.png",
+      "points": [
+        {
+          "head": "Camber",
+          "body": "Largest perpendicular distance from the line between the two low points."
+        },
+        {
+          "head": "FRCP / ARCP",
+          "body": "The lowest inflection in each half; FRCPL = its distance from FCP."
+        },
+        {
+          "head": "FCPH / ACPH",
+          "body": "The tip's perpendicular distance to the tangent at FRCP / ARCP."
+        }
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Dialog only",
+          "body": "Values are computed while editing and do not follow later geometry changes."
+        },
+        {
+          "kind": "limit",
+          "head": "No inflection",
+          "body": "A half with no inflection leaves its fields empty."
+        },
+        {
+          "kind": "limit",
+          "head": "Name",
+          "body": "The feature is spelled 'Analze baseline' in Onshape."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "xSection (f8deedeb1fbd819a8fa20113), 'Stiffness Tools'"
+        ],
+        [
+          "Tab",
+          "analyzeBaseline (beam/analyzeBaseline.fs)"
+        ],
+        [
+          "Tests",
+          "none"
+        ],
+        [
+          "Examples",
+          "Test2 studio: Analze baseline 1"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/xsection/xsection_explained.md, section 2.6"
+        ],
+        [
+          "Related",
+          "EI and Cross Section, Estimate Stiffness, Estimate Deflection, Generate / Analyze baseline, Update profile"
+        ]
+      ]
+    }
+  ]
+}

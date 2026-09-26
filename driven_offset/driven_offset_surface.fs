@@ -4,14 +4,14 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 // ProjectionType and getQueryVariable elsewhere in this document.
 import(path : "onshape/std/lofttopology.gen.fs", version : "3070.0");
 
-export import(path : "a2665e22c07b7a6929ce4e80", version : "19bb4e2dc00faa5df759cf24");
-import(path : "d009ddf4a8dd9534fc4dc4b5", version : "402bf9dc7ffaf0184bf535f2");
-import(path : "6479d7fbd0ec7d11e0ae6c69", version : "7969ed4b27c01e417bde297a");
-import(path : "786f62f4d67ed8d9c7d56d16", version : "");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
+import(path : "d009ddf4a8dd9534fc4dc4b5", version : "05e1f78ac7e7a8682dbc8e1a");
+import(path : "6479d7fbd0ec7d11e0ae6c69", version : "4a442f1960c3ece8170129bc");
+import(path : "786f62f4d67ed8d9c7d56d16", version : "659cae081679c4232c707867");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // bspline_compat: exact knot/degree/join algebra for the unified patches.
-import(path : "6b635e74c92bd23387e850c1", version : "");
+import(path : "6b635e74c92bd23387e850c1", version : "e91083bba71297456c5ca3d0");
 // IMPORT: driven_offset_surface_icon.svg (feature icon)
 IconNamespace::import(path : "d6d3dc643042de1bb4c78db1", version : "e673b7b067a42dbd524c9a3a");
 
@@ -132,6 +132,8 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         // intersection curve selected off its faces. Choose it per feature.
         annotation { "Name" : "Break output at", "Default" : RunBreakMode.SOURCE_EDGES, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the offsets, the sections and therefore the faces are split. Every source edge: one face per source edge, joint for joint. Corners and offset breaks: only where the source turns through a real corner or a profile steps or kinks; tangent-continuous source edges run together into one face. A loft between profiles usually wants the latter." }
         definition.runBreakMode is RunBreakMode;
+
+        offsetArcFitPredicate(definition);
 
         // One array whatever the mode: the seed edges and the reference are shared, and a
         // profile is the only thing that differs between offsets. Loft-between-profiles
@@ -262,6 +264,7 @@ export const drivenOffsetSurface = defineFeature(function(context is Context, id
         "blendThroughProfiles" : false,
         "joinTangentRuns" : false,
         "runBreakMode" : RunBreakMode.SOURCE_EDGES,
+        "arcSourceFit" : ArcSourceFit.SPLINE,
         "keepWires" : false,
         "debugPrintSurface" : false,
         "debugRun" : -1,
@@ -464,7 +467,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
     {
         for (var k = 0; k < size(cells); k += 1)
         {
-            cells[k] = applyRunMerges(cells[k], tangentRunMerges([plans[k].points], cells[k],
+            cells[k] = applyRunMerges(cells[k], tangentRunMerges([plans[k].points], [plans[k].sided], cells[k],
                     shared.stations, definition.approximationTolerance));
         }
     }
@@ -475,12 +478,14 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
         // the merges come out identical for all of them by construction rather than by
         // intersecting decisions taken separately.
         var pointsPerProfile = [];
+        var offsetsPerProfile = [];
         for (var plan in plans)
         {
             pointsPerProfile = append(pointsPerProfile, plan.points);
+            offsetsPerProfile = append(offsetsPerProfile, plan.sided);
         }
 
-        const common = alignedRunMerges(pointsPerProfile, cells, shared.stations,
+        const common = alignedRunMerges(pointsPerProfile, offsetsPerProfile, cells, shared.stations,
             definition.approximationTolerance);
 
         var mergedCells = [];
@@ -723,6 +728,23 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                 // and runTangent takes it from whichever map placed the points.
                 const displacement = sectionDisplacement(definition, reach);
                 const gates = sourceShapeGates(driven.stations, from, to);
+                const startDerivative = runEndTangent(driven.stations, driven.coords, driven.sided,
+                        definition, driven.alongRef, run, from, displacement, true);
+                const endDerivative = runEndTangent(driven.stations, driven.coords, driven.sided,
+                        definition, driven.alongRef, run, to, displacement, false);
+
+                // A line or an arc only where it meets the section's true end tangents (or is a
+                // constant offset of an arc source, exact by construction); anything else is a
+                // spline pinned to them. Never a biarc chain: a section is ONE curve per run so
+                // the loft pairs sections column for column (reviews/2026-09-25_arc_line_fitting).
+                const shape = shapeRuns([{
+                                "points" : distinct,
+                                "startTangent" : startDerivative,
+                                "endTangent" : endDerivative,
+                                "allowArc" : gates.allowArc,
+                                "allowLine" : gates.allowLine,
+                                "exactArc" : gates.allowArc && !gates.allowLine && offsetIsConstant(driven.sided, from, to)
+                            }], { "tolerance" : definition.approximationTolerance })[0];
 
                 plan = {
                         "from" : from,
@@ -731,11 +753,9 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
                         "points" : distinct,
                         "runSpan" : runSpan,
                         "gates" : gates,
-                        "shape" : classifyPoints(distinct, definition.approximationTolerance, gates.allowArc, gates.allowLine),
-                        "startDerivative" : runEndTangent(driven.stations, driven.coords, driven.sided,
-                                definition, driven.alongRef, run, from, displacement, true),
-                        "endDerivative" : runEndTangent(driven.stations, driven.coords, driven.sided,
-                                definition, driven.alongRef, run, to, displacement, false)
+                        "shape" : shape,
+                        "startDerivative" : startDerivative,
+                        "endDerivative" : endDerivative
                     };
 
                 // The corner before this run, for the loft between profiles: the fill it was

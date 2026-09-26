@@ -3,7 +3,7 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: Curve_tools V2 curve_core.fs -- chains, stations, classification, fitting, emitters,
 // formatting. Moved there 2026-09-23; export import so every feature importing this tab still
 // sees them (and OffsetPointSpacing stays reachable as a parameter type).
-export import(path : "2143812a99089658c704f0bc/9e83163997d1397b495d1bfe/02d7784437f621c76397f0d6", version : "9d6f0887be37c851829c40c3");
+export import(path : "2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/02d7784437f621c76397f0d6", version : "186e92dbecd6f2c72288eef8");
 
 /**
  * Math and geometry utilities for driven_edge_offset and unwrap.
@@ -2403,7 +2403,7 @@ export function frameRates(stations is array, run is map, index is number) retur
  *
  * @returns {array} : one boolean per boundary, `size(runs) - 1` of them.
  */
-export function tangentRunMerges(pointsPerProfile is array, runs is array, stations is array,
+export function tangentRunMerges(pointsPerProfile is array, offsetsPerProfile is array, runs is array, stations is array,
     tolerance is ValueWithUnits) returns array
 {
     var runsPerProfile = [];
@@ -2412,7 +2412,7 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array, stati
         runsPerProfile = append(runsPerProfile, runs);
     }
 
-    return alignedRunMerges(pointsPerProfile, runsPerProfile, stations, tolerance);
+    return alignedRunMerges(pointsPerProfile, offsetsPerProfile, runsPerProfile, stations, tolerance);
 }
 
 /**
@@ -2425,11 +2425,13 @@ export function tangentRunMerges(pointsPerProfile is array, runs is array, stati
  * one profile stays a boundary in all of them -- otherwise the merged cell would be covered
  * by part of a run in that profile, and the alignment would be lost.
  *
+ * @param offsetsPerProfile {array} : per profile, the sided offsets per station (plan.sided),
+ *      for the exactness test below.
  * @param runsPerProfile {array} : per profile, an array over the shared cells of run or
  *      undefined; all the same length.
  * @returns {array} : one boolean per cell boundary.
  */
-export function alignedRunMerges(pointsPerProfile is array, runsPerProfile is array,
+export function alignedRunMerges(pointsPerProfile is array, offsetsPerProfile is array, runsPerProfile is array,
     stations is array, tolerance is ValueWithUnits) returns array
 {
     const cells = (size(runsPerProfile) == 0) ? 0 : size(runsPerProfile[0]);
@@ -2546,6 +2548,20 @@ export function alignedRunMerges(pointsPerProfile is array, runsPerProfile is ar
                 break;
             }
 
+            // And EXACTLY one, not one to within tolerance (2026-09-25 arc / line tangency
+            // review): the merged piece is emitted as a true line or arc, whose ends must run
+            // along the offset's own tangents. An arc is exact where the offset is constant over
+            // the whole span (a concentric arc), a line where it is linear. A near-arc merged on
+            // position alone came out with kinked ends.
+            const exact = (shape.kind == "arc")
+                ? offsetIsConstant(offsetsPerProfile[k], anchorStart[k], next.end)
+                : offsetIsLinear(offsetsPerProfile[k], anchorStart[k], next.end);
+            if (!exact)
+            {
+                ok = false;
+                break;
+            }
+
             grown = append(grown, span);
         }
 
@@ -2572,6 +2588,62 @@ export function alignedRunMerges(pointsPerProfile is array, runsPerProfile is ar
     }
 
     return merges;
+}
+
+/**
+ * Whether the offset is the same everywhere over stations from..to: equal amounts and zero
+ * slopes. On a circular source that makes the offset a concentric (or height-shifted) arc
+ * exactly, which is what lets shapeRuns keep it as an arc without comparing its ends against
+ * run tangents -- those come from differenced frames and are not exact on a tight arc.
+ */
+export function offsetIsConstant(offsets is array, from is number, to is number) returns boolean
+{
+    const first = offsets[from];
+    if (first == undefined)
+    {
+        return false;
+    }
+
+    for (var i = from; i <= to; i += 1)
+    {
+        const amounts = offsets[i];
+        if (amounts == undefined
+            || abs(amounts.width - first.width) > OFFSET_GEOM_TOL
+            || abs(amounts.height - first.height) > OFFSET_GEOM_TOL
+            || abs(amounts.widthSlope) > 1e-9
+            || abs(amounts.heightSlope) > 1e-9)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Whether the offset changes at one rate over stations from..to (equal slopes throughout). On a
+ * straight source with a fixed frame that keeps the offset exactly straight.
+ */
+export function offsetIsLinear(offsets is array, from is number, to is number) returns boolean
+{
+    const first = offsets[from];
+    if (first == undefined)
+    {
+        return false;
+    }
+
+    for (var i = from; i <= to; i += 1)
+    {
+        const amounts = offsets[i];
+        if (amounts == undefined
+            || abs(amounts.widthSlope - first.widthSlope) > 1e-9
+            || abs(amounts.heightSlope - first.heightSlope) > 1e-9)
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /**
@@ -2859,6 +2931,19 @@ export predicate offsetBreakPredicate(definition is map)
 {
     annotation { "Name" : "Break output at", "Default" : RunBreakMode.SOURCE_EDGES, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the output is split into separate edges. Every source edge: one output edge per source edge, joint for joint. Corners and offset breaks: only where the source turns through a real corner or the offset profile steps or kinks; tangent-continuous source edges run together into one output edge." }
     definition.runBreakMode is RunBreakMode;
+}
+
+/**
+ * What an arc source becomes where the offset VARIES along it (2026-09-25 arc / line tangency
+ * review). A constant offset of an arc is a concentric arc and is emitted exactly either way.
+ *
+ * The annotation default is Spline: a saved feature is migrated to the annotation default
+ * (correction 25), and Spline keeps one edge per run where Biarc fit adds edges.
+ */
+export predicate offsetArcFitPredicate(definition is map)
+{
+    annotation { "Name" : "Varying offset on arcs", "Default" : ArcSourceFit.SPLINE, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Where the offset edges are arcs and the offset changes along them, the result is not an arc. Spline: one spline per run, tangent to its neighbours. Biarc fit: tangent circular arcs, two or more per run, matching both end directions and within the approximation tolerance (a spline where that would take more than 8). A constant offset on an arc is an exact arc either way." }
+    definition.arcSourceFit is ArcSourceFit;
 }
 
 /**
