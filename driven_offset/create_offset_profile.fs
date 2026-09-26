@@ -1,8 +1,8 @@
-FeatureScript 3070;
-import(path : "onshape/std/common.fs", version : "3070.0");
-export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3070.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3083.0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
-import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: create_offset_profile_icon.svg (feature icon)
 IconNamespace::import(path : "5abec4cb3826cb3a41e6e340", version : "dff061882348551c0d057bb6");
 

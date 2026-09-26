@@ -1622,3 +1622,20 @@ Instances keep their feature ids, so `<fid>result`-style downstream references a
 The exported feature names and parameter ids must match the old ones.
 Used for Composite intersection (Mindbender Cores) and Subtract Composite (20BSS Tooling_Prep): fingerprints
 identical. Backups of the old tabs: composite_part_tools/legacy_backups/ (*.fs.txt so the sync does not push them), and reviews/2026-09-25_tools_review/composite_intersection_remote_snapshot.fs.
+
+---
+
+## Correction 49: `repin.py push` silently reverted an intentional cross-document pin bump (2026-09-26, FIXED)
+
+**Symptom**: edge_offset_utils was edited to import curve_core from Curve_tools V9; `repin.py push` printed
+"cross-document pins taken from Onshape ... MATCH", and the tab went up pinned to V7 (the pin live in Onshape) --
+without ArcSourceFit / shapeRuns, so every caller would have failed to compile.
+**Cause**: `adopt_remote_pins` (added so a stale local file cannot undo a pin the user moved while versioning)
+replaces EVERY cross-document pin in the local file with the live one, matched by element id -- including the
+one you meant to change.
+**Fix**: push the tab whose cross-document pin you are bumping with a direct write (OnshapeClient
+update_featurestudio_contents, then GET and compare), and grep the local file afterwards; use `repin.py push`
+only for tabs whose cross-document pins you did not change.
+**Fixed the same day** (tools-review session): `adopt_remote_pins` now keeps, per import, whichever of the local and
+the live pin is the NEWER library version (by the version's createdAt), so a deliberate bump survives and a stale
+local file still cannot push an old version back. Renumbered from a second "48" (two sessions wrote one).

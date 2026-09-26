@@ -4,7 +4,7 @@ Tabs in a document pin each other by ELEMENT microversion: import(path : "<eleme
 Pin chains: push the callee, re-pin its callers to the callee's new microversion, push the callers, and so on.
 `pushproject` is unreliable on chains (correction 45: a duplicated block after Onshape re-pinned a tab remotely,
 and 30 s client timeouts on writes that still land), so `push` here writes the tab directly and re-reads it.
-Cross-document pins are taken from the live tab before writing (the user moves them while versioning).
+Cross-document pins: the newer of the local and the live tab's pin wins (the user moves them while versioning).
 Onshape itself re-pins a written tab's same-document imports to the callees' current microversions; `push`
 treats pin-only differences as a match and copies Onshape's pins back into the local file.
 
@@ -44,16 +44,36 @@ def unpinned(text):
     return PIN.sub(r"\1\2", lf(text))
 
 
-XPIN = re.compile(r'import\(path : "[0-9a-f]{24}/[0-9a-f]{24}/([0-9a-f]{24})", version : "[0-9a-f]{24}"\)')
+XPIN = re.compile(r'import\(path : "([0-9a-f]{24})/([0-9a-f]{24})/([0-9a-f]{24})", version : "[0-9a-f]{24}"\)')
+_VERSION_TIMES = {}
 
 
-def adopt_remote_pins(local, remote):
-    """Cross-document imports in `local` take the version Onshape has now (matched by element id).
+def _created(client, did, vid):
+    """createdAt of version vid of document did (ISO string), or None when unknown."""
+    if did not in _VERSION_TIMES:
+        _VERSION_TIMES[did] = {v["id"]: v["createdAt"] for v in client.get("/api/v10/documents/d/%s/versions" % did)}
+    return _VERSION_TIMES[did].get(vid)
 
-    The user moves cross-document pins while versioning; a local file written before that would
-    otherwise push the old version back (2026-09-26)."""
-    live = {m.group(1): m.group(0) for m in XPIN.finditer(remote)}
-    return XPIN.sub(lambda m: live.get(m.group(1), m.group(0)), local)
+
+def adopt_remote_pins(client, local, remote):
+    """Each cross-document import in `local` keeps whichever of its own pin and the live tab's pin is the NEWER
+    library version (matched by element id).
+
+    The user moves cross-document pins while versioning, so a stale local file must not push an old version back
+    (2026-09-26); a deliberate local bump to a newer version must survive (correction 49: the first version of
+    this took the live pin unconditionally and reverted a V7 -> V9 bump)."""
+    live = {m.group(3): m for m in XPIN.finditer(remote)}
+
+    def pick(m):
+        r = live.get(m.group(3))
+        if r is None or r.group(0) == m.group(0) or r.group(1) != m.group(1):
+            return m.group(0)
+        mine, theirs = _created(client, m.group(1), m.group(2)), _created(client, r.group(1), r.group(2))
+        if mine is None or theirs is None:
+            print("   WARNING: version of %s unknown; kept the local pin" % m.group(3))
+            return m.group(0)
+        return r.group(0) if theirs > mine else m.group(0)
+    return XPIN.sub(pick, local)
 
 
 def main():
@@ -86,7 +106,7 @@ def main():
             path, eid = tabs[name]
             local = open(path, "rb").read().decode("utf-8")
             before = client.get("/api/v10/featurestudios/d/%s/w/%s/e/%s" % (did, wid, eid))["contents"]
-            adopted = adopt_remote_pins(local, before)
+            adopted = adopt_remote_pins(client, local, before)
             if adopted != local:
                 local = adopted
                 open(path, "wb").write(local.encode("utf-8"))
