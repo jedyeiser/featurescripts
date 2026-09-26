@@ -288,9 +288,16 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
             definition.keepSketches is boolean;
         }
 
-        annotation { "Name" : "Name separator", "Default" : "_", "MaxLength" : 8,
-                    "Description" : "Between a part's base name and its case name (Rib_A -> Rib_B)." }
-        definition.separator is string;
+        annotation { "Name" : "Name parts with the case name", "Default" : true,
+                    "Description" : "On: each case's new parts are named after case 1's with the case name as suffix (Rib_A -> Rib_B). Off: names are left to the repeated features (e.g. a rename feature using #caseName)." }
+        definition.nameParts is boolean;
+
+        if (definition.nameParts)
+        {
+            annotation { "Name" : "Name separator", "Default" : "_", "MaxLength" : 8,
+                        "Description" : "Between a part's base name and its case name (Rib_A -> Rib_B)." }
+            definition.separator is string;
+        }
 
         // Case 1 body names, cached by the editing logic (getProperty throws during regen,
         // correction 36). One line per body: "<feature index>\t<body index>\t<name>".
@@ -354,6 +361,7 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         signature.defineKey = toString(define.featureId);
         signature.outputs = outputs;
         signature.templateNames = definition.templateNames;
+        signature.nameParts = definition.nameParts;
         signature.separator = definition.separator;
         signature.keep = {
                 "keepParts" : definition.keepParts,
@@ -373,6 +381,7 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         "keepMateConnectors" : true,
         "keepPlanes" : true,
         "keepSketches" : false,
+        "nameParts" : true,
         "separator" : "_",
         "templateNames" : ""
     });
@@ -1081,7 +1090,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             {
                 opDeleteBodies(context, id + ("drop_" ~ caseName), { "entities" : dropped });
             }
-            for (var origin in result.origins)
+            for (var origin in (signature.nameParts == false ? [] : result.origins))
             {
                 if (isQueryEmpty(context, origin.body) || isQueryEmpty(context, qSketchFilter(origin.body, SketchObject.NO)))
                 {
