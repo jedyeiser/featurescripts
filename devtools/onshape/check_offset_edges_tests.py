@@ -40,16 +40,18 @@ CASES = [
     dict(tag="OE2", src="OE2 source", mode=("arc", 1000, 100, 100, -math.pi / 2), prof="10", wires=1, edges=1,
          types=["CIRCLE"], radius=(90, 110), extent=(0, Q100), dev=0.001),
     dict(tag="OE3", src="OE3 source", mode=("arc", 2000, 100, 100, -math.pi / 2), prof="10", wires=1, edges=1,
-         types=["BSPLINE"], extent=(0, Q100), dev=0.01),
+         types=["SPLINE"], extent=(0, Q100), dev=0.01),
     dict(tag="OE4", src="OE4 source", mode=("arc", 3150, 20000, 20000, -math.pi / 2 - 0.0075), prof="10", wires=1, edges=3,
          extent=(0, 300), dev=0.01, joints=0.01),
     dict(tag="OE5", src="OE5 source", mode=("arc", 4000, 100, 100, -math.pi / 2), prof="10 * s / srcLen", wires=1, edges=2,
-         types=["CIRCLE", "CIRCLE"], extent=(0, Q100), dev=0.05, joints=0.01),
+         # Two arcs approximating a VARYING offset: the feature reports the deviation (INFO); 0.079 measured.
+         types=["CIRCLE", "CIRCLE"], extent=(0, Q100), dev=0.1, joints=0.01),
     dict(tag="OE6", src="OE6 source", mode=("x", 5000), prof="s < 200 ? 0 : 20", skip=[(140, 260)], wires=1, edges=3,
          extent=(0, 400), dev=0.01, joints=0.01),
     dict(tag="OE7", src="OE7 source", mode=("arc", 6000, 300, 300, -math.pi / 2), prof="s < 225 ? 0 : 20", skip=[(140, 310)],
          wires=1, edges=3, extent=(0, 300 * math.pi / 2), dev=0.01, joints=0.01, kjump=0.01),
-    dict(tag="OE8", src="OE8 source", mode=("x", 7000), prof="s <= 20 ? 0 : 20 * (s - 20) / 180", wires=1, edges=1, extent=(0, 200), dev=0.01),
+    # The dwell's kink is a split since 2026-09-25: the flat piece and the ramp are separate, exact edges.
+    dict(tag="OE8", src="OE8 source", mode=("x", 7000), prof="s <= 20 ? 0 : 20 * (s - 20) / 180", wires=1, edges=2, extent=(0, 200), dev=0.01),
     dict(tag="OE9a", src="OE9a source", mode=("x", 8000), prof="20 * (s / 200) * (s / 200)", wires=1, edges=1, extent=(0, 200), dev=0.01),
     dict(tag="OE9b", src="OE9b source", mode=("x", 9000), prof="20 * smooth(s / 200)", wires=1, edges=1, extent=(0, 200), dev=0.01),
     dict(tag="OE10", src="OE10 source", mode=("x", 10000), prof="pwSmooth(s, [0, 50, 150, 250, 300], [0, 0, 20, 5, 5])",
@@ -67,6 +69,11 @@ CASES = [
          wires=1, edges=1, extent=(0, 300), dev=0.01),
     dict(tag="OE21", src="OE21 source", mode=("arc", 21000, 100, 100, -math.pi / 2), prof="10", wires=1, edges=1,
          extent=(100 * math.pi / 6, 100 * math.pi / 3), dev=0.01),
+    # G0 corners (2026-09-25): exact legs, no bulge; in-plane offsets get a filler arc (outside) or a trim (inside).
+    dict(tag="OE16", src="OE16 source corner", mode=("x", 22000), prof=None, wires=1, edges=2, lengths=[100, 100]),
+    dict(tag="OE23", src="OE23 source corner", mode=("x", 23000), prof=None, wires=1, edges=2, lengths=[90, 90]),
+    dict(tag="OE24", src="OE24 source corner", mode=("x", 24000), prof=None, wires=1, edges=3, lengths=[15.7080, 100, 100],
+         typeset=["CIRCLE", "SPLINE", "SPLINE"]),
 ]
 
 # Expected statuses (today's code; see the notes). Every other case and every fixture must be OK.
@@ -339,6 +346,12 @@ def judge(cs, m):
         bad.append("wires %s, expected %d" % (m["wires"], cs["wires"]))
     if "edges" in cs and int(m["edges"]) != cs["edges"]:
         bad.append("edges %s, expected %d" % (m["edges"], cs["edges"]))
+    if "lengths" in cs:
+        got = sorted(number(v) for v in m.get("lengths", "").split(",") if v)
+        if len(got) != len(cs["lengths"]) or any(g is None or abs(g - x) > 0.01 for g, x in zip(got, sorted(cs["lengths"]))):
+            bad.append("edge lengths %s, expected %s" % (m.get("lengths"), cs["lengths"]))
+    if "typeset" in cs and sorted(v for v in m.get("types", "").split(",") if v) != sorted(cs["typeset"]):
+        bad.append("types %s, expected %s (any order)" % (m.get("types"), ",".join(cs["typeset"])))
     if "types" in cs and m["types"] != ",".join(cs["types"]):
         bad.append("types %s, expected %s" % (m["types"], ",".join(cs["types"])))
     if "radius" in cs:

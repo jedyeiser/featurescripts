@@ -30,6 +30,7 @@ States: planned -> draft -> reviewed -> approved -> published (uploaded to Onsha
 | d_split_plus | Split+ | **draft** | - | `docs/decks/split_plus/split_plus.pptx` | 2026-09-25 written by Claude |
 | d_offset_plus | Offset+ | **planned** | - | `docs/decks/offset_plus/offset_plus.pptx` |   |
 | d_thicken_plus | Thicken+ | **planned** | - | `docs/decks/thicken_plus/thicken_plus.pptx` |   |
+| d_orient_to_reference | Orient to reference | **draft** | - | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
 | d_clean_wire | Clean wire | **planned** | - | `docs/decks/clean_wire/clean_wire.pptx` |   |
 | d_map_curve | Map curve | **planned** | - | `docs/decks/map_curve/map_curve.pptx` |   |
 | d_merge_curve | Merge curve | **planned** | - | `docs/decks/merge_curve/merge_curve.pptx` |   |

@@ -596,7 +596,10 @@ export const offsetEdges = defineFeature(function(context is Context, id is Id, 
 // when three or more consecutive flat arcs (sagitta < 0.1% of length, e.g. R 20 m over
 // 100 mm) were treated as lines and the middle one fell back to a world-axis normal. The
 // current core carries one normal along the whole path and has no such check.)
-function frameAtArc(context is Context, frenetPath is map, arcLength) returns map
+// pinEdge: evaluate on that source edge (arcLength clamped to its extent) instead of the edge
+// the arc length falls on. A piece of output that ends at a G0 corner must read ITS OWN edge
+// there; the lookup alone returns the next edge at the joint (2026-09-25).
+function frameAtArc(context is Context, frenetPath is map, arcLength, pinEdge) returns map
 {
     var edgeData = frenetPath.edgeData;
     var s = arcLength;
@@ -610,29 +613,34 @@ function frameAtArc(context is Context, frenetPath is map, arcLength) returns ma
     }
 
     var lo = 0;
-    var hi = size(edgeData) - 1;
-    while (lo < hi)
+    if (pinEdge != undefined)
     {
-        var mid = ceil((lo + hi) / 2);
-        if (edgeData[mid].startArcLength <= s)
+        lo = pinEdge;
+        s = min(max(s, edgeData[lo].startArcLength), edgeData[lo].startArcLength + edgeData[lo].length);
+    }
+    else
+    {
+        var hi = size(edgeData) - 1;
+        while (lo < hi)
         {
-            lo = mid;
-        }
-        else
-        {
-            hi = mid - 1;
+            var mid = ceil((lo + hi) / 2);
+            if (edgeData[mid].startArcLength <= s)
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
         }
     }
     var ed = edgeData[lo];
-    if (ed.exactFrames != true)
-    {
-        return getFrameAtArcLength(context, frenetPath, s);
-    }
 
-    // Curved source edge: the real curve, not the core's sampled table. The core treats an
-    // edge within 0.1% of straight as its chord (a R 20 m arc over 100 mm qualifies), so the
-    // offset of such an arc came out straight -- up to the arc's sagitta off, and collinear, so
-    // no arc could be built through it.
+    // Every source edge is evaluated exactly (lines too since 2026-09-25: the core's sampled
+    // table blended the two legs' tangents near a G0 corner). The core also treats an edge within
+    // 0.1% of straight as its chord (a R 20 m arc over 100 mm qualifies), so the offset of such an
+    // arc came out straight -- up to the arc's sagitta off, and collinear, so no arc could be
+    // built through it.
     var frac = (ed.length / meter > 1e-12) ? (s - ed.startArcLength) / ed.length : 0;
     frac = min(max(frac, 0), 1);
     var tl = evEdgeTangentLine(context, {
@@ -734,83 +742,83 @@ function ptSeedNormal(context is Context, frenetPath is map, startFrame is Coord
 }
 
 
-// Builds a parallel transport (Bishop) frame table along the path.
-//
-// Starting from the Frenet frame at s=0, each step rotates the previous xAxis by
-// the same rotation that carries prevTangent -> currTangent (Rodrigues formula).
-// This eliminates the torsion-driven spinning of the Frenet normal while preserving
-// tangent continuity -- the frame never flips direction on smooth G1 BSpline chains.
-//
-// Returns an array of { arcLength, xAxis } entries at numSamples uniform positions.
-// yAxis = cross(tangent, xAxis) is not stored; it is computed on demand.
+// Rotates x by the rotation taking unit tangent a to unit tangent b (Rodrigues), then
+// re-orthogonalizes it against b.
+function transportStep(x is Vector, a is Vector, b is Vector) returns Vector
+{
+    var k    = cross(a, b);
+    var kLen = norm(k);
+    var y    = x;
+    if (kLen >= 1e-10)
+    {
+        var kHat     = k / kLen;
+        var cosTheta = dot(a, b);
+        y = x * cosTheta + cross(kHat, x) * kLen + kHat * (dot(kHat, x) * (1 - cosTheta));
+    }
+    y = y - b * dot(b, y);
+    var yLen = norm(y);
+    return (yLen > 1e-10) ? y / yLen : x;
+}
+
+
+// Parallel transport (Bishop) frame table, ONE ARRAY PER SOURCE EDGE: ptTable[e] = [{ arcLength,
+// xAxis }] from the edge's start to its end (both included). Within an edge each row is rotated
+// from the previous one by the rotation carrying its tangent to the next; between edges the
+// last row of edge e is rotated onto edge e+1's START tangent -- the corner's own rotation at
+// a G0 joint -- so rows never mix the two legs of a corner and lookups never interpolate
+// across one (2026-09-25; the single table's lerp bent both legs by ~0.6 mm near a corner).
+// numSamples is shared out by length, at least 2 rows per edge.
 function buildParallelTransportTable(context is Context, frenetPath is map, numSamples is number) returns array
 {
+    var edgeData    = frenetPath.edgeData;
     var totalLength = frenetPath.totalLength;
-    var fr0         = frameAtArc(context, frenetPath, 0 * meter);
+    var fr0         = frameAtArc(context, frenetPath, 0 * meter, 0);
     var prevXAxis   = ptSeedNormal(context, frenetPath, fr0.frame);
     var prevTangent = fr0.frame.zAxis;
 
-    var table = [{ "arcLength" : 0 * meter, "xAxis" : prevXAxis }];
-
-    for (var i = 1; i < numSamples; i += 1)
+    var table = [];
+    for (var e = 0; e < size(edgeData); e += 1)
     {
-        var s           = totalLength * i / (numSamples - 1);
-        var fr          = frameAtArc(context, frenetPath, s);
-        var currTangent = fr.frame.zAxis;
-
-        // Rodrigues rotation: rotate prevXAxis by the rotation taking prevTangent -> currTangent
-        var k    = cross(prevTangent, currTangent);
-        var kLen = norm(k);
-        var newXAxis = prevXAxis;
-
-        if (kLen >= 1e-10)
+        var ed   = edgeData[e];
+        var rows = [];
+        var n    = max([2, ceil(numSamples * ed.length / totalLength) + 1]);
+        for (var i = 0; i < n; i += 1)
         {
-            var kHat     = k / kLen;
-            var sinTheta = kLen;                              // |cross(a,b)| = sin(angle) for unit vecs
-            var cosTheta = dot(prevTangent, currTangent);
-            newXAxis = prevXAxis * cosTheta
-                + cross(kHat, prevXAxis) * sinTheta
-                + kHat * (dot(kHat, prevXAxis) * (1 - cosTheta));
+            var s  = ed.startArcLength + ed.length * i / (n - 1);
+            var tg = frameAtArc(context, frenetPath, s, e).frame.zAxis;
+            prevXAxis   = transportStep(prevXAxis, prevTangent, tg);
+            prevTangent = tg;
+            rows = append(rows, { "arcLength" : s, "xAxis" : prevXAxis });
         }
-
-        // Re-orthogonalize against tangent to prevent numerical drift
-        newXAxis = newXAxis - currTangent * dot(currTangent, newXAxis);
-        var xLen = norm(newXAxis);
-        if (xLen > 1e-10)
-        {
-            newXAxis = newXAxis / xLen;
-        }
-
-        table       = append(table, { "arcLength" : s, "xAxis" : newXAxis });
-        prevXAxis   = newXAxis;
-        prevTangent = currTangent;
+        table = append(table, rows);
     }
-
     return table;
 }
 
 
-// Looks up the parallel transport xAxis at the given arc length via binary search + lerp,
-// then returns a frame map in the same format as getFrameAtArcLength but with the PT
-// xAxis substituted.  Origin and tangent (zAxis) are exact from getFrameAtArcLength.
+// The transported xAxis at arcLength on its source edge (pinEdge when given): bracketing rows of
+// that edge's table, lerp + renormalize, re-orthogonalized against the exact tangent. Returns a
+// frame map like frameAtArc with the transported xAxis.
 function sampleParallelTransportFrame(context is Context, frenetPath is map, ptTable is array,
     arcLength) returns map
 {
-    var n  = size(ptTable);
-    var fr = frameAtArc(context, frenetPath, arcLength);
+    return sampleParallelTransportFrame(context, frenetPath, ptTable, arcLength, undefined);
+}
 
-    if (n == 0)
-    {
-        return fr;
-    }
+function sampleParallelTransportFrame(context is Context, frenetPath is map, ptTable is array,
+    arcLength, pinEdge) returns map
+{
+    var fr   = frameAtArc(context, frenetPath, arcLength, pinEdge);
+    var rows = ptTable[fr.edgeIndex];
+    var n    = size(rows);
+    var s    = min(max(arcLength, rows[0].arcLength), rows[n - 1].arcLength);
 
-    // Binary search for the bracketing interval
     var lo = 0;
     var hi = n - 1;
     while (hi - lo > 1)
     {
         var mid = floor((lo + hi) / 2);
-        if (ptTable[mid].arcLength <= arcLength)
+        if (rows[mid].arcLength <= s)
         {
             lo = mid;
         }
@@ -820,30 +828,16 @@ function sampleParallelTransportFrame(context is Context, frenetPath is map, ptT
         }
     }
 
-    // Lerp + renormalize between lo and hi
-    var span    = ptTable[hi].arcLength - ptTable[lo].arcLength;
-    var alpha   = (span / meter > 1e-12) ? (arcLength - ptTable[lo].arcLength) / span : 0.0;
-    var x0      = ptTable[lo].xAxis;
-    var x1      = ptTable[hi].xAxis;
-    var xLerp   = x0 * (1 - alpha) + x1 * alpha;
+    var span    = rows[hi].arcLength - rows[lo].arcLength;
+    var alpha   = (span / meter > 1e-12) ? (s - rows[lo].arcLength) / span : 0.0;
+    var xLerp   = rows[lo].xAxis * (1 - alpha) + rows[hi].xAxis * alpha;
     var xLen    = norm(xLerp);
-    var ptXAxis = (xLen > 1e-10) ? xLerp / xLen : x0;
+    var ptXAxis = (xLen > 1e-10) ? xLerp / xLen : rows[lo].xAxis;
 
-    // Re-orthogonalize against the exact tangent at this arc length.
-    // The interpolated xAxis may have drifted slightly off the perpendicular plane.
     var tangent = fr.frame.zAxis;
     ptXAxis = ptXAxis - tangent * dot(tangent, ptXAxis);
     var xLen2 = norm(ptXAxis);
-    if (xLen2 > 1e-10)
-    {
-        ptXAxis = ptXAxis / xLen2;
-    }
-    else
-    {
-        // Degenerate: interpolated PT direction is nearly parallel to the tangent.
-        // Fall back to the raw Frenet xAxis, which is guaranteed perpendicular.
-        ptXAxis = fr.frame.xAxis;
-    }
+    ptXAxis = (xLen2 > 1e-10) ? ptXAxis / xLen2 : fr.frame.xAxis;
 
     return mergeMaps(fr, { "frame" : coordSystem(fr.frame.origin, ptXAxis, fr.frame.zAxis) });
 }
@@ -856,8 +850,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
     var edgeData    = frenetPath.edgeData;
     for (var i = 0; i < size(edgeData); i += 1)
     {
-        var curveType = evCurveDefinition(context, { "edge" : edgeData[i].query }).curveType;
-        edgeData[i]   = mergeMaps(edgeData[i], { "exactFrames" : curveType != CurveType.LINE });
+        edgeData[i]   = mergeMaps(edgeData[i], { "exactFrames" : true });   // (never overwrite the core's own isLine: its projection relies on it)
     }
     frenetPath      = mergeMaps(frenetPath, { "edgeData" : edgeData });
     var totalLength = frenetPath.totalLength;
@@ -1511,7 +1504,7 @@ function computeOffsetDerivativesAt(region is map, tPath is number) returns map
 function computeOffsetPoint(context is Context, pathInfo is map, definition is map,
     t is number, normalOff is ValueWithUnits, binormalOff is ValueWithUnits) returns Vector
 {
-    var fr   = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length);
+    var fr   = sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length, pathInfo.pinEdge);
     // Empirically: yAxis(frame) = visual normal direction, xAxis = visual binormal direction
     var nDir = definition.flipNormal   ? -yAxis(fr.frame) : yAxis(fr.frame);
     var bDir = definition.flipBinormal ? -fr.frame.xAxis  : fr.frame.xAxis;
@@ -1532,7 +1525,9 @@ function computeOffsetPoint(context is Context, pathInfo is map, definition is m
 function generateSegmentPoints(context is Context, pathInfo is map, definition is map,
     region is map, tSegStart is number, tSegEnd is number) returns map
 {
-    var nTotal = definition.numRegionPoints;
+    // At least one sample every SAMPLE_STEP of path: a fixed count left fits up to ~0.02 mm off the
+    // true offset between samples on long regions (tests OE10 / OE20, 2026-09-25).
+    var nTotal = samplesFor(definition, (tSegEnd - tSegStart) * pathInfo.length);
     var minPer = max([2, definition.approxDegree + 1]);
 
     // Interior breakpoints strictly inside this sub-curve (getBreakpointsT is sorted ascending).
@@ -1854,9 +1849,42 @@ function zoneTangent(context is Context, pathInfo is map, definition is map, zon
     var dLen = norm(dir);
     if (dLen / meter < 1e-12)
     {
-        return sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length).frame.zAxis;
+        return sampleParallelTransportFrame(context, pathInfo.frenetPath, pathInfo.ptTable, t * pathInfo.length, pathInfo.pinEdge).frame.zAxis;
     }
     return dir / dLen;
+}
+
+
+// Curvature vector (toward the centre, magnitude 1/R) of a zone's offset curve at t, from second
+// differences taken inward from the zone's ends (central inside): (P'' - (P''.T) T) / |P'|^2.
+function zoneCurvatureVector(context is Context, pathInfo is map, definition is map, zone is map, t is number) returns Vector
+{
+    var h = 1e-4;
+    var a;
+    if (t - h >= zone.tLo && t + h <= zone.tHi)
+    {
+        a = t - h;
+    }
+    else if (t + 2 * h <= zone.tHi)
+    {
+        a = t;
+    }
+    else
+    {
+        a = t - 2 * h;
+    }
+    var p0 = zonePoint(context, pathInfo, definition, zone, a);
+    var p1 = zonePoint(context, pathInfo, definition, zone, a + h);
+    var p2 = zonePoint(context, pathInfo, definition, zone, a + 2 * h);
+    var d1 = (p2 - p0) / (2 * h);
+    var d2 = (p2 - 2 * p1 + p0) / (h * h);
+    var speed2 = dot(d1, d1);
+    if (speed2 < 1e-24 * meter * meter)
+    {
+        return vector(0, 0, 0) / meter;
+    }
+    var tangent = d1 / sqrt(speed2);
+    return (d2 - dot(d2, tangent) * tangent) / speed2;
 }
 
 
@@ -2221,11 +2249,28 @@ function emitSplinePiece(context is Context, wireId is Id, pathInfo is map, defi
     {
         chord += norm(pts[k + 1] - pts[k]);
     }
+    // End tangents / curvature are differenced INSIDE this piece: a piece ends where the profile
+    // kinks (dwell edge, linear station), and a difference across the kink is meaningless there.
+    var pieceZone = mergeMaps(zone, { "tLo" : max(zone.tLo, tA), "tHi" : min(zone.tHi, tB) });
+    zone = pieceZone;
+    // Ends pinned to the true offset's tangent AND curvature (second derivative ~ K * chord^2 for a
+    // parameter running 0..1 over the chord), so pieces meeting at a G2 blend or a smooth source
+    // joint agree in curvature too (they only matched tangents before: a 5-12% curvature jump at G2
+    // blend joints, test OE7, 2026-09-25).
     var target = {
         "positions"       : pts,
         "startDerivative" : zoneTangent(context, pathInfo, definition, zone, tA) * chord,
         "endDerivative"   : zoneTangent(context, pathInfo, definition, zone, tB) * chord
     };
+    // A straight piece has no curvature to match, and pinning zero second derivatives on collinear
+    // points makes approximateSpline fail ("Failed to compute spline", test OE1): tangents only there.
+    var kA = zoneCurvatureVector(context, pathInfo, definition, zone, tA);
+    var kB = zoneCurvatureVector(context, pathInfo, definition, zone, tB);
+    if (norm(kA) * chord > 1e-6 || norm(kB) * chord > 1e-6)
+    {
+        target.start2ndDerivative = kA * chord * chord;
+        target.end2ndDerivative   = kB * chord * chord;
+    }
     var bspline = approximateSpline(context, {
         "degree"             : definition.approxDegree,
         "tolerance"          : definition.approxTolerance,
@@ -2244,29 +2289,249 @@ function emitSplinePiece(context is Context, wireId is Id, pathInfo is map, defi
 }
 
 
-// Split points of [tStart, tEnd]: its ends plus every source-edge boundary strictly inside.
-function splitAtEdgeBoundaries(edgeBoundaryTs is array, tStart is number, tEnd is number) returns array
+// Fit samples for a stretch of path: the user's count, raised to one every SAMPLE_STEP, capped.
+const SAMPLE_STEP    = 2 * millimeter;
+const SAMPLE_MAX     = 400;
+// A joint whose tangent turns more than this is a G0 corner (the output splits and is treated there).
+const CORNER_ANGLE   = 0.05 * degree;
+
+function samplesFor(definition is map, length is ValueWithUnits) returns number
 {
-    var splitTs = [tStart];
-    for (var tb in edgeBoundaryTs)
+    return min([SAMPLE_MAX, max([definition.numRegionPoints, ceil(length / SAMPLE_STEP) + 1])]);
+}
+
+
+// Index of the source edge covering path parameter t (the later edge at a joint).
+function edgeIndexAt(pathInfo is map, t is number) returns number
+{
+    var edgeData = pathInfo.frenetPath.edgeData;
+    var arc = t * pathInfo.length;
+    var e = 0;
+    for (var i = 1; i < size(edgeData); i += 1)
+    {
+        if (edgeData[i].startArcLength <= arc)
+        {
+            e = i;
+        }
+    }
+    return e;
+}
+
+
+// The G0 corners of the path: joints where the tangent turns by more than CORNER_ANGLE.
+// Each: { edge (index of the edge after the joint), t, vertex, tIn, tOut, angle }.
+function pathCorners(context is Context, pathInfo is map) returns array
+{
+    var corners  = [];
+    var edgeData = pathInfo.frenetPath.edgeData;
+    for (var e = 1; e < size(edgeData); e += 1)
+    {
+        var s    = edgeData[e].startArcLength;
+        var fIn  = frameAtArc(context, pathInfo.frenetPath, s, e - 1).frame;
+        var fOut = frameAtArc(context, pathInfo.frenetPath, s, e).frame;
+        var ang  = angleBetween(fIn.zAxis, fOut.zAxis);
+        if (ang > CORNER_ANGLE)
+        {
+            corners = append(corners, { "edge" : e, "t" : s / pathInfo.length, "vertex" : fOut.origin,
+                        "tIn" : fIn.zAxis, "tOut" : fOut.zAxis, "angle" : ang });
+        }
+    }
+    return corners;
+}
+
+
+// Interior breakpoints of a region where its profile has a KINK (a slope jump in either
+// component): dwell-plateau edges and stations between linear segments. The output splits
+// there so each piece is smooth and the kink is exact (a single spline rounded a dwell corner
+// by up to 0.08 mm -- test OE8, 2026-09-25). Smooth stations are not kinks and do not split.
+function profileKinksT(region is map) returns array
+{
+    var kinks = [];
+    var span  = region.tEnd - region.tStart;
+    var h     = 1e-5 * span;
+    for (var bp in getBreakpointsT(region))
+    {
+        if (bp <= region.tStart + 2 * h || bp >= region.tEnd - 2 * h)
+        {
+            continue;
+        }
+        var fL = computeOffsetsAt(region, bp - h);
+        var f0 = computeOffsetsAt(region, bp);
+        var fR = computeOffsetsAt(region, bp + h);
+        var isKink = false;
+        for (var comp in ["normalOff", "binormalOff"])
+        {
+            var dL = (f0[comp] - fL[comp]) / h;
+            var dR = (fR[comp] - f0[comp]) / h;
+            if (abs(dR - dL) > max(1e-4 * meter, 1e-3 * (abs(dL) + abs(dR))))
+            {
+                isKink = true;
+            }
+        }
+        if (isKink)
+        {
+            kinks = append(kinks, bp);
+        }
+    }
+    return kinks;
+}
+
+
+// Sorted, de-duplicated split points of [tStart, tEnd]: its ends plus the given ts strictly inside.
+function splitPoints(tStart is number, tEnd is number, ts is array) returns array
+{
+    var inner = [];
+    for (var tb in ts)
     {
         if (tb > tStart + 1e-6 && tb < tEnd - 1e-6)
         {
-            splitTs = append(splitTs, tb);
+            inner = append(inner, tb);
         }
     }
-    return append(splitTs, tEnd);
+    inner = sort(inner, function(a, b) { return a - b; });
+    var out = [tStart];
+    for (var tb in inner)
+    {
+        if (tb - out[size(out) - 1] > 1e-9)
+        {
+            out = append(out, tb);
+        }
+    }
+    return append(out, tEnd);
+}
+
+
+// The path data for one piece: frames read on the piece's own source edge.
+function piecePath(pathInfo is map, piece is map) returns map
+{
+    return mergeMaps(pathInfo, { "pinEdge" : piece.pinEdge });
+}
+
+
+// Where the offset pieces on either side of an overlapping (inside) corner cross: (u, v) with
+// prev(u) == next(v), u in [uLo, tJ], v in [tJ, vHi]. Coarse grid, then Gauss-Newton on
+// |prev(u) - next(v)|^2. Returns { found, u, v, gap }.
+function cornerCrossing(context is Context, pathInfo is map, definition is map, prev is map, next is map,
+    tJ is number, uLo is number, vHi is number) returns map
+{
+    var pp = piecePath(pathInfo, prev);
+    var pn = piecePath(pathInfo, next);
+    var P = function(u) { return zonePoint(context, pp, definition, prev.zone, u); };
+    var N = function(v) { return zonePoint(context, pn, definition, next.zone, v); };
+
+    var best = { "d" : inf * meter, "u" : tJ, "v" : tJ };
+    var n = 24;
+    for (var a = 0; a <= n; a += 1)
+    {
+        var u  = tJ - (tJ - uLo) * a / n;
+        var pu = P(u);
+        for (var c = 0; c <= n; c += 1)
+        {
+            var v = tJ + (vHi - tJ) * c / n;
+            var d = norm(pu - N(v));
+            if (d < best.d)
+            {
+                best = { "d" : d, "u" : u, "v" : v };
+            }
+        }
+    }
+
+    var u = best.u;
+    var v = best.v;
+    var h = 1e-7;
+    for (var it = 0; it < 30; it += 1)
+    {
+        var F  = P(u) - N(v);
+        if (norm(F) < 1e-10 * meter)
+        {
+            break;
+        }
+        var Pu = (P(u + h) - P(u - h)) / (2 * h);
+        var Nv = (N(v + h) - N(v - h)) / (2 * h);
+        // Normal equations of [Pu, -Nv] [du, dv]^T = -F
+        var a11 = dot(Pu, Pu);
+        var a12 = -dot(Pu, Nv);
+        var a22 = dot(Nv, Nv);
+        var b1  = -dot(Pu, F);
+        var b2  = dot(Nv, F);
+        var det = a11 * a22 - a12 * a12;
+        if (abs(det) < 1e-30 * meter ^ 4)
+        {
+            break;
+        }
+        u = min(max(u + (b1 * a22 - a12 * b2) / det, uLo), tJ);
+        v = min(max(v + (a11 * b2 - a12 * b1) / det, tJ), vHi);
+    }
+    var gap = norm(P(u) - N(v));
+    return { "found" : gap < 1e-6 * meter, "u" : u, "v" : v, "gap" : gap };
+}
+
+
+// Emits one piece (region or blend) and returns { bodies, edges } (empty when nothing was built).
+function emitPiece(context is Context, id is Id, definition is map, pathInfo is map, piece is map, keepArcs is boolean,
+    stats is box) returns map
+{
+    var none = { "bodies" : [], "edges" : [] };
+    var pp   = piecePath(pathInfo, piece);
+    var tA   = piece.tA;
+    var tB   = piece.tB;
+    if (tB - tA < 1e-9)
+    {
+        return none;
+    }
+
+    if (keepArcs && sourceEdgeIsArc(context, pathInfo.frenetPath, (tA + tB) / 2, pathInfo.length))
+    {
+        var arcOut = emitSourceArc(context, piece.wireId, pp, definition, piece.zone, tA, tB);
+        if (arcOut.ok)
+        {
+            if (arcOut.isPair)
+            {
+                stats[].biarcCount += 1;
+                stats[].biarcWorst  = max(stats[].biarcWorst, arcOut.deviation);
+            }
+            if (definition.printCurveDetails)
+            {
+                println((arcOut.isPair ? "  ARC PAIR, deviation from true offset " ~ toString(arcOut.deviation / millimeter) ~ " mm" : "  ARC")
+                    ~ "  t [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
+            }
+            return { "bodies" : arcOut.bodies, "edges" : arcOut.edges };
+        }
+    }
+
+    if (piece.kind == "region")
+    {
+        var seg = generateSegmentPoints(context, pp, definition, piece.region, tA, tB);
+        if (size(seg.points) < 2)
+        {
+            return none;
+        }
+        // Ensure the CP cap can accommodate all interior pins (endpoints + stations +
+        // plateau edges); otherwise approximateSpline can fail rather than just warn.
+        var effMaxCP = max([definition.approxMaxCP, size(seg.interpolateIndices) + 2]);
+        var body = emitSplinePiece(context, piece.wireId, pp, definition, piece.zone, tA, tB,
+            seg.points, seg.interpolateIndices, effMaxCP);
+        return { "bodies" : [body], "edges" : [qCreatedBy(piece.wireId, EntityType.EDGE)] };
+    }
+
+    // Blend piece
+    var n   = max([definition.approxDegree + 1, samplesFor(definition, (tB - tA) * pathInfo.length)]);
+    var pts = [];
+    for (var i = 0; i < n; i += 1)
+    {
+        pts = append(pts, zonePoint(context, pp, definition, piece.zone, tA + (tB - tA) * i / (n - 1)));
+    }
+    var body = emitSplinePiece(context, piece.wireId, pp, definition, piece.zone, tA, tB,
+        pts, [0, size(pts) - 1], definition.approxMaxCP);
+    return { "bodies" : [body], "edges" : [qCreatedBy(piece.wireId, EntityType.EDGE)] };
 }
 
 
 function buildOutputWire(context is Context, id is Id, definition is map,
     pathInfo is map, sortedRegions is array)
 {
-    var keepArcs      = definition.arcMode == VaryingArcMode.BIARC;
-    var allWireBodies = [];
-    var allWireEdges  = [];
-    var biarcCount    = 0;            // varying-offset source arcs emitted as arc pairs
-    var biarcWorst    = 0 * meter;    // their largest deviation from the true offset
+    var keepArcs = definition.arcMode == VaryingArcMode.BIARC;
+    var stats    = new box({ "biarcCount" : 0, "biarcWorst" : 0 * meter });
 
     // Collect active blend zones (SINGLE_REGION mode declares no intersections)
     var blendZones = [];
@@ -2329,20 +2594,23 @@ function buildOutputWire(context is Context, id is Id, definition is map,
         });
     }
 
-    // Edge-boundary t-values (one per inter-edge junction in the FrenetPath)
+    // Edge-boundary t-values (one per inter-edge junction) and the G0 corners among them.
     var edgeBoundaryTs = [];
     var edgeData = pathInfo.frenetPath.edgeData;
     for (var ei = 1; ei < size(edgeData); ei += 1)
     {
         edgeBoundaryTs = append(edgeBoundaryTs, edgeData[ei].startArcLength / pathInfo.length);
     }
+    var corners  = pathCorners(context, pathInfo);
+    var cornerTs = mapArray(corners, function(c) { return c.t; });
 
-    // One or more wires per region -- split at edge boundaries so each output curve spans at
-    // most one source edge.
+    // --- 1. Plan the pieces. Regions split at every source-edge boundary and at profile kinks;
+    //        blends at G0 corners (and every edge boundary when keeping arcs). Every piece lies
+    //        on one source edge (pinEdge) and reads its frames there.
+    var pieces = [];
     for (var ri = 0; ri < size(sortedRegions); ri += 1)
     {
         var reg       = sortedRegions[ri];
-        var zone      = regionZone(reg);
         var tSegStart = reg.tStart;
         var tSegEnd   = reg.tEnd;
 
@@ -2366,7 +2634,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             continue;
         }
 
-        var splitTs = splitAtEdgeBoundaries(edgeBoundaryTs, tSegStart, tSegEnd);
+        var splitTs = splitPoints(tSegStart, tSegEnd, concatenateArrays([edgeBoundaryTs, profileKinksT(reg)]));
         for (var si = 0; si < size(splitTs) - 1; si += 1)
         {
             var tA = splitTs[si];
@@ -2375,78 +2643,17 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             {
                 continue;
             }
-
-            var wireId = id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si));
-            var colour = (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA;
-            if (definition.printCurveDetails)
-            {
-                println("=== Region " ~ toString(ri) ~ " ('" ~ reg.regionName ~ "') sub " ~ toString(si) ~ " ===");
-            }
-
-            if (keepArcs && sourceEdgeIsArc(context, pathInfo.frenetPath, (tA + tB) / 2, pathInfo.length))
-            {
-                var arcOut = emitSourceArc(context, wireId, pathInfo, definition, zone, tA, tB);
-                if (arcOut.ok)
-                {
-                    allWireBodies = concatenateArrays([allWireBodies, arcOut.bodies]);
-                    allWireEdges  = concatenateArrays([allWireEdges,  arcOut.edges]);
-                    if (arcOut.isPair)
-                    {
-                        biarcCount += 1;
-                        biarcWorst  = max(biarcWorst, arcOut.deviation);
-                    }
-                    if (definition.printCurveDetails)
-                    {
-                        println((arcOut.isPair ? "  ARC PAIR, deviation from true offset " ~ toString(arcOut.deviation / millimeter) ~ " mm" : "  ARC")
-                            ~ "  t [" ~ toString(tA) ~ ", " ~ toString(tB) ~ "]");
-                    }
-                    if (definition.showRegions)
-                    {
-                        addDebugEntities(context, qUnion(arcOut.bodies), colour);
-                    }
-                    continue;
-                }
-            }
-
-            var seg = generateSegmentPoints(context, pathInfo, definition, reg, tA, tB);
-            if (size(seg.points) < 2)
-            {
-                continue;
-            }
-
-            // Ensure the CP cap can accommodate all interior pins (endpoints + stations +
-            // plateau edges); otherwise approximateSpline can fail rather than just warn.
-            var effMaxCP = max([definition.approxMaxCP, size(seg.interpolateIndices) + 2]);
-            if (effMaxCP > definition.approxMaxCP)
-            {
-                reportFeatureWarning(context, id, "Region '" ~ reg.regionName ~
-                    "': raised max control points to " ~ toString(effMaxCP) ~
-                    " to honor all interior station/dwell pins.");
-            }
-
-            var body = emitSplinePiece(context, wireId, pathInfo, definition, zone, tA, tB,
-                seg.points, seg.interpolateIndices, effMaxCP);
-            allWireBodies = append(allWireBodies, body);
-            allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
-            if (definition.showRegions)
-            {
-                addDebugEntities(context, body, colour);
-            }
+            pieces = append(pieces, { "kind" : "region", "region" : reg, "zone" : regionZone(reg),
+                        "tA" : tA, "tB" : tB, "pinEdge" : edgeIndexAt(pathInfo, (tA + tB) / 2),
+                        "wireId" : id + ("reg_" ~ toString(ri) ~ "_" ~ toString(si)),
+                        "colour" : (ri % 2 == 0) ? DebugColor.CYAN : DebugColor.MAGENTA, "show" : definition.showRegions });
         }
     }
-
-    // Blends. "Convert to splines": one spline per blend, as always. "Keep as arcs": split at
-    // source-edge boundaries like the regions, so a blend over a source arc is an arc too.
     for (var bzi = 0; bzi < size(blendZones); bzi += 1)
     {
-        var bz   = blendZones[bzi];
-        var zone = blendZone(pathInfo, definition, bz);
-        if (definition.printCurveDetails)
-        {
-            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' -> '" ~ bz.regB.regionName ~ "') ===");
-        }
-
-        var splitTs = keepArcs ? splitAtEdgeBoundaries(edgeBoundaryTs, bz.tBlendStart, bz.tBlendEnd) : [bz.tBlendStart, bz.tBlendEnd];
+        var bz      = blendZones[bzi];
+        var zone    = blendZone(pathInfo, definition, bz);
+        var splitTs = splitPoints(bz.tBlendStart, bz.tBlendEnd, keepArcs ? edgeBoundaryTs : cornerTs);
         for (var si = 0; si < size(splitTs) - 1; si += 1)
         {
             var tA = splitTs[si];
@@ -2455,50 +2662,116 @@ function buildOutputWire(context is Context, id is Id, definition is map,
             {
                 continue;
             }
-            var wireId = keepArcs ? id + ("blend_" ~ toString(bzi) ~ "_" ~ toString(si)) : id + ("blend_" ~ toString(bzi));
+            pieces = append(pieces, { "kind" : "blend", "zone" : zone, "tA" : tA, "tB" : tB,
+                        "pinEdge" : edgeIndexAt(pathInfo, (tA + tB) / 2),
+                        "wireId" : (size(splitTs) > 2) ? id + ("blend_" ~ toString(bzi) ~ "_" ~ toString(si)) : id + ("blend_" ~ toString(bzi)),
+                        "colour" : DebugColor.YELLOW, "show" : definition.showBlends });
+        }
+    }
 
-            if (keepArcs && sourceEdgeIsArc(context, pathInfo.frenetPath, (tA + tB) / 2, pathInfo.length))
+    // --- 2. G0 corners: the offset opens a gap on the outside of the turn and overlaps on the
+    //        inside. Gaps get a filler arc centred on the source vertex (a tangent bridge when the
+    //        ends are not co-radial); overlaps trim both pieces back to their crossing.
+    var fillers = [];
+    for (var ci = 0; ci < size(corners); ci += 1)
+    {
+        var corner = corners[ci];
+        var iPrev = undefined;
+        var iNext = undefined;
+        for (var k = 0; k < size(pieces); k += 1)
+        {
+            if (abs(pieces[k].tB - corner.t) < 1e-9 && pieces[k].pinEdge == corner.edge - 1)
             {
-                var arcOut = emitSourceArc(context, wireId, pathInfo, definition, zone, tA, tB);
-                if (arcOut.ok)
+                iPrev = k;
+            }
+            if (abs(pieces[k].tA - corner.t) < 1e-9 && pieces[k].pinEdge == corner.edge)
+            {
+                iNext = k;
+            }
+        }
+        if (iPrev == undefined || iNext == undefined)
+        {
+            continue;   // no output on one side of this corner
+        }
+        var prev = pieces[iPrev];
+        var next = pieces[iNext];
+        var p1 = zonePoint(context, piecePath(pathInfo, prev), definition, prev.zone, corner.t);
+        var p2 = zonePoint(context, piecePath(pathInfo, next), definition, next.zone, corner.t);
+        if (norm(p2 - p1) < 1e-7 * meter)
+        {
+            continue;   // the offset does not open or cross this corner (e.g. out of its plane)
+        }
+
+        if (dot(p2 - p1, corner.tIn + corner.tOut) > 0 * meter)
+        {
+            // Gap: circular arc centred on the vertex when both ends are at the same distance from it.
+            var a  = p1 - corner.vertex;
+            var bb = p2 - corner.vertex;
+            var fillId = id + ("corner_" ~ toString(ci));
+            if (abs(norm(a) - norm(bb)) < 1e-6 * meter && norm(cross(normalize(a), normalize(bb))) > 1e-9)
+            {
+                var mid = corner.vertex + norm(a) * normalize(normalize(a) + normalize(bb));
+                if (emitArc3Point(context, fillId, p1, mid, p2) != undefined)
                 {
-                    allWireBodies = concatenateArrays([allWireBodies, arcOut.bodies]);
-                    allWireEdges  = concatenateArrays([allWireEdges,  arcOut.edges]);
-                    if (arcOut.isPair)
-                    {
-                        biarcCount += 1;
-                        biarcWorst  = max(biarcWorst, arcOut.deviation);
-                    }
-                    if (definition.showBlends)
-                    {
-                        addDebugEntities(context, qUnion(arcOut.bodies), DebugColor.YELLOW);
-                    }
+                    fillers = append(fillers, { "bodies" : [qCreatedBy(fillId, EntityType.BODY)], "edges" : [qCreatedBy(fillId, EntityType.EDGE)] });
                     continue;
                 }
             }
-
-            // Points in proportion to this piece's share of the blend (all of it when unsplit).
-            var n   = max([definition.approxDegree + 1, floor(definition.numRegionPoints * (tB - tA) / (bz.tBlendEnd - bz.tBlendStart) + 0.5)]);
-            var pts = [];
-            for (var i = 0; i < n; i += 1)
+            // Not co-radial (the offset changes across the corner): a cubic bridge tangent to both pieces.
+            var chord = norm(p2 - p1);
+            var t1 = zoneTangent(context, piecePath(pathInfo, prev), definition, prev.zone, corner.t);
+            var t2 = zoneTangent(context, piecePath(pathInfo, next), definition, next.zone, corner.t);
+            var bridge = approximateSpline(context, {
+                    "degree" : 3, "tolerance" : definition.approxTolerance, "isPeriodic" : false,
+                    "targets" : [approximationTarget({ "positions" : [p1, p2], "startDerivative" : t1 * chord, "endDerivative" : t2 * chord })],
+                    "interpolateIndices" : [0, 1] })[0];
+            opCreateBSplineCurve(context, fillId, { "bSplineCurve" : bridge });
+            fillers = append(fillers, { "bodies" : [qCreatedBy(fillId, EntityType.BODY)], "edges" : [qCreatedBy(fillId, EntityType.EDGE)] });
+        }
+        else
+        {
+            // Overlap: trim both pieces back to where they cross.
+            var crossing = cornerCrossing(context, pathInfo, definition, prev, next, corner.t, prev.tA, next.tB);
+            if (crossing.found)
             {
-                pts = append(pts, zonePoint(context, pathInfo, definition, zone, tA + (tB - tA) * i / (n - 1)));
+                pieces[iPrev].tB = crossing.u;
+                pieces[iNext].tA = crossing.v;
             }
-            var body = emitSplinePiece(context, wireId, pathInfo, definition, zone, tA, tB,
-                pts, [0, size(pts) - 1], definition.approxMaxCP);
-            allWireBodies = append(allWireBodies, body);
-            allWireEdges  = append(allWireEdges, qCreatedBy(wireId, EntityType.EDGE));
-            if (definition.showBlends)
+            else
             {
-                addDebugEntities(context, body, DebugColor.YELLOW);
+                reportFeatureWarning(context, id, "The offset overlaps itself at a corner (" ~ toString(roundToPrecision(corner.angle / degree, 1))
+                    ~ " deg) but the two sides do not cross within their pieces; left overlapping.");
             }
         }
     }
 
-    if (biarcCount > 0)
+    // --- 3. Emit.
+    var allWireBodies = [];
+    var allWireEdges  = [];
+    for (var piece in pieces)
     {
-        reportFeatureInfo(context, id, toString(biarcCount) ~ " varying-offset source arc(s) built as tangent arc pairs; " ~
-            "largest deviation from the true offset " ~ toString(roundToPrecision(biarcWorst / millimeter, 4)) ~ " mm.");
+        if (definition.printCurveDetails)
+        {
+            println("=== " ~ piece.kind ~ " piece t [" ~ toString(piece.tA) ~ ", " ~ toString(piece.tB) ~ "] on source edge " ~ toString(piece.pinEdge));
+        }
+        var out = emitPiece(context, id, definition, pathInfo, piece, keepArcs, stats);
+        allWireBodies = concatenateArrays([allWireBodies, out.bodies]);
+        allWireEdges  = concatenateArrays([allWireEdges,  out.edges]);
+        if (piece.show && size(out.bodies) > 0)
+        {
+            addDebugEntities(context, qUnion(out.bodies), piece.colour);
+        }
+    }
+    for (var f in fillers)
+    {
+        allWireBodies = concatenateArrays([allWireBodies, f.bodies]);
+        allWireEdges  = concatenateArrays([allWireEdges,  f.edges]);
+    }
+
+    if (stats[].biarcCount > 0)
+    {
+        reportFeatureInfo(context, id, toString(stats[].biarcCount) ~ " varying-offset source arc(s) built as tangent arc pairs; " ~
+            "largest deviation from the true offset " ~ toString(roundToPrecision(stats[].biarcWorst / millimeter, 4)) ~ " mm.");
     }
 
     // Collect all edges from individual wire bodies into one combined wire, then delete originals

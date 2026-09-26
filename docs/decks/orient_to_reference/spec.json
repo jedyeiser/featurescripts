@@ -1,0 +1,86 @@
+{
+  "slug": "orient_to_reference",
+  "title": "Orient to reference",
+  "tagline": "Flip surfaces so their normals point toward -- or away from -- a reference, so every feature downstream that follows the normal keeps working whatever happens upstream.",
+  "document": "Reference_Side_Features",
+  "icon": "icons/final/orient_to_reference_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Many features pick their side by a surface's normal: Thicken's Thickness 1, Offset surface, extrude 'up to', Move face, Split front / back. Normals flip freely when an upstream loft, offset, mirror or sketch changes -- and the reference-side features keep their inputs' orientation. Orient to reference fixes the normal itself: each surface is turned to face the reference (or away).",
+      "useWhen": [
+        "A built-in downstream follows a surface's normal",
+        "Surfaces come from different sources and face different ways",
+        "You want to SEE which way a set of surfaces faces (normal arrows)"
+      ],
+      "image": "docs/explainers/reference_side/img/fig01_flip_vs_reference.png",
+      "caption": "A flip names a side relative to a normal; a reference names it in the model."
+    },
+    {
+      "type": "concept",
+      "title": "How the side is read",
+      "image": "docs/explainers/reference_side/img/fig02_signed_distance.png",
+      "points": [
+        {"head": "Per surface body", "body": "s = (P - C) . n at the body's point nearest the reference. s > 0: the normal already points toward it."},
+        {"head": "Flip only what is wrong", "body": "Bodies facing the wrong way are flipped (opFlipOrientation); the rest are left exactly as they are."},
+        {"head": "Surfaces only", "body": "Solids always face outward and cannot be flipped; selecting one is an error."}
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/orient_to_reference/shots/dialog.png",
+      "positions": {"Normals toward reference": [0.93, 0.36, "right"]},
+      "params": [
+        ["Surfaces to orient", "Surface bodies, or faces of them (a face orients its whole surface body)."],
+        ["Reference", "Geometry on the side the normals should face: best a mate connector or vertex near the surfaces."],
+        ["Normals toward reference", "The arrow. On: every normal points toward the reference. Off: away from it."],
+        ["Show normals", "While editing: arrows along each face's normal, after orientation. Green = already right, orange = flipped here."],
+        ["Arrow length", "Length of those arrows (10 mm)."],
+        ["Debug", "Print sides: each surface's distance to the reference and whether it was flipped."]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Examples: the normals, evaluated",
+      "image": "docs/explainers/reference_side/img/fig07_orient_normals.png",
+      "head": "Test geometry R1-R3, normals read back from Onshape after the feature ran",
+      "body": "Two sheets with opposite normals and a reference between them: 'toward' leaves both alone because they already face it (green); 'away' flips both (orange). A half cylinder with the reference on its axis: every normal ends up pointing at the axis."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        ["output", "Every selected surface, oriented."],
+        ["flipped", "The surfaces this feature flipped."],
+        ["unchanged", "The surfaces that already faced the right way."],
+        ["flippedCount", "How many were flipped."]
+      ],
+      "messages": [
+        ["Info", "Flipped N of M surface(s); K already faced toward / away from the reference.", ""],
+        ["Error", "A solid's faces cannot be flipped", "Select surfaces; solids always face outward."],
+        ["Error", "The reference lies on surface k", "Move the reference clearly off that surface."]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {"kind": "tip", "head": "Put it right before the built-in", "body": "Orient the surfaces just before the Thicken, Offset surface or extrude that follows their normal."},
+        {"kind": "tip", "head": "Use a local reference", "body": "A mate connector or vertex near the surfaces, on the side meant. A far plane can read the wrong side where a surface curves."},
+        {"kind": "tip", "head": "Or skip the built-in", "body": "Thicken+ and Offset+ read the side from a reference directly and do not care which way the normal points."},
+        {"kind": "limit", "head": "One orientation per body", "body": "A merged surface (e.g. a Mutual Trim+ result) is one body and gets one orientation for all its faces."}
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        ["Document", "Reference_Side_Features (22764764a00a7f607dbc1c4d)"],
+        ["Tab", "orient_to_reference  (uses reference_side_utils)"],
+        ["Tests", "Reference side tests studio: R1-R4  -  devtools/onshape/check_reference_side_tests.py (34/34)"],
+        ["Explainer", "docs/explainers/reference_side/reference_side_explained.md, sections 1.4 and 2.6"],
+        ["Related", "Split+, Mutual Trim+, Offset+, Thicken+ (same reference rule)"]
+      ]
+    }
+  ]
+}

@@ -1,20 +1,18 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 // Dependencies
 //import assertions
-import(path : "34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
+import(path : "34fb2c6a3c895cfce6b281f3", version : "18fcdac56b39d12dba5ce285");
 
 //import bspline_data
-import(path : "b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 
 //import bspline_knots
-import(path : "dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "dadb70c0a762573622fa609c", version : "2e6c3f335af252d49f0fac60");
 
 //import math_utils
-import(path : "280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
-
-// looks_good
+import(path : "280a24d76f52bdbf44cd941d", version : "43549bf2d5a2bb2e92fb44bd");
 
 
 
@@ -205,7 +203,7 @@ export function splitCurve(context is Context, curve is BSplineCurve, splitParam
         "degree" : degree,
         "isPeriodic" : false,
         "controlPoints" : cpA,
-        "knots" : knotsA,
+        "knots" : knotsA as KnotArray,
         "weights" : weightsA,
         "isRational" : curve.isRational,
         "dimension" : curve.dimension
@@ -215,7 +213,7 @@ export function splitCurve(context is Context, curve is BSplineCurve, splitParam
         "degree" : degree,
         "isPeriodic" : false,
         "controlPoints" : cpB,
-        "knots" : knotsB,
+        "knots" : knotsB as KnotArray,
         "weights" : weightsB,
         "isRational" : curve.isRational,
         "dimension" : curve.dimension
@@ -407,7 +405,7 @@ export function joinCurves(context is Context, curveA is BSplineCurve, curveB is
         "degree" : compatB.degree,
         "isPeriodic" : compatB.isPeriodic,
         "controlPoints" : compatB.controlPoints,
-        "knots" : knotsB,
+        "knots" : knotsB as KnotArray,
         "weights" : compatB.weights,
         "isRational" : compatB.isRational,
         "dimension" : compatB.dimension
@@ -511,7 +509,7 @@ export function joinCurves(context is Context, curveA is BSplineCurve, curveB is
         "degree" : degree,
         "isPeriodic" : false,
         "controlPoints" : joinedCP,
-        "knots" : joinedKnots,
+        "knots" : joinedKnots as KnotArray,
         "weights" : joinedWeights,
         "isRational" : compatA.isRational,
         "dimension" : compatA.dimension

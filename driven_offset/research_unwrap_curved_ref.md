@@ -269,3 +269,99 @@ Scratch (session 51e06872, `scratchpad/curvedref/`):
   unwrap_part.fs (`up_fast.tmpl`: `RS` row spacing, `GN` grid, `ES` extent spacing, `PT` profile tolerance).
 - `census.body`: face classification on any reference; `enc_test.fs`: the opEnclose arrangement test.
 - `out/*.txt`: every run's output quoted above.
+
+## 10. As built (2026-09-25): PRISM in `unwrap_part.fs`
+
+`unwrapSolid(context, id, chart, cs, part, options)` keeps its signature. Straight spans: exact rigid move (unchanged).
+Curved pieces: `rebuildCurvedPiece` = `prismAnalysis` -> `prismPiece` (inside `startFeature` / `abortFeature`, so a
+failed attempt leaves nothing) -> `reverseCheck`; on refusal or failure, the old cell rebuild (`rebuildPiece`,
+unchanged) as the exact fallback, reverse-checked too; if that fails as well, a regenError highlighting the source
+faces that forced the fallback. Nothing was pushed; tested through the eval API only (scratch `prism_impl/`:
+`t.tmpl`, `run.sh`, `batch.sh`, `summ.py`, `out/p_*.txt`).
+
+Options: `squareWalls` (default false), `faceMode` "keep" (default) / "merge", `shapeTolerance` (default 0.005 mm),
+`flatTolerance`, `print`. New report keys: `methods` (per piece: rigid / prism / cells), `prismPieces`, `cellPieces`,
+`bands`, `approximatedFaces`, `approximationMax`, `fallbackFaces`, `reverseCheckMax` (ValueWithUnits); old keys kept.
+
+### 10.1 What changed against the prototype (section 4)
+
+1. **Classification by distance, not normal shares.** `viewFit`: on a 5 x 5 grid, per station along the face's curve
+   direction, the across-face offsets along the view normal of the middle point; best fit = middle of their range,
+   departure = half the range (a linear twist costs half its edge-to-edge). A face within `shapeTolerance` as a
+   profile gets a side row, as a wall a plan row (both: x-facing faces). Rows are moved onto the best fit per station
+   (interpolated). With `squareWalls`, a wall beyond tolerance leaning < 0.05 is squared (counted; its departure is
+   added to the reverse-check limit). Any other face sends the piece to cells (`fallbackFaces`).
+2. **Envelope rows.** A profile face with a usable plan normal that is not a wall (4802's 1.2 deg nose, 4103's tail
+   cap) gets its plan row on its OUTWARD envelope: the side view carves it exactly and the plan cell beyond holds no
+   material. This replaces the prototype's "squared at mid-height" (40 um on 4802). A fixed steepness cutoff
+   (c < 0.05) missed 4103's tail cap over FULL_BASELINE (c = 0.0502): 5.1 mm of extra material, caught by the
+   reverse check.
+3. **"keep" faces**: chains are still built from tangent rows (topology unchanged), but every source face is its own
+   edge (`emitChainParts`): a line / arc where the face's row is one within shapeTolerance / 10 (`classifyPoints`),
+   else a spline with exact end tangents; joints averaged. Cylinders survive (base over CAMBER: 14 / 14).
+4. **"merge"**: one spline per chain, fitted through dense uniform samples of the exact per-face curves
+   (`emitMergedChain`). Fitting the raw rows rang across curvature jumps: 10-12 um on 4803's tight corner with
+   adaptive rows, 16 um on the core with uniform 4 mm rows (both caught by the reverse check).
+5. **Adaptive rows** (seed 8 mm, split spans whose mapped midpoint misses the cubic by > tol / 4): a clear win in keep
+   mode. CORE over CAMBER 7.4 s adaptive vs 9.1 s fixed 4 mm at equal accuracy; 4803 0.93 um in 1.2 s (prototype
+   5.3 um at 4 mm rows, or 0.84 um in 2.3 s at 0.25 mm rows).
+6. **Arrangement robustness** (found on 4401 over CAMBER, whose side view stayed ONE cell): rows run over a face's
+   parameter box, so two faces of one profile can overlap by mm in the view and dangle along each other without
+   crossing -> `mergeOverlappingChains`; best-fit-shifted ends of near-tangent neighbours part by microns ->
+   `snapChainEnds` (near-tangent meetings only; envelope rows never moved); junction test and overshoot grow to
+   3 x shapeTolerance.
+7. **Reverse check**: 16 points per result face (4 x 4 interior), `unwrapInverse`, `evDistance` to the piece's faces;
+   limit max(shapeTolerance, 0.01 mm) + squared departures. 5 points per face missed a 12 um error; 16 cost ~1 s on
+   the core.
+
+### 10.2 Results
+
+Eval API, sequential. Times are requests including the built-in reverse check (not the harness checks). keep mode
+unless noted. "fwd / rev" = harness forward check (7 x 7 per source face + edges) / dense reverse check (6 x 6 per
+result face), worst, um. cyl = cylinder faces out / in the source.
+
+| Part | Reference | tol mm | Method | keep s | merge s | faces keep / merge / src | cyl | fwd / rev um | vol ratio |
+|---|---|---|---|---|---|---|---|---|---|
+| CORE | REF | 0.005 | prism, prism, rigid | 3.6 | 1.5 | 94 / 94 / 90 | 42 / 40 | 8.29* / 0.22 | 1.000059 |
+| CORE | CAMBER | 0.01 | prism (3 bands) | 9.5 | 12.2 | 98 / 47 / 90 | 50 / 40 | 8.29* / 4.46 | 0.99995 |
+| CORE | FULL_BASELINE | 0.01 | prism (3 bands) | 9.7 | 12.6 | 92 / 41 / 90 | 48 / 40 | 8.30* / 3.22 | 1.000003 |
+| CORE | CAMBER | 0.005 | throws: 4 walls at 5.7 um, cells SPLIT_FAILED | 15.7 | | | | | |
+| CORE | FULL_BASELINE | 0.005 + squareWalls | prism | 9.7 | | 92 | 46 / 40 | internal 2.8 | 1.000031 |
+| 4802 | REF, CAMBER | 0.005 | cells (2 nose corners at 22 um) | 3.1 | 3.1 | 12 / 12 / 17 | | 0.79 / 0.41 | 1.012562 |
+| 4802 | CAMBER | 0.005 + squareWalls | prism | 2.4 | | 20 | | 39.6 / 35.1 | 1.012552 |
+| 4803 | REF, CAMBER | 0.005 | prism (2 bands) | 1.2-1.3 | 1.9-2.0 | 18 / 13 / 18 | 4 / 1 | 0.93 / 0.79 | 1.003684 |
+| 4803 | FULL_BASELINE | 0.005 | cells (4 faces beyond) | 3.6 | 3.6 | 14 | | 0.42 / 0.11 | 1.002913 |
+| base | REF | 0.005 | prism, rigid, prism | 1.5 | 2.6 | 34 / 30 / 40 | 10 / 14 | 0.22 / 0.15 | 1.000206 |
+| base | CAMBER | 0.005 | prism (1 band) | 2.5 | 3.8 | 38 / 10 / 40 | 14 / 14 | 0.22 / 0.18 | 1.000233 |
+| 4103 | REF | 0.005 | prism, rigid, prism | 1.4 | 2.7 | 36 / 36 / 41 | 16 / 21 | 0.67 / 1.08 | 1.000298 |
+| 4103 | CAMBER | 0.005 | prism (2 bands) | 3.3 | 4.4 | 38 / 8 / 41 | 22 / 21 | 0.67 / 1.08 | 1.000354 |
+| 4401 | REF | 0.005 | cells, rigid, cells | 2.0 | | 52 / 46 | | internal 0.23 | 1.000041 |
+| 4401 | REF | 0.02 | prism, rigid, cells | 1.4 | | 53 | | internal 16.7 | 1.000041 |
+| 4401 | CAMBER | 0.005, 0.02 | throws cleanly (2 / 1 end caps beyond; cells refuse the spline tops) | 4.2 | | | | | |
+| 4401 | CAMBER | 0.03 | prism | 2.5 | 3.7 | 50 / 12 / 46 | 30 / 16 | 25.0 / 22.7 | 1.000003 |
+| 4401 | FULL_BASELINE | 0.03 | prism | 2.4 | 3.8 | 50 / 12 / 46 | 31 / 16 | 29.0 / 29.0 | 1.000056 |
+| 4802, base | FULL_BASELINE | 0.005 | throw: 8 faces beyond (their tips do not follow the raised tip, section 2) | 1.6-5.3 | | | | | |
+| 4103 | FULL_BASELINE | 0.005 | throws: band rebuild misses by 0.083 mm at its tail, cells refuse 1 face | 8.3 | | | | | |
+
+\* 8.29 um = the known tolerant source vertex (section 5). Cylinder counts above the source's are faces split across
+bands, or source extrusions (Onshape type OTHER) whose mapped row is a true arc.
+
+On REF_WIRE the rebuilt ends match today's output within the reverse check (0.15-0.79 um internal; the dense 6 x 6
+check gives 1.08 um on 4103); the middle is the same rigid move.
+
+### 10.3 4401: what actually limits it
+
+Its twisted top faces are not the problem: as profiles they depart by at most 2.2 um (CAMBER). The blockers are the
+two small x-facing end caps (tip 3 x 3 mm, tail 3 x 4 mm planes), skewed in plan (b 0.017-0.021) AND leaning (c
+0.011-0.025): best single-view fit 16.8 um (tip, as a wall) and 24.9 um (tail, as a profile). So 0.02 mm still sends
+the piece to cells (which refuse the spline tops: b up to 1.3e-3 > 1e-6); 0.03 mm goes through PRISM with the error
+reported (25 um CAMBER, 29 um FULL_BASELINE). PRISM cannot represent a plane skewed in both views better than its best
+single view (intersecting the two mid rows is worse).
+
+### 10.4 Open
+
+- 4103 over FULL_BASELINE: 83 um miss at its tail (x 856.8), where the part sits under the raised baseline tip. Caught
+  and refused; not diagnosed further.
+- CORE keep mode is ~2 s slower since `mergeOverlappingChains` (7.4 -> 9.5 s over CAMBER): the pair test is
+  box-prefiltered but still FS-side polyline work.
+- unwrap.fs (lead engineer): wire `faceMode` / `shapeTolerance`, remove the "no straight edge" guard.

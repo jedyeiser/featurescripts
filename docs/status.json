@@ -30,6 +30,7 @@
       "sources": [
         "reference_side/mutual_trim_plus.fs",
         "reference_side/offset_plus.fs",
+        "reference_side/orient_to_reference.fs",
         "reference_side/reference_side_utils.fs",
         "reference_side/split_plus.fs",
         "reference_side/thicken_plus.fs"
@@ -50,10 +51,15 @@
           "date": "2026-09-25",
           "state": "reviewed",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "reviewed",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "e6fdf1751bd3",
-      "sources_hash": "227d9cd3f815",
+      "written_hash": "4082a459ccb7",
+      "sources_hash": "b1a2d83f2605",
       "state_hash": "d121b7fb9bf4"
     },
     {
@@ -88,9 +94,14 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "e06d6f7830b3",
+      "written_hash": "151aba0115cf",
       "sources_hash": "0604bc613be4"
     },
     {
@@ -116,6 +127,26 @@
       ],
       "state": "planned",
       "history": []
+    },
+    {
+      "id": "d_orient_to_reference",
+      "kind": "deck",
+      "family": "reference_side",
+      "title": "Orient to reference",
+      "path": "docs/decks/orient_to_reference/orient_to_reference.pptx",
+      "sources": [
+        "reference_side/orient_to_reference.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "f035173aa1fb",
+      "sources_hash": "79198617a57b"
     },
     {
       "id": "x_curve_tools",

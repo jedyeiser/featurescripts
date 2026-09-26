@@ -263,7 +263,7 @@
         {
           "kind": "limit",
           "head": "Outputs keep their input's orientation",
-          "body": "The reference picks the side to keep, not the normal: pieces face the way the input faced (the topsheet example faces down). Built-ins downstream (Thicken, Offset surface, Move face) still follow that normal -- use Thicken+ / Offset+ there. Orienting outputs by the reference is decided, not built yet."
+          "body": "The reference picks the side to keep, not the normal: pieces face the way the input faced (the topsheet example faces down). Built-ins downstream (Thicken, Offset surface, Move face) follow that normal -- put Orient to reference before them, or use Thicken+ / Offset+."
         },
         {
           "kind": "limit",

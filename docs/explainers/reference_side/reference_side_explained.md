@@ -1,6 +1,6 @@
 # Reference-side features, explained
 
-*Mutual Trim+, Split+, Offset+ and Thicken+ (Onshape document **Reference_Side_Features**). Written 2026-09-25
+*Mutual Trim+, Split+, Offset+, Thicken+ and Orient to reference (Onshape document **Reference_Side_Features**). Written 2026-09-25
 against the code as it stands that day. Draft for review.*
 
 Three passes, each building on the one before:
@@ -28,6 +28,7 @@ Figures are in `img/`, made by `img/src/figs.py` (`python docs/explainers/refere
   - [2.3 Offset+](#23-offset)
   - [2.4 Thicken+](#24-thicken)
   - [2.5 Outputs for Extract variables](#25-outputs-for-extract-variables)
+  - [2.6 Orient to reference](#26-orient-to-reference)
 - [Part 3: The code](#part-3-the-code)
 - [Appendix: unclear items](#appendix-unclear-or-contradictory-items)
 
@@ -105,19 +106,19 @@ normal: Thicken's Thickness 1, Offset surface's direction, an extrude "up to" a 
 Split's front / back. If an input upstream flips, our output flips with it, and those built-ins flip too -- the very
 fragility these features remove on their own step.
 
-**Decided 2026-09-25, not built yet:** an option to orient output sheets by the reference as well
-(`opFlipOrientation` flips a whole sheet body): each output body turned so its normal points **toward** the
-reference (or away). Then built-ins downstream see a stable normal too. The decisions that go with it:
+**Fix: Orient to reference** (section 2.6, built 2026-09-25). A separate feature placed after any of these (or
+after any built-in that makes surfaces): it flips each selected surface body with `opFlipOrientation` so its normal
+points **toward** the reference (or away), and draws the normals while its dialog is open. Built-ins downstream then
+see a stable normal too. How it was decided:
 
-- **Sheets only.** Split+ surface pieces, Mutual Trim+ results, Offset+ surfaces. Solids have no free orientation
-  (their normals always point outward), so Thicken+ outputs and solid Split+ pieces are unaffected.
+- **A standalone feature, not an option on each feature.** One small feature, it works on surfaces from built-ins as
+  well, and the existing dialogs stay as they are.
+- **Sheets only.** Solids have no free orientation (their normals always point outward), so Thicken+ outputs and
+  solid Split+ pieces never need it; selecting a solid's face is an error.
 - **Per body.** A merged Mutual Trim+ result is one body and gets one orientation for both of its halves.
-- **Default off.** A new parameter's default is written into every saved instance (correction 25), so a default of
-  on would silently flip the surfaces of existing models.
-- Form still open: an option on the three features, or a separate "orient to reference" feature for any surface.
 
-**Until then:** prefer the reference-side features downstream as well (Thicken+ instead of Thicken, Offset+ instead
-of Offset surface), since they read the side from the reference and do not care which way the normal points.
+Alternatively, use the reference-side features downstream as well (Thicken+ instead of Thicken, Offset+ instead of
+Offset surface): they read the side from the reference and do not care which way the normal points.
 
 ---
 
@@ -331,13 +332,48 @@ result bodies) and `inputs`; the rest:
 | Split+ | each region (`near`/`far`, `front`/`back`, `start`/`middle*`/`end`) and `<region>Edges`; `outside`, `inside` (+ `Edges`); `splitEdges` (one edge per cut); `cut` / `startCut`, `endCut` / `cut1..N`; `splitFaces`; `pieceCount`, `regionCount` |
 | Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces); `roundedCorners`, `trimmedCorners`, `openCorners` |
 | Thicken+ | `towardFaces`, `awayFaces`, `sideFaces` (each tracked through the boolean) |
+| Orient to reference | `flipped` (the surfaces it flipped), `unchanged` (already facing the right way), `flippedCount`; `output` = every selected surface |
 
 Every key is present on every regeneration, empty when it does not apply, so an Extract variables entry never
 breaks because a key disappeared. Split+ publishes **one** edge per cut: keeping both sides leaves two coincident
 edges per cut, and an extrude or fillet on both fails.
 
 The surfaces these keys point at keep their inputs' orientation: the reference picks the side, not the normal
-(section 1.4). Orienting output sheets by the reference is decided but not built yet.
+(section 1.4). Orient to reference (2.6) fixes the normal when a built-in downstream needs it.
+
+## 2.6 Orient to reference
+
+![Orient to reference](img/fig07_orient_normals.png)
+
+**What it does.** Turns surfaces so their normals point **toward** a reference (or away from it). Each selected
+surface body is read against the reference exactly as in the other features (signed distance at the body's point
+nearest the reference, 1.2) and flipped with `opFlipOrientation` when its normal points the wrong way; surfaces
+already facing the right way are left alone. Use it before any feature that picks its side by the normal -- the
+built-in Thicken, Offset surface, extrude "up to", Move face, the built-in Split's front / back -- so that feature
+keeps working whatever happens upstream (1.4).
+
+**Parameters.**
+
+- **Surfaces to orient** -- surface bodies, or faces of them (a face orients its whole surface body).
+- **Reference** -- geometry on the side the normals should face; best a mate connector or vertex near the surfaces
+  (1.3).
+- **Normals toward reference** (the arrow, default on) -- on: every normal points toward the reference; off: away.
+- **Show normals** (default on) and **Arrow length** (10 mm) -- while the dialog is open, arrows along each face's
+  normal on a 3 x 3 grid of points, drawn after orientation: **green** = that surface already faced the right way,
+  **orange** = this feature flipped it.
+- **Debug > Print sides** -- each surface's signed distance to the reference and whether it was flipped.
+
+**Messages.**
+
+| Message | Meaning |
+|---|---|
+| Info "Flipped N of M surface(s); K already faced toward / away from the reference." | The normal result. |
+| Error "A solid's faces cannot be flipped" | A solid (or one of its faces) was selected. Solids always face outward. |
+| Error "The reference lies on surface k" | The reference has no side of that surface. Move it off. |
+
+**Examples (tests R1-R4).** Two sheets at z +-50 with opposite normals and a reference between them: *toward*
+leaves both alone (they already face it) and *away* flips both (figure: R1, R2). A half cylinder r 10 with the
+reference on its axis: every normal ends up pointing at the axis (R3). A solid's face must error (R4).
 
 ---
 
@@ -351,6 +387,7 @@ The surfaces these keys point at keep their inputs' orientation: the reference p
 | `mutual_trim_plus.fs` | std mutualTrim mechanism (opSplitFace with mutual imprint, `qSplitBy` labels, flood fill bounded by the imprint) + `sideToDelete` (side of the splitter, distance fallback). |
 | `split_plus.fs` | `opSplitPart` per tool with `keepTypeFor` (KEEP_FRONT keeps the side the tool normal points to); Face mode via `opSplitFace`; `classifyRegions`, `oneEdgePerCut`, `cutsPerTool`. |
 | `offset_plus.fs` | Surface: `opExtractSurface` with a per-body sign. Curve: `pathStations` -> `directionField` (transport / surface / plane) -> corners (`cornerArcs`, `polylineCrossing`) -> `fitPiece` -> `opExtractWires`. |
+| `orient_to_reference.fs` | Per-body `sideSign` against the reference -> `opFlipOrientation` on the bodies facing the wrong way; `showNormals` (debug arrows on a 3 x 3 face grid). |
 | `thicken_plus.fs` | Per-body `sideSign` -> `opThicken` thickness1/2; `checkCurvature` (9 x 9 grid of `evFaceCurvatures`); `classifyFaces` against a copy taken before the thicken; std `processNewBodyIfNeeded`. |
 
 All import `reference_side_utils` and Variable_tools **V1** `extract_outputs`.
@@ -366,10 +403,11 @@ All import `reference_side_utils` and Variable_tools **V1** `extract_outputs`.
 ## 3.3 Tests
 
 In-tree, in the **Reference side tests** Part Studio: real feature instances named by case and expected result
-(S1-S10 Split+, O1-O2 surface offsets, C1-C8 curve offsets, M1-M2 Mutual Trim+, T1-T6 Thicken+; T4 must error).
+(S1-S10 Split+, O1-O2 surface offsets, C1-C8 curve offsets, M1-M2 Mutual Trim+, T1-T6 Thicken+, R1-R4 Orient to
+reference; T4 and R4 must error).
 
     PYTHONPATH=. python devtools/onshape/build_reference_side_tests.py    # (re)build the instances
-    PYTHONPATH=. python devtools/onshape/check_reference_side_tests.py    # 30/30 on 2026-09-24
+    PYTHONPATH=. python devtools/onshape/check_reference_side_tests.py    # 34/34 on 2026-09-25
 
 Real-geometry examples are in the **topsheet_surf** studio (the user's derive of Design_Master bodies).
 

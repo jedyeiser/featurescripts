@@ -1,13 +1,13 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 
 // Phase 3 dependencies
 //import bspline_data
-import(path : "b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 
 //import assertions
-import(path : "34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
+import(path : "34fb2c6a3c895cfce6b281f3", version : "18fcdac56b39d12dba5ce285");
 
 /**
  * BSPLINE KNOT & CURVE MANIPULATION
@@ -233,7 +233,7 @@ export function insertKnot(context is Context, curve is BSplineCurve, knotParam 
         "degree" : degree,
         "isPeriodic" : curve.isPeriodic,
         "controlPoints" : newPoints,
-        "knots" : newKnots,
+        "knots" : newKnots as KnotArray,
         "weights" : newWeights,
         "isRational" : curve.isRational,
         "dimension" : curve.dimension
@@ -376,7 +376,7 @@ export function refineKnotVector(context is Context, curve is BSplineCurve, knot
         "degree" : p,
         "isPeriodic" : curve.isPeriodic,
         "controlPoints" : Qw,
-        "knots" : Ubar,
+        "knots" : Ubar as KnotArray,
         "weights" : newWeights,
         "isRational" : curve.isRational,
         "dimension" : curve.dimension
@@ -545,7 +545,7 @@ function elevateDegreeByOne(context is Context, curve is BSplineCurve) returns B
         "degree" : newP,
         "isPeriodic" : curve.isPeriodic,
         "controlPoints" : elevatedPts,
-        "knots" : newKnots,
+        "knots" : newKnots as KnotArray,
         "weights" : elevatedWts,
         "isRational" : curve.isRational,
         "dimension" : curve.dimension
@@ -856,7 +856,7 @@ function removeKnotOnce(context is Context, curve is BSplineCurve, knotValue is 
             "degree" : p,
             "isPeriodic" : curve.isPeriodic,
             "controlPoints" : newPw,
-            "knots" : newU,
+            "knots" : newU as KnotArray,
             "weights" : newWeights,
             "isRational" : curve.isRational,
             "dimension" : curve.dimension
@@ -919,7 +919,7 @@ export function reverseCurve(curve is BSplineCurve) returns BSplineCurve
         "degree" : p,
         "isPeriodic" : curve.isPeriodic,
         "controlPoints" : newPw,
-        "knots" : newU,
+        "knots" : newU as KnotArray,
         "weights" : newWeights,
         "isRational" : curve.isRational,
         "dimension" : curve.dimension

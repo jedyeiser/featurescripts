@@ -873,30 +873,13 @@ function spanMidMiss(params is array, feet is array, j is number, mid is array) 
 }
 
 /**
- * Unwrap a solid (unwrap_part.fs, research_unwrap_part.md): split where the reference changes between straight and
- * curved, straight pieces moved rigidly, curved pieces rebuilt. Laid on the origin plane by a translation.
+ * Unwrap a solid (unwrap_part.fs, research_unwrap_part.md, research_unwrap_curved_ref.md): split where the reference
+ * changes between straight and curved, straight pieces moved rigidly, curved pieces rebuilt (band rebuild, exact cell
+ * fallback, every rebuilt piece reverse-checked). Laid on the origin plane by a translation.
  */
 function unwrapPart(context is Context, id is Id, definition is map, chart is map, cs is CoordSystem, part is Query,
     settings is map) returns map
 {
-    // Safety until the band rebuild (PRISM) lands: over a reference with no straight edge the current rebuild fails
-    // or, worse, returns a silently wrong body (a base came out x0.94 with 12 mm holes; research_unwrap_curved_ref.md).
-    var straight = false;
-    for (var link in chart.alongRef.chain.links)
-    {
-        for (var edgeData in link.edges)
-        {
-            if (edgeData.curveType == CurveType.LINE)
-            {
-                straight = true;
-            }
-        }
-    }
-    if (!straight)
-    {
-        throw regenError("Part (solid) unwrap does not yet support a reference that is curved along its whole length (no straight edge): the current rebuild can fail or return a wrong body there. A band rebuild for this case is in progress.",
-            ["reference"]);
-    }
     const result = unwrapSolid(context, id, chart, cs, part, {
                 "squareWalls" : definition.squareWalls,
                 "faceMode" : (definition.partFaces == UnwrapPartFaces.MERGE) ? "merge" : "keep",

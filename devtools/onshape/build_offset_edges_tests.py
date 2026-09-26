@@ -371,4 +371,13 @@ offset("OE16 G0 corner (22000,0)-(22100,0)-(22100,100), normal 10 -> offset foll
        edges(sketch("OE16 source corner (22000, 0) to (22100, 0) to (22100, 100)",
                     [seg("a", *mmv(22000, 0, 22100, 0)), seg("b", *mmv(22100, 0, 22100, 100))])),
        ref_point("OE16", 22000, 0), [region("A", 0, 200, normal=(10, 10))])
+
+# OE23 / OE24 the same kind of corner with an IN-PLANE (binormal) offset: one sign opens a gap on the outside
+# of the turn (filled with an R10 arc centred on the corner), the other overlaps on the inside (both legs
+# trimmed back to their crossing: 100 - 10 * tan(45 deg) = 90 each).
+for tag, x0, sgn in [("OE23", 23000, 1), ("OE24", 24000, -1)]:
+    offset("%s G0 corner, Binormal %+d in plane -> corner treated (gap: R10 arc / overlap: legs trimmed to 90)" % (tag, 10 * sgn),
+           edges(sketch("%s source corner (%d, 0) to (%d, 0) to (%d, 100)" % (tag, x0, x0 + 100, x0 + 100),
+                        [seg("a", *mmv(x0, 0, x0 + 100, 0)), seg("b", *mmv(x0 + 100, 0, x0 + 100, 100))])),
+           ref_point(tag, x0, 0), [region("A", 0, 200, offset_type="BINORMAL", binormal=(10 * sgn, 10 * sgn))])
 print("studio", E)

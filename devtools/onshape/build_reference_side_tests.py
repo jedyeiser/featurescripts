@@ -23,7 +23,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference"]}
 
 STATE = {"features": None}
 
@@ -358,4 +358,36 @@ thicken("T6 Thicken+ 5 mm up from the cube top, Add into the cube -> 1 part, vol
     q("sideReference", ref_front("T6 reference point (10600, 0, 100)", x0, 100)),
     num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"),
     b("defaultScope", False), q("booleanScope", body(t))])
+
+
+# ============================================================================
+# Orient to reference (2026-09-25)
+# ============================================================================
+def orient(name, surfaces, reference, toward):
+    return feature(name, "orientToReference", [
+        q("surfaces", surfaces), q("reference", reference), b("towardReference", toward),
+        b("showNormals", True), num("arrowLength", "10 mm"), b("debugPrint", False)], NS["orient_to_reference"])
+
+
+for n, toward in enumerate([True, False]):
+    x0 = 11000 + 400 * n
+    tag = "R%d" % (n + 1)
+    top = sheet("%s top sheet z 50" % tag, [(x0 - 50, 50), (x0 + 50, 50)])
+    bottom = sheet("%s bottom sheet z -50 (drawn reversed: opposite normal)" % tag, [(x0 + 50, -50), (x0 - 50, -50)])
+    orient("%s Orient to reference, sheets of opposite normals, %s the centre -> normals %s" % (
+        tag, "toward" if toward else "away from", "top -Z, bottom +Z" if toward else "top +Z, bottom -Z"),
+        "qUnion([%s, %s])" % (body(top), body(bottom)), ref_front("%s reference point (%d, 0, 0)" % (tag, x0), x0, 0), toward)
+
+x0 = 11800
+cyl = sketch("R3 arc r 10 about (%d, 0, 0), half turn" % x0, FRONT, [arc("a", *mmv(x0, 0, 10), 0, math.pi)])
+half = feature("R3 half cylinder r 10", "extrude", [
+    en("bodyType", "ExtendedToolBodyType", "SURFACE"), en("surfaceOperationType", "NewSurfaceOperationType", "NEW"),
+    q("surfaceEntities", edges(cyl)), en("endBound", "BoundingType", "BLIND"), num("depth", "100 mm"), b("symmetric", True)])
+orient("R3 Orient to reference, half cylinder, reference on the axis -> normals point to the axis",
+       body(half), ref_front("R3 reference point (%d, 0, 0) on the axis" % x0, x0, 0), True)
+
+x0 = 12200
+rc = cube("R4 cube at x 12200", x0, 0)
+orient("R4 Orient to reference, a solid's face -> ERROR (solids cannot be flipped)",
+       face_at(rc, x0, 0, 50), ref_front("R4 reference point (%d, 0, 100)" % x0, x0, 100), True)
 print("studio", E)

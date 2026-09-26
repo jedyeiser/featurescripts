@@ -295,7 +295,32 @@ case("T6 ", r'''
             count(cube) ~ " part, volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (1018000), towardFaces " ~ size(toward) ~ " at z " ~ fmt(z) ~ " (1 at 55)"];''',
      CUBE="T6 cube")
 
-EXPECTED_ERRORS = ["T4 Thicken+"]
+for n, toward in enumerate([True, False]):
+    case("R%d " % (n + 1), r'''
+        const normalZ = function(b) { return evFaceTangentPlane(context, { "face" : evaluateQuery(context, qOwnedByBody(b, EntityType.FACE))[0], "parameter" : vector(0.5, 0.5) }).normal[2]; };
+        const top = normalZ(created(@TOP@));
+        const bottom = normalZ(created(@BOTTOM@));
+        const out = embedded(SELF);
+        const moved = count(out.query.flipped.value) + count(out.query.unchanged.value);
+        const ok = (%s) && moved == 2;
+        return [ok, "top normal z " ~ roundToPrecision(top, 3) ~ ", bottom " ~ roundToPrecision(bottom, 3) ~ " (%s); flipped + unchanged " ~ moved ~ " (2)"];''' % (
+        "top < -0.99 && bottom > 0.99" if toward else "top > 0.99 && bottom < -0.99", "top -1, bottom +1" if toward else "top +1, bottom -1"),
+        TOP="R%d top sheet" % (n + 1), BOTTOM="R%d bottom sheet" % (n + 1))
+
+case("R3 ", r'''
+        const f = evaluateQuery(context, qOwnedByBody(created(@HALF@), EntityType.FACE))[0];
+        var ok = true;
+        var worst = 1;
+        for (var tp in evFaceTangentPlanes(context, { "face" : f, "parameters" : [vector(0.2, 0.5), vector(0.5, 0.5), vector(0.8, 0.5)] }))
+        {
+            const toAxis = vector(11800 * millimeter, tp.origin[1], 0 * meter) - tp.origin;
+            const c = dot(tp.normal, normalize(toAxis));
+            worst = min(worst, c);
+            ok = ok && c > 0.999;
+        }
+        return [ok, "normal . (toward the axis) >= " ~ roundToPrecision(worst, 4) ~ " (1)"];''', HALF="R3 half cylinder")
+
+EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference"]
 
 
 def strings(result):
@@ -327,7 +352,7 @@ def main():
 
     for prefix, body, names in CASES:
         cases = [(n, i) for n, i in by_name if n.startswith(prefix) and states.get(i, {}).get("featureStatus") != "ERROR"
-                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+"])]
+                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference"])]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

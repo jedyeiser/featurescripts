@@ -100,10 +100,6 @@ export const UNWRAP_PART_SHAPE_TOL = 0.005 * millimeter;
 /** Classification grid of a PRISM face (G x G parameters, G odd so there is a middle row). */
 export const UNWRAP_PART_PRISM_GRID = 5;
 
-/** A face whose flat normal leans less than this out of flat XY (|c|) is also an x-facing face: a profile face this
- * steep bounds the plan view as well (4802's tilted nose, research 5.1 item 4). */
-export const UNWRAP_PART_XFACING = 0.05;
-
 /** Rows: adaptive (seed every UNWRAP_PART_ROW_SEED_SPACING m, at least UNWRAP_PART_ROW_SEED_MIN, then split every
  * span whose mapped midpoint misses the cubic through its neighbours by more than shapeTolerance *
  * UNWRAP_PART_ROW_REFINE, up to UNWRAP_PART_ROW_PASSES passes), or fixed (UNWRAP_PART_ROW_FIXED_SPACING, at least
@@ -116,8 +112,14 @@ export const UNWRAP_PART_ROW_PASSES = 6;
 export const UNWRAP_PART_ROW_FIXED_SPACING = 4e-3;
 export const UNWRAP_PART_PRISM_ROW_MAX = 400;
 
+/** "merge" chains are refitted through their exact per-face curves sampled at least this far apart (m). */
+export const UNWRAP_PART_MERGE_SPACING = 2.5e-4;
+
 /** A mapped row within shapeTolerance * this of a line / circle is emitted as a line / arc ("keep" faces). */
 export const UNWRAP_PART_SHAPE_ARC_SHARE = 0.1;
+
+/** Chain ends meeting end to end are snapped together only when their directions agree to this |cos| (30 deg). */
+export const UNWRAP_PART_SNAP_DOT = 0.866;
 
 /** A chain end lying on another chain of its view (within UNWRAP_PART_JOIN) is extended by this (m) so the curves
  * really cross; a free end is extended along its tangent to the box. */
@@ -1081,7 +1083,8 @@ export function chainRows(rows is array, kind is string) returns array
                 }
             }
         }
-        chains = append(chains, { "kind" : kind, "pts" : ch.pts, "e0" : ch.e0, "e1" : ch.e1, "faces" : ch.faces, "parts" : ch.parts });
+        chains = append(chains, { "kind" : kind, "pts" : ch.pts, "e0" : ch.e0, "e1" : ch.e1, "faces" : ch.faces, "parts" : ch.parts,
+                    "envelope" : ch.envelope == true });
     }
     return chains;
 }
@@ -1151,6 +1154,7 @@ export function joinRows(ch is map, row is map)
     {
         joined.kind = ch.kind;
         joined.faces = concatenateArrays([ch.faces, row.faces]);
+        joined.envelope = ch.envelope == true || row.envelope == true;
         if (ch.parts != undefined && row.parts != undefined)
         {
             // The per-face parts in chain order (PRISM "keep" faces), for the same four cases.
@@ -1626,11 +1630,12 @@ export function gridSpread(flat is array, alongU is boolean, ib is number) retur
 /**
  * How far a face departs from a pure extrusion in one view: the side view (ib = 2, the image extruded along flat Y,
  * a PROFILE) or the plan view (ib = 1, extruded along flat Z, a WALL). The curve direction is the grid direction
- * spreading most in the view; at each station along it the points across the face are measured along the view normal
- * of the middle one (so parameter slip along the curve does not count). The row PRISM builds is the middle one, so
- * "dev" is the face's worst distance from its tool.
- * @returns {map} : { "dev" (plain metres; UNWRAP_PART_NO_FIT when the face has no normal in the view plane), "out"
- *      (largest offset along the outward normal), "alongU", "spread" (the curve's length in the view) }
+ * spreading most in the view. At each grid station along it, the points across the face are measured along the view
+ * normal of the middle one (so parameter slip along the curve does not count): the best-fit tool passes through the
+ * middle of their range, and the face departs from it by half the range. The tool row is the face's middle row
+ * shifted by "mids" (interpolated along the row); an envelope row by "outs" (the outermost point of each station).
+ * @returns {map} : { "dev" (plain metres; UNWRAP_PART_NO_FIT when the face has no normal in the view plane), "mids",
+ *      "outs" (per station, plain metres along the outward view normal), "alongU", "spread" (the curve's length) }
  */
 export function viewFit(samples is map, ib is number) returns map
 {
@@ -1640,10 +1645,12 @@ export function viewFit(samples is map, ib is number) returns map
     const spreadU = gridSpread(flat, true, ib);
     const spreadV = gridSpread(flat, false, ib);
     const alongU = spreadU >= spreadV;
-    const noFit = { "dev" : UNWRAP_PART_NO_FIT, "out" : 0, "alongU" : alongU, "spread" : max(spreadU, spreadV) };
+    const noFit = { "dev" : UNWRAP_PART_NO_FIT, "mids" : makeArray(G, 0), "outs" : makeArray(G, 0), "alongU" : alongU,
+        "spread" : max(spreadU, spreadV) };
     const m = (G - 1) / 2;
     var dev = 0;
-    var out = 0;
+    var mids = makeArray(G);
+    var outs = makeArray(G);
     var stations = 0;
     for (var s = 0; s < G; s += 1)
     {
@@ -1671,6 +1678,8 @@ export function viewFit(samples is map, ib is number) returns map
             return noFit;
         }
         var count = 0;
+        var low = 0;
+        var high = 0;
         for (var t = 0; t < G; t += 1)
         {
             const p = flat[gridIndex(s, t, alongU)];
@@ -1680,19 +1689,67 @@ export function viewFit(samples is map, ib is number) returns map
             }
             count += 1;
             const offset = ((p[0] - flat[ref][0]) * nx + (p[ib] - flat[ref][ib]) * nc) / len;
-            dev = max(dev, abs(offset));
-            out = max(out, offset);
+            low = min(low, offset);
+            high = max(high, offset);
         }
         if (count >= 2)
         {
             stations += 1;
+            dev = max(dev, 0.5 * (high - low));
+            mids[s] = 0.5 * (high + low);
+            outs[s] = high;
         }
     }
     if (stations == 0)
     {
         return noFit;
     }
-    return { "dev" : dev, "out" : out, "alongU" : alongU, "spread" : max(spreadU, spreadV) };
+    return { "dev" : dev, "mids" : filledStations(mids), "outs" : filledStations(outs), "alongU" : alongU,
+            "spread" : max(spreadU, spreadV) };
+}
+
+/** Per-station values with the missing ones taken from the nearest station that has one (0 when none has). */
+export function filledStations(values is array) returns array
+{
+    var out = values;
+    for (var s = 0; s < size(values); s += 1)
+    {
+        if (values[s] != undefined)
+        {
+            continue;
+        }
+        out[s] = 0;
+        for (var d = 1; d < size(values); d += 1)
+        {
+            if (s - d >= 0 && values[s - d] != undefined)
+            {
+                out[s] = values[s - d];
+                break;
+            }
+            if (s + d < size(values) && values[s + d] != undefined)
+            {
+                out[s] = values[s + d];
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+/** A per-station value (stations at s / (G - 1)) interpolated linearly at row fraction f. */
+export function stationValue(values is array, f is number) returns number
+{
+    const x = min(max(f, 0), 1) * (size(values) - 1);
+    const s = min(floor(x), size(values) - 2);
+    return values[s] + (x - s) * (values[s + 1] - values[s]);
+}
+
+/** The unit view-plane normal [x, coordinate ib] at a mapped face point (u: its unwrapFast result, n: world normal). */
+export function viewNormal(chart is map, u is array, n is Vector, ib is number) returns array
+{
+    const fn = flatNormal(chart, u, n);
+    const len = sqrt(fn[0] * fn[0] + fn[ib] * fn[ib]);
+    return (len > 1e-9) ? [fn[0] / len, fn[ib] / len] : [0, 0];
 }
 
 /** Largest |component ib| of the defined flat normals. */
@@ -1721,7 +1778,6 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
 {
     const tol = settings.shapeTolerance / meter;
     const refine = tol * UNWRAP_PART_ROW_REFINE;
-    const uniform = settings.faceMode == "merge";
     var rows = [];
     var fallback = [];
     var fallbackMax = 0;
@@ -1764,13 +1820,13 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
         var dev = 0;
         if (profileOK)
         {
-            rows = append(rows, prismRow(context, chart, face, "PROFILE", P, 0, refine, uniform, settings.part));
+            rows = append(rows, prismRow(context, chart, face, "PROFILE", P, false, refine, settings.part));
             dev = P.dev;
             profiles += 1;
         }
         if (wallOK)
         {
-            rows = append(rows, prismRow(context, chart, face, "WALL", W, 0, refine, uniform, settings.part));
+            rows = append(rows, prismRow(context, chart, face, "WALL", W, false, refine, settings.part));
             dev = max(dev, W.dev);
             walls += 1;
             maxLean = max(maxLean, cMax);
@@ -1779,11 +1835,14 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
                 both += 1;
             }
         }
-        else if (cMax < UNWRAP_PART_XFACING && W.dev < UNWRAP_PART_NO_FIT)
+        else if (W.dev < UNWRAP_PART_NO_FIT)
         {
-            // A steep profile face (4802's tilted nose) bounds the plan view too. Its plan row lies on its outward
-            // envelope: the side view carves the face exactly, and the plan cell beyond the row holds no material.
-            rows = append(rows, prismRow(context, chart, face, "WALL", W, W.out, refine, uniform, settings.part));
+            // A profile face facing along x (its flat normal at least half along x: 4802's tilted nose, 4103's tail
+            // cap) may be the only thing closing the plan view there. Its plan row lies on its outward envelope: the
+            // side view carves the face exactly, and the plan cell beyond the row holds no material. (A fixed
+            // "steep" cutoff missed 4103's tail cap on FULL_BASELINE at c = 0.0502: 5.1 mm of extra material,
+            // caught by the reverse check.)
+            rows = append(rows, prismRow(context, chart, face, "WALL", W, true, refine, settings.part));
             envelopes += 1;
         }
         if (squaredHere)
@@ -1852,17 +1911,15 @@ export function rowMidMiss(fs is array, feet is array, j is number, mid is array
  * One PRISM row: points along the face's curve direction (fit.alongU) at the middle of the other parameter, mapped
  * to the chart, in the view's plane ((x, z) for a PROFILE, (x, y) for a WALL). Adaptive (UNWRAP_PART_ADAPTIVE_ROWS):
  * a coarse seed, then every span whose mapped midpoint misses the cubic through its neighbours by more than
- * `tolerance` (plain metres) is split. `shift` (plain metres) moves the row along the view normal (an envelope row).
- * `uniform`: fixed spacing even when UNWRAP_PART_ADAPTIVE_ROWS ("merge" chains: one spline is fitted across the
- * faces' joints, where the curvature jumps, and it rings between non-uniform samples -- measured 12 um on 4803's
- * tight corner with adaptive rows, 5.9 um with uniform ones).
+ * `tolerance` (plain metres) is split. Each point is then moved along its view normal by the face's best-fit shift
+ * (fit.mids) or, for an `envelope` row, to the face's outer envelope (fit.outs), interpolated between grid stations.
  * @returns {map} : a row for chainRows: { "kind", "pts", "e0", "e1", "faces", "parts" }
  */
-export function prismRow(context is Context, chart is map, face is Query, kind is string, fit is map, shift is number,
-    tolerance is number, uniform is boolean, part is Query) returns map
+export function prismRow(context is Context, chart is map, face is Query, kind is string, fit is map, envelope is boolean,
+    tolerance is number, part is Query) returns map
 {
     const ib = (kind == "PROFILE") ? 2 : 1;
-    const adaptive = UNWRAP_PART_ADAPTIVE_ROWS && !uniform;
+    const adaptive = UNWRAP_PART_ADAPTIVE_ROWS;
     var n = adaptive
         ? max(ceil(fit.spread / UNWRAP_PART_ROW_SEED_SPACING) + 1, UNWRAP_PART_ROW_SEED_MIN)
         : max(ceil(fit.spread / UNWRAP_PART_ROW_FIXED_SPACING) + 1, UNWRAP_PART_ROW_MIN);
@@ -1874,11 +1931,13 @@ export function prismRow(context is Context, chart is map, face is Query, kind i
     }
     const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : rowParameters(fs, fit.alongU) });
     var feet = [];
+    var normals = [];
     var previous = undefined;
     for (var tp in planes)
     {
         previous = checkedFaceFoot(context, chart, tp.origin, previous, face, part);
         feet = append(feet, previous);
+        normals = append(normals, viewNormal(chart, previous, tp.normal, ib));
     }
     const last = size(fs) - 1;
     const nStart = flatNormal(chart, feet[0], planes[0].normal);
@@ -1909,12 +1968,14 @@ export function prismRow(context is Context, chart is map, face is Query, kind i
             const midPlanes = evFaceTangentPlanes(context, { "face" : face, "parameters" : rowParameters(mids, fit.alongU) });
             var newFs = [];
             var newFeet = [];
+            var newNormals = [];
             var newOpen = [];
             var k = 0;
             for (var j = 0; j < size(fs); j += 1)
             {
                 newFs = append(newFs, fs[j]);
                 newFeet = append(newFeet, feet[j]);
+                newNormals = append(newNormals, normals[j]);
                 if (j + 1 == size(fs))
                 {
                     break;
@@ -1929,6 +1990,7 @@ export function prismRow(context is Context, chart is map, face is Query, kind i
                         newOpen = append(newOpen, true);
                         newFs = append(newFs, mids[k - 1]);
                         newFeet = append(newFeet, mid);
+                        newNormals = append(newNormals, viewNormal(chart, mid, midPlanes[k - 1].normal, ib));
                         newOpen = append(newOpen, true);
                         continue;
                     }
@@ -1937,31 +1999,22 @@ export function prismRow(context is Context, chart is map, face is Query, kind i
             }
             fs = newFs;
             feet = newFeet;
+            normals = newNormals;
             open = newOpen;
         }
     }
 
     const n0 = [nStart[0], nStart[ib]];
     const n1 = [nEnd[0], nEnd[ib]];
-    var dx = 0;
-    var dc = 0;
-    if (shift != 0)
-    {
-        const sx = n0[0] + n1[0];
-        const sc = n0[1] + n1[1];
-        const len = sqrt(sx * sx + sc * sc);
-        if (len > 1e-9)
-        {
-            dx = shift * sx / len;
-            dc = shift * sc / len;
-        }
-    }
+    // The best-fit (or envelope) shift of each station, along each point's own view normal.
+    const shifts = envelope ? fit.outs : fit.mids;
     var pts = [];
-    for (var u in feet)
+    for (var k = 0; k < size(feet); k += 1)
     {
-        pts = append(pts, [u[0] + dx, u[ib] + dc]);
+        const d = stationValue(shifts, fs[k]);
+        pts = append(pts, [feet[k][0] + d * normals[k][0], feet[k][ib] + d * normals[k][1]]);
     }
-    return { "kind" : kind, "pts" : pts, "e0" : { "n" : n0 }, "e1" : { "n" : n1 }, "faces" : [face],
+    return { "kind" : kind, "pts" : pts, "e0" : { "n" : n0 }, "e1" : { "n" : n1 }, "faces" : [face], "envelope" : envelope,
             "parts" : [{ "pts" : pts, "n0" : n0, "n1" : n1, "face" : face }] };
 }
 
@@ -2054,6 +2107,158 @@ export function distinctViewChains(chains is array, flatTolerance is number) ret
     return kept;
 }
 
+/** A chain run backwards: points, ends and per-face parts. */
+export function reversedChain(chain is map) returns map
+{
+    var ch = chain;
+    ch.pts = reverse(chain.pts);
+    ch.e0 = chain.e1;
+    ch.e1 = chain.e0;
+    if (chain.parts != undefined)
+    {
+        ch.parts = reversedParts(chain.parts);
+    }
+    return ch;
+}
+
+/**
+ * Chains of one view that OVERLAP (a's last end lies on b, b's first end lies on a, and neither lies wholly on the
+ * other) joined into one: a up to where b begins, then b. Rows run over their face's parameter box, which can reach
+ * past the face's trim, so two faces of one smooth profile can overlap by millimetres in the view (4401's top: 1.3
+ * mm). Left apart, each end dangles along the other curve without crossing it and the outline leaks through the
+ * micron-thin gap between them (measured: 4401's side view stayed one cell).
+ */
+export function mergeOverlappingChains(chains is array, tol is number) returns array
+{
+    var pool = chains;
+    var merged = true;
+    while (merged)
+    {
+        merged = false;
+        var boxes = [];
+        for (var ch in pool)
+        {
+            boxes = append(boxes, chainBox(ch.pts));
+        }
+        for (var i = 0; i < size(pool) && !merged; i += 1)
+        {
+            for (var j = 0; j < size(pool) && !merged; j += 1)
+            {
+                if (i == j || !boxesOverlap(boxes[i], boxes[j], tol))
+                {
+                    continue;
+                }
+                for (var flips in [[false, false], [false, true], [true, false], [true, true]])
+                {
+                    const a = flips[0] ? reversedChain(pool[i]) : pool[i];
+                    const b = flips[1] ? reversedChain(pool[j]) : pool[j];
+                    const aFirst = a.pts[0];
+                    const aLast = a.pts[size(a.pts) - 1];
+                    const bFirst = b.pts[0];
+                    const bLast = b.pts[size(b.pts) - 1];
+                    if (planarDistance(aLast, bFirst) > tol && nearBoxedPolyline(b.pts, boxes[j], aLast, tol)
+                        && nearBoxedPolyline(a.pts, boxes[i], bFirst, tol) && !nearBoxedPolyline(b.pts, boxes[j], aFirst, tol)
+                        && !nearBoxedPolyline(a.pts, boxes[i], bLast, tol))
+                    {
+                        const joined = overlapJoin(a, b);
+                        var next = [];
+                        for (var k = 0; k < size(pool); k += 1)
+                        {
+                            if (k == i)
+                            {
+                                next = append(next, joined);
+                            }
+                            else if (k != j)
+                            {
+                                next = append(next, pool[k]);
+                            }
+                        }
+                        pool = next;
+                        merged = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return pool;
+}
+
+/** Whether two [xmin, xmax, cmin, cmax] boxes overlap within tol. */
+export function boxesOverlap(a is array, b is array, tol is number) returns boolean
+{
+    return a[0] <= b[1] + tol && b[0] <= a[1] + tol && a[2] <= b[3] + tol && b[2] <= a[3] + tol;
+}
+
+/** Whether p lies within tol of a polyline whose box is given. */
+export function nearBoxedPolyline(pts is array, bx is array, p is array, tol is number) returns boolean
+{
+    if (p[0] < bx[0] - tol || p[0] > bx[1] + tol || p[1] < bx[2] - tol || p[1] > bx[3] + tol)
+    {
+        return false;
+    }
+    return polylineDistance(pts, p) < tol;
+}
+
+/**
+ * a (up to the point nearest b's first point) followed by b, for mergeOverlappingChains. The per-face parts follow:
+ * a's parts past the cut are dropped, the cut one ends at b's first point.
+ */
+export function overlapJoin(a is map, b is map) returns map
+{
+    const cut = b.pts[0];
+    // The segment of a nearest the cut: a keeps its points up to that segment's start.
+    var best = 1e9;
+    var m = 0;
+    for (var k = 0; k + 1 < size(a.pts); k += 1)
+    {
+        const d = polylineDistance([a.pts[k], a.pts[k + 1]], cut);
+        if (d < best)
+        {
+            best = d;
+            m = k;
+        }
+    }
+    var pts = subArray(a.pts, 0, m + 1);
+    if (planarDistance(pts[m], cut) < 1e-9)
+    {
+        pts = subArray(pts, 0, m);
+    }
+    var joined = { "kind" : a.kind, "pts" : concatenateArrays([pts, b.pts]), "e0" : a.e0, "e1" : b.e1,
+        "faces" : concatenateArrays([a.faces, b.faces]), "envelope" : a.envelope == true || b.envelope == true };
+    if (a.parts != undefined && b.parts != undefined)
+    {
+        // Part q of a covers chain points start .. start + size - 1 (consecutive parts share their joint point).
+        var parts = [];
+        var start = 0;
+        for (var part in a.parts)
+        {
+            const count = size(part.pts);
+            if (start + count - 1 <= size(pts) - 1)
+            {
+                parts = append(parts, part);
+            }
+            else
+            {
+                var kept = subArray(part.pts, 0, max(1, size(pts) - start));
+                kept = append(kept, cut);
+                parts = append(parts, { "pts" : kept, "n0" : part.n0, "n1" : b.parts[0].n0, "face" : part.face });
+                break;
+            }
+            start += count - 1;
+        }
+        if (size(parts) == size(a.parts))
+        {
+            // The cut fell on a's last point: its last part ends at the cut.
+            var last = parts[size(parts) - 1];
+            last.pts[size(last.pts) - 1] = cut;
+            parts[size(parts) - 1] = last;
+        }
+        joined.parts = concatenateArrays([parts, b.parts]);
+    }
+    return joined;
+}
+
 /**
  * The curves of one chain in "keep" mode: one edge per source face, meeting at the averaged joints; a line or an arc
  * where the face's row is one within arcTolerance (so planar and cylindrical faces come out planar and cylindrical),
@@ -2111,18 +2316,164 @@ export function emitChainParts(context is Context, id is Id, ch is map, profile 
 }
 
 /**
+ * The curve of one chain in "merge" mode: ONE spline through the whole chain. Fitting it straight through the rows
+ * rings where the faces meet with a curvature jump (a line into a tight arc): 12 um on 4803's corner between adaptive
+ * samples, 16 um at the CORE's tip with uniform 4 mm ones. So the exact per-face curves are built first
+ * (emitChainParts), sampled uniformly by arc length (at least UNWRAP_PART_MERGE_SPACING apart, at most
+ * UNWRAP_PART_PRISM_ROW_MAX points), fitted with the chain's end tangents, and deleted.
+ */
+export function emitMergedChain(context is Context, id is Id, ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits,
+    start, end)
+{
+    const exactId = id + "exact";
+    emitChainParts(context, exactId, ch, profile, lo, arcTolerance, { "lines" : 0, "arcs" : 0, "splines" : 0 });
+    var edges = [];
+    var lengths = [];
+    var total = 0;
+    for (var q = 0; q < size(ch.parts); q += 1)
+    {
+        const edge = qCreatedBy(exactId + ("p" ~ q), EntityType.EDGE);
+        const length = evLength(context, { "entities" : edge }) / meter;
+        edges = append(edges, edge);
+        lengths = append(lengths, length);
+        total += length;
+    }
+    const spacing = max(total / (UNWRAP_PART_PRISM_ROW_MAX - 1), UNWRAP_PART_MERGE_SPACING);
+    var points = [];
+    for (var q = 0; q < size(edges); q += 1)
+    {
+        const count = max(3, ceil(lengths[q] / spacing) + 1);
+        var parameters = [];
+        for (var k = 0; k < count; k += 1)
+        {
+            parameters = append(parameters, k / (count - 1));
+        }
+        var run = [];
+        for (var tl in evEdgeTangentLines(context, { "edge" : edges[q], "parameters" : parameters }))
+        {
+            run = append(run, tl.origin);
+        }
+        // Each edge in chain order: its start is the part's first point.
+        const first = toolPoint(ch.parts[q].pts[0], profile, lo);
+        if (norm(run[count - 1] - first) < norm(run[0] - first))
+        {
+            run = reverse(run);
+        }
+        points = concatenateArrays([points, (q == 0) ? run : subArray(run, 1, count)]);
+    }
+    opDeleteBodies(context, id + "deleteExact", { "entities" : qCreatedBy(exactId, EntityType.BODY) });
+    emitSplineCurve(context, id + "fit", pickIndices(points, separatedIndices([points])), start, end, fitApproximation());
+}
+
+/**
+ * Chain ends meeting end to end (within `tolerance`) moved onto their common average point. Rows shifted to their
+ * best fit no longer share the source edge's point exactly; where two such chains meet at a slight crease their short
+ * overshoots run almost parallel and never cross, leaving the outline open by microns (measured: 4401's side view
+ * stayed one cell). Snapped, they share a vertex. Only near-tangent meetings (|cos| > UNWRAP_PART_SNAP_DOT) are
+ * snapped: at an angle the overshoots cross anyway, and moving a best-fit end would tilt its row (4401's tail cap:
+ * +11 um).
+ */
+export function snapChainEnds(chains is array, tolerance is number) returns array
+{
+    var ends = [];
+    for (var i = 0; i < size(chains); i += 1)
+    {
+        if (chains[i].envelope == true)
+        {
+            // Envelope rows lie off their face on purpose and meet their neighbours at an angle: never moved.
+            continue;
+        }
+        const pts = chains[i].pts;
+        const n = size(pts);
+        ends = append(ends, { "chain" : i, "last" : false, "p" : chains[i].straight ? chains[i].lineStart : pts[0],
+                    "t" : planarDirection(pts[0], pts[1]) });
+        ends = append(ends, { "chain" : i, "last" : true, "p" : chains[i].straight ? chains[i].lineEnd : pts[n - 1],
+                    "t" : planarDirection(pts[n - 2], pts[n - 1]) });
+    }
+    var out = chains;
+    var done = makeArray(size(ends), false);
+    for (var a = 0; a < size(ends); a += 1)
+    {
+        if (done[a])
+        {
+            continue;
+        }
+        var cluster = [a];
+        for (var b = a + 1; b < size(ends); b += 1)
+        {
+            if (!done[b] && ends[b].chain != ends[a].chain && planarDistance(ends[a].p, ends[b].p) < tolerance
+                && abs(planarDot(ends[a].t, ends[b].t)) > UNWRAP_PART_SNAP_DOT)
+            {
+                cluster = append(cluster, b);
+            }
+        }
+        if (size(cluster) < 2)
+        {
+            continue;
+        }
+        var sx = 0;
+        var sy = 0;
+        for (var k in cluster)
+        {
+            sx += ends[k].p[0];
+            sy += ends[k].p[1];
+            done[k] = true;
+        }
+        const p = [sx / size(cluster), sy / size(cluster)];
+        for (var k in cluster)
+        {
+            out[ends[k].chain] = movedChainEnd(out[ends[k].chain], ends[k].last, p);
+        }
+    }
+    return out;
+}
+
+/** A chain with its first (last = false) or last end moved to p: points, line ends and per-face parts alike. */
+export function movedChainEnd(chain is map, last is boolean, p is array) returns map
+{
+    var ch = chain;
+    const n = size(ch.pts);
+    ch.pts[last ? n - 1 : 0] = p;
+    if (ch.straight)
+    {
+        if (last)
+        {
+            ch.lineEnd = p;
+        }
+        else
+        {
+            ch.lineStart = p;
+        }
+    }
+    if (ch.parts != undefined)
+    {
+        const q = last ? size(ch.parts) - 1 : 0;
+        var part = ch.parts[q];
+        part.pts[last ? size(part.pts) - 1 : 0] = p;
+        ch.parts[q] = part;
+    }
+    return ch;
+}
+
+/**
  * The 2D arrangement of one view: a flat sheet just outside the box (side view: y = lo[1] - 1 mm, coordinates (x, z);
  * plan view: z = lo[2] - 1 mm, coordinates (x, y)) split by the curves of every chain and their extensions. Each end
- * lying on another chain of the view (within UNWRAP_PART_JOIN) is extended by UNWRAP_PART_OVERSHOOT so the curves
- * really cross; a free end is extended along its tangent to the box. Straight chains are finite segments.
+ * lying on another chain of the view (within UNWRAP_PART_JOIN, or 3 x shapeTolerance when larger) is extended by
+ * UNWRAP_PART_OVERSHOOT (or 3 x shapeTolerance) so the curves really cross; a free end is extended along its tangent
+ * to the box. Straight chains are finite segments.
  * @returns {map} : { "chains" (with "ext": the extensions), "faces" (the cells), "counts" }
  */
-export function prismArrangement(context is Context, id is Id, chains is array, profile is boolean, lo is array, hi is array,
+export function prismArrangement(context is Context, id is Id, viewChains is array, profile is boolean, lo is array, hi is array,
     settings is map) returns map
 {
     const reach = sqrt((hi[0] - lo[0]) ^ 2 + (hi[1] - lo[1]) ^ 2 + (hi[2] - lo[2]) ^ 2) + 0.01;
     const ib = profile ? 2 : 1;
     const keep = settings.faceMode == "keep";
+    // A best-fit row is shifted by up to the shape tolerance, so two neighbours' ends can part by twice that: the
+    // junction test and the overshoot grow with it (measured: 4401's tail cap, shifted 25 um, left its outline open).
+    const junction = max(UNWRAP_PART_JOIN, 3 * settings.shapeTolerance / meter);
+    const overshoot = max(UNWRAP_PART_OVERSHOOT, 3 * settings.shapeTolerance / meter);
+    const chains = snapChainEnds(viewChains, junction);
     var out = [];
     var counts = { "lines" : 0, "arcs" : 0, "splines" : 0 };
     for (var i = 0; i < size(chains); i += 1)
@@ -2155,14 +2506,9 @@ export function prismArrangement(context is Context, id is Id, chains is array, 
             }
             else
             {
-                var points = [];
-                for (var p in ch.pts)
-                {
-                    points = append(points, toolPoint(p, profile, lo));
-                }
                 const start = (t0 == undefined) ? undefined : (profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0));
                 const end = (t1 == undefined) ? undefined : (profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0));
-                emitSplineCurve(context, cid + "fit", pickIndices(points, separatedIndices([points])), start, end, fitApproximation());
+                emitMergedChain(context, cid + "merged", ch, profile, lo, settings.arcTolerance, start, end);
                 counts.splines += 1;
             }
             if (t0 == undefined)
@@ -2180,13 +2526,13 @@ export function prismArrangement(context is Context, id is Id, chains is array, 
             var onOther = false;
             for (var j = 0; j < size(chains); j += 1)
             {
-                if (j != i && nearChain(chains[j], ends[k].p, UNWRAP_PART_JOIN))
+                if (j != i && nearChain(chains[j], ends[k].p, junction))
                 {
                     onOther = true;
                     break;
                 }
             }
-            const len = onOther ? UNWRAP_PART_OVERSHOOT : reach;
+            const len = onOther ? overshoot : reach;
             const e = ends[k];
             emitLineCurve(context, cid + ("ext" ~ k), toolPoint(e.p, profile, lo), toolPoint([e.p[0] + len * e.t[0], e.p[1] + len * e.t[1]], profile, lo));
             ch.ext = append(ch.ext, { "p" : e.p, "t" : e.t, "len" : len });
@@ -2410,8 +2756,8 @@ export function prismPiece(context is Context, id is Id, chart is map, piece is 
         hi[ax] += UNWRAP_PART_BOX_MARGIN;
     }
     const flatTol = settings.flatTolerance / meter;
-    const pch = distinctViewChains(chainRows(analysis.rows, "PROFILE"), flatTol);
-    const wch = distinctViewChains(chainRows(analysis.rows, "WALL"), flatTol);
+    const pch = distinctViewChains(mergeOverlappingChains(chainRows(analysis.rows, "PROFILE"), UNWRAP_PART_DUPLICATE), flatTol);
+    const wch = distinctViewChains(mergeOverlappingChains(chainRows(analysis.rows, "WALL"), UNWRAP_PART_DUPLICATE), flatTol);
     var snapped = 0;
     for (var ch in concatenateArrays([pch, wch]))
     {

@@ -1,19 +1,19 @@
-FeatureScript 2878;
-import(path : "onshape/std/common.fs", version : "2878.0");
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
 
 
 // Dependencies
 //import assertions
-import(path : "34fb2c6a3c895cfce6b281f3", version : "bd6a4d5a47ec29178af978cf");
+import(path : "34fb2c6a3c895cfce6b281f3", version : "18fcdac56b39d12dba5ce285");
 
 //import solvers
-import(path : "99e84dbe2a4e2350792fa693", version : "a1c9b0c6af0142e5e2d0d04e");
+import(path : "99e84dbe2a4e2350792fa693", version : "91ebe2327e2b0654bb603e52");
 
 //import bsspline_data
-import(path : "b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 
 //import math_utils
-import(path : "280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "280a24d76f52bdbf44cd941d", version : "43549bf2d5a2bb2e92fb44bd");
 
 
 
@@ -168,23 +168,13 @@ export function projectPointOnCurve(curve is BSplineCurve, point is Vector, opti
         return ortho;
     };
 
-    // Sample to find sign change bracket — single batched evaluateSpline call
-    var nBracketSamples = 11;
-    var bracketParams = [];
-    for (var i = 0; i < nBracketSamples; i += 1)
-        bracketParams = append(bracketParams, bracketLo + (bracketHi - bracketLo) * i / (nBracketSamples - 1));
-
-    var bracketEval = evaluateSpline({ "spline" : curve, "parameters" : bracketParams, "nDerivatives" : 1 });
-
+    // Sample to find sign change bracket
     var samples = [];
+    var nBracketSamples = 11;
     for (var i = 0; i < nBracketSamples; i += 1)
     {
-        var curvePoint = bracketEval[0][i];
-        var tangent    = bracketEval[1][i];
-        var diff       = curvePoint - point;
-        var ortho      = dot(diff, tangent);
-        try silent { ortho = ortho / meter / meter; }
-        samples = append(samples, { "u" : bracketParams[i], "f" : ortho });
+        var u = bracketLo + (bracketHi - bracketLo) * i / (nBracketSamples - 1);
+        samples = append(samples, { "u" : u, "f" : orthoFunc(u) });
     }
 
     var bracket = bracketFromSamples(samples);
@@ -200,16 +190,15 @@ export function projectPointOnCurve(curve is BSplineCurve, point is Vector, opti
     }
     else
     {
-        // No sign change found - use pre-computed endpoint values; one orthoFunc call for bestU
-        var fLo   = samples[0].f;
-        var fHi   = samples[nBracketSamples - 1].f;
-        var fBest = orthoFunc(bestU);
+        // No sign change found - check endpoints and use best sample
+        var fLo = orthoFunc(bracketLo);
+        var fHi = orthoFunc(bracketHi);
 
-        if (abs(fLo) < abs(fHi) && abs(fLo) < abs(fBest))
+        if (abs(fLo) < abs(fHi) && abs(fLo) < abs(orthoFunc(bestU)))
         {
             refinedU = bracketLo;
         }
-        else if (abs(fHi) < abs(fBest))
+        else if (abs(fHi) < abs(orthoFunc(bestU)))
         {
             refinedU = bracketHi;
         }

@@ -17,10 +17,8 @@ Decisions from the user's reviews that apply beyond the deck they came from. Che
 - First concept slide: `docs/explainers/reference_side/img/fig01_flip_vs_reference.png` (user: "probably put this
   in the deck").
 - Tips slide, limit: **outputs keep their input's orientation** -- the reference picks the side, not the normal;
-  built-ins downstream (Thicken, Offset surface, extrude up to, Move face, built-in Split) still follow the normal,
-  so use the reference-side features there. Orienting output sheets by the reference is DECIDED (2026-09-25), not
-  built: sheets only (Split+ surface pieces, Mutual Trim+ results, Offset+ surfaces), per body, default off
-  (correction 25), form open (option on each feature vs a standalone "orient to reference" feature).
-  Thicken+: its outputs are solids -- say orientation does not apply, and that it is the recommended downstream
-  replacement for Thicken. Explainer section 1.4 has the full text. When the option is built, update this note,
-  explainer 1.4 / 2.5, and every reference-side deck.
+  built-ins downstream (Thicken, Offset surface, extrude up to, Move face, built-in Split) still follow the normal.
+  Fix: **Orient to reference** (built 2026-09-25, standalone feature by the user's choice; sheets only, per body)
+  before them, or use Thicken+ / Offset+ instead of the built-ins. Thicken+: its outputs are solids -- orientation
+  does not apply; it is the recommended downstream replacement for Thicken. Explainer 1.4 / 2.6 have the full text.
+- Related slide / table: name Orient to reference alongside the other reference-side features.
