@@ -1211,25 +1211,26 @@ function runCase(context is Context, closeFunctions is array, caseId is Id, case
     var outside = [];
     var from = 0;
     var segment = 0;
-    setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
     while (true)
     {
-        var part = callClose(context, closeFunctions, caseId + ("s" ~ segment),
-            { "caseId" : caseId, "caseName" : caseName, "mode" : "frame", "from" : from });
+        // The frame id must be the id the features run under (a frame on caseId with calls under
+        // caseId + "s0" builds nothing -- measured 2026-09-26).
+        const segmentId = caseId + ("s" ~ segment);
         segment += 1;
+        setFeaturePatternInstanceData(context, segmentId, { "transform" : identityTransform() });
+        var part = callClose(context, closeFunctions, segmentId,
+            { "caseId" : caseId, "caseName" : caseName, "mode" : "frame", "from" : from });
+        unsetFeaturePatternInstanceData(context, segmentId);
         if (part.failure != undefined)
         {
-            unsetFeaturePatternInstanceData(context, caseId);
             return part;
         }
         origins = concatenateArrays([origins, part.result.origins]);
         if (part.result.stoppedAt == undefined)
         {
-            unsetFeaturePatternInstanceData(context, caseId);
             return { "result" : { "origins" : origins, "outputs" : part.result.outputs, "outside" : outside } };
         }
         const index = part.result.stoppedAt;
-        unsetFeaturePatternInstanceData(context, caseId);
         part = callClose(context, closeFunctions, caseId + ("d" ~ index),
             { "caseId" : caseId, "caseName" : caseName, "mode" : "direct", "index" : index });
         if (part.failure != undefined)
@@ -1243,7 +1244,6 @@ function runCase(context is Context, closeFunctions is array, caseId is Id, case
         {
             return { "result" : { "origins" : origins, "outputs" : part.result.outputs, "outside" : outside } };
         }
-        setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
     }
 }
 
