@@ -363,35 +363,49 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
     });
 
 /**
- * One case, run by the Close case when its Case pattern calls it (after binding the case's inputs
- * and values). Replays the listed features in a pattern frame (identity transform) that this
- * feature pushes itself, so it can pop it to retry an outside-geometry edit (runListedFeature).
- * Records the bodies each listed feature creates (for naming) and the outputs' queries -- evaluated
- * here, after the case's own query variables were set -- for the Case pattern to publish.
+ * One case, or one part of it, run by the Close case when its Case pattern calls it after binding
+ * the case's inputs and values.
+ *
+ * "frame" mode (the Case pattern has pushed the pattern frame): runs the listed features from
+ * replay.from on. A kernel op that edits geometry from outside the list (fillet an existing edge,
+ * move an existing face) refuses in the frame with SELF_INTERSECTING_CURVE_SELECTED -- Query
+ * Pattern's open Move face bug. The frame was pushed by the Case pattern and cannot be popped here
+ * ("Execution error"; a frame pushed inside this feature builds nothing -- both measured 2026-09-26),
+ * so the replay stops and reports stoppedAt; the Case pattern pops the frame and calls again in
+ * "direct" mode to run just that feature, then continues in frame mode. Any other failure stands, so
+ * a feature whose in-list reference did not remap cannot fall back onto case 1's geometry.
+ *
+ * Records the bodies each listed feature creates (for naming) and, once the last feature ran, the
+ * outputs' queries -- evaluated here, after the case's own query variables were set.
  */
 function replayCase(context is Context, id is Id, definition is map, replay is map)
 {
-    const caseId = replay.caseId;
     const functions = valuesSortedById(context, definition.features);
-    // A fresh sub-id for the frame and the calls (the feature's own id as frame id builds nothing).
-    const runId = id + "run";
-    setFeaturePatternInstanceData(context, runId, { "transform" : identityTransform() });
     var origins = [];
-    var outside = [];
-    var before = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
-    for (var i = 0; i < size(functions); i += 1)
+    var before = evaluateQuery(context, qCreatedBy(replay.caseId, EntityType.BODY));
+    const first = replay.mode == "direct" ? replay.index : replay.from;
+    const last = replay.mode == "direct" ? replay.index : size(functions) - 1;
+    for (var i = first; i <= last; i += 1)
     {
-        const outcome = runListedFeature(context, functions, i, runId, runId);
-        if (outcome.error != undefined)
+        var failure = undefined;
+        try
         {
-            unsetFeaturePatternInstanceData(context, runId);
-            throw regenError("repeated feature " ~ (i + 1) ~ " failed (" ~ outcome.error ~ ")");
+            functions[i](id);
         }
-        if (!outcome.inFrame)
+        catch (e)
         {
-            outside = append(outside, i + 1);
+            failure = errorText(e);
         }
-        const after = evaluateQuery(context, qCreatedBy(caseId, EntityType.BODY));
+        if (failure != undefined)
+        {
+            if (replay.mode == "frame" && indexOf(failure, "SELF_INTERSECTING_CURVE_SELECTED") >= 0)
+            {
+                setVariable(context, CASE_RESULT_KEY, { "origins" : origins, "stoppedAt" : i });
+                return;
+            }
+            throw regenError("repeated feature " ~ (i + 1) ~ " failed (" ~ failure ~ ")");
+        }
+        const after = evaluateQuery(context, qCreatedBy(replay.caseId, EntityType.BODY));
         var j = 0;
         for (var body in after)
         {
@@ -403,13 +417,17 @@ function replayCase(context is Context, id is Id, definition is map, replay is m
         }
         before = after;
     }
-    unsetFeaturePatternInstanceData(context, runId);
-    var outputs = [];
-    for (var output in definition.outputs)
+    var result = { "origins" : origins };
+    if (last == size(functions) - 1)
     {
-        outputs = append(outputs, output.outputQuery);
+        var outputs = [];
+        for (var output in definition.outputs)
+        {
+            outputs = append(outputs, output.outputQuery);
+        }
+        result.outputs = outputs;
     }
-    setVariable(context, CASE_RESULT_KEY, { "origins" : origins, "outputs" : outputs, "outside" : outside });
+    setVariable(context, CASE_RESULT_KEY, result);
 }
 
 /**
@@ -993,25 +1011,14 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 }
             }
 
-            // Run the case: the Close case replays its features in a pattern frame (correction 50).
+            // Run the case as a Pattern runs one instance (correction 31: never inside startFeature):
+            // the Close case replays its features under this frame (correction 50), stepping out of
+            // it for features that edit geometry from outside the list (see replayCase).
             const caseId = id + ("case_" ~ caseName);
-            setVariable(context, CASE_REPLAY_KEY, { "caseId" : caseId, "caseName" : caseName });
-            setVariable(context, CASE_RESULT_KEY, MISSING);
-            var failure = undefined;
-            try
-            {
-                closeFunctions[0](caseId);
-            }
-            catch (e)
-            {
-                failure = errorText(e);
-            }
-            const result = getVariable(context, CASE_RESULT_KEY, MISSING);
+            const run = runCase(context, closeFunctions, caseId, caseName);
+            const failure = run.failure;
+            const result = run.result;
             const caseBodies = qCreatedBy(caseId, EntityType.BODY);
-            if (failure == undefined && !(result is map))
-            {
-                failure = "the Close case did not run";
-            }
             if (failure != undefined)
             {
                 if (!isQueryEmpty(context, caseBodies))
@@ -1025,7 +1032,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             {
                 for (var i in result.outside)
                 {
-                    println("  repeated feature " ~ i ~ " edits geometry from outside the list: ran outside the pattern frame");
+                    println("  repeated feature " ~ (i + 1) ~ " edits geometry from outside the list: ran outside the pattern frame");
                 }
             }
 
@@ -1192,6 +1199,75 @@ function layoutRow(row is map, signature is map) returns map
 // ---------------------------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Runs one case through its Close case (closeFunctions[0]): in the pattern frame, stepping out of it
+ * for each feature the frame refuses (replayCase). Returns { failure } or { result : { origins,
+ * outputs, outside } } (outside = indices of the features that ran outside the frame).
+ */
+function runCase(context is Context, closeFunctions is array, caseId is Id, caseName is string) returns map
+{
+    var origins = [];
+    var outside = [];
+    var from = 0;
+    var segment = 0;
+    setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
+    while (true)
+    {
+        var part = callClose(context, closeFunctions, caseId + ("s" ~ segment),
+            { "caseId" : caseId, "caseName" : caseName, "mode" : "frame", "from" : from });
+        segment += 1;
+        if (part.failure != undefined)
+        {
+            unsetFeaturePatternInstanceData(context, caseId);
+            return part;
+        }
+        origins = concatenateArrays([origins, part.result.origins]);
+        if (part.result.stoppedAt == undefined)
+        {
+            unsetFeaturePatternInstanceData(context, caseId);
+            return { "result" : { "origins" : origins, "outputs" : part.result.outputs, "outside" : outside } };
+        }
+        const index = part.result.stoppedAt;
+        unsetFeaturePatternInstanceData(context, caseId);
+        part = callClose(context, closeFunctions, caseId + ("d" ~ index),
+            { "caseId" : caseId, "caseName" : caseName, "mode" : "direct", "index" : index });
+        if (part.failure != undefined)
+        {
+            return part;
+        }
+        origins = concatenateArrays([origins, part.result.origins]);
+        outside = append(outside, index);
+        from = index + 1;
+        if (part.result.outputs != undefined)
+        {
+            return { "result" : { "origins" : origins, "outputs" : part.result.outputs, "outside" : outside } };
+        }
+        setFeaturePatternInstanceData(context, caseId, { "transform" : identityTransform() });
+    }
+}
+
+/** Calls the Close case once with `replay` published; returns { failure } or { result }. */
+function callClose(context is Context, closeFunctions is array, callId is Id, replay is map) returns map
+{
+    setVariable(context, CASE_REPLAY_KEY, replay);
+    setVariable(context, CASE_RESULT_KEY, MISSING);
+    var failure = undefined;
+    try
+    {
+        closeFunctions[0](callId);
+    }
+    catch (e)
+    {
+        failure = errorText(e);
+    }
+    const result = getVariable(context, CASE_RESULT_KEY, MISSING);
+    if (failure == undefined && !(result is map))
+    {
+        failure = "the Close case did not run";
+    }
+    return failure != undefined ? { "failure" : failure } : { "result" : result };
+}
 
 /** A new, empty case row: every row parameter at its default. */
 function emptyCaseRow() returns map
@@ -1554,58 +1630,6 @@ function unkeptBodies(caseBodies is Query, keep is map) returns Query
         dropped = append(dropped, qBodyType(qConstructionFilter(solidModel, ConstructionObject.YES), BodyType.SHEET));
     }
     return qUnion(dropped);
-}
-
-/**
- * Runs listed feature `i` for a case whose pattern frame (`frameId`) is pushed, under `callId`.
- * The frame must have been pushed by the calling feature itself: a frame pushed by an outer feature
- * cannot be popped from inside a feature it calls ("Execution error", measured 2026-09-26).
- *
- * The frame (identity transform) is what makes FeatureList parameters of the listed features --
- * a Query Variable "created by", say -- resolve to this case's copies. Plain queries (clicks,
- * qCreatedBy(makeId(...))) are NOT remapped; they keep pointing at case 1 (correction 41).
- *
- * A kernel op that edits geometry from outside the list (fillet an existing edge, move an existing
- * face) refuses to run in the frame with SELF_INTERSECTING_CURVE_SELECTED -- Query Pattern's open
- * Move face bug. Only that refusal is retried, once, with the frame popped and under a fresh
- * sub-id (the aborted attempt's ids are not reusable); any other failure stands, so a feature
- * whose in-list reference did not remap cannot fall back onto case 1's geometry.
- */
-function runListedFeature(context is Context, functions is array, i is number, frameId is Id, callId is Id) returns map
-{
-    var frameError = undefined;
-    try
-    {
-        functions[i](callId);
-    }
-    catch (e)
-    {
-        frameError = errorText(e);
-    }
-    if (frameError == undefined)
-    {
-        return { "inFrame" : true };
-    }
-    if (indexOf(frameError, "SELF_INTERSECTING_CURVE_SELECTED") < 0)
-    {
-        return { "inFrame" : true, "error" : frameError };
-    }
-    unsetFeaturePatternInstanceData(context, frameId);
-    var directError = undefined;
-    try
-    {
-        functions[i](callId + ("direct" ~ i));
-    }
-    catch (e)
-    {
-        directError = errorText(e);
-    }
-    setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
-    if (directError != undefined)
-    {
-        return { "inFrame" : false, "error" : directError };
-    }
-    return { "inFrame" : false };
 }
 
 /** A short text for a caught regen error. */
