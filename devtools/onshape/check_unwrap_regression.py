@@ -1,9 +1,16 @@
-"""Unwrap regression: feature status + published lengthWrapped / lengthFlat / volumeRatio of every Unwrap feature in
-the two test studios ("Unwrap_Testing Copy 2" = all production parts, "Unwrap_Testing Copy 1" = U1-U3).
+"""Unwrap regression: feature status + a geometry fingerprint of every Unwrap feature in the two test studios
+("Unwrap_Testing Copy 2" = all production parts, "Unwrap_Testing Copy 1" = U1-U3).
+
+The fingerprint reads only the STANDARD keys every producer publishes (`output`, `inputs`), so it works on Unwrap
+versions before and after the 2026-09-25 trim that stopped publishing lengthWrapped / lengthFlat / volumeRatio and
+the line/arc/spline counts. Per feature: number of output bodies, each body's total edge length and world bounding
+box (mm), and output / input solid volume. The wrapped-vs-flat length check itself is in the feature's info notice
+(`python -m sync.main notices ... --monitor`).
 
 usage (repo root, Git Bash):
     FS_SYNC_TIMEOUT=300 PYTHONPATH=. python devtools/onshape/check_unwrap_regression.py [--save]
-Compares with devtools/onshape/fingerprints/unwrap_baseline.json; --save writes the current values as the baseline.
+Compares with devtools/onshape/fingerprints/unwrap_geometry_baseline.json; --save writes the current values as the
+baseline. (unwrap_baseline.json holds the older published-key values and is no longer read.)
 """
 import json, re, sys, time
 from sync.core.client import OnshapeClient
@@ -26,20 +33,34 @@ def evaluate(E, fids):
     for (var fid in [%s])
     {
         const o = getVariable(context, toString(makeId(fid)), {});
-        const v = (o.variable == undefined) ? {} : o.variable;
         var text = fid;
-        for (var key in ["lengthWrapped", "lengthFlat", "volumeRatio"])
+        if (o.query == undefined || o.query.output == undefined)
         {
-            var vals = "";
-            if (v[key] != undefined)
-            {
-                for (var x in v[key].value)
-                {
-                    vals = vals ~ " " ~ toString(x is ValueWithUnits ? roundToPrecision(x / millimeter, 4) : roundToPrecision(x, 6));
-                }
-            }
-            text = text ~ " | " ~ key ~ ":" ~ vals;
+            out = append(out, text ~ " | no embedded output");
+            continue;
         }
+        const output = o.query.output.value;
+        const bodies = evaluateQuery(context, output);
+        var lengths = "";
+        var boxes = "";
+        for (var body in bodies)
+        {
+            const total = evLength(context, { "entities" : qOwnedByBody(body, EntityType.EDGE) });
+            lengths = lengths ~ " " ~ toString(roundToPrecision(total / millimeter, 4));
+            const bb = evBox3d(context, { "topology" : body, "tight" : true });
+            const d = bb.maxCorner - bb.minCorner;
+            boxes = boxes ~ " " ~ toString(roundToPrecision(d[0] / millimeter, 4)) ~ "x" ~ toString(roundToPrecision(d[1] / millimeter, 4))
+                ~ "x" ~ toString(roundToPrecision(d[2] / millimeter, 4));
+        }
+        var ratio = 0;
+        const outSolids = qBodyType(output, BodyType.SOLID);
+        const inSolids = o.query.inputs == undefined ? qNothing() : qBodyType(o.query.inputs.value, BodyType.SOLID);
+        if (!isQueryEmpty(context, outSolids) && !isQueryEmpty(context, inSolids))
+        {
+            ratio = evVolume(context, { "entities" : outSolids }) / evVolume(context, { "entities" : inSolids });
+        }
+        text = text ~ " | bodies: " ~ size(bodies) ~ " | edgeLength:" ~ lengths ~ " | box:" ~ boxes
+            ~ " | volumeRatio: " ~ toString(roundToPrecision(ratio, 6));
         out = append(out, text);
     }
     return out;
@@ -81,7 +102,7 @@ def report(E, label):
         out.append((x["name"], st, vals))
     return out
 now = report("681a5825e353d376c88224eb", "Copy 2") + report("80c1e329f99a05e224058526", "Copy 1")
-path = SP + "/unwrap_baseline.json"
+path = SP + "/unwrap_geometry_baseline.json"
 if SAVE:
     json.dump(now, open(path, "w"), indent=1)
     print("saved", path)

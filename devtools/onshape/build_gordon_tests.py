@@ -19,6 +19,32 @@ spline's own ends are natural: curvature 0). Modified end = (x0+200, 0), To poin
   T07 reference face G1 (cylinder R100 through To)      -> end tangent in the face's tangent plane
   T08 project onto a cylinder R500 under the curve      -> output lies on the face
   T09 reference line stored, 'Endpoint continuity ref?' off -> reference ignored, end = T01's (applied today)
+MCE rework (curves.md sec 4.1-4.6; same S curve unless noted; reference cases from x = 20000, wires from 30000, holds
+from 40000). "W3" = line (0,0)-(60,0) + arc R40 centre (60,40) to (100,40) + spline to (200,100), all G1; its To
+point is (200,130). Mate connectors sit on Front-plane sketch points (Z = the Front normal, X = world X).
+  T10 reference arc R25 through To, G2 match          -> end tangent + curvature (40/m) + normal = the arc's
+  T11 reference mate connector, G1                    -> end tangent along the connector's Z
+  T12 as T11 + Opposite direction                     -> end tangent reversed vs T11 (hook info)
+  T13 mate connector, G2 radius 50                    -> k = 20/m, normal toward the connector's X
+  T14 reference line, G2 match                        -> end curvature 0 (collinear control points)
+  T15 no To point, reference line through the end, G1 -> end stays, tangent along the line
+  T16 no To point, reference line 10 mm away, G0      -> end snaps onto the line (info)
+  T17 reference line 35 mm away, G1                   -> tangent along the line (info: far reference)
+  T20 W3 as a composite wire                          -> one edge, ends exact
+  T21 W3 sketch edges picked in reverse order         -> same as T20 (within 2 x splineTol)
+  T22 W3 wire, no Modified end                        -> end of the chain moved (info)
+  T23 closed chain (rectangle)                        -> ERROR (temporary instance)
+  T24 two separate lines                              -> ERROR (temporary instance)
+  T30 hold point (150,-30) G1                         -> held part unchanged < 1 um, tangent kept at the hold
+  T31 hold point (150,-30) G2                         -> + curvature kept at the hold
+  T32 W3 hold point on the line (30,0) G1             -> held part within splineTol of the source
+  T33 hold distance 60 mm G1                          -> held part unchanged < 1 um
+  T34 hold at a spline knot (100,0) G2                -> held part unchanged, G2 at the hold
+  T35 hold point at the fixed end (untrimmed curve)   -> same as no hold (info)
+  T36 hold point at the modified end                  -> ERROR
+  T37 hold distance 1000 mm (longer than the curve)   -> ERROR
+  T38 hold (150,-30) G1 + arc G2 + project on Top     -> held part unchanged, end tangent = arc's (curvature info)
+  T40 world G0, embedded keys                         -> movedVertex = 1 vertex at To, holdVertex = the fixed-end vertex
 Scaled Curve (SC):
   SC0 control: two lines y=0 / y=100, Create curve on   -> midline y=50
   SC1 default instance (Create curve left at default)   -> one wire body (creates nothing today)
@@ -262,6 +288,182 @@ mce_case("T08", 7000, "project onto the R500 cylinder -> curve on the face", giv
 l9 = ref_line("T09", 8000)
 mce_case("T09", 8000, "reference line stored, checkbox off -> ignored, end tangent = T01",
          {"modEndContinuity": "G1"}, [b("showModContinuity", False)], edges(l9))
+
+
+# ---- Modify curve end: rework cases (reference, wire, hold) ----
+def mce_run(tag, text, sel, frm, to, enums=None, given=(), ref=None):
+    """An MCE instance with explicit selections; frm / to None = left empty."""
+    base = [q("selEdges", sel), q("fromPoint", *([frm] if frm else [])), q("toPoint", *([to] if to else []))]
+    if ref is not None:
+        base.append(q("modContinuityRef", ref))
+    e = {"offsetFrame": "WORLD"}
+    e.update(enums or {})
+    return instance(MCE, "%s %s" % (tag, text), base + list(given), e)
+
+
+def point_sketch(name, x, y):
+    return sketch(name, TOP, [point("p", *mmv(x, y))])
+
+
+def vertex_of(fid):
+    return 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % fid
+
+
+def body_of(fid):
+    return 'qCreatedBy(makeId("%s"), EntityType.BODY)' % fid
+
+
+def connector(name, x, z):
+    """Mate connector on a Front-plane sketch point at world (x, 0, z)."""
+    sk = sketch(name + " (sketch)", FRONT, [point("p", *mmv(x, z))])
+    return feature(name, "mateConnector", [
+        en("originType", "OriginCreationType", "ON_ENTITY"), q("originQuery", vertex_of(sk)),
+        en("entityInferenceType", "EntityInferenceType", "POINT"), b("allowOwnerEntity", True), b("requireOwnerPart", False)])
+
+
+def s_case(tag, x0, trim=SPLINE_TRIM, to_xy=(200, 30)):
+    """The S curve plus its 'to point' fixture (the expected end position, whether or not it is passed)."""
+    curve = s_curve(tag, x0, 0.0, trim)
+    to = point_sketch("%s to point" % tag, x0 + to_xy[0], to_xy[1])
+    return curve, to
+
+
+def w3(tag, x0):
+    """Line + arc + spline, G1 at both joins, from (x0, 0) to (x0 + 200, 100)."""
+    return sketch("%s curve" % tag, TOP, [
+        seg("l", *mmv(x0, 0, x0 + 60, 0)),
+        arc("a", *mmv(x0 + 60, 40, 40), -math.pi / 2, 0.0),
+        spline("s", [(x0 + 100, 40), (x0 + 120, 90), (x0 + 160, 110), (x0 + 200, 100)], (0, 1), (1, -0.5))])
+
+
+REF_G1 = {"modEndContinuity": "G1"}
+REF_G2 = {"modEndContinuity": "G2"}
+REF_ON = [b("showModContinuity", True)]
+MANY_CP = [integer("splineCP", 50)]
+
+# Reference cases
+x = 20000
+cv, t = s_case("T10", x)
+a10 = sketch("T10 reference arc", TOP, [arc("a", *mmv(x + 200, 55, 25), math.radians(-150), math.radians(-30))])
+mce_run("T10", "reference arc R25 G2 -> end tangent, curvature 40/m and normal = the arc's", edges(cv), vertex_at(cv, x + 200, 0),
+        vertex_of(t), REF_G2, REF_ON, edges(a10))
+
+x = 21000
+cv, t = s_case("T11", x)
+mc11 = connector("T11 reference connector", x + 200, 0)
+mce_run("T11", "reference mate connector G1 -> end tangent along its Z", edges(cv), vertex_at(cv, x + 200, 0), vertex_of(t),
+        REF_G1, REF_ON, body_of(mc11))
+
+x = 22000
+cv, t = s_case("T12", x)
+mc12 = connector("T12 reference connector", x + 200, 0)
+mce_run("T12", "mate connector G1, Opposite direction -> end tangent reversed vs T11", edges(cv), vertex_at(cv, x + 200, 0),
+        vertex_of(t), REF_G1, REF_ON + [b("flipRef", True)], body_of(mc12))
+
+x = 23000
+cv, t = s_case("T13", x)
+mc13 = connector("T13 reference connector", x + 200, 0)
+mce_run("T13", "mate connector G2 radius 50 -> k 20/m toward its X", edges(cv), vertex_at(cv, x + 200, 0), vertex_of(t),
+        dict(REF_G2, modCurvatureMode="RADIUS"), REF_ON + [num("modEndRadius", "50 mm")], body_of(mc13))
+
+x = 24000
+cv, t = s_case("T14", x)
+l14 = sketch("T14 reference line", TOP, [seg("l", *mmv(x + 180, 10, x + 220, 50))])
+mce_run("T14", "reference line G2 -> end curvature 0", edges(cv), vertex_at(cv, x + 200, 0), vertex_of(t), REF_G2, REF_ON, edges(l14))
+
+x = 25000
+cv, t = s_case("T15", x, to_xy=(200, 0))
+l15 = sketch("T15 reference line", TOP, [seg("l", *mmv(x + 180, -20, x + 220, 20))])
+mce_run("T15", "no To point, reference line through the end G1 -> end stays, tangent along the line", edges(cv),
+        vertex_at(cv, x + 200, 0), None, REF_G1, REF_ON, edges(l15))
+
+x = 26000
+cv, t = s_case("T16", x, to_xy=(210, 0))
+l16 = sketch("T16 reference line", TOP, [seg("l", *mmv(x + 210, -20, x + 210, 20))])
+mce_run("T16", "no To point, reference line 10 mm away G0 -> end snaps onto the line (info)", edges(cv),
+        vertex_at(cv, x + 200, 0), None, None, REF_ON, edges(l16))
+
+x = 27000
+cv, t = s_case("T17", x)
+l17 = sketch("T17 reference line", TOP, [seg("l", *mmv(x + 230, 10, x + 270, 50))])
+mce_run("T17", "reference line 35 mm away G1 -> tangent along the line (info)", edges(cv), vertex_at(cv, x + 200, 0),
+        vertex_of(t), REF_G1, REF_ON, edges(l17))
+
+# Wire cases
+x = 30000
+cv = w3("T20", x)
+t = point_sketch("T20 to point", x + 200, 130)
+wire20 = feature("T20 wire", "compositeCurve", [q("edges", edges(cv))])
+mce_run("T20", "W3 as a wire -> one edge, ends exact", body_of(wire20), vertex_at(cv, x + 200, 100), vertex_of(t), given=MANY_CP)
+
+x = 31000
+cv = w3("T21", x)
+t = point_sketch("T21 to point", x + 200, 130)
+mce_run("T21", "W3 edges in reverse order -> same as T20",
+        "qUnion([%s])" % ", ".join("qNthElement(%s, %d)" % (edges(cv), i) for i in (2, 1, 0)),
+        vertex_at(cv, x + 200, 100), vertex_of(t), given=MANY_CP)
+
+x = 32000
+cv = w3("T22", x)
+t = point_sketch("T22 to point", x + 200, 130)
+wire22 = feature("T22 wire", "compositeCurve", [q("edges", edges(cv))])
+mce_run("T22", "W3 wire, no Modified end -> chain end moved (info)", body_of(wire22), None, vertex_of(t), given=MANY_CP)
+
+x = 33000
+cv = sketch("T23 curve", TOP, [seg("a", *mmv(x, 0, x + 100, 0)), seg("b", *mmv(x + 100, 0, x + 100, 50)),
+                              seg("c", *mmv(x + 100, 50, x, 50)), seg("d", *mmv(x, 50, x, 0))])
+t = point_sketch("T23 to point", x + 100, 80)
+mce_run("T23", "closed chain -> ERROR", edges(cv), vertex_at(cv, x + 100, 50), vertex_of(t))
+
+x = 34000
+cv = sketch("T24 curve", TOP, [seg("a", *mmv(x, 0, x + 100, 0)), seg("b", *mmv(x, 50, x + 100, 50))])
+t = point_sketch("T24 to point", x + 100, 80)
+mce_run("T24", "two separate lines -> ERROR", edges(cv), vertex_at(cv, x + 100, 50), vertex_of(t))
+
+# Hold cases
+HOLD_ON = [b("useHold", True)]
+HOLD_G1 = {"fixedEndContinuity": "G1"}
+HOLD_G2 = {"fixedEndContinuity": "G2"}
+
+
+def hold_case(tag, x0, text, hold_xy=None, distance=None, enums=None, given=(), trim=SPLINE_TRIM, ref=None):
+    cv, t = s_case(tag, x0, trim)
+    extra = list(HOLD_ON) + list(given)
+    e = dict(enums or {})
+    if hold_xy is not None:
+        h = point_sketch("%s hold point" % tag, x0 + hold_xy[0], hold_xy[1])
+        extra.append(q("holdPoint", vertex_of(h)))
+    if distance is not None:
+        e["holdMode"] = "DISTANCE"
+        extra.append(num("holdDistance", "%g mm" % distance))
+    return mce_run(tag, text, edges(cv), vertex_at(cv, x0 + 200, 0), vertex_of(t), e, extra, ref)
+
+
+hold_case("T30", 40000, "hold point G1 -> held part unchanged, tangent kept at the hold", (150, -30), enums=HOLD_G1)
+hold_case("T31", 41000, "hold point G2 -> held part unchanged, curvature kept at the hold", (150, -30), enums=HOLD_G2)
+
+x = 42000
+cv = w3("T32", x)
+t = point_sketch("T32 to point", x + 200, 130)
+h = point_sketch("T32 hold point", x + 30, 0)
+mce_run("T32", "W3 hold on the line G1 -> held part within splineTol", edges(cv), vertex_at(cv, x + 200, 100), vertex_of(t),
+        HOLD_G1, HOLD_ON + MANY_CP + [q("holdPoint", vertex_of(h))])
+
+hold_case("T33", 43000, "hold distance 60 G1 -> held part unchanged", distance=60, enums=HOLD_G1)
+hold_case("T34", 44000, "hold at a spline knot G2 -> held part unchanged, G2 at the hold", (100, 0), enums=HOLD_G2)
+hold_case("T35", 45000, "hold at the fixed end -> same as no hold (info)", (0, 0), enums=HOLD_G1, trim=0.0)
+hold_case("T36", 46000, "hold at the modified end -> ERROR", (200, 0), enums=HOLD_G1)
+hold_case("T37", 47000, "hold distance 1000 -> ERROR", distance=1000, enums=HOLD_G1)
+
+x = 48000
+a38 = sketch("T38 reference arc", TOP, [arc("a", *mmv(x + 200, 55, 25), math.radians(-150), math.radians(-30))])
+hold_case("T38", x, "hold G1 + arc G2 + project on Top -> held part unchanged, end tangent = arc's (info)", (150, -30),
+          enums=dict(HOLD_G1, **REF_G2), given=REF_ON + [b("curveOnSurface", True), q("projectionFace", TOP)], ref=edges(a38))
+
+x = 49000
+cv, t = s_case("T40", x)
+mce_run("T40", "world G0, embedded keys -> movedVertex at To, holdVertex at the fixed end", edges(cv), vertex_at(cv, x + 200, 0),
+        vertex_of(t))
 
 
 # ---- Scaled Curve ----

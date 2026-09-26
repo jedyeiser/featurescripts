@@ -4,6 +4,7 @@ Tabs in a document pin each other by ELEMENT microversion: import(path : "<eleme
 Pin chains: push the callee, re-pin its callers to the callee's new microversion, push the callers, and so on.
 `pushproject` is unreliable on chains (correction 45: a duplicated block after Onshape re-pinned a tab remotely,
 and 30 s client timeouts on writes that still land), so `push` here writes the tab directly and re-reads it.
+Cross-document pins are taken from the live tab before writing (the user moves them while versioning).
 Onshape itself re-pins a written tab's same-document imports to the callees' current microversions; `push`
 treats pin-only differences as a match and copies Onshape's pins back into the local file.
 
@@ -43,6 +44,18 @@ def unpinned(text):
     return PIN.sub(r"\1\2", lf(text))
 
 
+XPIN = re.compile(r'import\(path : "[0-9a-f]{24}/[0-9a-f]{24}/([0-9a-f]{24})", version : "[0-9a-f]{24}"\)')
+
+
+def adopt_remote_pins(local, remote):
+    """Cross-document imports in `local` take the version Onshape has now (matched by element id).
+
+    The user moves cross-document pins while versioning; a local file written before that would
+    otherwise push the old version back (2026-09-26)."""
+    live = {m.group(1): m.group(0) for m in XPIN.finditer(remote)}
+    return XPIN.sub(lambda m: live.get(m.group(1), m.group(0)), local)
+
+
 def main():
     mode, project, names = sys.argv[1], sys.argv[2], sys.argv[3:]
     if os.path.exists("%s/.document.json" % project):
@@ -72,6 +85,12 @@ def main():
         for name in names:
             path, eid = tabs[name]
             local = open(path, "rb").read().decode("utf-8")
+            before = client.get("/api/v10/featurestudios/d/%s/w/%s/e/%s" % (did, wid, eid))["contents"]
+            adopted = adopt_remote_pins(local, before)
+            if adopted != local:
+                local = adopted
+                open(path, "wb").write(local.encode("utf-8"))
+                print("%-20s cross-document pins taken from Onshape" % name)
             ok = False
             for _ in range(3):
                 try:

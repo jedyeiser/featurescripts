@@ -18,4 +18,24 @@ TARGETS = [
     ("solvers", "iterative_solve", "iterative_solve"),
     ("solvers", "Part_Vol", "part_volume"),
     ("smallTools", "Move_Along_Edge", "move_along_edge"),
+    # 2026-09-25 KEY-tools batch (drafts: make_drafts.py; crosscut.md section 6). Not installed yet.
+    ("footprint", "arcFit", "arc_fit"),
+    ("footprint", "getFootprintPoints", "footprint_points"),
+    ("xSection", "features/generateBaseline", "generate_baseline"),
+    ("xSection", "features/xSect", "ei_cross_section"),
+    ("xSection", "features/GJ_Feature", "solve_gj"),
+    ("gordonSurface", "scaledCurve", "scaled_curve"),
+    ("gordonSurface", "pullSurface", "pull_surface"),
+    ("example_1", "joinWires", "join_wires"),
+    ("example_1", "extrudeEdge", "extrude_edge"),
+    ("example_1", "refSurfCreation/offsetEdges", "offset_edges"),
+    ("bodyRename", "Simple_Rename", "simple_body_rename"),
+    # RESTYLES: these files already carry an (off-style) icon, so install_icons.py leaves them alone. Swap by hand:
+    # replace the IconNamespace::import tab id/version with a NEW tab (the script matches tabs by name).
+    ("footprint", "analyzeFootprint", "analyze_footprint"),
+    ("footprint", "integrateFootprint", "integrate_footprint"),
+    ("footprint", "scaleFootprint", "scale_footprint"),
+    ("gordonSurface", "modifyCurveEnd", "modify_curve_end"),
+    # PENDING: composite_part_tools / Composite boolean has no local project or tab yet -- enable once it exists.
+    # ("composite_part_tools", "composite_boolean", "composite_boolean"),
 ]

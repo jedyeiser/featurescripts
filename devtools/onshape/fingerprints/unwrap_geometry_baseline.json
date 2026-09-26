@@ -1,0 +1,122 @@
+[
+ [
+  "Unwrap 4101 base (plate, own section)",
+  "INFO",
+  "bodies: 1 | edgeLength: 7479.5266 | box: 1789.5891x132.2623x1.2 | volumeRatio: 0.999968"
+ ],
+ [
+  "Unwrap 4305 (plate, own section)",
+  "INFO",
+  "bodies: 1 | edgeLength: 7533.3719 | box: 1788.8504x168.5752x0.44 | volumeRatio: 0.99982"
+ ],
+ [
+  "Unwrap 6005 (plate, own section)",
+  "INFO",
+  "bodies: 1 | edgeLength: 7882.235 | box: 1825.1588x145x0.4 | volumeRatio: 1.000692"
+ ],
+ [
+  "Unwrap 4310 (plate, own section)",
+  "INFO",
+  "bodies: 1 | edgeLength: 7884.3277 | box: 1825.5319x145x0.55 | volumeRatio: 0.999504"
+ ],
+ [
+  "Unwrap Topsheet (plate, own section)",
+  "INFO",
+  "bodies: 1 | edgeLength: 7926.8371 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999934"
+ ],
+ [
+  "Unwrap Tip-Mat (plate, REF_WIRE offset 1.88 mm)",
+  "INFO",
+  "bodies: 1 | edgeLength: 989.684 | box: 153.6889x121.4999x0.2 | volumeRatio: 0.999579"
+ ],
+ [
+  "Unwrap Tail-Mat (plate, REF_WIRE offset 1.8 mm)",
+  "INFO",
+  "bodies: 1 | edgeLength: 870.9043 | box: 133.9245x105.5304x0.2 | volumeRatio: 0.999944"
+ ],
+ [
+  "Unwrap Tip-Shear (plate, REF_WIRE offset 1.96 mm)",
+  "INFO",
+  "bodies: 1 | edgeLength: 1276.2655 | box: 173.8664x145x0.2 | volumeRatio: 0.999546"
+ ],
+ [
+  "Unwrap Tail-Shear (plate, REF_WIRE offset 1.9 mm)",
+  "INFO",
+  "bodies: 1 | edgeLength: 1199.4911 | box: 154.6728x145x0.2 | volumeRatio: 0.999933"
+ ],
+ [
+  "Unwrap CORE (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 50434.8703 | box: 1500x131.5622x12.2266 | volumeRatio: 1.000059"
+ ],
+ [
+  "Unwrap 4802 tip extension (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 1286.8234 | box: 180.7092x144.8x4.0065 | volumeRatio: 1.012562"
+ ],
+ [
+  "Unwrap 4803 tail extension (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 1185.4876 | box: 160.1201x144.8x3 | volumeRatio: 1.003684"
+ ],
+ [
+  "Unwrap 4103 L sidewall (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 10269.8083 | box: 1700.0002x26.5316x1.8 | volumeRatio: 1.000298"
+ ],
+ [
+  "Unwrap 4103 R sidewall (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 10269.8083 | box: 1700.0002x26.5316x1.8 | volumeRatio: 1.000376"
+ ],
+ [
+  "Unwrap 4401 L (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 6246.9931 | box: 1500.196x22.7316x11.7486 | volumeRatio: 1.000041"
+ ],
+ [
+  "Unwrap 4401 R (part, along REF_WIRE)",
+  "INFO",
+  "bodies: 1 | edgeLength: 6246.9924 | box: 1500.196x22.7316x11.7486 | volumeRatio: 1.000041"
+ ],
+ [
+  "Unwrap 4802 as plate (REF_WIRE offset 3.8 mm)",
+  "INFO",
+  "bodies: 1 | edgeLength: 1293.7431 | box: 178.3967x144.8x4.0008 | volumeRatio: 1.000186"
+ ],
+ [
+  "Unwrap CORE (part, along FULL_BASELINE, keep faces) - expect OK, band rebuild",
+  "INFO",
+  "bodies: 1 | edgeLength: 50422.1662 | box: 1500.1649x131.5622x12.9006 | volumeRatio: 1.000003"
+ ],
+ [
+  "Unwrap CORE (part, along FULL_BASELINE, merge faces) - expect OK, band rebuild, merged faces",
+  "INFO",
+  "bodies: 1 | edgeLength: 49854.1289 | box: 1500.1651x131.5623x12.9006 | volumeRatio: 1.000031"
+ ],
+ [
+  "Unwrap 4803 tail extension (part, along FULL_BASELINE, keep faces) - expect OK, cell rebuild",
+  "INFO",
+  "bodies: 1 | edgeLength: 1173.0091 | box: 160.0088x144.8x4.2887 | volumeRatio: 1.002913"
+ ],
+ [
+  "Unwrap 4101 base (part, along FULL_BASELINE, keep faces) - expect ERROR, tip does not follow the raised baseline tip",
+  "ERROR",
+  "no embedded output"
+ ],
+ [
+  "U1 Wrapped_profile over FULL_BASELINE (edges, along reference) -> 1 wire, tip/tail at constant height",
+  "INFO",
+  "bodies: 1 | edgeLength: 1830.1621 | box: 1830x0x10.1135 | volumeRatio: 0"
+ ],
+ [
+  "U2 Topsheet undrape onto Wrapped_profile extrusion offset -0.2 (wire) -> 1 flat plate 0.4 thick",
+  "INFO",
+  "bodies: 1 | edgeLength: 7913.4843 | box: 1825.4983x158.6466x0.4 | volumeRatio: 0.998741"
+ ],
+ [
+  "U3 Topsheet undrape, target = Front-plane section of the mid-surface -> 1 flat plate 0.4 thick",
+  "INFO",
+  "bodies: 1 | edgeLength: 7926.8377 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999933"
+ ]
+]

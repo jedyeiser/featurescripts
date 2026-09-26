@@ -1,11 +1,11 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
-export import(path : "a2665e22c07b7a6929ce4e80", version : "19bb4e2dc00faa5df759cf24");
-import(path : "d009ddf4a8dd9534fc4dc4b5", version : "402bf9dc7ffaf0184bf535f2");
-import(path : "6479d7fbd0ec7d11e0ae6c69", version : "7969ed4b27c01e417bde297a");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "19c2d1714545e02c0a67fe5f");
+import(path : "d009ddf4a8dd9534fc4dc4b5", version : "ecda8463daeefe20ebe2eb33");
+import(path : "6479d7fbd0ec7d11e0ae6c69", version : "9185a380d791d2798dd35b1c");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedVariableMap, embedStandardOutputs, extractable wrappers)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: driven_edge_offset_icon.svg (feature icon)
 IconNamespace::import(path : "a5478e383c9502910040f17c", version : "234ff09fac32522d9e5809af");
 
@@ -1218,6 +1218,8 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
     const approximation = approximationSettings(definition);
     var bodiesByLink = {};
     var emitted = [];
+    // A corner filler whose run collapsed (see below) still leads into the next emitted run.
+    var carriedFill = undefined;
 
     for (var r = 0; r < size(runs); r += 1)
     {
@@ -1262,6 +1264,10 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
             println("NOTE: run " ~ toString(r) ~ " spans "
                 ~ fmtMM(runSpan, 6, 0) ~ " mm and was not emitted; a profile break"
                 ~ " coincides with a source edge boundary there.");
+            if (run.fill != undefined)
+            {
+                carriedFill = run.fill;
+            }
             continue;
         }
 
@@ -1291,8 +1297,12 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 
         emitted = append(emitted, mergeMaps(run, {
                         "kind" : shape.kind,
-                        "radius" : (shape.kind == "arc") ? shape.radius : undefined
+                        "radius" : (shape.kind == "arc") ? shape.radius : undefined,
+                        "firstPoint" : runPoints[0],
+                        "lastPoint" : runPoints[size(runPoints) - 1],
+                        "leadFill" : (run.fill != undefined) ? run.fill : carriedFill
                     }));
+        carriedFill = undefined;
 
         const key = "link" ~ run.linkIndex;
         bodiesByLink[key] = append(bodiesByLink[key] == undefined ? [] : bodiesByLink[key],
@@ -1335,83 +1345,75 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 /**
  * Expose this feature's results to a later Extract variables feature.
  *
- * Two kinds of thing go out. The queries are what another feature would otherwise have to
- * pick in the viewport -- published as query variables they appear in any selection dropdown
- * and survive a regeneration that moves the geometry, which a viewport pick does not.
+ * Queries only: what another feature would otherwise have to pick in the viewport. Published
+ * as query variables they appear in any selection dropdown and survive a regeneration that
+ * moves the geometry, which a viewport pick does not. The keys are the standard end
+ * vocabulary (as Offset+ and the Curve_tools features publish it) plus the corner arcs;
+ * every key is always present, empty where it does not apply.
  *
- * The variables are measurements this feature already computes and, until now, only ever
- * printed. Squareness in particular is the number that diagnosed the tail drift: as a
- * variable a QC feature can assert on it, where a println can only be read by a person.
+ * Solver diagnostics (end squareness, kink, trim distance, corner counts) are not published:
+ * they belong to the debug output and the console, not to a downstream feature.
  *
- * Costs one setVariable and no kernel calls, so it runs unconditionally rather than behind
- * a toggle -- the slot is keyed by feature id and is not reachable from `#`, so it adds
- * nothing a user has to look at.
+ * No kernel calls: the queries are lazy (qClosestTo on the emitted end and arc mid points),
+ * so this runs unconditionally rather than behind a toggle.
  */
 function publishOutputs(context is Context, id is Id, definition is map, emitted is array)
 {
-    var variables = {
-            "curveCount" : extractableVariable(size(emitted),
-                    "Number of curves this offset emitted.")
-        };
-    // Both ends are always published; an end without a plane reads "none".
-    variables = withTerminalVariables(variables, "start", undefined);
-    variables = withTerminalVariables(variables, "end", undefined);
+    const output = qCreatedBy(id, EntityType.BODY);
+    const vertices = qOwnedByBody(output, EntityType.VERTEX);
+    const edges = qOwnedByBody(output, EntityType.EDGE);
 
-    var radii = [];
-
-    for (var run in emitted)
+    // Consecutive emitted runs form one piece where they share a link and either meet or are
+    // bridged by a corner filler; a piece's first and last points are its ends. A piece whose
+    // ends coincide is closed and has none.
+    var pieces = [];
+    var cornerArcs = [];
+    for (var r = 0; r < size(emitted); r += 1)
     {
-        if (run.fill != undefined && run.fill.kind == "arc")
+        const run = emitted[r];
+        if (run.leadFill != undefined && run.leadFill.kind == "arc")
         {
-            radii = append(radii, run.fill.radius);
+            cornerArcs = append(cornerArcs, qClosestTo(edges, run.leadFill.mid));
         }
 
-        // Both ends can land on the same run when the whole chain is one run, so these are
-        // read independently rather than as an either/or.
-        if (run.terminalStart != undefined)
+        const joined = r > 0 && emitted[r - 1].linkIndex == run.linkIndex
+            && (run.leadFill != undefined || norm(run.firstPoint - emitted[r - 1].lastPoint) < OFFSET_GEOM_TOL);
+        if (joined)
         {
-            variables = withTerminalVariables(variables, "start", run.terminalStart);
+            pieces[size(pieces) - 1].end = run.lastPoint;
         }
-        if (run.terminalEnd != undefined)
+        else
         {
-            variables = withTerminalVariables(variables, "end", run.terminalEnd);
+            pieces = append(pieces, { "start" : run.firstPoint, "end" : run.lastPoint });
         }
     }
 
-    variables["cornerArcCount"] = extractableVariable(size(radii),
-        "G0 corners that were rounded with a true arc.");
-
-    variables["cornerArcRadii"] = extractableVariable(radii,
-        "Radius of each rounded corner, in chain order (empty when none).");
+    var startVertices = [];
+    var endVertices = [];
+    for (var piece in pieces)
+    {
+        if (norm(piece.end - piece.start) < OFFSET_GEOM_TOL)
+        {
+            continue;
+        }
+        startVertices = append(startVertices, qClosestTo(vertices, piece.start));
+        endVertices = append(endVertices, qClosestTo(vertices, piece.end));
+    }
+    const startVertex = qUnion(startVertices);
+    const endVertex = qUnion(endVertices);
 
     embedStandardOutputs(context, id, {
-                "output" : qCreatedBy(id, EntityType.BODY),
+                "output" : output,
                 "outputDescription" : "The offset wires",
                 "inputs" : definition.offsetEdges,
-                "variables" : variables
+                "queries" : {
+                    "startVertex" : extractableQuery(startVertex, "The end of each offset wire where its source starts.", DebugColor.GREEN),
+                    "endVertex" : extractableQuery(endVertex, "The other end of each offset wire.", DebugColor.RED),
+                    "startEdge" : extractableQuery(qAdjacent(startVertex, AdjacencyType.VERTEX, EntityType.EDGE), "The edge at each startVertex.", DebugColor.GREEN),
+                    "endEdge" : extractableQuery(qAdjacent(endVertex, AdjacencyType.VERTEX, EntityType.EDGE), "The edge at each endVertex.", DebugColor.RED),
+                    "cornerArcs" : extractableQuery(qUnion(cornerArcs), "The true arcs that round G0 corners.", DebugColor.MAGENTA)
+                }
             });
-}
-
-/**
- * Fold one end's terminal record into the published variables. With no record (the end has
- * no plane) the keys still appear: action "none", distance and angles zero.
- */
-function withTerminalVariables(variables is map, side is string, record) returns map
-{
-    var out = variables;
-    const present = record is map;
-
-    out[side ~ "Action"] = extractableVariable(present ? record.action : "none",
-        "What happened where the offset met its " ~ side ~ " plane (none = no plane).");
-    out[side ~ "Distance"] = extractableVariable(present ? abs(record.distance) : 0 * meter,
-        "How far the " ~ side ~ " of the offset was trimmed or extended.");
-    out[side ~ "Squareness"] = extractableVariable(present ? record.squareness : 0 * degree,
-        "Angle between the source tangent and the " ~ side ~ " plane normal. Zero means the "
-        ~ "source ended square and the offset would have landed on the plane unaided.");
-    out[side ~ "Kink"] = extractableVariable(present && record.kink != undefined ? record.kink : 0 * degree,
-        "Angle between the offset's own heading and the direction it was told to arrive at (zero when not extended).");
-
-    return out;
 }
 
 /**

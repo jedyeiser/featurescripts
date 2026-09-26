@@ -1,0 +1,17 @@
+T01 world G0 -> both ends exact | modCurveEnd | bodies 1 | edges 1 len 191.19098 | faces 0 area 0
+T02 frenet G0 -> identical to T01 | modCurveEnd | bodies 1 | edges 1 len 191.19098 | faces 0 area 0
+T03 fixed end G1 -> fixed tangent = source | modCurveEnd | bodies 1 | edges 1 len 191.12344 | faces 0 area 0
+T04 fixed end G2 best effort -> fixed tangent + curvature = source | modCurveEnd | bodies 1 | edges 1 len 191.11457 | faces 0 area 0
+T05 fixed end G2 exact -> fixed tangent + curvature = source | modCurveEnd | bodies 1 | edges 1 len 191.11457 | faces 0 area 0
+T06 reference line G1 -> end tangent along the 45 deg line | modCurveEnd | bodies 1 | edges 1 len 191.18521 | faces 0 area 0
+T07 reference face G1 -> end tangent in the cylinder's tangent plane | modCurveEnd | bodies 1 | edges 1 len 192.85619 | faces 0 area 0
+T08 project onto the R500 cylinder -> curve on the face | modCurveEnd | bodies 1 | edges 1 len 183.93381 | faces 0 area 0
+T09 reference line stored, checkbox off -> ignored, end tangent = T01 | modCurveEnd | bodies 1 | edges 1 len 191.19098 | faces 0 area 0
+SC0 two lines, Create curve on -> midline y = 50 | createScaledCurve | bodies 1 | edges 1 len 200 | faces 0 area 0
+SC1 default instance -> one wire body | createScaledCurve | bodies 1 | edges 1 len 200 | faces 0 area 0
+SC2 two splines, degree 5 -> output degree 5 | createScaledCurve | bodies 1 | edges 1 len 238.63811 | faces 0 area 0
+SC3 arcs R100 / R200 -> exact R150 | createScaledCurve | bodies 1 | edges 1 len 149.99966 | faces 0 area 0
+P1 G0 4x4 cylinder patch, +10 at (1,1) -> boundary on the source boundary | pullSurface | bodies 1 | edges 4 len 514.42425 | faces 1 area 16327.7207
+P2 G1 5x5 cylinder patch, +10 at (2,2) -> boundary G0 + normals along whole edges | pullSurface | bodies 1 | edges 4 len 514.20189 | faces 1 area 16052.4506
+P3 G0 4x4 planar top face, +10 at (1,2) -> boundary exact (control) | pullSurface | bodies 1 | edges 4 len 400 | faces 1 area 10391.5733
+ALL bodies 151 total edge length 29382.8443

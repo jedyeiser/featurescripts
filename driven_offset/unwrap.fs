@@ -2,13 +2,13 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; export-imports curve_core: chains, classifyPoints, emitters)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "19bb4e2dc00faa5df759cf24");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "19c2d1714545e02c0a67fe5f");
 // IMPORT: undrape_utils.fs (same document; the undrape map)
-import(path : "283b8f7562a16e9c9ccc01b7", version : "");
+import(path : "283b8f7562a16e9c9ccc01b7", version : "c5fc186141c776a2e934c678");
 // IMPORT: unwrap_part.fs (same document; solid unwrap)
-import(path : "fc976128871c5b4b2d33a91c", version : "");
+import(path : "fc976128871c5b4b2d33a91c", version : "0651942e8d9831563db221b0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
-import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 /**
  * Takes edges to unwrap, a wrapped reference curve, a wrapped alignment point (mate connector), unwrapped origin (mate connector)
@@ -412,7 +412,6 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
         var records = [];
         var edgesOnPlane = [];
-        var checks = [];
 
         const edgeChart = (definition.unwrapType != UnwrapType.THICKENED)
             ? checkedChart(context, definition.reference, "reference", alignPoint, lengthOffset(definition))
@@ -443,7 +442,6 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
 
             const check = lengthAndVolume(context, bodyId + "lengthCurves", result.chart, cs, sources[i], extent, result.bodies,
                 result.lengthZ, definition.debugKeepLengthCurves, result.arcRange);
-            checks = append(checks, check);
 
             tally = addTally(tally, result.tally);
             records = append(records, mergeMaps(result.record, { "check" : check }));
@@ -468,14 +466,6 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                     "output" : qUnion(outputBodies),
                     "outputDescription" : "The unwrapped bodies",
                     "inputs" : qUnion(sources),
-                    "variables" : {
-                        "lineCount" : extractableVariable(tally.line, "Unwrapped edges emitted as lines."),
-                        "arcCount" : extractableVariable(tally.arc, "Unwrapped edges emitted as arcs."),
-                        "splineCount" : extractableVariable(tally.freeform, "Unwrapped edges emitted as fitted splines."),
-                        "lengthWrapped" : extractableVariable(checkValues(checks, "wrapped"), "Per body: length of the preserved curve over the source part's extent, measured on the wrapped curve."),
-                        "lengthFlat" : extractableVariable(checkValues(checks, "flat"), "Per body: the flat result's extent along the unwrapped X. Equal to lengthWrapped for a good unwrap."),
-                        "volumeRatio" : extractableVariable(checkValues(checks, "volumeRatio"), "Per body: flat volume / source volume (solids only; 0 otherwise).")
-                    },
                     "queries" : {
                         "edgesOnPlane" : extractableQuery(qUnion(edgesOnPlane), "Edges of the part sides laid on the unwrap plane.", DebugColor.MAGENTA)
                     }
@@ -1115,16 +1105,6 @@ function lengthFromArcs(context is Context, id is Id, chart is map, cs is CoordS
     }
 
     return { "wrapped" : wrapped, "flat" : flat, "volumeRatio" : volumeRatio };
-}
-
-function checkValues(checks is array, key is string) returns array
-{
-    var values = [];
-    for (var k in checks)
-    {
-        values = append(values, k[key]);
-    }
-    return values;
 }
 
 /**

@@ -84,7 +84,7 @@ HELPERS = r'''
             dev = max(dev, dist(src, tangentAt(e, t).origin));
         }
         return { "ok" : true, "edge" : e, "modP" : modL.origin, "modErr" : norm(modL.origin - toP), "fixErr" : norm(fixL.origin - srcFix.origin),
-            "modT" : modL.direction, "modK" : modC.curvature * meter,
+            "modT" : modL.direction, "modK" : modC.curvature * meter, "modN" : modC.frame.xAxis,
             "fixAngle" : angleBetween(fixL.direction, srcFix.direction), "fixK" : fixC.curvature * meter, "srcFixK" : srcC.curvature * meter,
             "fixNAngle" : angleSigned(fixC.frame.xAxis, srcC.frame.xAxis), "dev" : dev, "bodies" : count(bodies(outFid)) };
     };
@@ -99,6 +99,61 @@ HELPERS = r'''
             ~ num(r.fixNAngle) ~ " rad); dev next to fixed end " ~ fmt(r.dev) ~ " mm; " ~ r.bodies ~ " bodies";
     };
     const basic = function(r) { return r.ok && r.modErr < 0.001 * millimeter && r.fixErr < 0.001 * millimeter && r.bodies == 1; };
+
+    // MCE rework helpers.
+    const embedded = function(fid) { return getVariable(context, toString(makeId(fid))); };
+    const mcFrame = function(fid) { return evMateConnector(context, { "mateConnector" : qBodyType(bodies(fid), BodyType.MATE_CONNECTOR) }); };
+    const nWires = function(fid) { return count(qBodyType(bodies(fid), BodyType.WIRE)); };
+    const nPoints = function(fid) { return count(qBodyType(bodies(fid), BodyType.POINT)); };
+    // Tangent angle / curvature ratio between the output (at its point nearest p) and a reference edge (at its point nearest p).
+    const refMatch = function(out, refEdge, p) returns map
+    {
+        const to = evDistance(context, { "side0" : out, "side1" : p }).sides[0].parameter;
+        const tr = evDistance(context, { "side0" : refEdge, "side1" : p }).sides[0].parameter;
+        const co = curvAt(out, to);
+        const cr = curvAt(refEdge, tr);
+        return { "angle" : angleBetween(co.frame.zAxis, cr.frame.zAxis), "k" : co.curvature * meter, "refK" : cr.curvature * meter,
+            "nAngle" : angleSigned(co.frame.xAxis, cr.frame.xAxis) };
+    };
+    // Held region: source points from source parameter 0 (the fixed end) to th, distance to the output edge.
+    const heldDev = function(out, src, th) returns ValueWithUnits
+    {
+        var dev = 0 * meter;
+        for (var i = 0; i <= 40; i += 1)
+        {
+            dev = max(dev, dist(out, tangentAt(src, th * i / 40).origin));
+        }
+        return dev;
+    };
+    // Both ends of the only output edge, against an expected modified end and fixed end.
+    const endsReport = function(outFid, modP, fixP) returns map
+    {
+        const e = wireEdge(outFid);
+        const n = count(e);
+        if (n != 1)
+        {
+            return { "ok" : false, "text" : n ~ " output edges, " ~ count(bodies(outFid)) ~ " bodies" };
+        }
+        const p0 = tangentAt(e, 0).origin;
+        const p1 = tangentAt(e, 1).origin;
+        const modErr = min(norm(p0 - modP), norm(p1 - modP));
+        const fixErr = min(norm(p0 - fixP), norm(p1 - fixP));
+        return { "ok" : true, "edge" : e, "modErr" : modErr, "fixErr" : fixErr,
+            "text" : "mod end err " ~ fmt(modErr) ~ " mm, fixed end err " ~ fmt(fixErr) ~ " mm; " ~ count(bodies(outFid)) ~ " bodies" };
+    };
+    // Embedded keys movedVertex / holdVertex: vertex count and position.
+    const keyAt = function(fid, key, p) returns map
+    {
+        const out = embedded(fid);
+        if (out == undefined || out.query == undefined || out.query[key] == undefined)
+        {
+            return { "ok" : false, "text" : key ~ " missing" };
+        }
+        const q = out.query[key].value;
+        const n = count(q);
+        const err = n == 1 ? norm(evVertexPoint(context, { "vertex" : q }) - p) : 1 * meter;
+        return { "ok" : n == 1 && err < 0.001 * millimeter, "text" : key ~ " " ~ n ~ " vertex, err " ~ fmt(err) ~ " mm" };
+    };
 
     // Pull surface: the new sheet of outFid against the source face.
     const pullReport = function(outFid, face) returns map
@@ -220,6 +275,186 @@ mce("T09 ", r'''
         return [basic(r) && r1.ok && a1 < 1e-4, mceText(r) ~ "; end tangent vs T01 " ~ num(a1) ~ " rad, vs the stored (unchecked) reference line " ~ num(aL) ~ " rad"];''',
     T01="case:T01 ", T01SRC="T01 curve", T01TO="T01 to point", REF="T09 reference line")
 
+# ---- Modify curve end rework: references ----
+mce("T10 ", r'''
+        var m = { "angle" : 1, "k" : 0, "refK" : 1, "nAngle" : 1 };
+        if (r.ok)
+        {
+            m = refMatch(r.edge, sketchEdge(@REF@), r.modP);
+        }
+        const ok = basic(r) && m.angle < 1e-4 && kRel(m.k, m.refK) < 1e-3 && m.nAngle < 1e-3 && abs(m.refK - 40) < 0.01;
+        return [ok, mceText(r) ~ "; vs arc: tangent " ~ num(m.angle) ~ " rad, k " ~ num(m.k) ~ " / " ~ num(m.refK) ~ " /m, normal "
+            ~ num(m.nAngle) ~ " rad"];''', REF="T10 reference arc")
+
+mce("T11 ", r'''
+        const z = mcFrame(@MC@).zAxis;
+        const a = r.ok ? angleBetween(r.modT, z) : 1;
+        return [basic(r) && a < 1e-4, mceText(r) ~ "; end tangent vs connector Z " ~ num(a) ~ " rad"];''', MC="T11 reference connector")
+
+mce("T12 ", r'''
+        const r11 = mceReport(@T11@, @T11SRC@, toPoint(@T11TO@));
+        const z = mcFrame(@MC@).zAxis;
+        var a = 1;
+        var reversedVsT11 = false;
+        if (r.ok && r11.ok)
+        {
+            a = angleBetween(r.modT, z);
+            reversedVsT11 = dot(r.modT, r11.modT) < -0.9999;
+        }
+        return [basic(r) && a < 1e-4 && reversedVsT11, mceText(r) ~ "; end tangent vs connector Z " ~ num(a) ~ " rad, reversed vs T11 "
+            ~ reversedVsT11];''',
+    MC="T12 reference connector", T11="case:T11 ", T11SRC="T11 curve", T11TO="T11 to point")
+
+mce("T13 ", r'''
+        const f = mcFrame(@MC@);
+        var a = 1;
+        var nA = 1;
+        if (r.ok)
+        {
+            a = angleBetween(r.modT, f.zAxis);
+            nA = angleSigned(r.modN, f.xAxis);
+        }
+        const ok = basic(r) && a < 1e-4 && abs(r.modK - 20) / 20 < 1e-3 && nA < 1e-3;
+        return [ok, mceText(r) ~ "; tangent vs Z " ~ num(a) ~ " rad, normal vs X " ~ num(nA) ~ " rad (k expected 20/m)"];''',
+    MC="T13 reference connector")
+
+mce("T14 ", r'''
+        const lineDir = tangentAt(sketchEdge(@REF@), 0).direction;
+        const a = r.ok ? angleBetween(r.modT, lineDir) : 1;
+        return [basic(r) && a < 1e-4 && abs(r.modK) < 1e-3, mceText(r) ~ "; tangent vs line " ~ num(a) ~ " rad (k expected 0)"];''',
+    REF="T14 reference line")
+
+REF_LINE_G1 = r'''
+        const lineDir = tangentAt(sketchEdge(@REF@), 0).direction;
+        const a = r.ok ? angleBetween(r.modT, lineDir) : 1;
+        return [basic(r) && a < 1e-4, mceText(r) ~ "; end tangent vs reference line " ~ num(a) ~ " rad"];'''
+# T15 / T16: 'to point' is the EXPECTED end (not passed to the feature).
+mce("T15 ", REF_LINE_G1, REF="T15 reference line")
+mce("T16 ", r'''
+        return [basic(r), mceText(r) ~ " (expected end: snapped onto the line at x + 210)"];''')
+mce("T17 ", REF_LINE_G1, REF="T17 reference line")
+
+# ---- Modify curve end rework: wires (fixed end of W3 at (x0, 0), To at (x0 + 200, 130)) ----
+case("T20 ", r'''
+        const r = endsReport(@SELF@, toPoint(@TO@), pt(30000, 0, 0));
+        return [r.ok && r.modErr < 0.001 * millimeter && r.fixErr < 0.001 * millimeter, r.text];''', TO="T20 to point")
+
+case("T21 ", r'''
+        const r = endsReport(@SELF@, toPoint(@TO@), pt(31000, 0, 0));
+        var d = 1 * meter;
+        if (r.ok)
+        {
+            d = 0 * meter;
+            for (var i = 0; i <= 40; i += 1)
+            {
+                d = max(d, dist(wireEdge(@T20@), tangentAt(r.edge, i / 40).origin - pt(1000, 0, 0)));
+            }
+        }
+        return [r.ok && r.modErr < 0.001 * millimeter && r.fixErr < 0.001 * millimeter && d < 0.02 * millimeter,
+            r.text ~ "; max distance to T20 (shifted) " ~ fmt(d) ~ " mm"];''', TO="T21 to point", T20="case:T20 ")
+
+case("T22 ", r'''
+        const r = endsReport(@SELF@, toPoint(@TO@), pt(32000, 0, 0));
+        return [r.ok && r.modErr < 0.001 * millimeter, r.text ~ " (either chain end may be the moved one)"];''', TO="T22 to point")
+
+ERROR_CASE = r'''
+        const n = count(bodies(@SELF@));
+        return [n == 0, n ~ " bodies (expected none: the feature fails)"];'''
+case("T23 ", ERROR_CASE)
+case("T24 ", ERROR_CASE)
+
+# ---- Modify curve end rework: holds ----
+HOLD_CHECK = r'''
+        const holdP = toPoint(@HOLD@);
+        const src = sketchEdge(@SRC@);
+        var dev = 1 * meter;
+        var m = { "angle" : 1, "k" : 0, "refK" : 1, "nAngle" : 1 };
+        if (r.ok)
+        {
+            dev = heldDev(r.edge, src, evDistance(context, { "side0" : src, "side1" : holdP }).sides[0].parameter);
+            m = refMatch(r.edge, src, holdP);
+        }
+        const kv = keyAt(@SELF@, "movedVertex", toPoint(@TO@));
+        const kh = keyAt(@SELF@, "holdVertex", holdP);
+        const g2 = @G2@;
+        const ok = r.ok && r.modErr < 0.001 * millimeter && nWires(@SELF@) == 1 && nPoints(@SELF@) == 1 && dev < 0.001 * millimeter
+            && m.angle < 1e-4 && (!g2 || kRel(m.k, m.refK) < 1e-3) && kv.ok && kh.ok;
+        return [ok, mceText(r) ~ "; held part max deviation " ~ fmt(dev) ~ " mm; at the hold: tangent " ~ num(m.angle) ~ " rad, k "
+            ~ num(m.k) ~ " / " ~ num(m.refK) ~ " /m; " ~ kv.text ~ "; " ~ kh.text];'''
+
+
+def hold(prefix, g2):
+    tag = prefix.strip()
+    mce(prefix, HOLD_CHECK.replace("@G2@", "true" if g2 else "false"), HOLD=tag + " hold point")
+
+
+hold("T30 ", False)
+hold("T31 ", True)
+hold("T34 ", True)
+
+case("T32 ", r'''
+        const r = endsReport(@SELF@, toPoint(@TO@), pt(42000, 0, 0));
+        const holdP = toPoint(@HOLD@);
+        const lineEdge = qContainsPoint(sketchEdge(@SRC@), pt(42010, 0, 0));
+        var dev = 1 * meter;
+        var a = 1;
+        if (r.ok)
+        {
+            dev = heldDev(r.edge, lineEdge, evDistance(context, { "side0" : lineEdge, "side1" : holdP }).sides[0].parameter);
+            a = refMatch(r.edge, lineEdge, holdP).angle;
+        }
+        return [r.ok && r.modErr < 0.001 * millimeter && dev < 0.011 * millimeter && a < 1e-3 && nPoints(@SELF@) == 1,
+            r.text ~ "; held part (line) max deviation " ~ fmt(dev) ~ " mm (splineTol 0.01); tangent at the hold vs line " ~ num(a) ~ " rad"];''',
+     TO="T32 to point", HOLD="T32 hold point", SRC="T32 curve")
+
+mce("T33 ", r'''
+        const src = sketchEdge(@SRC@);
+        const L = evLength(context, { "entities" : src });
+        const th = (L - 60 * millimeter) / L;
+        var dev = 1 * meter;
+        var a = 1;
+        if (r.ok)
+        {
+            dev = heldDev(r.edge, src, th);
+            a = refMatch(r.edge, src, tangentAt(src, th).origin).angle;
+        }
+        return [r.ok && r.modErr < 0.001 * millimeter && nPoints(@SELF@) == 1 && dev < 0.001 * millimeter && a < 1e-4,
+            mceText(r) ~ "; held part max deviation " ~ fmt(dev) ~ " mm; tangent at the hold " ~ num(a) ~ " rad"];''')
+
+mce("T35 ", r'''
+        return [basic(r) && r.fixAngle < 1e-4, mceText(r)];''')
+
+case("T36 ", ERROR_CASE)
+case("T37 ", ERROR_CASE)
+
+mce("T38 ", r'''
+        const holdP = toPoint(@HOLD@);
+        const src = sketchEdge(@SRC@);
+        var dev = 1 * meter;
+        var a = 1;
+        var z = 1 * meter;
+        if (r.ok)
+        {
+            dev = heldDev(r.edge, src, evDistance(context, { "side0" : src, "side1" : holdP }).sides[0].parameter);
+            a = refMatch(r.edge, sketchEdge(@REF@), r.modP).angle;
+            z = 0 * meter;
+            for (var i = 0; i <= 40; i += 1)
+            {
+                z = max(z, abs(tangentAt(r.edge, i / 40).origin[2]));
+            }
+        }
+        return [r.ok && r.modErr < 0.001 * millimeter && dev < 0.001 * millimeter && a < 1e-4 && z < 0.01 * millimeter,
+            mceText(r) ~ "; held part max deviation " ~ fmt(dev) ~ " mm; end tangent vs arc " ~ num(a) ~ " rad; max |z| " ~ fmt(z) ~ " mm"];''',
+    HOLD="T38 hold point", REF="T38 reference arc")
+
+mce("T40 ", r'''
+        const kv = keyAt(@SELF@, "movedVertex", toPoint(@TO@));
+        const src = sketchEdge(@SRC@);
+        const kh = keyAt(@SELF@, "holdVertex", tangentAt(src, 0).origin);
+        const out = embedded(@SELF@);
+        const nOut = count(out.query.output.value);
+        return [basic(r) && kv.ok && kh.ok && nOut == 1, mceText(r) ~ "; " ~ kv.text ~ "; " ~ kh.text ~ "; output " ~ nOut ~ " body"];''')
+
 # ---- Scaled Curve ----
 case("SC0 ", r'''
         const e = wireEdge(@SELF@);
@@ -281,13 +516,21 @@ case("P3 ", r'''
 
 # Cases that document today's bugs (reviews/2026-09-25_tools_review/curves.md). Remove an entry once its fix lands.
 EXPECT_FAIL = {
-    # T05, T09, SC1-SC3 fixed 2026-09-25 (quick fixes after the tools review) -- they now guard against regressions.
-    "P1 ": "Pull surface: rows refit then skinned (pullSurface.fs:629-632), so G0 holds only at grid nodes",
-    "P2 ": "Pull surface: G1 only through iso-U end derivatives (pullSurface.fs:86), u=0/u=1 edges not G1; G0 only at grid nodes",
+    # T05, T09, SC1-SC3 fixed 2026-09-25 (quick fixes after the tools review); P1, P2 fixed 2026-09-26 (Pull surface
+    # control-net rewrite) -- they now guard against regressions.
 }
 
-# Feature statuses other than OK that are the expected outcome (none today).
-EXPECTED_STATUS = {}
+# Feature statuses other than OK that are the expected outcome: a status or a tuple of allowed statuses.
+# INFO = reportFeatureInfo (an expected outcome), ERROR = a regenError case (temporary instance, T23/T24/T36/T37).
+# (OK, INFO) where an optional note (shortened end handle, merged-fit deviation, hold point a few um off) may appear.
+MAYBE_INFO = ("OK", "INFO")
+EXPECTED_STATUS = {
+    "T07 ": "INFO",  # face reference: the tangent is the approach direction projected into the face
+    "T10 ": MAYBE_INFO, "T12 ": MAYBE_INFO, "T13 ": MAYBE_INFO, "T14 ": MAYBE_INFO, "T16 ": "INFO", "T17 ": "INFO",
+    "T20 ": MAYBE_INFO, "T21 ": MAYBE_INFO, "T22 ": "INFO", "T23 ": "ERROR", "T24 ": "ERROR",
+    "T30 ": MAYBE_INFO, "T31 ": MAYBE_INFO, "T32 ": MAYBE_INFO, "T33 ": MAYBE_INFO, "T34 ": MAYBE_INFO,
+    "T35 ": "INFO", "T36 ": "ERROR", "T37 ": "ERROR", "T38 ": "INFO",
+}
 
 
 def strings(result):
@@ -318,7 +561,7 @@ def main():
     for name, i in by_name:
         status = states.get(i, {}).get("featureStatus")
         want = EXPECTED_STATUS.get(name.split(" ")[0] + " ", "OK") if "->" in name else "OK"
-        if status != want:
+        if status not in (want if isinstance(want, tuple) else (want,)):
             failed += 1
             print("FAIL", name, "-- status", status, "expected", want)
 

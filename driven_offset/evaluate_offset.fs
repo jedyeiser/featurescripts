@@ -2,9 +2,9 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: driven_edge_offset.fs (same document; export-imports edge_offset_utils -> curve_core)
-export import(path : "786f62f4d67ed8d9c7d56d16", version : "");
+export import(path : "786f62f4d67ed8d9c7d56d16", version : "833746270e62ebc534466aa5");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
-import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 /**
  * Evaluate offset: Driven edge offset run backwards. Design: research_evaluate_offset.md.
@@ -163,7 +163,7 @@ export const evaluateOffset = defineFeature(function(context is Context, id is I
                     });
         }
 
-        publishEvaluatedProfile(context, id, definition, built, rows);
+        publishEvaluatedProfile(context, id, definition, built);
     }, {
         "outputName" : "",
         "debugShowMeasurements" : false,
@@ -908,19 +908,10 @@ function emitPieces(context is Context, id is Id, definition is map, pieces is a
     return { "wires" : wires, "ends" : ends };
 }
 
-function publishEvaluatedProfile(context is Context, id is Id, definition is map, built is map, rows is array)
+function publishEvaluatedProfile(context is Context, id is Id, definition is map, built is map)
 {
     const wires = built.wires;
     const ends = built.ends;
-
-    var measured = 0;
-    for (var row in rows)
-    {
-        if (row != undefined)
-        {
-            measured += 1;
-        }
-    }
 
     var breakStations = [];
     var breakVertices = [];
@@ -952,13 +943,9 @@ function publishEvaluatedProfile(context is Context, id is Id, definition is map
                 "outputDescription" : "The measured offset profile pieces (X station, Y width, Z height)",
                 "inputs" : qUnion([definition.offsetEdges, definition.targetEdges]),
                 "variables" : {
-                    "pieceCount" : extractableVariable(size(wires), "Continuous pieces of the profile."),
-                    "breakCount" : extractableVariable(size(wires) - 1, "Breaks between pieces."),
                     "breakStations" : extractableVariable(breakStations, "Station of each break (the middle of a jump or a gap)."),
                     "startStation" : extractableVariable(first.start[0], "Station where the profile starts."),
-                    "endStation" : extractableVariable(last.end[0], "Station where the profile ends."),
-                    "measuredStations" : extractableVariable(measured, "Reference stations at which the target was found."),
-                    "stationCount" : extractableVariable(size(rows), "Reference stations sampled.")
+                    "endStation" : extractableVariable(last.end[0], "Station where the profile ends.")
                 },
                 "queries" : queries
             });

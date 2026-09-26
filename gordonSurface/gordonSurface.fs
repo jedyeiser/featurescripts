@@ -2,17 +2,17 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "3e1798281ef975ee9c4347c8");
+export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
 //import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "18979096f9f0772acdf86513");
+import(path : "b9e1608a507a242d87720d9b", version : "c5c9ecc408f10cf66fde9655");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "76bc8c9afe3d321353d3bff6");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "697107b420d9d97965d2d809");
 //import modifyCurveEnd
-import(path : "c6dca62049572faaa07ddd10", version : "a619f44c968dc41869f4329d");
+import(path : "c6dca62049572faaa07ddd10", version : "a7820c10c0d0688788f5ed30");
 //import debugTools
-import(path : "3f40c735a406f3df927e0b13", version : "3c134ce776bd26e0f446ab11");
+import(path : "3f40c735a406f3df927e0b13", version : "92c9069be35efc4573a15086");
 
 
 IconNamespace::import(path : "909b727cd95720b1666cbb41/4b9520a15e1873da9d46f579/583e87bcdf8f05533d82507e", version : "0e19bbdbe54691e6038ca94e");
@@ -20,11 +20,12 @@ ImageNamespace::import(path : "7c8c021bcbe65b0c83ce64f7", version : "97757834957
 
 /**
  * Normalize a BSplineCurve to ensure proper types for Onshape functions.
- * Converts KnotArray to plain array if needed.
+ * Copies knots/weights into fresh arrays; knots keep the KnotArray tag, which the
+ * BSplineCurve typecheck requires since FS 3083 (2026-09-26).
  */
 function normalizeBSplineCurve(context is Context, id is Id, curve is map) returns BSplineCurve
 {
-    // Convert to map, add dimension if missing, convert knots to plain array
+    // Convert to map, add dimension if missing, copy knots as a KnotArray
     var curveMap = curve as map;
 
     // Ensure dimension exists
@@ -33,14 +34,14 @@ function normalizeBSplineCurve(context is Context, id is Id, curve is map) retur
         curveMap.dimension = 3;
     }
 
-    // Convert KnotArray to plain array
+    // Copy the knots (tagged KnotArray)
     var plainKnots = [];
     var numKnots = size(curveMap.knots);
     for (var i = 0; i < numKnots; i += 1)
     {
         plainKnots = append(plainKnots, curveMap.knots[i]);
     }
-    curveMap.knots = plainKnots;
+    curveMap.knots = plainKnots as KnotArray;
 
     // Convert weights if rational
     if (curveMap.isRational && curveMap.weights != undefined)

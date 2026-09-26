@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "26943194d596af42a8f67417");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: offset_plus_icon.svg (feature icon)
 IconNamespace::import(path : "250e65ad6c2a37cefa5bf135", version : "09bf184eb261553dabe52522");
 
@@ -40,8 +40,9 @@ IconNamespace::import(path : "250e65ad6c2a37cefa5bf135", version : "09bf184eb261
  * are trimmed back to their crossing. Junctions within G1_JUNCTION_ANGLE are smooth: both
  * sides share one averaged end point and tangent, bit for bit, so the wire stitches.
  *
- * Publishes (Extract variables): output (the offset surfaces / wires), and for curves
- * roundedCorners, trimmedCorners, openCorners.
+ * Publishes (Extract variables): the standard keys (output = the offset surfaces / wires),
+ * startVertex, endVertex, startEdge, endEdge, cornerArcs and boundaryEdges. Corner counts are
+ * reported in the feature notice, not published.
  */
 
 /** What Offset+ offsets. */
@@ -229,11 +230,6 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
                 "output" : qCreatedBy(id, EntityType.BODY),
                 "outputDescription" : "The offset surfaces",
                 "inputs" : definition.surfaces,
-                "variables" : {
-                    "roundedCorners" : extractableVariable(0, "Curve offsets only."),
-                    "trimmedCorners" : extractableVariable(0, "Curve offsets only."),
-                    "openCorners" : extractableVariable(0, "Curve offsets only.")
-                },
                 "queries" : offsetPlusQueries(context, [], [], [],
                         qEdgeTopologyFilter(qOwnedByBody(qCreatedBy(id, EntityType.BODY), EntityType.EDGE), EdgeTopology.ONE_SIDED))
             });
@@ -297,11 +293,6 @@ function offsetCurves(context is Context, id is Id, definition is map, probe)
                 "output" : output,
                 "outputDescription" : "The offset wires",
                 "inputs" : definition.curves,
-                "variables" : {
-                    "roundedCorners" : extractableVariable(counts.rounded, "Corners closed with an arc."),
-                    "trimmedCorners" : extractableVariable(counts.trimmed, "Corners trimmed back to the crossing."),
-                    "openCorners" : extractableVariable(counts.open, "Corners left open.")
-                },
                 "queries" : offsetPlusQueries(context, wires, sourceStarts, cornerArcs, qNothing())
             });
 }
