@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="560" viewBox="0 0 760 560" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#333333">
+<rect x="0" y="0" width="760" height="560" fill="#FFFFFF"/>
+<defs>
+<marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1651B0"/></marker>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker>
+<marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1E8449"/></marker>
+<marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333333"/></marker>
+<marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D68910"/></marker>
+<marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888888"/></marker>
+</defs>
+<text x="20.0" y="28.0" font-size="16" text-anchor="start" fill="#333333" font-weight="bold">8. What is affected, and how risky it is today</text>
+<rect x="290.0" y="55.0" width="180.0" height="60.0" rx="6" fill="#EEF3FB" stroke="#1651B0" stroke-width="1.5"/>
+<text x="380.0" y="78.0" font-size="13" text-anchor="middle" fill="#1651B0" font-weight="bold">curve_core.fs</text>
+<text x="380.0" y="95.0" font-size="11" text-anchor="middle" fill="#333333" font-weight="normal">classifyPoints / emitArcCurve</text>
+<text x="380.0" y="108.0" font-size="11" text-anchor="middle" fill="#888888" font-weight="normal">(Curve_tools doc)</text>
+<line x1="380.0" y1="115.0" x2="135.0" y2="150.0" stroke="#BBBBBB" stroke-width="1"/>
+<rect x="20.0" y="150.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="28.0" y="167.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Driven edge offset</text>
+<text x="28.0" y="182.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">arcs + lines, source-type gates only</text>
+<line x1="380.0" y1="115.0" x2="380.0" y2="150.0" stroke="#BBBBBB" stroke-width="1"/>
+<rect x="265.0" y="150.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="273.0" y="167.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Driven offset surface</text>
+<text x="273.0" y="182.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">per section + alignedRunMerges</text>
+<line x1="380.0" y1="115.0" x2="625.0" y2="150.0" stroke="#BBBBBB" stroke-width="1"/>
+<rect x="510.0" y="150.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="518.0" y="167.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Map curve</text>
+<text x="518.0" y="182.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">NO gates: spline can become arc/line</text>
+<line x1="380.0" y1="115.0" x2="135.0" y2="205.0" stroke="#BBBBBB" stroke-width="1"/>
+<rect x="20.0" y="205.0" width="230.0" height="40.0" rx="6" fill="#FEF5E7" stroke="#D68910" stroke-width="1.5"/>
+<text x="28.0" y="222.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Unwrap</text>
+<text x="28.0" y="237.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">tangent check, but 0.57 deg too loose</text>
+<line x1="380.0" y1="115.0" x2="380.0" y2="205.0" stroke="#BBBBBB" stroke-width="1"/>
+<rect x="265.0" y="205.0" width="230.0" height="40.0" rx="6" fill="#FEF5E7" stroke="#D68910" stroke-width="1.5"/>
+<text x="273.0" y="222.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Evaluate offset</text>
+<text x="273.0" y="237.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">lines by sagitta, arcs off</text>
+<line x1="380.0" y1="115.0" x2="625.0" y2="205.0" stroke="#BBBBBB" stroke-width="1"/>
+<rect x="510.0" y="205.0" width="230.0" height="40.0" rx="6" fill="#FEF5E7" stroke="#D68910" stroke-width="1.5"/>
+<text x="518.0" y="222.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Offset run treatment</text>
+<text x="518.0" y="237.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">cornerArc with height offset</text>
+<text x="20.0" y="285.0" font-size="13" text-anchor="start" fill="#333333" font-weight="bold">Own copies of the same idea (fixed separately):</text>
+<rect x="20.0" y="300.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="28.0" y="317.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Evaluate profiles</text>
+<text x="28.0" y="332.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">private 3-pt circle + smoothAcross BUG</text>
+<rect x="265.0" y="300.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="273.0" y="317.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">arcFit (footprint)</text>
+<text x="273.0" y="332.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">fast path, line-before-biarc, fallback</text>
+<rect x="510.0" y="300.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="518.0" y="317.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">scaleFootprint</text>
+<text x="518.0" y="332.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">arc-chain ends, startPhi/endPhi unused</text>
+<rect x="20.0" y="355.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="28.0" y="372.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">integrateFootprint</text>
+<text x="28.0" y="387.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">FIT transitions, no end derivatives</text>
+<rect x="265.0" y="355.0" width="230.0" height="40.0" rx="6" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="273.0" y="372.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">curveMapping (+public)</text>
+<text x="273.0" y="387.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">near-line promotion: 0.23 deg frame jump</text>
+<rect x="510.0" y="355.0" width="230.0" height="40.0" rx="6" fill="#FEF5E7" stroke="#D68910" stroke-width="1.5"/>
+<text x="518.0" y="372.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Clean wire</text>
+<text x="518.0" y="387.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">MANUAL groups fit through any corner</text>
+<text x="20.0" y="435.0" font-size="13" text-anchor="start" fill="#333333" font-weight="bold">Already tangent by construction (no change):</text>
+<rect x="20.0" y="450.0" width="172.0" height="40.0" rx="6" fill="#E8F4EA" stroke="#1E8449" stroke-width="1.5"/>
+<text x="28.0" y="467.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Fillet wire</text>
+<text x="28.0" y="482.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">solved tangent arcs</text>
+<rect x="204.0" y="450.0" width="172.0" height="40.0" rx="6" fill="#E8F4EA" stroke="#1E8449" stroke-width="1.5"/>
+<text x="212.0" y="467.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">offsetEdges biarc</text>
+<text x="212.0" y="482.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">the code to reuse</text>
+<rect x="388.0" y="450.0" width="172.0" height="40.0" rx="6" fill="#E8F4EA" stroke="#1E8449" stroke-width="1.5"/>
+<text x="396.0" y="467.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">Create offset profile</text>
+<text x="396.0" y="482.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">exact Bernstein pieces</text>
+<rect x="572.0" y="450.0" width="172.0" height="40.0" rx="6" fill="#E8F4EA" stroke="#1E8449" stroke-width="1.5"/>
+<text x="580.0" y="467.0" font-size="12" text-anchor="start" fill="#333333" font-weight="bold">integrateFootprint arcs</text>
+<text x="580.0" y="482.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">exact ODE arcs</text>
+<rect x="20.0" y="525.0" width="18.0" height="14.0" rx="3" fill="#FBEAEA" stroke="#C0392B" stroke-width="1.5"/>
+<text x="44.0" y="537.0" font-size="12" text-anchor="start" fill="#333333" font-weight="normal">kinks today</text>
+<rect x="210.0" y="525.0" width="18.0" height="14.0" rx="3" fill="#FEF5E7" stroke="#D68910" stroke-width="1.5"/>
+<text x="234.0" y="537.0" font-size="12" text-anchor="start" fill="#333333" font-weight="normal">conditional / partial</text>
+<rect x="400.0" y="525.0" width="18.0" height="14.0" rx="3" fill="#E8F4EA" stroke="#1E8449" stroke-width="1.5"/>
+<text x="424.0" y="537.0" font-size="12" text-anchor="start" fill="#333333" font-weight="normal">safe</text>
+</svg>

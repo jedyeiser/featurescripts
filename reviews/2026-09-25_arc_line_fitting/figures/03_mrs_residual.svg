@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#333333">
+<rect x="0" y="0" width="760" height="360" fill="#FFFFFF"/>
+<defs>
+<marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1651B0"/></marker>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker>
+<marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1E8449"/></marker>
+<marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333333"/></marker>
+<marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D68910"/></marker>
+<marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888888"/></marker>
+</defs>
+<text x="20.0" y="28.0" font-size="16" text-anchor="start" fill="#333333" font-weight="bold">3. Live data: the 622 mm MRS run vs its best 3-point circle</text>
+<rect x="90" y="131.0" width="630" height="88.0" fill="#E8F4EA"/>
+<line x1="90.0" y1="131.0" x2="720.0" y2="131.0" stroke="#1E8449" stroke-width="1.2" stroke-dasharray="5,4"/>
+<line x1="90.0" y1="219.0" x2="720.0" y2="219.0" stroke="#1E8449" stroke-width="1.2" stroke-dasharray="5,4"/>
+<text x="724.0" y="135.0" font-size="11" text-anchor="start" fill="#1E8449" font-weight="normal">+tol</text>
+<text x="724.0" y="223.0" font-size="11" text-anchor="start" fill="#1E8449" font-weight="normal">-tol</text>
+<line x1="90.0" y1="175.0" x2="720.0" y2="175.0" stroke="#888888" stroke-width="1"/>
+<line x1="90.0" y1="65.0" x2="90.0" y2="285.0" stroke="#888888" stroke-width="1"/>
+<text x="82.0" y="267.0" font-size="11" text-anchor="end" fill="#888888" font-weight="normal">-0.02</text>
+<text x="82.0" y="223.0" font-size="11" text-anchor="end" fill="#888888" font-weight="normal">-0.01</text>
+<text x="82.0" y="179.0" font-size="11" text-anchor="end" fill="#888888" font-weight="normal">+0.00</text>
+<text x="82.0" y="135.0" font-size="11" text-anchor="end" fill="#888888" font-weight="normal">+0.01</text>
+<text x="82.0" y="91.0" font-size="11" text-anchor="end" fill="#888888" font-weight="normal">+0.02</text>
+<text x="22.0" y="115.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">radial</text>
+<text x="22.0" y="129.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">error</text>
+<text x="22.0" y="143.0" font-size="11" text-anchor="start" fill="#888888" font-weight="normal">(mm)</text>
+<polyline points="90.0,175.0 93.0,177.8 96.9,181.5 101.3,185.9 106.3,190.8 111.8,196.1 117.6,201.7 123.6,207.3 129.7,213.0 135.8,218.4 141.8,223.5 147.5,228.2 153.0,232.2 158.2,235.8 163.5,239.2 168.7,242.5 174.0,245.6 179.2,248.5 184.5,251.2 189.8,253.7 195.0,256.0 200.3,258.1 205.5,260.0 210.7,261.6 216.0,263.0 221.3,264.2 226.5,265.2 231.8,266.0 237.0,266.6 242.2,267.0 247.5,267.1 252.7,267.1 258.0,266.7 263.2,266.2 268.5,265.4 273.7,264.3 279.0,263.0 284.2,261.4 289.5,259.4 294.8,257.1 300.0,254.5 305.2,251.7 310.5,248.7 315.8,245.5 321.0,242.1 326.2,238.7 331.5,235.1 336.8,231.5 342.0,227.8 347.3,224.0 352.5,220.0 357.8,215.8 363.0,211.5 368.3,207.0 373.5,202.5 378.8,197.9 384.0,193.3 389.2,188.6 394.5,184.0 399.7,179.5 405.0,175.0 410.2,170.5 415.5,166.0 420.8,161.4 426.0,156.7 431.3,152.1 436.5,147.5 441.7,143.0 447.0,138.5 452.2,134.2 457.5,130.0 462.8,126.0 468.0,122.2 473.2,118.5 478.5,114.9 483.8,111.3 489.0,107.9 494.2,104.5 499.5,101.3 504.8,98.3 510.0,95.5 515.2,92.9 520.5,90.6 525.7,88.6 531.0,87.0 536.2,85.7 541.5,84.6 546.8,83.8 552.0,83.3 557.2,82.9 562.5,82.9 567.8,83.0 573.0,83.4 578.2,84.0 583.5,84.8 588.8,85.8 594.0,87.0 599.2,88.4 604.5,90.0 609.8,91.9 615.0,94.0 620.3,96.3 625.5,98.8 630.7,101.5 636.0,104.4 641.2,107.5 646.5,110.8 651.7,114.2 657.0,117.8 662.5,121.8 668.2,126.5 674.2,131.6 680.3,137.0 686.4,142.7 692.4,148.3 698.2,153.9 703.7,159.2 708.7,164.1 713.1,168.5 717.0,172.2 720.0,175.0" fill="none" stroke="#C0392B" stroke-width="2.5"/>
+<circle cx="90.0" cy="175.0" r="4" fill="#333333"/>
+<circle cx="153.0" cy="232.2" r="4" fill="#C0392B"/>
+<circle cx="216.0" cy="263.0" r="4" fill="#C0392B"/>
+<circle cx="279.0" cy="263.0" r="4" fill="#C0392B"/>
+<circle cx="342.0" cy="227.8" r="4" fill="#C0392B"/>
+<circle cx="405.0" cy="175.0" r="4" fill="#333333"/>
+<circle cx="468.0" cy="122.2" r="4" fill="#C0392B"/>
+<circle cx="531.0" cy="87.0" r="4" fill="#C0392B"/>
+<circle cx="594.0" cy="87.0" r="4" fill="#C0392B"/>
+<circle cx="657.0" cy="117.8" r="4" fill="#C0392B"/>
+<circle cx="720.0" cy="175.0" r="4" fill="#333333"/>
+<text x="90.0" y="303.0" font-size="11" text-anchor="middle" fill="#888888" font-weight="normal">x 626.5</text>
+<text x="346.9" y="303.0" font-size="11" text-anchor="middle" fill="#888888" font-weight="normal">x 880 (MRS)</text>
+<text x="720.0" y="303.0" font-size="11" text-anchor="middle" fill="#888888" font-weight="normal">x 1248.2</text>
+<text x="90.0" y="330.0" font-size="12" text-anchor="start" fill="#333333" font-weight="normal">Max 0.021 mm > 0.01 mm tol, so the run was REJECTED as an arc and emitted as a spline.</text>
+<text x="90.0" y="347.0" font-size="12" text-anchor="start" fill="#888888" font-weight="normal">Smooth S-shape = local radius wanders 14138..14965 mm. One biarc may not be enough; expect ~4 arcs.</text>
+</svg>

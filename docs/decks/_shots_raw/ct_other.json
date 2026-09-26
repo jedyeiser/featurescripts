@@ -1,0 +1,19 @@
+{"doc": "2143812a99089658c704f0bc", "ws": "4ea63c7ef14610f212917c42",
+ "shots": [
+  {"elem": "2c876d054928164711dbeef8", "wait": 30, "feature": "W2 Wire in place, picked corners r5 / r10, one left sharp -> 5 pieces",
+   "dialog": "docs/decks/fillet_wire/shots/dialog.png",
+   "labels": [{"name": "Curves", "find": "Curves"}, {"name": "Continuity", "find": "Tangent"}, {"name": "Radius", "find": "Radius"},
+              {"name": "Apply to all corners", "find": "Apply to all corners"}, {"name": "Corners", "find": "Corners"},
+              {"name": "Join into one wire", "find": "Join into one wire"}, {"name": "Advanced", "find": "Advanced"}]},
+  {"elem": "33fb1352ff3e7af1cff2e392", "wait": 30, "feature": "P1 crowned sheet picked by its face, onto Front, All -> top z 3, bottom z 0, middle z 1.5, 1000 long",
+   "dialog": "docs/decks/evaluate_profiles/shots/dialog_part.png",
+   "labels": [{"name": "Profile from", "find": "Part"}, {"name": "Name", "find": "Name"}, {"name": "Part or surface to outline", "find": "Part or surface to outline"},
+              {"name": "Return", "find": "Return"}, {"name": "Merge edges shorter than", "find": "Merge edges shorter than"},
+              {"name": "Project onto", "find": "Project onto"}, {"name": "Prevailing direction", "find": "Prevailing direction"},
+              {"name": "Output", "find": "Output"}, {"name": "Approximation", "find": "Approximation"}, {"name": "Debug", "find": "Debug"}]},
+  {"elem": "33fb1352ff3e7af1cff2e392", "filter": "P10", "feature": "P10 chain, One per input curve -> 4 edges, exact lines + arc R100 cut at the reversal",
+   "dialog": "docs/decks/evaluate_profiles/shots/dialog_edges.png",
+   "labels": [{"name": "Profile from", "find": "Edges"}, {"name": "Edges to project", "find": "Edges to project"},
+              {"name": "Project onto", "find": "Project onto"}, {"name": "Prevailing direction", "find": "Prevailing direction"},
+              {"name": "Output", "find": "Output"}]}
+ ]}

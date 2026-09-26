@@ -1,0 +1,212 @@
+{
+  "slug": "mutual_trim_plus",
+  "title": "Mutual Trim+",
+  "tagline": "Onshape's mutual trim, with the side to keep on each surface named by a reference instead of by a flip -- so the trim keeps the right corner whatever the surfaces' orientations.",
+  "document": "Reference_Side_Features",
+  "icon": "icons/final/mutual_trim_plus_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Two surfaces trim each other along their intersection and each keeps one side. The built-in picks that side with a 'keep opposite side' box per surface, tied to each surface's normal -- which flips when a loft, offset or mirror upstream changes. Mutual Trim+ keeps, on each surface, the side a reference is on.",
+      "useWhen": [
+        "Two surfaces meet at a corner you want to keep (a top and a wall)",
+        "Either surface's orientation may change upstream",
+        "A fillet or thicken will follow the trim edge"
+      ],
+      "image": "docs/decks/mutual_trim_plus/shots/hero.png",
+      "caption": "Mutual Trim+ open on the ski: unfilleted top x SW rout wall."
+    },
+    {
+      "type": "concept",
+      "title": "Why a reference instead of a flip",
+      "image": "docs/explainers/reference_side/img/fig01_flip_vs_reference.png",
+      "points": [
+        {
+          "head": "A flip is about a normal",
+          "body": "'Front', 'opposite direction', 'Thickness 1' all mean: relative to the normal -- and normals change freely upstream."
+        },
+        {
+          "head": "A reference is about the model",
+          "body": "Pick geometry on the side you mean. The choice survives any change of orientation."
+        },
+        {
+          "head": "Drop-in",
+          "body": "With no reference, the feature behaves exactly like the built-in."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "How each side is decided",
+      "image": "docs/explainers/reference_side/img/fig04_mutual_trim.png",
+      "points": [
+        {
+          "head": "Against the OTHER surface",
+          "body": "Each surface is cut in two by the other one. The side kept is the one on the reference's side of that other surface (signed distance)."
+        },
+        {
+          "head": "Not by nearness",
+          "body": "On a leaning wall the nearest piece can be the wrong one (right). Distance is only a fallback when the pieces do not straddle the other surface."
+        },
+        {
+          "head": "Per surface",
+          "body": "Each surface has its own 'keep side nearest reference' arrow: on = the reference's side, off = the other side."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/mutual_trim_plus/shots/dialog.png",
+      "positions": {
+        "Keep side nearest reference (first)": [
+          0.93,
+          0.203,
+          "right"
+        ],
+        "Keep side nearest reference (second)": [
+          0.93,
+          0.386,
+          "right"
+        ]
+      },
+      "params": [
+        [
+          "First surface",
+          "One surface body."
+        ],
+        [
+          "Keep side nearest reference (first)",
+          "The arrow by the first surface. On: keep its side nearer the reference (the inside). Off: the farther side."
+        ],
+        [
+          "Second surface",
+          "The other surface body."
+        ],
+        [
+          "Keep side nearest reference (second)",
+          "The same for the second surface."
+        ],
+        [
+          "Keep side reference",
+          "Geometry on the keep side of BOTH surfaces -- best a mate connector or vertex in the corner you keep. Empty = the built-in."
+        ],
+        [
+          "Merge",
+          "Union the two trimmed surfaces into one body (default on)."
+        ],
+        [
+          "Debug",
+          "Print side distances: which side each surface kept, and whether by side (normal case) or by distance (fallback)."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: top x sidewall rout",
+      "image": "docs/decks/mutual_trim_plus/shots/section.png",
+      "head": "Unfilleted_Top_Surf trimmed with SW_Rout, reference Better_Ref, merged (topsheet_surf studio)",
+      "body": "Each surface keeps the part on the reference's side of the other: the top keeps its inside (green), the rout wall keeps the part below the top (blue). The published trimEdges (magenta) is the intersection along which the two were trimmed -- the edge a fillet wants."
+    },
+    {
+      "type": "example",
+      "title": "Example: the whole trim edge",
+      "image": "docs/decks/mutual_trim_plus/shots/plan.png",
+      "head": "The same result from above: keptFaces1 (green) and the trim edge all round the ski (magenta)",
+      "body": "keptFaces1 / keptFaces2 tell the two surfaces apart even after Merge makes them one body, so a later feature can offset or thicken just the top, or just the wall."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The trimmed surfaces (one body when merged)."
+        ],
+        [
+          "trimEdges",
+          "The intersection edges the trim left -- where to fillet. Tracked through the merge."
+        ],
+        [
+          "keptFaces1",
+          "The faces the first surface kept (still told apart after the merge)."
+        ],
+        [
+          "keptFaces2",
+          "The faces the second surface kept."
+        ],
+        [
+          "trimEdgeCount",
+          "How many trim edges."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "boolean union no-op",
+          "The surfaces do not intersect; nothing was trimmed."
+        ],
+        [
+          "Error",
+          "The keep side reference cannot be placed on either side of the first/second surface",
+          "The pieces do not straddle the other surface and the reference is equally far from both. Pick a closer reference inside the corner to keep."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Put the reference in the corner you keep",
+          "body": "A mate connector just inside the kept corner (e.g. at MRS) -- not a far plane: a far plane's closest point can land at the tip, where the surfaces have turned."
+        },
+        {
+          "kind": "tip",
+          "head": "Fillet along trimEdges",
+          "body": "Publish trimEdges with Extract variables; it survives upstream edits that renumber edges."
+        },
+        {
+          "kind": "limit",
+          "head": "Outputs keep their input's orientation",
+          "body": "The reference picks the side, not the normal. Built-ins downstream that follow the normal (Thicken, Offset surface, Move face) need Orient to reference first -- or use the reference-side feature instead."
+        },
+        {
+          "kind": "limit",
+          "head": "One orientation after Merge",
+          "body": "Merged, the two halves are one body with one orientation."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Reference_Side_Features (22764764a00a7f607dbc1c4d)"
+        ],
+        [
+          "Tab",
+          "mutual_trim_plus  (uses reference_side_utils)"
+        ],
+        [
+          "Tests",
+          "Reference side tests studio: M1-M2  -  devtools/onshape/check_reference_side_tests.py (34/34)"
+        ],
+        [
+          "Examples",
+          "topsheet_surf studio (the user's derive of Design_Master topsheet and sidewall bodies)"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/reference_side/reference_side_explained.md, section 2.1"
+        ],
+        [
+          "Related",
+          "Split+, Mutual Trim+, Offset+, Thicken+, Orient to reference (same reference rule); Extract variables"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+ "doc": "2143812a99089658c704f0bc",
+ "ws": "4ea63c7ef14610f212917c42",
+ "elem": "1ae3cdda8a2f916c6a038ca6",
+ "renders": [
+  {
+   "out": "docs/decks/map_curve/shots/result.png",
+   "view": "side",
+   "yscale": 4,
+   "size": [
+    10,
+    3
+   ],
+   "title": "Map curve (Trim to-edges): SKI_PROFILE (grey) trimmed to the RSL span measured along it from the FCP (blue)",
+   "layers": [
+    {
+     "parts": [
+      "RBLr"
+     ],
+     "edges": true,
+     "lineColor": "#9a9893",
+     "lineWidth": 1.5
+    },
+    {
+     "parts": [
+      "RBLD"
+     ],
+     "edges": true,
+     "lineColor": "#eb6834",
+     "lineWidth": 1.2
+    },
+    {
+     "parts": [
+      "RULD"
+     ],
+     "edges": true,
+     "lineColor": "#2a78d6",
+     "lineWidth": 3
+    }
+   ],
+   "notes": [
+    {
+     "text": "RSL_Wire (from-edges: sets the span, orange)",
+     "at": [
+      0.02,
+      0.93
+     ],
+     "color": "#eb6834",
+     "size": 9
+    },
+    {
+     "text": "result: the same arc length along SKI_PROFILE (blue)",
+     "at": [
+      0.02,
+      0.8
+     ],
+     "color": "#2a78d6",
+     "size": 9
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+{
+ "doc": "2143812a99089658c704f0bc",
+ "ws": "4ea63c7ef14610f212917c42",
+ "elem": "1ae3cdda8a2f916c6a038ca6",
+ "renders": [
+  {
+   "out": "docs/decks/merge_curve/shots/result.png",
+   "view": "side",
+   "yscale": 20,
+   "size": [
+    10,
+    3.2
+   ],
+   "title": "Merge curve: the RD baseline after merging -- 2 edges left, the merged one in blue (height x20)",
+   "layers": [
+    {
+     "parts": [
+      "RXLD"
+     ],
+     "edges": true,
+     "lineColor": "#9a9893",
+     "lineWidth": 1.5,
+     "edgeKey": [
+      "Merge curve: RD Baseline tip section into its main edge",
+      "mergedEdge"
+     ],
+     "edgeColor": "#2a78d6"
+    }
+   ]
+  }
+ ]
+}

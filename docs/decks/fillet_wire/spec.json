@@ -1,0 +1,157 @@
+{
+  "slug": "fillet_wire",
+  "title": "Fillet wire",
+  "tagline": "Round the corners of a wire or edge chain: an exact tangent arc Onshape recognises as an arc, or a smooth curvature blend -- picked corner by corner.",
+  "document": "Curve_tools",
+  "icon": "icons/final/fillet_wire_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Onshape can fillet corners in a sketch, but not the corners of a wire. Fillet wire rounds chosen corners of any wire or edge chain -- in 2D or 3D -- and edits a wire body in place, so the untouched parts keep their identity.",
+      "useWhen": [
+        "A wire (not a sketch) needs rounded corners",
+        "The fillets must be true arcs with a radius",
+        "A 3D corner needs a smooth (G2) blend"
+      ],
+      "image": "docs/decks/fillet_wire/shots/w1.png",
+      "caption": "W1: two 90 deg corners filleted r10 (magenta)."
+    },
+    {
+      "type": "concept",
+      "title": "Tangent arc or curvature blend",
+      "image": "docs/explainers/curve_tools/img/fig06_fillet_wire.png",
+      "points": [
+        {
+          "head": "Tangent",
+          "body": "An exact arc, set back d = r tan(turn / 2), emitted as a sketch arc. Needs the corner to be planar."
+        },
+        {
+          "head": "Curvature",
+          "body": "A G2 blend matching both edges' curvature, sized so its average curvature is 1/r. Works in 3D."
+        },
+        {
+          "head": "In place",
+          "body": "A wire is split at the tangent points and only the corner pieces are replaced."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/fillet_wire/shots/dialog.png",
+      "params": [
+        [
+          "Curves",
+          "Edges or wire bodies."
+        ],
+        [
+          "Continuity",
+          "TANGENT: exact arcs. CURVATURE: G2 blends."
+        ],
+        [
+          "Radius",
+          "The fillet radius."
+        ],
+        [
+          "Apply to all corners",
+          "Off: only the corners you pick."
+        ],
+        [
+          "Corners",
+          "Filled by clicking corner points in the view; each can have its own radius."
+        ],
+        [
+          "Join into one wire",
+          "Wire input: rejoin the pieces into one body."
+        ],
+        [
+          "Advanced",
+          "Corner angle (0.5 deg), Print corners."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Examples",
+      "image": "docs/decks/fillet_wire/shots/w3.png",
+      "head": "W3: a line running into an arc, r10 -- the fillet is an exact circle tangent to both",
+      "body": "W1: two 90 deg corners, r10 -> one wire 291.416 mm long (300 - 4r + pi r). W4: a 3D corner with Tangent is skipped (not planar); W5: the same corner with Curvature -> a G2 blend, average curvature 0.1 /mm."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "filletEdges",
+          "The fillet edges."
+        ],
+        [
+          "cornerCount / filletCount / skippedCount",
+          "Corners found / filleted / not filleted."
+        ]
+      ],
+      "messages": [
+        [
+          "Warning",
+          "N corner(s) not filleted: ...",
+          "With the reason: radius too large, no circle touches both edges, not in one plane (use Curvature), edges too short, or fillets overlapping."
+        ],
+        [
+          "Info",
+          "N corner(s) found. Click them...",
+          "Nothing picked yet."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Radius shown in Onshape",
+          "body": "Tangent fillets are sketch arcs, so clicking one shows its radius."
+        },
+        {
+          "kind": "limit",
+          "head": "Curvature fillets are splines",
+          "body": "They have no single radius."
+        },
+        {
+          "kind": "limit",
+          "head": "No end keys yet",
+          "body": "Fillet wire does not publish start / end keys."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Curve_tools (2143812a99089658c704f0bc)"
+        ],
+        [
+          "Tab",
+          "fillet_wire  (uses curve_core)"
+        ],
+        [
+          "Tests",
+          "Fillet wire tests studio: W1-W6 (devtools/onshape/check_fillet_wire.py)"
+        ],
+        [
+          "Examples",
+          "Fillet wire tests studio"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_tools/curve_tools_explained.md, section 2.5"
+        ],
+        [
+          "Related",
+          "Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire; Extract variables"
+        ]
+      ]
+    }
+  ]
+}

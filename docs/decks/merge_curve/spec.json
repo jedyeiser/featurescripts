@@ -1,0 +1,169 @@
+{
+  "slug": "merge_curve",
+  "title": "Merge curve",
+  "tagline": "Absorb one edge into its neighbour as a single fitted spline -- Edit curve / Composite + Approximate in one step -- and keep the right body.",
+  "document": "Curve_tools",
+  "icon": "icons/final/merge_curve_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "A short edge next to a long one (a tip section, a sliver left by a split) wants to be part of it. Onshape has no join; every route is fit-then-replace, and doing it by hand loses the wire's identity. Merge curve fits the two edges as one spline and puts it back where it belongs.",
+      "useWhen": [
+        "Two edges of a wire should be one smooth curve",
+        "The wire's name and identity must survive",
+        "The ends must still meet their neighbours exactly"
+      ],
+      "image": "docs/decks/merge_curve/shots/result.png",
+      "caption": "The RD baseline after merging its tip section: 2 edges left."
+    },
+    {
+      "type": "concept",
+      "title": "Which body survives",
+      "image": "docs/explainers/curve_tools/img/fig04_merge_outcomes.png",
+      "points": [
+        {
+          "head": "In place",
+          "body": "The seed is its wire's only edge: the wire is edited and keeps its id and name."
+        },
+        {
+          "head": "Rebuild",
+          "body": "The wire has other edges: they and the merged curve become a new wire (info notice)."
+        },
+        {
+          "head": "Extract",
+          "body": "The seed is not on a wire: the fitted spline is the output."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/merge_curve/shots/dialog.png",
+      "params": [
+        [
+          "Seed edge",
+          "The edge that is edited."
+        ],
+        [
+          "Merge edge",
+          "The edge absorbed; it must meet the seed end to end."
+        ],
+        [
+          "Keep start derivative",
+          "Keep the seed's own start tangent (on)."
+        ],
+        [
+          "Keep end derivative",
+          "Keep the merge edge's own end tangent (on)."
+        ],
+        [
+          "Approximation",
+          "Degree, tolerance, maximum 100 control points."
+        ],
+        [
+          "Output name",
+          "Pre-filled with the seed wire's name."
+        ],
+        [
+          "Note arc loss",
+          "Say so when a line or arc becomes a spline."
+        ],
+        [
+          "Debug",
+          "Print diagnostics."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: the RD baseline tip",
+      "image": "docs/decks/merge_curve/shots/result.png",
+      "head": "The baseline's tip section merged into its main edge (the merged edge in blue)",
+      "body": "The seed wire had other edges, so it was rebuilt: the untouched edge and the merged curve form the new wire, the ends snapped to their neighbours so it still chains."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "startVertex / endVertex",
+          "The ends of the result (start = the tail end: arc length grows with world X)."
+        ],
+        [
+          "startEdge / endEdge",
+          "The edge at each end."
+        ],
+        [
+          "mergedEdge",
+          "The merged curve's edge."
+        ],
+        [
+          "degree / controlPointCount",
+          "Of the fitted spline."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "Rebuilt the seed wire ... original body was replaced",
+          "The Rebuild case."
+        ],
+        [
+          "Info",
+          "arc radius not preserved",
+          "A line or arc became a spline."
+        ],
+        [
+          "Error",
+          "not G0 connected",
+          "The two edges do not meet end to end."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "limit",
+          "head": "Always a spline",
+          "body": "A merged line or arc loses its type."
+        },
+        {
+          "kind": "tip",
+          "head": "Many edges?",
+          "body": "To clean a whole wire use Clean wire instead."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Curve_tools (2143812a99089658c704f0bc)"
+        ],
+        [
+          "Tab",
+          "merge_curve  (uses curve_core)"
+        ],
+        [
+          "Tests",
+          "Tests studio (curve_tools_tests: merge, ends)"
+        ],
+        [
+          "Examples",
+          "Test_1 studio"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_tools/curve_tools_explained.md, section 2.3"
+        ],
+        [
+          "Related",
+          "Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire; Extract variables"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "slug": "evaluate_profiles",
+  "title": "Evaluate profiles",
+  "tagline": "Project a chain onto a plane and cut it where it folds back -- or outline a part and split its outline into top, bottom and middle profiles.",
+  "document": "Curve_tools",
+  "icon": "icons/final/evaluate_profiles_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Side profiles of a core, a topsheet or a sidewall are needed as clean curves: for fills, for drawings, for measuring. Native Project and Outline give an undivided loop, with slivers, that can fold back at the tip. Evaluate profiles gives the profiles you actually want, named.",
+      "useWhen": [
+        "You need a part's top / bottom / middle side profile",
+        "A projected chain folds back at a tip",
+        "An outline has micro-edges that break a fill"
+      ],
+      "image": "docs/decks/evaluate_profiles/shots/p1.png",
+      "caption": "P1: a crowned sheet outlined: top, middle and bottom profiles."
+    },
+    {
+      "type": "concept",
+      "title": "Two jobs",
+      "image": "docs/explainers/curve_tools/img/fig05_evaluate_profiles.png",
+      "points": [
+        {
+          "head": "Edges",
+          "body": "Project, then cut where the chain stops advancing along the prevailing direction (400-sample scan, then bisection)."
+        },
+        {
+          "head": "Part",
+          "body": "The two longest runs along the direction are top and bottom (top = higher); the middle is their average at matching stations."
+        },
+        {
+          "head": "Micro-edges merged",
+          "body": "Outline edges under 0.01 mm are merged away -- a 1.7 um edge once broke a fill."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: Part",
+      "screenshot": "docs/decks/evaluate_profiles/shots/dialog_part.png",
+      "params": [
+        [
+          "Profile from",
+          "EDGES: project a chain. PART: outline a solid or surface."
+        ],
+        [
+          "Name",
+          "Part outputs are named <name> top, <name> bottom, ..."
+        ],
+        [
+          "Part or surface to outline",
+          "A solid or surface body, or a face of one."
+        ],
+        [
+          "Return",
+          "Top / Bottom / Middle / Periphery / All profiles / Full (profiles + connectors)."
+        ],
+        [
+          "Merge edges shorter than",
+          "0.01 mm; 0 = off."
+        ],
+        [
+          "Project onto",
+          "A planar face."
+        ],
+        [
+          "Prevailing direction",
+          "The direction profiles run along (+ flip). Default: the longest in-plane extent."
+        ],
+        [
+          "Output",
+          "One curve / One per input curve (exact) / Efficient (merges where exact)."
+        ],
+        [
+          "Approximation",
+          "60 samples, degree 3, 0.01 mm, 24 control points."
+        ],
+        [
+          "Debug",
+          "Scan, curve detail, colour the profiles."
+        ]
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: Edges",
+      "screenshot": "docs/decks/evaluate_profiles/shots/dialog_edges.png",
+      "params": [
+        [
+          "Profile from",
+          "EDGES."
+        ],
+        [
+          "Edges to project",
+          "The chain."
+        ],
+        [
+          "Project onto",
+          "A planar face."
+        ],
+        [
+          "Prevailing direction",
+          "Default: the chain's chord."
+        ],
+        [
+          "Output",
+          "One curve / One per input curve / Efficient -- see the examples."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: One per input curve",
+      "image": "docs/decks/evaluate_profiles/shots/p10.png",
+      "head": "P10: lines 0-200-400 (collinear), a line to (700, 700), an R100 hook -- projected onto Top",
+      "body": "4 exact edges: the projected edges themselves, the arc cut exactly where it turns back (at (759.55, 835.96))."
+    },
+    {
+      "type": "example",
+      "title": "Example: Efficient",
+      "image": "docs/decks/evaluate_profiles/shots/p11.png",
+      "head": "P11: the same chain, Efficient",
+      "body": "3 edges: the two collinear lines merged into one 400 mm line; the slanted line and the R100 arc kept exact. One curve (P9) gives a single fitted spline instead."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "top / bottom / middle",
+          "The named profile wires (empty when not requested)."
+        ],
+        [
+          "periphery",
+          "The undivided outline (Return = Periphery)."
+        ],
+        [
+          "connectors",
+          "The pieces joining top and bottom (Return = Full)."
+        ],
+        [
+          "length",
+          "Length of the retained projection (the periphery for a part)."
+        ],
+        [
+          "trimmedStart / trimmedEnd",
+          "Whether the projection was cut at each end."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Nothing projected / not a single connected chain",
+          ""
+        ],
+        [
+          "Error",
+          "...seen edge-on: project its edges instead",
+          "A surface lying in the projection direction has no outline."
+        ],
+        [
+          "Error",
+          "does not separate into a top and a bottom profile",
+          "Check the prevailing direction."
+        ],
+        [
+          "Info",
+          "Merged N outline edge(s) shorter than ...",
+          "Micro-edges removed; locations listed."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Prefer exact output",
+          "body": "One per input curve or Efficient keep lines and arcs exact; One curve is a fit."
+        },
+        {
+          "kind": "limit",
+          "head": "Longest loop only",
+          "body": "An outline with several loops keeps only the longest."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Curve_tools (2143812a99089658c704f0bc)"
+        ],
+        [
+          "Tab",
+          "evaluate_profiles  (uses curve_core)"
+        ],
+        [
+          "Tests",
+          "Evaluate profiles tests studio: P1-P11 (P3 must error)"
+        ],
+        [
+          "Examples",
+          "Evaluate profiles tests studio"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_tools/curve_tools_explained.md, section 2.4"
+        ],
+        [
+          "Related",
+          "Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire; Extract variables"
+        ]
+      ]
+    }
+  ]
+}

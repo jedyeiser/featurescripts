@@ -1,0 +1,22 @@
+{
+  "doc": "22764764a00a7f607dbc1c4d", "ws": "3b5e11a121111a161684adee",
+  "shots": [
+    {"elem": "97d8c9aeebe259091033c914", "wait": 25, "feature": "Mutual Trim+ unfilleted top x SW rout",
+     "dialog": "docs/decks/mutual_trim_plus/shots/dialog.png", "graphics": "docs/decks/mutual_trim_plus/shots/hero.png",
+     "labels": [{"name": "First surface", "find": "First surface"}, {"name": "Second surface", "find": "Second surface"},
+                {"name": "Keep side reference", "find": "Keep side reference"}, {"name": "Merge", "find": "Merge"},
+                {"name": "Debug", "find": "Debug"}]},
+    {"elem": "97d8c9aeebe259091033c914", "feature": "Offset+ topsheet 2 mm toward Below ski",
+     "dialog": "docs/decks/offset_plus/shots/dialog_surface.png", "graphics": "docs/decks/offset_plus/shots/hero.png",
+     "labels": [{"name": "Offset type", "find": "Surface"}, {"name": "Faces and surfaces to offset", "find": "Faces and surfaces to offset"},
+                {"name": "Distance", "find": "Distance"}, {"name": "Side reference", "find": "Side reference"}, {"name": "Debug", "find": "Debug"}]},
+    {"elem": "97d8c9aeebe259091033c914", "feature": "Offset+ edge chain 5 mm toward Front, plan view",
+     "dialog": "docs/decks/offset_plus/shots/dialog_plane.png",
+     "labels": [{"name": "Offset type", "find": "Curve"}, {"name": "Curves and edges to offset", "find": "Curves and edges to offset"},
+                {"name": "Frame", "find": "Frame"}, {"name": "Plane normal", "find": "Plane normal"}, {"name": "Distance", "find": "Distance"},
+                {"name": "Side reference", "find": "Side reference"}, {"name": "Fit", "find": "Fit"}]},
+    {"elem": "97d8c9aeebe259091033c914", "feature": "Offset+ edge chain 5 mm toward Front, along topsheet",
+     "dialog": "docs/decks/offset_plus/shots/dialog_surfaceframe.png",
+     "labels": [{"name": "Frame", "find": "Frame"}, {"name": "Surface", "find": "Surface"}, {"name": "Direction", "find": "Direction"}]}
+  ]
+}

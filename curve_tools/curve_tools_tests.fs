@@ -134,28 +134,35 @@ function cleanTests(context is Context, id is Id) returns array
     const ends = checkEnds(context, embedded, pt(0, 0, 0), pt(300, 50, 0));
     out = append(out, result("Clean wire: ends", ends.ok, ends.detail));
 
-    const curveCount = embedded.variable.curveCount.value;
+    // The runs are walked through outputEdges from startVertex: each step takes the one
+    // edge not yet taken at the vertex the previous edge ended on.
+    const outputEdges = embedded.query.outputEdges.value;
+    const edgeCount = size(evaluateQuery(context, outputEdges));
     const breaks = size(evaluateQuery(context, embedded.query.breakVertices.value));
-    var runsOk = curveCount >= 1;
+    var runsOk = edgeCount >= 1;
     var detail = "";
     var previous = embedded.query.startVertex.value;
-    for (var k = 1; k <= curveCount; k += 1)
+    var remaining = outputEdges;
+    for (var k = 1; k <= edgeCount; k += 1)
     {
-        const run = embedded.query["run" ~ k];
-        if (run == undefined)
+        const next = evaluateQuery(context, qIntersection([qAdjacent(previous, AdjacencyType.VERTEX, EntityType.EDGE), remaining]));
+        if (size(next) != 1)
         {
             runsOk = false;
-            detail ~= "run" ~ k ~ " missing; ";
+            detail ~= "edge " ~ k ~ ": " ~ size(next) ~ " untaken edge(s) at the previous vertex; ";
             break;
         }
-        // Each run touches the vertex the previous one ended at.
-        const touches = !isQueryEmpty(context, qIntersection([qAdjacent(run.value, AdjacencyType.VERTEX, EntityType.VERTEX), previous]));
-        runsOk = runsOk && touches;
-        previous = qSubtraction(qAdjacent(run.value, AdjacencyType.VERTEX, EntityType.VERTEX), previous);
+        // The first edge walked is the published startEdge.
+        if (k == 1)
+        {
+            runsOk = runsOk && !isQueryEmpty(context, qIntersection([next[0], embedded.query.startEdge.value]));
+        }
+        remaining = qSubtraction(remaining, next[0]);
+        previous = qSubtraction(qAdjacent(next[0], AdjacencyType.VERTEX, EntityType.VERTEX), previous);
     }
-    runsOk = runsOk && !isQueryEmpty(context, qIntersection([previous, embedded.query.endVertex.value]));
-    out = append(out, result("Clean wire: runs in order, breaks between", runsOk && breaks == curveCount - 1,
-                detail ~ curveCount ~ " run(s) chained start to end " ~ runsOk ~ ", " ~ breaks ~ " break(s) (expected " ~ (curveCount - 1) ~ ")"));
+    runsOk = runsOk && isQueryEmpty(context, remaining) && !isQueryEmpty(context, qIntersection([previous, embedded.query.endVertex.value]));
+    out = append(out, result("Clean wire: runs in order, breaks between", runsOk && breaks == edgeCount - 1,
+                detail ~ edgeCount ~ " edge(s) chained start to end " ~ runsOk ~ ", " ~ breaks ~ " break(s) (expected " ~ (edgeCount - 1) ~ ")"));
     return out;
 }
 

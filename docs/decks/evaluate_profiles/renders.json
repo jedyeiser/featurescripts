@@ -1,0 +1,115 @@
+{
+ "doc": "2143812a99089658c704f0bc",
+ "ws": "4ea63c7ef14610f212917c42",
+ "elem": "33fb1352ff3e7af1cff2e392",
+ "renders": [
+  {
+   "out": "docs/decks/evaluate_profiles/shots/p1.png",
+   "view": "side",
+   "yscale": 60,
+   "size": [
+    10,
+    3
+   ],
+   "title": "P1: a crowned sheet (3 mm high across its width) outlined onto Front: top, bottom and middle profiles (height x60)",
+   "layers": [
+    {
+     "bodyKey": [
+      "P1 crowned sheet picked by its face, onto Front, All -> top z 3, bottom z 0, middle z 1.5, 1000 long",
+      "top"
+     ],
+     "edges": true,
+     "lineColor": "#1baf7a",
+     "lineWidth": 2.5
+    },
+    {
+     "bodyKey": [
+      "P1 crowned sheet picked by its face, onto Front, All -> top z 3, bottom z 0, middle z 1.5, 1000 long",
+      "middle"
+     ],
+     "edges": true,
+     "lineColor": "#2a78d6",
+     "lineWidth": 2.5
+    },
+    {
+     "bodyKey": [
+      "P1 crowned sheet picked by its face, onto Front, All -> top z 3, bottom z 0, middle z 1.5, 1000 long",
+      "bottom"
+     ],
+     "edges": true,
+     "lineColor": "#e34948",
+     "lineWidth": 2.5
+    }
+   ],
+   "notes": [
+    {
+     "text": "top z 3",
+     "at": [
+      0.9,
+      0.92
+     ],
+     "color": "#1baf7a",
+     "size": 9
+    },
+    {
+     "text": "middle z 1.5",
+     "at": [
+      0.9,
+      0.58
+     ],
+     "color": "#2a78d6",
+     "size": 9
+    },
+    {
+     "text": "bottom z 0",
+     "at": [
+      0.9,
+      0.24
+     ],
+     "color": "#e34948",
+     "size": 9
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/evaluate_profiles/shots/p10.png",
+   "view": "plan",
+   "size": [
+    7,
+    3.2
+   ],
+   "title": "P10 One per input curve: 4 exact edges (line, line, line, arc R100 cut where it turns back)",
+   "layers": [
+    {
+     "createdBy": "P10 chain, One per input curve -> 4 edges, exact lines + arc R100 cut at the reversal",
+     "edges": true,
+     "cycle": [
+      "#2a78d6",
+      "#eb6834"
+     ],
+     "lineWidth": 2.5
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/evaluate_profiles/shots/p11.png",
+   "view": "plan",
+   "size": [
+    7,
+    3.2
+   ],
+   "title": "P11 Efficient: 3 edges -- the two collinear lines merged into one",
+   "layers": [
+    {
+     "createdBy": "P11 chain, Efficient -> 3 edges: collinear lines merged (400 long), line, arc R100",
+     "edges": true,
+     "cycle": [
+      "#2a78d6",
+      "#eb6834"
+     ],
+     "lineWidth": 2.5
+    }
+   ]
+  }
+ ]
+}

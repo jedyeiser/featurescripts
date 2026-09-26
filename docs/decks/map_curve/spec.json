@@ -1,0 +1,201 @@
+{
+  "slug": "map_curve",
+  "title": "Map curve",
+  "tagline": "Carry a span from one chain onto another by arc length from a reference point: s mm along the first from its zero lands s mm along the second from its zero.",
+  "document": "Curve_tools",
+  "icon": "icons/final/map_curve_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "The same stations are needed on different curves of a ski -- the RSL, the side profile, the core bottom -- measured along each curve from the same place (the FCP). Trim and split work by position, not by distance along the curve. Map curve measures along both chains from a zero point.",
+      "useWhen": [
+        "A span defined on one curve is needed on another",
+        "Distances must follow the curve, not X",
+        "Arcs must stay arcs (Trim mode never refits)"
+      ],
+      "image": "docs/decks/map_curve/shots/result.png",
+      "caption": "SKI_PROFILE trimmed to the RSL span, measured along it from the FCP."
+    },
+    {
+      "type": "concept",
+      "title": "Arc length from a zero point",
+      "image": "docs/explainers/curve_tools/img/fig03_map_arc_length.png",
+      "points": [
+        {
+          "head": "Same distance along each",
+          "body": "The from-chain's span [start, end], measured from its zero, is laid onto the to-chain from its zero."
+        },
+        {
+          "head": "World X or closest",
+          "body": "World X: the zero lands where each chain crosses the point's X. Closest point: the nearest point on each chain."
+        },
+        {
+          "head": "Direction check",
+          "body": "If the chains run opposite ways at the zero, the feature stops and asks for Flip to-chain."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/map_curve/shots/dialog.png",
+      "positions": {
+        "Mode": [
+          0.02,
+          0.17
+        ],
+        "Reference point": [
+          0.02,
+          0.55
+        ],
+        "Projection": [
+          0.02,
+          0.756
+        ],
+        "Flip to-chain": [
+          0.93,
+          0.756,
+          "right"
+        ]
+      },
+      "params": [
+        [
+          "Mode",
+          "Deform from-edges onto to-edges / TRIM to-edges to the from span / Deform and merge to one curve."
+        ],
+        [
+          "From edges",
+          "The chain that sets the span."
+        ],
+        [
+          "To edges",
+          "The chain the span lands on (never modified)."
+        ],
+        [
+          "Reference point",
+          "SHARED: one zero point for both. SEPARATE: a zero for each chain."
+        ],
+        [
+          "Zero point",
+          "A mate connector or vertex (e.g. the FCP)."
+        ],
+        [
+          "Projection",
+          "WORLD X (default) or CLOSEST POINT: how the zero lands on each chain."
+        ],
+        [
+          "Flip to-chain",
+          "The arrow: when the two chains run opposite ways at the zero."
+        ],
+        [
+          "Name",
+          "Names the result."
+        ],
+        [
+          "Debug",
+          "Chain ends (green start, red end) and a summary."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: trim to the RSL span",
+      "image": "docs/decks/map_curve/shots/result.png",
+      "head": "SKI_PROFILE (grey) trimmed to the span of RSL_Wire (orange), zero at the FCP vertex -- result in blue",
+      "body": "Trim mode copies the to-edges and cuts them exactly at the two arc lengths; nothing is refitted, so the profile's arcs stay arcs."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "startVertex / endVertex",
+          "The ends of the result (start = the tail end: arc length grows with world X)."
+        ],
+        [
+          "startEdge / endEdge",
+          "The edge at each end."
+        ],
+        [
+          "spanStart / spanEnd",
+          "The from-chain's span, measured from its zero."
+        ],
+        [
+          "toStart / toEnd",
+          "Where that span lands on the to-chain."
+        ],
+        [
+          "stationCount",
+          "Samples used (Deform modes)."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "chains point in opposite directions ... Tick Flip to-chain",
+          ""
+        ],
+        [
+          "Error",
+          "from-edges run X mm past the start / end of the to-edges",
+          "The to-chain is too short for the span."
+        ],
+        [
+          "Info",
+          "do not span the zero point's X; closest point used",
+          "World X fell back to Closest point."
+        ],
+        [
+          "Info",
+          "Merged result is a spline; arc radius not preserved",
+          "Deform and merge mode."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Use Trim for exact results",
+          "body": "It cuts the original edges; lines and arcs keep their type."
+        },
+        {
+          "kind": "limit",
+          "head": "Deform modes are phase 1",
+          "body": "They give the to-chain over the from span, resampled and refitted; carrying geometry that lies off the from-chain is not built yet."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Curve_tools (2143812a99089658c704f0bc)"
+        ],
+        [
+          "Tab",
+          "map_curve  (uses curve_core)"
+        ],
+        [
+          "Tests",
+          "Tests studio (curve_tools_tests: trim to-edges, ends)"
+        ],
+        [
+          "Examples",
+          "Test_1 studio"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_tools/curve_tools_explained.md, section 2.2"
+        ],
+        [
+          "Related",
+          "Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire; Extract variables"
+        ]
+      ]
+    }
+  ]
+}

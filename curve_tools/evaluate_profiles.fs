@@ -6,7 +6,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // in terms of it.
 import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: evaluate_profiles_icon.svg (feature icon)
 IconNamespace::import(path : "aca8bd60d103ad58f786f552", version : "c0ce2898b20e07d454e41631");
 
@@ -97,6 +97,14 @@ export const PROFILE_MERGE_TOL = 1e-6 * meter;
 
 /** How parallel two directions must be to count as collinear -- about 0.026 degrees. */
 export const PROFILE_MERGE_COS = 0.9999999;
+
+/**
+ * Largest angle, in radians, between one edge's end direction and the next edge's start
+ * direction for the two to count as one smooth curve in the "Efficient" merge -- 0.57 degrees,
+ * the value curve_core calls G1_JUNCTION_ANGLE (this tab imports only std, so it carries its own).
+ * Anything sharper is a corner and is kept.
+ */
+export const PROFILE_WELD_ANGLE = 1e-2;
 
 /** Fewest points a detected line or arc must span before it is worth emitting as one. */
 export const PROFILE_MIN_SEGMENT = 3;
@@ -979,6 +987,9 @@ function peripheryEdges(context is Context, path is Path, heading is Vector) ret
                     "from" : ends[0].origin,
                     "to" : ends[1].origin,
                     "direction" : direction,
+                    // Travel directions at the two ends, for the smooth-junction test.
+                    "startTangent" : flipped ? -ends[0].direction : ends[0].direction,
+                    "endTangent" : flipped ? -ends[1].direction : ends[1].direction,
                     "length" : reach,
                     "along" : abs(dot(direction, heading)) >= PROFILE_ALONG_COS
                 });
@@ -1622,11 +1633,20 @@ function mergeRuns(context is Context, edgeData is array, group is map) returns 
 }
 
 /**
- * Whether two consecutive edges meet smoothly enough to be one curve.
+ * Whether two consecutive edges meet smoothly enough to be one curve: the first edge's END
+ * direction against the second's START direction, at the junction itself.
+ *
+ * This compared the edges' CHORDS against PROFILE_ALONG_COS (45 degrees) until 2026-09-25,
+ * which merged -- and refitted round -- freeform edges meeting at real corners of up to about
+ * 45 degrees whenever their chords happened to point the same way, contrary to the promise in
+ * buildMergedRuns that a G0 corner never merges (reviews/2026-09-25_arc_line_fitting).
  */
 function smoothAcross(edgeData is array, before is number, after is number) returns boolean
 {
-    return dot(edgeData[before].direction, edgeData[after].direction) >= PROFILE_ALONG_COS;
+    const a = edgeData[before].endTangent;
+    const b = edgeData[after].startTangent;
+
+    return atan2(norm(cross(a, b)), dot(a, b)) / radian <= PROFILE_WELD_ANGLE;
 }
 
 /**

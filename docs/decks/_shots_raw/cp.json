@@ -1,0 +1,65 @@
+{
+ "doc": "2099413dd91f34578b385892",
+ "ws": "a875a90e6a8ebf49cc0eff73",
+ "shots": [
+  {
+   "elem": "91e77cd12f94794037de7c8b",
+   "wait": 30,
+   "dialog": "docs/decks/case_template/shots/dialog.png",
+   "graphics": "docs/decks/case_template/shots/hero.png",
+   "labels": [
+    {
+     "name": "Case 1 name",
+     "find": "Case 1 name"
+    },
+    {
+     "name": "Inputs",
+     "find": "Inputs"
+    },
+    {
+     "name": "Case values",
+     "find": "Case values"
+    },
+    {
+     "name": "Input slots",
+     "find": "Input slots"
+    },
+    {
+     "name": "Further cases",
+     "find": "Further cases"
+    },
+    {
+     "name": "Debug",
+     "find": "Debug"
+    }
+   ],
+   "filter": "T1 Case",
+   "featurePrefix": "T1 Case template"
+  },
+  {
+   "elem": "91e77cd12f94794037de7c8b",
+   "dialog": "docs/decks/case_pattern/shots/dialog.png",
+   "graphics": "docs/decks/case_pattern/shots/hero.png",
+   "labels": [
+    {
+     "name": "Case template",
+     "find": "Case template"
+    },
+    {
+     "name": "Features to repeat",
+     "find": "Features to repeat"
+    },
+    {
+     "name": "Keep",
+     "find": "Keep"
+    },
+    {
+     "name": "Name separator",
+     "find": "Name separator"
+    }
+   ],
+   "filter": "T1 Case",
+   "featurePrefix": "T1 Case pattern"
+  }
+ ]
+}

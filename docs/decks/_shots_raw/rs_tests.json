@@ -1,0 +1,12 @@
+{
+  "doc": "22764764a00a7f607dbc1c4d", "ws": "3b5e11a121111a161684adee",
+  "shots": [
+    {"elem": "73222f3cbcfe185c0932d0a4", "wait": 30, "filter": "T2 Thicken+",
+     "feature": "T2 Thicken+ two sheets of opposite normals, toward 2 away 3 -> top z 48..53, bottom z -53..-48",
+     "dialog": "docs/decks/thicken_plus/shots/dialog.png",
+     "labels": [{"name": "Creation type", "find": "New"}, {"name": "Faces and surfaces to thicken", "find": "Faces and surfaces to thicken"},
+                {"name": "Side reference", "find": "Side reference"}, {"name": "Toward reference", "find": "Toward reference"},
+                {"name": "Away from reference", "find": "Away from reference"}, {"name": "Keep tools", "find": "Keep tools"},
+                {"name": "Advanced", "find": "Advanced"}]}
+  ]
+}

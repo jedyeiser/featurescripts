@@ -2,11 +2,11 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: curve_core.fs (export import: OffsetPointSpacing is a parameter type here)
-export import(path : "02d7784437f621c76397f0d6", version : "e41a02b7ec48fcfe089eea40");
+export import(path : "02d7784437f621c76397f0d6", version : "71f4e8e4d07b445940796389");
 // IMPORT: merge_curve.fs
-import(path : "584469527ba0d496604523ec", version : "7364e5d4fa56e0b9f84d2814");
+import(path : "584469527ba0d496604523ec", version : "89d3f3abf456c89ff38fbb24");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: map_curve_icon.svg (feature icon)
 IconNamespace::import(path : "45065c466dba5711602641c3", version : "dc2902a68da2b41d350af736");
 
@@ -689,7 +689,9 @@ function evaluateLocated(context is Context, chain is map, located is array) ret
         {
             frames[group.indices[j]] = {
                     "origin" : lines[j].origin,
-                    "tangent" : group.edgeData.flipped ? -1 * lines[j].direction : lines[j].direction
+                    "tangent" : group.edgeData.flipped ? -1 * lines[j].direction : lines[j].direction,
+                    // The host edge's type, for the shape gates in emitRuns.
+                    "curveType" : group.edgeData.curveType
                 };
         }
     }
@@ -915,36 +917,66 @@ function closeRun(runs is array, samples is array, start is number, end is numbe
  * one (so it carries a real radius), a fitted spline otherwise with the to-chain's exact
  * tangents at both ends.
  *
+ * Every sample lies ON the to-chain, so the output's shape is the to-chain's. A line or an
+ * arc is only on the table where every to-edge under the run is one (until 2026-09-25 there
+ * were no gates, and a mapped spline that happened to sit within tolerance of a circle came
+ * out as an arc with kinked ends). A run on arcs only is the arcs themselves, so it is emitted
+ * exact; anything else is shaped by shapeRuns, which pins every spline end to the tangent the
+ * neighbouring piece actually has (reviews/2026-09-25_arc_line_fitting).
+ *
  * @returns {array} : each { "start", "end", "fromLink", "kind", "radius", "edges" : Query }
  */
 function emitRuns(context is Context, id is Id, definition is map, samples is array, runs is array) returns array
 {
     const approximation = approximationSettings(definition);
     var emitted = [];
+    var items = [];
+    var runPoints = [];
+
+    for (var r = 0; r < size(runs); r += 1)
+    {
+        const run = runs[r];
+
+        var points = [];
+        var allowLine = true;
+        var allowArc = true;
+        var allCircles = true;
+        for (var i = run.start; i <= run.end; i += 1)
+        {
+            points = append(points, samples[i].origin);
+
+            const hostType = samples[i].curveType;
+            allowLine = allowLine && hostType == CurveType.LINE;
+            allowArc = allowArc && (hostType == CurveType.LINE || hostType == CurveType.CIRCLE);
+            allCircles = allCircles && hostType == CurveType.CIRCLE;
+        }
+        runPoints = append(runPoints, points);
+
+        const previous = (r > 0) ? runs[r - 1] : undefined;
+        items = append(items, {
+                    "points" : points,
+                    "startTangent" : samples[run.start].tangent,
+                    "endTangent" : samples[run.end].tangent,
+                    "allowArc" : allowArc,
+                    "allowLine" : allowLine,
+                    "exactArc" : allCircles,
+                    "joinsPrevious" : previous != undefined && previous.fromLink == run.fromLink
+                        && norm(samples[run.start].origin - samples[previous.end].origin) < OFFSET_GEOM_TOL
+                });
+    }
+
+    const shapes = shapeRuns(items, { "tolerance" : approximation.approximationTolerance });
 
     for (var r = 0; r < size(runs); r += 1)
     {
         const run = runs[r];
         const runId = id + ("run" ~ r);
+        const shape = shapes[r];
 
-        var points = [];
-        for (var i = run.start; i <= run.end; i += 1)
+        emitRunShape(context, runId, shape, runPoints[r], approximation);
+        if (shape.note != undefined)
         {
-            points = append(points, samples[i].origin);
-        }
-
-        const shape = classifyPoints(points, approximation.approximationTolerance);
-        if (shape.kind == "line")
-        {
-            emitLineCurve(context, runId, shape.start, shape.end);
-        }
-        else if (shape.kind == "arc")
-        {
-            emitArcCurve(context, runId, shape);
-        }
-        else
-        {
-            emitSplineCurve(context, runId, points, samples[run.start].tangent, samples[run.end].tangent, approximation);
+            println("Map curve run " ~ r ~ " -> " ~ shape.kind ~ ": " ~ shape.note);
         }
 
         emitted = append(emitted, mergeMaps(run, {

@@ -19,6 +19,7 @@ shots.json:
   "shots": [
     {"elem": "...", "feature": "exact feature name" (optional), "view": "iso|top|front|right|bottom" (optional),
      "fit": true (optional), "wait": 20 (optional, s after load),
+     "featurePrefix": "T1 Case template" (optional, instead of "feature": match the start of the tree name),
      "filter": "text" (optional: type into the feature-tree filter first, for features far down a long tree),
      "zoom": [x, y, steps] (optional: mouse-wheel zoom toward window pixel x, y; negative = out; view only),
      "dialog": "docs/decks/<slug>/shots/dialog.png"   (optional: crop of the feature dialog),
@@ -103,13 +104,18 @@ def main(listing):
                     p.wait_for_timeout(120)
                 p.wait_for_timeout(1500)
             opened = False
-            if shot.get("feature"):
+            if shot.get("feature") or shot.get("featurePrefix"):
                 if shot.get("filter"):
                     # long trees only render what is on screen: narrow the tree with its filter box (view only)
                     box = p.get_by_placeholder("Filter by name or type").first
                     box.fill(shot["filter"])
                     p.wait_for_timeout(2000)
-                p.get_by_text(shot["feature"], exact=True).first.dblclick()
+                if shot.get("featurePrefix"):
+                    # names with #variables display differently in the tree: match the start of the name
+                    import re as _re
+                    p.get_by_text(_re.compile("^" + _re.escape(shot["featurePrefix"]))).first.dblclick()
+                else:
+                    p.get_by_text(shot["feature"], exact=True).first.dblclick()
                 p.locator(".feature-dialog").first.wait_for(state="visible", timeout=20000)
                 p.mouse.move(1500, 900)   # off the tree, so its tooltip closes
                 p.wait_for_timeout(shot.get("settle", 5) * 1000)

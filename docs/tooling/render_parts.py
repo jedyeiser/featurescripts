@@ -10,12 +10,18 @@ renders.json:
   "doc": "...", "ws": "...", "elem": "...",
   "renders": [
     {"out": "docs/decks/<slug>/shots/regions.png",
-     "view": "plan" | "iso" | "side",          plan = XY, side = XZ, iso = 3D
+     "view": "plan" | "iso" | "side" | "section",  plan = XY, side = XZ, section = YZ (use "xfilter"), iso = 3D
+     "at": x,                                    (section only: cut every triangle with the plane X = x, draw the segments)
+     "notes": [{"text", "at": [fx, fy] axes fractions, "color", "ha"}]   (optional labels anywhere),
+     "xfilter": [lo, hi],                       (plan / side / section: only facets and edges centred in this X range)
      "yscale": 3,                               (plan only: exaggerate width, noted in the corner)
      "xrange": [-50, 1850],                     (mm, optional crop)
      "title": "...",
-     "layers": [ {"parts": ["RPSD", ...] | "name": "exact part name", "color": "#1baf7a", "label": "start",
-                  "alpha": 0.9, "edges": true, "labelAt": [x, y] (mm, optional)} , ...],
+     "layers": [ {"parts": ["RPSD", ...] | "name": "exact part name" | "createdBy": "feature name" | "bodyKey": ["feature name", "top"], "color": "#1baf7a", "label": "start",
+                  "alpha": 0.9, "edges": true, "labelAt": [x, y] (mm, optional),
+                  "key": ["feature name", "keptFaces1"]  (optional: only the faces that feature publishes under the key),
+                  "edgeKey": ["feature name", "trimEdges"] (optional: draw those edges bold, "edgeColor"),
+                  "cycle": ["#hex", ...] (optional: alternate edge colours along X, ticks at the joints)} , ...],
      "size": [10, 3.2]}
   ]
 }
@@ -37,9 +43,25 @@ from sync.core.client import OnshapeClient  # noqa: E402
 CACHE = {}
 
 
+def created_by(c, spec, feature_name):
+    """Part ids (transient ids) of the bodies a feature created."""
+    import re as _re
+    feats = {f["name"]: f["featureId"] for f in c.get(f"/api/v10/partstudios/d/{spec['doc']}/w/{spec['ws']}/e/{spec['elem']}/features")["features"]}
+    script = """function(context is Context, queries) {
+        var ids = [];
+        for (var b in evaluateQuery(context, qCreatedBy(makeId("%s"), EntityType.BODY))) { ids = append(ids, "ID:" ~ b.transientId); }
+        return ids; }""" % feats[feature_name]
+    r = c.post(f"/api/v10/partstudios/d/{spec['doc']}/w/{spec['ws']}/e/{spec['elem']}/featurescript", json_data={"script": script})
+    return _re.findall(r'ID:([A-Za-z0-9+/=]+)', json.dumps(r))
+
+
 def part_ids(c, base_parts, layer):
     if "parts" in layer:
         return layer["parts"]
+    if "createdBy" in layer:
+        return created_by(c, layer["_spec"], layer["createdBy"])
+    if "bodyKey" in layer:
+        return sorted(key_ids(c, layer["_spec"], *layer["bodyKey"]))
     return [p["partId"] for p in base_parts if p["name"] == layer["name"]]
 
 
@@ -48,12 +70,13 @@ def facets(c, spec, pid):
     if key not in CACHE:
         r = c.get(f"/api/v10/partstudios/d/{spec['doc']}/w/{spec['ws']}/e/{spec['elem']}/tessellatedfaces",
                   {"partId": pid, "chordTolerance": "0.0002", "angleTolerance": "0.05"})
-        tris = []
+        tris, ids = [], []
         for body in r.get("bodies", []):
             for face in body.get("faces", []):
                 for f in face.get("facets", []):
                     tris.append([[v["x"] * 1000, v["y"] * 1000, v["z"] * 1000] for v in f["vertices"]])
-        CACHE[key] = np.array(tris) if tris else np.zeros((0, 3, 3))
+                    ids.append(face.get("id"))
+        CACHE[key] = (np.array(tris) if tris else np.zeros((0, 3, 3)), np.array(ids))
     return CACHE[key]
 
 
@@ -68,9 +91,36 @@ def edges(c, spec, pid):
                 pts = [[v[0] * 1000, v[1] * 1000, v[2] * 1000] if isinstance(v, list) else [v["x"] * 1000, v["y"] * 1000, v["z"] * 1000]
                        for v in e.get("vertices", [])]
                 if len(pts) > 1:
-                    lines.append(np.array(pts))
+                    lines.append((e.get("id"), np.array(pts)))
         CACHE[key] = lines
     return CACHE[key]
+
+
+def key_ids(c, spec, feature_name, key):
+    """Transient ids of the entities a feature publishes under `key` (Variable_tools embedded map)."""
+    import re as _re
+    feats = {f["name"]: f["featureId"] for f in c.get(f"/api/v10/partstudios/d/{spec['doc']}/w/{spec['ws']}/e/{spec['elem']}/features")["features"]}
+    script = """function(context is Context, queries) {
+        var ids = [];
+        for (var q in evaluateQuery(context, getVariable(context, toString(makeId("%s"))).query["%s"].value)) { ids = append(ids, "ID:" ~ q.transientId); }
+        return ids; }""" % (feats[feature_name], key)
+    r = c.post(f"/api/v10/partstudios/d/{spec['doc']}/w/{spec['ws']}/e/{spec['elem']}/featurescript", json_data={"script": script})
+    return set(_re.findall(r'ID:([A-Za-z0-9+/=]+)', json.dumps(r)))
+
+
+def cut_triangles(tris, x):
+    """Segments where triangles cross the plane X = x (mm)."""
+    segs = []
+    for tri in tris:
+        d = tri[:, 0] - x
+        pts = []
+        for a, b in ((0, 1), (1, 2), (2, 0)):
+            if (d[a] < 0) != (d[b] < 0):
+                f = d[a] / (d[a] - d[b])
+                pts.append(tri[a] + (tri[b] - tri[a]) * f)
+        if len(pts) == 2:
+            segs.append(pts)
+    return segs
 
 
 def shade(tris, rgb):
@@ -98,14 +148,14 @@ def render(c, spec, rs, base_parts):
         for layer in rs["layers"]:
             rgb = hex_rgb(layer.get("color", "#bbbbbb"))
             for pid in part_ids(c, base_parts, layer):
-                t = facets(c, spec, pid)
+                t, _ = facets(c, spec, pid)
                 if xr is not None and len(t):
                     t = t[(t[:, :, 0].mean(axis=1) >= xr[0]) & (t[:, :, 0].mean(axis=1) <= xr[1])]
                 if len(t):
                     ax.add_collection3d(Poly3DCollection(t, facecolors=shade(t, rgb), edgecolors="none", alpha=layer.get("alpha", 1.0)), autolim=False)
                     allpts.append(t.reshape(-1, 3))
                 if layer.get("edges", True):
-                    ls = [l for l in edges(c, spec, pid) if xr is None or (xr[0] <= l[:, 0].mean() <= xr[1])]
+                    ls = [l for _, l in edges(c, spec, pid) if xr is None or (xr[0] <= l[:, 0].mean() <= xr[1])]
                     if ls:
                         ax.add_collection3d(Line3DCollection(ls, colors="#333333", linewidths=0.6), autolim=False)
         P = np.vstack(allpts)
@@ -116,12 +166,25 @@ def render(c, spec, rs, base_parts):
         ax.set_axis_off()
     else:
         ax = bare(fig.add_subplot(111), equal=False)
-        i, j = (0, 1) if view == "plan" else (0, 2)
+        i, j = {"plan": (0, 1), "side": (0, 2), "section": (1, 2)}[view]
+        xf = rs.get("xfilter")   # [lo, hi] mm: keep only facets / edges whose centre X is inside (a slice)
         ys = rs.get("yscale", 1)
         for layer in rs["layers"]:
             rgb = hex_rgb(layer.get("color", "#bbbbbb"))
             for pid in part_ids(c, base_parts, layer):
-                t = facets(c, spec, pid)
+                t, fids = facets(c, spec, pid)
+                if layer.get("key") and len(t):
+                    keep = key_ids(c, spec, *layer["key"])
+                    t = t[np.array([f in keep for f in fids], dtype=bool)]
+                if xf is not None and len(t):
+                    xc = t[:, :, 0].mean(axis=1)
+                    t = t[(xc >= xf[0]) & (xc <= xf[1])]
+                if view == "section" and rs.get("at") is not None and len(t):
+                    # a true cut: every triangle crossing the plane x = at contributes one segment in YZ
+                    segs = cut_triangles(t, rs["at"])
+                    if segs:
+                        ax.add_collection(LineCollection([np.array(sg)[:, [1, 2]] for sg in segs], colors=[rgb], linewidths=layer.get("width", 3)))
+                    t = t[:0]
                 if len(t):
                     polys = t[:, :, [i, j]] * np.array([1, ys])
                     cols = [rgb]
@@ -131,10 +194,36 @@ def render(c, spec, rs, base_parts):
                         palette = [hex_rgb(h) for h in layer["bands"]["colors"]]
                         cols = [palette[int(np.searchsorted(cuts, xc))] for xc in t[:, :, 0].mean(axis=1)]
                     ax.add_collection(PolyCollection(polys, facecolors=cols, edgecolors=cols, linewidths=0.3, alpha=layer.get("alpha", 1.0)))
-                if layer.get("edges", True):
-                    ls = [l[:, [i, j]] * np.array([1, ys]) for l in edges(c, spec, pid)]
+                if layer.get("edges", True) and view != "section":
+                    ls = [l[:, [i, j]] * np.array([1, ys]) for _, l in edges(c, spec, pid)
+                          if xf is None or (xf[0] <= l[:, 0].mean() <= xf[1])]
+                    if ls and layer.get("cycle"):
+                        # alternate colours edge by edge, so a wire's segmentation is visible (sorted along X)
+                        ls = sorted(ls, key=lambda l: l[:, 0].mean())
+                        cyc = layer["cycle"]
+                        ax.add_collection(LineCollection(ls, colors=[cyc[k % len(cyc)] for k in range(len(ls))], linewidths=layer.get("lineWidth", 2.5)))
+                        ends = np.array([l[0] for l in ls] + [ls[-1][-1]])
+                        ax.plot(ends[:, 0], ends[:, 1], "|", color="#0b0b0b", ms=10, mew=1.2)
+                    elif ls:
+                        ax.add_collection(LineCollection(ls, colors=layer.get("lineColor", "#333333"), linewidths=layer.get("lineWidth", 0.6)))
+                if layer.get("edgeKey") and view == "section" and rs.get("at") is not None:
+                    # in a cut, an edge shows as the point where it crosses the plane
+                    keep = key_ids(c, spec, *layer["edgeKey"])
+                    x = rs["at"]
+                    for eid, l in edges(c, spec, pid):
+                        if eid not in keep:
+                            continue
+                        for a, b2 in zip(l[:-1], l[1:]):
+                            if (a[0] - x < 0) != (b2[0] - x < 0):
+                                f = (x - a[0]) / (b2[0] - a[0])
+                                pnt = a + (b2 - a) * f
+                                ax.plot(pnt[1], pnt[2], "o", color=layer.get("edgeColor", "#e87ba4"), ms=9, zorder=5)
+                elif layer.get("edgeKey"):
+                    keep = key_ids(c, spec, *layer["edgeKey"])
+                    ls = [l[:, [i, j]] * np.array([1, ys]) for eid, l in edges(c, spec, pid) if eid in keep
+                          and (xf is None or (xf[0] <= l[:, 0].mean() <= xf[1]))]
                     if ls:
-                        ax.add_collection(LineCollection(ls, colors="#333333", linewidths=0.6))
+                        ax.add_collection(LineCollection(ls, colors=layer.get("edgeColor", "#e87ba4"), linewidths=2.5))
             for lab in ([{"text": layer["label"], "at": layer["labelAt"]}] if layer.get("label") and layer.get("labelAt") else []) + layer.get("labels", []):
                 x, y = lab["at"]
                 ax.text(x, y * ys, lab["text"], ha="center", va="center", fontsize=lab.get("size", 11), fontweight="bold", color=lab.get("color", "#0b0b0b"))
@@ -149,6 +238,10 @@ def render(c, spec, rs, base_parts):
             ax.set_xlim(*xr)
         if ys != 1:
             ax.text(1.0, -0.04, ("width" if view == "plan" else "height") + " exaggerated x%g" % ys, transform=ax.transAxes, ha="right", va="top", fontsize=8, color=MUTED)
+    for n in rs.get("notes", []):
+        # {"text", "at": [fx, fy] in axes fractions, "color"}
+        ax.text(n["at"][0], n["at"][1], n["text"], transform=ax.transAxes, fontsize=n.get("size", 10), color=n.get("color", INK2),
+                fontweight=n.get("weight", "bold"), ha=n.get("ha", "left"), va="center")
     if rs.get("title"):
         ax.set_title(rs["title"], fontsize=11, color=INK2)
     save(fig, rs["out"])
@@ -160,6 +253,8 @@ def main(path):
     base_parts = c.get(f"/api/v10/parts/d/{spec['doc']}/w/{spec['ws']}/e/{spec['elem']}",
                        {"includeSurfaces": "true", "includeWires": "true"})
     for rs in spec["renders"]:
+        for layer in rs["layers"]:
+            layer["_spec"] = spec
         render(c, spec, rs, base_parts)
 
 

@@ -117,3 +117,14 @@ if not ONLY or ONLY == "Rtj7plate":
            [qd("parts", "Rtj7"), qd("reference", REF_WIRE), num("targetOffset", "3.8 mm"), qd("alignPoint", MC), qd("origin", TOP_PLANE),
             b("debugKeepLengthCurves", True)],
            {"unwrapType": "THICKENED", "targetFrom": "WIRE"})
+
+# A reference curved along its whole length (FULL_BASELINE): no straight piece, every piece rebuilt (band rebuild with
+# the exact cell fallback, reverse-checked). Names carry the expected result.
+if not ONLY or ONLY == "baseline":
+    for name, body, faces, expect in [("CORE", "Rtjn", "KEEP", "OK, band rebuild"), ("CORE", "Rtjn", "MERGE", "OK, band rebuild, merged faces"),
+                                      ("4803 tail extension", "Rtj3", "KEEP", "OK, cell rebuild"),
+                                      ("4101 base", "RtjP", "KEEP", "ERROR, tip does not follow the raised baseline tip")]:
+        unwrap("Unwrap %s (part, along FULL_BASELINE, %s faces) - expect %s" % (name, faces.lower(), expect),
+               [qd("parts", body), qd("reference", FULL_BASELINE), num("shapeTolerance", "0.01 mm"), qd("alignPoint", MC), qd("origin", TOP_PLANE),
+                b("debugKeepLengthCurves", True)],
+               {"unwrapType": "PART", "preserveLength": "REFERENCE", "partFaces": faces})

@@ -360,6 +360,14 @@ entry says what the parameter means physically.
   - **Wrapped reference** -- W, as in Edges mode.
   - **Preserve length** (+ **Offset**, **Flip offset** under *Along an offset*) -- as in Edges mode. For a part
     sitting above W, set the offset to its height, or its length changes (4802: x1.0126 volume at d = 0).
+  - **Rebuilt faces** -- only matters where the reference is curved (straight spans move rigidly and keep every
+    face). *Keep source faces (arcs preserved)*: one rebuilt face per source face, a true line or arc wherever the
+    mapped face is one (base over a camber: all 14 cylinders survive). *Simplify (merge tangent faces)*: each
+    tangent-connected wall chain becomes one spline face (core 90 -> ~41-47 faces), a little slower on the core.
+  - **Shape tolerance** -- how far a face may depart from a pure side-view extrusion (a profile face) or plan-view wall
+    before the band rebuild hands the piece to the exact cell rebuild. Default 0.005 mm. Raise it to accept faces that
+    are "essentially" pure (4401's end caps, 17-25 um); the departure is reported. Every rebuilt piece is reverse-checked
+    against the source and refused beyond max(Shape tolerance, 0.01 mm).
   - **Square walls** -- off: walls keep their exact mapped lean (1.2 deg at 4802's nose); on: walls stand normal to
     the flat plane, as a CNC blank would (up to 43.6 um at 4802's nose corners).
 
@@ -521,10 +529,9 @@ The test parts happen to sit on a reference that is straight between the contact
 general case is a **baseline curved along its whole length**, and some parts will then have walls normal to the
 baseline rather than vertical in world Z. Findings (research_unwrap_curved_ref.md):
 
-- **Today's Part mode fails on a fully curved reference.** CORE and 4103 stop with SPLIT_FAILED; the base, with exact
-  walls, came out **silently wrong** (volume x0.94, 12 mm holes). Until the fix below lands, Part mode must refuse a
-  reference with no straight span, and always run a *reverse check* (map points of every result face back and measure
-  the distance to the source), which caught every silent failure in the study.
+- **Before PRISM, Part mode failed on a fully curved reference.** CORE and 4103 stopped with SPLIT_FAILED; the base,
+  with exact walls, came out **silently wrong** (volume x0.94, 12 mm holes). The *reverse check* (map points of every
+  result face back and measure the distance to the source) caught every silent failure, so it now always runs.
 - **Walls: normal vs vertical.** A wall normal to the reference maps to a wall exactly normal to the flat plane. A wall
   vertical in world Z over a curved reference leans in the flat (over a 4 mm camber: 0.0014-0.0016 rad, ~6-11 um on
   a 12 mm core wall). Parts modelled with walls normal to the baseline therefore unwrap exactly; parts modelled with
@@ -534,13 +541,13 @@ baseline rather than vertical in world Z. Findings (research_unwrap_curved_ref.m
   178.3968 -> 178.3967 mm, volume x1.000085, walls normal by construction. Its 1.2 deg "nose lean" is in the model:
   the nose-end walls meet the sides at 88.8 / 91.2 and 89.2 / 90.8 deg, while its long walls meet them at 90.00 deg.
   A true thicken would have none.
-- **PRISM** (prototype, not yet in the feature): map every face into a *side view* (profile curves) and a *plan view*
+- **PRISM** (the band rebuild; the prototype numbers here, the as-built ones below): map every face into a *side view* (profile curves) and a *plan view*
   (wall curves), detect **bands** (regions of the plan with the same side profile: the core has 3 -- body, ledge ring,
   8 groove strips), build each band as plan-outline-extruded-vertically INTERSECT side-profile-extruded-sideways, then
   union. Core: 6-7 s on REF_WIRE, a camber, or FULL_BASELINE, within 3.4-4.7 um. Base 2.5 s, sidewall 3.1 s, 4803 1.0 s.
 - **Arcs in PRISM.** In straight spans (rigid move) every original face survives, arcs included. In rebuilt spans
-  PRISM currently *chains* tangent-connected wall faces into ONE fitted spline tool, so a run of sidecut arcs becomes
-  one spline face (core 90 -> ~43 faces). It does not have to: each source face can get its own tool, classified as an
+  the prototype *chained* tangent-connected wall faces into ONE fitted spline tool, so a run of sidecut arcs became
+  one spline face (core 90 -> ~43 faces). It did not have to (now the **Rebuilt faces** choice): each source face can get its own tool, classified as an
   arc where its mapped curve is one (the cell method already does this: 4 true arcs on 4401). One face per source face,
   arcs kept, costs some speed.
 - **Faces PRISM refuses.** PRISM can only build faces that are constant across the width (side-view extrusions) or
@@ -548,10 +555,33 @@ baseline rather than vertical in world Z. Findings (research_unwrap_curved_ref.m
   1.3e-3 (about 30 um edge to edge), a slight twist. They are refused rather than approximated: relaxing the test made a
   silently wrong body (volume x1.61), caught only by the reverse check. The cell method (ruled tools) handles them.
 
-Recommended build: PRISM for curved spans, the exact rigid move for genuinely straight spans, the cell method as the
-exact fallback (leaning walls, twisted faces), and the reverse check always. Open decisions: modelling convention for
-walls (normal vs vertical), squared vs exact leaning walls, one face per source face (arcs kept) vs merged faces, and
-whether twisted faces like 4401's are design intent.
+### As built (2026-09-25)
+
+Part mode now does exactly that: rigid move over straight spans; over curved spans the band rebuild (PRISM) first,
+the exact cell rebuild if PRISM refuses a face (beyond **Shape tolerance**) or misses, and a 16-points-per-face
+reverse check on every rebuilt piece -- beyond max(Shape tolerance, 0.01 mm) the feature errors rather than return a
+wrong body. Faces are kept one-per-source-face (arcs preserved) or merged, per **Rebuilt faces**.
+
+| Part | Reference | Result | Time keep / merge | Reverse check |
+|---|---|---|---|---|
+| CORE | REF_WIRE | rigid + PRISM | 3.6 / 1.5 s | 0.22 um |
+| CORE | camber | PRISM | 9.5 / 12.2 s | 4.5 um |
+| CORE | FULL_BASELINE | PRISM | 9.7 / 12.6 s | 3.2 um |
+| base (4101) | camber | PRISM, 14/14 cylinders kept | 2.5 s | 0.2 um |
+| 4803 | camber / FULL_BASELINE | PRISM / cells | 1.2-2.0 s | < 1 um |
+| 4103 | camber | PRISM | 3.3 s | 0.7 um |
+| 4401 | camber, tol 0.03 mm | PRISM | 2.5 s | 25 um (its end caps) |
+
+Refused cleanly (error, never a wrong body): 4802 and the base over FULL_BASELINE (their tips do not follow the raised
+baseline tip -- they need their own reference or the plate path); 4103 over FULL_BASELINE (PRISM misses by 83 um at the
+tail, not yet diagnosed); 4401 below ~0.025 mm tolerance. **4401's twisted tops are not the blocker** -- they depart
+by only 2.2 um. The blockers are its two tiny end caps (3 x 3-4 mm), which lean and are skewed in plan at once (best
+single-view fit 17 / 25 um); the cell fallback then refuses the spline tops. So "essentially a perfect rectangle"
+holds for the tops; the caps set the tolerance.
+
+Tests in the tree (Unwrap_Testing Copy 2): "Unwrap ... (part, along FULL_BASELINE, keep/merge faces) - expect ...".
+Open: 4103 on FULL_BASELINE; the ~2 s the chain-merge fix costs on the core; walls-normal vs world-vertical modelling
+convention.
 
 ## 2.7 Your two questions
 

@@ -1,0 +1,53 @@
+{
+ "doc": "2143812a99089658c704f0bc",
+ "ws": "4ea63c7ef14610f212917c42",
+ "elem": "1ae3cdda8a2f916c6a038ca6",
+ "renders": [
+  {
+   "out": "docs/decks/clean_wire/shots/before.png",
+   "view": "plan",
+   "yscale": 3,
+   "size": [
+    10,
+    2.8
+   ],
+   "title": "Before: the SW_SHELF wire as the model makes it -- 17 edges (plan view; ticks = joints)",
+   "layers": [
+    {
+     "parts": [
+      "RBLn"
+     ],
+     "edges": true,
+     "cycle": [
+      "#9a9893",
+      "#52514e"
+     ],
+     "lineWidth": 2.5
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/clean_wire/shots/after.png",
+   "view": "plan",
+   "yscale": 3,
+   "size": [
+    10,
+    2.8
+   ],
+   "title": "After Clean wire (Auto): 13 runs -- tangent stretches refitted, corners kept, max deviation 0.009 mm",
+   "layers": [
+    {
+     "createdBy": "Clean wire (Auto): SW_SHELF",
+     "edges": true,
+     "cycle": [
+      "#2a78d6",
+      "#eb6834",
+      "#1baf7a",
+      "#4a3aa7"
+     ],
+     "lineWidth": 2.5
+    }
+   ]
+  }
+ ]
+}

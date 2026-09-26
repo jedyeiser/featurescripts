@@ -90,6 +90,47 @@ function table(slide, rows, x, y, w, colW, opts) {
   });
 }
 
+
+async function dialogSlide(pres, spec, iconSmall, sl) {
+      // One real dialog screenshot with numbered badges on its fields, and the same numbers in the table.
+      // Positions come from <screenshot>.json (written by onshape_shot.py) and sl.positions (manual, e.g. an arrow
+      // button with no text): {name: [fx, fy]} or {name: [fx, fy, "center"]} in fractions of the image.
+      const s = pres.addSlide();
+      header(s, spec, iconSmall, sl.title);
+      const auto = exists(sl.screenshot) && fs.existsSync(abs(sl.screenshot).replace(/\.png$/, ".json"))
+        ? JSON.parse(fs.readFileSync(abs(sl.screenshot).replace(/\.png$/, ".json"), "utf8")) : {};
+      const pos = Object.assign({}, auto, sl.positions || {});
+      const boxH = 3.95, boxW = 3.0, x0 = M + 0.35, y0 = 1.0;
+      let ix = x0, iy = y0, iw = boxW, ih = boxH;
+      if (exists(sl.screenshot)) {
+        const sz = await imageSize(sl.screenshot);
+        const r = Math.min(boxW / sz.w, boxH / sz.h);
+        iw = sz.w * r; ih = sz.h * r;
+        s.addImage({ path: abs(sl.screenshot), x: ix, y: iy, w: iw, h: ih });
+        s.addShape("rect", { x: ix, y: iy, w: iw, h: ih, fill: { type: "none" }, line: { color: C.line, width: 0.75 } });
+      } else {
+        placeholder(s, ix, iy, iw, ih, "IMAGE MISSING: " + sl.screenshot);
+      }
+      const rows = [];
+      const first = sl._page ? sl._page.first : 0, last = sl._page ? sl._page.last : sl.params.length;
+      sl.params.forEach((p, k) => {
+        const n = String(k + 1);
+        if (k >= first && k < last) rows.push([n, p[0], p[1]]);
+        const at = pos[p[0]];
+        if (!at) return;
+        const d = 0.26;
+        // badges sit just outside the screenshot at the field's height, so they never cover it
+        const cx = at[2] === "right" ? ix + iw + 0.2 : ix - 0.2;
+        const cy = iy + at[1] * ih;
+        s.addShape("ellipse", { x: cx - d / 2, y: cy - d / 2, w: d, h: d, fill: { color: C.blue }, line: { color: C.white, width: 1 } });
+        s.addText(n, { x: cx - d / 2, y: cy - d / 2, w: d, h: d, fontFace: FONT, fontSize: 10, bold: true, color: C.white, align: "center", valign: "middle", margin: 0, isTextBox: true });
+      });
+      const tx = x0 + boxW + 0.35, tw = W - tx - M;
+      table(s, rows, tx, 1.0, tw, [0.35, tw * 0.3, tw - 0.35 - tw * 0.3], { head: ["#", "Parameter", "What it means"], fontSize: 10.5,
+        firstColor: () => C.blue });
+      if (sl.note) s.addText(sl.note, { x: tx, y: 4.55, w: tw, h: 0.45, fontFace: FONT, fontSize: 10, italic: true, color: C.ink2, margin: 0, isTextBox: true });
+}
+
 async function build(specPath, force) {
   const spec = JSON.parse(fs.readFileSync(specPath, "utf8"));
   // Never overwrite a deck the user has edited: it differs from the copy saved at the last build.
@@ -157,43 +198,17 @@ async function build(specPath, force) {
         }
         table(s, rows.slice(k, k + per), x, 1.0, w, [w * 0.3, w * 0.7], { head: ["Parameter", "What it means"], fontSize: 10.5 });
       }
-    } else if (sl.type === "dialogshot") {
-      // One real dialog screenshot with numbered badges on its fields, and the same numbers in the table.
-      // Positions come from <screenshot>.json (written by onshape_shot.py) and sl.positions (manual, e.g. an arrow
-      // button with no text): {name: [fx, fy]} or {name: [fx, fy, "center"]} in fractions of the image.
-      const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title);
-      const auto = exists(sl.screenshot) && fs.existsSync(abs(sl.screenshot).replace(/\.png$/, ".json"))
-        ? JSON.parse(fs.readFileSync(abs(sl.screenshot).replace(/\.png$/, ".json"), "utf8")) : {};
-      const pos = Object.assign({}, auto, sl.positions || {});
-      const boxH = 3.95, boxW = 3.0, x0 = M + 0.35, y0 = 1.0;
-      let ix = x0, iy = y0, iw = boxW, ih = boxH;
-      if (exists(sl.screenshot)) {
-        const sz = await imageSize(sl.screenshot);
-        const r = Math.min(boxW / sz.w, boxH / sz.h);
-        iw = sz.w * r; ih = sz.h * r;
-        s.addImage({ path: abs(sl.screenshot), x: ix, y: iy, w: iw, h: ih });
-        s.addShape("rect", { x: ix, y: iy, w: iw, h: ih, fill: { type: "none" }, line: { color: C.line, width: 0.75 } });
-      } else {
-        placeholder(s, ix, iy, iw, ih, "IMAGE MISSING: " + sl.screenshot);
+    } else if (sl.type === "dialogshot" && sl.params.length > 9 && !sl._page) {
+      // too many rows for one table: the same screenshot on consecutive slides, rows split, numbering continuous
+      const per = Math.ceil(sl.params.length / Math.ceil(sl.params.length / 9));
+      const pages = Math.ceil(sl.params.length / per);
+      for (let k = 0; k < pages; k++) {
+        spec._pending = Object.assign({}, sl, { _page: { first: k * per, last: Math.min(sl.params.length, (k + 1) * per) },
+          title: sl.title + "  (" + (k + 1) + "/" + pages + ")" });
+        await dialogSlide(pres, spec, iconSmall, spec._pending);
       }
-      const rows = [];
-      sl.params.forEach((p, k) => {
-        const n = String(k + 1);
-        rows.push([n, p[0], p[1]]);
-        const at = pos[p[0]];
-        if (!at) return;
-        const d = 0.26;
-        // badges sit just outside the screenshot at the field's height, so they never cover it
-        const cx = at[2] === "right" ? ix + iw + 0.2 : ix - 0.2;
-        const cy = iy + at[1] * ih;
-        s.addShape("ellipse", { x: cx - d / 2, y: cy - d / 2, w: d, h: d, fill: { color: C.blue }, line: { color: C.white, width: 1 } });
-        s.addText(n, { x: cx - d / 2, y: cy - d / 2, w: d, h: d, fontFace: FONT, fontSize: 10, bold: true, color: C.white, align: "center", valign: "middle", margin: 0, isTextBox: true });
-      });
-      const tx = x0 + boxW + 0.35, tw = W - tx - M;
-      table(s, rows, tx, 1.0, tw, [0.35, tw * 0.3, tw - 0.35 - tw * 0.3], { head: ["#", "Parameter", "What it means"], fontSize: 10.5,
-        firstColor: () => C.blue });
-      if (sl.note) s.addText(sl.note, { x: tx, y: 4.55, w: tw, h: 0.45, fontFace: FONT, fontSize: 10, italic: true, color: C.ink2, margin: 0, isTextBox: true });
+    } else if (sl.type === "dialogshot") {
+      await dialogSlide(pres, spec, iconSmall, sl);
     } else if (sl.type === "example") {
       // One example per slide: a wide image, then the explanation.
       const s = pres.addSlide();

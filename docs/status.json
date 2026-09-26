@@ -56,10 +56,15 @@
           "date": "2026-09-25",
           "state": "reviewed",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "reviewed",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "4082a459ccb7",
-      "sources_hash": "b1a2d83f2605",
+      "written_hash": "c2bf85d83b6a",
+      "sources_hash": "85cd3a65c6af",
       "state_hash": "d121b7fb9bf4"
     },
     {
@@ -71,8 +76,21 @@
       "sources": [
         "reference_side/mutual_trim_plus.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "6c4dca69379e",
+      "sources_hash": "674443fca4c8"
     },
     {
       "id": "d_split_plus",
@@ -99,9 +117,14 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "151aba0115cf",
+      "written_hash": "22c94bfb709e",
       "sources_hash": "0604bc613be4"
     },
     {
@@ -113,8 +136,26 @@
       "sources": [
         "reference_side/offset_plus.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "59dd87aee042",
+      "sources_hash": "875c06cfa11a"
     },
     {
       "id": "d_thicken_plus",
@@ -125,8 +166,21 @@
       "sources": [
         "reference_side/thicken_plus.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "6448f2c8e8b8",
+      "sources_hash": "fb236558ef78"
     },
     {
       "id": "d_orient_to_reference",
@@ -143,9 +197,14 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "f035173aa1fb",
+      "written_hash": "0c7de63e193f",
       "sources_hash": "79198617a57b"
     },
     {
@@ -161,8 +220,21 @@
         "curve_tools/map_curve.fs",
         "curve_tools/merge_curve.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "f0f84a8c9b07",
+      "sources_hash": "9ea9e78853ed"
     },
     {
       "id": "d_clean_wire",
@@ -173,8 +245,21 @@
       "sources": [
         "curve_tools/clean_wire.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "43d6732615f5",
+      "sources_hash": "16e9177f837f"
     },
     {
       "id": "d_map_curve",
@@ -185,8 +270,16 @@
       "sources": [
         "curve_tools/map_curve.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "6d9a02536b95",
+      "sources_hash": "3d9fd28dc1d3"
     },
     {
       "id": "d_merge_curve",
@@ -197,8 +290,16 @@
       "sources": [
         "curve_tools/merge_curve.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "43e9ead7ea16",
+      "sources_hash": "c6e368e55fe3"
     },
     {
       "id": "d_evaluate_profiles",
@@ -209,8 +310,16 @@
       "sources": [
         "curve_tools/evaluate_profiles.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "2e9e3ca7adb4",
+      "sources_hash": "2bbcc66f4d82"
     },
     {
       "id": "d_fillet_wire",
@@ -221,8 +330,16 @@
       "sources": [
         "curve_tools/fillet_wire.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-25",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "bf8030d7babf",
+      "sources_hash": "b1c796272272"
     },
     {
       "id": "x_variable_tools",

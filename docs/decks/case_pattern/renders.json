@@ -1,0 +1,77 @@
+{
+ "doc": "2099413dd91f34578b385892",
+ "ws": "a875a90e6a8ebf49cc0eff73",
+ "elem": "91e77cd12f94794037de7c8b",
+ "renders": [
+  {
+   "out": "docs/decks/case_pattern/shots/t1_side.png",
+   "view": "side",
+   "size": [
+    10,
+    3.2
+   ],
+   "title": "T1: one chain (Boss, rim fillet, boss-edge fillet) built on case A, replayed for the other two blocks (side view)",
+   "layers": [
+    {
+     "parts": [
+      "JHD",
+      "JKD",
+      "JND"
+     ],
+     "color": "#d9d6cf",
+     "edges": false
+    },
+    {
+     "parts": [
+      "JOD"
+     ],
+     "color": "#2a78d6",
+     "edges": false
+    },
+    {
+     "parts": [
+      "JRD"
+     ],
+     "color": "#eb6834",
+     "edges": false
+    },
+    {
+     "parts": [
+      "JUD"
+     ],
+     "color": "#1baf7a",
+     "edges": false
+    }
+   ],
+   "notes": [
+    {
+     "text": "case A (template): #bossH 15",
+     "at": [
+      0.08,
+      -0.1
+     ],
+     "color": "#2a78d6",
+     "size": 9
+    },
+    {
+     "text": "case B: #bossH 25, R3",
+     "at": [
+      0.4,
+      -0.1
+     ],
+     "color": "#eb6834",
+     "size": 9
+    },
+    {
+     "text": "case C: #bossH 8, R2",
+     "at": [
+      0.74,
+      -0.1
+     ],
+     "color": "#1baf7a",
+     "size": 9
+    }
+   ]
+  }
+ ]
+}

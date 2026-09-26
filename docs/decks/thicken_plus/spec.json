@@ -1,0 +1,200 @@
+{
+  "slug": "thicken_plus",
+  "title": "Thicken+",
+  "tagline": "Onshape's Thicken, with the two thicknesses named 'toward reference' and 'away from reference' instead of by the face normal -- the boolean step unchanged.",
+  "document": "Reference_Side_Features",
+  "icon": "icons/final/thicken_plus_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "The built-in Thicken's Thickness 1 goes along the face normal, so the same feature thickens outward on one model and inward on another. Thicken+ decides per surface body which way is 'toward the reference' and puts the Toward thickness there. Everything else -- New / Add / Remove / Intersect, merge scope -- is the built-in.",
+      "useWhen": [
+        "Surfaces of mixed orientation must thicken the same way",
+        "A surface's normal may flip upstream",
+        "You want a clear error where a thicken would fold, with its location"
+      ],
+      "image": "docs/explainers/reference_side/img/fig06_thicken.png",
+      "caption": "Left: both sheets thicken toward the reference whatever their normals. Right: the curvature check."
+    },
+    {
+      "type": "concept",
+      "title": "Why a reference instead of a flip",
+      "image": "docs/explainers/reference_side/img/fig01_flip_vs_reference.png",
+      "points": [
+        {
+          "head": "A flip is about a normal",
+          "body": "'Front', 'opposite direction', 'Thickness 1' all mean: relative to the normal -- and normals change freely upstream."
+        },
+        {
+          "head": "A reference is about the model",
+          "body": "Pick geometry on the side you mean. The choice survives any change of orientation."
+        },
+        {
+          "head": "Drop-in",
+          "body": "With no reference, the feature behaves exactly like the built-in."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog",
+      "screenshot": "docs/decks/thicken_plus/shots/dialog.png",
+      "positions": {
+        "Swap sides": [
+          0.93,
+          0.693,
+          "right"
+        ]
+      },
+      "params": [
+        [
+          "Creation type",
+          "New / Add / Remove / Intersect -- the built-in boolean step, unchanged."
+        ],
+        [
+          "Faces and surfaces to thicken",
+          "Surfaces or faces; each owner body is thickened on its own side."
+        ],
+        [
+          "Side reference",
+          "Geometry on the side to thicken toward -- best a mate connector or vertex near the surface. Empty = along the normals."
+        ],
+        [
+          "Toward reference",
+          "Thickness on the reference's side."
+        ],
+        [
+          "Away from reference",
+          "Thickness on the other side."
+        ],
+        [
+          "Swap sides",
+          "The arrow: exchange the two thicknesses."
+        ],
+        [
+          "Keep tools",
+          "Keep the input surfaces."
+        ],
+        [
+          "Advanced",
+          "Check curvature (on): report where a concave radius is smaller than the thickness. Print details."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: opposite normals, same result",
+      "image": "docs/decks/thicken_plus/shots/t2_section.png",
+      "head": "Test T2: sheets at z +50 and -50 with opposite normals, reference at the centre, Toward 2, Away 3",
+      "body": "Both sheets put 2 mm toward the centre and 3 mm away: top z 48..53, bottom z -53..-48 -- mirror images, although their normals point opposite ways. T3 (Swap sides) gives 47..52 / -52..-47. T6: Add into a cube, 5 mm up -> one part, volume 1 018 000 mm3."
+    },
+    {
+      "type": "concept",
+      "title": "The curvature check",
+      "image": "docs/explainers/reference_side/img/fig06_thicken.png",
+      "points": [
+        {
+          "head": "Why thickens fail",
+          "body": "Thickening toward a concave side by more than its radius turns the offset inside out."
+        },
+        {
+          "head": "Found before the kernel fails",
+          "body": "Each face is sampled on a 9 x 9 grid; the first place that would fold is marked red, with its radius."
+        },
+        {
+          "head": "Tests T4 / T5",
+          "body": "Half cylinder r 10 thickened toward its axis: 15 mm -> the error with location; 5 mm -> a clean shell."
+        }
+      ]
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The thickened bodies (or the parts they merged into)."
+        ],
+        [
+          "towardFaces",
+          "The faces on the reference's side (at the Toward thickness)."
+        ],
+        [
+          "awayFaces",
+          "The faces on the other side (on the input surface when Away is 0)."
+        ],
+        [
+          "sideFaces",
+          "The faces around the edges of the thickened surfaces."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Both thicknesses are zero.",
+          ""
+        ],
+        [
+          "Error",
+          "The side reference lies on surface k",
+          "Move the reference off the surface."
+        ],
+        [
+          "Error",
+          "Surface k is concave with radius r mm at (x, y, z) ... the thicken would fold there.",
+          "Reduce that side's thickness below r, or swap sides. The red point marks the place."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Use it instead of Thicken downstream",
+          "body": "Surfaces from Split+, Mutual Trim+ or Offset+ keep their inputs' orientation; Thicken+ does not care which way they face."
+        },
+        {
+          "kind": "tip",
+          "head": "Faces stay named through the boolean",
+          "body": "towardFaces / awayFaces / sideFaces still resolve after Add merges the result into a part."
+        },
+        {
+          "kind": "limit",
+          "head": "Orientation does not apply",
+          "body": "Its outputs are solids, which always face outward -- Orient to reference is for surfaces."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Reference_Side_Features (22764764a00a7f607dbc1c4d)"
+        ],
+        [
+          "Tab",
+          "thicken_plus  (uses reference_side_utils)"
+        ],
+        [
+          "Tests",
+          "Reference side tests studio: T1-T6 (T4 must error)  -  devtools/onshape/check_reference_side_tests.py (34/34)"
+        ],
+        [
+          "Examples",
+          "topsheet_surf studio (the user's derive of Design_Master topsheet and sidewall bodies)"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/reference_side/reference_side_explained.md, section 2.4"
+        ],
+        [
+          "Related",
+          "Split+, Mutual Trim+, Offset+, Thicken+, Orient to reference (same reference rule); Extract variables"
+        ]
+      ]
+    }
+  ]
+}

@@ -43,9 +43,33 @@ Measured on the output (eval API):
 | MRS run: radial residual shape | smooth S: 0, -0.013, -0.020, -0.020, -0.012, 0, +0.012, +0.020, +0.020, +0.013, 0 |
 | MRS run: local radius along | 14876 -> 14965 -> 14548 -> 14138 -> 14220 mm |
 | Other runs (77-101 mm) | passed as arcs (same effect, under 0.01 mm over the shorter span) |
-| Joint kink x 1615.0 (arc -> tip spline) | 0.023 deg |
+| Joint kink x 1615.0 (arc -> tip spline) | 0.023 deg -- CORRECTION (later same day): NOT an arc-fit artefact. It is the offset PROFILE's own slope break (see 1a), reproduced faithfully. |
 | Joint kink x 626.5 (arc -> MRS spline) | 0.0012 deg |
 | Joint kink x 424.0 (arc -> arc) | 0.001 deg |
+
+### 1a. The offset profile itself (checked after the handoff)
+
+`Create offset profile 1` regions: Tail CONSTANT -0.8 (x -20..145), AB SMOOTH (quintic, flat
+ends) -0.8 -> -0.5 (145..880), FB LINEAR -0.5 -> -0.8 (880..1615), Tip CONSTANT -0.8
+(1615..1820). All three intersections: continuity G1, blend OFF. So the profile has G0 slope
+breaks of atan(0.3/735) = 0.0234 deg at x 880 (flat -> linear) and x 1615 (linear -> flat); x 145
+is tangent. The G1 continuity setting has no effect with blend off (worth a look in Create offset
+profile: either honour it or hide it when blend is off).
+
+`Clean wire 1` (MANUAL) groups the AB + FB pieces (145..1615) into ONE spline (deg 3, 8 CPs):
+- x 880 corner fitted through (inside a group): max deviation from the analytic profile
+  8.9 um at x 880, ripples up to about 4.6 um elsewhere; within the 0.01 mm tolerance. Under the
+  decided rule (snap below 0.57 deg) this is the intended result.
+- x 1615 is the group end: the 0.0234 deg break is kept (spline vs Tip line measured 0.02339 deg).
+  SW_Shelf_offset breaks there (a profile discontinuity coinciding with a source vertex) and
+  reproduces it: the 0.023 deg DEO kink in the table above.
+Root cause of the MRS spline in THIS document: the FB region is LINEAR. Its slope break at
+x 880 sits inside the 626-1248 arc; a 3-point circle over that span misses the offset by
+0.0215 mm (matches the measured 0.021). With FB = SMOOTH the same check gives 0.0049 mm, so the
+run would pass as one arc. The code findings stand independently of this case.
+So the genuine arc-fit kinks measured in this document are the small ones (0.001-0.0012 deg). Under
+the decided rule the x 1615 profile break (0.023 deg < 0.57 deg) should also be snapped tangent, in
+the profile itself (Create offset profile blend / G1 option) or by the offset.
 
 Why: the offset of a circle by a varying distance is not a circle. The code never tries to fit
 arcs with tangency; it only asks "is this already an arc within tol", else falls back to a spline.
@@ -142,9 +166,17 @@ tolerance.
   does not carry through to emitted arcs/lines. Ideally one corner threshold covers both.
 
 Open:
-- **Corner threshold value.** User proposed 0.1 deg. Options: 0.1 deg everywhere (source joints
+- ~~Corner threshold value~~ (decided, see below). User first proposed 0.1 deg. Options: 0.1 deg everywhere (source joints
   between 0.1 and 0.57 deg then stay corners in the offset instead of being welded), keep 0.57 deg,
   or 0.1 deg for emitted pieces only. User to decide.
+  DECIDED (user, 2026-09-25): ONE threshold, keep 0.57 deg (`G1_JUNCTION_ANGLE`), plus a guard:
+  snap only if the reshaped pieces stay within the approximation tolerance, otherwise keep the
+  joint as a corner and report it with reportFeatureInfo. Reasons: (1) the upstream defects this audit
+  found are 0.001-0.23 deg (arcFit chord lines, curveMapping near-line frames), and 0.57 deg
+  heals them while 0.1 deg would carry the 0.1-0.23 deg ones through as corners; (2) 0.57 deg is
+  already the weld value in DEO, map_curve and unwrap, so existing welds do not change; (3) the
+  deviation guard protects a real shallow corner that cannot be smoothed within tolerance.
+  Clean wire's user-visible `cornerAngle` (3 deg, AUTO) is a separate, deliberate setting.
 - Should Clean wire groups break at corners > 0.57 deg instead of fitting through?
 - Should `G1_JUNCTION_ANGLE` (0.57 deg weld) stay as is? It is a separate question from the
   emission check: it decides what counts as a smooth SOURCE joint.

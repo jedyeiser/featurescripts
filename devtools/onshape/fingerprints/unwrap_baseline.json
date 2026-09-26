@@ -22,7 +22,7 @@
  [
   "Unwrap Topsheet (plate, own section)",
   "INFO",
-  "lengthWrapped: 1827.6928 | lengthFlat: 1827.693 | volumeRatio: 1.000218"
+  "lengthWrapped: 1827.6928 | lengthFlat: 1827.693 | volumeRatio: 1.000206"
  ],
  [
   "Unwrap Tip-Mat (plate, REF_WIRE offset 1.88 mm)",
@@ -57,17 +57,17 @@
  [
   "Unwrap 4803 tail extension (part, along REF_WIRE)",
   "INFO",
-  "lengthWrapped: 160.1202 | lengthFlat: 160.1202 | volumeRatio: 1.00368"
+  "lengthWrapped: 160.1202 | lengthFlat: 160.1201 | volumeRatio: 1.003681"
  ],
  [
   "Unwrap 4103 L sidewall (part, along REF_WIRE)",
   "INFO",
-  "lengthWrapped: 1700.0006 | lengthFlat: 1700.0006 | volumeRatio: 1.000313"
+  "lengthWrapped: 1700.0006 | lengthFlat: 1700.0002 | volumeRatio: 1.000313"
  ],
  [
   "Unwrap 4103 R sidewall (part, along REF_WIRE)",
   "INFO",
-  "lengthWrapped: 1700.0006 | lengthFlat: 1700.0006 | volumeRatio: 1.000312"
+  "lengthWrapped: 1700.0006 | lengthFlat: 1700.0002 | volumeRatio: 1.000314"
  ],
  [
   "Unwrap 4401 L (part, along REF_WIRE)",
@@ -85,6 +85,26 @@
   "lengthWrapped: 178.3968 | lengthFlat: 178.3967 | volumeRatio: 1.000085"
  ],
  [
+  "Unwrap CORE (part, along FULL_BASELINE, keep faces) - expect OK, band rebuild",
+  "INFO",
+  "lengthWrapped: 1500.1653 | lengthFlat: 1500.1649 | volumeRatio: 1.000085"
+ ],
+ [
+  "Unwrap CORE (part, along FULL_BASELINE, merge faces) - expect OK, band rebuild, merged faces",
+  "INFO",
+  "lengthWrapped: 1500.1653 | lengthFlat: 1500.1651 | volumeRatio: 1.000085"
+ ],
+ [
+  "Unwrap 4803 tail extension (part, along FULL_BASELINE, keep faces) - expect OK, cell rebuild",
+  "INFO",
+  "lengthWrapped: 160.0088 | lengthFlat: 160.0088 | volumeRatio: 1.002875"
+ ],
+ [
+  "Unwrap 4101 base (part, along FULL_BASELINE, keep faces) - expect ERROR, tip does not follow the raised baseline tip",
+  "ERROR",
+  "lengthWrapped: | lengthFlat: | volumeRatio:"
+ ],
+ [
   "U1 Wrapped_profile over FULL_BASELINE (edges, along reference) -> 1 wire, tip/tail at constant height",
   "INFO",
   "lengthWrapped: 1830 | lengthFlat: 1830 | volumeRatio: 0"
@@ -92,11 +112,11 @@
  [
   "U2 Topsheet undrape onto Wrapped_profile extrusion offset -0.2 (wire) -> 1 flat plate 0.4 thick",
   "INFO",
-  "lengthWrapped: 1825.5136 | lengthFlat: 1825.4983 | volumeRatio: 0.999018"
+  "lengthWrapped: 1825.5136 | lengthFlat: 1825.4983 | volumeRatio: 0.999007"
  ],
  [
   "U3 Topsheet undrape, target = Front-plane section of the mid-surface -> 1 flat plate 0.4 thick",
   "INFO",
-  "lengthWrapped: 1827.6928 | lengthFlat: 1827.693 | volumeRatio: 1.000218"
+  "lengthWrapped: 1827.6928 | lengthFlat: 1827.693 | volumeRatio: 1.000206"
  ]
 ]

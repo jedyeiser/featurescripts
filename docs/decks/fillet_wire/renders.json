@@ -1,0 +1,51 @@
+{
+ "doc": "2143812a99089658c704f0bc",
+ "ws": "4ea63c7ef14610f212917c42",
+ "elem": "2c876d054928164711dbeef8",
+ "renders": [
+  {
+   "out": "docs/decks/fillet_wire/shots/w1.png",
+   "view": "plan",
+   "size": [
+    5,
+    4
+   ],
+   "title": "W1: two 90 deg corners, r10 (Tangent)",
+   "layers": [
+    {
+     "createdBy": "W1 Edges, all corners r10 -> new wire, length 291.41593",
+     "edges": true,
+     "lineColor": "#9a9893",
+     "lineWidth": 2,
+     "edgeKey": [
+      "W1 Edges, all corners r10 -> new wire, length 291.41593",
+      "filletEdges"
+     ],
+     "edgeColor": "#e87ba4"
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/fillet_wire/shots/w3.png",
+   "view": "plan",
+   "size": [
+    5,
+    4
+   ],
+   "title": "W3: line into an arc, r10 -- tangent to both",
+   "layers": [
+    {
+     "createdBy": "W3 Line + arc corner r10 -> exact circle tangent to both",
+     "edges": true,
+     "lineColor": "#9a9893",
+     "lineWidth": 2,
+     "edgeKey": [
+      "W3 Line + arc corner r10 -> exact circle tangent to both",
+      "filletEdges"
+     ],
+     "edgeColor": "#e87ba4"
+    }
+   ]
+  }
+ ]
+}

@@ -330,7 +330,7 @@ result bodies) and `inputs`; the rest:
 |---|---|
 | Mutual Trim+ | `trimEdges` (the trim curve: fillet here), `keptFaces1`, `keptFaces2`, `trimEdgeCount` |
 | Split+ | each region (`near`/`far`, `front`/`back`, `start`/`middle*`/`end`) and `<region>Edges`; `outside`, `inside` (+ `Edges`); `splitEdges` (one edge per cut); `cut` / `startCut`, `endCut` / `cut1..N`; `splitFaces`; `pieceCount`, `regionCount` |
-| Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces); `roundedCorners`, `trimmedCorners`, `openCorners` |
+| Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces). Corner counts are in the notice only. |
 | Thicken+ | `towardFaces`, `awayFaces`, `sideFaces` (each tracked through the boolean) |
 | Orient to reference | `flipped` (the surfaces it flipped), `unchanged` (already facing the right way), `flippedCount`; `output` = every selected surface |
 
@@ -427,7 +427,7 @@ Real-geometry examples are in the **topsheet_surf** studio (the user's derive of
 2. **Offset+ curve mode, Plane frame without a reference**: the direction is `cross(axis, tangent)`, so a chain
    drawn from the other end offsets the other way. That is the built-in behaviour the
    reference is meant to replace, but worth stating in the dialog description.
-3. **Surface mode publishes the curve keys as 0 / empty** (`roundedCorners` etc.). Correct under the "every key
-   always present" rule, but the key descriptions say "Curve offsets only" rather than "0 for surfaces".
+3. **Resolved 2026-09-25:** Offset+ no longer publishes the corner counts (`roundedCorners` etc.); they are in the
+   feature notice only (the producers' over-published keys were trimmed).
 4. **Imports:** all four tabs are on Variable_tools V1 `extract_outputs`; Curve_tools' fillet_wire is on V2. Same
    producer microversion, so no difference in behaviour; noted for the next re-pin.

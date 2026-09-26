@@ -1,0 +1,8 @@
+{"doc": "a47f90bfa6b17a59e20cebd0", "ws": "0bd1fa4306898d9fe9c9fb47",
+ "shots": [
+  {"elem": "ca7eb26e372133899a264a94", "wait": 25, "feature": "Extract variables: box bands",
+   "dialog": "docs/decks/extract_variables/shots/dialog.png", "graphics": "docs/decks/extract_variables/shots/hero.png",
+   "labels": [{"name": "Sources", "find": "Sources"}, {"name": "Prefix", "find": "Prefix"},
+              {"name": "Add keys from sources", "find": "Add keys from sources"}, {"name": "Entries", "find": "Entries"},
+              {"name": "Print keys", "find": "Print keys"}, {"name": "Manifest", "find": "Manifest"}]}
+ ]}

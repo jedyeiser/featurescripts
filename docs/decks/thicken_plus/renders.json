@@ -1,0 +1,55 @@
+{
+ "doc": "22764764a00a7f607dbc1c4d",
+ "ws": "3b5e11a121111a161684adee",
+ "elem": "73222f3cbcfe185c0932d0a4",
+ "renders": [
+  {
+   "out": "docs/decks/thicken_plus/shots/t2_section.png",
+   "view": "section",
+   "at": 9000,
+   "size": [
+    8,
+    4
+   ],
+   "title": "T2: two sheets at z +-50 with OPPOSITE normals, reference at the centre;\nToward 2 mm, Away 3 mm (section)",
+   "layers": [
+    {
+     "createdBy": "T2 Thicken+ two sheets of opposite normals, toward 2 away 3 -> top z 48..53, bottom z -53..-48",
+     "color": "#1baf7a",
+     "edges": false,
+     "width": 2.5
+    }
+   ],
+   "notes": [
+    {
+     "text": "top: 2 toward the centre, 3 away\n-> z 48..53",
+     "at": [
+      0.73,
+      0.86
+     ],
+     "color": "#1baf7a",
+     "size": 9
+    },
+    {
+     "text": "bottom: the same, mirrored\n-> z -53..-48",
+     "at": [
+      0.73,
+      0.14
+     ],
+     "color": "#1baf7a",
+     "size": 9
+    },
+    {
+     "text": "reference (z 0)",
+     "at": [
+      0.5,
+      0.5
+     ],
+     "color": "#e34948",
+     "ha": "center",
+     "size": 9
+    }
+   ]
+  }
+ ]
+}

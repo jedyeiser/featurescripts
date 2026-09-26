@@ -1,0 +1,111 @@
+{
+ "doc": "22764764a00a7f607dbc1c4d",
+ "ws": "3b5e11a121111a161684adee",
+ "elem": "97d8c9aeebe259091033c914",
+ "renders": [
+  {
+   "out": "docs/decks/mutual_trim_plus/shots/section.png",
+   "view": "section",
+   "size": [
+    8,
+    3.4
+   ],
+   "title": "Unfilleted top x SW rout, trimmed: section at x 885 (looking along the ski)",
+   "layers": [
+    {
+     "parts": [
+      "RjRP"
+     ],
+     "color": "#1baf7a",
+     "edges": false,
+     "key": [
+      "Mutual Trim+ unfilleted top x SW rout",
+      "keptFaces1"
+     ]
+    },
+    {
+     "parts": [
+      "RjRP"
+     ],
+     "color": "#2a78d6",
+     "edges": false,
+     "key": [
+      "Mutual Trim+ unfilleted top x SW rout",
+      "keptFaces2"
+     ],
+     "edgeKey": [
+      "Mutual Trim+ unfilleted top x SW rout",
+      "trimEdges"
+     ]
+    }
+   ],
+   "at": 885,
+   "notes": [
+    {
+     "text": "kept by the first surface (unfilleted top)",
+     "at": [
+      0.2,
+      0.88
+     ],
+     "color": "#1baf7a"
+    },
+    {
+     "text": "kept by the second surface (SW rout wall)",
+     "at": [
+      0.83,
+      0.3
+     ],
+     "color": "#2a78d6",
+     "ha": "right"
+    },
+    {
+     "text": "trim edge",
+     "at": [
+      0.83,
+      0.55
+     ],
+     "color": "#e87ba4",
+     "ha": "right"
+    }
+   ]
+  },
+  {
+   "out": "docs/decks/mutual_trim_plus/shots/plan.png",
+   "view": "plan",
+   "yscale": 3,
+   "size": [
+    10,
+    3
+   ],
+   "title": "The trimmed result (plan view): top kept by the first surface, rout wall kept by the second, trim edge in magenta",
+   "layers": [
+    {
+     "parts": [
+      "RjRP"
+     ],
+     "color": "#1baf7a",
+     "edges": false,
+     "key": [
+      "Mutual Trim+ unfilleted top x SW rout",
+      "keptFaces1"
+     ]
+    },
+    {
+     "parts": [
+      "RjRP"
+     ],
+     "color": "#2a78d6",
+     "edges": false,
+     "key": [
+      "Mutual Trim+ unfilleted top x SW rout",
+      "keptFaces2"
+     ],
+     "edgeKey": [
+      "Mutual Trim+ unfilleted top x SW rout",
+      "trimEdges"
+     ]
+    }
+   ]
+  }
+ ]
+}

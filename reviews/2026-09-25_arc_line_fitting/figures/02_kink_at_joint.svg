@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#333333">
+<rect x="0" y="0" width="760" height="300" fill="#FFFFFF"/>
+<defs>
+<marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1651B0"/></marker>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C0392B"/></marker>
+<marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1E8449"/></marker>
+<marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333333"/></marker>
+<marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D68910"/></marker>
+<marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888888"/></marker>
+</defs>
+<text x="20.0" y="28.0" font-size="16" text-anchor="start" fill="#333333" font-weight="bold">2. Where the kink appears: arc next to a spline</text>
+<path d="M 60 245 C 170 225, 290 200, 380 185" fill="none" stroke="#1651B0" stroke-width="3"/>
+<path d="M 380 185 Q 470 135, 700 110" fill="none" stroke="#C0392B" stroke-width="3"/>
+<circle cx="380.0" cy="185.0" r="5" fill="#333333"/>
+<line x1="380.0" y1="185.0" x2="547.3" y2="154.9" stroke="#1651B0" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#ab)"/>
+<line x1="380.0" y1="185.0" x2="528.6" y2="102.4" stroke="#C0392B" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#ar)"/>
+<text x="555.3" y="159.9" font-size="12" text-anchor="start" fill="#1651B0" font-weight="normal">spline end: pinned to TRUE tangent</text>
+<text x="536.6" y="100.4" font-size="12" text-anchor="start" fill="#C0392B" font-weight="normal">arc start: whatever the circle gives</text>
+<path d="M 448.9 172.6 A 70 70 0 0 0 441.2 151.0" fill="none" stroke="#333333" stroke-width="1.5"/>
+<text x="458.0" y="173.0" font-size="13" text-anchor="start" fill="#333333" font-weight="bold">kink</text>
+<text x="120.0" y="270.0" font-size="13" text-anchor="start" fill="#1651B0" font-weight="normal">spline run</text>
+<text x="600.0" y="140.0" font-size="13" text-anchor="start" fill="#C0392B" font-weight="normal">emitted arc</text>
+<text x="380.0" y="215.0" font-size="12" text-anchor="middle" fill="#333333" font-weight="normal">joint (G0 only)</text>
+<text x="20.0" y="292.0" font-size="12" text-anchor="start" fill="#888888" font-weight="normal">Measured on SW_Shelf_offset: 0.023 deg at x 1615, 0.0012 deg at x 626.5, 0.001 deg at x 424 (arc to arc).</text>
+</svg>

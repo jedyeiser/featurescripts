@@ -482,30 +482,23 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
 
         reportOutcome(context, id, definition, chain, grouped.joints, runs, reports, measured.deviation);
 
-        // Ends from the source's start; runs in order from there; breaks between them.
+        // Ends from the source's start and the breaks between runs. The runs themselves are
+        // not published one key each: their number follows the geometry, so a key like
+        // "run5" could silently move or vanish. They are all in outputEdges; pick one with an
+        // Extract variables entry (Closest to point, Edges between points, Chain end).
         const ends = wireEnds(context, [qOwnedByBody(wire, EntityType.EDGE)], chain.edges[0].startPoint);
-        var queries = {
-                        "startVertex" : extractableQuery(ends.startVertex, "The end of the wire where its source starts.", DebugColor.GREEN),
-                        "endVertex" : extractableQuery(ends.endVertex, "The other end of the wire.", DebugColor.RED),
-                        "startEdge" : extractableQuery(ends.startEdge, "The edge at startVertex.", DebugColor.GREEN),
-                        "endEdge" : extractableQuery(ends.endEdge, "The edge at endVertex.", DebugColor.RED),
-                        "breakVertices" : extractableQuery(ends.breakVertices, "The vertices where one run of the cleaned wire meets the next.", DebugColor.MAGENTA)
-                    };
-        for (var k = 0; k < size(ends.orderedEdges); k += 1)
-        {
-            queries["run" ~ (k + 1)] = extractableQuery(ends.orderedEdges[k], "Edge " ~ (k + 1) ~ " of the cleaned wire, counted from its start.", DebugColor.CYAN);
-        }
 
         embedStandardOutputs(context, id, {
                     "output" : wire,
                     "outputDescription" : "The cleaned wire",
                     "inputs" : definition.sourceEdges,
-                    "variables" : {
-                        "curveCount" : extractableVariable(size(runs), "Edges in the cleaned wire."),
-                        "inputCount" : extractableVariable(size(chain.edges), "Edges in the wire that was cleaned."),
-                        "maxDeviation" : extractableVariable(measured.deviation, "Largest distance from the source wire to the cleaned wire.")
-                    },
-                    "queries" : queries
+                    "queries" : {
+                        "startVertex" : extractableQuery(ends.startVertex, "The end of the wire where its source starts.", DebugColor.GREEN),
+                        "endVertex" : extractableQuery(ends.endVertex, "The other end of the wire.", DebugColor.RED),
+                        "startEdge" : extractableQuery(ends.startEdge, "The edge at startVertex.", DebugColor.GREEN),
+                        "endEdge" : extractableQuery(ends.endEdge, "The edge at endVertex.", DebugColor.RED),
+                        "breakVertices" : extractableQuery(ends.breakVertices, "The vertices where one run of the cleaned wire meets the next.", DebugColor.MAGENTA)
+                    }
                 });
     }, {
         "outputName" : "",

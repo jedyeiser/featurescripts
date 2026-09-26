@@ -1,0 +1,238 @@
+{
+  "slug": "clean_wire",
+  "title": "Clean wire",
+  "tagline": "Rebuild a messy model-made wire with fewer edges and control points: tangent stretches become one spline each, real corners stay corners, lines and arcs pass through exactly.",
+  "document": "Curve_tools",
+  "icon": "icons/final/clean_wire_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Model-made wires come out correct but messy: slivers a tenth of a millimetre long, 0.4 deg kinks, heavy rational splines -- and lofts and fills through them wiggle or fail. Native Approximate samples 200 fixed points and ignores corners. Clean wire rebuilds the wire run by run.",
+      "useWhen": [
+        "A wire feeds a loft, fill or driven offset",
+        "It has slivers or near-tangent kinks",
+        "You want a lighter curve that stays within 0.01 mm"
+      ],
+      "image": "docs/decks/clean_wire/shots/after.png",
+      "caption": "SW_SHELF after Clean wire (Auto): 13 runs, max deviation 0.009 mm."
+    },
+    {
+      "type": "concept",
+      "title": "How each joint is read",
+      "image": "docs/explainers/curve_tools/img/fig01_joints_slivers.png",
+      "points": [
+        {
+          "head": "Tangent, near, corner",
+          "body": "Under 0.57 deg: merged. Under the corner angle (3 deg): merged if 'make tangent' is on. Larger: a corner, kept."
+        },
+        {
+          "head": "Slivers (< 0.5 mm)",
+          "body": "Judged by their own two joints: absorbed next to a tangent joint, kept as a chamfer between two corners."
+        },
+        {
+          "head": "Lines and arcs",
+          "body": "A real line or arc passes through unchanged; arcs stay sketch arcs, so Onshape shows their radius."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Samples where the curve bends",
+      "image": "docs/explainers/curve_tools/img/fig02_adaptive_sampling.png",
+      "points": [
+        {
+          "head": "Spacing from the tolerance",
+          "body": "s = sqrt(4 tol / kappa): the chord between samples misses the curve by half the tolerance."
+        },
+        {
+          "head": "No edge skipped",
+          "body": "3 to 200 samples per edge, 0.05 to 10 mm apart -- a sliver still gets its samples."
+        },
+        {
+          "head": "Exact end tangents",
+          "body": "Each fit starts and ends on the true tangent, so runs join smoothly."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog (Auto)",
+      "screenshot": "docs/decks/clean_wire/shots/dialog.png",
+      "params": [
+        [
+          "Mode",
+          "AUTO: runs made from the joints. MANUAL: you group edges yourself (Auto-populate fills the groups)."
+        ],
+        [
+          "Wire",
+          "A wire body or the edges of one open chain."
+        ],
+        [
+          "Name",
+          "Names the result."
+        ],
+        [
+          "Runs",
+          "Read-only: each run's edges, exact copy or fit, control points, deviation."
+        ],
+        [
+          "Corner angle",
+          "Joints turning more than this are corners (3 deg keeps the ski's ramp creases)."
+        ],
+        [
+          "Make nearly tangent joints tangent",
+          "Merge joints between 0.57 deg and the corner angle."
+        ],
+        [
+          "Sliver length",
+          "Edges shorter than this are judged as slivers (0.5 mm)."
+        ],
+        [
+          "Fit control points to tolerance",
+          "Button: fit every run with no cap; set the maximum to what the largest run needed."
+        ],
+        [
+          "Approximation parameters",
+          "Degree 3, tolerance 0.01 mm, maximum 30 control points."
+        ],
+        [
+          "Maximum deviation",
+          "Read-only: the result's largest distance from the source."
+        ],
+        [
+          "Show deviation",
+          "Draw that deviation as a comb."
+        ],
+        [
+          "Show runs",
+          "Colour the runs in the view."
+        ],
+        [
+          "Delete input wire",
+          "Remove the source wire (whole wire bodies only)."
+        ],
+        [
+          "Projection",
+          "Also clean the plan view: the 3D wire is dropped onto a wall over the cleaned plan."
+        ],
+        [
+          "Reduction",
+          "Read-only: control points and edges before / after."
+        ],
+        [
+          "Debug",
+          "Joints, runs, corners, control polygons."
+        ]
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Example: before",
+      "image": "docs/decks/clean_wire/shots/before.png",
+      "head": "The SW_SHELF wire as the model makes it: 17 edges (plan view, ticks at the joints)",
+      "body": "Several short pieces and near-tangent joints -- each a place a loft or offset can wiggle."
+    },
+    {
+      "type": "example",
+      "title": "Example: after",
+      "image": "docs/decks/clean_wire/shots/after.png",
+      "head": "Clean wire (Auto), default settings: 13 runs, max deviation 0.009 mm",
+      "body": "Tangent stretches refitted as one spline each, the real corners kept, lines and arcs copied exactly."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "startVertex / endVertex",
+          "The ends of the result (start = the tail end: arc length grows with world X)."
+        ],
+        [
+          "startEdge / endEdge",
+          "The edge at each end."
+        ],
+        [
+          "breakVertices",
+          "The vertices between runs (the corners kept)."
+        ]
+      ],
+      "messages": [
+        [
+          "Warning",
+          "Short of tolerance: ...",
+          "A run misses the source by more than the tolerance: raise its control points, or split it."
+        ],
+        [
+          "Info",
+          "N edge(s) -> M; K corner(s) inside a group were fitted through",
+          "Manual mode."
+        ],
+        [
+          "Warning",
+          "...came out as N bodies instead of one",
+          "A joint did not close; the gaps are listed."
+        ],
+        [
+          "Error",
+          "Closed loops are not supported / not one chain",
+          "Pick one open chain."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Start with Auto",
+          "body": "Check the Runs list; switch to Manual (Auto-populate) only to override a run."
+        },
+        {
+          "kind": "tip",
+          "head": "Reference the body or its keys",
+          "body": "Never the result's edge ids: they change whenever a run changes."
+        },
+        {
+          "kind": "limit",
+          "head": "Open chains only",
+          "body": "Closed loops are refused."
+        },
+        {
+          "kind": "limit",
+          "head": "Manual groups go stale",
+          "body": "They point at the source's edges; after an upstream renumbering, Auto-populate again."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Curve_tools (2143812a99089658c704f0bc)"
+        ],
+        [
+          "Tab",
+          "clean_wire  (uses curve_core)"
+        ],
+        [
+          "Tests",
+          "Tests studio (curve_tools_tests: ends, runs in order)"
+        ],
+        [
+          "Examples",
+          "Test_1 studio"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/curve_tools/curve_tools_explained.md, section 2.1"
+        ],
+        [
+          "Related",
+          "Clean wire, Map curve, Merge curve, Evaluate profiles, Fillet wire; Extract variables"
+        ]
+      ]
+    }
+  ]
+}

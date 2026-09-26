@@ -1151,6 +1151,767 @@ export function emitArcCurve(context is Context, id is Id, arcData is map)
     opDeleteBodies(context, id + "deleteSketch", { "entities" : qCreatedBy(sketchId, EntityType.BODY) });
 }
 
+// ============================================================================
+// Tangent arcs (2026-09-25 arc / line tangency review)
+// ============================================================================
+//
+// classifyPoints decides line / arc / freeform on POSITION only, and emitArcCurve builds the
+// circle through three of the points -- so an accepted arc ends in whatever direction that
+// circle happens to have, while the spline beside it is pinned to the TRUE tangent. Measured
+// on a varying offset of an arc chain: 0.001 to 0.023 degree kinks at every such joint. The
+// offset of a circle by a varying distance is not a circle; it can only be within tolerance
+// of one.
+//
+// The rule these functions implement (reviews/2026-09-25_arc_line_fitting/README.md, section
+// 4): a joint within G1_JUNCTION_ANGLE is DEFINED tangent. Both sides share one tangent and
+// both are BUILT to it, so the emitted joint has no kink by construction:
+//   - an exact piece (a line, or an arc known to be one) keeps its own analytic tangent and
+//     the neighbour adopts it;
+//   - an approximate arc is never emitted with the wrong end direction: it becomes a chain of
+//     tangent arcs matching both end tangents (ArcSourceFit.BIARC) or a spline pinned to them
+//     (ArcSourceFit.SPLINE).
+
+/**
+ * How closely an arc or line must meet a run's true end tangent to be emitted as it stands,
+ * in radians (about 0.0006 degrees).
+ *
+ * Below the smallest kink the review measured (1.7e-5 rad) and far above what an exact piece
+ * shows (a constant offset of a line: 1e-9). It is NOT used to accept a constant offset of an
+ * arc: that is an exact arc by construction, and the tangent it is compared against comes from
+ * differenced frames whose error on a tight arc reaches 1e-4 (see `exactArc` in shapeRuns).
+ */
+export const ARC_TANGENT_EXACT = 1e-5;
+
+/** The most arcs one run is split into before it is given up to a spline. */
+export const TANGENT_ARC_MAX = 8;
+
+/**
+ * Shortest leg of a biarc, as a fraction of its chord. On a flat arc the deviation-optimal
+ * joint otherwise slides to within millimetres of one end, leaving a leg too short and too
+ * straight to be an arc (offsetEdges.fs, where this construction comes from).
+ */
+export const TANGENT_ARC_MIN_LEG = 0.2;
+
+/**
+ * What an arc source with a VARYING offset becomes. A constant offset is an exact concentric
+ * arc either way; this only decides the runs that are not.
+ */
+export enum ArcSourceFit
+{
+    annotation { "Name" : "Spline" }
+    SPLINE,
+    annotation { "Name" : "Biarc fit" }
+    BIARC
+}
+
+/**
+ * The angle between two unit vectors, in radians. atan2 of the cross and dot products, not
+ * acos: acos has no resolution near zero, which is exactly where these angles live.
+ */
+export function tangentAngle(a is Vector, b is Vector) returns number
+{
+    return atan2(norm(cross(a, b)), dot(a, b)) / radian;
+}
+
+/**
+ * Whether a true tangent, where there is one, agrees with a piece's own tangent to
+ * ARC_TANGENT_EXACT. An end with no true tangent (a trimmed end whose miss exceeds the
+ * tolerance) constrains nothing.
+ */
+function meetsTangent(trueTangent, own is Vector) returns boolean
+{
+    return trueTangent == undefined || tangentAngle(trueTangent, own) <= ARC_TANGENT_EXACT;
+}
+
+/**
+ * The travel directions at both ends of an arc map (classifyPoints' "arc" answer, or any map
+ * with start / mid / end / center / normal).
+ *
+ * @returns {map} : { "start" : Vector, "end" : Vector }, unit, pointing along the arc from
+ *      start to end.
+ */
+export function arcEndTangents(arcData is map) returns map
+{
+    var startTangent = normalize(cross(arcData.normal, arcData.start - arcData.center));
+    var endTangent = normalize(cross(arcData.normal, arcData.end - arcData.center));
+
+    // Both ends turn the same way about the normal, so one test orients both.
+    if (dot(startTangent, arcData.mid - arcData.start) < 0 * meter)
+    {
+        startTangent = -startTangent;
+        endTangent = -endTangent;
+    }
+
+    return { "start" : startTangent, "end" : endTangent };
+}
+
+/**
+ * The circular arc that STARTS at pStart travelling along tStart and ends at pEnd.
+ *
+ * Ported from offsetEdges.fs (arcFromStart), where it has built the varying-offset arc pairs
+ * since 2026-07. The arc is center + radius * (cos(a) e0 + sin(a) yA) for a in [0, sweep].
+ *
+ * @returns {map} : { "straight" : true } when the chord runs along the tangent (no finite
+ *      arc); otherwise an arc map emitArcCurve takes (start, mid, end, center, radius,
+ *      normal) plus e0, yA, sweep and endTangent.
+ */
+export function tangentArcFrom(pStart is Vector, tStart is Vector, pEnd is Vector) returns map
+{
+    const chord = pEnd - pStart;
+    const chordLength = norm(chord);
+
+    if (chordLength < 1e-12 * meter)
+    {
+        return { "straight" : true };
+    }
+
+    if (norm(cross(tStart, chord / chordLength)) < 1e-7)
+    {
+        return { "straight" : true };
+    }
+
+    // The centre is on the perpendicular to the tangent through pStart, equidistant from
+    // both ends: |s m|^2 = |s m - c|^2  =>  s = |c|^2 / (2 m . c).
+    const planeNormal = normalize(cross(tStart, chord));
+    const inward = normalize(cross(planeNormal, tStart));
+    const reach = dot(chord, chord) / (2 * dot(inward, chord));
+    const center = pStart + reach * inward;
+    const radius = abs(reach);
+
+    // Frame in which travel from pStart along tStart is the positive sense.
+    const e0 = (pStart - center) / radius;
+    const travelNormal = normalize(cross(e0, tStart));
+    const yA = cross(travelNormal, e0);
+
+    const toEnd = pEnd - center;
+    var sweep = atan2(dot(toEnd, yA) / meter, dot(toEnd, e0) / meter) / radian;
+    if (sweep <= 0)
+    {
+        sweep += 2 * PI;
+    }
+
+    const midAngle = (sweep / 2) * radian;
+    const endAngle = sweep * radian;
+
+    return {
+            "straight" : false,
+            "start" : pStart,
+            "mid" : center + radius * (cos(midAngle) * e0 + sin(midAngle) * yA),
+            "end" : pEnd,
+            "center" : center,
+            "radius" : radius,
+            "normal" : travelNormal,
+            "e0" : e0,
+            "yA" : yA,
+            "sweep" : sweep,
+            "endTangent" : cos(endAngle) * yA - sin(endAngle) * e0
+        };
+}
+
+/**
+ * Distance from a point to an arc from tangentArcFrom -- to the circle where the point is
+ * within the swept angle, to the nearer end otherwise.
+ */
+export function tangentArcDistance(arcData is map, point is Vector) returns ValueWithUnits
+{
+    const fromCenter = point - arcData.center;
+    const height = dot(fromCenter, arcData.normal);
+    const inPlane = fromCenter - height * arcData.normal;
+
+    var angle = atan2(dot(inPlane, arcData.yA) / meter, dot(inPlane, arcData.e0) / meter) / radian;
+    if (angle < 0)
+    {
+        angle += 2 * PI;
+    }
+
+    if (angle <= arcData.sweep)
+    {
+        const radial = norm(inPlane) - arcData.radius;
+        return sqrt(radial * radial + height * height);
+    }
+
+    return min(norm(point - arcData.start), norm(point - arcData.end));
+}
+
+/**
+ * Largest distance from any of the points to the nearest arc of a chain.
+ */
+export function arcChainDeviation(arcs is array, points is array) returns ValueWithUnits
+{
+    var worst = 0 * meter;
+
+    for (var point in points)
+    {
+        var nearest = inf * meter;
+        for (var arcData in arcs)
+        {
+            nearest = min(nearest, tangentArcDistance(arcData, point));
+        }
+        worst = max(worst, nearest);
+    }
+
+    return worst;
+}
+
+/**
+ * The G1 biarc from p0 (tangent t0) to p1 (tangent t1), with tangent-length ratio r.
+ *
+ * Every biarc of the family meets both end points and both end tangents; r = a / b only moves
+ * the joint (Q0 = p0 + a t0, Q1 = p1 - b t1, |Q1 - Q0| = a + b, joint on Q0Q1 at a : b):
+ *     2 r (1 - c) b^2 + 2 D b - |d|^2 = 0,  d = p1 - p0, c = t0 . t1, D = d . (r t0 + t1).
+ * Ported from offsetEdges.fs (biarcWithRatio).
+ *
+ * @returns {map} : { "ok" : false } or { "ok" : true, "joint" : Vector, "tJoint" : Vector }
+ */
+export function tangentBiarcJoint(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, r is number) returns map
+{
+    const fail = { "ok" : false };
+    const d = p1 - p0;
+    const dd = dot(d, d);
+
+    if (sqrt(dd) < 1e-9 * meter)
+    {
+        return fail;
+    }
+
+    const c = dot(t0, t1);
+    const qa = 2 * r * (1 - c);
+    const D = dot(d, r * t0 + t1);
+    var b;
+
+    if (qa < 1e-12)
+    {
+        if (D < 1e-12 * meter)
+        {
+            return fail;
+        }
+        b = dd / (2 * D);
+    }
+    else
+    {
+        b = (-D + sqrt(D * D + qa * dd)) / qa;
+    }
+
+    if (b < 1e-12 * meter)
+    {
+        return fail;
+    }
+
+    const a = r * b;
+    const q0 = p0 + a * t0;
+    const q1 = p1 - b * t1;
+    const across = q1 - q0;
+
+    if (norm(across) < 1e-12 * meter)
+    {
+        return fail;
+    }
+
+    const joint = (b * q0 + a * q1) / (a + b);
+
+    if (norm(joint - p0) < 1e-9 * meter || norm(p1 - joint) < 1e-9 * meter)
+    {
+        return fail;
+    }
+
+    return { "ok" : true, "joint" : joint, "tJoint" : normalize(across) };
+}
+
+/**
+ * The two arcs of the biarc with ratio r, or undefined when a leg is shorter than
+ * TANGENT_ARC_MIN_LEG of the chord or straight (a straight leg cannot be emitted as an arc).
+ */
+function tangentBiarcArcs(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, r is number)
+{
+    const joint = tangentBiarcJoint(p0, t0, p1, t1, r);
+
+    if (!joint.ok)
+    {
+        return undefined;
+    }
+
+    const span = norm(p1 - p0);
+    if (norm(joint.joint - p0) < TANGENT_ARC_MIN_LEG * span || norm(p1 - joint.joint) < TANGENT_ARC_MIN_LEG * span)
+    {
+        return undefined;
+    }
+
+    const first = tangentArcFrom(p0, t0, joint.joint);
+    const second = tangentArcFrom(joint.joint, joint.tJoint, p1);
+
+    if (first.straight || second.straight)
+    {
+        return undefined;
+    }
+
+    return [first, second];
+}
+
+/**
+ * Worst deviation of the biarc with ratio exp(u) from the points; inf where there is none.
+ */
+function tangentBiarcScore(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, u is number, samples is array) returns map
+{
+    const arcs = tangentBiarcArcs(p0, t0, p1, t1, exp(u));
+
+    if (arcs == undefined)
+    {
+        return { "deviation" : inf * meter, "arcs" : undefined };
+    }
+
+    return { "deviation" : arcChainDeviation(arcs, samples), "arcs" : arcs };
+}
+
+/**
+ * The biarc from (p0, t0) to (p1, t1) that stays closest to the sample points.
+ *
+ * The joint is placed by minimising the largest deviation over the tangent-length ratio: a
+ * coarse scan in log r, then golden-section refinement in the best cell. Every candidate keeps
+ * both end points and both end tangents exact. Ported from offsetEdges.fs (computeBiarcPoints).
+ *
+ * @returns {map} : { "arcs" : array of two arc maps, or undefined, "deviation" : ValueWithUnits }
+ */
+export function bestTangentBiarc(p0 is Vector, t0 is Vector, p1 is Vector, t1 is Vector, samples is array) returns map
+{
+    const logMin = -3;
+    const logMax = 3;
+    const scanCount = 13;
+
+    var best = tangentBiarcScore(p0, t0, p1, t1, 0, samples);
+    var bestU = 0;
+
+    for (var i = 0; i < scanCount; i += 1)
+    {
+        const u = logMin + (logMax - logMin) * i / (scanCount - 1);
+        const score = tangentBiarcScore(p0, t0, p1, t1, u, samples);
+        if (score.deviation < best.deviation)
+        {
+            best = score;
+            bestU = u;
+        }
+    }
+
+    if (best.arcs == undefined)
+    {
+        return best;
+    }
+
+    const cell = (logMax - logMin) / (scanCount - 1);
+    const golden = (sqrt(5) - 1) / 2;
+    var lo = bestU - cell;
+    var hi = bestU + cell;
+    var x1 = hi - golden * (hi - lo);
+    var x2 = lo + golden * (hi - lo);
+    var f1 = tangentBiarcScore(p0, t0, p1, t1, x1, samples);
+    var f2 = tangentBiarcScore(p0, t0, p1, t1, x2, samples);
+
+    for (var k = 0; k < 16; k += 1)
+    {
+        if (f1.deviation < f2.deviation)
+        {
+            hi = x2;
+            x2 = x1;
+            f2 = f1;
+            x1 = hi - golden * (hi - lo);
+            f1 = tangentBiarcScore(p0, t0, p1, t1, x1, samples);
+        }
+        else
+        {
+            lo = x1;
+            x1 = x2;
+            f1 = f2;
+            x2 = lo + golden * (hi - lo);
+            f2 = tangentBiarcScore(p0, t0, p1, t1, x2, samples);
+        }
+    }
+
+    if (f1.deviation < best.deviation)
+    {
+        best = f1;
+    }
+    if (f2.deviation < best.deviation)
+    {
+        best = f2;
+    }
+
+    return best;
+}
+
+/**
+ * The travel direction at interior point k, from the circle through it and its neighbours.
+ * Second-order accurate; where the three are collinear, the chord across them.
+ *
+ * Only used where a chain is split. Both halves take this one tangent, so the joint there is
+ * tangent whatever its accuracy; the accuracy only decides how well the halves fit.
+ */
+function tangentAtPoint(points is array, k is number) returns Vector
+{
+    const across = points[k + 1] - points[k - 1];
+    const circleData = circleThrough(points[k - 1], points[k], points[k + 1]);
+
+    if (circleData == undefined)
+    {
+        return normalize(across);
+    }
+
+    const tangent = normalize(cross(circleData.normal, points[k] - circleData.center));
+
+    return (dot(tangent, across) < 0 * meter) ? -tangent : tangent;
+}
+
+/**
+ * A chain of circular arcs through a run's end points, matching both end tangents exactly,
+ * tangent at every internal joint, and within `tolerance` of every point.
+ *
+ * One arc when the tangent arc from the start already arrives along the end tangent; else the
+ * best biarc; else the run is split at its middle point (tangent there from tangentAtPoint)
+ * and each half is fitted the same way, until `budget` arcs are used up.
+ *
+ * Prototyped on a model of the measured 622 mm MRS run (3-point circle residual 0.029 mm):
+ * four arcs, R 13136..14639 mm, worst deviation 0.0014 mm at a 0.01 mm tolerance.
+ *
+ * @param points {array} : the run's positions in order, ends included.
+ * @param budget {number} : the most arcs allowed.
+ * @returns : an array of arc maps (tangentArcFrom), or undefined when the tolerance cannot be
+ *      met within the budget or the geometry has no arc (a straight stretch).
+ */
+export function tangentArcChain(points is array, startTangent is Vector, endTangent is Vector,
+    tolerance is ValueWithUnits, budget is number)
+{
+    const count = size(points);
+
+    if (count < 2 || budget < 1)
+    {
+        return undefined;
+    }
+
+    const first = points[0];
+    const last = points[count - 1];
+    const inner = subArray(points, 1, max(1, count - 1));
+
+    const single = tangentArcFrom(first, startTangent, last);
+    if (!single.straight
+        && tangentAngle(single.endTangent, endTangent) <= ARC_TANGENT_EXACT
+        && arcChainDeviation([single], inner) <= tolerance)
+    {
+        return [single];
+    }
+
+    if (budget >= 2)
+    {
+        const biarc = bestTangentBiarc(first, startTangent, last, endTangent, inner);
+        if (biarc.arcs != undefined && biarc.deviation <= tolerance)
+        {
+            return biarc.arcs;
+        }
+    }
+
+    if (budget < 4 || count < 5)
+    {
+        return undefined;
+    }
+
+    const split = clamp(floor(count / 2), 2, count - 3);
+    const splitTangent = tangentAtPoint(points, split);
+
+    const before = tangentArcChain(subArray(points, 0, split + 1), startTangent, splitTangent, tolerance, budget - 2);
+    if (before == undefined)
+    {
+        return undefined;
+    }
+
+    const after = tangentArcChain(subArray(points, split, count), splitTangent, endTangent, tolerance, budget - size(before));
+    if (after == undefined)
+    {
+        return undefined;
+    }
+
+    return concatenateArrays([before, after]);
+}
+
+/**
+ * Decide what every run of a chain becomes, with its neighbours in view.
+ *
+ * Three passes:
+ *   1. Exact pieces. A line is exact when its ends run along the chord (to ARC_TANGENT_EXACT);
+ *      an arc when its ends meet the true tangents, or when the caller knows it is one
+ *      (`exactArc`: arc source, constant offset -- the offset is then a concentric arc, and
+ *      the true tangent it would be compared against is only as good as the frame differences
+ *      behind it). An exact piece keeps its own analytic end tangents.
+ *   2. Joints. Where a run starts on the previous run's end (`joinsPrevious`) and the two
+ *      tangents agree within G1_JUNCTION_ANGLE, the joint gets ONE tangent: an exact side's,
+ *      else the two averaged. Two exact sides are left as they are.
+ *   3. The rest. With ArcSourceFit.BIARC, a run on an arc source (allowArc and not allowLine)
+ *      becomes a tangent arc chain to its (shared) end tangents where one fits; otherwise it is
+ *      freeform and the caller fits a spline pinned to them.
+ *
+ * @param items {array} : per run, in chain order, maps of
+ *      points {array}, startTangent / endTangent (unit Vector or undefined: the TRUE travel
+ *      directions), allowArc / allowLine {boolean} (the source gates; absent = true),
+ *      exactArc {boolean} (optional), joinsPrevious {boolean} (optional).
+ * @param options {map} : tolerance {ValueWithUnits}, arcFit {ArcSourceFit} (optional, SPLINE),
+ *      maxArcs {number} (optional, TANGENT_ARC_MAX).
+ * @returns {array} : per run, { "kind" : "line" | "arc" | "arcs" | "freeform", "exact",
+ *      "startTangent", "endTangent", "note" } plus start / end (line), the arc fields (arc),
+ *      "arcs" (arcs).
+ */
+export function shapeRuns(items is array, options is map) returns array
+{
+    const tolerance = options.tolerance;
+    const arcFit = (options.arcFit == undefined) ? ArcSourceFit.SPLINE : options.arcFit;
+    const maxArcs = (options.maxArcs == undefined) ? TANGENT_ARC_MAX : options.maxArcs;
+    var shapes = [];
+
+    for (var item in items)
+    {
+        shapes = append(shapes, exactShape(item, tolerance));
+    }
+
+    for (var k = 1; k < size(items); k += 1)
+    {
+        if (items[k].joinsPrevious != true)
+        {
+            continue;
+        }
+
+        const before = shapes[k - 1];
+        const after = shapes[k];
+
+        if (before.exact && after.exact)
+        {
+            continue;
+        }
+
+        const tBefore = before.endTangent;
+        const tAfter = after.startTangent;
+
+        // A corner is not a joint: above the weld angle each side keeps its own direction.
+        if (tBefore != undefined && tAfter != undefined && tangentAngle(tBefore, tAfter) > G1_JUNCTION_ANGLE)
+        {
+            continue;
+        }
+
+        var shared = undefined;
+        if (before.exact)
+        {
+            shared = tBefore;
+        }
+        else if (after.exact)
+        {
+            shared = tAfter;
+        }
+        else if (tBefore == undefined)
+        {
+            shared = tAfter;
+        }
+        else if (tAfter == undefined)
+        {
+            shared = tBefore;
+        }
+        else
+        {
+            shared = normalize(tBefore + tAfter);
+        }
+
+        if (shared == undefined)
+        {
+            continue;
+        }
+
+        if (!before.exact)
+        {
+            shapes[k - 1] = mergeMaps(shapes[k - 1], { "endTangent" : shared });
+        }
+        if (!after.exact)
+        {
+            shapes[k] = mergeMaps(shapes[k], { "startTangent" : shared });
+        }
+    }
+
+    for (var k = 0; k < size(items); k += 1)
+    {
+        const item = items[k];
+        const shape = shapes[k];
+
+        if (shape.exact
+            || arcFit != ArcSourceFit.BIARC
+            || item.allowArc == false
+            || item.allowLine != false
+            || shape.startTangent == undefined
+            || shape.endTangent == undefined)
+        {
+            continue;
+        }
+
+        const arcs = tangentArcChain(item.points, shape.startTangent, shape.endTangent, tolerance, maxArcs);
+        if (arcs != undefined)
+        {
+            shapes[k] = mergeMaps(shape, { "kind" : "arcs", "arcs" : arcs });
+        }
+        else
+        {
+            shapes[k] = mergeMaps(shape, { "note" : appendNote(shape.note, "no tangent arc chain within tolerance in " ~ maxArcs ~ " arcs") });
+        }
+    }
+
+    return shapes;
+}
+
+/**
+ * Pass 1 of shapeRuns for one run: the exact line or arc it is, or freeform.
+ */
+function exactShape(item is map, tolerance is ValueWithUnits) returns map
+{
+    const points = item.points;
+    const startTangent = item.startTangent;
+    const endTangent = item.endTangent;
+    const allowArc = item.allowArc != false;
+    const allowLine = item.allowLine != false;
+    var note = undefined;
+
+    var shape = classifyPoints(points, tolerance, allowArc, allowLine);
+
+    if (shape.kind == "line")
+    {
+        const chord = shape.end - shape.start;
+        if (norm(chord) < OFFSET_GEOM_TOL)
+        {
+            return mergeMaps(shape, { "exact" : true, "startTangent" : startTangent, "endTangent" : endTangent });
+        }
+
+        const along = normalize(chord);
+        if (meetsTangent(startTangent, along) && meetsTangent(endTangent, along))
+        {
+            return mergeMaps(shape, { "exact" : true, "startTangent" : along, "endTangent" : along });
+        }
+
+        note = "line rejected: ends " ~ endAngleText(startTangent, along, endTangent, along) ~ " off the chord";
+
+        // Straight within tolerance but not along its own ends: the run bends. Where arcs are
+        // allowed, ask the arc question the line answer pre-empted.
+        shape = allowArc ? classifyPoints(points, tolerance, true, false) : { "kind" : "freeform" };
+    }
+
+    if (shape.kind == "arc")
+    {
+        const tangents = arcEndTangents(shape);
+        if (item.exactArc == true || (meetsTangent(startTangent, tangents.start) && meetsTangent(endTangent, tangents.end)))
+        {
+            return mergeMaps(shape, { "exact" : true, "startTangent" : tangents.start, "endTangent" : tangents.end });
+        }
+
+        note = appendNote(note, "arc R " ~ fmtMM(shape.radius, 3, 0) ~ " mm rejected: ends "
+                ~ endAngleText(startTangent, tangents.start, endTangent, tangents.end) ~ " off the true tangents");
+    }
+
+    return {
+            "kind" : "freeform",
+            "exact" : false,
+            "startTangent" : startTangent,
+            "endTangent" : endTangent,
+            "note" : note
+        };
+}
+
+function endAngleText(startTrue, startOwn is Vector, endTrue, endOwn is Vector) returns string
+{
+    const a = (startTrue == undefined) ? "-" : fmtNum(tangentAngle(startTrue, startOwn) * 180 / PI, 5, 0);
+    const b = (endTrue == undefined) ? "-" : fmtNum(tangentAngle(endTrue, endOwn) * 180 / PI, 5, 0);
+
+    return a ~ " / " ~ b ~ " deg";
+}
+
+function appendNote(note, text is string) returns string
+{
+    return (note == undefined) ? text : note ~ "; " ~ text;
+}
+
+/**
+ * Emit one run as shapeRuns decided: a line, the arc, each arc of a tangent chain, or a spline
+ * pinned to the run's (shared) end tangents. Every edge is created under `id`.
+ */
+export function emitRunShape(context is Context, id is Id, shape is map, points is array, approximation is map)
+{
+    if (shape.kind == "line")
+    {
+        emitLineCurve(context, id, shape.start, shape.end);
+    }
+    else if (shape.kind == "arc")
+    {
+        emitArcCurve(context, id, shape);
+    }
+    else if (shape.kind == "arcs")
+    {
+        for (var k = 0; k < size(shape.arcs); k += 1)
+        {
+            emitArcCurve(context, id + ("arc" ~ k), shape.arcs[k]);
+        }
+    }
+    else
+    {
+        emitSplineCurve(context, id, points, shape.startTangent, shape.endTangent, approximation);
+    }
+}
+
+/**
+ * The single circular arc closest to an ordered point set: the circle through both end points
+ * and whichever interior point makes the worst radial error smallest.
+ *
+ * For recognising splines that are really arcs. The ends are kept exactly, so an edge
+ * replaced by this arc still meets its neighbours; its end DIRECTIONS are the circle's, which
+ * the caller compares with the edge's own (arcEndTangents).
+ *
+ * @returns : an arc map (start, mid, end, center, radius, normal) plus radialError and
+ *      outOfPlane, or undefined when every interior point is collinear with the ends.
+ */
+export function bestSingleArc(points is array)
+{
+    const count = size(points);
+    if (count < 3)
+    {
+        return undefined;
+    }
+
+    const first = points[0];
+    const last = points[count - 1];
+    var best = undefined;
+
+    for (var k = 1; k < count - 1; k += 1)
+    {
+        const fit = circleThrough(first, points[k], last);
+        if (fit == undefined)
+        {
+            continue;
+        }
+
+        var radialError = 0 * meter;
+        var outOfPlane = 0 * meter;
+        for (var point in points)
+        {
+            const toPoint = point - fit.center;
+            const height = dot(toPoint, fit.normal);
+            radialError = max(radialError, abs(norm(toPoint - height * fit.normal) - fit.radius));
+            outOfPlane = max(outOfPlane, abs(height));
+        }
+
+        if (best == undefined || radialError < best.radialError)
+        {
+            best = {
+                    "start" : first,
+                    "mid" : points[k],
+                    "end" : last,
+                    "center" : fit.center,
+                    "radius" : fit.radius,
+                    "normal" : fit.normal,
+                    "radialError" : radialError,
+                    "outOfPlane" : outOfPlane
+                };
+        }
+    }
+
+    return best;
+}
+
 /**
  * A knot vector as text, for comparing one fit against another.
  *

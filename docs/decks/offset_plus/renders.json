@@ -1,0 +1,51 @@
+{
+ "doc": "22764764a00a7f607dbc1c4d",
+ "ws": "3b5e11a121111a161684adee",
+ "elem": "97d8c9aeebe259091033c914",
+ "renders": [
+  {
+   "out": "docs/decks/offset_plus/shots/surface_section.png",
+   "view": "section",
+   "at": 885,
+   "size": [
+    8,
+    3.6
+   ],
+   "title": "Offset+ surface: topsheet offset 2 mm toward the plane 'Below ski' (section at x 885)",
+   "layers": [
+    {
+     "parts": [
+      "RQSD"
+     ],
+     "color": "#1baf7a",
+     "edges": false
+    },
+    {
+     "parts": [
+      "RpRD"
+     ],
+     "color": "#eb6834",
+     "edges": false
+    }
+   ],
+   "notes": [
+    {
+     "text": "topsheet (faces down, into the ski)",
+     "at": [
+      0.02,
+      0.45
+     ],
+     "color": "#1baf7a"
+    },
+    {
+     "text": "offset 2 mm toward 'Below ski'",
+     "at": [
+      0.02,
+      0.32
+     ],
+     "color": "#eb6834"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,286 @@
+{
+  "slug": "offset_plus",
+  "title": "Offset+",
+  "tagline": "Offset surfaces, or curves, toward the side a reference is on -- surfaces of opposite orientation all move the same way, and curves offset in the frame you choose.",
+  "document": "Reference_Side_Features",
+  "icon": "icons/final/offset_plus_icon.svg",
+  "status": "Draft 2026-09-25",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "The built-in offset surface goes along the normal, and the built-in offset curve works in a sketch plane with a flip. Offset+ offsets each surface body toward the reference's side of it, and offsets 3D curves in a transport, surface-normal or plane frame -- toward the reference too.",
+      "useWhen": [
+        "Surfaces from different sources face different ways",
+        "A 3D edge chain needs a constant offset (along a surface, lifted off it, or in plan)",
+        "Corners of the chain must be rounded or trimmed cleanly"
+      ],
+      "image": "docs/decks/offset_plus/shots/hero.png",
+      "caption": "Offset+ open on the ski topsheet: offset 2 mm toward the plane 'Below ski'."
+    },
+    {
+      "type": "concept",
+      "title": "Why a reference instead of a flip",
+      "image": "docs/explainers/reference_side/img/fig01_flip_vs_reference.png",
+      "points": [
+        {
+          "head": "A flip is about a normal",
+          "body": "'Front', 'opposite direction', 'Thickness 1' all mean: relative to the normal -- and normals change freely upstream."
+        },
+        {
+          "head": "A reference is about the model",
+          "body": "Pick geometry on the side you mean. The choice survives any change of orientation."
+        },
+        {
+          "head": "Drop-in",
+          "body": "With no reference, the feature behaves exactly like the built-in."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Curve frames and corners",
+      "image": "docs/explainers/reference_side/img/fig05_offset_curves.png",
+      "points": [
+        {
+          "head": "Transport frame",
+          "body": "The direction is carried along the chain without twisting -- a helix offset 'toward the axis' stays inside (test C7)."
+        },
+        {
+          "head": "Surface normal / plane",
+          "body": "Off a surface, along it, or in the plane perpendicular to a direction (plan view)."
+        },
+        {
+          "head": "Corners",
+          "body": "A gap on the outside gets an arc (radius = the distance); an overlap on the inside is trimmed to the crossing (test C8)."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: surfaces",
+      "screenshot": "docs/decks/offset_plus/shots/dialog_surface.png",
+      "positions": {
+        "Offset toward reference": [
+          0.93,
+          0.679,
+          "right"
+        ]
+      },
+      "params": [
+        [
+          "Offset type",
+          "SURFACE: offset surface bodies. CURVE: offset edges or wires (next slides)."
+        ],
+        [
+          "Faces and surfaces to offset",
+          "Each body is offset toward the reference's side of THAT body."
+        ],
+        [
+          "Distance",
+          "Offset distance."
+        ],
+        [
+          "Side reference",
+          "Geometry on the side to offset toward. Empty = the arrow alone (a plain flip)."
+        ],
+        [
+          "Offset toward reference",
+          "The arrow. On: toward the reference. Off: away from it."
+        ],
+        [
+          "Debug",
+          "Print details: which way each body or chain went, corners and fits."
+        ]
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: curves, plane frame",
+      "screenshot": "docs/decks/offset_plus/shots/dialog_plane.png",
+      "positions": {
+        "Frame": [
+          0.02,
+          0.363
+        ],
+        "Offset toward reference": [
+          0.93,
+          0.652,
+          "right"
+        ]
+      },
+      "params": [
+        [
+          "Offset type",
+          "CURVE."
+        ],
+        [
+          "Curves and edges to offset",
+          "Connected edges form one chain; each chain becomes one wire."
+        ],
+        [
+          "Frame",
+          "Transport frame (default) / Surface normal / Plane."
+        ],
+        [
+          "Plane normal",
+          "Plane frame: the offset lies in planes perpendicular to this. Empty = world Z (a plan-view offset)."
+        ],
+        [
+          "Distance",
+          "Offset distance."
+        ],
+        [
+          "Side reference",
+          "Here the Front plane: every chain moves toward it."
+        ],
+        [
+          "Offset toward reference",
+          "The arrow: toward / away."
+        ],
+        [
+          "Fit",
+          "Samples per edge (24), Max station spacing (5 mm), Fit tolerance (0.001 mm)."
+        ]
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: curves, surface-normal frame",
+      "screenshot": "docs/decks/offset_plus/shots/dialog_surfaceframe.png",
+      "positions": {
+        "Frame": [
+          0.02,
+          0.322
+        ],
+        "Surface": [
+          0.02,
+          0.43
+        ]
+      },
+      "params": [
+        [
+          "Frame",
+          "Surface normal: the direction comes from a surface at each point."
+        ],
+        [
+          "Surface",
+          "The surface whose normals define the offset (its orientation does not matter: normals are kept continuous)."
+        ],
+        [
+          "Direction",
+          "Along surface normal: lift the curve off the surface. Along surface: stay in it, perpendicular to the curve."
+        ]
+      ],
+      "note": "On the topsheet edge chain all three frames land at y 70 (5 mm in): the topsheet is flat across its width there. They differ on twisted chains and curved surfaces (tests C5-C7)."
+    },
+    {
+      "type": "example",
+      "title": "Example: surface offset",
+      "image": "docs/decks/offset_plus/shots/surface_section.png",
+      "head": "Topsheet offset 2 mm toward 'Below ski' (topsheet_surf studio)",
+      "body": "The topsheet faces down, into the ski. Offset+ reads which side of the topsheet 'Below ski' is on and offsets that way -- if the topsheet's normal flipped upstream, the offset would still go down. The offset surface keeps the topsheet's orientation (still facing down)."
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "The offset surfaces or wires."
+        ],
+        [
+          "startVertex / endVertex",
+          "Curves: the ends of each wire (start = the end at the source's start)."
+        ],
+        [
+          "startEdge / endEdge",
+          "Curves: the edge at each end."
+        ],
+        [
+          "cornerArcs",
+          "Curves: the arcs that round the outside corners."
+        ],
+        [
+          "boundaryEdges",
+          "Surfaces: the open boundary edges of the offset surfaces."
+        ]
+      ],
+      "messages": [
+        [
+          "Info",
+          "Corners: N rounded, M trimmed.",
+          "The corner counts are reported here only (not published)."
+        ],
+        [
+          "Warning",
+          "N corner(s) could not be closed ... The wire has a gap at each.",
+          "A corner sharper than the offset allows, or skew 3D pieces. Reduce the distance or split the chain there."
+        ],
+        [
+          "Error",
+          "The side reference is not to either side of chain k in this frame",
+          "The reference lies along the curve or on the surface. Move it off to one side."
+        ],
+        [
+          "Error",
+          "The curve runs along the plane / surface normal",
+          "No offset direction exists there in that frame."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Use a local reference",
+          "body": "A mate connector or vertex near the geometry, on the side meant."
+        },
+        {
+          "kind": "tip",
+          "head": "Transport for 3D chains",
+          "body": "It never flips at an inflection and never twists, so the offset stays on the side it started."
+        },
+        {
+          "kind": "limit",
+          "head": "Outputs keep their input's orientation",
+          "body": "The reference picks the side, not the normal. Built-ins downstream that follow the normal (Thicken, Offset surface, Move face) need Orient to reference first -- or use the reference-side feature instead."
+        },
+        {
+          "kind": "limit",
+          "head": "Sharp corners and large distances",
+          "body": "Where the offsets neither separate nor cross cleanly the corner is left open, with a warning."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "Reference_Side_Features (22764764a00a7f607dbc1c4d)"
+        ],
+        [
+          "Tab",
+          "offset_plus  (uses reference_side_utils)"
+        ],
+        [
+          "Tests",
+          "Reference side tests studio: O1-O2 (surfaces), C1-C8 (curves)  -  devtools/onshape/check_reference_side_tests.py (34/34)"
+        ],
+        [
+          "Examples",
+          "topsheet_surf studio (the user's derive of Design_Master topsheet and sidewall bodies)"
+        ],
+        [
+          "Explainer",
+          "docs/explainers/reference_side/reference_side_explained.md, section 2.3"
+        ],
+        [
+          "Related",
+          "Split+, Mutual Trim+, Offset+, Thicken+, Orient to reference (same reference rule); Extract variables"
+        ]
+      ]
+    }
+  ]
+}
