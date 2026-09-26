@@ -1663,3 +1663,19 @@ Measured live in the "Case pattern v2 spikes" studio (case_pattern/spike_v2.fs):
 - Suppression by expression (feature.suppressionState = BTMSuppressionStateExpression-1811, a
   BTMParameterQuantity-147 with expression "#flag") IS re-evaluated when the feature function is replayed
   from a FeatureList with a different #flag; a suppressed feature is still in the FeatureList.
+- **Where the frame must live (v2 build, 2026-09-26, "Case pattern tests" T1-T7):**
+  - Everything a called feature creates must be under THAT feature's id: ops run under an id outside
+    it (e.g. caseId while the Close case runs as caseId.s0.<close>) are discarded silently.
+  - A frame pushed by an OUTER feature cannot be popped inside a feature it calls ("Execution error").
+    So the feature that replays the list pushes the frame on its OWN id and calls the list with that id;
+    then it can pop it to retry an outside-geometry edit (SELF_INTERSECTING_CURVE_SELECTED), as v1 did.
+  - Called under a prefix OUTSIDE any frame, the calling feature's FeatureList keys arrive as
+    prefix + original id ([pattern, case_B, <feature id>]); valuesSortedById finds none of them (returns
+    []), so sort by makeId(key[size(key) - 1]). Inside a frame the reverse: sorting by original ids is
+    refused "out of pattern scope" -- use the keys as given.
+  - A Query parameter (incl. a query variable pick) is resolved when the feature is CALLED. Outputs that
+    depend on variables the replayed features set must be read by a SECOND call after the replay (the
+    first call sees the previous case's values -- outputs lagged one case).
+  - References inside the list resolve relative to the id a feature is called with, so every feature of
+    one case must run under the same prefix (splitting a case over several calls broke "created by").
+

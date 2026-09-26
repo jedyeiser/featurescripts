@@ -1,8 +1,10 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
-// IMPORT: case_template_icon.svg (feature icon)
-TemplateIconNamespace::import(path : "9351cbcfff2de180accfa3c3", version : "592bf744e05dc472b1a5301a");
+// IMPORT: define_case_icon.svg (feature icon)
+DefineIconNamespace::import(path : "5952d6dd4ff6b28dc31edc36", version : "22380bf432ee24dce3f8b51e");
+// IMPORT: close_case_icon.svg (feature icon)
+CloseIconNamespace::import(path : "a541081abe5d434e4a46669f", version : "920993e17dc692908d2d23a8");
 // IMPORT: case_pattern_icon.svg (feature icon)
 PatternIconNamespace::import(path : "43ecc8444d55ee8be1ecba57", version : "7de38dec2759e6efe06cf4e7");
 
@@ -86,7 +88,7 @@ export enum CaseSlotKind
 // Define case
 // ---------------------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Define case", "Icon" : TemplateIconNamespace::BLOB_DATA,
+annotation { "Feature Type Name" : "Define case", "Icon" : DefineIconNamespace::BLOB_DATA,
         "Feature Type Description" : "Declares the inputs (query variables) and values (# variables) of a repeatable feature chain, and binds case 1. Build the features on these names, end them with Close case, then repeat them with Case pattern." }
 export const defineCase = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -233,7 +235,7 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
 // Close case
 // ---------------------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Close case", "Icon" : TemplateIconNamespace::BLOB_DATA,
+annotation { "Feature Type Name" : "Close case", "Icon" : CloseIconNamespace::BLOB_DATA,
         "Editing Logic Function" : "closeCaseEditLogic",
         "Feature Type Description" : "Ends a repeatable feature chain: names its Define case, lists the features to repeat, and declares the outputs every case publishes as #<case>_<name>. Repeat it with Case pattern." }
 export const closeCase = defineFeature(function(context is Context, id is Id, definition is map)

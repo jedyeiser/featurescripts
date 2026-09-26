@@ -1,5 +1,9 @@
 # Case Pattern -- design note
 
+**2026-09-26: v2 BUILT (Define case / Close case / Case pattern) -- section 11 is current. Sections 2-10
+describe v1 (Case template + Case pattern); the mechanism notes (frame remapping, outside-list retry,
+sketches, limitations 6b) still apply unless section 11 says otherwise.**
+
 Document: case_pattern (2099413dd91f34578b385892 / w a875a90e6a8ebf49cc0eff73).
 Status: v1 built and passing tests T1-T5, 2026-09-24 (case_pattern.fs holds both features).
 
@@ -159,7 +163,7 @@ expected result, checked from devtools (no harness tabs).
 - Should Case pattern append case 1's suffix to template parts that lack it?
 - Separator default "_"?
 
-## 11. v2 redesign (agreed 2026-09-26, not built)
+## 11. v2 (agreed and BUILT 2026-09-26; tests T1-T7 30/30 via check_case_pattern_tests.py)
 
 User found v1 clunky: cases live in the template, which sits ABOVE the body, so case geometry is
 picked rolled back, a case can never select geometry made later, and rows go stale when inputs change.
@@ -224,3 +228,29 @@ Boolean parameters are typed expressions (true / false / #other / !#flag), not c
 - S3 body feature suppressed by #flag: re-evaluated per replay, always skipped, or always run? Is a
   suppressed feature still in the FeatureList?
 - S4 getAllVariables lists query variables; before/after diff finds variables the body set.
+
+### Final mechanism (built)
+- Case pattern binds a case (inputs + values + #caseName/#caseIndex), publishes CASE_REPLAY_KEY, and
+  calls the Close case's function under id + "case_<name>" (no frame). A second call (mode "outputs")
+  reads the outputs after the replay (query parameters resolve at call time).
+- Close case, seeing CASE_REPLAY_KEY: sorts its list by original feature id (keys arrive prefixed
+  outside a frame), pushes the frame on its OWN id, runs every feature with that id, and pops/retries
+  outside the frame on SELF_INTERSECTING_CURVE_SELECTED (runListedFeature, as v1). Records body origins.
+- Case pattern then deletes failed/unkept bodies, names bodies from the Close case's cached names,
+  publishes #<case>_<output> (freeze / track / on use), restores case 1's inputs and #caseName/#caseIndex.
+- Why this shape: correction 50 (every dead end measured).
+
+### Tests (devtools/onshape/build_case_pattern_tests.py + check_case_pattern_tests.py, 30/30)
+T1 values + outside-list fillet + outputs; T2 move face first, two cases in one pattern; T3 clicked
+in-list reference -> ERROR (expected); T6 boolean suppression per case; T7 chained cases + outputs.
+UI (2026-09-26, Playwright): picking a Close case adds the first row, laid out by name with case 1's
+values (Boolean shown as the expression "true").
+
+### Open
+- Not yet exercised: slot values kept by name after the Define case changes (layoutRow), value fallback
+  notice, mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.
+- Feature names containing "#name" display as "?" in the tree (Onshape treats # in names specially).
+- docs/explainers/case_pattern/case_pattern_explained.md still describes v1.
+- The toolbar/search also offers "Case pattern" from Case_Pattern V1 (older version) -- pick the
+  workspace one, or version the document and update the toolbar.
+
